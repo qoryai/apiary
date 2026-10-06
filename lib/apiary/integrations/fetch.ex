@@ -14,23 +14,31 @@ defmodule Apiary.Integrations.Fetch do
     * **Caps.** At most `max_bytes` of body (1 MiB), counted as it arrives, a declared
       `Content-Length` over it refused before; and the whole fetch, every hop, within
       `timeout` milliseconds (15 seconds). No body is decompressed.
-    * **Tokens stay with the public forges.** A `token`, which an edition gives for a
-      private release (`c:Apiary.Edition.release_token/2`), is sent only to a public
-      forge's own host (`Apiary.Integrations.Source.public_forge_hosts/0`), on the hop
-      to the host first asked, and never to a self-hosted host or a host a redirect
-      names.
-    * **The operator's allow list.** A host listed in `INTEGRATION_PRIVATE_HOSTS` (comma
-      separated host names) may resolve to private addresses, such as a self-hosted forge
-      on the operator's network. Loopback, link-local and metadata addresses stay
-      refused for every host.
+    * **The forge's own host.** A fetch of a forge source's release names that forge's
+      host, `forge_host`; a fetch of a URL source names none. A `token`, which an edition
+      gives for a private release (`c:Apiary.Edition.release_token/2`), is sent only to
+      `forge_host`, when it is a public forge's
+      (`Apiary.Integrations.Source.public_forge_hosts/0`) or one the operator lists in
+      `INTEGRATION_FORGE_HOSTS` (`Apiary.Integrations.Source.forge_hosts/0`), and only
+      when it is the host first asked: never to another host a redirect names, never to
+      a host `INTEGRATION_PRIVATE_HOSTS` alone names, and never on a fetch that names no
+      forge host, whatever token it is given.
+    * **The operator's allow lists.** A host listed in `INTEGRATION_PRIVATE_HOSTS` (comma
+      separated host names) may resolve to private addresses on any fetch. A forge listed
+      in `INTEGRATION_FORGE_HOSTS` may, on the hops to it of a fetch whose `forge_host` it
+      is, and on no other: not when a release elsewhere redirects to it, and not when a
+      URL source names its host. Loopback, link-local and metadata addresses stay refused
+      for every host.
     * **One answer.** Every failure is `{:error, :fetch_failed}`, the same to every
       caller and page, with what failed in a log line, which names the URL and never a
       token.
 
-  The options, beside `:token`, exist for the tests and are read from
+  The options, beside `:token` and `:forge_host`, exist for the tests and are read from
   `config :apiary, Apiary.Integrations.Fetch` where not given: `:resolver`, a module with
   `resolve/1` or a function of a host answering `{:ok, [address]}` or `{:error, reason}`
-  (`:inet` by default); `:req_options`, merged into the request's; `:private_hosts`.
+  (`:inet` by default); `:req_options`, merged into the request's; `:private_hosts`;
+  `:forge_hosts`, the operator's forges as `Apiary.Integrations.Source.forge_hosts/0`
+  gives them.
   """
 
   require Logger
@@ -47,11 +55,13 @@ defmodule Apiary.Integrations.Fetch do
   @typedoc "An option of `get/2`: see the module's documentation."
   @type option ::
           {:token, String.t() | nil}
+          | {:forge_host, String.t() | nil}
           | {:max_bytes, pos_integer}
           | {:timeout, pos_integer}
           | {:max_redirects, non_neg_integer}
           | {:resolver, module | (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term})}
           | {:private_hosts, [String.t()]}
+          | {:forge_hosts, Source.forge_hosts()}
           | {:req_options, keyword}
 
   @doc """
@@ -61,7 +71,12 @@ defmodule Apiary.Integrations.Fetch do
   """
   @spec get(String.t(), [option]) :: {:ok, binary} | {:error, :fetch_failed}
   def get(url, opts \\ []) when is_binary(url) do
-    opts = Keyword.merge(Application.get_env(:apiary, __MODULE__, []), opts)
+    opts =
+      :apiary
+      |> Application.get_env(__MODULE__, [])
+      |> Keyword.merge(opts)
+      |> hold_forge_host(url)
+
     timeout = Keyword.get(opts, :timeout, @timeout)
     deadline = System.monotonic_time(:millisecond) + timeout
 
@@ -93,6 +108,15 @@ defmodule Apiary.Integrations.Fetch do
 
         {:error, :fetch_failed}
     end
+  end
+
+  # A forge's private addresses and its token belong to a fetch that starts on that forge:
+  # a `forge_host` other than the host first asked is dropped, so no caller can lend a
+  # forge's allowance to a fetch that only redirects there.
+  defp hold_forge_host(opts, url) do
+    if Keyword.get(opts, :forge_host) == URI.parse(url).host,
+      do: opts,
+      else: Keyword.put(opts, :forge_host, nil)
   end
 
   # One hop: `url` checked, resolved and pinned, then asked; a redirect followed from here.
@@ -149,7 +173,7 @@ defmodule Apiary.Integrations.Fetch do
   # Every address the host resolves to must be one the fetch may reach; the first is the
   # one connected to.
   defp resolve(host, opts) do
-    private_ok? = host in private_hosts(opts)
+    private_ok? = host in private_hosts(opts) or listed_forge?(host, opts)
 
     case lookup(host, Keyword.get(opts, :resolver, __MODULE__.DNS)) do
       {:ok, [_ | _] = addresses} ->
@@ -187,6 +211,14 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
+  # A listed forge is let resolve to a private address only as the forge the fetch is
+  # for: a release elsewhere, whose download links its author chose, or a URL source, must
+  # not reach a forge inside the operator's network through it.
+  defp listed_forge?(host, opts),
+    do: host == opts[:forge_host] and Map.has_key?(forge_hosts(opts), host)
+
+  defp forge_hosts(opts), do: Keyword.get_lazy(opts, :forge_hosts, &Source.forge_hosts/0)
+
   @doc """
   parse_private_hosts/1 reads the `INTEGRATION_PRIVATE_HOSTS` setting: host names separated
   by commas, none when unset. Raises `ArgumentError` for an entry that is not an exact
@@ -220,7 +252,7 @@ defmodule Apiary.Integrations.Fetch do
 
     headers =
       [{"host", host}, {"user-agent", "qory-apiary"}, {"accept", "*/*"}] ++
-        token_header(Keyword.get(opts, :token), host, first_host)
+        token_header(Keyword.get(opts, :token), host, first_host, opts)
 
     options =
       [
@@ -245,15 +277,18 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
-  # The token goes to the host first asked alone, and only when that host is a public
-  # forge's: never to a self-hosted host, never across a redirect.
-  defp token_header(token, host, first_host) when is_binary(token) and token != "" do
-    if host == first_host and host in Source.public_forge_hosts(),
+  # The token is for the forge the fetch is for, and goes to that forge's host alone, when
+  # it is the host first asked: never to another host a redirect names, and never on a
+  # fetch that names no forge, whatever the caller passed.
+  defp token_header(token, host, first_host, opts) when is_binary(token) and token != "" do
+    forge? = host in Source.public_forge_hosts() or listed_forge?(host, opts)
+
+    if host == first_host and host == opts[:forge_host] and forge?,
       do: [{"authorization", "Bearer " <> token}],
       else: []
   end
 
-  defp token_header(_token, _host, _first_host), do: []
+  defp token_header(_token, _host, _first_host, _opts), do: []
 
   # The body, kept only up to `max_bytes`: a declared length over it, or a body that grows
   # past it, stops the read.

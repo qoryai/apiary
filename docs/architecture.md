@@ -431,9 +431,21 @@ the workspace's own (`service_definitions`); a service connection names its defi
 copies nothing of it, so a change to a definition reaches every connection that names it.
 Integrations come from a release (`Apiary.Integrations`): a `source`, a forge path with its
 `forge_kind` (`github`, `gitlab`, `forgejo`) or an https URL of a `description.json`, and an
-exact version. A request records a pending `integration_releases` row and enqueues
-`Apiary.Integrations.FetchJob`, which reads the release's `description.json` and
-`checksums.txt` where the integrations contract puts them
+exact version. A forge path is on `github.com`, `gitlab.com` or `codeberg.org`, or on a
+forge the operator lists with its kind in `INTEGRATION_FORGE_HOSTS`
+(`Apiary.Integrations.Source`, read and checked at boot); its host gives the kind the
+release and its connection record, which a run configuration gives off the public forges,
+and a forge path on any other host is refused. A URL source is accepted while
+`INTEGRATION_URL_SOURCES` is on, the default; off, it is refused, and a release already
+asked for from one fails with `integration_source_refused` when its fetch comes, as does
+one of a forge no longer listed, or listed now with another kind, and none of them is
+added as a connection. A ready release is given back for the same source and version
+only under the kind its host has now, so a corrected kind fetches the release anew; a
+connection recorded under the old kind keeps it, and is removed and added again from the
+new release. A request records
+a pending `integration_releases` row and enqueues `Apiary.Integrations.FetchJob`, which
+reads the release's `description.json` and `checksums.txt` where the integrations contract
+puts them
 (`releases/download/vX.Y.Z/<file>` on GitHub and Forgejo, `/-/releases/vX.Y.Z/downloads/<file>`
 on GitLab, the URL's directory for a URL source), and records it ready, byte for byte with
 its digest, or failed with a code. An integration connection is added from a ready
@@ -456,13 +468,19 @@ connects to the address it checked, the host name kept for `Host`, SNI and the
 certificate's check; every redirect is followed by hand and checked the same way, https on
 port 443 to a host name, at most five; the body is capped at 1 MiB (256 KiB for a
 description), counted as it arrives, and the whole fetch at 15 seconds. A token, which an
-edition may give for a private release (`c:Apiary.Edition.release_token/2`; the core gives
-none), goes only to a public forge's own host, `github.com`, `gitlab.com` or
-`codeberg.org`, and never across a redirect. Every failure is one `fetch_failed`, the
-reason only in the log. The operator's `INTEGRATION_PRIVATE_HOSTS` lets the hosts it names
-resolve to private addresses; loopback, link-local and metadata addresses stay refused.
-What came is checked against `checksums.txt`, the version asked for, and any earlier
-release of the same source and version the workspace found:
+edition may give for a private release of a forge source
+(`c:Apiary.Edition.release_token/2`; the core gives none, and none is asked for a URL
+source), goes only to the forge's own host, `github.com`, `gitlab.com`, `codeberg.org` or
+one `INTEGRATION_FORGE_HOSTS` lists, only when it is the host first asked, and never to
+another host a redirect names; the fetch is told which forge it is for, and sends no token
+on a fetch for none. Since the token goes to the source's host, an edition gives one for
+that exact host, never one chosen by the forge's kind alone. Every failure is one
+`fetch_failed`, the reason only in the log. A forge `INTEGRATION_FORGE_HOSTS` lists may
+resolve to private addresses on the hops to it of a fetch of its own release, not when a
+release elsewhere redirects to it nor when a URL source names its host; the hosts the
+operator's `INTEGRATION_PRIVATE_HOSTS` names may on any fetch. Loopback, link-local and
+metadata addresses stay refused. What came is checked against `checksums.txt`, the version
+asked for, and any earlier release of the same source and version the workspace found:
 `integration_source_mismatch` when they differ.
 
 **Integrity.** A connection, a release and a custom definition each carry an integrity

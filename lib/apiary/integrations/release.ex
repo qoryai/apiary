@@ -8,9 +8,9 @@ defmodule Apiary.Integrations.Release do
   `description.json` byte for byte (`description`), its SHA-256 (`description_sha256`),
   the integration's `name` and `version` as it says, and its publisher's name and URL
   (`publisher_name`, `publisher_url`, the URL nil when it names none), shown beside the
-  source's owner and never verified, or `failed`, with `failure`, a
-  code: `fetch_failed`, `description_invalid`, `placeholder_conflict` or
-  `integration_source_mismatch`.
+  source's owner and never verified, or `failed`, with `failure`, a code:
+  `integration_source_refused`, `fetch_failed`, `description_invalid`,
+  `placeholder_conflict` or `integration_source_mismatch`.
 
   The row carries an integrity code over its source, its state and what the fetch found,
   the description by its digest (`Apiary.Kinds.Coded`); a reader checks the code, and that
@@ -22,7 +22,8 @@ defmodule Apiary.Integrations.Release do
   @type t :: %__MODULE__{}
 
   @states ~w(pending ready failed)
-  @failures ~w(fetch_failed description_invalid placeholder_conflict integration_source_mismatch)
+  @failures ~w(integration_source_refused fetch_failed description_invalid placeholder_conflict
+                integration_source_mismatch)
 
   @primary_key {:id, :binary_id, autogenerate: false}
   @foreign_key_type :binary_id

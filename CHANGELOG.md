@@ -138,11 +138,23 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   release's `checksums.txt` and the integrations contract; a service from a built-in
   definition or one the workspace writes. Each applies to every repository or to chosen
   ones, an integration in the ways chosen per repository, and two that would collide on a
-  repository are refused. The fetch connects only to public addresses, checked again on
-  every redirect, within size and time limits, with no token sent to a self-hosted host;
-  `INTEGRATION_PRIVATE_HOSTS` names the hosts that may resolve to private addresses. Who
-  may read and change them are the actions `connection.read` and `connection.write`, every
-  change is in the audit trail, and each row carries an integrity code.
+  repository are refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`, or
+  on a self-hosted or enterprise forge the operator lists with its kind in
+  `INTEGRATION_FORGE_HOSTS` (`forgejo:git.example.com`, separated by commas), which is
+  recorded with that kind and may resolve to private addresses when its own releases are
+  fetched; a forge path on any other host is refused. `INTEGRATION_URL_SOURCES=false`
+  turns off integrations from an address, for an instance such as a cloud one: neither
+  added nor fetched, though a forge release's download links, which its author chooses,
+  are still followed to any public https host. A wrong value of either stops the boot.
+  The fetch connects only to public addresses, checked again on every redirect, within
+  size and time limits; `INTEGRATION_PRIVATE_HOSTS` names the other hosts that may
+  resolve to private addresses. A token an edition gives
+  (`c:Apiary.Edition.release_token/2`) goes only to the forge's own host, a public or a
+  listed one, only when it is the host first asked, never to another host a redirect
+  names, and never to an address; since it goes to the source's host, an edition gives a
+  token for that exact host, never one chosen by the forge's kind alone. Who may read and
+  change them are the actions `connection.read` and `connection.write`, every change is in
+  the audit trail, and each row carries an integrity code.
 
 ### Migrations
 

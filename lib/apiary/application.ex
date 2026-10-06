@@ -21,15 +21,16 @@ defmodule Apiary.Application do
     # First, so a wrong QORY_FEATURES, or an edition's features that do not add up, stops
     # the boot before anything is started.
     Apiary.Features.boot!()
-    # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY
-    # or TRUSTED_PROXIES stops the boot too, and so does an edition's table or subject
-    # the core has already, or a page whose feature is none there is.
+    # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
+    # TRUSTED_PROXIES or integration setting stops the boot too, and so does an edition's
+    # table or subject the core has already, or a page whose feature is none there is.
     Apiary.Audit.boot!()
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
     ApiaryWeb.Origin.boot!()
     Apiary.Integrations.Fetch.boot!()
+    Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()
     # Then the edition's own settings, once the core's are known to be right.
     :ok = Apiary.Edition.boot!()

@@ -185,6 +185,11 @@ msgstr ""
 
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
+msgid "is not on a forge this instance adds integrations from"
+msgstr ""
+
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
 msgid "is not the forge this source is on"
 msgstr ""
 
@@ -240,6 +245,11 @@ msgstr ""
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
 msgid "must be a repository's path or an https address of a description.json"
+msgstr ""
+
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "must be a repository's path: this instance adds no integration from an address"
 msgstr ""
 
 #: lib/apiary/integrations.ex
@@ -348,11 +358,6 @@ msgstr ""
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "only a workspace's variable can be locked: a lock holds it against the repositories"
-msgstr ""
-
-#: lib/apiary/integrations.ex
-#, elixir-autogen, elixir-format
-msgid "says which forge the server runs"
 msgstr ""
 
 msgid "should be %{count} byte(s)"
