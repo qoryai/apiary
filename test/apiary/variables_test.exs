@@ -52,6 +52,28 @@ defmodule Apiary.VariablesTest do
     end)
   end
 
+  # A save never takes a holder past the limits, so a repository is put past the names
+  # here by rows written around the checks: the state a refusal on the names needs.
+  defp past_names!(scope, target, names) do
+    for name <- names do
+      Repo.insert!(%Variable{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        target_id: target.id,
+        name: name,
+        value: "",
+        created_by_id: scope.user.id,
+        updated_by_id: scope.user.id
+      })
+    end
+  end
+
+  defp deleted_entries do
+    from(e in Entry, where: e.subject_kind == "variable", select: e.details)
+    |> Repo.all()
+    |> Enum.count(&(&1["change"] == "deleted"))
+  end
+
   describe "levels" do
     test "a repository takes the workspace's variables and overrides them with its own",
          %{scope: scope, site: site} do
@@ -331,6 +353,123 @@ defmodule Apiary.VariablesTest do
                  name: "OWN",
                  value: String.duplicate("o", 4000)
                })
+    end
+  end
+
+  describe "deleting a variable" do
+    test "a locked one is refused as its unlock is when a value it set aside goes over 64 KiB",
+         %{scope: scope, site: site} do
+      # 15 × (4 + 4096) = 61500 bytes in the workspace, and 7 of LOCKED.
+      for i <- 10..24, do: set!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+      locked = set!(scope, :workspace, "LOCKED", "l")
+      set!(scope, site, "LOCKED", String.duplicate("s", 4000))
+      {:ok, locked} = Variables.lock_variable(scope, locked)
+
+      # Set aside, the repository's 4000 bytes count nothing, and it fills the room.
+      set!(scope, site, "OWN", String.duplicate("o", 4026))
+      assert Resolution.size(resolve!(scope, site)).bytes == 65_536
+
+      assert {:error, unlock} = Variables.unlock_variable(scope, locked)
+      assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, locked)
+      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert changeset.errors == unlock.errors
+
+      assert Repo.reload!(locked).locked
+      assert values(scope, site)["LOCKED"] == "l"
+      assert deleted_entries() == 0
+    end
+
+    test "a locked one is refused as its unlock is, on the names, for a repository past 128",
+         %{scope: scope, site: site} do
+      for i <- 1..119, do: set!(scope, :workspace, "W#{i}", "")
+      locked = set!(scope, :workspace, "LOCKED", "")
+      set!(scope, site, "LOCKED", "own")
+      {:ok, locked} = Variables.lock_variable(scope, locked)
+      for i <- 1..8, do: set!(scope, site, "T#{i}", "")
+      past_names!(scope, site, ["T9"])
+
+      # The value set aside takes back the name the workspace gives up: still 129.
+      assert {:error, unlock} = Variables.unlock_variable(scope, locked)
+      assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, locked)
+      assert error(changeset, :name) == "would give a run more than 128 variables"
+      assert changeset.errors == unlock.errors
+      assert Repo.reload!(locked).locked
+      assert deleted_entries() == 0
+    end
+
+    test "a locked one within the limits gives the repositories their own values back",
+         %{scope: scope, site: site} do
+      locked = set!(scope, :workspace, "LOG_LEVEL", "info")
+      set!(scope, site, "LOG_LEVEL", "debug")
+      {:ok, locked} = Variables.lock_variable(scope, locked)
+      assert values(scope, site)["LOG_LEVEL"] == "info"
+
+      assert {:ok, %Variable{name: "LOG_LEVEL", locked: true}} =
+               Variables.delete_variable(scope, locked)
+
+      assert values(scope, site) == %{"LOG_LEVEL" => "debug"}
+
+      assert %{set_by: :target, locked_by: nil, ignored: []} =
+               Resolution.entry(resolve!(scope, site), "LOG_LEVEL")
+
+      assert values(scope, :workspace) == %{}
+      assert deleted_entries() == 1
+    end
+
+    test "a repository's own is refused when the larger workspace value it hid goes over 64 KiB",
+         %{scope: scope, site: site} do
+      # 14 × (4 + 4096) = 57400 bytes in the workspace, and 4099 of BIG.
+      for i <- 10..23, do: set!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+      set!(scope, :workspace, "BIG", String.duplicate("b", 4096))
+      own = set!(scope, site, "BIG", "x")
+
+      # Its 1 byte in place of the workspace's 4096 leaves room, which the repository fills.
+      set!(scope, site, "OWN_1", String.duplicate("o", 4096))
+      set!(scope, site, "OWN_2", String.duplicate("o", 4026))
+      assert Resolution.size(resolve!(scope, site)).bytes == 65_536
+
+      # Deleted, the workspace's BIG would take the repository to 69631 bytes.
+      assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, own)
+      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert Repo.reload!(own)
+      assert values(scope, site)["BIG"] == "x"
+      assert deleted_entries() == 0
+    end
+
+    test "every deletion is checked where it leaves the holders, so one already over refuses it",
+         %{scope: scope, site: site} do
+      for i <- 1..119, do: set!(scope, :workspace, "W#{i}", "")
+      plain = set!(scope, :workspace, "PLAIN", "")
+      for i <- 1..8, do: set!(scope, site, "T#{i}", "")
+      [_t9, _t10, own] = past_names!(scope, site, ["T9", "T10", "T11"])
+
+      # An unlocked workspace variable and a repository's own: each would leave it at 130.
+      for variable <- [plain, own] do
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Variables.delete_variable(scope, variable)
+
+        assert error(changeset, :name) == "would give a run more than 128 variables"
+        assert Repo.reload!(variable)
+      end
+
+      assert Resolution.size(resolve!(scope, site)).names == 131
+      assert deleted_entries() == 0
+    end
+
+    test "one that only shrinks the holders is deleted, at the limit too",
+         %{scope: scope, site: site} do
+      [first | _] =
+        for i <- 10..24, do: set!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+
+      own = set!(scope, site, "LAST", String.duplicate("l", 4032))
+      assert Resolution.size(resolve!(scope, site)).bytes == 65_536
+
+      # A workspace's variable no repository overrides, and a repository's that overrides
+      # nothing: each only takes bytes away.
+      assert {:ok, _} = Variables.delete_variable(scope, first)
+      assert {:ok, _} = Variables.delete_variable(scope, own)
+      assert Resolution.size(resolve!(scope, site)).bytes == 61_500 - 4_100
+      assert deleted_entries() == 2
     end
   end
 

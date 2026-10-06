@@ -1820,6 +1820,9 @@ defmodule ApiaryWeb.SecretLive.Index do
       {:ok, variable} ->
         saved(socket, variable_done(event, variable.name, targets), :variables)
 
+      {:error, %Ecto.Changeset{} = changeset} when event == "delete_variable" ->
+        not_deleted(socket, changeset)
+
       {:error, %Ecto.Changeset{} = changeset} ->
         refusal(socket, changeset, :variables)
 
@@ -1919,13 +1922,11 @@ defmodule ApiaryWeb.SecretLive.Index do
         view
       )
 
-  # A lock or an unlock refused on what the lock asks: said, the list read again.
-  defp refusal(socket, %Ecto.Changeset{} = changeset, view) do
-    message =
-      Enum.map_join(changeset.errors, " ", fn {_field, error} -> translate_error(error) end)
-
-    back(socket, :error, gettext("Not saved: %{reason}", reason: message), view)
-  end
+  # A lock or an unlock refused, on what it asks of the variable or on the limits of the
+  # holders it reaches, which are checked where the change leaves them, so a holder
+  # already over them refuses it too: said, the list read again, the row as it was.
+  defp refusal(socket, %Ecto.Changeset{} = changeset, view),
+    do: back(socket, :error, gettext("Not saved: %{reason}", reason: reasons(changeset)), view)
 
   defp refusal(socket, :not_found, view) do
     socket = reload_scope(socket)
@@ -1945,6 +1946,16 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp refusal(socket, :forbidden, _view), do: unauthorized(socket)
+
+  # A deletion refused on the same limits, checked the same way. Nothing was being saved,
+  # so its words say what did not happen: the row is still there.
+  defp not_deleted(socket, changeset) do
+    words = gettext("Not deleted: %{reason}", reason: reasons(changeset))
+    back(socket, :error, words, :variables)
+  end
+
+  defp reasons(changeset),
+    do: Enum.map_join(changeset.errors, " ", fn {_field, error} -> translate_error(error) end)
 
   defp last_value(secret),
     do:

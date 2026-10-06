@@ -635,6 +635,37 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert {:ok, []} = Variables.list_variables(scope, :workspace)
     end
 
+    test "refuses to delete a locked variable as it refuses to unlock it, and keeps the row",
+         %{conn: conn, scope: scope} do
+      site = target!(scope, "acme/site")
+      for i <- 10..24, do: variable!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+      variable = variable!(scope, :workspace, "LOCKED", "l")
+      variable!(scope, site, "LOCKED", String.duplicate("s", 4000))
+      {:ok, variable} = Variables.lock_variable(scope, variable)
+      # The repository is full while its own LOCKED is set aside, which either act gives back.
+      variable!(scope, site, "OWN", String.duplicate("o", 4026))
+      reason = "would give a run more than 64 KiB of variables"
+
+      {:ok, lv, _html} = live(conn, variables_path(scope))
+      lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
+      assert render(lv) =~ "Not saved: #{reason}"
+
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/delete"))
+      assert has_element?(lv, "#variable-#{variable.id}-confirm", "Delete LOCKED?")
+      refute render(lv) =~ reason
+
+      lv
+      |> element("#variable-#{variable.id}-confirm button", "Yes, delete")
+      |> render_click()
+
+      assert_patch(lv, variables_path(scope))
+      assert render(lv) =~ "Not deleted: #{reason}"
+      refute render(lv) =~ "Not saved"
+      refute has_element?(lv, "#variable-#{variable.id}-confirm")
+      assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
+      assert Repo.reload!(variable).locked
+    end
+
     test "finds and filters the variables in the URL", %{conn: conn, scope: scope} do
       site = target!(scope, "acme/site")
       locked = variable!(scope, :workspace, "LOG_LEVEL", "info", %{locked: true})
