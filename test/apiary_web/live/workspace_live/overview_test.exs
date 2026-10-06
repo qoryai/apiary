@@ -879,6 +879,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#attention-n") =~ ~r/^\d$/
 
       other = started_run(scope, shop())
+      # The read its start set off lands first, so the page knows it as just started and
+      # the row arrives Lost; a read after the backdating would find it quiet first, the
+      # next test's case.
+      render_async(view, 5_000)
 
       Repo.update_all(from(r in Run, where: r.id == ^other.id),
         set: [last_heartbeat_at: DateTime.add(DateTime.utc_now(), -3600, :second)]
@@ -888,6 +892,25 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
       assert has_element?(view, "#att-run-#{other.run_id}[data-kind=lost].q-arrived", "Lost")
       assert text(view, "#overview-announcer") == "1 more item needs attention."
+    end
+
+    test "a quiet run the check finds lost turns its row to Lost in place", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Silent for four intervals: quiet on the page, and lost at the check's three.
+      quiet = started_run(scope, shop(), heartbeat: {120, 100, 30})
+      view = open(conn, scope)
+      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=quiet]")
+
+      assert [_] = Liveness.check(DateTime.utc_now())
+      render_async(view, 5_000)
+      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{quiet.run_id}.q-resolved")
+      refute text(view, "#att-run-#{quiet.run_id}") =~ "Heartbeats resumed."
+      # The same row, patched: nothing arrived.
+      refute has_element?(view, "#att-run-#{quiet.run_id}.q-arrived")
+      assert text(view, "#overview-announcer") == ""
     end
 
     test "another workspace's runs change nothing here", %{conn: conn, scope: scope} do
