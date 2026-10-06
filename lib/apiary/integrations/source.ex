@@ -22,7 +22,12 @@ defmodule Apiary.Integrations.Source do
   A **version** is `X.Y.Z` with no leading zeros. A file of version X.Y.Z is at:
 
     * GitHub, Forgejo: `https://<host>/<path>/releases/download/vX.Y.Z/<file>`;
-    * GitLab: `https://<host>/<path>/-/releases/vX.Y.Z/downloads/<file>`;
+    * GitLab: `https://gitlab.com/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`,
+      the API's download route, `<project>` the path with each `/` written `%2F`
+      (`acme%2Ftools%2Fqory-webhook`). Not the web route,
+      `/<path>/-/releases/vX.Y.Z/downloads/<file>`: since GitLab 17.3.2 it answers a
+      release link to another host with a page of HTML that asks the reader to follow
+      it, not a redirect, where the API's route redirects;
     * a URL source: the URL's directory, `<dir>/<file>`, whatever the version.
 
   The source's **owner**, the part of it a person can check, is shown beside the
@@ -160,11 +165,16 @@ defmodule Apiary.Integrations.Source do
     do: Path.dirname(source) <> "/" <> file
 
   def download_url(%__MODULE__{forge_kind: "gitlab", host: host, path: path}, version, file),
-    do: "https://#{host}/#{path}/-/releases/v#{version}/downloads/#{file}"
+    do:
+      "https://#{host}/api/v4/projects/#{project_id(path)}/releases/v#{version}/downloads/#{file}"
 
   def download_url(%__MODULE__{forge_kind: kind, host: host, path: path}, version, file)
       when kind in ["github", "forgejo"],
       do: "https://#{host}/#{path}/releases/download/v#{version}/#{file}"
+
+  # GitLab's API names a project by its full path, URL-encoded: a path's characters are
+  # unreserved but for `/`, so only the slashes change.
+  defp project_id(path), do: URI.encode(path, &URI.char_unreserved?/1)
 
   @doc """
   owner/1 is what a person can check of `source`: `<host>/<owner>` on a forge, the group

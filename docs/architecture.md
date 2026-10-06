@@ -447,8 +447,11 @@ connection. A request records
 a pending `integration_releases` row and enqueues `Apiary.Integrations.FetchJob`, which
 reads the release's `description.json` and `checksums.txt` where the integrations contract
 puts them
-(`releases/download/vX.Y.Z/<file>` on GitHub and Forgejo, `/-/releases/vX.Y.Z/downloads/<file>`
-on GitLab, the URL's directory for a URL source), and records it ready, byte for byte with
+(`releases/download/vX.Y.Z/<file>` on GitHub and Codeberg; on GitLab the API's route,
+`/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, the project its path with each
+`/` written `%2F`, kept so through every hop, since the web route answers a link to another
+host with a page instead of a redirect; the URL's directory for a URL source), and records
+it ready, byte for byte with
 its digest, or failed with a code. An integration connection is added from a ready
 release, takes its name, source, version and description digest, and stores its plain
 settings as canonical JSON, checked against the description: a secret, or a secret's

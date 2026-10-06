@@ -281,6 +281,44 @@ defmodule Apiary.IntegrationsTest do
       refute_received {:request, _host, [_ | _], _path}
     end
 
+    test "reads a GitLab release from the API's download route, the project's slashes as %2F",
+         %{scope: scope} do
+      bytes = encode(github_description())
+      api = "/api/v4/projects/acme%2Ftools%2Fqory-webhook/releases/v0.1.0/downloads/"
+      test = self()
+
+      # The API's route redirects to where each link points, here another host.
+      Req.Test.stub(Apiary.Integrations.Fetch, fn conn ->
+        send(test, {:request, Plug.Conn.get_req_header(conn, "host"), conn.request_path})
+
+        case {conn.host, conn.request_path} do
+          {_address, ^api <> file} ->
+            conn
+            |> Plug.Conn.put_resp_header("location", "https://downloads.example.com/" <> file)
+            |> Plug.Conn.send_resp(302, "")
+
+          {_address, "/description.json"} ->
+            Plug.Conn.send_resp(conn, 200, bytes)
+
+          {_address, "/checksums.txt"} ->
+            Plug.Conn.send_resp(conn, 200, checksums(bytes))
+        end
+      end)
+
+      {:ok, release} =
+        Integrations.request_release(scope, %{
+          source: "gitlab.com/acme/tools/qory-webhook",
+          version: "0.1.0"
+        })
+
+      assert %Release{state: "ready"} = fetch!(scope, release)
+      assert_received {:request, ["gitlab.com"], path}
+      assert path == api <> "description.json"
+      assert_received {:request, ["downloads.example.com"], "/description.json"}
+      assert_received {:request, ["gitlab.com"], path}
+      assert path == api <> "checksums.txt"
+    end
+
     test "a release changed in the database is not found", %{scope: scope} do
       serve_release(github_description())
       {:ok, release} = Integrations.request_release(scope, @github)

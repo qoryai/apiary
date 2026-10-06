@@ -138,7 +138,10 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   catalogue, its `runtimes.json` as the runner ships it; an integration added from a
   release on GitHub, GitLab or Codeberg, or at an
   https address of its `description.json`, which a job fetches and checks against the
-  release's `checksums.txt` and the integrations contract; a service from a built-in
+  release's `checksums.txt` and the integrations contract (on GitLab through the API's
+  download route, `/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, which
+  redirects to where a release's link points, where the web route answers a link to
+  another host with a page); a service from a built-in
   definition or one the workspace writes. Each applies to every repository or to chosen
   ones, an integration in the ways chosen per repository, and two that would collide on a
   repository are refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,

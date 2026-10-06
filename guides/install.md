@@ -310,9 +310,10 @@ next day's job; setting it longer again does not bring it back.
 When a workspace adds an integration from a release, Qory reads the release's
 `description.json` and `checksums.txt` from the forge or the address it names. A release
 is on `github.com`, `gitlab.com` or `codeberg.org`, found by the repository's path and
-the version at the download address that forge gives it, or at an https address of its
-`description.json`. A repository on any other host is refused: self-hosted forges are not
-supported.
+the version at the download address that forge gives it (on GitLab, the API's download
+route, `/api/v4/projects/…/releases/…/downloads/…`, which redirects to where the
+release's link points), or at an https address of its `description.json`. A repository
+on any other host is refused: self-hosted forges are not supported.
 
 Qory connects only to public addresses: it resolves the host, refuses the fetch when any
 address is private, loopback, link-local or a cloud metadata address, and connects to the

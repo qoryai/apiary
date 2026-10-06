@@ -119,7 +119,7 @@ defmodule Apiary.Integrations.SourceTest do
              "https://codeberg.org/acme/shop/releases/download/v2.1.0/checksums.txt"
 
     assert Source.download_url(gitlab, "1.1.0", "description.json") ==
-             "https://gitlab.com/acme/tools/qory-webhook/-/releases/v1.1.0/downloads/description.json"
+             "https://gitlab.com/api/v4/projects/acme%2Ftools%2Fqory-webhook/releases/v1.1.0/downloads/description.json"
 
     assert Source.download_url(url, nil, "checksums.txt") ==
              "https://downloads.example.com/qory-jira/1.4.0/checksums.txt"

@@ -95,6 +95,23 @@ defmodule Apiary.Integrations.FetchTest do
     assert_received {:request, "203.0.113.10", ["objects.example.com"], _, "/asset"}
   end
 
+  test "keeps an encoded slash in the path as it is, on the first hop and after a redirect" do
+    url =
+      "https://gitlab.com/api/v4/projects/acme%2Ftools%2Fshop/releases/v1.0.0/downloads/description.json"
+
+    assert get(url, fn conn ->
+             if conn.request_path =~ "/downloads/",
+               do: redirect("../packages/description.json").(conn),
+               else: ok("{}").(conn)
+           end) == {:ok, "{}"}
+
+    assert_received {:request, _, ["gitlab.com"], _,
+                     "/api/v4/projects/acme%2Ftools%2Fshop/releases/v1.0.0/downloads/description.json"}
+
+    assert_received {:request, _, ["gitlab.com"], _,
+                     "/api/v4/projects/acme%2Ftools%2Fshop/releases/v1.0.0/packages/description.json"}
+  end
+
   test "refuses a redirect to a private address, or to http" do
     for location <- [
           "https://private.example.com/asset",
