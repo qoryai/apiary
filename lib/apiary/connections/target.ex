@@ -1,9 +1,9 @@
 defmodule Apiary.Connections.Target do
   @moduledoc """
   A repository a connection applies to (`connection_targets`), and the ways an
-  integration is used there: `credential` ("Calls its API") and `tool` ("Uses it as a tool
-  (MCP)"), or nil, every way the integration offers. A runtime's and a service's rows have
-  no ways. Changed only through `Apiary.Connections`.
+  integration is used there: `credential` ("Calls its API"), the one way a connection is
+  used in, or nil, the same when its description offers it. A runtime's and a service's
+  rows have no ways. Changed only through `Apiary.Connections`.
   """
   use Ecto.Schema
 

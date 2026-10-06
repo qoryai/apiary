@@ -52,8 +52,9 @@ defmodule Apiary.Integrations.Description do
   A description, read: the integration's `name`, `title`, `about` (its `description`),
   `publisher` (a map with `name` and maybe `url`), `domains`, `program_version`,
   every role it names, the `ways` it offers (`credential` and `tool`, the roles the runner
-  starts), its secrets (each `name`, `title` and `secret_name`, its `x-secret-name`), the
-  names of its plain settings, and the decoded document.
+  starts; a connection is used in `credential` alone, `Apiary.Connections`), its secrets
+  (each `name`, `title` and `secret_name`, its `x-secret-name`), the names of its plain
+  settings, and the decoded document.
   """
   @type t :: %__MODULE__{
           name: String.t(),
@@ -73,7 +74,10 @@ defmodule Apiary.Integrations.Description do
   @secret_name ~r/\A[A-Z][A-Z0-9_]{0,127}\z/
   @settings_max 65_536
 
-  @doc "ways/0 is the roles the runner starts, a connection's ways: `credential` and `tool`."
+  @doc """
+  ways/0 is the roles the runner starts, the ways a description may offer: `credential` and
+  `tool`.
+  """
   @spec ways() :: [String.t()]
   def ways, do: @ways
 

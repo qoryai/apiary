@@ -143,8 +143,9 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   redirects to where a release's link points, where the web route answers a link to
   another host with a page); a service from a built-in
   definition or one the workspace writes. Each applies to every repository or to chosen
-  ones, an integration in the ways chosen per repository, and two that would collide on a
-  repository are refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,
+  ones, an integration through its credential way alone (a description may offer the
+  `tool` way, which a connection refuses), and two that would collide on a repository are
+  refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,
   whose host gives its kind of forge, never the request, or at an https address of its
   `description.json`; a forge path on any other host is refused, since self-hosted forges
   are not supported. `INTEGRATION_URL_SOURCES=false` turns off integrations from an

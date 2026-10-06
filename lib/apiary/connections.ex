@@ -29,11 +29,13 @@ defmodule Apiary.Connections do
 
   `applies_to` is `all`, every repository of the workspace, or `selected`, the
   repositories of its targets (`Apiary.Connections.Target`). A target of an integration
-  may also carry the **ways** it is used in that repository: `credential` ("Calls its
-  API") and `tool` ("Uses it as a tool (MCP)"), a subset of the ways its description
-  offers, nil for every one. A save that would make two connections collide where both
-  apply, the same runtime, the same integration, or a host in common, is refused,
-  `{:error, {:overlap, public_ids}}` (`Apiary.Connections.Overlap`).
+  may also carry the **ways** it is used in that repository, of which there is one,
+  `credential` ("Calls its API"), when its description offers it; nil is the same
+  (`used_ways/2`). The
+  `tool` way ("Uses it as a tool (MCP)") a description may offer is refused. A save that
+  would make two connections collide where both apply, the same runtime, the same
+  integration, or a host in common, is refused, `{:error, {:overlap, public_ids}}`
+  (`Apiary.Connections.Overlap`).
 
   ## Integrity
 
@@ -78,6 +80,10 @@ defmodule Apiary.Connections do
   for a definition, `{:definition_invalid, problems}`.
   """
   @type refusal :: Access.reason() | Ecto.Changeset.t() | atom | {atom, term}
+
+  # A description may offer the tool way too, but no runner runs it yet, so a connection
+  # is used through its credential alone.
+  @ways ~w(credential)
 
   ## Reading
 
@@ -167,6 +173,33 @@ defmodule Apiary.Connections do
 
   def description(%Connection{kind: "integration"} = connection),
     do: connection |> Repo.preload(:release) |> description()
+
+  @doc """
+  used_ways/2 is the ways the integration `connection` is used in at the repository
+  `target_id`: the ways its target there carries, or, where it carries none, the
+  credential way when its description offers it, never the tool way. A connection that
+  does not apply there, a runtime, a service, or an integration whose release is not
+  ready, is used in none.
+  """
+  @spec used_ways(Connection.t(), Ecto.UUID.t()) :: [String.t()]
+  def used_ways(%Connection{kind: "integration"} = connection, target_id) do
+    connection = Repo.preload(connection, [:release, :targets])
+
+    case {connection.applies_to, Enum.find(connection.targets, &(&1.target_id == target_id))} do
+      {_applies_to, %Target{ways: [_ | _] = ways}} -> Enum.filter(@ways, &(&1 in ways))
+      {"selected", nil} -> []
+      _none_of_its_own -> offered_ways(connection)
+    end
+  end
+
+  def used_ways(%Connection{}, _target_id), do: []
+
+  defp offered_ways(connection) do
+    case description(connection) do
+      {:ok, description} -> Enum.filter(@ways, &(&1 in description.ways))
+      {:error, :not_ready} -> []
+    end
+  end
 
   defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope) do
     with :ok <- Access.authorize(scope, :"connection.read", workspace), do: {:ok, workspace}
@@ -515,9 +548,10 @@ defmodule Apiary.Connections do
   @doc """
   put_target/4 makes a connection apply to the repository `target_id` of the scope's
   workspace, or changes the ways an integration is used there (`connection.write`):
-  `ways` is nil, every way the integration offers, or a list of `credential` and `tool`
-  that its description offers; a runtime or a service takes nil only.
-  `{:ok, connection}`, or `{:error, refusal}`: `:target_not_found`, `:ways_not_allowed`.
+  `ways` is nil, the credential way when its description offers it, or `["credential"]`
+  when its description offers it; `tool`, or any other way, is refused. A runtime or a
+  service takes nil only. `{:ok, connection}`, or `{:error, refusal}`:
+  `:target_not_found`, `:ways_not_allowed`.
   """
   @spec put_target(Scope.t(), Connection.t(), term, [String.t()] | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -568,8 +602,8 @@ defmodule Apiary.Connections do
     with {:ok, description} <- current_description(connection) do
       ways = Enum.uniq(ways)
 
-      if ways != [] and Enum.all?(ways, &(&1 in description.ways)),
-        do: {:ok, Enum.filter(Description.ways(), &(&1 in ways))},
+      if ways != [] and Enum.all?(ways, &(&1 in @ways and &1 in description.ways)),
+        do: {:ok, Enum.filter(@ways, &(&1 in ways))},
         else: {:error, :ways_not_allowed}
     end
   end

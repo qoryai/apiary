@@ -418,11 +418,12 @@ integration on its pages (`Apiary.Connections`): a runtime, an integration or a 
 in `workspace_connections` (the record's `connections` are the hosts a run reached), with
 a public id, `con_` and 16 characters, that the run configuration names. Each applies to
 every repository of the workspace or to the ones `connection_targets` names; a target of an
-integration may also carry its **ways** there, `credential` ("Calls its API") and `tool`
-("Uses it as a tool (MCP)"), a subset of what its description offers, none for all of
-them. Two connections that would give a repository the same runtime, the same integration,
-or a value on the same host (one host pattern covering another) are refused on save. A
-connection holds no secret: the links to stored secrets are the linking piece's.
+integration may also carry its **ways** there, of which there is one, `credential` ("Calls
+its API"), when its description offers it; none is the same. The `tool` way ("Uses it as a
+tool (MCP)"), which a description may offer, is refused on a connection. Two connections
+that would give a repository the same runtime, the same integration, or a value on the
+same host (one host pattern covering another) are refused on save. A connection holds no
+secret: the links to stored secrets are the linking piece's.
 
 **The kinds.** Runtimes come from the runner contract's `contracts/runner/v1/runtimes.json`,
 vendored byte for byte as `priv/contract/runtimes.json` at the commit in
