@@ -1,3 +1,4 @@
 # The commit of qoryai/runner whose contracts/runner/v1 the :contract tests replay in CI:
-# the tag v0.6.0.
-da9d08954a2e4c921fac5865a08d88a9b7955b20
+# a commit on the runner's next branch. It is pinned by commit, since no tag of the runner
+# has these files yet; the next tag comes with the joint release.
+531c9201119f63cf6f546af12ddeb8f8442a431c

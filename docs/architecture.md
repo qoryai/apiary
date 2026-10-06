@@ -421,14 +421,16 @@ or a value on the same host (one host pattern covering another) are refused on s
 connection holds no secret: the links to stored secrets are the linking piece's.
 
 **The kinds.** Runtimes come from the runner contract's `contracts/runner/v1/runtimes.json`,
-vendored at the same name as `priv/contract/runtimes.json` (`Apiary.Kinds.Runtimes`). The
-runner generates it from its built-in descriptors; until the pin moves to the release that
-ships it, the file is an interim copy written from the contract's text in the same shape,
-which the runner's file replaces as it is. Services come from a service
-definition, the one source of a service's hosts, paths, auth and declared secrets: built
-in (`priv/services/*.json`, `Apiary.Kinds.Services`, each checked in the test suite) or
-the workspace's own (`service_definitions`); a service connection names its definition and
-copies nothing of it, so a change to a definition reaches every connection that names it.
+vendored byte for byte as `priv/contract/runtimes.json` at the commit in
+`.runner-contract-ref` (`Apiary.Kinds.Runtimes`). The runner generates it from its built-in
+descriptors; it is read at compile time, and a list missing from a runtime fails the
+compile. Services come from a service definition, the one source of a service's hosts,
+paths, auth and declared secrets, whose `auth` is the contract's `auth.schema.json`,
+vendored beside the catalogue, with its `secret` required and a username of at most 128
+characters: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,
+each checked in the test suite) or the workspace's own (`service_definitions`); a service
+connection names its definition and copies nothing of it, so a change to a definition
+reaches every connection that names it.
 Integrations come from a release (`Apiary.Integrations`): a `source`, a forge path with its
 `forge_kind` (`github`, `gitlab`, `forgejo`) or an https URL of a `description.json`, and an
 exact version. A forge path is on `github.com`, `gitlab.com` or `codeberg.org`, or on a

@@ -144,10 +144,25 @@ defmodule Apiary.Kinds.ServicesTest do
     test "the catalogue lists Claude Code with its declarations and its required group" do
       assert {:ok, runtime} = Runtimes.fetch("claude")
       assert runtime.title == "Claude Code"
-      assert Enum.map(runtime.declarations, & &1["id"]) == ["api_key", "oauth_token"]
+      assert Enum.map(runtime.declares, & &1["id"]) == ["api_key", "oauth_token"]
       assert [%{"id" => "model_key", "required" => true}] = runtime.one_of
       assert Runtimes.hosts(runtime) == ["api.anthropic.com"]
       assert Runtimes.fetch("nothing") == :error
+    end
+
+    @tag :contract
+    test "the vendored catalogue and auth schema are the contract's" do
+      dir = Apiary.ContractFixtures.contract_dir()
+      # A local runner checkout from before the catalogue has neither file; CI, at the
+      # pinned commit, requires both.
+      required? = System.get_env("CONTRACT_FIXTURES_REQUIRED") == "1"
+
+      for file <- ~w(runtimes.json auth.schema.json),
+          required? or File.exists?(Path.join(dir, file)) do
+        assert {:ok, File.read!(Application.app_dir(:apiary, ["priv", "contract", file]))} ==
+                 File.read(Path.join(dir, file)),
+               "priv/contract/#{file} differs from the contract's: copy it from #{dir}"
+      end
     end
 
     test "a runtime's declared and reserved variables are placeholder conflicts" do

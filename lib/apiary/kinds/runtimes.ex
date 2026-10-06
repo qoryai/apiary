@@ -1,17 +1,19 @@
 defmodule Apiary.Kinds.Runtimes do
   @moduledoc """
-  Runtimes is the catalogue of the runtimes a workspace can set up, as the runner
-  contract's `contracts/runner/v1/runtimes.json` lists them, vendored at the same name as
-  `priv/contract/runtimes.json`: per runtime its `name`, such as `claude`, a `title`, its
-  `reserves`, its `denies`, its `credential_files`, its `declarations` (each with its
-  `id`, `title`, the variable `name` it sets, its `hosts`, its `auth` with its `header`,
-  and its `paths`), and its `one_of` groups (each with `id`, `required` and `of`).
+  Runtimes is the catalogue of the runtimes a workspace can set up: the runner contract's
+  `contracts/runner/v1/runtimes.json`, vendored byte for byte as
+  `priv/contract/runtimes.json` at the commit in `.runner-contract-ref`. The runner
+  generates it from its built-in descriptors, in name order; per runtime it has its
+  `name`, such as `claude`, a `title`, its `reserves`, its `denies`, its
+  `credential_files`, its `declares` (each with its `id`, `title`, the variable `name` it
+  sets, its `hosts`, its `auth`, as the contract's `auth.schema.json` has it, and its
+  `paths`, which may be absent), and its `one_of` groups (each with `id`, `required` and
+  `of`). A test compares the file with the runner's contract directory.
 
-  The runner generates the file from its built-in descriptors and ships it with the
-  secrets contract. Until the pin moves to that release, the file here is an interim
-  copy written from the contract's text, in that shape; the change that moves the pin
-  puts the runner's file in its place, which this module reads unchanged. The
-  catalogue is read when the application is compiled: a runtime is added by a release.
+  The catalogue is read when the application is compiled: a runtime is added by a
+  release. Every list of a runtime is read with `Map.fetch!/2`, since the runner always
+  writes them, so a key the contract renames fails the compile instead of reading as an
+  empty list.
 
   A runtime connection (`Apiary.Connections`) names its runtime by `name`, and links each
   declaration to a stored secret.
@@ -30,11 +32,11 @@ defmodule Apiary.Kinds.Runtimes do
                  %Runtime{
                    name: Map.fetch!(runtime, "name"),
                    title: Map.fetch!(runtime, "title"),
-                   declarations: Map.get(runtime, "declarations", []),
-                   one_of: Map.get(runtime, "one_of", []),
-                   reserves: Map.get(runtime, "reserves", []),
-                   denies: Map.get(runtime, "denies", []),
-                   credential_files: Map.get(runtime, "credential_files", [])
+                   reserves: Map.fetch!(runtime, "reserves"),
+                   denies: Map.fetch!(runtime, "denies"),
+                   credential_files: Map.fetch!(runtime, "credential_files"),
+                   declares: Map.fetch!(runtime, "declares"),
+                   one_of: Map.fetch!(runtime, "one_of")
                  }
                end
              end).()
@@ -54,8 +56,8 @@ defmodule Apiary.Kinds.Runtimes do
 
   @doc "hosts/1 is every host a runtime's declarations set a value on, each once."
   @spec hosts(Runtime.t()) :: [String.t()]
-  def hosts(%Runtime{declarations: declarations}),
-    do: declarations |> Enum.flat_map(&Map.get(&1, "hosts", [])) |> Enum.uniq()
+  def hosts(%Runtime{declares: declares}),
+    do: declares |> Enum.flat_map(&Map.get(&1, "hosts", [])) |> Enum.uniq()
 
   @doc """
   variables/0 is every variable a runtime of the catalogue declares or reserves: the
@@ -65,7 +67,7 @@ defmodule Apiary.Kinds.Runtimes do
   def variables do
     @runtimes
     |> Enum.flat_map(fn runtime ->
-      Enum.flat_map(runtime.declarations, &List.wrap(&1["name"])) ++ runtime.reserves
+      Enum.flat_map(runtime.declares, &List.wrap(&1["name"])) ++ runtime.reserves
     end)
     |> Enum.uniq()
   end

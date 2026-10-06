@@ -6,10 +6,10 @@ defmodule Apiary.Kinds.Schema do
   definition (`priv/schemas/service-definition.schema.json`), and an integration's own
   settings schema. Every schema is given `Apiary.Kinds.Pattern.end_only/1` first, so its
   patterns read `$` as the contracts do. A schema from a file is built once and kept in
-  `:persistent_term`. Nothing is fetched: a reference outside the file resolves only to
-  the runner contract's `auth.schema.json`, vendored under `priv/contract/`, which a
-  service definition's `auth` refers to by its URL, and to JSON Schema's own
-  meta-schemas, which JSV embeds.
+  `:persistent_term`. Nothing is fetched over the network: a reference outside the file
+  resolves to the runner contract's `auth.schema.json`, vendored under `priv/contract/`,
+  which a service definition's `auth` refers to by its URL, or through JSV's own local
+  resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules.
   """
 
   @behaviour JSV.Resolver
