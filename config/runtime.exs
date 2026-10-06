@@ -94,39 +94,24 @@ end
 # `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.
 config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
 
-# INTEGRATION_PRIVATE_HOSTS names the other hosts an integration's release may be fetched
-# from although they resolve to private addresses, such as the address of a
-# description.json, or the storage a forge's downloads redirect to, on the operator's own
-# network: host names separated by commas, none when unset. A forge itself goes in
-# INTEGRATION_FORGE_HOSTS below, which allows its private addresses too. Loopback,
-# link-local and metadata addresses stay refused for every host.
-# `Apiary.Integrations.Fetch.boot!/0` checks it at boot and stops a boot it refuses.
-config :apiary, :integration_private_hosts_setting, System.get_env("INTEGRATION_PRIVATE_HOSTS")
-
-# INTEGRATION_FORGE_HOSTS names the operator's own forges, self-hosted or enterprise, which
-# an integration may be added from as it is from github.com, gitlab.com and codeberg.org:
-# each as its kind (github, gitlab or forgejo), a colon and its host, separated by commas,
-# such as github:github.example.com,gitlab:gitlab.example.com,forgejo:git.example.com;
-# none when unset. The kind is the operator's to say, since the host does not tell it, and
-# a run configuration gives it. A forge path on any other host is refused. A listed host
-# may resolve to private addresses when its own releases are fetched, since such a forge
-# is usually internal, and not when a release elsewhere, or an address, leads to it; a
-# release token an edition gives may go to it, as to the public forges.
+# An integration is added from a release on github.com, gitlab.com or codeberg.org, or
+# from an https address of its description.json; a forge path on any other host is
+# refused, since self-hosted forges are not supported. Every fetch of a release, each
+# redirect included, reaches public addresses only: a private, loopback, link-local or
+# cloud metadata address is refused for every host, and no setting allows one.
 #
 # INTEGRATION_URL_SOURCES says whether an integration may be added from an https address
 # of its description.json, which may be on any host: true (1, yes), the default, or false
 # (0, no). An instance open to people the operator does not know, such as a cloud one,
 # turns it off, so that integrations are added from forges' releases alone; the server
 # still follows a release's download links, which its author chooses on GitLab and
-# Forgejo, to any public https host. A private address is refused either way, unless
-# INTEGRATION_PRIVATE_HOSTS names its host. Off, a release already asked for from an
-# address is not fetched.
+# Codeberg, to any public https host. Off, a release already asked for from an address is
+# not fetched.
 #
-# `Apiary.Integrations.Source.boot!/0` checks both at boot and stops a boot it refuses.
-# Not read under test: the suite runs with the defaults, whatever the shell running it
-# has set.
+# `Apiary.Integrations.Source.boot!/0` checks it at boot and stops a boot it refuses.
+# Not read under test: the suite runs with the default, whatever the shell running it has
+# set.
 if config_env() != :test do
-  config :apiary, :integration_forge_hosts_setting, System.get_env("INTEGRATION_FORGE_HOSTS")
   config :apiary, :integration_url_sources_setting, System.get_env("INTEGRATION_URL_SOURCES")
 end
 

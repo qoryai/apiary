@@ -1,20 +1,18 @@
 defmodule Apiary.Integrations.Fetch.Address do
   @moduledoc """
   Address classifies an IP address a release's host resolves to, for
-  `Apiary.Integrations.Fetch`, which connects to public addresses only.
+  `Apiary.Integrations.Fetch`, which connects to public addresses only and refuses both
+  other classes, always, for every host.
 
-    * **Forbidden**, whatever the operator allows: unspecified (`0.0.0.0/8`, `::`),
-      loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), which
-      holds the cloud metadata address `169.254.169.254`, the other metadata addresses
+    * **Forbidden**, no server's address: unspecified (`0.0.0.0/8`, `::`), loopback
+      (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), which holds the
+      cloud metadata address `169.254.169.254`, the other metadata addresses
       (`100.100.100.200`, `192.0.0.192`, and all of `fd00:ec2::/32`, where the IPv6
       metadata and pod identity addresses are), multicast, broadcast and the reserved
       `240.0.0.0/4`.
-    * **Private**, allowed only for a host the operator lets resolve to one: a host
-      listed in `INTEGRATION_PRIVATE_HOSTS`, or a forge listed in
-      `INTEGRATION_FORGE_HOSTS` on a fetch of its own release (`Apiary.Integrations.Fetch`):
-      `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, the shared space `100.64.0.0/10`,
-      the rest of `192.0.0.0/24`, the benchmarking `198.18.0.0/15`, the unique local
-      `fc00::/7` and Teredo's `2001::/32`.
+    * **Private**, a network's own: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, the
+      shared space `100.64.0.0/10`, the rest of `192.0.0.0/24`, the benchmarking
+      `198.18.0.0/15`, the unique local `fc00::/7` and Teredo's `2001::/32`.
     * **Public**: every other address.
 
   An IPv6 address that carries an IPv4 one, mapped (`::ffff:0:0/96`), compatible

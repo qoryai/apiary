@@ -188,11 +188,6 @@ msgstr ""
 msgid "is not on a forge this instance adds integrations from"
 msgstr ""
 
-#: lib/apiary/integrations.ex
-#, elixir-autogen, elixir-format
-msgid "is not the forge this source is on"
-msgstr ""
-
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "is not the slug"

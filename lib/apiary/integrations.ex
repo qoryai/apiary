@@ -6,16 +6,14 @@ defmodule Apiary.Integrations do
 
   ## A request
 
-  `request_release/2` takes a `source` (`Apiary.Integrations.Source`): a forge path, on a
-  public forge or one the operator lists in `INTEGRATION_FORGE_HOSTS`, and an exact
-  `version`, the `forge_kind` the host's; or, while `INTEGRATION_URL_SOURCES` is on, an
-  https URL of a `description.json` and no version. A forge release already found in the
-  workspace, intact, is given back as it is: a release's files do not change under its
-  version. Otherwise it records a `pending` release (`Apiary.Integrations.Release`) and
-  enqueues `Apiary.Integrations.FetchJob`, in one transaction, with a `connection.write`
-  entry in the audit trail. A release found is one of the kind the host has now: when the
-  operator corrects a listed forge's kind, a release found under the old kind is not given
-  back, and is fetched anew.
+  `request_release/2` takes a `source` (`Apiary.Integrations.Source`): a forge path, on
+  `github.com`, `gitlab.com` or `codeberg.org`, and an exact `version`, its `forge_kind`
+  always the host's; or, while `INTEGRATION_URL_SOURCES` is on, an https URL of a
+  `description.json` and no version. A forge release already found in the workspace,
+  intact, is given back as it is: a release's files do not change under its version.
+  Otherwise it records a `pending` release (`Apiary.Integrations.Release`) and enqueues
+  `Apiary.Integrations.FetchJob`, in one transaction, with a `connection.write` entry in
+  the audit trail.
 
   ## The fetch
 
@@ -126,10 +124,9 @@ defmodule Apiary.Integrations do
 
   @doc """
   request_release/2 asks for a release of an integration (`connection.write`): `attrs`
-  has `source`, `forge_kind` (a forge path's, which its host implies and which may be
-  left out) and `version` (a forge path; none for a URL). `{:ok, release}`, pending with
-  its fetch enqueued, or one found before; or `{:error, refusal}`, a changeset whose
-  errors are on `source`, `forge_kind` or `version`.
+  has `source` and `version` (a forge path; none for a URL), and no kind of forge, which
+  is the host's. `{:ok, release}`, pending with its fetch enqueued, or one found before;
+  or `{:error, refusal}`, a changeset whose errors are on `source` or `version`.
   """
   @spec request_release(Scope.t(), map) :: {:ok, Release.t()} | {:error, refusal}
   def request_release(%Scope{} = scope, attrs) do
@@ -145,11 +142,11 @@ defmodule Apiary.Integrations do
     end
   end
 
-  @request_types %{source: :string, forge_kind: :string, version: :string}
+  @request_types %{source: :string, version: :string}
 
   @doc """
-  change_request/1 is the changeset of a request's `source`, `forge_kind` and `version`,
-  for a form; its errors are the ones `request_release/2` gives.
+  change_request/1 is the changeset of a request's `source` and `version`, for a form; its
+  errors are the ones `request_release/2` gives.
   """
   @spec change_request(map) :: Ecto.Changeset.t()
   def change_request(attrs \\ %{}) do
@@ -175,7 +172,7 @@ defmodule Apiary.Integrations do
     source = Ecto.Changeset.get_field(changeset, :source)
     version = Ecto.Changeset.get_field(changeset, :version)
 
-    case Source.parse(source, Ecto.Changeset.get_field(changeset, :forge_kind)) do
+    case Source.parse(source) do
       {:ok, %Source{form: :forge} = parsed} ->
         changeset = Ecto.Changeset.put_change(changeset, :source, parsed)
 
@@ -227,13 +224,6 @@ defmodule Apiary.Integrations do
           )
         )
 
-      {:error, :forge_kind_invalid} ->
-        Ecto.Changeset.add_error(
-          changeset,
-          :forge_kind,
-          dgettext_noop("errors", "is not the forge this source is on")
-        )
-
       {:error, :path_invalid} ->
         Ecto.Changeset.add_error(
           changeset,
@@ -253,17 +243,13 @@ defmodule Apiary.Integrations do
     end
   end
 
-  # A forge release found before, intact, under the kind its host has now: one found
-  # under a kind the operator has since corrected is fetched again, where a forge of the
-  # right kind publishes it. A URL is fetched again each time, since its files may be
-  # replaced.
+  # A forge release found before, intact; a URL is fetched again each time, since its
+  # files may be replaced.
   defp found(_scope, %Source{form: :url}, _version), do: nil
 
-  defp found(scope, %Source{source: source, forge_kind: kind}, version) do
+  defp found(scope, %Source{source: source}, version) do
     from(r in releases(scope),
-      where:
-        r.source == ^source and r.forge_kind == ^kind and r.requested_version == ^version and
-          r.state == "ready",
+      where: r.source == ^source and r.requested_version == ^version and r.state == "ready",
       order_by: [desc: r.inserted_at],
       limit: 1
     )
@@ -339,13 +325,12 @@ defmodule Apiary.Integrations do
 
   @doc """
   accepted_source/1 is the source of `release` as the instance's settings take it now
-  (`Apiary.Integrations.Source.parse/3`): `{:ok, source}`, or `{:error, reason}`, logged,
-  for one they no longer accept, such as a URL source with `INTEGRATION_URL_SOURCES`
-  turned off, or a forge path on a host `INTEGRATION_FORGE_HOSTS` no longer lists.
+  (`Apiary.Integrations.Source.parse/2`): `{:ok, source}`, or `{:error, reason}`, logged,
+  for one they no longer accept, a URL source with `INTEGRATION_URL_SOURCES` turned off.
   """
   @spec accepted_source(Release.t()) :: {:ok, Source.t()} | {:error, atom}
   def accepted_source(%Release{} = release) do
-    case Source.parse(release.source, release.forge_kind) do
+    case Source.parse(release.source) do
       {:ok, source} ->
         {:ok, source}
 

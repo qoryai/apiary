@@ -69,16 +69,25 @@ defmodule Apiary.IntegrationsTest do
                Repo.all(from e in Entry, where: e.subject_id == ^release.id)
     end
 
-    test "refuses a source, a kind or a version the contract refuses", %{scope: scope} do
+    test "takes the kind of forge from the host, never from the request", %{scope: scope} do
+      for kind <- ["gitlab", "forgejo", "github"] do
+        assert {:ok, %Release{forge_kind: "github"}} =
+                 Integrations.request_release(scope, Map.put(@github, :forge_kind, kind))
+      end
+
+      assert {:ok, %Release{forge_kind: "forgejo"}} =
+               Integrations.request_release(scope, %{
+                 source: "codeberg.org/acme/shop",
+                 forge_kind: "github",
+                 version: "1.0.0"
+               })
+    end
+
+    test "refuses a source or a version the contract refuses", %{scope: scope} do
       assert {:error, changeset} =
                Integrations.request_release(scope, %{source: "github.com/acme", version: "1.0.0"})
 
       assert %{source: [_]} = errors_on(changeset)
-
-      assert {:error, changeset} =
-               Integrations.request_release(scope, Map.put(@github, :forge_kind, "gitlab"))
-
-      assert %{forge_kind: [_]} = errors_on(changeset)
 
       assert {:error, changeset} =
                Integrations.request_release(scope, %{@github | version: "01.0.0"})
@@ -93,14 +102,11 @@ defmodule Apiary.IntegrationsTest do
       assert %{version: [_]} = errors_on(changeset)
     end
 
-    test "refuses a forge path on a host neither public nor listed", %{scope: scope} do
-      for forge_kind <- [nil, "forgejo"] do
+    test "refuses a forge path on any host but github.com, gitlab.com and codeberg.org",
+         %{scope: scope} do
+      for source <- ["git.example.com/acme/shop", "gitlab.example.com/acme/tools/shop"] do
         assert {:error, changeset} =
-                 Integrations.request_release(scope, %{
-                   source: "git.example.com/acme/shop",
-                   forge_kind: forge_kind,
-                   version: "1.0.0"
-                 })
+                 Integrations.request_release(scope, %{source: source, version: "1.0.0"})
 
         assert errors_on(changeset) == %{
                  source: ["is not on a forge this instance adds integrations from"]

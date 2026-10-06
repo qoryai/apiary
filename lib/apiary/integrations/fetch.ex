@@ -4,10 +4,11 @@ defmodule Apiary.Integrations.Fetch do
   needs when it fetches an address someone typed in:
 
     * **Resolve, check, pin.** The host is resolved, and the fetch is refused unless every
-      address it resolves to is public (`Apiary.Integrations.Fetch.Address`); the request
-      then connects to the first of them, by address, with the host name kept for the
-      `Host` header, SNI and the certificate's check, so a second lookup cannot send it
-      elsewhere.
+      address it resolves to is public (`Apiary.Integrations.Fetch.Address`): never a
+      private, loopback, link-local or cloud metadata address, for any host, with no
+      setting to allow one. The request then connects to the first of them, by address,
+      with the host name kept for the `Host` header, SNI and the certificate's check, so a
+      second lookup cannot send it elsewhere.
     * **Every hop.** A redirect is followed by hand, and its target passes the same
       checks: https, port 443, an exact host name that is not a refused one, resolved and
       pinned again. At most `max_redirects` hops (5).
@@ -18,17 +19,9 @@ defmodule Apiary.Integrations.Fetch do
       host, `forge_host`; a fetch of a URL source names none. A `token`, which an edition
       gives for a private release (`c:Apiary.Edition.release_token/2`), is sent only to
       `forge_host`, when it is a public forge's
-      (`Apiary.Integrations.Source.public_forge_hosts/0`) or one the operator lists in
-      `INTEGRATION_FORGE_HOSTS` (`Apiary.Integrations.Source.forge_hosts/0`), and only
-      when it is the host first asked: never to another host a redirect names, never to
-      a host `INTEGRATION_PRIVATE_HOSTS` alone names, and never on a fetch that names no
-      forge host, whatever token it is given.
-    * **The operator's allow lists.** A host listed in `INTEGRATION_PRIVATE_HOSTS` (comma
-      separated host names) may resolve to private addresses on any fetch. A forge listed
-      in `INTEGRATION_FORGE_HOSTS` may, on the hops to it of a fetch whose `forge_host` it
-      is, and on no other: not when a release elsewhere redirects to it, and not when a
-      URL source names its host. Loopback, link-local and metadata addresses stay refused
-      for every host.
+      (`Apiary.Integrations.Source.public_forges/0`), and only when it is the host
+      first asked: never to another host a redirect names, and never on a fetch that names
+      no forge host, whatever token it is given.
     * **One answer.** Every failure is `{:error, :fetch_failed}`, the same to every
       caller and page, with what failed in a log line, which names the URL and never a
       token.
@@ -36,9 +29,7 @@ defmodule Apiary.Integrations.Fetch do
   The options, beside `:token` and `:forge_host`, exist for the tests and are read from
   `config :apiary, Apiary.Integrations.Fetch` where not given: `:resolver`, a module with
   `resolve/1` or a function of a host answering `{:ok, [address]}` or `{:error, reason}`
-  (`:inet` by default); `:req_options`, merged into the request's; `:private_hosts`;
-  `:forge_hosts`, the operator's forges as `Apiary.Integrations.Source.forge_hosts/0`
-  gives them.
+  (`:inet` by default); `:req_options`, merged into the request's.
   """
 
   require Logger
@@ -60,8 +51,6 @@ defmodule Apiary.Integrations.Fetch do
           | {:timeout, pos_integer}
           | {:max_redirects, non_neg_integer}
           | {:resolver, module | (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term})}
-          | {:private_hosts, [String.t()]}
-          | {:forge_hosts, Source.forge_hosts()}
           | {:req_options, keyword}
 
   @doc """
@@ -110,9 +99,9 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
-  # A forge's private addresses and its token belong to a fetch that starts on that forge:
-  # a `forge_host` other than the host first asked is dropped, so no caller can lend a
-  # forge's allowance to a fetch that only redirects there.
+  # A forge's token belongs to a fetch that starts on that forge: a `forge_host` other than
+  # the host first asked is dropped, so no caller can lend it to a fetch that only
+  # redirects there.
   defp hold_forge_host(opts, url) do
     if Keyword.get(opts, :forge_host) == URI.parse(url).host,
       do: opts,
@@ -170,25 +159,15 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
-  # Every address the host resolves to must be one the fetch may reach; the first is the
-  # one connected to.
+  # Every address the host resolves to must be public, not only the first, the one
+  # connected to, since which one a lookup puts first is the name's owner's to choose.
   defp resolve(host, opts) do
-    private_ok? = host in private_hosts(opts) or listed_forge?(host, opts)
-
     case lookup(host, Keyword.get(opts, :resolver, __MODULE__.DNS)) do
       {:ok, [_ | _] = addresses} ->
-        refused =
-          Enum.reject(addresses, fn address ->
-            case Address.classify(address) do
-              :public -> true
-              :private -> private_ok?
-              :forbidden -> false
-            end
-          end)
-
-        if refused == [],
-          do: {:ok, hd(addresses)},
-          else: {:error, {:address_refused, host, Enum.map(refused, &Address.ntoa/1)}}
+        case Enum.reject(addresses, &(Address.classify(&1) == :public)) do
+          [] -> {:ok, hd(addresses)}
+          refused -> {:error, {:address_refused, host, Enum.map(refused, &Address.ntoa/1)}}
+        end
 
       {:ok, []} ->
         {:error, {:unresolved, host}}
@@ -200,50 +179,6 @@ defmodule Apiary.Integrations.Fetch do
 
   defp lookup(host, resolver) when is_function(resolver, 1), do: resolver.(host)
   defp lookup(host, resolver) when is_atom(resolver), do: resolver.resolve(host)
-
-  defp private_hosts(opts) do
-    case Keyword.fetch(opts, :private_hosts) do
-      {:ok, hosts} ->
-        hosts
-
-      :error ->
-        parse_private_hosts(Application.get_env(:apiary, :integration_private_hosts_setting))
-    end
-  end
-
-  # A listed forge is let resolve to a private address only as the forge the fetch is
-  # for: a release elsewhere, whose download links its author chose, or a URL source, must
-  # not reach a forge inside the operator's network through it.
-  defp listed_forge?(host, opts),
-    do: host == opts[:forge_host] and Map.has_key?(forge_hosts(opts), host)
-
-  defp forge_hosts(opts), do: Keyword.get_lazy(opts, :forge_hosts, &Source.forge_hosts/0)
-
-  @doc """
-  parse_private_hosts/1 reads the `INTEGRATION_PRIVATE_HOSTS` setting: host names separated
-  by commas, none when unset. Raises `ArgumentError` for an entry that is not an exact
-  host name, which `boot!/0` asks at boot.
-  """
-  @spec parse_private_hosts(String.t() | nil) :: [String.t()]
-  def parse_private_hosts(nil), do: []
-
-  def parse_private_hosts(setting) when is_binary(setting) do
-    for entry <- String.split(setting, ",", trim: true),
-        host = entry |> String.trim() |> String.downcase(),
-        host != "" do
-      if Hosts.exact?(host) and not Hosts.refused_name?(host),
-        do: host,
-        else:
-          raise(ArgumentError, "INTEGRATION_PRIVATE_HOSTS: #{inspect(host)} is not a host name")
-    end
-  end
-
-  @doc "boot!/0 checks `INTEGRATION_PRIVATE_HOSTS` at boot, and stops a boot it refuses."
-  @spec boot!() :: :ok
-  def boot! do
-    _hosts = parse_private_hosts(Application.get_env(:apiary, :integration_private_hosts_setting))
-    :ok
-  end
 
   defp request(uri, address, first_host, deadline, opts) do
     remaining = deadline - System.monotonic_time(:millisecond)
@@ -281,7 +216,7 @@ defmodule Apiary.Integrations.Fetch do
   # it is the host first asked: never to another host a redirect names, and never on a
   # fetch that names no forge, whatever the caller passed.
   defp token_header(token, host, first_host, opts) when is_binary(token) and token != "" do
-    forge? = host in Source.public_forge_hosts() or listed_forge?(host, opts)
+    forge? = host in Source.public_forges()
 
     if host == first_host and host == opts[:forge_host] and forge?,
       do: [{"authorization", "Bearer " <> token}],
