@@ -340,27 +340,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#overview-targets-none", "in the last 14 days")
     end
 
-    test "the caption says when the denied destinations were not counted", %{
-      conn: conn,
-      scope: scope
-    } do
-      Application.put_env(:apiary, Apiary.Policy.Activity, cap: 2)
-      on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Activity) end)
-
-      started_run(scope, shop(),
-        egress: [
-          %{"host" => "a.example", "decision" => "denied", "rule" => ""},
-          %{"host" => "b.example", "decision" => "denied", "rule" => ""},
-          %{"host" => "c.example", "decision" => "denied", "rule" => ""}
-        ]
-      )
-
-      view = open(conn, scope)
-      assert has_element?(view, "#activity-uncounted", "Denied destinations were not counted")
-      refute has_element?(view, "#attention li[data-kind=denied]")
-      # The summary's denials come from the runs, not from the capped read: they stay.
-      assert text(view, "#overview-strip-denied .q-sum-v") == "3"
-    end
+    # The caption for denied destinations not counted is in `OverviewBudgetTest`, not
+    # async: the cap it lowers is the node's, and here it would lower it for every test
+    # running beside this one.
   end
 
   describe "guard" do

@@ -1,5 +1,6 @@
 defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
-  # Not async: the query counter hears every query of the node, so nothing else may run.
+  # Not async: the query counter hears every query of the node, and the connections cap
+  # is the node's setting, so nothing else may run beside them.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -106,6 +107,39 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
 
       assert large_cost <= small_cost + 2
       assert large_cost <= 100
+    end
+  end
+
+  describe "the connections cap" do
+    test "the caption says when the denied destinations were not counted", %{
+      conn: conn,
+      scope: scope
+    } do
+      Application.put_env(:apiary, Apiary.Policy.Activity, cap: 2)
+      on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Activity) end)
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "a.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "b.example", "decision" => "denied", "rule" => ""},
+          %{"host" => "c.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, scope)
+      assert has_element?(view, "#activity-uncounted", "Denied destinations were not counted")
+      refute has_element?(view, "#attention li[data-kind=denied]")
+
+      # The summary's denials come from the runs, not from the capped read: they stay.
+      denied =
+        view
+        |> element("#overview-strip-denied .q-sum-v")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.trim()
+
+      assert denied == "3"
     end
   end
 end
