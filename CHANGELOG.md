@@ -38,7 +38,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   hosts; the pages list its rules first and link to where it is changed
   (`c:ApiaryWeb.Edition.above_policy_link/1`), and a change of it renders every
   workspace again (`Apiary.Policy.rerender_in/3`, an `above_changed` change in each
-  workspace's history).
+  workspace's history); one that carries variables only (`policy: false`) is no level
+  of the policy.
 - Nodes and node pools, the places a workspace's runs run: a node is one permanent
   machine that runs one instance at a time, a node pool a fleet of short-lived instances
   up to its instance limit, or any number without one; the kind is fixed when one is

@@ -16,9 +16,11 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
-  alias Apiary.Policy.{Above, Rule}
+  alias Apiary.Policy.{Above, Effective, Rule}
+  alias Apiary.Variables.Variable
   alias ApiaryWeb.ConnectionLive.Rules
-  alias ApiaryWeb.RunComponents
+  alias ApiaryWeb.PolicyLive.Common
+  alias ApiaryWeb.{PolicyComponents, RunComponents}
 
   setup :register_and_log_in_user
 
@@ -48,6 +50,20 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       rules: rules,
       floor: Keyword.get(opts, :floor, false),
       own_allows: Keyword.get(opts, :own_allows, true)
+    }
+
+    Application.put_env(:apiary, Apiary.Policy.Above, answer: fn _workspace -> above end)
+    above
+  end
+
+  # A level with variables and no policy of its own, as an edition answers it.
+  defp variables_only! do
+    above = %Above{
+      id: Ecto.UUID.generate(),
+      name: "Eight Wonders",
+      slug: "8wonders",
+      policy: false,
+      variables: [%Variable{name: "REGION", value: "eu-west-1", locked: true}]
     }
 
     Application.put_env(:apiary, Apiary.Policy.Above, answer: fn _workspace -> above end)
@@ -422,6 +438,66 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
       assert %{rule_option: :can_allow, deny: true, allow_elsewhere: %{name: "Eight Wonders"}} =
                Rules.rule_option(%{host: "new.example", decision: "denied"}, effective)
+    end
+  end
+
+  describe "a level that carries variables only" do
+    setup %{scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "cdn.example"})
+      {:ok, _} = Policy.deny(scope, nil, %{host: "paste.example", locked: true})
+
+      started_run(scope, shop(),
+        egress: [
+          %{
+            "host" => "paste.example",
+            "decision" => "denied",
+            "rule" => "paste.example",
+            "outcome" => "refused"
+          },
+          %{"host" => "new.example", "decision" => "denied", "rule" => "", "outcome" => "refused"}
+        ]
+      )
+
+      [%{target: target}] = Policy.list_targets(scope)
+      {:ok, _} = Policy.allow(scope, target, %{host: "sms.example"})
+      %{above: variables_only!(), target: target}
+    end
+
+    test "shows no line, no rows and no source of it on the workspace's page",
+         %{conn: conn, scope: scope} do
+      view = open(conn, workspace_path(scope, "/policy"))
+
+      refute has_element?(view, "#policy-above")
+      assert hosts(view) == ["paste.example", "cdn.example"]
+      refute render(view) =~ "Eight Wonders"
+      refute has_element?(view, "#policy-mode[data-floor=true]")
+    end
+
+    test "shows none of it on a target's tab", %{conn: conn, scope: scope, target: target} do
+      view = open(conn, target_path(scope, target.system, target.path, ["policy"]))
+
+      assert hosts(view) == ["sms.example", "paste.example", "cdn.example"]
+      refute render(view) =~ "Eight Wonders"
+      refute has_element?(view, "#policy-target-mode[data-floor=true]")
+    end
+
+    test "decides no row of Network access", %{conn: conn, scope: scope} do
+      view = open(conn, workspace_path(scope, "/network"))
+
+      refute has_element?(view, "##{dst("paste.example")}-above")
+      refute has_element?(view, "##{dst("new.example")}-elsewhere")
+      refute render(view) =~ "Eight Wonders"
+    end
+
+    test "the line, the rows and the source take it as nil", %{above: above} do
+      assert render_component(&PolicyComponents.above_line/1, above: above) == ""
+      assert Common.above_source(above) == nil
+      assert Common.above_rows(%Effective{above: above}, nil) == []
+
+      # With a policy, the same level is all three.
+      above = %{above | policy: true}
+      assert render_component(&PolicyComponents.above_line/1, above: above) =~ "Eight Wonders"
+      assert %{key: "8wonders", label: "Eight Wonders"} = Common.above_source(above)
     end
   end
 

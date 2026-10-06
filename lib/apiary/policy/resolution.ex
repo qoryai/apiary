@@ -91,6 +91,8 @@ defmodule Apiary.Policy.Resolution do
         target_id,
         above \\ nil
       ) do
+    above = Above.for_policy(above)
+
     {mode, source} =
       cond do
         match?(%Above{floor: true}, above) -> {"enforce", :organisation}
@@ -106,12 +108,15 @@ defmodule Apiary.Policy.Resolution do
   @doc """
   Resolves the rules. `target_rules` is `[]` for the baseline and for a target
   with no rules of its own; `above` is the level above the workspace, with its rules,
-  or nil where the edition keeps none.
+  or nil where the edition keeps none. A level that carries variables only
+  (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/6`.
   """
   @spec resolve(String.t(), [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil, Above.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
   def resolve(mode, workspace_rules, target_rules \\ [], target_id \\ nil, above \\ nil)
       when mode in ["observe", "enforce"] do
+    above = Above.for_policy(above)
+
     entries =
       (Enum.map(above_rules(above), &entry(&1, :organisation)) ++
          Enum.map(workspace_rules, &entry(&1, :workspace)) ++

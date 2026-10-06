@@ -9,8 +9,8 @@ defmodule Apiary.Variables do
   A variable is at a level (`Apiary.Variables.Variable`): the workspace's, which every
   repository of it takes, or a repository's, which overrides the workspace's for that
   repository. Above the workspace an edition may keep a level of its own
-  (`Apiary.Policy.Above`, its `variables`), which the core resolves first and never
-  stores. A level **locks** a name against the levels below it: a locked name is set by
+  (`Apiary.Policy.Above`, its `variables`, read whether or not the level has a security
+  policy), which the core resolves first and never stores. A level **locks** a name against the levels below it: a locked name is set by
   no level below. Only the workspace's variables are locked here; the level above locks
   its own.
 
@@ -196,6 +196,8 @@ defmodule Apiary.Variables do
   defp level(query, %Target{id: target_id}), do: where(query, [v], v.target_id == ^target_id)
 
   # The levels of `holder`'s chain, from the top down, as `Resolution.resolve/1` takes them.
+  # The level above counts whatever its `policy` says: one with variables and no policy
+  # is still the top of every chain.
   defp chain(scope, workspace, holder) do
     above =
       case Above.for_workspace(workspace) do

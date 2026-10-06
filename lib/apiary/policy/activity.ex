@@ -257,10 +257,11 @@ defmodule Apiary.Policy.Activity do
   ## The policies the rows are held to
 
   # target id (nil for the baseline) => what matching needs of its effective policy. The
-  # level above the workspace is read once for all of them.
+  # level above the workspace is read once for all of them; one that carries variables
+  # only decides no connection, so none is counted or marked as its.
   defp policies(%Workspace{id: workspace_id} = workspace, rows) do
     mode = Repo.one!(from h in Workspace, where: h.id == ^workspace_id, select: h.egress_mode)
-    above = Above.for_workspace(workspace)
+    above = workspace |> Above.for_workspace() |> Above.for_policy()
 
     modes =
       Repo.all(

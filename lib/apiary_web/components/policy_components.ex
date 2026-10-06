@@ -37,6 +37,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # `RunComponents` uses the shared components of this module, so nothing of it is imported
   # here: its functions are called by their full name, which is no compile-time dependency.
+  alias Apiary.Policy.Above
   alias ApiaryWeb.Format
   alias ApiaryWeb.PolicyLive.RuleList
   alias ApiaryWeb.RunComponents
@@ -380,13 +381,15 @@ defmodule ApiaryWeb.PolicyComponents do
   The line under a policy page's title where a level above the workspace holds
   (`Apiary.Policy.Above`): its tile and name, how many rules it has, whether it requires
   enforce and whether it allows only its own hosts, and the way to it where the edition
-  gives one (`link`, `c:ApiaryWeb.Edition.above_policy_link/1`). Nothing without a level.
+  gives one (`link`, `c:ApiaryWeb.Edition.above_policy_link/1`). Nothing without a level,
+  and nothing for one that carries variables only (`policy: false`).
   """
   attr :id, :string, default: "policy-above"
   attr :above, :any, required: true, doc: "the `Apiary.Policy.Above`, or nil"
   attr :link, :any, default: nil, doc: "`%{path:, can_change:}` or nil"
 
   def above_line(%{above: nil} = assigns), do: ~H""
+  def above_line(%{above: %Above{policy: false}} = assigns), do: ~H""
 
   def above_line(assigns) do
     assigns =

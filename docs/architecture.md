@@ -305,7 +305,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   organisations page (`places/1`).
 - **Policy**: keep a level above a workspace's security policy
   (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, whether
-  the workspace may allow hosts of its own). The core reads it once per operation of
+  the workspace may allow hosts of its own, and variables). The core reads it once per operation of
   `Apiary.Policy`, resolves it with the workspace's and a target's rules
   (`Apiary.Policy.Resolution`: its deny above everything, its allow narrowed by a lower
   deny and never widened), renders it into every document, counts it in the record, and
@@ -313,7 +313,9 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   `name` and nothing of its own about it. A change of the level renders every workspace
   again through `Apiary.Policy.rerender_in/3`, inside the edition's transaction, each
   holder whose bytes change getting an `above_changed` change. The web side names where
-  the level is read and changed (`above_policy_link/1`).
+  the level is read and changed (`above_policy_link/1`). A level with variables and no
+  policy says `policy: false`: the policy, its record and its pages take it as nil, and
+  only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
   hear of a change of a level or the end of a suspension (`membership_changed/5`).

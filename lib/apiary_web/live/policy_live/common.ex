@@ -195,10 +195,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Where a rule of the level above the workspace is written (`Apiary.Policy.Above`): the
   level by its name, with its tile, its slug the `source:` qualifier's value, between a
-  target's own rules and the workspace's in the list's order.
+  target's own rules and the workspace's in the list's order. Nil where there is no
+  level, and for one that carries variables only (`policy: false`), which writes no rule.
   """
-  def above_source(%Above{name: name, slug: slug}),
+  def above_source(%Above{policy: true, name: name, slug: slug}),
     do: %{key: slug, label: name, rank: 1, tile: String.first(name || "?")}
+
+  def above_source(_above), do: nil
 
   @doc """
   The host rules of the level above the workspace, one row each, on the workspace's page
@@ -206,9 +209,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   the lock glyph with the level's words (`above` true), and the way to the level
   (`view`) where the edition gives one (`c:ApiaryWeb.Edition.above_policy_link/1`). One
   the holder does not hold in force (its allow a lower deny narrows) says why. Nothing
-  where the effective policy has no level above it.
+  where the effective policy has no level above it, or one that carries variables only.
   """
-  def above_rows(%Policy.Effective{above: %Above{} = above} = effective, socket) do
+  def above_rows(%Policy.Effective{above: %Above{policy: true} = above} = effective, socket) do
     scope = socket.assigns.current_scope
     source = above_source(above)
     link = ApiaryWeb.Edition.above_policy_link(scope)
