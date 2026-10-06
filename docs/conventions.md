@@ -80,8 +80,10 @@ edition's too. No file of the core names an edition's module
 The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
 from a checkout of qoryai/runner: `RUNNER_CONTRACT_DIR`, or `../../runner/main/contracts/runner/v1`
 when that is there. Without one they are excluded and a line says so; CI checks the runner
-out at the ref in `.runner-contract-ref` and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes
-their absence a failure.
+out at the commit in `.runner-contract-ref` and sets `CONTRACT_FIXTURES_REQUIRED=1`, which
+makes their absence a failure. The commit is one on the runner's `next` branch, pinned by
+its id since no tag of the runner has these files yet; the next tag comes with the joint
+release.
 
 ## Doc comments
 

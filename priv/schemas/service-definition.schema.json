@@ -32,28 +32,10 @@
       "items": {"type": "string", "maxLength": 512, "pattern": "^/[^*?#\\s]*\\*?$"}
     },
     "auth": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["scheme", "secret"],
-      "properties": {
-        "scheme": {"enum": ["bearer", "header", "basic"]},
-        "header": {"type": "string", "maxLength": 64, "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"},
-        "username": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^:\\s]+$"},
-        "username_secret": {"$ref": "#/$defs/declared"},
-        "secret": {"$ref": "#/$defs/declared"}
-      },
-      "allOf": [
-        {
-          "if": {"properties": {"scheme": {"const": "header"}}},
-          "then": {"required": ["header"]},
-          "else": {"not": {"required": ["header"]}}
-        },
-        {
-          "if": {"properties": {"scheme": {"const": "basic"}}},
-          "then": {"oneOf": [{"required": ["username"]}, {"required": ["username_secret"]}]},
-          "else": {"not": {"anyOf": [{"required": ["username"]}, {"required": ["username_secret"]}]}}
-        }
-      ]
+      "description": "How the value is sent: the runner contract's auth, in which a definition always names the secret it sets.",
+      "$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json",
+      "required": ["secret"],
+      "properties": {"username": {"maxLength": 128}}
     },
     "declares": {
       "description": "The secrets the service needs, each by an id the auth names, with a title for a form and, optionally, the variable that gets the placeholder.",

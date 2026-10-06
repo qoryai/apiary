@@ -133,7 +133,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   value. Integrity codes for stored rows are keyed from it as well.
 - Runtimes, integrations and services for the runs, without a page yet
   (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
-  catalogue; an integration added from a release on GitHub, GitLab or Forgejo, or at an
+  catalogue, its `runtimes.json` as the runner ships it; an integration added from a
+  release on GitHub, GitLab or Forgejo, or at an
   https address of its `description.json`, which a job fetches and checks against the
   release's `checksums.txt` and the integrations contract; a service from a built-in
   definition or one the workspace writes. Each applies to every repository or to chosen
