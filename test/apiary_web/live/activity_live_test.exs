@@ -40,7 +40,10 @@ defmodule ApiaryWeb.ActivityLiveTest do
     test "names a stored secret and a variable by name, never by value",
          %{conn: conn, scope: scope} do
       {:ok, secret} =
-        Apiary.Secrets.create_secret(scope, %{name: "GITHUB_APP_KEY", value: "s3cr3t-value"})
+        Apiary.Secrets.create_secret(scope, %{
+          name: "GITHUB_APP_PRIVATE_KEY",
+          value: "s3cr3t-value"
+        })
 
       {:ok, _secret} = Apiary.Secrets.rename_value(scope, secret, nil, "main-app")
 
@@ -51,7 +54,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       [variable, renamed, created | _older] = entries(scope)
 
       assert text(view, "#entry-#{created.id}-action") =~ "Created a stored secret"
-      assert text(view, "#entry-#{created.id}-subject") =~ "GITHUB_APP_KEY"
+      assert text(view, "#entry-#{created.id}-subject") =~ "GITHUB_APP_PRIVATE_KEY"
       assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed a value ID of a stored secret"
       assert text(view, "#entry-#{variable.id}-action") =~ "Set a variable"
       assert text(view, "#entry-#{variable.id}-subject") =~ "NODE_ENV"
