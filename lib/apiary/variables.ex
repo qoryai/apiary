@@ -26,15 +26,17 @@ defmodule Apiary.Variables do
     * a name that differs only in case from one set elsewhere in a chain it is in: for a
       workspace's, at the level above and in any repository of the workspace; for a
       repository's, at the level above and in the workspace;
-    * a change that would take any holder it reaches over the contract's limits, 128
-      names or 64 KiB of names and values (`Apiary.Variables.Resolution.check_limits/1`),
-      an unlock and the deletion of a locked variable among them.
+    * a change, a deletion among them, that would leave any holder it reaches over the
+      contract's limits, 128 names or 64 KiB of names and values
+      (`Apiary.Variables.Resolution.check_limits/1`). The holders are checked where the
+      change leaves them, so one already over the limits refuses it too. A deletion can
+      give a holder more: the larger value the deleted override hid, the workspace's or
+      the level above's, or the values a deleted lock set aside.
 
   A lock set on a name that repositories already set is saved: the lock wins, and their
   own values are set aside (`ignored` in the resolution), as they are for a lock the
   level above sets after them. An unlock gives them back, and so does deleting the locked
-  variable, whose lock goes with it: either is refused if a repository would then be over
-  the limits.
+  variable, whose lock goes with it.
 
   The edition writes the level above's variables, and checks a change of them against
   the workspaces below with `check_above/2`: another spelling of a name, and the limits
@@ -354,10 +356,15 @@ defmodule Apiary.Variables do
   delete_variable/2 removes a variable (`variable.edit`): `{:ok, variable}`, as it was,
   or `{:error, refusal}`.
 
-  A workspace's locked variable takes its lock with it, so the repositories' own values
-  it set aside are given to their runs again, as after `unlock_variable/2`, and its
-  deletion is refused as an unlock would be: a changeset with the reason on `name`, over
-  128 names, or on `value`, over 64 KiB, when a repository would then be past them.
+  A deletion is checked against the limits as every write is: every holder the variable
+  reaches, the workspace and its repositories for a workspace's, the one repository for
+  a repository's, must be left within 128 names and 64 KiB, or it is refused with a
+  changeset, the reason on `name` or on `value`, as an update's is. A deletion can give
+  a holder more than it takes: a repository's value that overrode the workspace's, or
+  the workspace's that overrode the level above's, gives back the larger value it hid,
+  to the repository or to the workspace and every repository that takes it; and a
+  workspace's locked variable takes its lock with it, so the repositories' values it set
+  aside are given to their runs again, as after `unlock_variable/2`.
   """
   @spec delete_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
   def delete_variable(%Scope{} = scope, %Variable{id: id}) do
@@ -365,7 +372,7 @@ defmodule Apiary.Variables do
       with {:ok, current} <- lock_row(scope, id),
            :ok <- Access.check(scope, :"variable.edit", current),
            {:ok, deleted} <- Repo.delete(current),
-           :ok <- lock_gone_within_limits(scope, workspace, current),
+           :ok <- within_limits(scope, workspace, current, Ecto.Changeset.change(current)),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"variable.edit", deleted, %{
                before: %{name: deleted.name, locked: deleted.locked},
@@ -375,13 +382,6 @@ defmodule Apiary.Variables do
       end
     end)
   end
-
-  # After the delete, in its transaction, as `change/4` checks an unlock after its update:
-  # the values the lock set aside count again. Without a lock nothing set aside comes back.
-  defp lock_gone_within_limits(scope, workspace, %Variable{target_id: nil, locked: true} = row),
-    do: within_limits(scope, workspace, row, Ecto.Changeset.change(row))
-
-  defp lock_gone_within_limits(_scope, _workspace, _row), do: :ok
 
   defp details(%Variable{} = variable, change) do
     %{

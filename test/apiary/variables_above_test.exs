@@ -7,6 +7,7 @@ defmodule Apiary.VariablesAboveTest do
 
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.Audit.Entry
   alias Apiary.Policy.Above
   alias Apiary.Runs.Target
   alias Apiary.Variables
@@ -85,6 +86,44 @@ defmodule Apiary.VariablesAboveTest do
               [name: "Log_Level"]} =
                changeset.errors[:name]
     end
+  end
+
+  test "a workspace's own value that hid a larger one above is not deleted past the limits",
+       %{scope: scope} do
+    above = Above.for_workspace(scope.workspace)
+    big = %Variable{name: "BIG", value: String.duplicate("a", 4096)}
+    Application.put_env(:apiary, Above, answer: fn _workspace -> %{above | variables: [big]} end)
+
+    # BIG's 4 bytes in place of the 4099 above leave room, which the workspace fills:
+    # 4 + 15 × (4 + 4096) + 4 + 4028 = 65536.
+    {:ok, own} = Variables.create_variable(scope, :workspace, %{name: "BIG", value: "x"})
+
+    for i <- 10..24 do
+      {:ok, _} =
+        Variables.create_variable(scope, :workspace, %{
+          name: "V_#{i}",
+          value: String.duplicate("v", 4096)
+        })
+    end
+
+    {:ok, _} =
+      Variables.create_variable(scope, :workspace, %{
+        name: "FILL",
+        value: String.duplicate("f", 4028)
+      })
+
+    {:ok, resolution} = Variables.resolve(scope, :workspace)
+    assert Resolution.size(resolution).bytes == 65_536
+
+    # Deleted, the level above's BIG would take the workspace to 69631 bytes.
+    assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, own)
+    assert {"would give a run more than 64 KiB of variables", []} = changeset.errors[:value]
+    assert Repo.reload!(own)
+
+    changes =
+      Repo.all(from e in Entry, where: e.subject_kind == "variable", select: e.details)
+
+    refute Enum.any?(changes, &(&1["change"] == "deleted"))
   end
 
   test "a level with variables and no policy is still resolved first, and its locks hold",
