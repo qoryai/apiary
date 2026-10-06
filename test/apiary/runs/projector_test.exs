@@ -631,18 +631,9 @@ defmodule Apiary.Runs.ProjectorTest do
     end
   end
 
+  # That it never raises and logs no event data is asked in `Apiary.Runs.ProjectorGuardTest`,
+  # which is not async: a log captured here would hold other tests' lines too.
   describe "project_async/1" do
-    test "never raises into the caller, and logs no event data", %{run: run} do
-      events_fixture(run, record())
-      Repo.delete!(run)
-
-      log = capture_log(fn -> assert :ok = Projector.project_async(run) end)
-
-      assert log =~ "projection failed run=#{run.id}"
-      refute log =~ "acme/shop"
-      assert :ok = Projector.project_async(nil)
-    end
-
     test "projects", %{run: run} do
       events_fixture(run, record())
       assert :ok = Projector.project_async(run)

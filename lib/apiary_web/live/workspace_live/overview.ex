@@ -640,7 +640,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   def handle_info({:run_changed, %Run{} = run}, socket) do
-    socket = socket |> patch_run(run) |> remember([run])
+    # Remembered before the patch, whose recompute reads what the page has seen: a quiet
+    # run the check has just found lost leaves the alive runs there, and with the struct
+    # it had before, its row would be struck as resumed instead of turning Lost.
+    socket = socket |> remember([run]) |> patch_run(run)
 
     case {socket.assigns.run_window, window(:coalesce, 250)} do
       # No window (a test): the read follows the message at once.

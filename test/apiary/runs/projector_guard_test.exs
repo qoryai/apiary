@@ -1,6 +1,7 @@
 defmodule Apiary.Runs.ProjectorGuardTest do
-  # Not async: both tests change something global, the projector's fold and the logger's
-  # level, for their duration.
+  # Not async: these tests change something global for their duration, the projector's
+  # fold or the logger's level, or refute what the log holds, and a log captured beside
+  # async tests holds their lines too, example data such as acme/shop among them.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -81,6 +82,19 @@ defmodule Apiary.Runs.ProjectorGuardTest do
         assert rebuilt.projected_sequence == 3
         assert Map.drop(rebuilt, [:updated_at]) == Map.drop(first, [:updated_at])
       end)
+    end
+  end
+
+  describe "project_async/1" do
+    test "never raises into the caller, and logs no event data", %{run: run} do
+      events_fixture(run, record())
+      Repo.delete!(run)
+
+      log = capture_log(fn -> assert :ok = Projector.project_async(run) end)
+
+      assert log =~ "projection failed run=#{run.id}"
+      refute log =~ "acme/shop"
+      assert :ok = Projector.project_async(nil)
     end
   end
 

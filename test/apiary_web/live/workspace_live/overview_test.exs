@@ -340,27 +340,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#overview-targets-none", "in the last 14 days")
     end
 
-    test "the caption says when the denied destinations were not counted", %{
-      conn: conn,
-      scope: scope
-    } do
-      Application.put_env(:apiary, Apiary.Policy.Activity, cap: 2)
-      on_exit(fn -> Application.delete_env(:apiary, Apiary.Policy.Activity) end)
-
-      started_run(scope, shop(),
-        egress: [
-          %{"host" => "a.example", "decision" => "denied", "rule" => ""},
-          %{"host" => "b.example", "decision" => "denied", "rule" => ""},
-          %{"host" => "c.example", "decision" => "denied", "rule" => ""}
-        ]
-      )
-
-      view = open(conn, scope)
-      assert has_element?(view, "#activity-uncounted", "Denied destinations were not counted")
-      refute has_element?(view, "#attention li[data-kind=denied]")
-      # The summary's denials come from the runs, not from the capped read: they stay.
-      assert text(view, "#overview-strip-denied .q-sum-v") == "3"
-    end
+    # The caption for denied destinations not counted is in `OverviewBudgetTest`, not
+    # async: the cap it lowers is the node's, and here it would lower it for every test
+    # running beside this one.
   end
 
   describe "guard" do
@@ -879,6 +861,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#attention-n") =~ ~r/^\d$/
 
       other = started_run(scope, shop())
+      # The read its start set off lands first, so the page knows it as just started and
+      # the row arrives Lost; a read after the backdating would find it quiet first, the
+      # next test's case.
+      render_async(view, 5_000)
 
       Repo.update_all(from(r in Run, where: r.id == ^other.id),
         set: [last_heartbeat_at: DateTime.add(DateTime.utc_now(), -3600, :second)]
@@ -888,6 +874,25 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
       assert has_element?(view, "#att-run-#{other.run_id}[data-kind=lost].q-arrived", "Lost")
       assert text(view, "#overview-announcer") == "1 more item needs attention."
+    end
+
+    test "a quiet run the check finds lost turns its row to Lost in place", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Silent for four intervals: quiet on the page, and lost at the check's three.
+      quiet = started_run(scope, shop(), heartbeat: {120, 100, 30})
+      view = open(conn, scope)
+      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=quiet]")
+
+      assert [_] = Liveness.check(DateTime.utc_now())
+      render_async(view, 5_000)
+      assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{quiet.run_id}.q-resolved")
+      refute text(view, "#att-run-#{quiet.run_id}") =~ "Heartbeats resumed."
+      # The same row, patched: nothing arrived.
+      refute has_element?(view, "#att-run-#{quiet.run_id}.q-arrived")
+      assert text(view, "#overview-announcer") == ""
     end
 
     test "another workspace's runs change nothing here", %{conn: conn, scope: scope} do
