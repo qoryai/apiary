@@ -39,8 +39,9 @@ defmodule Apiary.AccessKeysFixtures do
   @doc """
   A key awaiting approval on `node`, as an enrolment with a code of the scope's person
   leaves one: the code made and used, the key inserted pending, with its integrity code
-  and its row of the ledger. A stand-in for the enrolment endpoint, which is not built
-  yet. Returns `%{access_key: key, pair: key pair, code: code row}`.
+  and its row of the ledger. The rows `Apiary.AccessKeys.enrol/2` writes, written here
+  without a request, with a label any test may choose and no audit entry. Returns
+  `%{access_key: key, pair: key pair, code: code row}`.
   """
   def pending_key_fixture(scope, node, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{allow_secrets: false, label: unique_label()})

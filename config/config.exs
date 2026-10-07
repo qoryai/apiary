@@ -104,6 +104,9 @@ config :phoenix, :json_library, Jason
 # The events endpoint: batches per second and at once, per access key.
 config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100
 
+# Enrolments a second, and at once, from one address (`ApiaryWeb.Contract.EnrolmentController`).
+config :apiary, ApiaryWeb.Contract.EnrolmentController, rate: 1, burst: 10
+
 # Background work as durable jobs on Postgres; every job is an `Apiary.Job`.
 # One queue to start with, `default`, five at a time: a running job holds a connection of
 # the repo's pool (POOL_SIZE, 10 by default) while it queries, and the requests keep the

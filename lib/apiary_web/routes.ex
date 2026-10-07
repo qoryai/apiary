@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Routes do
     names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
     pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
-    `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+    `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.
   - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
     Storybook), where `:dev_routes` is set and the storybook's dependency, a development
     one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
@@ -148,6 +148,14 @@ defmodule ApiaryWeb.Routes do
         pipe_through :contract
 
         get "/qory-configuration", ConfigurationController, :show
+      end
+
+      # Enrolment: no access key yet, so no signed request; the code and the proof
+      # authenticate it (`ApiaryWeb.Contract.EnrolmentController`).
+      scope "/.well-known", ApiaryWeb.Contract do
+        pipe_through :api
+
+        post "/qory-enrolment", EnrolmentController, :create
       end
 
       scope "/v1", ApiaryWeb.Contract do
