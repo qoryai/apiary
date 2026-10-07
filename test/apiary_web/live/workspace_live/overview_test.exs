@@ -229,6 +229,28 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
     end
 
+    test "a key awaits approval, a member: the key named, no way to approve it offered",
+         %{scope: scope} = ctx do
+      pool = pool_fixture(scope, %{name: "spot-runners"})
+      pending_key_fixture(scope, pool, %{label: "spot-a"})
+      view = open(as_member(ctx), scope)
+
+      assert has_element?(view, "#onboarding[data-step='2']")
+      assert text(view, "#onboarding-pending") == "spot-a awaits approval on spot-runners."
+      refute has_element?(view, "#onboarding-pending a")
+      refute text(view, "#onboarding") =~ "Approve it"
+
+      # An admin is offered it, as an owner is.
+      %{user: admin} = member_fixture(scope, :admin)
+      view = open(log_in_user(build_conn(), admin), scope)
+
+      assert has_element?(
+               view,
+               "#onboarding-pending a[href='#{workspace_path(scope, "/nodes/#{pool.public_id}/access-key")}']",
+               "Approve it"
+             )
+    end
+
     test "an approved key, unused: step 2 done, step 3 current, listening for the first post",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, %{name: "build-01"})

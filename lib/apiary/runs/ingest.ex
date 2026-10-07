@@ -20,8 +20,8 @@ defmodule Apiary.Runs.Ingest do
   from then on; each delivery records its instance id too. The first batch of a run that
   holds its ping is admitted by the node's instance limit (`Apiary.Nodes.admit/4`), in
   the transaction that creates the run: an instance beyond the limit is
-  `{:error, :instance_limit}` and nothing is stored. A key of no node, and a batch that
-  claims no instance id, place the run nowhere and are not held to a limit.
+  `{:error, :instance_limit}` and nothing is stored. A batch that claims no instance id
+  places the run on its key's node with no instance, and is not held to a limit.
 
   Nothing of the request's headers but the versions, the instance id and the run
   configuration digest is stored, and nothing of an event is logged: the insert of the

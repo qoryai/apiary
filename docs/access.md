@@ -330,8 +330,8 @@ The modes keep a row that only names another out of it:
   (`Apiary.Organisations.lock_owners/1`).
 - A change of a node's access keys or enrolment codes (`Apiary.AccessKeys`) locks the
   node's row `FOR UPDATE`, then the key's or the code's: the keys of one node take turns,
-  so the limit of two approved keys and one awaiting approval counts every change before
-  it. Deleting a node (`Apiary.Nodes.delete_node/2`) holds the same row, and revokes its
+  so the limit of two keys at a time, at most one of them awaiting approval, counts every
+  change before it. Deleting a node (`Apiary.Nodes.delete_node/2`) holds the same row, and revokes its
   keys under it.
 - A write of the security policy, of a stored secret (`Apiary.Secrets`), of a variable
   (`Apiary.Variables`) or of a connection (`Apiary.Connections`) holds the organisation

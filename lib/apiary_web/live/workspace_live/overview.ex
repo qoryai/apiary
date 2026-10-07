@@ -44,6 +44,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   alias Apiary.Runs.Filters
 
+  alias Apiary.Access
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes
@@ -110,6 +111,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           nodes={@onboarding.nodes}
           keys={@onboarding.keys}
           may_add={@onboarding.may_add}
+          may_approve={@onboarding.may_approve}
           server={@onboarding.server}
           landed={@landed}
         />
@@ -1573,14 +1575,19 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # What the empty workspace's box reads: the nodes and pools in use, their keys not
-  # revoked, whether the reader may add a node, and the address the command names.
+  # revoked, whether the reader may add a node and approve the key the box names (the
+  # newest awaiting approval, as the node's Access key tab asks), and the address the
+  # command names.
   defp read_onboarding(scope) do
     counts = Nodes.count_nodes(scope)
+    keys = AccessKeys.list_workspace_node_keys(scope)
+    pending = Enum.find(keys, &is_nil(&1.approved_at))
 
     %{
       nodes: counts.node + counts.pool,
-      keys: AccessKeys.list_workspace_node_keys(scope),
+      keys: keys,
       may_add: Common.may?(scope, :"node.create"),
+      may_approve: pending != nil and Access.can?(scope, :"access_key.approve", pending.node),
       server: ApiaryWeb.Endpoint.url()
     }
   end

@@ -35,8 +35,8 @@ beside it:
   request verifies against. Each key has one Ed25519 public key, and Apiary holds no secret of it; it
   belongs to one node or node pool: enrolment codes
   (`access_key_enrolment_codes`, kept as their SHA-256), a pasted key approved at once,
-  approval, rejection and revocation, at most two approved keys and one awaiting approval
-  per node, and the ledger of public keys (`access_key_public_keys`), one public key for
+  approval, rejection and revocation, at most two keys at a time per node, at most one
+  of them awaiting approval, and the ledger of public keys (`access_key_public_keys`), one public key for
   one access key, ever, whose tombstones outlive the purge. `Apiary.Contract.Ed25519`
   holds the checks every public key received passes, the fingerprint and cofactorless
   verification.

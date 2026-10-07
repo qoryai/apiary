@@ -12,7 +12,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     offers no approval. Owners and admins approve or reject a key that awaits approval and
     revoke an approved one, each confirmed in place, at a path of its own
     (`…/access-key/keys/:key_id/approve`, `reject`, `revoke`), a key named by its key id.
-    With no key, the tab says how a machine gets one.
+    With no key, the tab tells a reader who may make an enrolment code how a machine
+    gets one, and anyone else only that there is none.
   - **Runner file for a key** (`…/access-key/keys/:key_id/runner-file`), a page of its
     own for an approved key, linked from its card for everyone who reads the node, since
     nothing on it is secret: the runner file's `server` section (`url`, `access_key_id`,
@@ -785,7 +786,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     %{approved: approved, pending: pending} = AccessKeys.key_limits()
 
     gettext(
-      "A node holds at most %{approved} approved keys, and %{pending} more awaiting approval.",
+      "A node holds at most %{approved} keys at a time, at most %{pending} of them awaiting approval.",
       approved: Format.number(approved),
       pending: Format.number(pending)
     )
@@ -1212,12 +1213,16 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           </div>
 
           <p :if={@keys == []} id="node-keys-none" class="text-[13px]/5 text-muted">
-            <.rich text={
-              rich_gettext(
-                "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key %{create} printed there.",
-                create: {:m, "qory access-key create"}
-              )
-            } />
+            <.rich
+              :if={@may.new_code}
+              text={
+                rich_gettext(
+                  "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key %{create} printed there.",
+                  create: {:m, "qory access-key create"}
+                )
+              }
+            />
+            <span :if={!@may.new_code}>{gettext("No key yet.")}</span>
           </p>
 
           <ul :if={@keys != []} id="node-keys-list" class="grid gap-3">
