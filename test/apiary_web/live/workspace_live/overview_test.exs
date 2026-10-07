@@ -80,6 +80,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     )
   end
 
+  test "has the page header, and links the lists whole: nothing carries a target here",
+       %{conn: conn, scope: scope} do
+    view = open(conn, scope)
+
+    assert has_element?(view, "h1#page-header-title", scope.workspace.name)
+    assert has_element?(view, "#nav-overview[aria-current='page']")
+    assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")
+    assert has_element?(view, "#nav-network[href='#{workspace_path(scope, "/network")}']")
+  end
+
   describe "the empty workspace" do
     test "no key: the checklist is the page, step 1 current, nothing else renders", %{
       conn: conn,
