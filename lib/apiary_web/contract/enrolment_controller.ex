@@ -20,7 +20,8 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     4. `429` `rate_limited`, unsigned, with `Retry-After`, past the limit of the address
        the request came from (`ApiaryWeb.Origin`): `rate` enrolments a second and `burst`
        at once, 1 and 10 unless `config :apiary, #{inspect(__MODULE__)}` says otherwise,
-       counted by `Apiary.Runs.RateLimit`; a request refused before it spends nothing;
+       counted by `Apiary.Runs.RateLimit`; a request refused at an earlier step spends
+       nothing;
     5. `400` `unsupported_contract_version`, unsigned, for an `X-Qory-Contract-Version`
        that names no revision served (`ApiaryWeb.Contract.ContractVersion`);
     6. `400` `invalid_request`, unsigned, for a body the schema refuses, naming the
