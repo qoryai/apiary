@@ -38,8 +38,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     same clause so that the hook's `<section id="key-generate">` lives through the patch:
     the key id and the pin (`Apiary.AccessKeys.variables/2`), each with Copy, and the
     secret's slot, `phx-update="ignore"`, empty from the server, carrying the public key
-    the server stored (`data-public-key`). The hook writes the secret into it only beside
-    its own public key, and empties it as the page goes. The server never has the secret:
+    the server stored (`data-public-key`), its ids the key's, so that a patch to another
+    key's page replaces it. The hook writes the secret into it only beside its own public
+    key, empties a slot that shows a secret for another public key, and empties it as the
+    page goes. The server never has the secret:
     not in assigns, a render, a log line or the record. Opened again, the page shows the
     id and the pin, and the hook says the secret is gone. It is the page of an active key
     the reader made in a browser, while they may add keys; any other key's address goes
