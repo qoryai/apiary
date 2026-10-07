@@ -387,8 +387,8 @@ defmodule ApiaryWeb.Layouts do
   from 1024 px a column, below it a row of links at the top of the page, and on phones a
   list under Settings in the drawer. A level with a single section gets none. A person's own
   page and an Instance page keep the sidebar the person came from, the workspace the session
-  remembers, else its organisation; with neither, the person's sidebar is their sections
-  alone, as one column.
+  remembers; with no workspace, the person's sidebar is their sections alone, as one
+  column.
 
   **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
   of the sidebar carry the target to the other list; nothing else does.
@@ -595,16 +595,10 @@ defmodule ApiaryWeb.Layouts do
   defp place(nil, nil, nil), do: :person
 
   # The sidebar of a person's own page and of an Instance page: the workspace the session
-  # remembers, else its organisation, as the person came from; with neither, the person's
-  # own, their sections alone.
-  defp level(place, organisation, workspace) when place in [:person, :instance] do
-    cond do
-      workspace -> :workspace
-      organisation -> :organisation
-      true -> :person
-    end
-  end
-
+  # remembers, as the person came from; with no workspace, the person's own, their
+  # sections alone.
+  defp level(place, _organisation, %{}) when place in [:person, :instance], do: :workspace
+  defp level(place, _organisation, nil) when place in [:person, :instance], do: :person
   defp level(place, _organisation, _workspace), do: place
 
   # The Instance's sections the counts carry (`instance_sections/1`, read with them).

@@ -770,6 +770,26 @@ defmodule ApiaryWeb.LayoutsTest do
       refute html =~ ~s(id="drawer-sections")
     end
 
+    test "with no workspace, a person's and an Instance page stand alone in the person's column",
+         %{scope: scope} do
+      scope = %{scope | workspace: nil}
+
+      for {place, nav} <- [person: :user_settings, instance: nil] do
+        html =
+          level_shell(scope, %{
+            place: place,
+            nav: nav,
+            section: :accounts,
+            counts: %{instance: instance_sections()}
+          })
+
+        assert attribute(html, "aside#sidebar", "aria-label") == "Your account"
+        assert attribute(html, "#sidebar #nav-group-account #nav-user_settings", "href")
+        refute html =~ ~s(id="nav-overview")
+        if place == :person, do: refute(html =~ "q-has-second")
+      end
+    end
+
     test "a level's settings with one section open no second column", %{scope: scope} do
       [general | _] = ApiaryWeb.SettingsComponents.sections(scope, :workspace)
 
