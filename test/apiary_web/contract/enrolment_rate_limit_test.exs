@@ -7,7 +7,8 @@ defmodule ApiaryWeb.Contract.EnrolmentRateLimitTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{AccessKeys, Repo, SigningKey}
-  alias Apiary.AccessKeys.EnrolmentCode
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
+  alias Apiary.Audit.Entry
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias ApiaryWeb.Contract.EnrolmentController
 
@@ -41,6 +42,85 @@ defmodule ApiaryWeb.Contract.EnrolmentRateLimitTest do
     assert get_resp_header(conn, "x-qory-signature-ed25519") == []
 
     assert enrol({192, 0, 2, 18}, "{}").status == 400
+  end
+
+  # A request from `address` with exactly `headers`, a header twice included: straight to
+  # the endpoint, as `post/3` wants a content type with a body.
+  defp enrol_with(address, body, headers) do
+    %{build_conn() | req_headers: headers}
+    |> Map.put(:remote_ip, address)
+    |> Plug.Adapters.Test.Conn.conn(:post, @path, body)
+    |> ApiaryWeb.Endpoint.call(ApiaryWeb.Endpoint.init([]))
+  end
+
+  defp json, do: {"content-type", "application/json"}
+  defp version(value \\ "1"), do: {"x-qory-contract-version", value}
+
+  # Spends the whole of `address`'s bucket, `burst` of it, on bodies the schema refuses.
+  defp spend(address, burst) do
+    for _ <- 1..burst, do: assert(enrol(address, "{}").status == 400)
+    assert enrol(address, "{}").status == 429
+  end
+
+  describe "the address's limit, in the contract's order" do
+    setup do
+      limits(rate: 0, burst: 2)
+    end
+
+    test "4: past it, 429 rate_limited, unsigned, with Retry-After" do
+      address = {192, 0, 2, 40}
+      spend(address, 2)
+
+      conn = enrol_with(address, "{}", [json(), version()])
+      assert conn.status == 429
+      assert Jason.decode!(conn.resp_body) == %{"error" => "rate_limited"}
+      assert get_resp_header(conn, "retry-after") == ["1"]
+      assert get_resp_header(conn, "x-qory-signature-ed25519") == []
+    end
+
+    test "2 and 3 before 4: past it, a wrong content type is 415 and a header sent twice 400 bad_request" do
+      address = {192, 0, 2, 41}
+      spend(address, 2)
+
+      conn = enrol_with(address, "{}", [{"content-type", "text/plain"}, version()])
+      assert conn.status == 415
+      assert Jason.decode!(conn.resp_body) == %{"error" => "unsupported_media_type"}
+      assert get_resp_header(conn, "x-qory-signature-ed25519") == []
+      assert get_resp_header(conn, "retry-after") == []
+
+      conn = enrol_with(address, "{}", [json(), version(), version()])
+      assert conn.status == 400
+      assert Jason.decode!(conn.resp_body) == %{"error" => "bad_request"}
+      assert get_resp_header(conn, "retry-after") == []
+    end
+
+    test "4 before 5 and 6: past it, a version not served is 429" do
+      address = {192, 0, 2, 42}
+      spend(address, 2)
+
+      for headers <- [[json(), version("2")], [json()]] do
+        conn = enrol_with(address, "{}", headers)
+        assert conn.status == 429
+        assert Jason.decode!(conn.resp_body) == %{"error" => "rate_limited"}
+        assert get_resp_header(conn, "retry-after") == ["1"]
+      end
+    end
+
+    test "a request refused at 1, 2 or 3 spends none of it" do
+      address = {192, 0, 2, 43}
+
+      for _ <- 1..3 do
+        assert enrol_with(address, String.duplicate(" ", 8 * 1024 + 1), [json(), version()]).status ==
+                 413
+
+        assert enrol_with(address, "{}", [{"content-type", "text/plain"}, version()]).status ==
+                 415
+
+        assert enrol_with(address, "{}", [json(), json(), version()]).status == 400
+      end
+
+      spend(address, 2)
+    end
   end
 
   describe "a code's own limit" do
@@ -152,6 +232,44 @@ defmodule ApiaryWeb.Contract.EnrolmentRateLimitTest do
       %{pair: held} = node_key_fixture(scope, node_fixture(scope))
       assert enrol(body(code, held)).status == 429
       assert enrol(body(code, ed25519_key_pair())).status == 429
+    end
+
+    test "is not spent, and nothing is written, by a request refused before the code: 413, 415, 400 bad_request, 429 by address, 400 unsupported_contract_version, 400 invalid_request",
+         %{scope: scope, node: node} do
+      limits(rate: 0, burst: 3, code_rate: 0, code_burst: 1)
+      %{code: code, row: row} = code(scope, node)
+      pair = ed25519_key_pair()
+      valid = body(code, pair)
+      invalid = valid |> Jason.decode!() |> Map.put("name", "-build") |> Jason.encode!()
+
+      counts = fn -> Enum.map([AccessKey, PublicKey, Entry], &Repo.aggregate(&1, :count)) end
+      before = counts.()
+
+      over = {192, 0, 2, 50}
+      for _ <- 1..3, do: assert(enrol(over, "{}").status == 400)
+      assert enrol(over, valid).status == 429
+
+      address = {192, 0, 2, 51}
+      long = valid <> String.duplicate(" ", 8 * 1024)
+
+      for {body, headers, status} <- [
+            {long, [json(), version()], 413},
+            {valid, [{"content-type", "text/plain"}, version()], 415},
+            {valid, [json(), version(), version()], 400},
+            {valid, [json(), version("2")], 400},
+            {invalid, [json(), version()], 400}
+          ] do
+        assert enrol_with(address, body, headers).status == status
+      end
+
+      assert counts.() == before
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+
+      # The code's one token is still there; the address's third is spent on it.
+      conn = enrol(address, valid)
+      assert conn.status == 201
+      assert signed?(conn, valid)
+      assert Repo.get_by!(AccessKey, public_key: pair.public_key)
     end
 
     test "is not spent by a code refused or a key unproven", %{scope: scope, node: node} do

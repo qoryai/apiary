@@ -305,9 +305,11 @@ the proof verifies under it. The answers, in order:
 | Status | Signed | When |
 |---|---|---|
 | `413` | no | a body over 8 KiB |
+| `415` | no | a `Content-Type` other than `application/json` |
+| `400` `bad_request` | no | `Content-Type` or `X-Qory-Contract-Version` sent twice |
 | `429` `rate_limited` | no | over the limit of the address the request came from, with `Retry-After` |
-| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault |
 | `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |
+| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault |
 | `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, carries another fingerprint than the server's key's, or was made by someone who is no longer an owner or an admin of its workspace; or the timestamp is more than 300 seconds from the server's clock |
 | `409` `key_invalid` | no | the key fails the key checks, checked first, or the proof does not verify under it |
 | `429` `rate_limited` | yes | over the code's own limit, with `Retry-After` |

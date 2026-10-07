@@ -677,6 +677,155 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     end
   end
 
+  # A request with exactly `headers`, in their order, a header twice or none included:
+  # straight to the endpoint, as `post/3` wants a content type with a body.
+  defp enrol_with(body, headers) do
+    %{build_conn() | req_headers: headers}
+    |> Map.put(:remote_ip, {127, 0, 0, 1})
+    |> Plug.Adapters.Test.Conn.conn(:post, @path, body)
+    |> ApiaryWeb.Endpoint.call(ApiaryWeb.Endpoint.init([]))
+  end
+
+  defp json, do: {"content-type", "application/json"}
+  defp version(value \\ "1"), do: {"x-qory-contract-version", value}
+
+  describe "the refusals before the code, in the contract's order, each unsigned" do
+    setup %{scope: scope, node: node} do
+      Map.put(code(scope, node), :pair, ed25519_key_pair())
+    end
+
+    defp assert_refusal(conn, status, body) do
+      assert conn.status == status
+      assert Jason.decode!(conn.resp_body) == body
+      assert_unsigned(conn)
+      assert get_resp_header(conn, "retry-after") == []
+    end
+
+    test "1: a body over 8 KiB is 413, before its content type or its headers", %{
+      code: code,
+      pair: pair
+    } do
+      long = body(code, pair) <> String.duplicate(" ", 8 * 1024)
+
+      for headers <- [
+            [json(), version()],
+            [{"content-type", "text/plain"}, version()],
+            [json(), json(), version("2")],
+            [version()]
+          ] do
+        assert_refusal(enrol_with(long, headers), 413, %{"error" => "payload_too_large"})
+      end
+    end
+
+    test "2: a content type other than application/json is 415", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      body = body(code, pair)
+
+      for headers <- [
+            [version()],
+            [{"content-type", "text/plain"}, version()],
+            [{"content-type", "application/jsonx"}, version()],
+            [{"content-type", "application/json-seq"}, version()],
+            [{"content-type", "application/cloudevents-batch+json"}, version()],
+            [{"content-type", "application/x-www-form-urlencoded"}, version()],
+            [json(), {"content-type", "text/plain"}, version()]
+          ] do
+        assert_refusal(enrol_with(body, headers), 415, %{"error" => "unsupported_media_type"})
+      end
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+    end
+
+    test "2: application/json in any case, with parameters, passes", %{code: code, pair: pair} do
+      headers = [{"content-type", "Application/JSON; charset=utf-8"}, version()]
+      assert enrol_with(body(code, pair), headers).status == 201
+    end
+
+    test "2 before 3: a wrong content type with a header sent twice is 415", %{
+      code: code,
+      pair: pair
+    } do
+      headers = [{"content-type", "text/plain"}, version(), version()]
+
+      assert_refusal(enrol_with(body(code, pair), headers), 415, %{
+        "error" => "unsupported_media_type"
+      })
+    end
+
+    test "3: Content-Type or X-Qory-Contract-Version sent twice is 400 bad_request", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      body = body(code, pair)
+
+      for headers <- [[json(), json(), version()], [json(), version(), version()]] do
+        assert_refusal(enrol_with(body, headers), 400, %{"error" => "bad_request"})
+      end
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+    end
+
+    test "3 before 5: a header sent twice with a version not served is bad_request", %{
+      code: code,
+      pair: pair
+    } do
+      for headers <- [[json(), json(), version("2")], [json(), version("1"), version("2")]] do
+        assert_refusal(enrol_with(body(code, pair), headers), 400, %{"error" => "bad_request"})
+      end
+    end
+
+    test "3: a header the enrolment does not read, sent twice, is no refusal", %{
+      code: code,
+      pair: pair
+    } do
+      headers = [json(), version(), {"accept", "application/json"}, {"accept", "*/*"}]
+      assert enrol_with(body(code, pair), headers).status == 201
+    end
+
+    test "5: an X-Qory-Contract-Version absent or not served is 400 unsupported_contract_version",
+         %{code: code, pair: pair} do
+      for headers <- [[json()], [json(), version("2")], [json(), version("x")]] do
+        assert_refusal(enrol_with(body(code, pair), headers), 400, %{
+          "error" => "unsupported_contract_version",
+          "supported" => [1]
+        })
+      end
+    end
+
+    test "5 before 6: a version not served with a body the schema refuses is unsupported_contract_version",
+         %{code: code, pair: pair} do
+      invalid =
+        body(code, pair) |> Jason.decode!() |> Map.put("name", "-build") |> Jason.encode!()
+
+      for body <- [invalid, "{}", "", "[]"] do
+        assert_refusal(enrol_with(body, [json(), version("2")]), 400, %{
+          "error" => "unsupported_contract_version",
+          "supported" => [1]
+        })
+      end
+    end
+
+    test "6: a body the schema refuses is 400 invalid_request, naming the members", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      invalid =
+        body(code, pair) |> Jason.decode!() |> Map.put("name", "-build") |> Jason.encode!()
+
+      assert_refusal(enrol_with(invalid, [json(), version()]), 400, %{
+        "error" => "invalid_request",
+        "names" => ["name"]
+      })
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+    end
+  end
+
   test "the endpoint answers POST alone" do
     assert get(build_conn(), @path).status == 404
   end

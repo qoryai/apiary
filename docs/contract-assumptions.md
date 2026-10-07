@@ -283,9 +283,11 @@ checks and the proof verifies under it. The answers, in order:
 | Status | Signed | When |
 |---|---|---|
 | `413` | no | a body over 8 KiB |
+| `415` `unsupported_media_type` | no | a `Content-Type` absent, or one of its values not `application/json` (any case, parameters allowed) |
+| `400` `bad_request` | no | `Content-Type` or `X-Qory-Contract-Version` sent twice |
 | `429` `rate_limited` | no | over the limit of the address it came from, with `Retry-After` |
-| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault: a member unknown or twice, a code not in its normal form, a timestamp with a fraction or an exponent |
 | `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |
+| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault: a member unknown or twice, a code not in its normal form, a timestamp with a fraction or an exponent |
 | `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, carries another fingerprint than the instance's key's, or was made by someone who is no longer an owner or an admin of its workspace; or the timestamp is more than 300 seconds from the server's clock |
 | `409` `key_invalid` | no | the key checks refuse the key (`Apiary.Contract.Ed25519.decode_public_key/1`: a canonical encoding, on the curve, y ≠ 1, not of small order, of prime order, not a published fixture key), checked first, or the proof does not verify under it |
 | `429` `rate_limited` | yes | over the code's own limit, with `Retry-After` |
@@ -521,8 +523,18 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   fingerprint; a code that carries two, or another, is `401`.
 - Enrolment: the key's label is the code's label hint, else the name the machine sent,
   with `-2`, `-3` and on when a key of the node in use has it already.
+- Enrolment: the contract names no content type for the request; the runner sends
+  `application/json`, so that is the one accepted: the media type, whatever its case and
+  whatever parameters follow, in each value sent. The contract's `400` `bad_request` for "a header
+  sent twice" names no headers at enrolment, and the four it names for a signed request are
+  not in one; the headers counted are the two the enrolment reads, `Content-Type` and
+  `X-Qory-Contract-Version`, so a header a proxy repeats, such as `X-Forwarded-For`, is no
+  refusal. A `Content-Type` sent twice, each `application/json`, is that `400`; with one
+  value of another type it is the `415` before it.
 - Enrolment: the rate limit is per address, 1 a second and 10 at once
   (`config :apiary, ApiaryWeb.Contract.EnrolmentController, rate: 1, burst: 10`), counted
-  before the body is read; and per code, 1 a second and 5 at once (`code_rate`,
-  `code_burst`), counted only once the code is accepted and the key proven, so a refused
-  code or an unproven key spends none of it. The contract fixes the order, not the numbers.
+  once the content type and the headers pass, before the version or the body is looked at,
+  so a request refused at `413`, `415` or a header sent twice spends none of it; the
+  contract does not mention `Retry-After`, which the `429` carries all the same; and per
+  code, 1 a second and 5 at once (`code_rate`, `code_burst`), counted only once the code
+  is accepted and the key proven, so a refused code or an unproven key spends none of it. The contract fixes the order, not the numbers.
