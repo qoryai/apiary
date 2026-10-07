@@ -21,7 +21,10 @@ defmodule Apiary.SecretLogFilter do
   holds should the translator ever run first:
 
     * A message given as a string, or as a format and its arguments, is read as text, and
-      a secret in it is replaced (the message becomes that text).
+      a secret in it is replaced (the message becomes that text). One that cannot be read
+      as text (a part that is not valid UTF-8, or a format its arguments do not fit) keeps
+      its shape, and its parts, or the format's arguments, are scrubbed as a report's
+      terms are.
     * A report (`{:report, report}`) has each secret replaced in its terms: in every
       binary and every printable charlist in it, at any depth, map keys included. The
       translator, or the handler's `report_cb`, then formats the scrubbed report.
@@ -32,7 +35,8 @@ defmodule Apiary.SecretLogFilter do
   event and never raises: should a term defeat it, the event is passed on as it came.
 
   What it does not cover: a secret split across the parts of a term (two binaries, or an
-  iolist's pieces inside a report, each holding part of `qak_`); a secret in an atom, a
+  iolist's pieces inside a report or inside a message that cannot be read as text, each
+  holding part of `qak_`); a secret in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
   standard output or standard error). A public key whose base64url happens to hold `qak_`
   is filtered from a log line as a secret would be.
@@ -71,7 +75,7 @@ defmodule Apiary.SecretLogFilter do
   defp scrub_msg({:string, chardata} = msg) do
     case chardata_text(chardata) do
       {:ok, text} -> if secret?(text), do: {:string, replace(text)}, else: msg
-      :none -> msg
+      :none -> {:string, scrub(chardata)}
     end
   end
 

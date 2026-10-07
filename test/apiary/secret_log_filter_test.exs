@@ -31,6 +31,14 @@ defmodule Apiary.SecretLogFilterTest do
     assert text == "got [FILTERED] here"
   end
 
+  test "replaces a secret in a string message that is not text, part by part" do
+    secret = "qak_" <> String.duplicate("A", 43)
+    msg = {:string, ["a ", <<255>>, " ", secret]}
+
+    assert %{msg: {:string, ["a ", <<255>>, " ", "[FILTERED]"]}} =
+             SecretLogFilter.filter(event(msg), nil)
+  end
+
   test "leaves an event without a secret as it came" do
     for msg <- [
           {:string, "HANDLE EVENT \"generate_key\""},
