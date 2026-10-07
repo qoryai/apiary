@@ -12,31 +12,37 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
   accepted, the key passes the checks and the proof verifies under it; signed after.
 
     1. `413`, unsigned, for a body over 8 KiB (`ApiaryWeb.Contract.RawBody`);
-    2. `429` `rate_limited`, unsigned, with `Retry-After`, past the limit of the address
+    2. `415` `{"error":"unsupported_media_type"}`, unsigned, unless `Content-Type` is
+       `application/json`, whatever its case and whatever parameters follow, in each
+       value sent;
+    3. `400` `bad_request`, unsigned, for a header the enrolment reads sent twice:
+       `Content-Type` or `X-Qory-Contract-Version`;
+    4. `429` `rate_limited`, unsigned, with `Retry-After`, past the limit of the address
        the request came from (`ApiaryWeb.Origin`): `rate` enrolments a second and `burst`
        at once, 1 and 10 unless `config :apiary, #{inspect(__MODULE__)}` says otherwise,
-       counted by `Apiary.Runs.RateLimit`;
-    3. `400` `invalid_request`, unsigned, for a body the schema refuses, naming the
-       members at fault; then `400` `unsupported_contract_version`, unsigned, for an
-       `X-Qory-Contract-Version` that names no revision served
-       (`ApiaryWeb.Contract.ContractVersion`);
-    4. `401` `{"error":"unauthorized"}`, unsigned, when the code is not accepted: used,
+       counted by `Apiary.Runs.RateLimit`; a request refused at an earlier step spends
+       nothing;
+    5. `400` `unsupported_contract_version`, unsigned, for an `X-Qory-Contract-Version`
+       that names no revision served (`ApiaryWeb.Contract.ContractVersion`);
+    6. `400` `invalid_request`, unsigned, for a body the schema refuses, naming the
+       members at fault;
+    7. `401` `{"error":"unauthorized"}`, unsigned, when the code is not accepted: used,
        expired, cancelled, never made, carrying another fingerprint than the instance's
        key's, or made by someone who is no longer an owner or an admin of its workspace;
        or when the timestamp is more than 300 seconds from the server's clock;
-    5. `409` `{"error":"key_invalid"}`, **unsigned**, for a public key the key checks
+    8. `409` `{"error":"key_invalid"}`, **unsigned**, for a public key the key checks
        refuse (`Apiary.Contract.Ed25519.decode_public_key/1`), checked first, or a proof
        that does not verify under it: nothing is signed for a proof no checked key made;
-    6. `429` `rate_limited`, signed, with `Retry-After`, past the code's own limit:
+    9. `429` `rate_limited`, signed, with `Retry-After`, past the code's own limit:
        `code_rate` requests a second and `code_burst` at once, 1 and 5 unless the same
        configuration says otherwise;
-    7. `409` `key_invalid`, signed, for a public key the ledger holds: another access
-       key's, or a revoked one's;
-    8. `409` `key_limit`, signed, for a node that holds two keys;
-    9. `201`, signed, with the access key id, its node and its kind, `stored_secrets` and
-       the instance's keys: the key is active.
+    10. `409` `key_invalid`, signed, for a public key the ledger holds: another access
+        key's, or a revoked one's;
+    11. `409` `key_limit`, signed, for a node that holds two keys;
+    12. `201`, signed, with the access key id, its node and its kind, `stored_secrets`
+        and the instance's keys: the key is active.
 
-  The order of 5 to 9 is `Apiary.AccessKeys.enrol/2`'s. A signed answer is signed by
+  The order of 8 to 12 is `Apiary.AccessKeys.enrol/2`'s. A signed answer is signed by
   `ApiaryWeb.Contract.SignedAnswer.put_enrolment/3`: `X-Qory-Signature-Ed25519`, the
   instance's signature of the enrolment answer string
   (`Apiary.Contract.SignedMessage.enrolment_answer/3`), under the enrolment answers' own
@@ -56,12 +62,18 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
   alias Apiary.Runs.RateLimit
   alias ApiaryWeb.Contract.{ContractVersion, SignedAnswer}
 
+  @content_type "application/json"
+  # The headers the enrolment reads, each refused when sent more than once.
+  @once ["content-type", "x-qory-contract-version"]
+
   def create(conn, _params) do
     origin = ApiaryWeb.Origin.from_conn(conn)
 
-    with :ok <- within_rate(origin),
-         {:ok, request} <- Enrolment.decode(conn.assigns[:raw_body]),
-         {:ok, _version} <- version(conn) do
+    with :ok <- content_type(conn),
+         :ok <- sent_once(conn),
+         :ok <- within_rate(origin),
+         {:ok, _version} <- version(conn),
+         {:ok, request} <- Enrolment.decode(conn.assigns[:raw_body]) do
       case AccessKeys.enrol(request, origin: origin, code_limit: code_limit()) do
         {:ok, key} ->
           signed(conn, request, 201, answer(key))
@@ -86,6 +98,11 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
           signed(conn, request, 409, refusal(:key_limit))
       end
     else
+      {:refuse, status, code} ->
+        conn
+        |> put_status(status)
+        |> json(%{error: code})
+
       {:error, {:rate_limited, seconds}} ->
         conn
         |> put_resp_header("retry-after", Integer.to_string(seconds))
@@ -102,7 +119,33 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     end
   end
 
-  # Counted by the address the request came from, before anything is read of the body.
+  # The media type, whatever its case and whatever parameters follow, in every value sent:
+  # a request with none is refused, and one with two is left to `sent_once/1`.
+  defp content_type(conn) do
+    case get_req_header(conn, "content-type") do
+      [] ->
+        {:refuse, 415, "unsupported_media_type"}
+
+      values ->
+        if Enum.all?(values, &json?/1),
+          do: :ok,
+          else: {:refuse, 415, "unsupported_media_type"}
+    end
+  end
+
+  defp json?(value) do
+    [media_type | _parameters] = String.split(value, ";", parts: 2)
+    String.downcase(String.trim(media_type)) == @content_type
+  end
+
+  defp sent_once(conn) do
+    if Enum.any?(@once, &match?([_, _ | _], get_req_header(conn, &1))),
+      do: {:refuse, 400, "bad_request"},
+      else: :ok
+  end
+
+  # Counted by the address the request came from, once its content type and headers pass
+  # and before the version or the body is looked at.
   defp within_rate(%{remote_ip: address}) do
     opts = Keyword.take(Application.get_env(:apiary, __MODULE__, []), [:rate, :burst])
     opts = Keyword.merge([rate: 1, burst: 10], opts)
