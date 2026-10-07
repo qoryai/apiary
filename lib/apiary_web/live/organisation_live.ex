@@ -187,13 +187,6 @@ defmodule ApiaryWeb.OrganisationLive do
                 {Format.date(@current_scope.organisation.inserted_at)}
               </dd>
             </dl>
-            <.link
-              id="about-settings"
-              navigate={~p"/#{@current_scope.organisation}/settings"}
-              class="q-more"
-            >
-              {gettext("Settings")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
-            </.link>
           </section>
         </aside>
       </div>

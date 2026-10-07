@@ -2,8 +2,8 @@ defmodule ApiaryWeb.SettingsComponents do
   @moduledoc """
   The settings of an organisation and of a workspace, GitHub's way: each kind its own
   place, reached from its own scope, one section a page with the list of that kind's
-  sections beside it (`layout/1`), while the sidebar stays the scope's, its Settings the
-  current entry. Configuration lives here, set up once and changed rarely; the sidebar
+  sections beside it (`layout/1`), while the sidebar stays the scope's, its Organisation
+  settings or Workspace settings the current entry. Configuration lives here, set up once and changed rarely; the sidebar
   holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting

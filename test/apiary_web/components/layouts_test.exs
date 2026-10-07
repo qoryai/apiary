@@ -507,6 +507,13 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#nav-user_preferences[href='/users/settings/preferences']")
       assert has_element?(view, "#nav-user_organisations[href='/users/organisations']")
 
+      # The sidebar's foot is the workspace's, named after its level, and not current.
+      assert has_element?(
+               view,
+               ".q-sidebar-foot #nav-settings:not([aria-current]) .q-nav-text",
+               "Workspace settings"
+             )
+
       # Profile is Account; the drawer has no copy of the sections.
       assert has_element?(view, "#nav-user_settings", "Account")
       refute has_element?(view, "#drawer-sections")

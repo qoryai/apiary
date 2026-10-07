@@ -654,13 +654,15 @@ what needs the reader, then what their agents did, and never grows with the data
   `DaysChart` hook measured, with its table twin a text action away.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word only when it is running or ended badly), a sparkline of its days and its denials.
-- **Guard**: a few lines of key and value, each with a muted detail and one link: the
-  policy's mode and version, the targets with rules of their own, retention.
+- **Guard**: a few lines of key and value, each with a muted detail and one link that
+  says what it does: the policy's mode and version, the targets with rules of their own
+  (Review), retention (Change, to Workspace settings › Runs).
 - A workspace no run has reached is one box: the steps from a key to the first run and
   the server block to paste.
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
-all, with its people and details as lines beside them.
+all, with its people and details as lines beside them; Details has no link to the
+settings, which the sidebar's foot, Organisation settings, leads to on the same page.
 
 ## Targets
 

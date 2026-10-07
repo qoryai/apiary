@@ -3386,6 +3386,7 @@ msgstr ""
 msgid "Cancelling"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -9934,11 +9935,9 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr ""

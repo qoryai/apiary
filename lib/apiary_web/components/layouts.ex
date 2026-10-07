@@ -381,9 +381,10 @@ defmodule ApiaryWeb.Layouts do
   Search or jump to (the palette), New and the account menu. The sidebar holds the pages
   of the page's scope, which the entry it passes as `nav` belongs to
   (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's,
-  whose pages are their settings. At its foot are the scope's Settings, the current entry
-  on every page of them, then the Qory Apiary menu and the control that folds the sidebar
-  to icons, from 768 px; below that it is a drawer behind the bar's menu button. A page
+  whose pages are their settings. At its foot are the scope's settings, named after the
+  level (Workspace settings, Organisation settings), the current entry on every page of
+  them, then the Qory Apiary menu and the control that folds the sidebar to icons, from
+  768 px; below that it is a drawer behind the bar's menu button. A page
   without a person has no sidebar, and the Qory Apiary menu opens from the bar.
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
@@ -391,15 +392,20 @@ defmodule ApiaryWeb.Layouts do
   `ApiaryWeb.Extension`): the page beneath says the rest. A person's own pages carry none.
 
   **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
-  page of the level, Settings included. A page of Settings, of Your settings or of the
-  Instance opens the level's sections as a second column beside it (`sections`, `section`):
-  from 1024 px a column, below it a row of links at the top of the page, and on phones a
-  list under Settings in the drawer. A level with a single section gets none. A person's own
-  page and an Instance page keep the sidebar the person came from, the workspace the session
+  page of the level, its settings included. A page of a level's settings, of Your settings
+  or of the Instance opens the level's sections as a second column beside it (`sections`,
+  `section`): from 1024 px a column under a heading that names the level and, beneath it,
+  the place ("Workspace settings", Main); below it, at every width, that heading is a
+  button under the top bar that opens the same links in place (`#settings-disclosure`).
+  A level with a single section gets none. The level leaves the page: a settings page's h1
+  is its section, and the frame writes the breadcrumb's level and section segments, so the
+  page's `crumb` slots hold only what follows the section. A person's own page and an
+  Instance page keep the sidebar the person came from, the workspace the session
   remembers; with no workspace, the person's sidebar is their sections alone, as one
   column. `aria-current="page"` marks the exact page's entry alone; its parents carry
-  `aria-current="true"`: Settings at the sidebar's foot while the second column lists its
-  sections, and the column's section on a page under it, one that adds `crumb` segments.
+  `aria-current="true"`: the level's settings at the sidebar's foot while the second column
+  lists its sections, and the column's section on a page under it, one that adds `crumb`
+  segments or passes `section_current="true"` (a tab of it other than the first).
 
   **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
   of the sidebar carry the target to the other list; nothing else does.
@@ -1577,8 +1583,9 @@ defmodule ApiaryWeb.Layouts do
 
   # The sidebar: the pages of the page's scope, in their groups, each a `<nav>` with its
   # own name; the targets the person pinned, on a workspace's pages. At the foot the
-  # scope's Settings, the current entry on every page of them, then the Qory Apiary menu
-  # and the control that folds the sidebar to icons.
+  # scope's settings, Workspace settings or Organisation settings, the current entry on
+  # every page of them, then the Qory Apiary menu and the control that folds the sidebar to
+  # icons.
   attr :place, :atom, required: true
   attr :nav, :atom, required: true
   attr :groups, :list, required: true
@@ -1653,8 +1660,8 @@ defmodule ApiaryWeb.Layouts do
       </div>
 
       <div class="q-sidebar-foot">
-        <%!-- Settings is current on every page of them; where its sections are the second
-             column, the page is the column's entry and Settings its parent. --%>
+        <%!-- The level's settings are current on every page of them; where their sections
+             are the second column, the page is the column's entry and this its parent. --%>
         <.nav_item
           :if={@foot}
           entry={elem(@foot, 0)}
