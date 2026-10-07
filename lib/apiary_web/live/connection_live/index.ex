@@ -4,9 +4,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   where the runs of the workspace reached out to, what the policy made of it, and the way
   to allow or deny it. One row per host, port and path across the runs in range, with the
   reason and the outcome of the most recent attempt, and behind each row's chevron the
-  runs that reached it. "Per target" is this page with the target set, which the run page
-  links to. A connection as a thing keeps its word: a row is a destination and the
-  connections made to it.
+  runs that reached it. A target's Network access is this page narrowed to the target,
+  which a run's page and a target's Overview link to. A connection as a thing keeps its
+  word: a row is a destination and the connections made to it.
 
   A row is one line on the row spec (`ApiaryWeb.RunComponents.connection_row/1`): no tint
   and no bordered button; Allow and Deny are text shown on hover, focus and while open,
@@ -28,10 +28,16 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   tool invocations.
 
   Narrowed to a target (`target`, with `system` only where two targets share the path),
-  the page says so in one line under its title, "Showing acme/shop only.", with the same
-  target's runs (the Runs list narrowed alike), its policy (the target's Policy tab) and
-  "Show all destinations", which drops the target alone; the sidebar's Runs carries the
-  target meanwhile (`ApiaryWeb.Layouts.narrowed/2`). Nothing else carries it.
+  the page says so in one line under its title, "Showing acme/shop only.", the name
+  leading to the target's page, with the same target's runs (the Runs list narrowed
+  alike), its policy (the target's Policy tab) and "Show all destinations", which drops
+  the target alone; the sidebar's Runs carries the target meanwhile
+  (`ApiaryWeb.Layouts.narrowed/2`). Nothing else carries it. What the address names is
+  read with it (`ApiaryWeb.Narrowing`), so the line, its policy and the rail's current
+  target are right from the first render. A path that two targets share, given alone, is
+  the path on both systems: the line says so and names each system, a link to the list
+  narrowed to that system's target. The rail, the Filter menu and a typed `repo:` write a
+  target as the line does, its system only where the path is shared.
 
   A destination's runs are read only when its
   row opens, ten at a time. While batches land the table does not move under the reader:
@@ -44,10 +50,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   reader chooses. The rule itself is made by `Apiary.Policy.rule_from_connection/4` from
   the most recent connection of the destination in the chosen scope, and what the domain
   refuses is said in its sentence.
-
-  A target's page shows the same content in its Network access tab, with the target fixed
-  (`fix_target/3`): its own path, no Target section, token or rail, and the target in every
-  query.
 
   The rows are the record (`observability`); the rules are `security`'s. On an instance
   without `security` the page is the record alone: no Reason column (which rule matched,
@@ -64,6 +66,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   alias Apiary.Runs
   alias Apiary.Runs.Filters
   alias ApiaryWeb.ConnectionLive.Rules
+  alias ApiaryWeb.Narrowing
+  alias ApiaryWeb.TargetComponents
 
   @hits_page 10
   @coalesce_ms 250
@@ -80,7 +84,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       counts={@nav_counts}
       nav={:network}
       width="work"
-      narrowed={Layouts.narrowed(@filters.target, @shared)}
+      narrowed={Layouts.narrowed(@filters.target, Narrowing.shared?(@narrowing))}
     >
       <div id="connections-page" class="q-lp">
         <.page_header title={gettext("Network access")}>
@@ -95,48 +99,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <:actions>
             <.new_status stale={@stale} />
           </:actions>
-          <p
+          <.target_note
             :if={@filters.target}
-            id="connections-target-note"
-            class="q-page-desc flex flex-wrap items-baseline gap-x-3 gap-y-1"
-          >
-            <span>
-              <.rich text={
-                rich_gettext("Showing %{target} only.",
-                  target: mono_part(note_label(@filters.target, @shared))
-                )
-              } />
-            </span>
-            <.link
-              id="connections-target-runs"
-              navigate={runs_path(@current_scope, @filters.target, @shared)}
-              class="q-link"
-            >
-              {gettext("Runs")}
-            </.link>
-            <.link
-              :if={@security && @policy_target}
-              id="connections-target-policy"
-              navigate={
-                ApiaryWeb.TargetComponents.target_path(
-                  @current_scope,
-                  @policy_target.system,
-                  @policy_target.path,
-                  ["policy"]
-                )
-              }
-              class="q-link"
-            >
-              {gettext("Its policy")}
-            </.link>
-            <.link
-              id="connections-target-all"
-              patch={page_path(@page_base, Filters.put(@filters, target: nil))}
-              class="q-link"
-            >
-              {gettext("Show all destinations")}
-            </.link>
-          </p>
+            scope={@current_scope}
+            filters={@filters}
+            narrowing={@narrowing}
+            policy_target={@security && @policy_target}
+          />
         </.page_header>
 
         <.content {assigns} />
@@ -145,15 +114,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     """
   end
 
-  @doc """
-  content/1 is the page's content under its header: the views, the query, the menus and
-  the tokens, the rail, the destinations and their pages, a row's rule panel under its row. A
-  target's page renders it in its Network access tab, where "New activity" leads it.
-  """
-  def content(assigns) do
+  # The page's content under its header: the views, the query, the menus and the tokens,
+  # the rail, the destinations and their pages, a row's rule panel under its row.
+  defp content(assigns) do
     ~H"""
-    <.new_status :if={@page_base.fixed} stale={@stale} />
-
     <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
       <span id="connections-error">
         {gettext(
@@ -171,7 +135,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         <:view
           :for={{key, label, decision} <- views()}
           id={"connections-view-#{key}"}
-          patch={page_path(@page_base, Filters.put(@filters, decision: decision))}
+          patch={page_path(@current_scope, Filters.put(@filters, decision: decision))}
           current={@filters.decision == decision}
           count={@views && Format.number(Map.fetch!(@views, String.to_existing_atom(key)))}
         >
@@ -198,10 +162,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         />
         <.filter_menu
           id="connections-filter"
-          count={filter_count(loose(@filters, @page_base))}
+          count={filter_count(@filters)}
         >
           <:section
-            :if={!@page_base.fixed}
             key="target"
             label={gettext("Target")}
             icon="hero-folder"
@@ -213,11 +176,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               id="filter-target"
               name="target"
               label={gettext("Target")}
-              values={List.wrap(Filters.target_value(@filters.target))}
+              values={List.wrap(menu_value(@filters, @narrowing, @shared))}
               options={
                 with_chosen(
                   target_options(@facets, @shared),
-                  Filters.target_value(@filters.target),
+                  menu_value(@filters, @narrowing, @shared),
                   @filters.target && target_text(@filters.target, @shared)
                 )
               }
@@ -288,7 +251,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <.menu_item
             :for={sort <- Filters.sorts(:connections)}
             id={"connections-sort-#{sort}"}
-            patch={page_path(@page_base, Filters.put(@filters, sort: sort))}
+            patch={page_path(@current_scope, Filters.put(@filters, sort: sort))}
             checked={@filters.sort == sort}
           >
             {sort_label(sort)}
@@ -298,39 +261,42 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
       <.filter_tokens
         id="connections-tokens"
-        clear={
-          narrowed?(loose(@filters, @page_base)) && page_path(@page_base, Filters.clear(@filters))
-        }
+        clear={narrowed?(@filters) && page_path(@current_scope, Filters.clear(@filters))}
       >
         <:token
-          :for={token <- tokens(@page_base, @filters, @shared)}
+          :for={token <- tokens(@current_scope, @filters, @shared)}
           id={token.id}
           class="q-tok-q"
           patch={token.remove}
           label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
         >
-          <span class="q-tok-k">{token.qualifier}:</span>{token.value}
+          <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v" title={token.value}>{token.value}</span>
         </:token>
       </.filter_tokens>
 
       <div class="q-with-rail">
         <.target_rail
-          :if={!@page_base.fixed}
           id="connections-rail"
           label={gettext("Targets")}
           heading={gettext("Most destinations")}
           rail={@rail}
-          chosen={@filters.target}
+          chosen={Narrowing.chosen(@narrowing, @filters.target)}
+          chosen_count={@listing && @listing.summary.destinations}
           shared={@shared}
           query={@rail_query}
-          path={&page_path(@page_base, Filters.put(@filters, target: &1))}
+          path={
+            &page_path(
+              @current_scope,
+              Filters.put(@filters, target: Filters.link_target(&1, @shared))
+            )
+          }
         />
 
         <div class="q-list-col">
           <%!-- Always there, so a screen reader hears what a view or a filter left. --%>
           <div id="connections-status" role="status" class="q-status">
             <p
-              :if={@listing && @listing.rows != [] && narrowed?(loose(@filters, @page_base))}
+              :if={@listing && @listing.rows != [] && narrowed?(@filters)}
               id="connections-summary"
               class="q-matchline"
             >
@@ -351,7 +317,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               } />
             </p>
             <p :if={@listing && @listing.rows == []} class="sr-only">
-              {empty_title(loose(@filters, @page_base))}
+              {empty_title(@filters)}
             </p>
           </div>
 
@@ -401,17 +367,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <.connections_table
             :if={@listing && @listing.rows != []}
             id="destinations"
-            label={
-              if @page_base.fixed,
-                do: gettext("Network access of this target"),
-                else: gettext("Network access of this workspace")
-            }
+            label={gettext("Network access of this workspace")}
             variant="workspace"
             rows={@listing.rows}
             row_id={&destination_id/1}
             open={@open}
             run_path={&run_path(@current_scope, &1)}
-            host_path={&page_path(@page_base, Filters.put(@filters, host: &1))}
+            host_path={&page_path(@current_scope, Filters.put(@filters, host: &1))}
             acts={@acts}
             panel={@rule_panel}
             security={@security}
@@ -419,12 +381,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
           <.empty_state
             :if={@listing && @listing.rows == []}
-            icon={if !narrowed?(loose(@filters, @page_base)), do: "hero-arrows-right-left"}
+            icon={if !narrowed?(@filters), do: "hero-arrows-right-left"}
             tone="neutral"
-            title={empty_title(loose(@filters, @page_base))}
+            title={empty_title(@filters)}
           >
             <span id="connections-empty">
-              {if narrowed?(loose(@filters, @page_base)),
+              {if narrowed?(@filters),
                 do: gettext("No destination matches them in this range."),
                 else:
                   gettext(
@@ -433,16 +395,16 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             </span>
             <:actions>
               <.button
-                :if={token = last_token(@page_base, @filters, @shared)}
+                :if={token = last_token(@current_scope, @filters, @shared)}
                 id="connections-remove-last"
                 patch={token.remove}
               >
                 {gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
               </.button>
               <.button
-                :if={narrowed?(loose(@filters, @page_base))}
+                :if={narrowed?(@filters)}
                 id="connections-clear"
-                patch={page_path(@page_base, Filters.clear(@filters))}
+                patch={page_path(@current_scope, Filters.clear(@filters))}
               >
                 {gettext("Clear filters")}
               </.button>
@@ -458,11 +420,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             total={@listing.summary.destinations}
             previous={
               @listing.page > 1 &&
-                page_path(@page_base, %{@filters | page: @listing.page - 1})
+                page_path(@current_scope, %{@filters | page: @listing.page - 1})
             }
             next={
               @listing.page < @listing.pages &&
-                page_path(@page_base, %{@filters | page: @listing.page + 1})
+                page_path(@current_scope, %{@filters | page: @listing.page + 1})
             }
             previous_label={gettext("Previous")}
             next_label={gettext("Next")}
@@ -481,8 +443,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     """
   end
 
-  # "New activity": beside the page's title, or leading a target's tab. While there is none
-  # the live region is kept out of the flow, so it takes no row of a tab's grid.
+  # "New activity": beside the page's title. While there is none the live region is kept
+  # out of the flow.
   attr :stale, :boolean, required: true
 
   defp new_status(assigns) do
@@ -534,26 +496,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        refused: [],
        narrow: %{},
        limits: %{},
-       # The target the filters name, read for its policy: `policy_target`, as a target's
-       # page, which renders this one in its tab, holds its own `target`.
+       # What the filters' target names (`ApiaryWeb.Narrowing`), and the one target among
+       # it, read for its policy: both read with the address.
+       narrowing: nil,
        policy_target: nil,
        effective: nil,
        acts: nil,
        rule_panel: nil,
        own: [],
        policy_flush_scheduled: false,
-       security: security,
-       page_base: %{path: ~p"/#{scope.organisation}/#{scope.workspace}/network", fixed: nil}
+       security: security
      )}
   end
-
-  @doc """
-  fix_target/3 makes the page a target's: its links lead to `path`, the target's
-  Network access tab, and every query keeps `{system, path}`, which the parameters the tab
-  hands `handle_params/3` carry. The target's page has no rail to read.
-  """
-  def fix_target(socket, path, {system, target_path}) when is_binary(path),
-    do: assign(socket, :page_base, %{path: path, fixed: {system, target_path}})
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -568,7 +522,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        socket
        |> keep_notices()
        |> assign(filters: filters, open: open, rule_panel: nil)
-       |> target_shared()
+       |> narrow()
        |> load()}
     else
       {:noreply,
@@ -576,7 +530,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        |> assign(:dropped, filters.dropped)
        |> put_private(:notice_kept, true)
        |> push_patch(
-         to: page_path(socket.assigns.page_base, %{filters | dropped: []}),
+         to: page_path(socket.assigns.current_scope, %{filters | dropped: []}),
          replace: true
        )}
     end
@@ -586,7 +540,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   def handle_event("filter", params, socket) do
     {:noreply,
      push_patch(socket,
-       to: page_path(socket.assigns.page_base, Filters.change(socket.assigns.filters, params))
+       to: page_path(socket.assigns.current_scope, Filters.change(socket.assigns.filters, params))
      )}
   end
 
@@ -594,13 +548,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     scope = socket.assigns.current_scope
 
     {filters, refused} =
-      Filters.apply_query(socket.assigns.filters, text, resolve: &Runs.resolve_target(scope, &1))
+      Filters.apply_query(socket.assigns.filters, text, resolve: &Narrowing.typed(scope, &1))
 
     {:noreply,
      socket
      |> assign(:refused, refused)
      |> put_private(:notice_kept, refused != [])
-     |> push_patch(to: page_path(socket.assigns.page_base, filters))}
+     |> push_patch(to: page_path(socket.assigns.current_scope, filters))}
   end
 
   def handle_event("query", _params, socket), do: {:noreply, socket}
@@ -814,7 +768,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          shared: loaded.shared,
          facets: loaded.facets,
          open: loaded.open,
-         policy_target: loaded.policy_target,
          effective: loaded.effective,
          own: loaded.own,
          stale: false,
@@ -875,9 +828,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp load(socket) do
     %{current_scope: scope, filters: filters, open: open, security: security} = socket.assigns
+    target = socket.assigns.policy_target
     facets_opts = [narrow: socket.assigns.narrow, limits: socket.assigns.limits]
     rail_opts = rail_opts(socket)
-    rail? = is_nil(socket.assigns.page_base.fixed)
 
     if connected?(socket) do
       start_async(socket, :load, fn ->
@@ -897,19 +850,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
              )}
           end
 
-        # The target is read for its policy; without security nothing is.
-        target = if security, do: target_of(scope, filters.target)
-
         %{
           filters: filters,
           listing: listing,
           views: Runs.destination_views(scope, filters, now),
-          rail:
-            if(rail?, do: Runs.destination_target_counts(scope, filters, [now: now] ++ rail_opts)),
+          rail: Runs.destination_target_counts(scope, filters, [now: now] ++ rail_opts),
           shared: Runs.shared_paths(scope),
           facets: Runs.destination_facets(scope, filters, [now: now] ++ facets_opts),
           open: open,
-          policy_target: target,
           effective: if(security, do: Policy.effective(scope, target)),
           own: if(security and is_nil(target), do: Rules.own_hosts(scope), else: [])
         }
@@ -919,19 +867,29 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end
   end
 
-  # Whether the narrowed target's path is on two systems, known before the listing lands,
-  # so that the narrowed line and the sidebar name the target rightly from the first render.
-  defp target_shared(%{assigns: %{filters: %{target: {_system, path}}}} = socket)
-       when is_binary(path) do
-    if MapSet.member?(socket.assigns.shared, path),
-      do: socket,
-      else:
-        update(socket, :shared, fn shared ->
-          MapSet.union(shared, Runs.shared_paths(socket.assigns.current_scope, [path]))
-        end)
-  end
+  # What the filters' target names, read with the address and only when it names another
+  # (`ApiaryWeb.Narrowing`): the line, "Its policy", the rail's current target and the
+  # sidebar's carry are right from the first render, and never the target before. The
+  # one target is read for its policy; without security none is. A path the read finds
+  # shared is shared for the page's names at once.
+  defp narrow(%{assigns: %{filters: %{target: target}, narrowing: %{for: target}}} = socket),
+    do: socket
 
-  defp target_shared(socket), do: socket
+  defp narrow(socket) do
+    %{current_scope: scope, filters: %{target: target}, security: security} = socket.assigns
+    narrowing = Narrowing.read(scope, target)
+
+    socket
+    |> assign(
+      narrowing: narrowing,
+      policy_target: if(security && narrowing, do: narrowing.target)
+    )
+    |> then(fn socket ->
+      if Narrowing.shared?(narrowing),
+        do: update(socket, :shared, &MapSet.put(&1, elem(target, 1))),
+        else: socket
+    end)
+  end
 
   defp load_facets(socket) do
     %{current_scope: scope, filters: filters, narrow: narrow, limits: limits} = socket.assigns
@@ -972,21 +930,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   end
 
   ## The rows and the policy
-
-  # The target the filters name, when the workspace has it: its policy is what the rows
-  # are weighed against, and where "Its policy" leads. A path without its system names
-  # the one target on that path, when only one system has it.
-  defp target_of(scope, {system, path}) when is_binary(system),
-    do: Runs.fetch_target(scope, system, path)
-
-  defp target_of(scope, {nil, path}) when is_binary(path) do
-    case Runs.resolve_target(scope, path) do
-      {system, ^path} when is_binary(system) -> Runs.fetch_target(scope, system, path)
-      _several_or_none -> nil
-    end
-  end
-
-  defp target_of(_scope, _target), do: nil
 
   defp refresh_policy(%{assigns: %{security: true, listing: %{}}} = socket) do
     %{current_scope: scope, policy_target: target} = socket.assigns
@@ -1036,7 +979,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     link = if effective.above, do: ApiaryWeb.Edition.above_policy_link(scope)
 
     above_link =
-      link && Map.put(link, :back, page_path(socket.assigns.page_base, socket.assigns.filters))
+      link &&
+        Map.put(link, :back, page_path(socket.assigns.current_scope, socket.assigns.filters))
 
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
@@ -1412,26 +1356,24 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     ]
   end
 
-  # The filters as tokens in the query field; the decision is the view's, and a target's
-  # page has no token for its own target.
-  defp tokens(base, filters, shared) do
+  # The filters as tokens in the query field; the decision is the view's.
+  defp tokens(scope, filters, shared) do
     filters
-    |> loose(base)
     |> Filters.tokens(except: [:decision], target_text: &target_text(&1, shared))
     |> Enum.map(fn token ->
       %{
         id: "connections-token-#{token.key}",
         qualifier: qualifier(token.key),
         value: token.value,
-        remove: token.without && page_path(base, token.without)
+        remove: token.without && page_path(scope, token.without)
       }
     end)
   end
 
   # The filter the empty state offers to remove: the last the reader set, never the
   # default window.
-  defp last_token(base, filters, shared) do
-    base
+  defp last_token(scope, filters, shared) do
+    scope
     |> tokens(filters, shared)
     |> Enum.filter(&(&1.remove && &1.id != "connections-token-started"))
     |> List.last()
@@ -1449,14 +1391,30 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp qualifier(:started), do: "seen"
   defp qualifier(key), do: Atom.to_string(key)
 
-  # The Target section's options in the one notation of a target.
+  # The Target section's options in the one notation of a target, each written as the
+  # links write it: the system only where the path is shared. A path given alone is one
+  # option with its target's: the first, as the facet puts the chosen first.
   defp target_options(facets, shared) do
     for {label, value, count} <- facet_options(facets, :target) do
       case Jason.decode(value) do
-        {:ok, [system, path]} -> {target_text({system, path}, shared), value, count}
-        _none -> {label, value, count}
+        {:ok, [system, path]} ->
+          {target_text({system, path}, shared),
+           Filters.target_value(Filters.link_target({system, path}, shared)), count}
+
+        _none ->
+          {label, value, count}
       end
     end
+    |> Enum.uniq_by(&elem(&1, 1))
+  end
+
+  # The Target section's choice, as its options write it: a path given alone is its one
+  # target's option.
+  defp menu_value(filters, narrowing, shared) do
+    narrowing
+    |> Narrowing.chosen(filters.target)
+    |> Filters.link_target(shared)
+    |> Filters.target_value()
   end
 
   # A target as the query writes it: its system before its path only where the path is on
@@ -1477,15 +1435,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp sort_name("runs"), do: gettext("most runs first")
   defp sort_name("attempts"), do: gettext("most attempts first")
 
-  # The page's path with the filters, less the target when the page is a target's.
-  defp page_path(%{path: path, fixed: fixed}, %Filters{} = filters) do
-    params = Filters.to_params(if fixed, do: %{filters | target: nil}, else: filters)
+  # The page's path with the filters.
+  defp page_path(scope, %Filters{} = filters) do
+    path = ~p"/#{scope.organisation}/#{scope.workspace}/network"
+    params = Filters.to_params(filters)
     if params == %{}, do: path, else: path <> "?" <> URI.encode_query(params)
   end
-
-  # The filters as the reader chose them: without the target a target's page fixes.
-  defp loose(%Filters{} = filters, %{fixed: nil}), do: filters
-  defp loose(%Filters{} = filters, %{fixed: _fixed}), do: %{filters | target: nil}
 
   defp run_path(scope, run),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network"
@@ -1527,15 +1482,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   # As `Filters.range_label/1` writes a day.
   defp day(date), do: Format.date(date)
 
-  # The target's name inside a sentence, set in mono.
-  defp mono_part(text) do
-    assigns = %{text: text}
-
-    ~H"""
-    <.mono>{@text}</.mono>
-    """
-  end
-
   defp facet_options(facets, name), do: (facets[name] || %{options: []}).options
   defp facet_total(facets, name), do: facets[name] && facets[name].total
 
@@ -1549,28 +1495,139 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: [{label, value, 0} | options]
   end
 
-  # The narrowed line's name of the target: as every page writes a target, its system
-  # only where its path is on more than one.
-  defp note_label(:none, _shared), do: gettext("Unassigned")
-  defp note_label(target, shared), do: target_text(target, shared)
+  # The line of the list narrowed to a target, under the title (the narrowing ruling):
+  # what it shows, the name leading to the target's page; the same target's runs, its
+  # policy, and "Show all destinations", which takes the target away and nothing else. A
+  # path that two targets share, given alone, names each system, each a link to the list
+  # narrowed to its target, and has no one policy. The links beside the sentence are
+  # named by it for a screen reader; when "Show all destinations" takes the line away,
+  # focus goes to the page's title.
+  attr :scope, :any, required: true
+  attr :filters, Filters, required: true
+  attr :narrowing, :map, default: nil, doc: "`ApiaryWeb.Narrowing.read/2` of the filters' target"
 
-  # The runs of the target the list is narrowed to: the Runs list with the same target,
-  # written as the sidebar carries it (`ApiaryWeb.Layouts.narrowed/2`), its system only
-  # where its path is shared.
-  defp runs_path(scope, target, shared) do
-    params =
-      case target do
-        {system, path} when is_binary(system) and is_binary(path) ->
-          Filters.target_params(if(MapSet.member?(shared, path), do: system), path)
+  attr :policy_target, :any,
+    default: nil,
+    doc: "the one target, read for its policy; nil without security"
 
-        {nil, path} when is_binary(path) ->
-          Filters.target_params(nil, path)
+  defp target_note(assigns) do
+    %{scope: scope, filters: filters, narrowing: narrowing} = assigns
+    shared = Narrowing.shared?(narrowing)
 
-        _none ->
-          Filters.target_params(nil, nil)
+    assigns =
+      case filters.target do
+        {_system, path} = target ->
+          found = narrowing && narrowing.target
+          system = Narrowing.shown_system(narrowing)
+          {linked, _path} = Filters.link_target(Narrowing.chosen(narrowing, target), shared)
+
+          assign(assigns,
+            path: path,
+            system: system,
+            label: if(system, do: "#{system}/#{path}", else: path),
+            shared_alone: Narrowing.shared_alone?(narrowing),
+            page: found && TargetComponents.target_path(scope, found.system, path, [], shared),
+            policy:
+              assigns.policy_target &&
+                TargetComponents.target_path(scope, found.system, path, ["policy"], shared),
+            runs:
+              ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{Filters.target_params(linked, path)}"
+          )
+
+        :none ->
+          assign(assigns,
+            path: nil,
+            system: nil,
+            label: gettext("Unassigned"),
+            shared_alone: false,
+            page: nil,
+            policy: nil,
+            runs:
+              ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{Filters.target_params(nil, nil)}"
+          )
       end
 
-    ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{params}"
+    # The sentence is given whole (no change tracking): a slot passed on through `rich/1`
+    # is not drawn again when only a part of it changes.
+    assigns =
+      assign(assigns,
+        all: page_path(scope, Filters.put(filters, target: nil)),
+        what: note_what(Map.delete(assigns, :__changed__))
+      )
+
+    ~H"""
+    <p
+      id="connections-target-note"
+      class="q-page-desc flex flex-wrap items-baseline gap-x-3 gap-y-1"
+      phx-remove={Narrowing.focus_title("connections-target-note")}
+    >
+      <span id="connections-target-what">
+        <.rich text={@what} />
+      </span>
+      <.link
+        id="connections-target-runs"
+        navigate={@runs}
+        class="q-link"
+        aria-label={gettext("Runs, narrowed to %{name}", name: @label)}
+      >
+        {gettext("Runs")}
+      </.link>
+      <.link
+        :if={@policy}
+        id="connections-target-policy"
+        navigate={@policy}
+        class="q-link"
+        aria-describedby="connections-target-what"
+      >
+        {gettext("Its policy")}
+      </.link>
+      <.link
+        id="connections-target-all"
+        patch={@all}
+        class="q-link"
+        aria-describedby="connections-target-what"
+      >
+        {gettext("Show all destinations")}
+      </.link>
+    </p>
+    """
+  end
+
+  defp note_what(%{shared_alone: true} = assigns) do
+    %{scope: scope, filters: filters} = assigns
+
+    Narrowing.shared_sentence(
+      assigns.narrowing,
+      "connections-target",
+      &page_path(scope, Filters.put(filters, target: &1))
+    )
+  end
+
+  defp note_what(assigns),
+    do: rich_gettext("Showing %{target} only.", target: note_name(assigns))
+
+  defp note_name(%{path: nil} = assigns) do
+    ~H"""
+    <span id="connections-target-name">{@label}</span>
+    """
+  end
+
+  defp note_name(%{page: page} = assigns) when is_binary(page) do
+    ~H"""
+    <.link id="connections-target-name" navigate={@page} class="q-link q-narrowed-name"><.target_name
+      path={@path}
+      system={@system}
+    /></.link>
+    """
+  end
+
+  defp note_name(assigns) do
+    ~H"""
+    <span id="connections-target-name" class="q-narrowed-name"><.target_name
+      path={@path}
+      system={@system}
+    /></span>
+    """
   end
 
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
