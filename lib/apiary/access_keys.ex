@@ -19,9 +19,9 @@ defmodule Apiary.AccessKeys do
       (`revoke_access_key/2`, `access_key.revoke`), and every key of a deleted node with
       it (`Apiary.Nodes.delete_node/2`).
 
-  A node holds at most two approved keys and one that awaits approval: a paste is refused
-  while it holds two keys, approved or not, an approval while it holds two approved ones,
-  and an enrolment while it holds one awaiting approval or two approved,
+  A node holds at most two keys at a time, at most one of them awaiting approval: a paste
+  is refused while it holds two keys, approved or not, an approval while it holds two
+  approved ones, and an enrolment while it holds one awaiting approval or two approved,
   `{:error, :key_limit}`. A key's label is unique among the node's keys in use. Its
   stored-secrets flag is fixed when it is made; there is no rotation of a key: to change
   the flag, or replace a lost key, a new key is added for the same node, and the old one
@@ -201,10 +201,10 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  key_limits/0 is how many keys a node holds at most: `approved`, approved and not
-  revoked, and `pending`, awaiting approval. A paste, an approval and an enrolment
-  (`enrol/2`), the one way a key comes to await approval, count them under the node's
-  lock.
+  key_limits/0 is how many keys a node holds at most: `approved` at a time, approved (and
+  not revoked) or awaiting approval, and `pending` of those awaiting approval. A paste, an
+  approval and an enrolment (`enrol/2`), the one way a key comes to await approval, count
+  them under the node's lock.
   """
   @spec key_limits() :: %{approved: pos_integer, pending: pos_integer}
   def key_limits, do: %{approved: @approved_limit, pending: @pending_limit}

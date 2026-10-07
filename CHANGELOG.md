@@ -72,11 +72,11 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   runner file's `server` lines (`url`, `access_key_id`, `apiary_public_key`) and the same
   id and pin as `QORY_ACCESS_KEY_ID` and `QORY_APIARY_PUBLIC_KEY` for a CI, and which an
   approved key's card opens again. Owners and admins make and revoke codes, add, approve,
-  reject and revoke keys, each in the audit trail; a node holds at most two approved keys
-  and one awaiting approval, and deleting a node revokes its keys and codes. Enrolment is
-  limited per address, 1 a second and 10 at once. Every public key received passes the
-  contract's key checks, and a public key serves one access key, ever, on the instance.
-  Each key's row carries an integrity code, checked before the key is trusted.
+  reject and revoke keys, each in the audit trail; a node holds two keys at a time, at
+  most one of them awaiting approval, and deleting a node revokes its keys and codes.
+  Enrolment is limited per address, 1 a second and 10 at once. Every public key received
+  passes the contract's key checks, and a public key serves one access key, ever, on the
+  instance. Each key's row carries an integrity code, checked before the key is trusted.
 - A node's instances: what a runner using the node's access key reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation. An
   instance runs while it has a run the lost-run check holds alive. The Nodes list says

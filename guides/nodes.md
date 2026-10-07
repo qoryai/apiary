@@ -27,7 +27,7 @@ only the public half, so nothing the server holds can sign for the machine. Ever
 of the server is signed too, with the server's own key, which the machine pins as
 `apiary_public_key` and checks every answer under.
 
-A node holds at most two approved keys, and one more awaiting approval: two, so that a
+A node holds two keys at a time, at most one of them awaiting approval: two, so that a
 machine can move to a new key before the old one is revoked. Each key's **Stored secrets**
 is fixed when it is made. A key is never rotated: a new one is made, approved, and the old
 one revoked.
