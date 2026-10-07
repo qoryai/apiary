@@ -8,6 +8,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
@@ -20,6 +21,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   alias ApiaryWeb.{Format, NodeComponents}
 
   setup :register_and_log_in_user
+
+  # The runner contract's fixture access key (keys.json): refused everywhere.
+  @fixture_public_key "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
 
   defp tab_path(scope, node, rest \\ ""),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key" <> rest
@@ -93,13 +97,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "A machine signs every request with its own key. Qory keeps only the public half."
              )
 
-      assert has_element?(
-               lv,
-               "#node-keys-none",
-               "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key qory access-key create printed there."
-             )
-
-      assert has_element?(lv, "#node-keys-none .font-mono", "qory access-key create")
+      # With no key, the way that suits a node leads (the ways' own tests are below).
+      assert has_element?(lv, "#node-keys-lead-title", "Enrol this machine with qory")
+      refute has_element?(lv, "#node-keys-none")
 
       # Two keys at a time; none awaits anything.
       assert render(lv) =~ "A node holds at most 2 keys at a time."
@@ -108,6 +108,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-codes-none", "No enrolment code is outstanding.")
       assert has_element?(lv, "#key-add-button", "Add a public key")
       assert has_element?(lv, "#code-new-button", "New enrolment code")
+      assert has_element?(lv, "#key-generate-button", "Generate a key")
       assert page_title(lv) =~ "Access key · build-01"
       refute_untrue(html)
     end
@@ -850,8 +851,485 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     end
   end
 
+  describe "the ways to give a node its key" do
+    # The ids of the row's buttons, in their order, and those shown as primary.
+    defp ways(lv) do
+      doc = lv |> element("#node-keys-ways") |> render() |> LazyHTML.from_fragment()
+
+      {doc |> LazyHTML.query("[id$=-button]") |> LazyHTML.attribute("id"),
+       doc |> LazyHTML.query(".btn-primary") |> LazyHTML.attribute("id")}
+    end
+
+    test "a node with no active key leads with enrolling the machine with qory", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert has_element?(lv, "h3#node-keys-lead-title", "Enrol this machine with qory")
+
+      assert lv |> element("#node-keys-lead p") |> render() |> text() |> String.trim() ==
+               "Make a code, then run qory access-key enrol with it on the machine. The machine makes its own key, and the secret never shows on a screen."
+
+      assert has_element?(lv, "#node-keys-lead p .font-mono", "qory access-key enrol")
+
+      assert ways(lv) ==
+               {~w(code-new-button key-generate-button key-add-button), ["code-new-button"]}
+
+      assert has_element?(
+               lv,
+               ~s{#key-generate-button[href="#{tab_path(scope, node, "/generate")}"]}
+             )
+
+      refute has_element?(lv, "#node-keys-none")
+    end
+
+    test "a pool with no active key leads with generating a key", %{conn: conn, scope: scope} do
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool))
+
+      assert has_element?(lv, "h3#node-keys-lead-title", "Generate a key for this pool")
+
+      assert lv |> element("#node-keys-lead p") |> render() |> text() |> String.trim() ==
+               "The pool's instances share one key. This browser makes it and shows you the secret once, for your CI's secret store; Qory receives only the public half."
+
+      assert ways(lv) ==
+               {~w(key-generate-button code-new-button key-add-button), ["key-generate-button"]}
+    end
+
+    test "once a key is active, the three stay, plain, the kind's way first; a revoked one leads again",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      %{access_key: key} = node_key_fixture(scope, node)
+      node_key_fixture(scope, pool)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      refute has_element?(lv, "#node-keys-lead")
+      assert ways(lv) == {~w(code-new-button key-generate-button key-add-button), []}
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool))
+      refute has_element?(lv, "#node-keys-lead")
+      assert ways(lv) == {~w(key-generate-button code-new-button key-add-button), []}
+
+      {:ok, _} = AccessKeys.revoke_access_key(scope, key)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      assert has_element?(lv, "#node-keys-lead-title", "Enrol this machine with qory")
+      refute has_element?(lv, "#node-keys-none")
+    end
+  end
+
+  describe "generating a key in the browser" do
+    defp generated_path(scope, node, key_id),
+      do: tab_path(scope, node, "/keys/#{key_id}/generated")
+
+    defp push_key(lv, key) do
+      render_hook(lv, "generate_key", %{"key" => key})
+    end
+
+    defp browser_key(attrs \\ %{}) do
+      Map.merge(
+        %{
+          "label" => "spot-runners",
+          "allow_secrets" => "false",
+          "public_key" => ed25519_key_pair().encoded
+        },
+        attrs
+      )
+    end
+
+    defp add_entries(node) do
+      Repo.all(
+        from e in Apiary.Audit.Entry,
+          where:
+            e.action == "access_key.add" and
+              fragment("?->>'node_id'", e.details) == ^node.public_id
+      )
+    end
+
+    test "is a form page whose form holds the label and the flag alone, and no submit event", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      lv |> element("#key-generate-button") |> render_click()
+      assert_patch(lv, tab_path(scope, node, "/generate"))
+
+      assert has_element?(lv, ~s{section#key-generate[phx-hook="GenerateKey"]})
+      assert has_element?(lv, "h1#key-generate-header-title", "Generate a key")
+
+      assert lv
+             |> element("#key-generate-header-description")
+             |> render()
+             |> text()
+             |> String.trim() ==
+               "A key for build-01, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made. For a machine of your own, enrolling it with qory keeps the secret off every screen."
+
+      assert page_title(lv) =~ "Generate a key · build-01"
+
+      # No phx-submit: the hook takes the submit. A same-origin action, posting.
+      form = lv |> element("#key-generate-form") |> render()
+      refute form =~ "phx-submit"
+      assert form =~ ~s(action="#{tab_path(scope, node, "/generate")}")
+      assert form =~ ~s(phx-change="validate_generate")
+
+      names =
+        form
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[name]")
+        |> LazyHTML.attribute("name")
+        |> Enum.uniq()
+        |> Enum.sort()
+
+      assert names == ["_csrf_token", "key[allow_secrets]", "key[label]"]
+
+      refute has_element?(
+               lv,
+               "#key-generate-form [name*=secret]:not([name='key[allow_secrets]'])"
+             )
+
+      refute has_element?(lv, "#key-generate-form textarea")
+      refute has_element?(lv, "#key-generate-form [name*=public_key]")
+
+      assert has_element?(
+               lv,
+               ~s{#key-generate-form input[name="key[label]"][placeholder="build-01"]}
+             )
+
+      assert has_element?(lv, ~s{#key-generate-submit[type="submit"]}, "Generate key")
+      assert has_element?(lv, "#key-generate-submit .btn-busy", "Generating")
+
+      # The notices are the server's words, hidden by the class, never by the attribute.
+      assert has_element?(lv, ~s{#key-generate-notices[phx-update="ignore"]})
+
+      for {id, words} <- [
+            {"key-generate-insecure",
+             "This browser makes keys only on a page served over HTTPS. Open Qory over HTTPS, or enrol the machine with qory."},
+            {"key-generate-unsupported",
+             "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or enrol the machine with qory."},
+            {"key-generate-lost",
+             "The connection to Qory dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."}
+          ] do
+        assert has_element?(lv, "##{id}.hidden")
+        refute has_element?(lv, "##{id}[hidden]")
+        assert lv |> element("##{id}") |> render() |> text() |> String.trim() == words
+      end
+
+      # Changing the form validates it, with no key yet.
+      html = lv |> form("#key-generate-form", key: %{label: ""}) |> render_change()
+      assert html =~ "can&#39;t be blank"
+      assert AccessKeys.list_for_node(scope, node) == []
+    end
+
+    test "for a pool, says so without the line for a machine", %{conn: conn, scope: scope} do
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/generate"))
+
+      assert lv
+             |> element("#key-generate-header-description")
+             |> render()
+             |> text()
+             |> String.trim() ==
+               "A key for spot-runners, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made."
+
+      assert has_element?(
+               lv,
+               ~s{#key-generate-form input[name="key[label]"][placeholder="spot-runners"]}
+             )
+    end
+
+    test "Cancel leads back to the tab, the focus on Generate a key", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+
+      lv |> element("#key-generate-save a", "Cancel") |> render_click()
+      assert_patch(lv, tab_path(scope, node))
+      assert_push_event(lv, "run:focus", %{id: "key-generate-button"})
+    end
+
+    test "the key the browser made is added by its public half, and its variables shown with an empty slot",
+         %{conn: conn, scope: scope} do
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/generate"))
+      key = browser_key(%{"allow_secrets" => "true"})
+
+      push_key(lv, key)
+
+      assert [%AccessKey{} = added] = AccessKeys.list_for_node(scope, pool)
+      assert_reply(lv, %{key_id: key_id})
+      assert key_id == added.key_id
+      assert_patch(lv, generated_path(scope, pool, added.key_id))
+
+      assert added.arrived_by == :browser
+      assert AccessKey.status(added) == :active
+      assert added.allow_secrets
+      assert added.created_by_id == scope.user.id
+      assert Base.url_encode64(added.public_key, padding: false) == key["public_key"]
+      assert [entry] = add_entries(pool)
+      assert entry.after["arrived_by"] == "browser"
+
+      html = render(lv)
+      assert lv |> element("#flash-group") |> render() =~ "spot-runners is added."
+
+      # The same section, now the variables.
+      assert has_element?(lv, ~s{section#key-generate[phx-hook="GenerateKey"]})
+      refute has_element?(lv, "#key-generate-form")
+      assert has_element?(lv, "h1#key-generated-header-title", "Variables for spot-runners")
+      assert page_title(lv) =~ "Variables for spot-runners · spot-runners"
+
+      assert lv
+             |> element("#key-generated-header-description")
+             |> render()
+             |> text()
+             |> String.trim() ==
+               "For spot-runners. Set these three variables where the runner starts."
+
+      assert lv
+             |> element("#key-generated-once")
+             |> render()
+             |> text()
+             |> String.split()
+             |> Enum.join(" ") ==
+               "The secret is shown once. Copy it now: it was made in this browser, Qory never received it, and it can't be shown again."
+
+      assert has_element?(lv, "#key-generated-once strong", "The secret is shown once.")
+
+      [{"QORY_ACCESS_KEY_ID", id}, {"QORY_APIARY_PUBLIC_KEY", pin}] = AccessKeys.variables(added)
+      assert has_element?(lv, "#key-generated-id", id)
+      assert lv |> element("#key-generated-pin") |> render() |> text() == pin
+      {_yaml, env_pin} = pin_lines()
+      assert "QORY_APIARY_PUBLIC_KEY=" <> pin == env_pin
+
+      # The slot: ignored by LiveView, the stored public key on it, its value empty.
+      assert has_element?(
+               lv,
+               ~s{#key-generated-secret[phx-update="ignore"][data-public-key="#{key["public_key"]}"]}
+             )
+
+      assert lv |> element("#key-generated-secret-value") |> render() =~
+               ~r{<code[^>]*id="key-generated-secret-value"[^>]*>\s*</code>}
+
+      assert has_element?(lv, ~s{#key-generated-secret-value[tabindex="-1"]})
+      assert has_element?(lv, "#key-generated-secret-gone.hidden")
+
+      assert lv |> element("#key-generated-secret-gone") |> render() |> text() |> String.trim() ==
+               "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke spot-runners and generate another key."
+
+      for {copy, target, name} <- [
+            {"key-generated-id-copy", "#key-generated-id", "QORY_ACCESS_KEY_ID"},
+            {"key-generated-secret-copy", "#key-generated-secret-value",
+             "QORY_ACCESS_KEY_SECRET"},
+            {"key-generated-pin-copy", "#key-generated-pin", "QORY_APIARY_PUBLIC_KEY"}
+          ] do
+        assert has_element?(
+                 lv,
+                 ~s{##{copy}[data-copy-target="#{target}"][aria-label="Copy #{name}"]}
+               )
+      end
+
+      assert lv |> element("#key-generated-where") |> render() |> text() |> String.trim() ==
+               "Only QORY_ACCESS_KEY_SECRET belongs in your CI's secret store; the other two are plain settings. The runner file then needs only url."
+
+      assert has_element?(
+               lv,
+               "#key-generated-done",
+               "Once you leave this page, the secret is not shown again."
+             )
+
+      # Nothing secret anywhere, and no form at all.
+      refute html =~ ~r/qak_/i
+      refute has_element?(lv, "#key-generate form")
+      refute has_element?(lv, "#key-generate input")
+      refute has_element?(lv, "#key-generate textarea")
+
+      # Done: the tab, the focus on the key's heading, its card saying how it came.
+      lv |> element("#key-generated-done-button") |> render_click()
+      assert_patch(lv, tab_path(scope, pool))
+      assert_push_event(lv, "run:focus", %{id: "key-" <> _})
+
+      assert has_element?(
+               lv,
+               "#key-#{added.key_id}-arrived",
+               "Made in a browser by #{scope.user.email}, #{Format.datetime(added.received_at)}"
+             )
+    end
+
+    test "opened again, the page shows the id and the pin, and holds no secret", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      %{access_key: key} = browser_key_fixture(scope, node, %{label: "ci"})
+
+      {:ok, lv, html} = live(conn, generated_path(scope, node, key.key_id))
+
+      assert has_element?(lv, "h1#key-generated-header-title", "Variables for ci")
+      assert has_element?(lv, "#key-generated-id", key.key_id)
+      assert has_element?(lv, "#key-generated-secret-gone.hidden")
+      refute html =~ ~r/qak_/i
+    end
+
+    test "a crafted event is refused before anything is stored", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+
+      for key <- [
+            Map.put(browser_key(), "secret", "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"),
+            Map.put(browser_key(), "other", "x"),
+            browser_key(%{"label" => "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"}),
+            browser_key(%{"label" => "ci QAK_x"}),
+            browser_key(%{"allow_secrets" => "Qak_"}),
+            browser_key(%{"public_key" => "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"}),
+            browser_key(%{"public_key" => "not-a-key"}),
+            browser_key(%{"public_key" => @fixture_public_key}),
+            browser_key(%{"label" => 1}),
+            browser_key(%{"public_key" => ["x"]}),
+            Map.delete(browser_key(), "public_key"),
+            "x"
+          ] do
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+        push_key(lv, key)
+        assert_reply(lv, reply)
+        refute Map.has_key?(reply, :key_id), inspect(key)
+        assert_patch(lv, tab_path(scope, node))
+        flash = lv |> element("#flash-group") |> render()
+        assert flash =~ "The key wasn&#39;t added."
+        assert flash =~ "Try again."
+      end
+
+      # A field beside the key, too.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+      render_hook(lv, "generate_key", %{"key" => browser_key(), "secret" => "x"})
+      assert_reply(lv, %{} = reply)
+      refute Map.has_key?(reply, :key_id)
+
+      assert AccessKeys.list_for_node(scope, node) == []
+      assert add_entries(node) == []
+    end
+
+    test "the event acts only on its page, with the form open", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      %{access_key: key} = browser_key_fixture(scope, node)
+
+      for rest <- ["", "/add", "/new-code", "/keys/#{key.key_id}/generated"] do
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, rest))
+        push_key(lv, browser_key())
+        assert_reply(lv, reply)
+        refute Map.has_key?(reply, :key_id)
+      end
+
+      assert [_only] = AccessKeys.list_for_node(scope, node)
+    end
+
+    test "a label already taken is said on the form, and nothing is added", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      node_key_fixture(scope, node, %{label: "ci"})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+
+      html = push_key(lv, browser_key(%{"label" => "ci"}))
+      assert_reply(lv, reply)
+      refute Map.has_key?(reply, :key_id)
+      assert html =~ "is already the label of a key of this node"
+      assert has_element?(lv, "#key-generate-form")
+      assert length(AccessKeys.list_for_node(scope, node)) == 1
+    end
+
+    test "at the limit, the page and the event go back to the tab with what to do", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      node_key_fixture(scope, node)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+      # A second key arrives meanwhile.
+      node_key_fixture(scope, node)
+      push_key(lv, browser_key())
+      assert_reply(lv, reply)
+      refute Map.has_key?(reply, :key_id)
+      assert_patch(lv, tab_path(scope, node))
+
+      flash = lv |> element("#flash-group") |> render()
+      assert flash =~ "build-01 holds two keys already."
+      assert flash =~ "Revoke one before you add another."
+
+      {:ok, _lv, html} =
+        live(conn, tab_path(scope, node, "/generate"))
+        |> follow_redirect(conn, tab_path(scope, node))
+
+      assert html =~ "build-01 holds two keys already."
+      assert length(AccessKeys.list_for_node(scope, node)) == 2
+    end
+
+    test "the variables' address is for an active key the reader made in a browser alone", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      %{scope: admin} = member_fixture(scope, :admin)
+      %{access_key: others} = browser_key_fixture(admin, node, %{label: "others"})
+      %{access_key: pasted} = node_key_fixture(scope, node, %{label: "pasted"})
+
+      # Another person's browser key, and a pasted one: their runner file, no flash.
+      for key <- [others, pasted] do
+        {:ok, lv, _html} =
+          live(conn, generated_path(scope, node, key.key_id))
+          |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+
+        assert has_element?(lv, "#key-runner-file")
+        refute has_element?(lv, "#key-generated-secret")
+      end
+
+      # A revoked one, and none of the node's: back to the tab, said.
+      {:ok, _} = AccessKeys.revoke_access_key(scope, others)
+      %{access_key: elsewhere} = browser_key_fixture(scope, node_fixture(scope))
+
+      for {key, words} <- [
+            {others, "others is revoked."},
+            {elsewhere, "This node has no such key."}
+          ] do
+        {:ok, _lv, html} =
+          live(conn, generated_path(scope, node, key.key_id))
+          |> follow_redirect(conn, tab_path(scope, node))
+
+        assert html =~ words
+      end
+    end
+
+    test "a member is refused the page and the event", %{scope: scope} do
+      node = node_fixture(scope)
+      conn = member_conn(scope)
+
+      {:ok, _lv, html} =
+        live(conn, tab_path(scope, node, "/generate"))
+        |> follow_redirect(conn, tab_path(scope, node))
+
+      assert html =~ "Only owners and admins add a node&#39;s keys."
+      assert AccessKeys.list_for_node(scope, node) == []
+    end
+
+    test "an admin's own key goes to its runner file once they are a member", %{scope: scope} do
+      node = node_fixture(scope)
+      %{scope: admin, user: user, membership: membership} = member_fixture(scope, :admin)
+      %{access_key: key} = browser_key_fixture(admin, node)
+      Repo.update!(Ecto.Changeset.change(membership, level: :member))
+      conn = log_in_user(build_conn(), user)
+
+      {:ok, lv, _html} =
+        live(conn, generated_path(scope, node, key.key_id))
+        |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+
+      assert has_element?(lv, "#key-runner-file")
+    end
+  end
+
   describe "a member" do
-    test "with no key, reads that there is none, not how to make one; an admin reads how",
+    test "with no key, reads that there is none, not how to make one; an admin is led",
          %{scope: scope} do
       node = node_fixture(scope, name: "build-01")
 
@@ -863,13 +1341,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#node-keys-none", "enrolment code")
       refute has_element?(lv, "#node-keys-none .font-mono")
 
+      refute has_element?(lv, "#node-keys-lead")
+      refute has_element?(lv, "#node-keys-ways")
+
       {:ok, lv, _html} = live(member_conn(scope, :admin), tab_path(scope, node))
 
-      assert has_element?(
-               lv,
-               "#node-keys-none",
-               "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key qory access-key create printed there."
-             )
+      assert has_element?(lv, "#node-keys-lead-title", "Enrol this machine with qory")
+      refute has_element?(lv, "#node-keys-none")
     end
 
     test "reads the keys and the codes, with no act", %{scope: scope} do
@@ -890,6 +1368,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#code-#{row.id}")
       refute has_element?(lv, "#key-add-button")
       refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#key-generate-button")
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
       refute has_element?(lv, "#code-#{row.id}-revoke")
     end
@@ -902,6 +1381,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       for {rest, words} <- [
             {"/add", "Only owners and admins add a node's keys."},
+            {"/generate", "Only owners and admins add a node's keys."},
             {"/new-code", "Only owners and admins make enrolment codes."},
             {"/keys/#{key.key_id}/revoke", "Only owners and admins manage a node's keys."},
             {"/codes/#{row.id}/revoke", "Only owners and admins manage a node's keys."}
@@ -916,6 +1396,14 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
             {"add_key",
              %{"key" => %{"label" => "x", "public_key" => ed25519_key_pair().encoded}}},
             {"create_code", %{"code" => %{}}},
+            {"generate_key",
+             %{
+               "key" => %{
+                 "label" => "x",
+                 "allow_secrets" => "false",
+                 "public_key" => ed25519_key_pair().encoded
+               }
+             }},
             {"revoke", %{}},
             {"revoke_code", %{}}
           ] do
