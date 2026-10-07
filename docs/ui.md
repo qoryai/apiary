@@ -335,16 +335,31 @@ opened last.
 ### Secrets and variables
 
 A workspace's Secrets and variables (`ApiaryWeb.SecretLive.Index`, with `security`, for a
-reader of `secret.read`) is one section of two views, tabs with their counts over the
-list (`<.views>`): **Secrets**, `/settings/secrets`, and **Variables**,
-`/settings/variables`. Each is a list on the list pattern (Lists, below), its search, its
+reader of `secret.read`) is one section of two tabs, under its `<h1>` and its sentence:
+**Secrets**, `/settings/secrets`, and **Variables**, `/settings/variables`
+(`PageComponents.page_tabs/1`, `place="section"`, `#secrets-tabs-secrets` and
+`#secrets-tabs-variables`), each a link with its count, the current one
+`aria-current="page"`, not an ARIA tablist; the bar is a navigation named "Secrets and
+variables", wraps and does not stick. Each tab's panel holds, in order, the line that runs
+don't receive these yet, who changes them, its New (New secret, New variable) beside its
+search, Filter and Sort, and its list: nothing in the header changes with the tab. Each
+list is on the list pattern (Lists, below), its search, its
 Filter menu, Sort and its tokens in the URL (`ApiaryWeb.SecretLive.Query`): a secret found
 by its name or a value ID and filtered by one value or several; a variable by its name or
 its value, and filtered by its lock and by whether a repository sets it too; both ordered
 by name or the latest change.
 
+- **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
+  both tabs (a tab is not a segment). The second column marks the section as the page on
+  Secrets, and as its parent (`aria-current="true"`) on Variables, where the tab is the
+  page. The browser's title names the tab: `Secrets and variables · Workspace settings ·
+  Main · Acme`, `Variables · Secrets and variables · Workspace settings · Main · Acme`.
+- **One status line** (`#secrets-and-variables-status`, `role="status"`), there from the
+  start and outside both tabs' parts, says out of sight the tab a switch led to and its
+  count ("Variables, 7"), and under the filters what a search left ("1 secret matches").
+  The focus stays on the tab that was activated.
 - **Runs don't receive these yet.** A run receives its security policy alone, so each
-  view, and each of its pages, says once near its top "Runs don't receive secrets yet."
+  tab, and each of its pages, says once near its top "Runs don't receive secrets yet."
   or "Runs don't receive variables yet.", with "Today a run receives only its security
   policy." (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a
   run is given what it holds.
@@ -374,8 +389,9 @@ by name or the latest change.
   (`/:id/add-value`), Change value (`/:id/change-value` for a secret's one value without
   a value ID, `/:id/values/:value_id/change` for a named one) and Rename value
   (`…/values/:value_id/rename`); for variables New variable (`/settings/variables/new`) and
-  Change value (`/:id/change`). The breadcrumb ends `Secrets and variables / New secret`,
-  the section leading back to the view the page was opened from, with its query.
+  Change value (`/:id/change`). They show no tabs. The breadcrumb ends `Secrets and
+  variables / New secret` (and `Secrets and variables / New variable`), the section
+  leading back to the tab the page was opened from, with its query.
 - **The targets of a variable** are a page of the section too, to read
   (`/settings/variables/:id/targets`, "Repositories that set NODE_ENV"): each with its own
   value or its value set aside by the lock, found by their path past ten, and Back to the
@@ -391,11 +407,11 @@ by name or the latest change.
   under its question, as an alert, the focus left on its button; a Lock or Unlock from
   the menu that is refused says why in the flash. A secret is named by its public id, a
   variable by its row's. A path the reader may not open, or of a secret or variable
-  the workspace does not have, sends them back to the view and says why.
-- **Who.** Every member reads both views; owners and admins change them (`secret.write`,
-  `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, under the
-  section's sentence, "Only owners and admins change this."; a form's page sends them back
-  to the view with the same words.
+  the workspace does not have, sends them back to the tab and says why.
+- **Who.** Every member reads both tabs; owners and admins change them (`secret.write`,
+  `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, in the tab's
+  panel, "Only owners and admins change this."; a form's page sends them back to the tab
+  with the same words.
 
 ### Access keys
 
@@ -811,7 +827,7 @@ the space beside it. `width` is one of three:
 - `work`: fluid, with no cap, for a work surface such as a run.
 - `read`: a 720 px column, for forms and settings; prose inside anything keeps 72ch.
 
-A sticky tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's gutter
+A thing's tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's gutter
 (`--q-gutter`). The frame is set in the content's sizes, never smaller: a sidebar item and
 a tab 14 px and regular, the current one medium (and a tab's underline honey, the current
 step); a count 12 px in the sans face, a tab's in a filled pill and a tab's denials red
@@ -836,8 +852,9 @@ needs becomes a component, or an attribute of one, not a copy.
 - **`ApiaryWeb.PageComponents`**: `page_header/1`, a page's title (its one `<h1>`,
   `tabindex="-1"`), one line of what it is for and its actions; `page_tabs/1`, a thing's
   tabs (a target's, a node's, a run's), links, Settings, where the thing has it, last and
-  set apart at the bar's right end; `settings_page/1`, a page of a level's settings, whose
-  sections the frame lists (Two levels, under The shell); `page_form/1` with
+  set apart at the bar's right end, and a settings section's (Secrets | Variables,
+  `place="section"`, in the flow, wrapping); `settings_page/1`, a page of a level's
+  settings, whose sections the frame lists (Two levels, under The shell); `page_form/1` with
   `page_form_foot/1`, a form as a page of its own, its title, one line and the form, with
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads, such as Back to the variables, stays

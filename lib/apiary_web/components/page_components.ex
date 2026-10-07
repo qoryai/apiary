@@ -78,10 +78,20 @@ defmodule ApiaryWeb.PageComponents do
         <:tab key={:overview} patch={overview}>{gettext("Overview")}</:tab>
         <:tab key={:settings} patch={settings} settings>{gettext("Settings")}</:tab>
       </.page_tabs>
+
+  A thing's bar sticks under the top bar and scrolls sideways. The tabs of a settings
+  section (`place="section"`, Secrets | Variables, named by the section's title) stay in
+  the page's flow under its `<h1>`, and wrap instead of scrolling.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the bar's name: the kind of thing, as Target"
   attr :current, :atom, required: true, doc: "the key of the page's tab"
+
+  attr :place, :string,
+    default: "thing",
+    values: ~w(thing section),
+    doc:
+      "a thing's tabs (sticky, scrolling sideways), or a settings section's (in the flow, wrapping)"
 
   slot :tab, required: true do
     attr :key, :atom, required: true
@@ -95,7 +105,16 @@ defmodule ApiaryWeb.PageComponents do
 
   def page_tabs(assigns) do
     ~H"""
-    <nav id={@id} class="q-tabs" aria-label={@label}>
+    <%!-- `.q-tabs` is `@layer qory`, which a utility loses to: a section's tabs undo its
+         stickiness, its bleed to the gutter and its sideways scroll as important. --%>
+    <nav
+      id={@id}
+      class={[
+        "q-tabs",
+        @place == "section" && "!static !mx-0 !flex-wrap !overflow-visible !px-0"
+      ]}
+      aria-label={@label}
+    >
       <.link
         :for={tab <- @tab}
         id={"#{@id}-#{tab.key}"}
