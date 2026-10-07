@@ -90,8 +90,9 @@ jobs:
           E2E_DATABASE_URL: ecto://postgres:postgres@localhost:5432/apiary_e2e
         run: e2e/run.sh
 
-      # What the job printed and what the session printed. The runner file, the one place
-      # the key's secret is, is removed by the job and is not among them.
+      # What the job printed and what the session printed. The access key's secret, in
+      # access-key-secret beside the runner file, is removed by the job and is not among
+      # them.
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v5

@@ -25,16 +25,18 @@ It leaves with status 0 only when every assertion held, and prints the timings:
 | Piece | What it is |
 |---|---|
 | The test instance | This application with production's settings (`MIX_ENV=prod`, migrations on boot, JSON logs), on a database of its own, `apiary_e2e`, and a port of its own, 4180. `run.sh` starts it with `mix run e2e/scenario.exs`, so the scenario runs in the virtual machine that answers the runner. The database is dropped before and after; a `DATABASE_URL` that does not end in `_e2e` is refused. |
-| The node | `compose.yaml`'s `node`: a Linux machine with a container engine of its own (Docker in Docker). `qory run` runs here, built from the pinned source for Linux, and builds its wall with the node's engine: an internal network, the agent's container on it and on nothing else, the relay's container beside it. The node has its own `XDG_CONFIG_HOME`; nobody's `~/.config/qory` is read or written. |
+| The node | `compose.yaml`'s `node`: a Linux machine with a container engine of its own (Docker in Docker). `qory run` runs here, built from the pinned source for Linux, and builds its wall with the node's engine: an internal network, the agent's container on it and on nothing else, the relay's container beside it. The node has its own `XDG_CONFIG_HOME`, a copy of what the job writes for it; nobody's `~/.config/qory` is read or written. |
 | The session | `checkout/bin/fake-runtime`, started by `qory run` as the runtime, in the wall's container (`curlimages/curl`). Not a model: a loop that asks for one page of the upstream every few seconds, and keeps asking after it got through, so the deny can refuse it. It first tries to go around the proxy and leaves with 3 if that works, so a pass also says there was a wall. |
 | The upstream | `compose.yaml`'s `upstream`: nginx with a certificate made for the run, on the node's network under the name `files.e2e.test`. No site outside the job is asked for anything. |
 
 The server contract lets a runner speak plain http to a loopback address only. So the node
 reaches the test instance as `http://127.0.0.1:4180`, which is also the instance's
 `PUBLIC_URL`: a forwarder in the node (`socat`) carries that port to the host, as a tunnel
-would. Everything after that is the contract as it is: signed discovery, the ping, the run
-configuration for the checkout's forge and repository, signed batches, the digests in the
-answers.
+would. Everything after that is the contract as it is: every request signed with the
+node's Ed25519 access key and every answer signed with the instance's own key
+(`APIARY_SIGNING_SECRET`, a fresh random value for each job), which the node pins;
+discovery, the ping, the run configuration for the checkout's forge and repository,
+batches, the digests in the answers.
 
 ## The scenario
 
@@ -44,9 +46,18 @@ answers.
    sign-up, on its fresh database, which the closed sign-up settings do not refuse and
    which makes the instance's own organisation. It sets the workspace to
    `enforce` with nothing allowed (`Apiary.Policy.set_mode/2`, which is also what makes
-   the workspace a managed one that serves a run configuration), and creates an access
-   key. The key's `server` block and the wall section become the node's `runner.yaml`,
-   mode 0600. The secret goes there and nowhere else; nothing prints it.
+   the workspace a managed one that serves a run configuration), and makes a node,
+   `build-01` (`Apiary.Nodes.create_node/2`). It generates a fresh Ed25519 key and adds
+   its public key to the node the way the node's page takes a paste
+   (`Apiary.AccessKeys.add_access_key/3`), approved as it is added, without stored
+   secrets. The key's `server` lines, `url`, `access_key_id` and the
+   `apiary_public_key` pin (`Apiary.AccessKeys.runner_lines/3`, what the key's page
+   shows), and the wall section become the node's `runner.yaml`. The key's secret, `qak_`
+   and its seed, goes into `access-key-secret` beside it, mode 0600, in a directory of
+   mode 0700; nothing prints it. `node/prepare.sh` copies the three files into a
+   directory of the node's own, root's, mode 0700, each file mode 0600, since qory
+   reads the secret only from a file its user owns, and keeps its instance id and locks
+   beside it.
 2. Makes the node ready (`node/prepare.sh`: the checkout with an origin remote, which is
    where the run's `forge` and `repository` come from, and its harness composed) and starts
    the session (`node/session.sh`: `qory run --headless`).

@@ -2,8 +2,11 @@
 # endpoint serving, so what it calls is what a page calls, in the same virtual machine
 # that answers the runner. run.sh starts it; see e2e/README.md.
 #
-# It makes a workspace with an owner and an access key, puts the workspace in enforce with
-# nothing allowed, writes the node's runner file, starts the session on the node, waits
+# It makes a workspace with an owner, a node and the node's access key: a fresh Ed25519
+# key, generated here, whose public key is pasted into the node the way the node's page
+# adds one, approved as it is added. It puts the workspace in enforce with nothing
+# allowed, writes the node's runner file, with the server lines the key's page shows, and
+# the key's secret in access-key-secret beside it, starts the session on the node, waits
 # for the denied connection to arrive, allows its host the way the connection's row does,
 # and then watches the run's record for the second policy applied event and the allowed
 # connection. A member of the workspace then asks for observe, which is an owner's or an
@@ -12,14 +15,16 @@
 # the workspace in observe, denies the host from the same row, and watches for the third
 # policy applied event and the denied connection, refused by name under observe. It prints
 # the timings and leaves with status 0 only when every assertion held. It never prints the
-# secret: the runner file is the one place it goes.
+# secret: access-key-secret is the one place it goes.
 
 defmodule E2E do
   import Ecto.Query
 
   alias Apiary.AccessKeys
+  alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Audit
+  alias Apiary.Nodes
   alias Apiary.Organisations
   alias Apiary.Policy
   alias Apiary.Repo
@@ -48,22 +53,30 @@ defmodule E2E do
     # A line per request is the instance's log, not this job's.
     Logger.configure(level: :warning)
 
-    step("a workspace, its owner and an access key")
+    step("a workspace, its owner, a node and its access key")
     scope = owner_scope()
     {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
     true = Policy.managed?(scope)
-    {:ok, access_key, secret} = AccessKeys.create_access_key(scope, %{label: "e2e node"})
+    {:ok, node} = Nodes.create_node(scope, %{"kind" => "node", "name" => "build-01"})
+    {public_key, secret} = new_key()
 
-    File.write!(runner_file, "")
-    File.chmod!(runner_file, 0o600)
+    {:ok, access_key} =
+      AccessKeys.add_access_key(scope, node, %{
+        "public_key" => public_key,
+        "label" => "e2e",
+        "allow_secrets" => false
+      })
+
+    :active = AccessKey.status(access_key)
+    write_secret(Path.dirname(runner_file), secret)
 
     File.write!(
       runner_file,
-      AccessKeys.server_block(access_key, secret, ApiaryWeb.Endpoint.url()) <> runner_tail
+      AccessKeys.runner_lines(access_key, ApiaryWeb.Endpoint.url()).file <> runner_tail
     )
 
     say(
-      "workspace in enforce, nothing allowed; key #{access_key.key_id}; server #{ApiaryWeb.Endpoint.url()}"
+      "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, approved; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"
     )
 
     step("the node")
@@ -347,6 +360,34 @@ defmodule E2E do
         Enum.each(failures, &IO.puts("E2E FAIL  not true: #{&1}"))
         System.halt(1)
     end
+  end
+
+  # A fresh Ed25519 key, as `qory access-key create` makes one: the public key in
+  # base64url without padding, as the node's page takes a paste, and the secret, `qak_`
+  # and the key's 32-byte seed in base64url without padding (the runner's accesskey
+  # package, which qory reads it with).
+  defp new_key do
+    {public_key, seed} = :crypto.generate_key(:eddsa, :ed25519)
+
+    {Base.url_encode64(public_key, padding: false),
+     "qak_" <> Base.url_encode64(seed, padding: false)}
+  end
+
+  # access-key-secret beside the runner file, as qory reads it: one line, in a regular
+  # file of mode 0600, in a directory of mode 0700. The file is made anew, and its mode
+  # set before the secret is written into it.
+  defp write_secret(dir, secret) do
+    File.mkdir_p!(dir)
+    File.chmod!(dir, 0o700)
+    path = Path.join(dir, "access-key-secret")
+    _ = File.rm(path)
+
+    File.open!(path, [:write, :exclusive], fn io ->
+      File.chmod!(path, 0o600)
+      IO.binwrite(io, [secret, ?\n])
+    end)
+
+    :ok
   end
 
   # The workspace's first owner, made the way sign-up makes one: the instance's first
