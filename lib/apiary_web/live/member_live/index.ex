@@ -47,6 +47,8 @@ defmodule ApiaryWeb.MemberLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:members}
+      sections={@sections}
+      section={:people}
     >
       <:crumb navigate={~p"/#{@current_scope.organisation}/settings"}>
         {gettext("Settings")}
@@ -60,7 +62,6 @@ defmodule ApiaryWeb.MemberLive.Index do
         scope={@current_scope}
         counts={@nav_counts}
         kind={:organisation}
-        sections={@sections}
         current={:people}
         title={gettext("Invite people")}
       >
@@ -110,12 +111,13 @@ defmodule ApiaryWeb.MemberLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:members}
+      sections={@sections}
+      section={:people}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:organisation}
-        sections={@sections}
         current={:people}
         measure="list"
         title={gettext("People")}

@@ -66,12 +66,13 @@ defmodule ApiaryWeb.SettingsLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={if @page == :organisation, do: :organisation, else: :settings}
+      sections={@sections}
+      section={@section}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={@page}
-        sections={@sections}
         current={@section}
         measure={if @section == :workspaces, do: "list", else: "read"}
         title={section_title(@section)}

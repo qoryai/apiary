@@ -98,12 +98,14 @@ export const NavDrawer = {
     this.titles()
   },
 
-  // While folded, an item shows no words: its name is its title.
+  // While folded, an item shows no words: its name is its title. An entry that carries a
+  // narrowing keeps the server's words for it as its title, folded or not (data-title).
   titles() {
     const folded = this.folded()
     for (const item of this.el.querySelectorAll("#sidebar .q-nav-item")) {
       const text = item.querySelector(".q-nav-text")?.textContent.trim()
-      if (folded && text) item.setAttribute("title", text)
+      if (item.dataset.title) item.setAttribute("title", item.dataset.title)
+      else if (folded && text) item.setAttribute("title", text)
       else if (!item.id.startsWith("nav-pin-")) item.removeAttribute("title")
     }
     const fold = this.el.querySelector("[data-sidebar-collapse]")

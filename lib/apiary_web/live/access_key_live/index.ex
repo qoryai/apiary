@@ -36,6 +36,8 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:keys}
+      sections={@sections}
+      section={:keys}
     >
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
         {gettext("Settings")}
@@ -47,7 +49,6 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        sections={@sections}
         current={:keys}
         title={page_title(assigns)}
       >
@@ -75,6 +76,8 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:keys}
+      sections={@sections}
+      section={:keys}
     >
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
         {gettext("Settings")}
@@ -86,7 +89,6 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        sections={@sections}
         current={:keys}
         title={page_title(assigns)}
       >
@@ -131,12 +133,13 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:keys}
+      sections={@sections}
+      section={:keys}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        sections={@sections}
         current={:keys}
         measure="list"
         title={gettext("Access keys")}

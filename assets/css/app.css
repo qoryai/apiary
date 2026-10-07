@@ -1734,6 +1734,210 @@
     max-width: 45rem;
   }
 
+  /* ---- The second column: a level's sections beside the sidebar (Layouts) ----
+     Settings, Your settings and the Instance open their sections as a column of the
+     frame. On phones it is not drawn here: the drawer lists the sections. From 768 px it
+     is a row of links at the top of the page, as a page's tabs are; from 1024 px a column
+     beside the sidebar, the page beside it. */
+  .q-second {
+    display: none;
+  }
+  @media (min-width: 768px) {
+    .q-second {
+      display: flex;
+      flex: none;
+      gap: 4px 20px;
+      overflow-x: auto;
+      padding-inline: 1.5rem;
+      border-bottom: 1px solid var(--q-border-subtle);
+      scrollbar-width: none;
+    }
+    .q-second::-webkit-scrollbar {
+      display: none;
+    }
+    .q-second-heading {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .q-second-link {
+      display: flex;
+      flex: none;
+      min-width: 0;
+      height: 2.5rem;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: -1px;
+      border-bottom: 2px solid transparent;
+      color: var(--q-muted);
+      font-size: 0.84375rem;
+      font-weight: 400;
+      white-space: nowrap;
+      outline-offset: -2px;
+      transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+    }
+    .q-second-link:hover {
+      color: var(--color-base-content);
+    }
+    .q-second-link[aria-current="page"] {
+      border-bottom-color: var(--color-primary);
+      color: var(--color-base-content);
+      font-weight: 500;
+    }
+    .q-second-n {
+      color: var(--q-faint);
+      font-size: 0.75rem;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+    }
+  }
+  @media (min-width: 1024px) {
+    #shell-content.q-has-second {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .q-second {
+      position: sticky;
+      top: var(--q-bar);
+      display: grid;
+      width: 13.5rem;
+      height: calc(100dvh - var(--q-bar));
+      align-content: start;
+      gap: 1px;
+      overflow-y: auto;
+      padding: 12px 8px;
+      border-right: 1px solid var(--q-border-subtle);
+      border-bottom: 0;
+    }
+    .q-second-heading {
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: hidden;
+      clip-path: none;
+      padding: 0 8px 4px;
+      color: var(--q-faint);
+      font-size: 0.75rem;
+      line-height: 1rem;
+      font-weight: 500;
+      text-overflow: ellipsis;
+    }
+    .q-second-link {
+      height: 2rem;
+      margin-bottom: 0;
+      padding-inline: 8px;
+      border-bottom: 0;
+      border-radius: var(--radius-field);
+      font-size: 0.875rem;
+    }
+    .q-second-link:hover,
+    .q-second-link[aria-current="page"] {
+      background-color: var(--color-base-200);
+    }
+    .q-second-n {
+      margin-left: auto;
+    }
+    #shell-content.q-has-second > main {
+      align-self: stretch;
+    }
+  }
+  /* In the phone drawer: the sections under Settings, set in under it. */
+  .q-nav-sub {
+    padding-left: 36px;
+  }
+
+  /* ---- A page's header (PageComponents.page_header) ---- */
+  .q-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .q-page-head-main {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 18rem;
+    gap: 2px;
+  }
+  .q-page-head-title {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .q-page-h1 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.017em;
+  }
+  .q-page-desc {
+    max-width: 62ch;
+    color: var(--q-muted);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  .q-page-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+  }
+  @media (max-width: 479px) {
+    .q-page-actions {
+      width: 100%;
+    }
+    .q-page-actions > .btn {
+      flex: 1;
+    }
+  }
+
+  /* ---- A form as a page of its own (PageComponents.page_form) ---- */
+  .q-form-page {
+    display: grid;
+    max-width: 45rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .q-form-page-body {
+    display: grid;
+    min-width: 0;
+    gap: 16px;
+  }
+  .q-form-back {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 6px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+  }
+  .q-form-back:hover {
+    color: var(--color-base-content);
+  }
+
+  /* ---- What runs don't receive yet (PageComponents.not_on_runs) ---- */
+  .q-not-yet {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-not-yet-i {
+    flex: none;
+    margin-top: 2px;
+    color: var(--q-faint);
+  }
+
   /* ---- Settings: the list of a kind's sections beside the section (SettingsComponents) ---- */
   .q-settings {
     display: grid;
@@ -1845,6 +2049,10 @@
     }
     .q-settings-title {
       grid-column: 1 / -1;
+    }
+    /* The sections are the frame's second column: the section has the page. */
+    .q-settings.q-settings-solo {
+      grid-template-columns: minmax(0, 1fr);
     }
     .q-settings-nav {
       position: sticky;

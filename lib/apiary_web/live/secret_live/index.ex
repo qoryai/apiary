@@ -78,6 +78,8 @@ defmodule ApiaryWeb.SecretLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:settings}
+      sections={@sections}
+      section={:secrets}
     >
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
         {gettext("Settings")}
@@ -91,7 +93,6 @@ defmodule ApiaryWeb.SecretLive.Index do
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        sections={@sections}
         current={:secrets}
         title={form_title(assigns)}
       >
@@ -110,12 +111,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:settings}
+      sections={@sections}
+      section={:secrets}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        sections={@sections}
         current={:secrets}
         measure="list"
         title={gettext("Secrets and variables")}

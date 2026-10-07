@@ -2,8 +2,8 @@ defmodule ApiaryWeb.Edition.Core do
   @moduledoc """
   The core's web edition, and the default (`ApiaryWeb.Edition`): the console's pages as
   the core has them, with nothing added. No navigation entry, group, count, entry of New,
-  switcher entry, group of places or place, or settings tab beyond the core's, every slot
-  empty, no words for a reader, a
+  switcher entry, account menu entry, Instance section, group of places or place, or
+  settings tab beyond the core's, every slot empty, no words for a reader, a
   refusal or actions beyond the core's, no level above a workspace's policy to link to,
   no reserved name beyond the core's, and no Gettext backend beside the core's own.
 
@@ -24,6 +24,12 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def switcher_entries(_scope), do: []
+
+  @impl true
+  def account_menu_entries(_scope), do: []
+
+  @impl true
+  def instance_sections(_scope), do: []
 
   @impl true
   def nav_sections, do: []

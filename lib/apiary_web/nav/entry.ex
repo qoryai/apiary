@@ -4,7 +4,9 @@ defmodule ApiaryWeb.Nav.Entry do
   the edition (`c:ApiaryWeb.Edition.nav_entries/1`) each give, one of the organisation
   switcher's below the places it switches to (`c:ApiaryWeb.Edition.switcher_entries/1`),
   or a section of the settings (`ApiaryWeb.SettingsComponents`, and the edition's of the
-  organisation's, `c:ApiaryWeb.Edition.settings_tabs/1`).
+  organisation's, `c:ApiaryWeb.Edition.settings_tabs/1`), of the Instance level
+  (`c:ApiaryWeb.Edition.instance_sections/1`) or of the account menu
+  (`c:ApiaryWeb.Edition.account_menu_entries/1`).
   `ApiaryWeb.Layouts` decides from these which to show and where they lead, and nothing
   else does.
 
@@ -29,7 +31,10 @@ defmodule ApiaryWeb.Nav.Entry do
   - `place`: the scope the page belongs to, which decides the sidebar it shows:
     `:workspace` for a page of a workspace, which has no entry while the reader reaches
     none; `:organisation` for a page of the organisation, which opens without one;
-    `:person` for a person's own page (`/users/…`).
+    `:person` for a person's own page (`/users/…`); `:instance` for a section of the
+    Instance level (`/instance/…`, `ApiaryWeb.Layouts.instance_sections/1`). A person's
+    and an instance's page keep the sidebar the person came from, and their sections open
+    beside it as the second column (`ApiaryWeb.Layouts`).
   - `action`: the `Apiary.Access` action the page is for, asked with `can?/3` of the
     workspace, or of the organisation without one; nil for an entry every member has. A
     feature that is off takes its actions with it, and so its entries.
@@ -63,7 +68,7 @@ defmodule ApiaryWeb.Nav.Entry do
           long_label: String.t() | nil,
           icon: String.t() | nil,
           path: path,
-          place: :workspace | :organisation | :person,
+          place: :workspace | :organisation | :person | :instance,
           action: atom | nil,
           count: atom | nil,
           filter: (Scope.t(), map | nil -> boolean) | nil
