@@ -37,8 +37,17 @@ defmodule ApiaryWeb.PolicyLive.Target do
       |> assign(composer_open: false, summary: nil, would: nil, params: %{})
 
     if connected?(socket),
-      do: socket |> load() |> assign(:loaded, true),
+      do: socket |> load() |> assign(loaded: true, network: network_path(socket, target)),
       else: assign(socket, loaded: false)
+  end
+
+  # What the target's runs reached: Network access narrowed to the target, its system in
+  # the address only where another system has the same path.
+  defp network_path(socket, target) do
+    scope = socket.assigns.current_scope
+    shared? = MapSet.member?(Apiary.Runs.shared_paths(scope, [target.path]), target.path)
+    params = Apiary.Runs.Filters.target_params(if(shared?, do: target.system), target.path)
+    ~p"/#{scope.organisation}/#{scope.workspace}/network?#{params}"
   end
 
   defp load(socket) do
@@ -998,14 +1007,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         <span class="grow"></span>
         <.link
           id="policy-hosts-network"
-          navigate={
-            ApiaryWeb.TargetComponents.target_path(
-              @current_scope,
-              @holder.system,
-              @holder.path,
-              ["network"]
-            )
-          }
+          navigate={@network}
           class="q-sect-link"
         >
           {gettext("See what its runs reached")}<.icon

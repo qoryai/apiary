@@ -2968,7 +2968,6 @@ msgstr ""
 msgid "Between the two modes; Space asks to switch"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Breadcrumb"
@@ -8816,6 +8815,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show all %{size}"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Show all destinations"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex

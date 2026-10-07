@@ -72,6 +72,39 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
              live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}/policy")
   end
 
+  describe "in the frame" do
+    test "the page's header and its tabs; the sidebar's lists never carry a target", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#policy-header-title", "Policy")
+
+      assert text(view, "#policy-header-description") ==
+               "What the runs of this workspace may reach through the runner's proxy."
+
+      assert has_element?(view, "#policy-header-actions #policy-export-button")
+      assert has_element?(view, "#policy-tabs-rules[aria-current=page]", "Rules")
+      # A software workspace reads Targets as Repositories.
+      assert has_element?(view, "#policy-tabs-targets", "Repositories")
+      assert has_element?(view, "#policy-tabs-history", "History")
+      assert has_element?(view, "#policy-tabs-document", "Document")
+
+      # The Security policy is not narrowed: its sidebar entry, and the lists', link plainly.
+      for {key, path} <- [policy: "/policy", runs: "/runs", network: "/network"] do
+        assert has_element?(view, "#nav-#{key}[href='#{workspace_path(scope, path)}']")
+      end
+
+      refute has_element?(view, "#nav-runs[aria-label]")
+
+      view |> element("#policy-tabs-history") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy/history"))
+      assert has_element?(view, "#policy-tabs-history[aria-current=page]")
+    end
+  end
+
   describe "a workspace nobody has changed" do
     test "says machines use their own policy, with no pill, no document and no mode word",
          %{conn: conn, scope: scope} do
@@ -1042,6 +1075,17 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, configuration} = Policy.get_configuration(scope, nil, 2)
 
       assert has_element?(view, "h1", "Version 2")
+
+      # The frame's breadcrumb names the version after Policy; the Document tab is current.
+      assert has_element?(
+               view,
+               "#breadcrumb a[href='#{workspace_path(scope, "/policy")}']",
+               "Policy"
+             )
+
+      assert has_element?(view, "#breadcrumb [aria-current=page]", "Version 2")
+      assert has_element?(view, "#policy-tabs-document[aria-current=page]")
+      refute has_element?(view, "#policy-page nav.q-crumbs")
       assert text(view, "#policy-page") =~ "In force"
       assert text(view, "#version-strip") =~ "Allowed files.cdn.example"
       assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
@@ -1102,20 +1146,26 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope, "/policy/versions/3/export")
       {:ok, configuration} = Policy.get_configuration(scope, nil, 3)
 
-      # A page of its own: the breadcrumb back to the policy and the version, its title,
-      # and no dialog, no tabs, no version view under it.
+      # A page of its own: the frame's breadcrumb back to the policy and the version, its
+      # title, and no dialog, no tabs, no version view under it.
       assert has_element?(view, "section#policy-export")
       refute has_element?(view, "dialog#policy-export")
       assert has_element?(view, "h1#policy-export-h", "Export for a node without a server")
-      assert has_element?(view, "#export-crumbs a[href='#{workspace_path(scope, "/policy")}']")
+      refute has_element?(view, "#export-crumbs")
 
       assert has_element?(
                view,
-               "#export-crumbs a[href='#{workspace_path(scope, "/policy/versions/3")}']",
+               "#breadcrumb a[href='#{workspace_path(scope, "/policy")}']",
+               "Policy"
+             )
+
+      assert has_element?(
+               view,
+               "#breadcrumb a[href='#{workspace_path(scope, "/policy/versions/3")}']",
                "Version 3"
              )
 
-      assert has_element?(view, "#export-crumbs [aria-current=page]", "Export")
+      assert has_element?(view, "#breadcrumb [aria-current=page]", "Export")
       refute has_element?(view, "#policy-tabs")
       refute has_element?(view, "#version-export")
       assert text(view, "#export-lead") =~ "as of version 3"
@@ -1144,7 +1194,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/1/export")
 
       assert text(view, "#export-lead") =~ "as of version 2"
-      assert has_element?(view, "#export-crumbs a", "Version 2")
+      assert has_element?(view, "#breadcrumb a", "Version 2")
     end
   end
 

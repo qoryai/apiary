@@ -17,7 +17,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   def page_skeleton(assigns) do
     ~H"""
     <div id="policy-loading" class="grid grid-cols-[minmax(0,1fr)] gap-6" aria-busy="true">
-      <.header>{@title}</.header>
+      <.page_header title={@title} />
       <div class="q-sect">
         <div
           :for={_row <- 1..5}
@@ -372,7 +372,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   @doc """
   The export of the version in force as a page of its own, at `…/versions/:n/export`: its
-  breadcrumb back to the policy and the version, the title and what is exported, the texts
+  breadcrumb back to the policy and the version (the frame's, where `crumbs` is false), the title and what is exported, the texts
   to copy, and Done back to the version. Nothing here is a form. `heading` is h2 under a
   page's own title, as a target's Policy tab has.
   """
@@ -382,11 +382,15 @@ defmodule ApiaryWeb.PolicyLive.Views do
   attr :done, :string, required: true, doc: "the version's path, where Done goes back"
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
 
+  attr :crumbs, :boolean,
+    default: true,
+    doc: "false where the frame's breadcrumb already leads back to the policy and the version"
+
   def export_page(assigns) do
     ~H"""
     <section id="policy-export" class="grid max-w-[100ch] gap-4" aria-labelledby="policy-export-h">
       <div class="grid gap-3">
-        <nav id="export-crumbs" class="q-crumbs" aria-label={gettext("Breadcrumb")}>
+        <nav :if={@crumbs} id="export-crumbs" class="q-crumbs" aria-label={gettext("Breadcrumb")}>
           <.link patch={@policy}>{gettext("Policy")}</.link>
           <.icon name="hero-chevron-right-micro" class="size-3" />
           <.link patch={@done}>{gettext("Version %{version}", version: @version)}</.link>

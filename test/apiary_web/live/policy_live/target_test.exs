@@ -107,6 +107,29 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     end
   end
 
+  test "what its runs reached is Network access narrowed to the target", %{
+    conn: conn,
+    scope: scope,
+    path: path
+  } do
+    view = open(conn, path)
+
+    assert has_element?(
+             view,
+             "#policy-hosts-network[href='#{workspace_path(scope, "/network?target=acme%2Fshop")}']",
+             "See what its runs reached"
+           )
+
+    # Where another system has the same path, the system is in the address too.
+    started_run(scope, shop("gitlab.com"))
+    view = open(conn, path)
+
+    assert has_element?(
+             view,
+             "#policy-hosts-network[href='#{workspace_path(scope, "/network?system=github.example&target=acme%2Fshop")}']"
+           )
+  end
+
   test "the old paths of a target's policy send on to the Policy tab", %{
     conn: conn,
     scope: scope,
