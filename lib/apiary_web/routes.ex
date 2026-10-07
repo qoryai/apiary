@@ -438,11 +438,13 @@ defmodule ApiaryWeb.Routes do
               live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
               live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
               # The stored secrets and the variables, one section of two views, with the
-              # `security` feature; each dialog over its view at a path of its own. A
-              # secret is named by its public id (`sec_…`), a value by its value id; the
-              # one value without a value id is the secret's `change-value`.
+              # `security` feature; each form a page and each confirmation on its row, at
+              # a path of its own. A secret is named by its public id (`sec_…`), a value by
+              # its value id; the one value without a value id is the secret's
+              # `change-value`.
               live "/settings/secrets", SecretLive.Index, :secrets
               live "/settings/secrets/new", SecretLive.Index, :new_secret
+              live "/settings/secrets/:id/edit", SecretLive.Index, :edit_secret
               live "/settings/secrets/:id/add-value", SecretLive.Index, :add_value
               live "/settings/secrets/:id/change-value", SecretLive.Index, :change_value
 

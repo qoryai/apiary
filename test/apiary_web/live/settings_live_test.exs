@@ -41,7 +41,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#organisation-form")
       refute has_element?(lv, "#owners")
 
-      assert html =~ "The name of this workspace, and where its pages are."
+      assert html =~ "The name of this workspace, where its pages are, and its type."
 
       assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
       assert has_element?(lv, "#nav-settings[aria-current='page']")

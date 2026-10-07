@@ -1,26 +1,31 @@
 defmodule ApiaryWeb.SecretLive.Index do
   @moduledoc """
   The workspace's Secrets and variables, a section of its settings
-  (`ApiaryWeb.SettingsComponents`) with the `security` feature: two views of one page,
-  Secrets (`/:org/:workspace/settings/secrets`) and Variables (`…/settings/variables`),
-  each a list on the list pattern (a search, a Filter menu, Sort, the filters in force as
-  tokens, all in the URL; `ApiaryWeb.SecretLive.Query`). Nothing opens over the page:
-  each act is at a path of its own, a form a page of the section, as Add integration is
-  (its title, one sentence, the form in the section's column, its button and Cancel back
-  to the view, the breadcrumb ending with the section and the page), and so is the list of
-  a variable's targets; a deletion asks to confirm in place, on its row
+  (`ApiaryWeb.SettingsComponents`, the frame's second column) with the `security` feature:
+  two views of one page, Secrets (`/:org/:workspace/settings/secrets`) and Variables
+  (`…/settings/variables`), each a list on the list pattern (a search, a Filter menu, Sort,
+  the filters in force as tokens, all in the URL; `ApiaryWeb.SecretLive.Query`). Nothing
+  opens over the page: each act is at a path of its own, a form a page of its own
+  (`ApiaryWeb.PageComponents.page_form/1`: its title, one sentence, the form, its button
+  and Cancel back to the view, the breadcrumb ending with the section and the page), and
+  so is the list of a variable's targets; a deletion asks to confirm in place, on its row
   (`CoreComponents.inline_confirm/1`). Lock and Unlock act at once from the row's menu;
   their paths, which must not act as they open, ask on the row first.
 
-  - **Secrets** (`Apiary.Secrets`): a secret's name, its value ids, who changed each
-    value and when, and what uses it; never a value. New secret, then Add value, Change
-    value, Rename value and Delete value, and Delete secret. A value is written into a
-    field and sent once: the page never renders it, nor keeps it in an assign, so the
-    field is empty after a save and after a refused one, and the form the context hands
-    back holds none (`Apiary.Secrets.change_secret/2`).
+  No run receives a secret or a variable yet: a run receives its security policy alone.
+  Each view, and each of its pages, says so once, near its top
+  (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a run is
+  given what it holds.
+
+  - **Secrets** (`Apiary.Secrets`): a secret's name and note, its value ids, who changed
+    each value and when, and what uses it; never a value. New secret, then Edit name and
+    note, Add value, Change value, Rename value and Delete value, and Delete secret. A
+    value is written into a field and sent once: the page never renders it, nor keeps it
+    in an assign, so the field is empty after a save and after a refused one, and the form
+    the context hands back holds none (`Apiary.Secrets.change_secret/2`).
   - **Variables** (`Apiary.Variables`): the workspace's own, each with its value, which
-    is plain configuration, its lock, and the repositories that set their own value or
-    whose value a lock sets aside, from their resolution
+    is plain configuration, its lock, and the targets that set their own value or whose
+    value a lock sets aside, from their resolution
     (`Apiary.Variables.repository_overrides/1`). New variable, Change value, Lock and
     Unlock, Delete variable, and the targets of a variable. A name beginning
     `QORY_` is refused by the context; any other name on the runner's deny list is
@@ -44,6 +49,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   # The acts of each view, each at a path of its own.
   @secret_acts [
     :new_secret,
+    :edit_secret,
     :add_value,
     :change_value,
     :rename_value,
@@ -55,6 +61,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   # the rest are confirmations in place, on the row they act on.
   @pages [
     :new_secret,
+    :edit_secret,
     :add_value,
     :change_value,
     :rename_value,
@@ -67,10 +74,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   @find_from 10
 
   @impl true
-  # A form is a page of the section, as Add integration is: the section's list beside it,
-  # the breadcrumb ending with the section and the page, its title, one sentence, the
-  # form in the section's column, its button and Cancel back to the view.
+  # A form is a page of its own (`ApiaryWeb.PageComponents.page_form/1`): the section's
+  # list beside it as the frame's second column, the breadcrumb ending with the section and
+  # the page, its title, one sentence, the line that runs don't receive these yet, the form,
+  # its button and Cancel back to the view.
   def render(%{act: act} = assigns) when act in @pages do
+    assigns = assign(assigns, :sentence, form_sentence(assigns))
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -89,16 +99,16 @@ defmodule ApiaryWeb.SecretLive.Index do
       </:crumb>
       <:crumb>{crumb_words(@act)}</:crumb>
 
-      <SettingsComponents.layout
-        scope={@current_scope}
-        counts={@nav_counts}
-        kind={:workspace}
-        current={:secrets}
+      <.page_form
+        id={if @view == :secrets, do: "secret-page", else: "variable-page"}
         title={form_title(assigns)}
+        cancel={list_path(@current_scope, @view, @query)}
+        cancel_by="patch"
       >
-        <:subtitle>{form_sentence(assigns)}</:subtitle>
+        <:description :if={@sentence}>{@sentence}</:description>
+        <.not_on_runs>{not_on_runs_words(@view)}</.not_on_runs>
         <.form_page {assigns} />
-      </SettingsComponents.layout>
+      </.page_form>
     </Layouts.app>
     """
   end
@@ -114,16 +124,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       sections={@sections}
       section={:secrets}
     >
-      <SettingsComponents.layout
-        scope={@current_scope}
-        counts={@nav_counts}
-        kind={:workspace}
-        current={:secrets}
+      <.settings_page
+        heading={gettext("Workspace settings")}
+        section={:secrets}
         measure="list"
         title={gettext("Secrets and variables")}
       >
         <:subtitle>
-          {gettext("Values the runs of this workspace are given.")}
           {gettext("A secret is never shown again once it is saved; a variable is plain text.")}
         </:subtitle>
         <:actions :if={@view == :secrets && @may_write}>
@@ -149,13 +156,16 @@ defmodule ApiaryWeb.SecretLive.Index do
           </.button>
         </:actions>
 
-        <p
-          :if={(@view == :secrets && !@may_write) || (@view == :variables && !@may_edit)}
-          id="secrets-read-only"
-          class="-mt-2 text-[13px]/5 text-muted"
-        >
-          {gettext("Only owners and admins change this.")}
-        </p>
+        <div class="-mt-2 grid gap-1">
+          <.not_on_runs>{not_on_runs_words(@view)}</.not_on_runs>
+          <p
+            :if={(@view == :secrets && !@may_write) || (@view == :variables && !@may_edit)}
+            id="secrets-read-only"
+            class="text-[13px]/5 text-muted"
+          >
+            {gettext("Only owners and admins change this.")}
+          </p>
+        </div>
 
         <.views id="secrets-views" label={gettext("Secrets and variables")}>
           <:view
@@ -178,10 +188,19 @@ defmodule ApiaryWeb.SecretLive.Index do
 
         <.secrets_view :if={@view == :secrets} {assigns} />
         <.variables_view :if={@view == :variables} {assigns} />
-      </SettingsComponents.layout>
+      </.settings_page>
     </Layouts.app>
     """
   end
+
+  # The one line each view, and each of its pages, says of what it holds: no run receives
+  # a secret or a variable yet; a run receives its security policy alone (`/v1`).
+  defp not_on_runs_words(:secrets),
+    do: gettext("Runs don't receive secrets yet. Today a run receives only its security policy.")
+
+  defp not_on_runs_words(:variables),
+    do:
+      gettext("Runs don't receive variables yet. Today a run receives only its security policy.")
 
   ## The secrets
 
@@ -253,9 +272,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         tone="neutral"
         title={gettext("No secrets yet")}
       >
-        {gettext(
-          "A secret holds a value the runs are given, such as a token for a system. Once it is saved, nobody sees it again."
-        )}
+        {secret_sentence()}
         <:actions :if={@may_write}>
           <.button patch={
             ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/secrets/new"
@@ -407,6 +424,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       >
         {gettext("Add value…")}
       </.menu_item>
+      <.menu_item
+        id={"secret-#{@secret.public_id}-edit"}
+        patch={secret_path(@scope, @secret, :edit)}
+        aria-label={gettext("Edit the name and note of %{name}", name: @secret.name)}
+      >
+        {gettext("Edit name and note…")}
+      </.menu_item>
       <.menu_divider />
       <.menu_item
         id={"secret-#{@secret.public_id}-delete"}
@@ -541,9 +565,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         tone="neutral"
         title={gettext("No variables yet")}
       >
-        {gettext(
-          "A variable is a plain value a run's process is given, such as the address of a package registry."
-        )}
+        {variable_sentence()}
         <:actions :if={@may_edit}>
           <.button patch={
             ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/variables/new"
@@ -669,11 +691,6 @@ defmodule ApiaryWeb.SecretLive.Index do
         />
       </:confirm>
     </.table>
-
-    <p id="variables-note" class="max-w-[72ch] text-[12.5px]/[18px] text-faint">
-      {gettext("A node cannot change a variable set here; it can only add its own.")}
-      {gettext("A run without a wall receives these only on nodes whose runner file turns that on.")}
-    </p>
     """
   end
 
@@ -760,11 +777,42 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
       />
       <.input field={@form[:note]} label={gettext("What it is for")} optional autocomplete="off" />
-      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+      <.page_form_foot
+        id="secret-save"
+        cancel={list_path(@current_scope, :secrets, @query)}
+        cancel_by="patch"
+      >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Save secret")}
         </.button>
-      </SettingsComponents.save>
+      </.page_form_foot>
+    </.form>
+    """
+  end
+
+  # A secret's name and what it is for: its values stay as they are.
+  defp form_page(%{act: :edit_secret} = assigns) do
+    ~H"""
+    <.form for={@form} id="secret-form" phx-submit="update_secret" class="grid gap-4" novalidate>
+      <.input
+        field={@form[:name]}
+        label={gettext("Name")}
+        hint={gettext("Letters, digits and _, starting with a letter or _.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={JS.focus()}
+      />
+      <.input field={@form[:note]} label={gettext("What it is for")} optional autocomplete="off" />
+      <.page_form_foot
+        id="secret-save"
+        cancel={list_path(@current_scope, :secrets, @query)}
+        cancel_by="patch"
+      >
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
+          {gettext("Save secret")}
+        </.button>
+      </.page_form_foot>
     </.form>
     """
   end
@@ -796,11 +844,15 @@ defmodule ApiaryWeb.SecretLive.Index do
         phx-mounted={!@unnamed && JS.focus()}
       />
       <.value_field form={@form} />
-      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+      <.page_form_foot
+        id="secret-save"
+        cancel={list_path(@current_scope, :secrets, @query)}
+        cancel_by="patch"
+      >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Add value")}
         </.button>
-      </SettingsComponents.save>
+      </.page_form_foot>
     </.form>
     """
   end
@@ -809,11 +861,15 @@ defmodule ApiaryWeb.SecretLive.Index do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
       <.value_field form={@form} label={gettext("New value")} focus />
-      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+      <.page_form_foot
+        id="secret-save"
+        cancel={list_path(@current_scope, :secrets, @query)}
+        cancel_by="patch"
+      >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Change value")}
         </.button>
-      </SettingsComponents.save>
+      </.page_form_foot>
     </.form>
     """
   end
@@ -830,11 +886,15 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
         phx-mounted={JS.focus()}
       />
-      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+      <.page_form_foot
+        id="secret-save"
+        cancel={list_path(@current_scope, :secrets, @query)}
+        cancel_by="patch"
+      >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Rename value")}
         </.button>
-      </SettingsComponents.save>
+      </.page_form_foot>
     </.form>
     """
   end
@@ -876,14 +936,15 @@ defmodule ApiaryWeb.SecretLive.Index do
         type="checkbox"
         label={gettext("Locked: a target may not set its own value")}
       />
-      <SettingsComponents.save
+      <.page_form_foot
         id="variable-save"
         cancel={list_path(@current_scope, :variables, @query)}
+        cancel_by="patch"
       >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Save variable")}
         </.button>
-      </SettingsComponents.save>
+      </.page_form_foot>
     </.form>
     """
   end
@@ -900,14 +961,15 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
         phx-mounted={JS.focus()}
       />
-      <SettingsComponents.save
+      <.page_form_foot
         id="variable-save"
         cancel={list_path(@current_scope, :variables, @query)}
+        cancel_by="patch"
       >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Change value")}
         </.button>
-      </SettingsComponents.save>
+      </.page_form_foot>
     </.form>
     """
   end
@@ -968,6 +1030,9 @@ defmodule ApiaryWeb.SecretLive.Index do
   # The page's title, the act and what it acts on.
   defp form_title(%{act: :new_secret}), do: gettext("New secret")
 
+  defp form_title(%{act: :edit_secret, secret: secret}),
+    do: gettext("Edit %{name}", name: secret.name)
+
   defp form_title(%{act: :add_value, secret: secret}),
     do: gettext("Add a value to %{name}", name: secret.name)
 
@@ -990,6 +1055,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The breadcrumb's last segment: the act alone.
   defp crumb_words(:new_secret), do: gettext("New secret")
+  defp crumb_words(:edit_secret), do: gettext("Edit")
   defp crumb_words(:add_value), do: gettext("Add value")
   defp crumb_words(:change_value), do: gettext("Change value")
   defp crumb_words(:rename_value), do: gettext("Rename value")
@@ -997,12 +1063,12 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp crumb_words(:change_variable), do: gettext("Change value")
   defp crumb_words(:variable_targets), do: gettext("Targets")
 
-  # The one sentence under the title: what the page does.
-  defp form_sentence(%{act: :new_secret}),
-    do:
-      gettext(
-        "A secret holds a value the runs are given, such as a token for a system. Once it is saved, nobody sees it again."
-      )
+  # The one sentence under the title: what the page does, where it says more than the
+  # title. Nothing here says a run is given what the page holds: none is yet.
+  defp form_sentence(%{act: :new_secret}), do: secret_sentence()
+
+  defp form_sentence(%{act: :edit_secret}),
+    do: gettext("Its values stay as they are; only its name and what it is for change.")
 
   defp form_sentence(%{act: :add_value}),
     do:
@@ -1011,22 +1077,14 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
 
   defp form_sentence(%{act: :change_value}),
-    do:
-      gettext(
-        "The value it holds now is not shown. Runs are given the new one from their next start."
-      )
+    do: gettext("The value it holds now is not shown.")
 
   defp form_sentence(%{act: :rename_value}),
     do: gettext("The value stays as it is; only its value ID changes.")
 
-  defp form_sentence(%{act: :new_variable}),
-    do:
-      gettext(
-        "A variable is a plain value a run's process is given, such as the address of a package registry."
-      )
+  defp form_sentence(%{act: :new_variable}), do: variable_sentence()
 
-  defp form_sentence(%{act: :change_variable}),
-    do: gettext("Runs are given the new value from their next start.")
+  defp form_sentence(%{act: :change_variable}), do: nil
 
   defp form_sentence(%{act: :variable_targets, variable: variable}),
     do:
@@ -1034,6 +1092,16 @@ defmodule ApiaryWeb.SecretLive.Index do
         "The targets that set their own value of %{name}, and those whose own value its lock sets aside.",
         name: variable.name
       )
+
+  # What a secret and a variable are, on the empty view and on the page that makes one.
+  defp secret_sentence,
+    do:
+      gettext(
+        "A secret holds a value such as a token for a system. Once it is saved, nobody sees it again."
+      )
+
+  defp variable_sentence,
+    do: gettext("A variable is a plain value by name, such as the address of a package registry.")
 
   ## The confirmations in place
 
@@ -1124,7 +1192,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       cancel={@cancel}
     >
       {gettext(
-        "Runs are no longer given the workspace's value of %{name}. A target that sets its own keeps it. This cannot be undone.",
+        "The workspace's value of %{name} is deleted. A target that sets its own keeps it. This cannot be undone.",
         name: @variable.name
       )}
       <:action>
@@ -1157,8 +1225,8 @@ defmodule ApiaryWeb.SecretLive.Index do
       )}
       <span :if={@own > 0} id="lock-targets">
         {ngettext(
-          "%{number} target sets its own now: while the lock holds, its runs are given the workspace's value.",
-          "%{number} targets set their own now: while the lock holds, their runs are given the workspace's value.",
+          "%{number} target sets its own now: while the lock holds, the lock sets it aside.",
+          "%{number} targets set their own now: while the lock holds, the lock sets them aside.",
           @own,
           number: Format.number(@own)
         )}
@@ -1189,8 +1257,8 @@ defmodule ApiaryWeb.SecretLive.Index do
       {gettext("A target may set its own value of %{name} again.", name: @variable.name)}
       <span :if={@ignored > 0} id="unlock-targets">
         {ngettext(
-          "%{number} target set its own: its runs are given it again.",
-          "%{number} targets set their own: their runs are given them again.",
+          "%{number} target set its own: the lock no longer sets it aside.",
+          "%{number} targets set their own: the lock no longer sets them aside.",
           @ignored,
           number: Format.number(@ignored)
         )}
@@ -1265,7 +1333,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     if warned?(name),
       do:
         gettext(
-          "Runs are not given %{name}: the runner leaves the names on its deny list out of what a run is given.",
+          "%{name} is on the runner's deny list: the runner leaves the names on it out of a run's environment.",
           name: name
         )
   end
@@ -1288,6 +1356,9 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp secret_path(scope, secret, :change_value),
     do:
       ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/change-value"
+
+  defp secret_path(scope, secret, :edit),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/edit"
 
   defp secret_path(scope, secret, :add_value),
     do:
@@ -1432,6 +1503,16 @@ defmodule ApiaryWeb.SecretLive.Index do
           form: secret_form(fresh(Secrets.change_secret(%Secret{})))
         ),
       else: refused(socket)
+  end
+
+  defp open(socket, :edit_secret, %{"id" => id}) do
+    with_secret(socket, id, nil, fn socket, secret, _value ->
+      assign(socket,
+        act: :edit_secret,
+        secret: secret,
+        form: secret_form(fresh(Secrets.change_secret(secret)))
+      )
+    end)
   end
 
   defp open(socket, :add_value, %{"id" => id}) do
@@ -1598,6 +1679,26 @@ defmodule ApiaryWeb.SecretLive.Index do
     scope = socket.assigns.current_scope
 
     case Secrets.create_secret(scope, Map.take(params, ~w(name note value value_id))) do
+      {:ok, secret} ->
+        {:noreply, saved(socket, gettext("%{name} is saved.", name: secret.name))}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :form, secret_form(changeset))}
+
+      {:error, reason} ->
+        {:noreply, refusal(socket, reason)}
+    end
+  end
+
+  def handle_event(
+        "update_secret",
+        %{"secret" => params},
+        %{assigns: %{act: :edit_secret}} = socket
+      )
+      when is_map(params) do
+    %{current_scope: scope, secret: secret} = socket.assigns
+
+    case Secrets.update_secret(scope, secret, Map.take(params, ~w(name note))) do
       {:ok, secret} ->
         {:noreply, saved(socket, gettext("%{name} is saved.", name: secret.name))}
 
@@ -1794,7 +1895,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   # confirmation has gone, or an event the page offers no control for. One who may change the view is shown the
   # list again; one who may not is refused, as a path the page offers no button for is.
   def handle_event(event, _params, socket)
-      when event in ~w(add_value set_value rename_value delete_value delete_secret) do
+      when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
     if socket.assigns.may_write,
       do: {:noreply, reload(socket)},
       else: {:noreply, refused(socket)}

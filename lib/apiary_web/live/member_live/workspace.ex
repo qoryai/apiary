@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.MemberLive.Workspace do
   @moduledoc """
   The people who reach a workspace, and at what level: the People section of a
-  workspace's settings (`ApiaryWeb.SettingsComponents`), `/:org/:workspace/settings/people`.
+  workspace's settings (`ApiaryWeb.SettingsComponents`, the frame's second column),
+  `/:org/:workspace/settings/people`.
   Read only: a membership is the organisation's, and is managed in the organisation's
   People (`ApiaryWeb.MemberLive.Index`), which the section's one action leads to for whoever
   manages members there (`member.invite`, asked of `Apiary.Access`).
@@ -34,11 +35,9 @@ defmodule ApiaryWeb.MemberLive.Workspace do
       sections={@sections}
       section={:people}
     >
-      <SettingsComponents.layout
-        scope={@current_scope}
-        counts={@nav_counts}
-        kind={:workspace}
-        current={:people}
+      <.settings_page
+        heading={gettext("Workspace settings")}
+        section={:people}
         measure="list"
         title={gettext("People")}
       >
@@ -107,7 +106,7 @@ defmodule ApiaryWeb.MemberLive.Workspace do
             <span class="tabular-nums">{Format.day(m.inserted_at)}</span>
           </:col>
         </.table>
-      </SettingsComponents.layout>
+      </.settings_page>
     </Layouts.app>
     """
   end
