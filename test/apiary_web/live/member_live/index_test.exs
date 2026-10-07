@@ -19,13 +19,17 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       # A member changes the policy's rules only where there is a policy: with `security`.
       if Apiary.Features.on?(:security) do
         assert html =~
-                 "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy&#39;s rules that are not locked."
+                 "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy&#39;s rules that are not locked."
       else
         assert html =~
-                 "The people in this organisation. Owners and admins manage members and settings; members manage access keys and see the runs."
+                 "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
 
         refute html =~ "policy"
       end
+
+      # Only owners and admins add or approve a node's key: a member manages no keys.
+      refute html =~ "manage access keys"
+      refute html =~ "Manages access keys"
 
       assert has_element?(lv, "#member-#{scope.membership.id}")
       # The only owner, reading: the last-owner rule is theirs to hear.
@@ -132,6 +136,16 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       %{membership: membership, user: member} = member_fixture(scope, :member)
 
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      # Each level says what it may do: owners and admins manage the nodes and their keys.
+      assert has_element?(
+               lv,
+               "#member-#{membership.id}-level-admin",
+               "Manages members, workspaces, nodes and settings"
+             )
+
+      assert has_element?(lv, "#member-#{membership.id}-level-member", "Sees the runs")
+      refute render(lv) =~ "Manages access keys"
 
       html = lv |> element("#member-#{membership.id}-level-owner") |> render_click()
       assert html =~ "#{member.email} is now an owner."

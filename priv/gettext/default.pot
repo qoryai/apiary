@@ -6799,17 +6799,7 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Manages access keys and sees the runs"
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Manages access keys, sees the runs and changes the policy's unlocked rules"
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Manages members, workspaces and settings"
+msgid "Manages members, workspaces, nodes and settings"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -9612,6 +9602,16 @@ msgstr ""
 msgid "Seen in 14 days"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sees the runs"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sees the runs and changes the policy's unlocked rules"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "Send a new link"
@@ -10669,12 +10669,12 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The people in this organisation. Owners and admins manage members and settings; members manage access keys and see the runs."
+msgid "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy's rules that are not locked."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy's rules that are not locked."
+msgid "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex
