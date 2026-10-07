@@ -155,9 +155,11 @@ navigation it is in.
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
-  `:workspaces_heading` slot), Audit log (`/settings/audit-log`, `ApiaryWeb.ActivityLive`;
-  `/:org/activity`, its path before, sends on with its query), and the edition's sections
-  (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to, New ›
+  `:workspaces_heading` slot), and the edition's sections
+  (`ApiaryWeb.Edition.settings_tabs/1`). The audit log is not a section of them: it is a
+  page of the organisation's sidebar, beside its overview (`/:org/audit-log`,
+  `ApiaryWeb.ActivityLive`; `/:org/settings/audit-log` and `/:org/activity`, its paths
+  before, send on with their query). From a workspace the palette's Go to, New ›
   Invite people and, for whoever manages members, the workspace People's Manage people
   lead there too, since membership is the organisation's; nothing else in a workspace
   does.
@@ -169,10 +171,16 @@ navigation it is in.
   `/users/organisations`), from the account menu's Your settings: Profile (email,
   password, and its danger zone), Preferences (language and time zone, kept with the
   account; the theme, the account menu's, and the keyboard shortcuts, reading preferences
-  of the browser), Organisations. A person has no pages but these, so their sidebar is the
-  list, under the heading Your settings, and a page's `<h1>` is its section's title, its
-  parts' headings `<h2>`s over a rule. Profile and the account's deletion ask for a recent
-  sign-in (`UserAuth`'s sudo mode); Preferences does not.
+  of the browser), Organisations. Each is a settings page (`PageComponents.settings_page/1`)
+  without a level's heading, so its `<h1>` is its section's title, its parts' headings
+  `<h2>`s over a rule; the sidebar stays the one the person came from, and the sections are
+  its second column. Profile and the account's deletion ask for a recent sign-in
+  (`UserAuth`'s sudo mode); Preferences does not.
+- **The instance's** (`/instance/…`), from the account menu's Instance, for the instance's
+  admins: the edition's sections, then the core's Configuration (`/instance/configuration`,
+  `ApiaryWeb.InstanceLive.Configuration`), read only: what whoever runs the server set, as
+  the server read it when it started, each value with the setting it is set by. In the core
+  it is the one section, so it has no second column. Anyone else is answered not found.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Settings the
 current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/1`): the
@@ -180,7 +188,7 @@ current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/
 of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
 reads when it mounts), and beside it the section, its title an `<h2>` (16 px), one sentence
 of what it is for, then its content, a 720 px column for forms and 960 px for a list
-(People, a workspace's and an organisation's, Access keys, Audit log). The list is labels
+(People, a workspace's and an organisation's, Access keys). The list is labels
 without icons, 13.5 px and muted, the current one in the text colour on a light fill, with
 a count where it helps (an organisation's People, Access keys; the page passes the
 navigation's `counts`); below 1024 px it is a row of

@@ -7,10 +7,10 @@ defmodule ApiaryWeb.MemberLive.Index do
   Owners change levels, and remove anyone; admins remove members only, and change no
   level; owners and admins invite; anyone may leave. An invitation is an email address
   and nothing else: it is sent from the workspace the page carries, grants it, and its
-  person joins as a member. Inviting is a page of the section,
-  `/:org/settings/people/invite`, as Add integration is (its title, one sentence, the form
-  in the section's column, its button and Cancel back to People); a sent invitation goes
-  back to People with a flash. Members see the page read-only. What each may is asked of
+  person joins as a member. Inviting is a form page of the section,
+  `/:org/settings/people/invite` (`ApiaryWeb.PageComponents.page_form/1`: Back, its
+  title, one sentence, the form, its button and Cancel back to People); a sent invitation
+  goes back to People with a flash. Members see the page read-only. What each may is asked of
   `Apiary.Access`.
 
   Each person is one row on the row spec (`docs/ui.md`, Lists): the email is the title,
@@ -36,9 +36,9 @@ defmodule ApiaryWeb.MemberLive.Index do
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   @impl true
-  # Inviting is a page of the section, as Add integration is: the section's list beside
-  # it, the breadcrumb ending with People and the page, its title, one sentence, the form
-  # in the section's column, its button and Cancel back to People.
+  # Inviting is a form page of the section (`PageComponents.page_form/1`), never a
+  # dialog: the section's list beside it, the breadcrumb ending with People and the page,
+  # its Back link, title and one sentence, the form, its button and Cancel back to People.
   def render(%{page: :invite} = assigns) do
     ~H"""
     <Layouts.app
@@ -58,19 +58,18 @@ defmodule ApiaryWeb.MemberLive.Index do
       </:crumb>
       <:crumb>{gettext("Invite people")}</:crumb>
 
-      <SettingsComponents.layout
-        scope={@current_scope}
-        counts={@nav_counts}
-        kind={:organisation}
-        current={:people}
+      <.page_form
+        id="invite"
         title={gettext("Invite people")}
+        cancel={~p"/#{@current_scope.organisation}/settings/people"}
+        cancel_by="patch"
       >
-        <:subtitle>
+        <:description>
           {gettext(
             "We email them a link that works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
             workspace: @current_scope.workspace.name
           )}
-        </:subtitle>
+        </:description>
         <.form
           for={@form}
           id="invitation-form"
@@ -89,16 +88,17 @@ defmodule ApiaryWeb.MemberLive.Index do
             required
             phx-mounted={JS.focus()}
           />
-          <SettingsComponents.save
+          <.page_form_foot
             id="invitation-save"
             cancel={~p"/#{@current_scope.organisation}/settings/people"}
+            cancel_by="patch"
           >
             <.button variant="primary" type="submit" loading_text={gettext("Sending")}>
               {gettext("Send invitation")}
             </.button>
-          </SettingsComponents.save>
+          </.page_form_foot>
         </.form>
-      </SettingsComponents.layout>
+      </.page_form>
     </Layouts.app>
     """
   end

@@ -279,8 +279,9 @@ defmodule ApiaryWeb.Routes do
   carries the workspace the person opened last, as on their own pages, so the sidebar
   stays the one they came from and the Instance's sections open beside it
   (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
-  block's routes go into the `live_session :instance`, after the core's. The core has no
-  page here yet: Instance › Configuration comes into it.
+  block's routes go into the `live_session :instance`, after the core's. The core's one
+  page here is Instance › Configuration (`ApiaryWeb.InstanceLive.Configuration`), for the
+  instance's admins.
   """
   defmacro instance_routes(opts \\ [], block \\ []) do
     routes =
@@ -293,6 +294,8 @@ defmodule ApiaryWeb.Routes do
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # Instance › Configuration: what whoever runs the server set, read only.
+            live "/instance/configuration", InstanceLive.Configuration, :show
             unquote(@block)
           end
         end
@@ -332,14 +335,15 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/switch/:section", SwitchController, :show
         end
 
-        # The paths of pages that moved, under the settings or to a new name, sent on to
-        # where they are now, so a link someone kept still lands. Before the pages, whose
-        # `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
+        # The paths of pages that moved, under the settings, out of them or to a new name,
+        # sent on to where they are now, so a link someone kept still lands. Before the
+        # pages, whose `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
         # too; its page's glob sends that one on (`TargetLive.Show`).
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser]
 
           get "/:org/activity", MovedController, :show
+          get "/:org/settings/audit-log", MovedController, :show
           get "/:org/members", MovedController, :show
           get "/:org/members/*rest", MovedController, :show
           get "/:org/:workspace/keys", MovedController, :show
@@ -363,6 +367,10 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
+              # The organisation's audit trail, a page of its sidebar beside the overview,
+              # for the readers `audit.read` allows. It was a section of the settings,
+              # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
+              live "/audit-log", ActivityLive, :index
               # Its settings, one section a page, the list of them beside it
               # (`ApiaryWeb.SettingsComponents`). General is the settings' own path.
               live "/settings", SettingsLive, :organisation
@@ -378,9 +386,6 @@ defmodule ApiaryWeb.Routes do
               # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
               live "/settings/delete", SettingsLive, :delete_organisation
-              # The organisation's audit trail, a section of its settings, for the readers
-              # `audit.read` allows.
-              live "/settings/audit-log", ActivityLive, :index
             end
 
             unquote(@block)

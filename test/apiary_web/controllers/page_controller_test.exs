@@ -15,6 +15,9 @@ defmodule ApiaryWeb.PageControllerTest do
     assert response =~ "Create an account" == offered?
     assert response =~ ~p"/users/register" == offered?
     assert response =~ "Give your workspace an access key"
+    # The documentation, which the sidebar's product menu opens once signed in.
+    assert response =~ ~r{<a[^>]*id="home-docs"[^>]*>|<a[^>]*href="/docs"[^>]*id="home-docs"}
+    assert response =~ ~s(href="/docs")
     refute response =~ ~r/\b(hive|apiary)\b/
   end
 

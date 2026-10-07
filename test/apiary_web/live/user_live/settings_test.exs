@@ -16,6 +16,28 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert html =~ "Save password"
     end
 
+    test "is a settings page beside the workspace's sidebar, whose lists open whole",
+         %{conn: conn} do
+      %{user: user, scope: scope} = Apiary.OrganisationsFixtures.sign_up_fixture()
+      conn = log_in_user(conn, user)
+      workspace = "/#{scope.organisation.slug}/#{scope.workspace.slug}"
+
+      for {path, key, title} <- [
+            {~p"/users/settings", "user_settings", "Profile"},
+            {~p"/users/settings/preferences", "user_preferences", "Preferences"},
+            {~p"/users/organisations", "user_organisations", "Organisations"}
+          ] do
+        {:ok, lv, _html} = live(conn, path)
+
+        assert has_element?(lv, "#settings-section-#{key} h1#settings-section-title", title)
+        assert has_element?(lv, "#nav-group-account #nav-#{key}[aria-current='page']")
+        assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
+        # Nothing carries a target here: Runs and Network access open the whole lists.
+        assert has_element?(lv, "#nav-runs[href='#{workspace}/runs']")
+        assert has_element?(lv, "#nav-network[href='#{workspace}/network']")
+      end
+    end
+
     test "redirects if user is not logged in", %{conn: conn} do
       assert {:error, redirect} = live(conn, ~p"/users/settings")
 

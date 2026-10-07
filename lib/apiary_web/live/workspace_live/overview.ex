@@ -97,7 +97,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       width="list"
     >
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-5">
-        <.header>{@current_scope.workspace.name}</.header>
+        <.page_header title={@current_scope.workspace.name} />
 
         <div id="overview-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
           {@announce}

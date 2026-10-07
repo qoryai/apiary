@@ -18,6 +18,8 @@ defmodule ApiaryWeb.RoutesTest.Router do
     live "/users/register", ApiaryWeb.UserLive.Login, :new
   end
 
+  instance_routes()
+
   organisation_routes do
     live "/:org/extra", ApiaryWeb.ActivityLive, :index
   end

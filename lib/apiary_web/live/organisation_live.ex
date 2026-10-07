@@ -61,13 +61,12 @@ defmodule ApiaryWeb.OrganisationLive do
 
       <div :if={@current_scope.workspace} id="organisation-overview" class="q-org">
         <div class="q-org-top">
-          <.header>
-            {@current_scope.organisation.name}
-            <:subtitle>{gettext("The organisation's workspaces and its people.")}</:subtitle>
+          <.page_header title={@current_scope.organisation.name}>
+            <:description>{gettext("The organisation's workspaces and its people.")}</:description>
             <:actions>
               <ApiaryWeb.Extension.slot name={:organisation_heading} scope={@current_scope} />
             </:actions>
-          </.header>
+          </.page_header>
         </div>
 
         <.notice :if={@added} kind={:info} class="q-org-top">

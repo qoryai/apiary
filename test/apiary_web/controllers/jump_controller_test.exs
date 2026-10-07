@@ -93,7 +93,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert found.("retention") == ["Workspace settings › Runs"]
     assert found.("prune") == ["Workspace settings › Runs"]
     assert found.("runs") == ["Runs", "Workspace settings › Runs"]
-    assert found.("audit") == ["Organisation settings › Audit log"]
+    assert found.("audit") == ["Audit log"]
     assert found.("members") == ["Workspace settings › People", "Organisation settings › People"]
     assert found.("workspaces") == ["Organisation settings › Workspaces"]
     assert "Organisation settings" in found.("organisation settings")
@@ -165,7 +165,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     answer = jump(conn, ~p"/#{scope.organisation}/jump")
 
     refute "Runs" in labels(group(answer, "Go to"))
-    assert "Organisation settings › Audit log" in labels(group(answer, "Go to"))
+    assert "Audit log" in labels(group(answer, "Go to"))
+    refute "Organisation settings › Audit log" in labels(group(answer, "Go to"))
     # the organisation's own actions, and an edition's; no key of a workspace
     assert "Invite people" in labels(group(answer, "Actions"))
     refute "New access key" in labels(group(answer, "Actions"))

@@ -139,6 +139,17 @@ defmodule ApiaryWeb.UserLive.RegistrationFirstSignUpTest do
     {:ok, lv, _html} = live(conn, ~p"/users/register")
     assert has_element?(lv, "#registration_form input[name='user[organisation_name]']")
 
+    # Nothing about the workspace's type: Main takes the default domain while there is one.
+    fields =
+      lv
+      |> element("#registration_form")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("input:not([type=hidden]), select, textarea")
+      |> LazyHTML.attribute("name")
+
+    assert Enum.sort(fields) == ["user[email]", "user[organisation_name]"]
+
     email = unique_user_email()
 
     lv
