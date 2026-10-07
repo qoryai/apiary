@@ -13,9 +13,13 @@ defmodule ApiaryWeb.TargetLive.Show do
     * the path alone, of one target of the workspace: that target;
     * the path and its system, where the path is not shared: an old address, sent on to
       the path alone with its tab and its query;
-    * the path alone, shared by two targets or more: a page that names each, with a link
-      to it, since the address does not say which;
+    * the path alone, shared by two targets or more, or an address that reads both as one
+      target's system and path and as another's path alone: a page that names each, with
+      a link to it by an address that names it alone, since this one does not say which;
+      an old tab's address that reads as two targets comes there too, with its tab;
     * anything else, and a tab the page does not know: not found.
+
+  A `-` first in the address is the system `-`, not the tab's separator.
 
   **The lists live once, at the workspace** (the narrowing ruling): the page has no Runs or
   Network access tab. Its Overview leads to the runs list and to Network access narrowed to
@@ -72,6 +76,7 @@ defmodule ApiaryWeb.TargetLive.Show do
            {:moved, list, Filters.target_params(target.system, target.path, shared)}
          )}
 
+      # A shared path given alone: the lists narrowed to the path, on every system.
       {{:choose, _targets, path}, {:ok, {:moved, list}}} ->
         {:ok, assign(socket, :tab, {:moved, list, Filters.target_params(nil, path)})}
 
@@ -82,11 +87,14 @@ defmodule ApiaryWeb.TargetLive.Show do
       {{:ok, target, shared, :current}, {:ok, tab}} ->
         {:ok, mount_target(socket, target, shared, tab, security)}
 
-      {{:choose, targets, path}, {:ok, _tab}} ->
+      # An old tab of an address that reads as two targets goes there too, with the tab:
+      # the lists narrowed to the path alone would be one of them only.
+      {{reading, targets, path}, {:ok, _tab}} when reading in [:choose, :ambiguous] ->
         {:ok,
          assign(socket,
            tab: :choose,
-           choices: targets,
+           reading: reading,
+           choices: choices(scope, targets),
            chosen_path: path,
            rest: rest,
            query: nil,
@@ -116,7 +124,14 @@ defmodule ApiaryWeb.TargetLive.Show do
     |> mount_tab(tab)
   end
 
-  # The glob's segments before the first `-`, and the tab's after it.
+  # The glob's segments before the first `-`, and the tab's after it. A `-` first is the
+  # address's own, the system `-` (`target_path/5` writes it so): no address starts with
+  # its tab.
+  defp split_glob(["-" | glob]) do
+    {segments, rest} = Enum.split_while(glob, &(&1 != "-"))
+    {["-" | segments], Enum.drop(rest, 1)}
+  end
+
   defp split_glob(glob) do
     {segments, rest} = Enum.split_while(glob, &(&1 != "-"))
     {segments, Enum.drop(rest, 1)}
@@ -124,7 +139,8 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   # The target an address names (the moduledoc's order): `{:ok, target, shared, form}`,
   # `form` `:current` for the address the page writes and `:old` for one it sends on;
-  # `{:choose, targets, path}` for an address two targets or more may mean; `:error`. A
+  # `{:choose, targets, path}` for a path alone that two targets or more share;
+  # `{:ambiguous, targets, path}` for an address that reads as two targets; `:error`. A
   # system and a path are a runner's labels, so an address can read both ways: a path
   # alone, and a system with its path. Where both readings name a target, the address
   # does not say which, and the page names each.
@@ -143,7 +159,7 @@ defmodule ApiaryWeb.TargetLive.Show do
 
     cond do
       with_system && by_path != [] ->
-        {:choose, Enum.uniq_by([with_system | by_path], & &1.id), path}
+        {:ambiguous, Enum.uniq_by([with_system | by_path], & &1.id), path}
 
       # The system stays in the address where the path alone would not name this target.
       with_system &&
@@ -188,6 +204,18 @@ defmodule ApiaryWeb.TargetLive.Show do
             t.path == ^path,
         order_by: [asc: t.system]
     )
+  end
+
+  # Each target a chooser names, and whether its link writes its system: the path alone
+  # where that names the target alone, else the system and the path, which does unless
+  # another target's path starts with the system and a third shares the path.
+  defp choices(scope, targets) do
+    for %Target{id: id} = target <- targets do
+      alone? =
+        match?({:ok, %Target{id: ^id}, _, :current}, resolve(scope, path_segments(target.path)))
+
+      {target, not alone?}
+    end
   end
 
   # The tab the segments after `-` name, with what it needs of them. Runs and Network
@@ -372,8 +400,9 @@ defmodule ApiaryWeb.TargetLive.Show do
   ## Render
 
   @impl true
-  # A path alone that two targets or more share: the address does not say which, so the
-  # page names each, with a link to it at the same tab.
+  # A path alone that two targets or more share, or an address that reads as two targets:
+  # the address does not say which, so the page names each, with a link to it at the same
+  # tab that names it alone.
   def render(%{tab: :choose} = assigns) do
     ~H"""
     <Layouts.app
@@ -388,15 +417,17 @@ defmodule ApiaryWeb.TargetLive.Show do
 
       <.page_header id="target-choose" title={@chosen_path}>
         <:description>
-          {gettext("Targets in more than one system have this path. Choose one:")}
+          {if @reading == :ambiguous,
+            do: gettext("This address can mean more than one target. Choose one:"),
+            else: gettext("This path is in more than one system. Choose one:")}
         </:description>
       </.page_header>
 
       <ul id="target-choices" class="q-tgt-pl">
-        <li :for={target <- @choices} id={"target-choice-#{target.id}"}>
+        <li :for={{target, system?} <- @choices} id={"target-choice-#{target.id}"}>
           <.link
             navigate={
-              target_path(@current_scope, target.system, target.path, @rest, true) <>
+              target_path(@current_scope, target.system, target.path, @rest, system?) <>
                 if(@query in [nil, ""], do: "", else: "?" <> @query)
             }
             class="q-tgt-pl-name"

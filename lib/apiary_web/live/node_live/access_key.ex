@@ -22,10 +22,15 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     one; the key is approved as it is added (`Apiary.AccessKeys.add_access_key/3`).
   - **Enrolment codes**: the node's outstanding codes, who made each and when, when it
     expires, and the settings of the key it would bring; owners and admins revoke one in
-    place (`…/access-key/codes/:code_id/revoke`, the code's row id, never the code).
+    place (`…/access-key/codes/:code_id/revoke`, the code's row id, never the code). The
+    page reads the codes again the moment the first of them expires, so an expired code
+    leaves the list, and its confirmation, at once.
   - **New enrolment code** (`…/access-key/new-code`), a page of its own: the stored-secrets
-    flag and a label hint. Once made, the page is the code, shown once, with its expiry
-    and Done back to the tab.
+    flag and a label hint. Once made, the page is the code, shown once and given the
+    focus, with its expiry ("Expired" once past) and Done back to the tab.
+
+  Leaving a form or a confirmation gives the focus back to the button that opened it, or,
+  where the act took that button away, to the key's heading or to New enrolment code.
 
   **A code is shown once.** It lives in the page's process alone, wrapped in a function so
   no inspection of the process's state prints it, until the reader leaves the page by any
@@ -82,6 +87,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          socket
          |> assign(node: node, paths: paths(scope, node.public_id))
          |> assign(issued: nil, form: nil, preview: nil, key: nil, code: nil)
+         |> assign(shown: nil, expiry_timer: nil)
          |> assign_may()
          |> assign_activity()
          |> load()
@@ -129,13 +135,36 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {%{}, %{}}
       end
 
-    assign(socket,
+    socket
+    |> assign(
       keys: keys,
       codes: codes,
       intact: Map.new(keys, &{&1.id, AccessKey.verify_integrity(&1) == :ok}),
       last_runs: last_runs,
-      hosts: hosts
+      hosts: hosts,
+      now: DateTime.utc_now()
     )
+    |> schedule_expiry()
+  end
+
+  # The codes are read again the moment the first of them, or the code shown, expires: an
+  # expired code is no longer outstanding, so the tab stops offering to revoke it, and the
+  # code shown says it expired.
+  defp schedule_expiry(socket) do
+    %{codes: codes, issued: issued, now: now, expiry_timer: timer} = socket.assigns
+    if timer, do: Process.cancel_timer(timer)
+
+    times =
+      Enum.map(codes, & &1.expires_at) ++
+        for %{row: %{expires_at: at}} <- [issued], DateTime.after?(at, now), do: at
+
+    timer =
+      if connected?(socket) and times != [] do
+        wait = DateTime.diff(Enum.min(times, DateTime), now, :millisecond)
+        Process.send_after(self(), :codes_expire, max(wait, 0) + 1)
+      end
+
+    assign(socket, :expiry_timer, timer)
   end
 
   @impl true
@@ -146,11 +175,68 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   def handle_params(params, _uri, socket) do
+    # What the reader leaves, for the focus to go back to the button that opened it.
+    opener = opener(socket.assigns)
+
     # Every path starts without a code shown and without a confirmation or a form open: a
     # code shown is gone once the reader leaves its page.
     socket = assign(socket, issued: nil, form: nil, preview: nil, key: nil, code: nil)
-    {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> titled()}
+    action = socket.assigns.live_action
+
+    {:noreply,
+     socket
+     |> apply_action(action, params)
+     |> titled()
+     |> return_focus(opener)
+     |> assign(:shown, action)}
   end
+
+  # The button that opened the form, the code shown or the confirmation the page shows.
+  defp opener(%{shown: :add_key}), do: :add_key
+  defp opener(%{shown: :new_code}), do: :new_code
+
+  defp opener(%{shown: act, key: %AccessKey{key_id: key_id}})
+       when act in [:approve, :reject, :revoke],
+       do: {:key, key_id, act}
+
+  defp opener(%{shown: :revoke_code, code: %EnrolmentCode{id: id}}), do: {:code, id}
+  defp opener(_assigns), do: nil
+
+  # Back on the tab, the focus goes to the opener where it is still there; where the act
+  # took it away, to the key's heading, or to New enrolment code for a code that is gone.
+  defp return_focus(%{assigns: %{live_action: :index} = assigns} = socket, opener) do
+    case focus_id(assigns, opener) do
+      nil -> socket
+      id -> push_event(socket, "run:focus", %{id: id})
+    end
+  end
+
+  defp return_focus(socket, _opener), do: socket
+
+  defp focus_id(%{may: may}, :add_key), do: if(may.add_key, do: "key-add-button")
+  defp focus_id(%{may: may}, :new_code), do: if(may.new_code, do: "code-new-button")
+
+  defp focus_id(assigns, {:key, key_id, act}) do
+    case Enum.find(assigns.keys, &(&1.key_id == key_id)) do
+      nil ->
+        nil
+
+      key ->
+        if act in key_acts(key, assigns.may, assigns.intact[key.id]),
+          do: "key-#{key_id}-#{act}",
+          else: "key-#{key_id}-title"
+    end
+  end
+
+  defp focus_id(%{may: may, codes: codes}, {:code, id}) do
+    cond do
+      may.revoke_code and Enum.any?(codes, &(&1.id == id)) -> "code-#{id}-revoke"
+      may.new_code -> "code-new-button"
+      true -> nil
+    end
+  end
+
+  defp focus_id(_assigns, nil), do: nil
 
   defp apply_action(socket, :index, _params), do: socket
 
@@ -199,7 +285,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(socket, gettext("Only owners and admins manage a node's keys."))
 
       is_nil(code) ->
-        to_tab(socket, :error, gettext("This enrolment code is no longer outstanding."))
+        to_tab(socket, :error, outstanding_no_more())
 
       true ->
         assign(socket, :code, code)
@@ -212,6 +298,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         %{"key" => params},
         %{assigns: %{live_action: :add_key, form: %{}}} = socket
       ) do
+    params = form_params(params)
     changeset = params |> AccessKeys.change_new_key() |> Map.put(:action, :validate)
     {:noreply, socket |> assign_form(changeset, :key) |> assign(:preview, preview(params))}
   end
@@ -222,6 +309,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         %{assigns: %{live_action: :add_key, form: %{}, may: %{add_key: true}}} = socket
       ) do
     %{current_scope: scope, node: node} = socket.assigns
+
+    # The key as its fingerprint was shown: without the spaces and the line ends a paste
+    # brings around it.
+    params =
+      case form_params(params) do
+        %{"public_key" => public_key} = params ->
+          %{params | "public_key" => String.trim(public_key)}
+
+        params ->
+          params
+      end
 
     case AccessKeys.add_access_key(scope, node, params) do
       {:ok, key} ->
@@ -236,7 +334,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          put_flash(
            socket,
            :error,
-           gettext("%{name} holds two keys already. Revoke one before you add another.",
+           gettext(
+             "%{name} holds two keys already. Revoke or reject one before you add another.",
              name: node.name
            )
          )}
@@ -254,7 +353,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         %{"code" => params},
         %{assigns: %{live_action: :new_code, form: %{}, issued: nil}} = socket
       ) do
-    changeset = params |> code_changeset() |> Map.put(:action, :validate)
+    changeset = params |> form_params() |> code_changeset() |> Map.put(:action, :validate)
     {:noreply, assign_form(socket, changeset, :code)}
   end
 
@@ -266,7 +365,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       ) do
     %{current_scope: scope, node: node} = socket.assigns
 
-    case AccessKeys.create_enrolment_code(scope, node, params) do
+    case AccessKeys.create_enrolment_code(scope, node, form_params(params)) do
       {:ok, row, code} ->
         # The code, in a function: shown by this page once, and printed by nothing else.
         {:noreply,
@@ -391,8 +490,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         } = socket
       ) do
     case AccessKeys.cancel_code(socket.assigns.current_scope, code) do
-      {:ok, _code} ->
+      {:ok, %EnrolmentCode{cancelled_at: %DateTime{}}} ->
         {:noreply, to_tab(socket, :info, gettext("The enrolment code is revoked."))}
+
+      # It expired before the act reached it: nothing was revoked.
+      {:ok, %EnrolmentCode{}} ->
+        {:noreply, to_tab(socket, :error, outstanding_no_more())}
 
       {:error, :used} ->
         {:noreply, to_tab(socket, :error, gettext("The enrolment code was used already."))}
@@ -434,6 +537,22 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     end
   end
 
+  # A code expired (`schedule_expiry/1`): the codes read again, and a confirmation of the
+  # code that expired closed, since there is nothing left to revoke.
+  def handle_info(:codes_expire, socket) do
+    socket = socket |> assign(:expiry_timer, nil) |> load()
+
+    case socket.assigns do
+      %{code: %EnrolmentCode{id: id}, codes: codes} ->
+        if Enum.any?(codes, &(&1.id == id)),
+          do: {:noreply, socket},
+          else: {:noreply, to_tab(socket, :error, outstanding_no_more())}
+
+      _no_confirmation ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   ## Answers
@@ -453,7 +572,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     %{current_scope: scope, node: node} = socket.assigns
 
     if Nodes.get_node(scope, node.public_id),
-      do: to_tab(socket, :error, gettext("This can't be done now: what it names is not here.")),
+      do:
+        to_tab(
+          socket,
+          :error,
+          gettext("That key or code is gone: this node's keys changed meanwhile.")
+        ),
       else: gone(socket)
   end
 
@@ -503,6 +627,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # A form as its page opens: nothing is typed yet, so nothing is wrong yet.
   defp fresh(%Ecto.Changeset{} = changeset), do: %{changeset | errors: [], valid?: true}
 
+  # A form's parameters as a form sends them, each a string: anything else, which only a
+  # crafted event sends, is not there, and a form that is no map is an empty one.
+  defp form_params(%{} = params),
+    do:
+      for(
+        {name, value} <- params,
+        is_binary(name) and is_binary(value),
+        into: %{},
+        do: {name, value}
+      )
+
+  defp form_params(_params), do: %{}
+
   # The fingerprint of the public key typed, once it reads as one: what the person compares
   # with the machine's before they add it. Reading it says nothing of other keys.
   defp preview(%{"public_key" => value}) when is_binary(value) do
@@ -549,6 +686,23 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         "%{label} can't be approved: its record was changed outside the application.",
         label: key.label
       )
+
+  defp outstanding_no_more, do: gettext("This enrolment code is no longer outstanding.")
+
+  # The acts a key's card offers the reader: approving or rejecting one that awaits
+  # approval, approving it only while its record is intact; revoking an approved one.
+  defp key_acts(%AccessKey{} = key, may, intact) do
+    case state(key) do
+      :pending ->
+        for {act, true} <- [approve: may.approve and intact, reject: may.reject], do: act
+
+      :approved ->
+        if may.revoke, do: [:revoke], else: []
+
+      _revoked_or_rejected ->
+        []
+    end
+  end
 
   defp state(%AccessKey{} = key) do
     case AccessKey.status(key) do
@@ -627,7 +781,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
       <:crumb>{gettext("New enrolment code")}</:crumb>
 
-      <section id="code-issued" class="q-form-page" aria-labelledby="code-issued-title">
+      <section id="code-issued" class="q-form-page" aria-labelledby="code-issued-header-title">
         <.page_header id="code-issued-header" title={gettext("New enrolment code")}>
           <:description>{gettext("For %{name}.", name: @node.name)}</:description>
         </.page_header>
@@ -635,45 +789,66 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <div class="grid gap-4">
           <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} />
 
-          <.notice kind={:warning}>
-            <strong>{gettext("This code is shown once.")}</strong>
-            {gettext("Copy it now: only a hash of it is kept, and it can't be shown again.")}
-          </.notice>
+          <div id="code-issued-once">
+            <.notice kind={:warning}>
+              <strong>{gettext("This code is shown once.")}</strong>
+              {gettext("Copy it now: only a hash of it is kept, and it can't be shown again.")}
+            </.notice>
+          </div>
 
-          <div class="flex items-center gap-2">
-            <code
-              id="code-issued-value"
-              class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
-            >{@issued.code.()}</code>
-            <.copy_button
-              id="code-issued-copy"
-              target="#code-issued-value"
-              label={gettext("Copy code")}
-              placement="left"
-              icon_only
-            />
+          <%!-- The code takes the focus as it shows, read with its name, its expiry and
+               that it is shown once. --%>
+          <div
+            id="code-issued-code"
+            role="group"
+            aria-labelledby="code-issued-label"
+            aria-describedby="code-issued-expires-label code-issued-expires code-issued-once"
+            class="grid gap-1.5"
+          >
+            <p id="code-issued-label" class="text-[13px]/5 text-faint">
+              {gettext("Enrolment code")}
+            </p>
+            <div class="flex items-center gap-2">
+              <code
+                id="code-issued-value"
+                tabindex="-1"
+                phx-mounted={JS.focus()}
+                class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
+              >{@issued.code.()}</code>
+              <.copy_button
+                id="code-issued-copy"
+                target="#code-issued-value"
+                label={gettext("Copy code")}
+                placement="left"
+                icon_only
+              />
+            </div>
           </div>
 
           <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-[13px]/5">
-            <dt class="text-faint">{gettext("Expires")}</dt>
-            <dd id="code-issued-expires">
+            <NodeComponents.code_expiry
+              id="code-issued-expires"
+              at={@issued.row.expires_at}
+              now={@now}
+            >
               {gettext("%{time}, %{minutes} minutes after it was made",
                 time: Format.datetime(@issued.row.expires_at),
                 minutes: Format.number(AccessKeys.code_ttl_minutes())
               )}
-            </dd>
+            </NodeComponents.code_expiry>
             <dt class="text-faint">{gettext("Stored secrets")}</dt>
             <dd id="code-issued-secrets">{secrets_words(@issued.row.allow_secrets)}</dd>
             <dt :if={@issued.row.label_hint} class="text-faint">{gettext("Label hint")}</dt>
             <dd :if={@issued.row.label_hint} class="q-mono">{@issued.row.label_hint}</dd>
           </dl>
 
-          <.page_form_foot id="code-issued-done" cancel={@paths.access_key} cancel_by="patch">
+          <%!-- Done alone: leaving cancels nothing, the code is made. --%>
+          <SettingsComponents.save id="code-issued-done">
             <.button id="code-issued-done-button" variant="primary" patch={@paths.access_key}>
               {gettext("Done")}
             </.button>
             <:note>{gettext("Once you leave this page, the code is not shown again.")}</:note>
-          </.page_form_foot>
+          </SettingsComponents.save>
         </div>
       </section>
     </Layouts.app>
@@ -746,23 +921,29 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             class="font-mono"
             required
           />
-          <p :if={@preview} id="key-add-fingerprint" class="text-[13px]/5">
-            <span class="text-faint">{gettext("Fingerprint")}</span>
-            <span class="q-mono">{@preview}</span>
-            <span class="text-muted">
-              {gettext("Compare it with the one on the machine before you add the key.")}
-            </span>
-          </p>
-          <.page_form_foot id="key-add-save" cancel={@paths.access_key} cancel_by="patch">
-            <.button
-              id="key-add-submit"
-              variant="primary"
-              type="submit"
-              loading_text={gettext("Adding")}
-            >
-              {gettext("Add key")}
-            </.button>
-          </.page_form_foot>
+          <div>
+            <%!-- Always there, so the fingerprint is read out as it shows. --%>
+            <div id="key-add-fingerprint" aria-live="polite" class="text-[13px]/5">
+              <p :if={@preview} class="mb-4">
+                <span class="text-faint">{gettext("Fingerprint")}</span>
+                <span class="q-mono">{@preview}</span>
+                <span class="text-muted">
+                  {gettext("Compare it with the one on the machine before you add the key.")}
+                </span>
+              </p>
+            </div>
+            <.page_form_foot id="key-add-save" cancel={@paths.access_key} cancel_by="patch">
+              <.button
+                id="key-add-submit"
+                variant="primary"
+                type="submit"
+                loading_text={gettext("Adding")}
+                aria-describedby="key-add-fingerprint"
+              >
+                {gettext("Add key")}
+              </.button>
+            </.page_form_foot>
+          </div>
         </.form>
       </.page_form>
     </Layouts.app>
@@ -805,6 +986,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           id="code-new-form"
           phx-change="validate_code"
           phx-submit="create_code"
+          phx-mounted={JS.focus(to: "#code-new-title")}
           class="grid gap-4"
           novalidate
         >
@@ -871,10 +1053,20 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {gettext("Only owners and admins manage a node's keys.")}
           </p>
           <div :if={@may.add_key or @may.new_code} class="flex flex-wrap gap-2">
-            <.button :if={@may.add_key} id="key-add-button" patch={@paths.add_key}>
+            <.button
+              :if={@may.add_key}
+              id="key-add-button"
+              patch={@paths.add_key}
+              phx-hook="FocusOn"
+            >
               <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a public key")}
             </.button>
-            <.button :if={@may.new_code} id="code-new-button" patch={@paths.new_code}>
+            <.button
+              :if={@may.new_code}
+              id="code-new-button"
+              patch={@paths.new_code}
+              phx-hook="FocusOn"
+            >
               <.icon name="hero-plus-micro" class="size-4" />{gettext("New enrolment code")}
             </.button>
           </div>
@@ -902,7 +1094,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <SettingsComponents.part id="node-codes" title={gettext("Enrolment codes")} level={:h2}>
           <p class="text-[13px]/5 text-muted">
             {gettext(
-              "A code expires %{minutes} minutes after it is made, and is shown only then. These are the codes not used, revoked or expired.",
+              "A code expires %{minutes} minutes after it is made, and is shown only then. Listed here: the codes neither used, revoked nor expired.",
               minutes: Format.number(AccessKeys.code_ttl_minutes())
             )}
           </p>
@@ -918,10 +1110,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               <%= if @code && @code.id == code.id do %>
                 <.inline_confirm
                   id={"code-#{code.id}-confirm"}
-                  question={gettext("Revoke this enrolment code?")}
+                  question={
+                    gettext("Revoke the code made %{time}?", time: Format.time(code.inserted_at))
+                  }
                   cancel={@paths.access_key}
                 >
-                  {gettext("It is cancelled at once. This cannot be undone.")}
+                  {gettext("It is revoked at once. This cannot be undone.")}
                   <:action>
                     <.button
                       id={"code-#{code.id}-confirm-button"}
@@ -938,8 +1132,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1">
                   <dt class="text-faint">{gettext("Made")}</dt>
                   <dd>{when_words(code.created_by, code.inserted_at)}</dd>
-                  <dt class="text-faint">{gettext("Expires")}</dt>
-                  <dd><.relative_time id={"code-#{code.id}-expires"} at={code.expires_at} /></dd>
+                  <NodeComponents.code_expiry
+                    id={"code-#{code.id}-expires"}
+                    at={code.expires_at}
+                    now={@now}
+                  />
                   <dt class="text-faint">{gettext("Stored secrets")}</dt>
                   <dd>{secrets_words(code.allow_secrets)}</dd>
                   <dt :if={code.label_hint} class="text-faint">{gettext("Label hint")}</dt>
@@ -950,8 +1147,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                     id={"code-#{code.id}-revoke"}
                     variant="link"
                     patch={code_path(@paths, code)}
+                    phx-hook="FocusOn"
                   >
-                    {gettext("Revoke…")}
+                    <span aria-hidden="true">{gettext("Revoke…")}</span>
+                    <span class="sr-only">
+                      {gettext("Revoke the code made %{time}", time: Format.time(code.inserted_at))}
+                    </span>
                   </.button>
                 </p>
               <% end %>
@@ -976,27 +1177,47 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
   # An act asked of it is confirmed in place of the acts.
   defp key_card(assigns) do
-    assigns = assign(assigns, state: state(assigns.key), dom: "key-#{assigns.key.key_id}")
+    %{key: key, may: may, intact: intact} = assigns
+
+    assigns =
+      assign(assigns,
+        state: state(key),
+        dom: "key-#{key.key_id}",
+        acts: key_acts(key, may, intact)
+      )
 
     ~H"""
     <li
       id={@dom}
       class="grid gap-3 rounded-box border border-line bg-base-100 p-4 text-[13px]/5 shadow-xs"
     >
-      <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h3
+        id={"#{@dom}-title"}
+        tabindex="-1"
+        phx-hook="FocusOn"
+        class="flex flex-wrap items-baseline gap-x-3 gap-y-1 outline-none"
+      >
         <span id={"#{@dom}-label"} class="font-medium">{@key.label}</span>
         <span class="q-mono text-muted">{@key.key_id}</span>
         <.state_word id={"#{@dom}-state"} hot={@state == :pending}>
           {state_words(@state)}
         </.state_word>
-      </p>
+      </h3>
 
-      <div :if={!@intact} id={"#{@dom}-integrity"}>
-        <.notice kind={:error}>
+      <%!-- A lasting state, said as the card is read, not an alert. The look is the error
+           notice's. --%>
+      <div
+        :if={!@intact}
+        id={"#{@dom}-integrity"}
+        role="note"
+        class="alert alert-soft bg-error-soft text-error-soft-content"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="mt-px size-4" />
+        <div class="min-w-0">
           {gettext(
             "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
           )}
-        </.notice>
+        </div>
       </div>
 
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-1">
@@ -1111,45 +1332,39 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </:action>
           </.inline_confirm>
         <% _none -> %>
-          <p
-            :if={@state == :pending and @may.approve and @intact}
-            id={"#{@dom}-guidance"}
-            class="text-muted"
-          >
+          <p :if={:approve in @acts} id={"#{@dom}-guidance"} class="text-muted">
             {gettext(
               "Approve it only if its fingerprint is the one on the machine that holds the key."
             )}
           </p>
-          <p
-            :if={
-              (@state == :pending and (@may.approve or @may.reject)) or
-                (@state == :approved and @may.revoke)
-            }
-            class="flex flex-wrap gap-3"
-          >
+          <p :if={@acts != []} class="flex flex-wrap gap-3">
             <.button
-              :if={@state == :pending and @may.approve and @intact}
+              :if={:approve in @acts}
               id={"#{@dom}-approve"}
               variant="link"
               patch={key_path(@paths, @key, "approve")}
+              phx-hook="FocusOn"
             >
               {gettext("Approve…")}
             </.button>
             <.button
-              :if={@state == :pending and @may.reject}
+              :if={:reject in @acts}
               id={"#{@dom}-reject"}
               variant="link"
               patch={key_path(@paths, @key, "reject")}
+              phx-hook="FocusOn"
             >
               {gettext("Reject…")}
             </.button>
             <.button
-              :if={@state == :approved and @may.revoke}
+              :if={:revoke in @acts}
               id={"#{@dom}-revoke"}
               variant="link"
               patch={key_path(@paths, @key, "revoke")}
+              phx-hook="FocusOn"
             >
-              {gettext("Revoke…")}
+              <span aria-hidden="true">{gettext("Revoke…")}</span>
+              <span class="sr-only">{gettext("Revoke %{label}", label: @key.label)}</span>
             </.button>
           </p>
       <% end %>

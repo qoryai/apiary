@@ -73,8 +73,6 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     # The lists live once, at the workspace: no Runs or Network access tab.
     refute has_element?(view, "#target-tabs-runs")
     refute has_element?(view, "#target-tabs-network")
-    refute has_element?(view, "#target-tab-runs")
-    refute has_element?(view, "#target-tab-connections")
 
     assert page_title(view) =~ "github.example/acme/shop"
     # Two systems have the path acme/shop: the address names the system.
@@ -245,6 +243,12 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
+             "#target-choose-description",
+             "This path is on more than one forge. Choose one:"
+           )
+
+    assert has_element?(
+             view,
              "#target-choices a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']",
              "github.example/acme/shop"
            )
@@ -255,9 +259,27 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
              "gitlab.example/acme/shop"
            )
 
+    # Each link opens its target's page.
+    for system <- ["github.example", "gitlab.example"] do
+      view = open(conn, workspace_path(scope, "/targets/#{system}/acme/shop"))
+      assert has_element?(view, "#target-header h1", "#{system}/acme/shop")
+    end
+
     # Its old Runs tab: the runs of the path on every system.
     assert redirected_to(get(conn, workspace_path(scope, "/targets/acme/shop/-/runs"))) ==
              workspace_path(scope, "/runs?target=acme%2Fshop")
+  end
+
+  @tag needs: :security
+  test "a shared path given alone at a tab keeps the tab and the query in each link",
+       %{conn: conn, scope: scope} do
+    view = open(conn, workspace_path(scope, "/targets/acme/shop/-/policy?view=all"))
+    assert has_element?(view, "#target-choose-title", "acme/shop")
+
+    for system <- ["github.example", "gitlab.example"] do
+      link = workspace_path(scope, "/targets/#{system}/acme/shop/-/policy?view=all")
+      assert has_element?(view, "#target-choices a[href='#{link}']", "#{system}/acme/shop")
+    end
   end
 
   @tag needs: :security
@@ -315,12 +337,85 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert has_element?(view, "#target-choice-#{acme.id}", "acme/shop")
     assert has_element?(view, "#target-choice-#{github.id}", "github.example/acme/shop")
 
+    assert has_element?(
+             view,
+             "#target-choose-description",
+             "This address can mean more than one repository. Choose one:"
+           )
+
+    # Each choice is linked by an address that names it alone, never this one again: the
+    # path alone for acme's shop, which no other system has, and the system and the path
+    # for acme/shop.
+    links = [
+      {acme, "/targets/shop", "acme/shop"},
+      {github, "/targets/github.example/acme/shop", "github.example/acme/shop"},
+      {Targets.get(scope, "gitlab.example", "acme/shop"), "/targets/gitlab.example/acme/shop",
+       "gitlab.example/acme/shop"}
+    ]
+
+    for {target, link, name} <- links do
+      assert has_element?(
+               view,
+               "#target-choice-#{target.id} a[href='#{workspace_path(scope, link)}']"
+             )
+
+      view = open(conn, workspace_path(scope, link))
+      assert has_element?(view, "#target-header h1", name)
+    end
+
+    # An old tab's address that reads as both: the page that names each, with the tab and
+    # the query, each link sent on to its own target's list.
+    view = open(conn, workspace_path(scope, "/targets/acme/shop/-/runs?state=failed"))
+    assert has_element?(view, "#target-choose-title", "acme/shop")
+
+    for {target, link, _name} <- links do
+      assert has_element?(
+               view,
+               "#target-choice-#{target.id} a[href='#{workspace_path(scope, link <> "/-/runs?state=failed")}']"
+             )
+    end
+
+    assert redirected_to(get(conn, workspace_path(scope, "/targets/shop/-/runs?state=failed"))) ==
+             workspace_path(scope, "/runs?target=shop&state=failed")
+
+    assert redirected_to(
+             get(conn, workspace_path(scope, "/targets/github.example/acme/shop/-/network"))
+           ) == workspace_path(scope, "/network?system=github.example&target=acme%2Fshop")
+
     # A path no other system has, whose path alone reads as another target: its address
     # keeps the system, and is not sent on.
     started_run(scope, repo("codeberg.org", "acme/billing"))
     started_run(scope, repo("acme", "billing"))
     view = open(conn, workspace_path(scope, "/targets/codeberg.org/acme/billing"))
     assert has_element?(view, "#target-header h1", "codeberg.org/acme/billing")
+  end
+
+  test "a system named - is addressed, as the address's first segment", %{
+    conn: conn,
+    scope: scope
+  } do
+    started_run(scope, repo("-", "acme/x"))
+    target = Targets.get(scope, "-", "acme/x")
+
+    # Its path alone, which no other target has; its old address is sent on to it.
+    assert ApiaryWeb.TargetComponents.target_path(scope, "-", "acme/x") ==
+             workspace_path(scope, "/targets/acme/x")
+
+    assert redirected_to(get(conn, workspace_path(scope, "/targets/-/acme/x"))) ==
+             workspace_path(scope, "/targets/acme/x")
+
+    # Once another system has the path, its address keeps the system `-`.
+    started_run(scope, repo("codeberg.org", "acme/x"))
+    path = ApiaryWeb.TargetComponents.target_path(scope, "-", "acme/x", [], true)
+    assert path == workspace_path(scope, "/targets/-/acme/x")
+
+    view = open(conn, path)
+    assert has_element?(view, "#target-header h1", "-/acme/x")
+    assert has_element?(view, "#target-tabs-overview[aria-current=page]")
+    assert target.system == "-"
+
+    assert redirected_to(get(conn, path <> "/-/runs")) ==
+             workspace_path(scope, "/runs?system=-&target=acme%2Fx")
   end
 
   test "an address that is no label, such as bytes that are not UTF-8, is not found",

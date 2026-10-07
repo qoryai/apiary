@@ -625,7 +625,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} holds two keys already. Revoke one before you add another."
+msgid "%{name} holds two keys already. Revoke or reject one before you add another."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -718,7 +718,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone."
+msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys and its enrolment codes are revoked. Its runs stay in the record. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -2025,7 +2025,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "A code expires %{minutes} minutes after it is made, and is shown only then. These are the codes not used, revoked or expired."
+msgid "A code expires %{minutes} minutes after it is made, and is shown only then. Listed here: the codes neither used, revoked nor expired."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -4797,6 +4797,11 @@ msgstr ""
 msgid "Enforces on its own"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Enrolment code"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Enrolment code cancelled"
@@ -4974,8 +4979,13 @@ msgstr ""
 msgid "Expand sidebar"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Expired"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/member_live/index.ex
-#: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Expires"
 msgstr ""
@@ -5909,11 +5919,6 @@ msgstr ""
 msgid "It is being purged: the deletion can no longer be cancelled."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "It is cancelled at once. This cannot be undone."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "It is denied in either mode, observe too."
@@ -5943,6 +5948,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It is revoked at once, and its public key can never be used again. This cannot be undone."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "It is revoked at once. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -9236,6 +9246,7 @@ msgid "Revoke %{key}"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Revoke %{label}"
 msgstr ""
@@ -9246,14 +9257,19 @@ msgstr ""
 msgid "Revoke %{label}?"
 msgstr ""
 
-#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Revoke the invitation to %{email}"
+msgid "Revoke the code made %{time}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Revoke this enrolment code?"
+msgid "Revoke the code made %{time}?"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke the invitation to %{email}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10359,11 +10375,6 @@ msgstr ""
 msgid "Targets and their policy"
 msgstr ""
 
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Targets in more than one system have this path. Choose one:"
-msgstr ""
-
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Targets that set %{name}"
@@ -10417,6 +10428,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "That is no longer there to delete."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "That key or code is gone: this node's keys changed meanwhile."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -11312,9 +11328,9 @@ msgstr ""
 msgid "This account cannot log in at the moment. Ask the admins of this Qory instance."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "This can't be done now: what it names is not here."
+msgid "This address can mean more than one target. Choose one:"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11423,6 +11439,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This path cannot be written as a path rule."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This path is in more than one system. Choose one:"
 msgstr ""
 
 #: lib/apiary/policy.ex
