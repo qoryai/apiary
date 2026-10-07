@@ -63,38 +63,37 @@ defmodule ApiaryWeb.PageComponentsTest do
     assert text(html, "#target-tabs-policy .q-tabs-n") =~ "2"
   end
 
-  test "a settings page: the level's heading, then the section; or the section's title alone" do
+  test "a settings page: the section's title is its one h1; the frame names the level" do
     assigns = %{}
 
     html =
       rendered_to_string(~H"""
-      <.settings_page heading="Workspace settings" section={:runs} title="Runs" measure="list">
+      <.settings_page section={:runs} title="Runs" measure="list">
         <:subtitle>How long this workspace keeps its runs.</:subtitle>
         <:actions><.button>Save</.button></:actions>
         <p>body</p>
       </.settings_page>
       """)
 
-    assert text(html, "h1.q-settings-title") =~ "Workspace settings"
-
-    assert text(html, "#settings-section-runs.q-settings-main-list h2#settings-section-title") =~
+    assert text(html, "#settings-section-runs.q-settings-main-list h1#settings-section-title") =~
              "Runs"
 
-    # The section's title takes the focus after a move between sections, the level's h1
-    # being the same on each.
-    assert attribute(html, "h2#settings-section-title", "tabindex") == "-1"
-
+    # The section's title takes the focus after a navigation.
+    assert attribute(html, "h1#settings-section-title", "tabindex") == "-1"
+    assert html |> LazyHTML.from_fragment() |> LazyHTML.query("h1") |> Enum.count() == 1
+    refute html =~ "<h2"
     refute html =~ "settings-tabs"
 
+    # A caller that still names the level compiles, and the level is not drawn.
     html =
       rendered_to_string(~H"""
-      <.settings_page section={:user_settings} title="Profile">
+      <.settings_page heading="Organisation settings" section={:people} title="People">
         <p>body</p>
       </.settings_page>
       """)
 
-    assert text(html, "h1#settings-section-title") =~ "Profile"
-    refute html =~ "<h2"
+    assert text(html, "h1#settings-section-title") =~ "People"
+    refute html =~ "Organisation settings"
   end
 
   test "a form page: its title, and Cancel at its foot to where it was opened from" do

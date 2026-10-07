@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
   The core's sections of the organisation's and the workspace's settings, one section a
-  page beside the list of its kind's sections (`ApiaryWeb.SettingsComponents`), under the
-  scope's own sidebar, whose Settings is the current entry.
+  page, its title the page's h1, beside the list of its kind's sections
+  (`ApiaryWeb.SettingsComponents`), under the scope's own sidebar, whose Organisation
+  settings or Workspace settings is the current entry.
 
   - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug,
     its owners and, last, its danger zone, the deletion of the organisation; Workspaces,
@@ -455,13 +456,14 @@ defmodule ApiaryWeb.SettingsLive do
   end
 
   # A workspace's domain, read as its type (`Apiary.Lingo.Domain`): the software domain,
-  # the only one there is, is "A software workspace"; any other, a test's, is its name
-  # alone, which no sentence around it would read right for every name.
+  # the only one there is, is "A software workspace"; any other, a test's, is the name
+  # the workspace stores, which no sentence around it would read right for every name.
+  # The domain's module is matched, not asked its name: an edition's test domain need not
+  # have one.
   defp workspace_type(workspace) do
-    case Apiary.Lingo.Domain.for_workspace(workspace).name() do
-      "software" -> gettext("A software workspace")
-      name -> name
-    end
+    if Apiary.Lingo.Domain.for_workspace(workspace) == Apiary.Lingo.Domain.Software,
+      do: gettext("A software workspace"),
+      else: workspace.domain
   end
 
   defp section_title(:organisation), do: gettext("General")
@@ -508,7 +510,7 @@ defmodule ApiaryWeb.SettingsLive do
 
     socket
     |> assign(page: page, section: section)
-    |> assign(:page_title, page_title(page, section))
+    |> assign(:page_title, page_title(socket.assigns.current_scope, page, section))
   end
 
   # The organisation's deletion, expanded on General, for whoever may; anyone else is sent
@@ -627,6 +629,8 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply,
          socket
          |> assign(:current_scope, %{scope | organisation: organisation})
+         # The browser title names the organisation.
+         |> assign_section()
          |> assign_forms()
          |> put_flash(:info, gettext("Organisation renamed to %{name}.", name: organisation.name))}
 
@@ -655,6 +659,8 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply,
          socket
          |> assign(:current_scope, %{scope | workspace: workspace})
+         # The browser title names the workspace.
+         |> assign_section()
          |> assign_forms()
          |> put_flash(:info, gettext("Workspace renamed to %{name}.", name: workspace.name))}
 
@@ -845,14 +851,8 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp may?(scope, action), do: Access.can?(scope, action, scope.workspace)
 
-  defp page_title(page, section) do
-    settings =
-      if page == :organisation,
-        do: gettext("Organisation settings"),
-        else: gettext("Workspace settings")
-
-    section_title(section) <> " · " <> settings
-  end
+  defp page_title(scope, page, section),
+    do: SettingsComponents.page_title(scope, page, [section_title(section)])
 
   defp workspaces_path(scope), do: ~p"/#{scope.organisation}/settings/workspaces"
 

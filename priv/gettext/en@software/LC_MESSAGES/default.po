@@ -2480,6 +2480,7 @@ msgid "Access keys"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Account"
 msgstr ""
@@ -2759,11 +2760,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Admin"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Admin of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -3390,6 +3386,7 @@ msgstr ""
 msgid "Cancelling"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -5714,8 +5711,8 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
-#: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5754,7 +5751,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Integrations"
@@ -6855,11 +6851,6 @@ msgstr ""
 msgid "Member invited"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Member of %{name}"
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Member removed"
@@ -7832,11 +7823,6 @@ msgstr ""
 msgid "Not locked: %{reason}"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Not part of an organisation yet"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not running"
@@ -8350,10 +8336,9 @@ msgstr ""
 msgid "Organisation renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
-#: lib/apiary_web/live/member_live/index.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation settings"
 msgstr ""
@@ -8425,11 +8410,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Owner made on the server"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Owner of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -8655,12 +8635,6 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#: lib/apiary_web/live/user_live/settings.ex
-#, elixir-autogen, elixir-format
-msgid "Profile"
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
@@ -8793,11 +8767,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the log as text"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Reading %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -9966,17 +9935,9 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/access_key_live/index.ex
-#: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
-#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/organisation_live.ex
-#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr ""
@@ -12267,16 +12228,12 @@ msgstr ""
 msgid "Workspace renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
-#: lib/apiary_web/live/access_key_live/index.ex
-#: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
-#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/secret_live/index.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
 msgstr ""
@@ -12644,8 +12601,13 @@ msgid "Your password is updated."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Your personal account"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/user_live/organisations.ex
-#: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Your settings"
 msgstr ""

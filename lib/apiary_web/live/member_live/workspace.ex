@@ -35,12 +35,7 @@ defmodule ApiaryWeb.MemberLive.Workspace do
       sections={@sections}
       section={:people}
     >
-      <.settings_page
-        heading={gettext("Workspace settings")}
-        section={:people}
-        measure="list"
-        title={gettext("People")}
-      >
+      <.settings_page section={:people} measure="list" title={gettext("People")}>
         <:subtitle>
           {gettext(
             "The people who reach this workspace, and at what level; membership is managed in the organisation's People."
@@ -123,7 +118,12 @@ defmodule ApiaryWeb.MemberLive.Workspace do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, gettext("People") <> " · " <> gettext("Workspace settings"))
+     |> assign(
+       :page_title,
+       SettingsComponents.page_title(socket.assigns.current_scope, :workspace, [
+         gettext("People")
+       ])
+     )
      |> load()
      |> UserAuth.on_membership_change(&load/1)}
   end

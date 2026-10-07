@@ -2,8 +2,8 @@ defmodule ApiaryWeb.SettingsComponents do
   @moduledoc """
   The settings of an organisation and of a workspace, GitHub's way: each kind its own
   place, reached from its own scope, one section a page with the list of that kind's
-  sections beside it (`layout/1`), while the sidebar stays the scope's, its Settings the
-  current entry. Configuration lives here, set up once and changed rarely; the sidebar
+  sections beside it (`layout/1`), while the sidebar stays the scope's, its Organisation
+  settings or Workspace settings the current entry. Configuration lives here, set up once and changed rarely; the sidebar
   holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
@@ -27,7 +27,7 @@ defmodule ApiaryWeb.SettingsComponents do
   only: no other kind's, no link
   across. A section the reader may not open is absent from it, as a navigation entry is;
   its page still refuses them. What cannot be undone is never an entry: it is the danger
-  zone at the end of its scope's General page, or of Profile (`danger_zone/1`), and its
+  zone at the end of its scope's General page, or of Account (`danger_zone/1`), and its
   confirmation expands in place there, at a path of its own (`danger_action/1`).
 
   A page of the settings reads its sections when it mounts, and again when the reader's
@@ -150,16 +150,43 @@ defmodule ApiaryWeb.SettingsComponents do
     ]
   end
 
+  @doc """
+  page_title/3 is the browser title of a page of a level's settings, the most specific
+  first: the page's own words (`parts`: the section, or a form's act and the section, or
+  a tab and the section), the level's settings, then, for a workspace's, the workspace's
+  name and the organisation's, and for an organisation's, the organisation's; the root
+  layout adds Qory Apiary. So two workspaces' settings in two browser tabs never share a
+  title: "Secrets and variables · Workspace settings · Main · Acme".
+  """
+  @spec page_title(
+          Scope.t() | nil,
+          :workspace | :organisation | :person | :instance,
+          [String.t()]
+        ) :: String.t()
+  def page_title(scope, level, parts) do
+    Enum.join(parts ++ title_level(scope, level), " · ")
+  end
+
+  defp title_level(%Scope{organisation: organisation, workspace: workspace}, :workspace),
+    do: [gettext("Workspace settings"), workspace.name, organisation.name]
+
+  defp title_level(%Scope{organisation: organisation}, :organisation),
+    do: [gettext("Organisation settings"), organisation.name]
+
+  defp title_level(_scope, :person), do: [gettext("Your settings")]
+  defp title_level(_scope, :instance), do: [gettext("Instance")]
+
   # The settings' actions are asked of the organisation: listing its workspaces, whose
   # deletion is its.
   defp can?(%Scope{organisation: organisation} = scope, action),
     do: Access.can?(scope, action, organisation)
 
   @doc """
-  layout/1 is a page of the settings: the settings' heading, "Organisation settings" or
-  "Workspace settings" (a node's settings, a tab of its page, have the page's heading
-  instead), and the section itself, its title, what it is for and its actions above its
-  content.
+  layout/1 is a page of the settings: the section, its title, what it is for and its
+  actions above its content. The section's title is the page's `<h1>`: the frame names the
+  level, "Organisation settings" or "Workspace settings", in the second column's heading,
+  the breadcrumb and the browser title. A node's settings, a tab of its page, sit under the
+  page's own `<h1>`, so there the section's title is an `<h2>`.
 
   The list of the sections is the frame's second column: the page passes its sections
   (`sections/2`) to `ApiaryWeb.Layouts.app/1` as `sections`, its own as `section`, and
@@ -184,7 +211,11 @@ defmodule ApiaryWeb.SettingsComponents do
 
   attr :current, :atom, required: true, doc: "the key of the section of the page"
   attr :measure, :string, default: "read", values: ~w(read list)
-  attr :title, :string, required: true, doc: "the section's title"
+
+  attr :title, :string,
+    required: true,
+    doc: "the section's title: the page's h1, a node's settings' h2"
+
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
   slot :inner_block, required: true
@@ -192,12 +223,6 @@ defmodule ApiaryWeb.SettingsComponents do
   def layout(assigns) do
     ~H"""
     <div class={["q-settings", !@sections && "q-settings-solo"]}>
-      <h1 :if={@kind != :node} class="q-settings-title outline-none" tabindex="-1">
-        {if @kind == :organisation,
-          do: gettext("Organisation settings"),
-          else: gettext("Workspace settings")}
-      </h1>
-
       <nav
         :if={@sections}
         id="settings-tabs"
@@ -226,9 +251,21 @@ defmodule ApiaryWeb.SettingsComponents do
       >
         <header class="q-settings-head">
           <div class="min-w-0">
-            <%!-- Focus goes here after a move between sections: the level's h1 never
-                 changes. --%>
-            <h2 id="settings-section-title" class="q-settings-head-title outline-none" tabindex="-1">
+            <h1
+              :if={@kind != :node}
+              id="settings-section-title"
+              class="q-settings-title outline-none"
+              tabindex="-1"
+            >
+              {@title}
+            </h1>
+            <%!-- A node's settings: the node's page has the h1. --%>
+            <h2
+              :if={@kind == :node}
+              id="settings-section-title"
+              class="q-settings-head-title outline-none"
+              tabindex="-1"
+            >
               {@title}
             </h2>
             <p :if={@subtitle != []} class="q-settings-head-sub">{render_slot(@subtitle)}</p>
@@ -254,13 +291,20 @@ defmodule ApiaryWeb.SettingsComponents do
   @doc """
   part/1 is one part of a settings section, or of a person's settings page: its fields or
   its list straight on the page, no card, under a heading when the section has more than
-  one part (an `<h3>` under the section's `<h2>`; an `<h2>` on a person's page, whose
-  title is the `<h1>`), with a count beside it where one helps.
+  one part (an `<h2>` under the section's title, the page's `<h1>`; an `<h3>` where the
+  section's title is itself an `<h2>`), with a count beside it where one helps. A part of
+  a thing's page, such as a node's, passes `level={:h2}`: an `<h2>` over a rule.
   """
   attr :id, :string, default: nil
   attr :title, :string, default: nil
   attr :count, :integer, default: nil
-  attr :level, :atom, default: :h3, values: [:h2, :h3]
+
+  attr :level, :atom,
+    default: nil,
+    values: [nil, :h2, :h3],
+    doc:
+      "nil: an `<h2>` under a settings section's `<h1>`; `:h2`: an `<h2>` over a rule, on a thing's page; `:h3`: under a section whose title is an `<h2>`"
+
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
@@ -273,7 +317,11 @@ defmodule ApiaryWeb.SettingsComponents do
       class={["q-part", @class]}
       aria-labelledby={@title && @heading_id}
     >
-      <h2 :if={@title && @level == :h2} id={@heading_id} class="q-part-h q-part-h2">
+      <h2
+        :if={@title && @level != :h3}
+        id={@heading_id}
+        class={["q-part-h", @level == :h2 && "q-part-h2"]}
+      >
         {@title}
         <span :if={@count} class="q-part-n">{Format.number(@count)}</span>
       </h2>
@@ -519,7 +567,7 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   @doc """
-  danger_zone/1 is the last part of a scope's General page, and of Profile: after a rule,
+  danger_zone/1 is the last part of a scope's General page, and of Account: after a rule,
   the heading Danger zone, the page's only red words, and one line for each act that
   cannot be undone (`danger_action/1`), with whatever the page says of it under its line.
   No box: the lines rest on the page. It is absent for a reader who may do none of them.

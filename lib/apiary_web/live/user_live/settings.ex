@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.UserLive.Settings do
   @moduledoc """
   A person's own settings, one section a page, whose list is the sidebar of a person's
-  pages under Your settings (`ApiaryWeb.Layouts`): Profile, `/users/settings` (`:edit`),
+  pages under Your settings (`ApiaryWeb.Layouts`): Account, `/users/settings` (`:edit`),
   their email address, their password and, last, its danger zone
   (`ApiaryWeb.SettingsComponents.danger_zone/1`), deleting their account, confirmed inline
   in it, its line expanded in place at `/users/settings/delete` (`:delete`), where they
@@ -9,7 +9,7 @@ defmodule ApiaryWeb.UserLive.Settings do
   and time zone, kept with the account, and the theme and the keyboard shortcuts, reading
   preferences of the browser (`localStorage`), the same theme the account menu sets.
 
-  Profile and the deletion ask for a recent sign-in (`ApiaryWeb.UserAuth`'s sudo mode),
+  Account and the deletion ask for a recent sign-in (`ApiaryWeb.UserAuth`'s sudo mode),
   for they change what the account is or end it; Preferences does not.
   """
   use ApiaryWeb, :live_view
@@ -34,7 +34,7 @@ defmodule ApiaryWeb.UserLive.Settings do
     >
       <.settings_page
         section={if @live_action == :preferences, do: :user_preferences, else: :user_settings}
-        title={if @live_action == :preferences, do: gettext("Preferences"), else: gettext("Profile")}
+        title={if @live_action == :preferences, do: gettext("Preferences"), else: gettext("Account")}
       >
         <:subtitle :if={@live_action != :preferences}>
           {gettext("Your email address and password, and your account itself.")}
@@ -320,7 +320,7 @@ defmodule ApiaryWeb.UserLive.Settings do
     {:ok, socket}
   end
 
-  # A patch from Preferences to Profile or the deletion asks for the recent sign-in the
+  # A patch from Preferences to Account or the deletion asks for the recent sign-in the
   # mount asked of them.
   @impl true
   def handle_params(_params, _uri, socket) do
@@ -359,8 +359,11 @@ defmodule ApiaryWeb.UserLive.Settings do
 
   defp email_typed?(_typed, _email), do: false
 
-  defp page_title(:preferences), do: gettext("Preferences") <> " · " <> gettext("Your settings")
-  defp page_title(_profile), do: gettext("Profile") <> " · " <> gettext("Your settings")
+  defp page_title(:preferences),
+    do: SettingsComponents.page_title(nil, :person, [gettext("Preferences")])
+
+  defp page_title(_account),
+    do: SettingsComponents.page_title(nil, :person, [gettext("Account")])
 
   @impl true
   def handle_async(:sole_owned, {:ok, {sole_owned, marked_alone}}, socket),

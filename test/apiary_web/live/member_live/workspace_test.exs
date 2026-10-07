@@ -21,11 +21,13 @@ defmodule ApiaryWeb.MemberLive.WorkspaceTest do
       {:ok, lv, _html} = live(conn, people_path(scope))
 
       # A section of the workspace's settings, under the workspace's sidebar.
-      assert has_element?(lv, "#main h1", "Workspace settings")
+      refute has_element?(lv, "#main h1", "Workspace settings")
       assert has_element?(lv, "#settings-tab-people[aria-current=page]", "People")
-      assert has_element?(lv, "h2#settings-section-title", "People")
+      assert has_element?(lv, "h1#settings-section-title", "People")
       assert has_element?(lv, ".q-sidebar-foot #nav-settings[aria-current='true']")
-      assert page_title(lv) =~ "People · Workspace settings"
+
+      assert page_title(lv) ==
+               "People · Workspace settings · #{scope.workspace.name} · #{scope.organisation.name} · Qory Apiary"
 
       assert has_element?(
                lv,

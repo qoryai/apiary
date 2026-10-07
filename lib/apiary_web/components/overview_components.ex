@@ -1537,7 +1537,7 @@ defmodule ApiaryWeb.OverviewComponents do
             navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/runs"}
             class="q-do"
           >
-            {gettext("Settings")}
+            {gettext("Change")}
           </.link>
           <span :if={is_nil(@retention)} class="skeleton q-skel-line q-gr-d w-3/4"></span>
           <span :if={@retention} class="q-gr-d" id="overview-retention-last">

@@ -50,12 +50,6 @@ defmodule ApiaryWeb.MemberLive.Index do
       sections={@sections}
       section={:people}
     >
-      <:crumb navigate={~p"/#{@current_scope.organisation}/settings"}>
-        {gettext("Settings")}
-      </:crumb>
-      <:crumb navigate={~p"/#{@current_scope.organisation}/settings/people"}>
-        {gettext("People")}
-      </:crumb>
       <:crumb>{gettext("Invite people")}</:crumb>
 
       <.page_form
@@ -451,7 +445,7 @@ defmodule ApiaryWeb.MemberLive.Index do
     {:ok,
      socket
      |> assign(
-       page_title: gettext("People") <> " · " <> gettext("Organisation settings"),
+       page_title: title(socket.assigns.current_scope, gettext("People")),
        page: nil,
        form: nil,
        member: nil
@@ -467,16 +461,12 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   # The browser's title: Invite people is named by its act, the rest by the section.
   defp titled(%{assigns: %{page: :invite}} = socket),
-    do:
-      assign(
-        socket,
-        :page_title,
-        gettext("Invite people") <> " · " <> gettext("Organisation settings")
-      )
+    do: assign(socket, :page_title, title(socket.assigns.current_scope, gettext("Invite people")))
 
   defp titled(socket),
-    do:
-      assign(socket, :page_title, gettext("People") <> " · " <> gettext("Organisation settings"))
+    do: assign(socket, :page_title, title(socket.assigns.current_scope, gettext("People")))
+
+  defp title(scope, words), do: SettingsComponents.page_title(scope, :organisation, [words])
 
   defp apply_action(socket, :index, params),
     do: socket |> assign(:member, nil) |> find(params["q"])

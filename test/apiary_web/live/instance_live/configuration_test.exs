@@ -63,8 +63,9 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       {:ok, view, html} = live(conn, ~p"/instance/configuration")
 
       assert html =~ ~r{<title[^>]*>\s*Configuration · Instance · Qory Apiary\s*</title>}
-      assert text(view, "h1.q-settings-title") =~ "Instance"
-      assert text(view, "#settings-section-title") =~ "Configuration"
+      # The section is the page's one h1; the level is the breadcrumb's and the title's.
+      assert text(view, "h1#settings-section-title") =~ "Configuration"
+      refute has_element?(view, "#main h1", "Instance")
 
       for feature <- Features.built() do
         value = if Features.on?(feature), do: "On", else: "Off"
@@ -201,6 +202,10 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
       assert has_element?(view, "#breadcrumb a[href='/instance/configuration']", "Instance")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Configuration")
+
+      # With no second column and so no disclosure, a phone's bar keeps both segments.
+      refute has_element?(view, "#settings-disclosure")
+      refute has_element?(view, "#breadcrumb li.q-trail-lead")
 
       # The sidebar's lists open whole: nothing carries a target here.
       assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")

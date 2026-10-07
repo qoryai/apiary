@@ -447,9 +447,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#overview-retention-setting") == "Everything is kept"
       assert text(view, "#overview-retention-last") =~ "Nothing is pruned"
 
+      # The row's action says what it does, like the row above it ("Review").
       assert has_element?(
                view,
-               "#overview-retention-settings[href='#{workspace_path(scope, "/settings/runs")}']"
+               "#overview-retention-settings[href='#{workspace_path(scope, "/settings/runs")}']",
+               "Change"
              )
 
       {:ok, _} =

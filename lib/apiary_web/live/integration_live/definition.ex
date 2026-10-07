@@ -47,8 +47,6 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb :if={@definition} navigate={Common.definition_path(@current_scope, @definition)}>
         {@definition.title}
       </:crumb>
@@ -114,12 +112,9 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb>{@definition.title}</:crumb>
 
       <.settings_page
-        heading={gettext("Workspace settings")}
         section={:integrations}
         title={@definition.title}
         measure="list"

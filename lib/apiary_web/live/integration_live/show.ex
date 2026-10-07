@@ -51,8 +51,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
         {elem(@names, 0)}
       </:crumb>
@@ -144,8 +142,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
         {elem(@names, 0)}
       </:crumb>
@@ -209,12 +205,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb>{elem(@names, 0)}</:crumb>
 
       <.settings_page
-        heading={gettext("Workspace settings")}
         section={:integrations}
         title={elem(@names, 0)}
         measure="list"

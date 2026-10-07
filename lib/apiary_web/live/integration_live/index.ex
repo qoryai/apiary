@@ -48,8 +48,6 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb>{form_title(@live_action)}</:crumb>
 
       <.page_form
@@ -77,7 +75,6 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       section={:integrations}
     >
       <.settings_page
-        heading={gettext("Workspace settings")}
         section={:integrations}
         title={gettext("Integrations")}
         measure="list"

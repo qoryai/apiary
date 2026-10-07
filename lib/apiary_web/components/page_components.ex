@@ -7,8 +7,9 @@ defmodule ApiaryWeb.PageComponents do
   - `page_header/1`: a page's title, its one-line description and its actions.
   - `page_tabs/1`: a thing's tabs (a target, a node, a run): links, Overview first and
     Settings last, set apart at the bar's right end.
-  - `settings_page/1`: a page of a level's settings, whose sections the frame lists as the
-    second column (`ApiaryWeb.Layouts.app/1`'s `sections` and `section`).
+  - `settings_page/1`: a page of a level's settings, its section the `<h1>`; the frame names
+    the level and lists its sections as the second column (`ApiaryWeb.Layouts.app/1`'s
+    `sections` and `section`).
   - `page_form/1` and `page_form_foot/1`: a create or edit form as a page of its own, never
     a dialog, with Cancel back to where it was opened from.
   - `not_on_runs/1`: the one plain line a page over data no run receives yet says.
@@ -114,20 +115,20 @@ defmodule ApiaryWeb.PageComponents do
   end
 
   @doc """
-  settings_page/1 is a page of a level's settings. The frame lists the level's sections as
-  its second column: the page passes them to `ApiaryWeb.Layouts.app/1` as `sections`
-  (`ApiaryWeb.SettingsComponents.sections/2`, read when it mounts) and its own key as
-  `section`; a person's own pages and the Instance's pass none, the frame has theirs.
+  settings_page/1 is a page of a level's settings. The frame names the level (the second
+  column's heading, the breadcrumb's level segment and the browser title) and lists its
+  sections as the second column: the page passes them to `ApiaryWeb.Layouts.app/1` as
+  `sections` (`ApiaryWeb.SettingsComponents.sections/2`, read when it mounts) and its own
+  key as `section`; a person's own pages and the Instance's pass none, the frame has theirs.
 
-  The page: the level's heading (`heading`, "Workspace settings", the `<h1>`), then the
-  section, its title (`#settings-section-title`), one sentence of what it is for and its
-  actions, above its content. Without a heading, as a person's page has, the section's
-  title is the `<h1>`. A section of forms keeps a 720 px column (`measure="read"`); a list,
-  a 960 px one (`measure="list"`).
+  The page: the section's title, the page's one `<h1>` (`#settings-section-title`), one
+  sentence of what it is for and its actions, above its content; its parts are `<h2>`s
+  (`ApiaryWeb.SettingsComponents.part/1`). A section of forms keeps a 720 px column
+  (`measure="read"`); a list, a 960 px one (`measure="list"`).
 
       <Layouts.app flash={@flash} current_scope={@current_scope} nav={:settings}
         sections={@sections} section={:runs} counts={@nav_counts}>
-        <.settings_page heading={gettext("Workspace settings")} section={:runs} title={gettext("Runs")}>
+        <.settings_page section={:runs} title={gettext("Runs")}>
           <:subtitle>{gettext("How long this workspace keeps its runs.")}</:subtitle>
           ...
         </.settings_page>
@@ -135,10 +136,11 @@ defmodule ApiaryWeb.PageComponents do
   """
   attr :heading, :string,
     default: nil,
-    doc: "the level's settings, the page's h1; nil where the section's title is the h1"
+    doc:
+      "ignored: the frame names the level, and the section's title is the h1. Kept so a caller that passes it still compiles"
 
   attr :section, :atom, required: true, doc: "the section's key, as the second column has it"
-  attr :title, :string, required: true, doc: "the section's title"
+  attr :title, :string, required: true, doc: "the section's title, the page's h1"
   attr :measure, :string, default: "read", values: ~w(read list)
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
@@ -147,29 +149,13 @@ defmodule ApiaryWeb.PageComponents do
   def settings_page(assigns) do
     ~H"""
     <div class="q-settings q-settings-solo">
-      <h1 :if={@heading} class="q-settings-title outline-none" tabindex="-1">{@heading}</h1>
       <section
         id={"settings-section-#{@section}"}
         class={["q-settings-main", "q-settings-main-#{@measure}"]}
       >
         <header class="q-settings-head">
           <div class="min-w-0">
-            <%!-- Focus goes here after a move between sections: the level's h1 never
-                 changes. --%>
-            <h2
-              :if={@heading}
-              id="settings-section-title"
-              class="q-settings-head-title outline-none"
-              tabindex="-1"
-            >
-              {@title}
-            </h2>
-            <h1
-              :if={!@heading}
-              id="settings-section-title"
-              class="q-settings-title outline-none"
-              tabindex="-1"
-            >
+            <h1 id="settings-section-title" class="q-settings-title outline-none" tabindex="-1">
               {@title}
             </h1>
             <p :if={@subtitle != []} class="q-settings-head-sub">{render_slot(@subtitle)}</p>

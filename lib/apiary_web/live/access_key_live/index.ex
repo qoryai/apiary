@@ -39,10 +39,6 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       sections={@sections}
       section={:keys}
     >
-      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
-        {gettext("Settings")}
-      </:crumb>
-      <:crumb navigate={keys_path(@current_scope)}>{gettext("Access keys")}</:crumb>
       <:crumb>{crumb_words(@live_action)}</:crumb>
 
       <SettingsComponents.layout
@@ -79,10 +75,6 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       sections={@sections}
       section={:keys}
     >
-      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
-        {gettext("Settings")}
-      </:crumb>
-      <:crumb navigate={keys_path(@current_scope)}>{gettext("Access keys")}</:crumb>
       <:crumb>{crumb_words(:new)}</:crumb>
 
       <SettingsComponents.layout
@@ -428,7 +420,10 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     {:ok,
      socket
      |> assign(
-       page_title: gettext("Access keys") <> " · " <> gettext("Workspace settings"),
+       page_title:
+         SettingsComponents.page_title(socket.assigns.current_scope, :workspace, [
+           gettext("Access keys")
+         ]),
        key: nil,
        reveal: nil,
        retire_key: nil,
@@ -662,7 +657,11 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         do: page_title(assigns),
         else: gettext("Access keys")
 
-    assign(socket, :page_title, title <> " · " <> gettext("Workspace settings"))
+    assign(
+      socket,
+      :page_title,
+      SettingsComponents.page_title(assigns.current_scope, :workspace, [title])
+    )
   end
 
   # A form as its page opens: nothing is typed yet, so nothing is wrong yet.

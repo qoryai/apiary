@@ -26,6 +26,17 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       assert has_element?(view, ~s(#people-open[href="/#{organisation.slug}/settings/people"]))
       assert has_element?(view, "#nav-organisation_overview[aria-current=page]")
 
+      # No bare "Settings" link in Details: the sidebar's foot names Organisation settings
+      # on the same page.
+      refute has_element?(view, "#about-settings")
+      refute has_element?(view, "#about a", "Settings")
+
+      assert has_element?(
+               view,
+               ~s(.q-sidebar-foot #nav-organisation[href="/#{organisation.slug}/settings"]),
+               "Organisation settings"
+             )
+
       # The workspaces' facts land off the first paint.
       assert render_async(view) =~ "none alive"
     end

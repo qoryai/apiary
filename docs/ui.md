@@ -25,7 +25,12 @@ person's own page and an Instance page, the one the person came from (Two levels
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
   then the workspace, each a link to its home, and the page's own segments, a target or a
-  record, the last one the page with `aria-current="page"`; on a person's own page Your
+  record, the last one the page with `aria-current="page"`; on a page of a level's
+  settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
+  "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
+  the page itself, or a link where segments follow it), so the page adds only what follows
+  the section (`Acme / Main / Workspace settings / Secrets and variables / New secret`); on
+  a person's own page Your
   settings, its section and the page's own segments, such as an edition's `Your settings /
   Organisations / New organisation`, and on an Instance page Instance and its section the
   same way, the section a link where segments follow it), then **Search or jump to**,
@@ -62,8 +67,10 @@ person's own page and an Instance page, the one the person came from (Two levels
   integration, New secret, New variable and New access key, then, on every page, Invite
   people; before the core's, whatever the edition offers there
   (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or the
-  organisation as its place says. **The account menu** holds who they are and their level
-  there, Your settings and Your organisations, the theme (Auto, Light, Dark), then
+  organisation as its place says. **The account menu** holds who they are, their email
+  over "Your personal account" (`#user-menu-account`; an account has no name), then
+  Settings (`#user-menu-settings`, the person's own, `/users/settings`) and Your
+  organisations, the theme (Auto, Light, Dark), then
   **Instance** (`#user-menu-instance`) where the person may open a section of the Instance
   level (`ApiaryWeb.Layouts.instance_sections/1`), leading to the first, and Log out; an
   edition's entries follow the core's of their group
@@ -76,30 +83,38 @@ person's own page and an Instance page, the one the person came from (Two levels
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
   Overview and Audit log, then the edition's groups (`ApiaryWeb.Edition.nav_sections/0`);
-  the person's Profile, Preferences and Organisations under Your settings, the sidebar of
+  the person's Account, Preferences and Organisations under Your settings, the sidebar of
   their own pages only where there is no workspace to show (Two levels, below). It is
   never replaced: a page of a scope's settings keeps the scope's sidebar. A group whose
   feature is off is absent, not greyed.
 - **The current entry.** `aria-current="page"` marks only the entry of the exact page; a
-  parent of the page carries `aria-current="true"`: the sidebar's Settings while its
-  sections are the second column, whose entry is the exact page, and a second column's
-  section on a page under it, one that passes `crumb` segments (Invite people, New
-  secret).
-- **The sidebar's foot** holds the scope's Settings, a workspace's or an organisation's,
-  the current entry on every page of them (Settings itself, or an entry of the section
-  `:settings`, such as Access keys), marked as their parent (The current entry, above),
+  parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
+  Organisation settings while its sections are the second column, whose entry is the exact
+  page, and a second column's section on a page under it, one that passes `crumb` segments
+  (Invite people, New secret), or on a tab of it other than the one its entry leads to
+  (`Layouts.app/1`'s `section_current="true"`).
+- **The sidebar's foot** holds the scope's settings, named after the level: **Workspace
+  settings** (`#nav-settings`) or **Organisation settings** (`#nav-organisation`), never a
+  bare Settings, and so its tooltip while folded; the current entry on every page of them
+  (General, or an entry of the section `:settings`, such as Access keys), marked as their
+  parent (The current entry, above),
   then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
   version, opening upward to Docs, Changelog (on an instance with every feature) and
   Source on GitHub, what is about the product rather than the person; and at the right of
   it the fold.
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
-  page of the level, Settings included. A page of a level's Settings, of Your settings or
-  of the Instance opens the level's sections as a **second column** beside the sidebar
-  (`Layouts.app/1`'s `sections` and `section`): from 1024 px a column under its heading
-  (Settings, Your settings, Instance), from 768 px a row of links at the top of the page,
-  as a page's tabs are, and on phones a list in the drawer (`#drawer-sections`,
-  `drawer-section-<key>`), under Settings at the sidebar's foot for a level's Settings and
-  a group under its own heading for a person's and the Instance's. Each keeps the ids its
+  page of the level, its settings included. A page of a level's settings, of Your settings
+  or of the Instance opens the level's sections as a **second column** beside the sidebar
+  (`Layouts.app/1`'s `sections` and `section`): from 1024 px a column under its heading,
+  which names the level (Workspace settings, Organisation settings, Your settings,
+  Instance; `#<column>-heading`) and, beneath it, the place (the workspace's or the
+  organisation's name, `#<column>-place`), and names the column's navigation. Below
+  1024 px, at every width, the heading is one full-width button under the top bar,
+  `[ Workspace settings · Main ▾ ]` (`#settings-disclosure`, `aria-expanded`,
+  `aria-controls` the list), that opens the same links in place, one per line, pushing the
+  page down: not a modal, not sticky. Escape on it or on a link closes it and gives it the
+  focus; a navigation renders it closed. The drawer holds the sidebar alone. The level
+  leaves the page: a settings page's `<h1>` is its section. Each keeps the ids its
   list had: `#settings-tabs` and `settings-tab-<key>` for a level's Settings,
   `#nav-group-account` and `nav-<key>` for a person's, `#instance-tabs` and
   `instance-tab-<key>` for the Instance's. A level with fewer than two sections gets no
@@ -126,10 +141,12 @@ person's own page and an Instance page, the one the person came from (Two levels
   the top bar, `#shell-content` and Skip to content inert and stops the page scrolling
   behind it; the scrim, Escape, the Close menu button and any navigation close
   it, and focus returns to the menu button. It scrolls as one piece, its Close menu button
-  kept at the top, so on a short screen the foot's Settings and its sections never squeeze
-  the main entries. It lists the second column's sections (Two levels, above), and there
-  the parent Settings is drawn lighter than the current section under it, so no two
-  entries look selected. The bar names the last segment of the breadcrumb only.
+  kept at the top, so on a short screen the foot never squeezes the main entries. It holds
+  the sidebar alone; on a settings page the foot's Workspace settings is drawn lighter, the
+  page's parent, while the disclosure under the bar (Two levels, above) names the level
+  and lists its sections. The bar names the last segment of the breadcrumb only; on a core
+  Instance page, which has one section and so no disclosure, it keeps both, `Instance /
+  Configuration`.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
@@ -177,7 +194,7 @@ sections and no other kind's: no "Elsewhere", no link across. A navigation item 
 replaces the navigation it is in.
 
 - **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
-  Settings: General (name, slug, and its danger zone), People (`/settings/people`,
+  Workspace settings: General (name, slug, and its danger zone), People (`/settings/people`,
   `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
@@ -187,7 +204,8 @@ replaces the navigation it is in.
   `/settings/retention`, its path before, sends on with its query), and Access keys
   (`/settings/keys`).
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
-  breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
+  breadcrumb's organisation leads to its overview, whose sidebar has Organisation
+  settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
   found by their email with Find a person, `?q=`; invitations, suspensions; Invite
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
@@ -214,65 +232,70 @@ replaces the navigation it is in.
   tabs without a heading of their own (`SettingsComponents.layout/1`, `kind={:node}`,
   given its `sections`): the list is in the page, never a second column.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
-  `/users/organisations`), from the account menu's Your settings: Profile (email,
+  `/users/organisations`), from the account menu's Settings: Account (email,
   password, and its danger zone), Preferences (language and time zone, kept with the
   account; the theme, the account menu's, and the keyboard shortcuts, reading preferences
-  of the browser), Organisations. Each is a settings page (`PageComponents.settings_page/1`)
-  without a level's heading, so its `<h1>` is its section's title, its parts' headings
-  `<h2>`s over a rule; the sidebar stays the one the person came from, and the sections are
+  of the browser), Organisations. Each is a settings page (`PageComponents.settings_page/1`),
+  its `<h1>` its section's title; the sidebar stays the one the person came from, and the sections are
   its second column (`#nav-group-account`, `nav-<key>`); with no workspace to show, the
-  sidebar is the person's, and lists them itself. Profile and the account's deletion ask
+  sidebar is the person's, and lists them itself. Account and the account's deletion ask
   for a recent sign-in (`UserAuth`'s sudo mode); Preferences does not.
 - **The instance's** (`/instance/…`, the routes of `ApiaryWeb.Routes.instance_routes/2`,
   each page with `place={:instance}`), from the account menu's Instance, shown when the
   person may open a section of it (`ApiaryWeb.Layouts.instance_sections/1`) and leading to
   the first, as `/instance` itself does: the edition's sections
   (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
-  Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, under
-  the `<h1>` Instance), read only: what whoever runs the server set, as the server read it
+  Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, its
+  `<h1>` Configuration), read only: what whoever runs the server set, as the server read it
   when it started, each value with the setting it is set by. Anyone else is answered not
   found. The sidebar stays the one the person came from. In the core Configuration is the
   one section, so there is no second column; an edition's sections add to it, and with two
   or more they are the second column (`#instance-tabs`, `instance-tab-<key>`).
 
-A workspace's and an organisation's settings keep the scope's sidebar, its Settings the
-current entry, marked as the parent, and are one section a page
-(`ApiaryWeb.SettingsComponents.layout/1`, or `ApiaryWeb.PageComponents.settings_page/1`):
-the `<h1>` "Workspace settings" or "Organisation settings", then the section, its title an
-`<h2>` (16 px, `#settings-section-title`), one sentence of what it is for, then its
-content, a 720 px column for forms and 960 px for a list (People, a workspace's and an
+A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
+settings or Organisation settings the current entry, marked as the parent, and are one
+section a page (`ApiaryWeb.SettingsComponents.layout/1`, or
+`ApiaryWeb.PageComponents.settings_page/1`): the section's title is the page's one `<h1>`
+(20 px, `#settings-section-title`; `heading`, the level's h1 before, is ignored), one
+sentence of what it is for, then its content; the frame names the level, in the second
+column's heading, the breadcrumb and the browser title. Content is a 720 px column for forms and 960 px for a list (People, a workspace's and an
 organisation's, Access keys). The list of the kind's sections is not in the page but the
 frame's second column (Two levels, under The shell; `#settings-tabs`,
 `settings-tab-<key>`): the page reads them when it mounts (`sections/2`) and passes them to
 `Layouts.app/1` as `sections`, its own key as `section`. It is labels without icons,
 muted, the current one in the text colour on a light fill, with a count where it helps
-(an organisation's People, Access keys, from the navigation's `counts`); from 768 px to
-1024 px it is a row of links at the top of the page, the current one underlined, as a
-page's tabs are, and on a phone a list under Settings in the drawer. A section is flat, no
-card: its fields straight under its heading (`SettingsComponents.part/1`, an `<h3>` where
-it has more than one part, such as Owners), the fields as wide as the column, and at the
+(an organisation's People, Access keys, from the navigation's `counts`); below 1024 px it
+is the disclosure under the top bar (Two levels, under The shell). A section is flat, no
+card: its fields straight under its heading (`SettingsComponents.part/1`, an `<h2>` where
+it has more than one part, such as Owners; the danger zone's lines are `<h3>`s), the fields as wide as the column, and at the
 foot of a form
 its one button, primary where it is the section's main action, beside one muted line
 (`SettingsComponents.save/1`). A section the reader may not open is not in the list, and
 its path sends them to General with its own sentence of why.
-The breadcrumb ends with Settings (`8wonders / Main / Settings`, `8wonders / Settings`); a
-person's own page starts with Your settings and an Instance page with Instance, then the
-section (The top bar, under The shell).
+The breadcrumb names the level and ends with the section, both written by the frame
+(`Acme / Main / Workspace settings / Access keys`, `Acme / Organisation settings / People`);
+a person's own page starts with Your settings and an Instance page with Instance, then the
+section (The top bar, under The shell). The browser title is the most specific first, the
+page's words, the level, then the workspace's name and the organisation's
+(`SettingsComponents.page_title/3`): `Access keys · Workspace settings · Main · Acme ·
+Qory Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
+settings · Qory Apiary`.
 
 **A form is a page.** Creating or changing one thing is a page of its section at a path of
 its own, never a dialog over the list, on the pattern of Add integration (storybook,
 Screens): the second column stays beside it, its section the current one, marked as the
 parent (`aria-current="true"`); the breadcrumb ends with the section and the page
-(`8wonders / Main / Settings / Secrets and variables / New secret`), each segment before
-the page a link back; the section's `<h2>` is the page's
-title, the act and what it acts on (New secret, Change the value of FORGE_TOKEN), with one
+(`Acme / Main / Workspace settings / Secrets and variables / New secret`), each segment
+before the page a link back, the page adding only the segments after the section; the
+section's `<h1>` is the page's title, the act and what it acts on (New secret, Change the value of FORGE_TOKEN), with one
 sentence under it of what the page does; the form fills the 720 px column, its first field
 takes the focus, and its foot is the primary button with Cancel beside it, a link back to
 the list (`SettingsComponents.save/1`, `cancel`). A save goes back to the list with a
 flash; a refused one stays on the page, the error under its field. The breadcrumb's last
-segment is the act alone (New secret, Change value), and the browser's title the page's.
+segment is the act alone (New secret, Change value), and the browser's title the page's
+(`New secret · Workspace settings · Main · Acme`).
 
-**The danger zone** ends its scope's General page, and Profile, GitHub's way
+**The danger zone** ends its scope's General page, and Account, GitHub's way
 (`SettingsComponents.danger_zone/1`): after a rule, the heading Danger zone, the page's
 only red words, then a line for each act that cannot be undone (`danger_action/1`), its
 title, one muted sentence of what it does and what cannot be undone, and at the right a
@@ -383,8 +406,9 @@ Retire previous secret beside it; Revoked, with its date). Rotate… and Revoke�
 live key's ⋯ menu. A revoked key stays listed, so the runs it posted keep a name.
 
 - **New access key** (`/settings/keys/new`) is a page of the section (A form is a page,
-  above): the breadcrumb `Settings / Access keys / New access key`, the title New access
-  key, one sentence, the Label field, and Create key with Cancel back to the list.
+  above): the breadcrumb `Workspace settings / Access keys / New access key`, the title
+  New access key, one sentence, the Label field, and Create key with Cancel back to the
+  list.
 - **The secret is shown once, on the page of the act that made it**, never in a dialog:
   once the key is created, New access key's page becomes the secret's (Your new access
   key: the warning that it is shown once, the key id and the secret each with a copy
@@ -630,13 +654,15 @@ what needs the reader, then what their agents did, and never grows with the data
   `DaysChart` hook measured, with its table twin a text action away.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
   word only when it is running or ended badly), a sparkline of its days and its denials.
-- **Guard**: a few lines of key and value, each with a muted detail and one link: the
-  policy's mode and version, the targets with rules of their own, retention.
+- **Guard**: a few lines of key and value, each with a muted detail and one link that
+  says what it does: the policy's mode and version, the targets with rules of their own
+  (Review), retention (Change, to Workspace settings › Runs).
 - A workspace no run has reached is one box: the steps from a key to the first run and
   the server block to paste.
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
-all, with its people and details as lines beside them.
+all, with its people and details as lines beside them; Details has no link to the
+settings, which the sidebar's foot, Organisation settings, leads to on the same page.
 
 ## Targets
 
@@ -1132,8 +1158,9 @@ and names the product Qory Apiary.
   ("Revoke build-01") while its visible text stays short. A field has a visible label, and
   its error is tied to it with `aria-invalid` and `aria-describedby`. Each `<nav>` of the
   sidebar has a name of its own: its heading, Main for the first group, else its first
-  entry's; the second column is named by its heading (Settings, Your settings, Instance),
-  as its list in the drawer is, the two never shown at once. The current entry is marked
+  entry's; the second column is named by its heading, the level (Workspace settings,
+  Organisation settings, Your settings, Instance), not by the place beneath it, at every
+  width, its heading a button below 1024 px. The current entry is marked
   by `aria-current`, `"page"` for the exact page and `"true"` for its parent (The shell).
   No control sits inside another: a timeline item's number inside its
   `<summary>` is text that carries its path, which `c` copies.
@@ -1152,10 +1179,10 @@ and names the product Qory Apiary.
 ## Phones and touch
 
 The breakpoint is 768 px (Tailwind's `md`). Below it the sidebar is the drawer, which
-scrolls as one piece and lists the second column's sections (The shell), the gutter is
-16 px, controls are 40 px high and inputs take 16 px text so the browser does not zoom.
-The second column is a column from 1024 px and a row of links at the top of the page from
-768 px. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area
+scrolls as one piece and holds the sidebar alone (The shell), the gutter is 16 px,
+controls are 40 px high and inputs take 16 px text so the browser does not zoom. The
+second column is a column from 1024 px and, below it, at every width, one disclosure under
+the top bar, `[ Workspace settings · Main ▾ ]`, whose links open in place. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area
 whatever its drawn size. At 320 px wide, and at 200% zoom, the page never scrolls
 sideways: tables, code, the filter bar and the terminal scroll inside their own
 containers.

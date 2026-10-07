@@ -11,9 +11,9 @@ defmodule ApiaryWeb.Storybook.Page.SettingsPage do
       %Variation{
         id: :a_workspace_section,
         description:
-          "A section of a workspace's settings: the level's heading, then the section. " <>
-            "The frame lists the sections as its second column.",
-        attributes: %{heading: "Workspace settings", section: :runs, title: "Runs"},
+          "A section of a workspace's settings: its title is the page's h1. " <>
+            "The frame names the level and lists the sections as its second column.",
+        attributes: %{section: :runs, title: "Runs"},
         slots: [
           ~s|<:subtitle>How long this workspace keeps its runs, their events and their logs.</:subtitle>|,
           ~s|<p class="text-sm">Keep runs for 90 days.</p>|
@@ -22,7 +22,6 @@ defmodule ApiaryWeb.Storybook.Page.SettingsPage do
       %Variation{
         id: :a_list_with_an_action,
         attributes: %{
-          heading: "Organisation settings",
           section: :people,
           title: "People",
           measure: "list"

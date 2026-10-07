@@ -23,7 +23,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       workspace = "/#{scope.organisation.slug}/#{scope.workspace.slug}"
 
       for {path, key, title} <- [
-            {~p"/users/settings", "user_settings", "Profile"},
+            {~p"/users/settings", "user_settings", "Account"},
             {~p"/users/settings/preferences", "user_preferences", "Preferences"},
             {~p"/users/organisations", "user_organisations", "Organisations"}
           ] do
@@ -72,7 +72,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert {:error, {:redirect, %{to: "/users/log-in"}}} =
                live(conn, ~p"/users/settings/delete")
 
-      # A patch from Preferences to Profile asks too.
+      # A patch from Preferences to Account asks too.
       lv |> render_patch(~p"/users/settings")
       assert_redirect(lv, ~p"/users/log-in")
     end

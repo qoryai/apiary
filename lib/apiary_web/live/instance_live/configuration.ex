@@ -38,11 +38,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
       place={:instance}
       section={:configuration}
     >
-      <.settings_page
-        heading={gettext("Instance")}
-        section={:configuration}
-        title={gettext("Configuration")}
-      >
+      <.settings_page section={:configuration} title={gettext("Configuration")}>
         <:subtitle>
           {gettext(
             "What whoever runs this server set for the whole instance, or the default, as the server read it when it started. Nothing here changes it."
@@ -197,7 +193,10 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
     if Access.instance_admin?(socket.assigns.current_scope) do
       {:ok,
        assign(socket,
-         page_title: gettext("Configuration") <> " · " <> gettext("Instance"),
+         page_title:
+           SettingsComponents.page_title(socket.assigns.current_scope, :instance, [
+             gettext("Configuration")
+           ]),
          features: features(),
          url_sources: Source.url_sources?(),
          audit_days: Audit.retention_days(),
