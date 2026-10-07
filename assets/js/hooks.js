@@ -20,6 +20,7 @@ import {HostSuggest} from "./hooks/host_suggest"
 import {DaysChart, OverviewPage} from "./hooks/overview"
 import {FamilyBoxes} from "./hooks/family_boxes"
 import {SecretValues} from "./hooks/secret_values"
+import {GenerateKey} from "./hooks/generate_key"
 
 export {autoDismiss}
 
@@ -45,4 +46,5 @@ export const hooks = {
   OverviewPage,
   FamilyBoxes,
   SecretValues,
+  GenerateKey,
 }
