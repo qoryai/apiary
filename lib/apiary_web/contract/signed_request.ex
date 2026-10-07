@@ -49,7 +49,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   **What a verified request leaves.** The conn's `access_key` (with its workspace and
   node), `request_signature`, `instance_id` and `contract_version`. The instance is
   recorded as seen on the key's node (`Apiary.Nodes.seen/3`), for a key that awaits
-  approval too, once its instance id passes. On a GET of an approved key the use of the
+  approval too, once its instance id passes and, on a GET, only when its timestamp is
+  within the window: a stale or replayed GET leaves neither the instance's last sighting
+  nor its name, and still gets its refusal in the order above. On a GET of an approved key the use of the
   key is recorded: the runner version, reduced to what the column holds and dropped when
   it does not fit, and the contract version; on a POST the receiver records the use with
   the delivery. Neither failing fails the request. The Logger metadata carries the key's
@@ -116,12 +118,16 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   # The refusals after verification, in the contract's order, each answer signed.
   defp after_verification(conn, access_key, opts) do
+    # A GET's freshness is read here and refused last, in the contract's order; until
+    # then it decides only whether the instance is recorded as seen.
+    freshness = fresh(conn)
+
     with :ok <- rate(access_key, opts),
          {:ok, instance_id} <- instance_id(header(conn, "x-qory-instance-id")),
-         :ok <- seen(conn, access_key, instance_id),
+         :ok <- seen(conn, access_key, instance_id, freshness),
          :ok <- approved(access_key),
          {:ok, version} <- contract_version(conn),
-         :ok <- fresh(conn) do
+         :ok <- freshness do
       conn
       |> assign(:instance_id, instance_id)
       |> assign(:contract_version, version)
@@ -237,8 +243,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   defp instance_id(nil), do: {:refuse, 400, "bad_request"}
 
   # The instance is the node's, recorded for a key awaiting approval too, so an admin
-  # sees what waits. `Apiary.Nodes.seen/3` never fails.
-  defp seen(conn, %AccessKey{node: node} = access_key, instance_id) do
+  # sees what waits. A GET whose timestamp is outside the window records nothing: a
+  # stale or replayed request is an authentication failure, refused with 401 further on.
+  # `Apiary.Nodes.seen/3` never fails.
+  defp seen(_conn, _access_key, _instance_id, :unauthorized), do: :ok
+
+  defp seen(conn, %AccessKey{node: node} = access_key, instance_id, :ok) do
     Nodes.seen(node, %{
       instance_id: instance_id,
       name: header(conn, "x-qory-instance-name"),

@@ -240,6 +240,60 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
       assert unsigned_answer?(conn)
       assert Repo.get!(AccessKey, ctx.key.id).last_used_at == nil
     end
+
+    test "a GET captured an hour ago is refused, and records the instance as seen nowhere",
+         ctx do
+      seen_at = DateTime.add(DateTime.utc_now(), -2, :hour) |> DateTime.truncate(:microsecond)
+
+      known =
+        instance_fixture(ctx.node,
+          instance_id: "i_known",
+          name: "spot-runners",
+          seen_at: seen_at
+        )
+
+      for instance_id <- ["i_known", "i_new"],
+          timestamp <- [System.os_time(:second) - 3600, System.os_time(:second) + 3600] do
+        conn =
+          signed_get(build_conn(), ctx.key.key_id, ctx.secret, @discovery,
+            instance_id: instance_id,
+            timestamp: timestamp
+          )
+
+        assert json_response(conn, 401) == @unauthorized
+        assert unsigned_answer?(conn)
+      end
+
+      assert [instance] = Repo.all(Instance)
+      assert instance.id == known.id
+      assert instance.last_seen_at == known.last_seen_at
+      assert instance.name == "spot-runners"
+      assert Repo.get!(AccessKey, ctx.key.id).last_used_at == nil
+
+      # The same request, fresh, is what records it.
+      assert signed_get(build_conn(), ctx.key.key_id, ctx.secret, @discovery,
+               instance_id: "i_known"
+             ).status == 200
+
+      assert %Instance{name: "build-01", last_seen_at: last_seen_at} =
+               Repo.get!(Instance, known.id)
+
+      assert DateTime.after?(last_seen_at, known.last_seen_at)
+    end
+
+    test "a stale GET under a key that awaits approval is still 409, and records nothing",
+         ctx do
+      %{access_key: pending, pair: pair} = pending_key_fixture(ctx.scope, ctx.node)
+
+      conn =
+        signed_get(build_conn(), pending.key_id, pair.secret, @discovery,
+          timestamp: System.os_time(:second) - 3600
+        )
+
+      assert json_response(conn, 409) == %{"error" => "key_pending"}
+      assert signed_answer?(conn)
+      assert Repo.aggregate(Instance, :count) == 0
+    end
   end
 
   describe "the key's row" do
