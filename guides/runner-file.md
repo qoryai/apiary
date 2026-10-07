@@ -60,8 +60,9 @@ export QORY_APIARY_PUBLIC_KEY='[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmO
 
 The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs in a CI's
 secret store; `qory access-key enrol --print` and `qory access-key create --print` print it
-instead of keeping it on the machine. With the three variables set, the CI's `runner.yaml`
-needs `server.url` alone.
+instead of keeping it on the machine, and **Generate a key** on the node's **Access key**
+tab shows it once, with the other two, on the page **Variables for …**. With the three
+variables set, the CI's `runner.yaml` needs `server.url` alone.
 
 The three stay the runner's. `qory` reads them when it starts and takes them out of its
 environment before it starts anything, so no session inherits them, and naming one in
@@ -71,10 +72,9 @@ environment before it starts anything, so no session inherits them, and naming o
 ### A new key, and revoking one
 
 A key is never rotated. To change a machine's key, enrol or paste a new one on the same
-node, approve it, and once the machine uses it, **Revoke…** the old one on the node's
-**Access key** tab. A node holds two approved keys at a time for this. A revoked key stops
-verifying at once: a machine still using it fails its next request, `401`, and starts no
-new run.
+node, and once the machine uses it, **Revoke…** the old one on the node's **Access key**
+tab. A node holds two keys at a time for this. A revoked key stops verifying at once: a
+machine still using it fails its next request, `401`, and starts no new run.
 
 ## What the runner does with it
 
@@ -97,8 +97,8 @@ key, and the runner verifies it under the pin before it reads anything of it.
 
 The run fails closed. A configuration fetch that fails or is refused, an answer that does
 not verify under the pin, or a ping the server does not accept: no run, and the error
-names the URL and the status. A key that awaits approval is refused `key_pending`, and an
-instance beyond its node pool's instance limit `instance_limit`.
+names the URL and the status. An instance beyond its node pool's instance limit is refused
+`instance_limit`.
 <!-- feature: security -->
 A named run configuration that does not answer `200` is no run either.
 <!-- /feature -->

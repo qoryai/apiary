@@ -851,7 +851,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   enrolled with a code, pasted or made in a browser, until it is revoked: its card names
   it Active or Revoked, says how it arrived ("With an enrolment code dana@example.com
   made, …", "Pasted by …", "Made in a browser by …"), and an active key's Revoke… is
-  confirmed in place; nothing awaits approval. A key whose record doesn't match its
+  confirmed in place. A key whose record doesn't match its
   integrity code says so on its card: "… It can't be used." An active key's card links
   **Runner file lines**, for everyone who reads the node.
 - **Generate a key** (`/nodes/:node_id/access-key/generate`, owners and admins; at the
@@ -1106,9 +1106,11 @@ GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json`
 publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
 ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
 seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
-key, Settings), its key active or revoked, a new one by enrolment code or a pasted public
-key, active as soon as it arrives, a replacement beside the current key, a node holding at
-most two keys at a time, and a member's view without the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
+key with its New key and Enrolment code pages, Settings), its key active or revoked, a new
+one by enrolment code or a pasted public key, active as soon as it arrives, a node holding
+at most two keys at a time, and two variations: a replacement beside the current key, both
+active, and a member's view without the actions; Generate a key is drawn only by the page
+itself. They are drawn in a shell built from `Layouts.app/1`'s own classes
 (`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
 links; inside it they use the real components (`SettingsComponents.layout/1`,
 `<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a
@@ -1181,6 +1183,25 @@ collection `app.js` and an edition's bundle import. It holds no words (see
 [lingo.md](lingo.md)), and keeps in `localStorage` only a reading preference, such as
 the theme, the sidebar's fold or the keyboard shortcuts; filters, the order, the page and
 a chosen row are query parameters.
+
+**The content security policy.** Every page, the storybook's and the development tools'
+included, carries a strict `Content-Security-Policy` (`ApiaryWeb.ContentSecurityPolicy`):
+`script-src 'self'` and the request's nonce, so only the console's own bundles and the
+scripts that carry the nonce run, and a script a bug lets into a page does not. A page
+keeps to it:
+
+- A `<script>` written into a template carries the nonce, `nonce={@csp_nonce}`, as the root
+  layout's theme script does. Anything else a page runs is a hook in the bundle.
+- No `on…=` attribute (`onclick`, `onload`, …) and no `javascript:` address. A
+  `phx-*` binding and a `Phoenix.LiveView.JS` command are not inline script and need
+  nothing.
+- Scripts, stylesheets, images, fonts and form targets are the console's own origin (an
+  image may also be a `data:` address), and no page is framed, except the development
+  tools' own pages under `/dev`.
+
+`ApiaryWeb.ContentSecurityPolicyTest` (`test/apiary_web/content_security_policy_test.exs`)
+requests every GET route, signed in and out, and fails on anything the policy refuses; a
+route with a parameter it does not fill fails until it is filled there.
 
 ## The run page
 

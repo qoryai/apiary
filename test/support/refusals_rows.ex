@@ -20,9 +20,8 @@ defmodule ApiaryWeb.RefusalsRows do
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
   locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, an approved key, a key awaiting approval and an outstanding enrolment code, a
-  run that has not ended, and a pending invitation; and another organisation, with its
-  owner.
+  instance, an active key and an outstanding enrolment code, a run that has not ended, and
+  a pending invitation; and another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
