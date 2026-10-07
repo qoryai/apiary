@@ -28,7 +28,8 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   A node's access key that signs requests as a runner does: a node of the scope's
-  workspace (`attrs` `:node`, else a new node, kind `node`), with a key pasted on it.
+  workspace (`attrs` `:node`, else a new node, kind `node`), with a key made in a browser
+  on it.
   Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
   request carries it (`Apiary.AccessKeys.fetch_for_verification/1`, with its workspace
   and node), and its raw 32-byte seed, which `signed_post/5` and `signed_get/5` sign with.
@@ -60,7 +61,7 @@ defmodule Apiary.ContractFixtures do
       key_id: Map.fetch!(entry, "access_key_id"),
       public_key: public_key,
       created_by_id: user.id,
-      arrived_by: :paste,
+      arrived_by: :browser,
       received_at: now
     }
     |> AccessKey.insert_changeset(%{allow_secrets: false, label: name})

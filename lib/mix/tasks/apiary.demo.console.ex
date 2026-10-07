@@ -397,8 +397,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     Mix.shell().info("Nodes build-01, build-02 and spot-runners, with their keys")
   end
 
-  # A key added by its public key, as an owner pastes one: a fresh Ed25519 key pair whose
-  # private half is dropped.
+  # A key added by its public key, as Generate a key adds one made in a browser
+  # (`arrived_by: :browser`): a fresh Ed25519 key pair whose private half is dropped.
   defp add_key!(scope, node, label, allow_secrets) do
     {public, _private} = :crypto.generate_key(:eddsa, :ed25519)
 

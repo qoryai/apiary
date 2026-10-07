@@ -356,8 +356,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # Every machine's key, by label, on a node of the same name: the workspace's own node
   # and key when it has them, the key not revoked, new ones otherwise. A machine of
-  # several hosts is a node pool. The idle node's key is made and never posted with. A key is added by its public key, as `qory access-key create` prints one; its
-  # private half is thrown away, since nothing here signs a request.
+  # several hosts is a node pool. The idle node's key is made and never posted with. A key
+  # is added by its public key, as Generate a key adds one made in a browser
+  # (`arrived_by: :browser`); its private half is thrown away, since nothing here signs a
+  # request.
   defp keys!(scope) do
     nodes = Map.new(Nodes.list_nodes(scope), &{&1.name, &1})
 

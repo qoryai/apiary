@@ -3,10 +3,9 @@ defmodule Apiary.AccessKeys.AccessKey do
   A workspace's credential for the server contract, named by its key id, `ak_` and
   sixteen characters (`Apiary.PublicId`): one Ed25519 public key (`public_key`, 32 bytes)
   on a node or a node pool of the workspace (`node_id`). Apiary holds no secret of it. It
-  arrived (`arrived_by`) by an enrolment code (`:code`), by a paste of its public key
-  (`:paste`), or made in a browser that sent its public key alone (`:browser`); it is
-  active from the moment it is made until it is revoked, and carries the stored-secrets
-  flag (`allow_secrets`) it was made with.
+  arrived (`arrived_by`) by an enrolment code (`:code`), or made in a browser that sent
+  its public key alone (`:browser`); it is active from the moment it is made until it is
+  revoked, and carries the stored-secrets flag (`allow_secrets`) it was made with.
 
   A key's node, public key, stored-secrets flag and arrival are fixed when it is made
   (`insert_changeset/2`): no changeset casts them after, and the database refuses an
@@ -36,7 +35,7 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :allow_secrets, :boolean, default: false
     field :rate, :integer
     field :burst, :integer
-    field :arrived_by, Ecto.Enum, values: [:code, :paste, :browser]
+    field :arrived_by, Ecto.Enum, values: [:code, :browser]
     field :integrity_code, :binary, redact: true
     field :integrity_key_id, :string
 

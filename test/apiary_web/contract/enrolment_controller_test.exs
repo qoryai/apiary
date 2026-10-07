@@ -528,7 +528,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert Repo.get!(EnrolmentCode, row.id).used_at == nil
     end
 
-    test "while it holds two pasted keys", %{scope: scope, node: node} do
+    test "while it holds two keys made in a browser", %{scope: scope, node: node} do
       node_key_fixture(scope, node)
       node_key_fixture(scope, node)
       %{code: code} = code(scope, node)

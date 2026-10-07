@@ -7,7 +7,7 @@ defmodule Apiary.AccessKeysFixtures do
   def unique_label, do: "runner #{System.unique_integer([:positive])}"
 
   @doc """
-  A key in the scope's workspace, pasted by the scope's person, who must be an
+  A key in the scope's workspace, made in a browser by the scope's person, who must be an
   owner or an admin, on `attrs` `:node` (else a new node, kind `node`). Returns
   `%{access_key: key, secret: seed, pair: key pair, node: node}`: the key carrying its
   workspace and node, as a verified key does (`Apiary.AccessKeys.fetch_for_verification/1`),
@@ -27,7 +27,7 @@ defmodule Apiary.AccessKeysFixtures do
   end
 
   @doc """
-  A fresh Ed25519 key pair, as `qory access-key create` makes one: `%{public_key: raw,
+  A fresh Ed25519 key pair, as a machine or a browser makes one: `%{public_key: raw,
   encoded: base64url, secret: raw}`.
   """
   def ed25519_key_pair do
@@ -36,15 +36,10 @@ defmodule Apiary.AccessKeysFixtures do
   end
 
   @doc """
-  A key pasted on `node` by the scope's person, an owner or an admin: active at once.
-  Returns `%{access_key: key, pair: key pair}`.
+  A key on `node`, made in a browser by the scope's person, an owner or an admin: active
+  at once (`browser_key_fixture/3`). Returns `%{access_key: key, pair: key pair}`.
   """
-  def node_key_fixture(scope, node, attrs \\ %{}) do
-    pair = ed25519_key_pair()
-    attrs = Enum.into(attrs, %{label: unique_label(), public_key: pair.encoded})
-    {:ok, key} = AccessKeys.add_access_key(scope, node, attrs)
-    %{access_key: key, pair: pair}
-  end
+  def node_key_fixture(scope, node, attrs \\ %{}), do: browser_key_fixture(scope, node, attrs)
 
   @doc """
   A key made in a browser on `node` by the scope's person, an owner or an admin, as the
@@ -54,7 +49,7 @@ defmodule Apiary.AccessKeysFixtures do
   def browser_key_fixture(scope, node, attrs \\ %{}) do
     pair = ed25519_key_pair()
     attrs = Enum.into(attrs, %{label: unique_label(), public_key: pair.encoded})
-    {:ok, key} = AccessKeys.add_access_key(scope, node, attrs, arrived_by: :browser)
+    {:ok, key} = AccessKeys.add_access_key(scope, node, attrs)
     %{access_key: key, pair: pair}
   end
 
