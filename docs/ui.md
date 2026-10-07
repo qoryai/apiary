@@ -1054,9 +1054,9 @@ GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json`
 publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
 ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
 seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
-key, Settings), its key approved, awaiting approval or revoked, a new one by enrolment code
-or a pasted public key, a replacement beside the current key, and a member's view without
-the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
+key, Settings), its key active or revoked, a new one by enrolment code or a pasted public
+key, active as soon as it arrives, a replacement beside the current key, a node holding at
+most two keys at a time, and a member's view without the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
 (`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
 links; inside it they use the real components (`SettingsComponents.layout/1`,
 `<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a

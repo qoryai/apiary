@@ -11,9 +11,13 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   def doc,
     do:
       "A node's or a pool's page, under Nodes: Overview, Runs, Access key and Settings. " <>
-        "Access key holds its key: approved, awaiting approval or revoked, its fingerprint " <>
-        "and stored secrets, a new key by enrolment code or a pasted public key, and a " <>
-        "replacement beside the current key until that one is revoked."
+        "Access key holds its key: active or revoked, its fingerprint and stored secrets, " <>
+        "a new key by enrolment code or a pasted public key, active as soon as it arrives, " <>
+        "and a replacement beside the current key until that one is revoked."
+
+  # The keys a node or pool holds at a time, as the limit line says: its current key and a
+  # replacement.
+  @key_limit 2
 
   # The pages of each node and pool, by the suffix of their tab: its Overview has none.
   @pages [
@@ -25,17 +29,14 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     {"settings", " › Settings"}
   ]
 
-  # The variations drawn on one node: a member's view, a replacement beside the current
-  # key, and what Approve and Reject lead to.
+  # The variations drawn on one node: a member's view, and a replacement beside the
+  # current key.
   @variations %{
     "build_01" => [
       {"member", ", as a member"},
-      {"key_replacement", " › Access key › Replacement awaiting approval"},
-      {"key_replaced", " › Access key › Replacement approved"}
+      {"key_replacement", " › Access key › Replacement"}
     ],
     "build_02" => [
-      {"key_approved", " › Access key › After Approve"},
-      {"key_rejected", " › Access key › After Reject"},
       {"key_member", " › Access key, as a member"}
     ]
   }
@@ -139,7 +140,6 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     assigns =
       assign(assigns,
         key: current_key(assigns.node),
-        pending: Enum.find(assigns.node.keys, &(&1.state == :pending)),
         instances:
           case assigns.node do
             %{kind: :node, instances: [], last: last} -> [{:last, last}]
@@ -148,12 +148,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       )
 
     ~H"""
-    <.notice :if={@pending} kind={:warning}>
-      <strong>A key of {@node.name} awaits approval.</strong>
-      It cannot post runs with it until an owner or an admin approves it.
-      <a :if={!@member} href={@to.("key")} class="font-medium underline">Review the key</a>
-    </.notice>
-    <.notice :if={!@key && !@pending} kind={:warning}>
+    <.notice :if={!@key} kind={:warning}>
       <strong>{@node.name} has no key it may use.</strong>
       Its key is revoked, so it cannot post runs until it has a new one.
       <a :if={!@member} href={@to.("key_enrol")} class="font-medium underline">Add key</a>
@@ -291,34 +286,23 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     assigns =
       assign(assigns,
         keys: keys,
-        usable: Enum.any?(keys, &(&1.state == :approved)),
-        waiting: Enum.any?(keys, &(&1.state == :pending))
+        usable: Enum.any?(keys, &(&1.state == :active)),
+        full: Enum.count(keys, &(&1.state == :active)) >= @key_limit
       )
 
     ~H"""
     <.notice :if={@variant == :replacement}>
-      <strong>A replacement awaits approval.</strong>
-      {@node.name} keeps its current key until you revoke it, so its runs go on meanwhile.
-    </.notice>
-    <.notice :if={@variant == :replaced}>
-      <strong>The replacement is approved.</strong>
+      <strong>The replacement is active.</strong>
       Revoke the old key once {@node.name} posts with the new one.
-    </.notice>
-    <.notice :if={@variant == :approved}>
-      <strong>The key is approved.</strong> {@node.name} can post runs now.
-    </.notice>
-    <.notice :if={@variant == :rejected}>
-      <strong>The key is rejected.</strong>
-      {@node.name} cannot post runs until it has a key. Its enrolment code is spent.
     </.notice>
 
     <div class="flex flex-wrap items-start justify-between gap-3">
       <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
         {if @node.kind == :pool,
           do: "The key the instances of #{@node.name} share to post their runs.",
-          else: "The key #{@node.name} posts its runs with."} A new key comes from an enrolment code or a public key you paste; one that arrives with a code waits for an owner's or an admin's approval.
+          else: "The key #{@node.name} posts its runs with."} A new key comes from an enrolment code or a public key you paste, and is active as soon as it arrives.
       </p>
-      <div :if={!@member && !@waiting} class="flex flex-none gap-2">
+      <div :if={!@member && !@full} class="flex flex-none gap-2">
         <.button :if={@usable} id="enrol-replacement" href={@to.("key_enrol")}>
           Enrol a replacement
         </.button>
@@ -338,10 +322,11 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       node={@node}
       member={@member}
       label={label(key, @keys)}
-      approve={approve_to(@node.id, @to)}
-      reject={reject_to(@node.id, @to)}
     />
 
+    <p id="key-limit" class="text-[12.5px]/[18px] text-faint">
+      A node holds at most 2 keys at a time.
+    </p>
     <Mockup.members_note :if={@member} id="key-members-note" />
     """
   end
@@ -350,11 +335,9 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   attr :node, :map, required: true
   attr :member, :boolean, required: true
   attr :label, :string, default: nil, doc: "Current key or Replacement, beside another"
-  attr :approve, :string, required: true
-  attr :reject, :string, required: true
 
-  # A key: its id and state, its fingerprint, who approved, made or revoked it, and its
-  # stored secrets, a fact fixed when it was made; then what its state asks for.
+  # A key: its id and state, its fingerprint, how it arrived and who revoked it, and its
+  # stored secrets, a fact fixed when it was made; then Revoke… while it is active.
   defp key_card(assigns) do
     ~H"""
     <section
@@ -371,11 +354,12 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
         <dt class="text-faint">Fingerprint</dt>
         <dd class="q-mono break-all">{@key.fingerprint}</dd>
-        <dt :if={@key.state == :approved} class="text-faint">Approved</dt>
-        <dd :if={@key.state == :approved}>by {@key.by}, {@key.on}</dd>
-        <dt :if={@key.state == :pending} class="text-faint">Arrived</dt>
-        <dd :if={@key.state == :pending}>
-          with an enrolment code {@key.by} made, <.time_ago at={@key.asked} />
+        <dt :if={@key.state == :active} class="text-faint">Arrived</dt>
+        <dd :if={@key.state == :active && @key.way == :code}>
+          with an enrolment code {@key.by} made, {@key.on}
+        </dd>
+        <dd :if={@key.state == :active && @key.way == :pasted}>
+          pasted by {@key.by}, {@key.on}
         </dd>
         <dt :if={@key.state == :revoked} class="text-faint">Revoked</dt>
         <dd :if={@key.state == :revoked}>by {@key.by}, {@key.on}</dd>
@@ -388,20 +372,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         </dd>
       </dl>
 
-      <div :if={@key.state == :pending && !@member} class="grid gap-3">
-        <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
-          Compare the fingerprint with the one {@node.name} printed when it enrolled.
-          Approve only if they match.
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <.button variant="primary" href={@approve} aria-label={"Approve #{@key.id}"}>
-            Approve
-          </.button>
-          <.button href={@reject} aria-label={"Reject #{@key.id}"}>Reject</.button>
-        </div>
-      </div>
-
-      <div :if={@key.state == :approved && !@member}>
+      <div :if={@key.state == :active && !@member}>
         <.button href="#" aria-label={"Revoke #{@key.id}"}>Revoke…</.button>
       </div>
     </section>
@@ -416,14 +387,6 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       true -> "Replacement"
     end
   end
-
-  # Where Approve and Reject of a key awaiting approval lead: for build-01's replacement,
-  # to both keys approved or back to its one; for build-02's first key, to what follows.
-  defp approve_to("build_01", to), do: to.("key_replaced")
-  defp approve_to(_id, to), do: to.("key_approved")
-
-  defp reject_to("build_01", to), do: to.("key")
-  defp reject_to(_id, to), do: to.("key_rejected")
 
   ## Enrol
 
@@ -461,7 +424,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         <SettingsComponents.part id="new-key-code" title="With an enrolment code">
           <p class="text-[13px]/[18px] text-muted">
             {@node.name} makes its own key and sends the public half with the code. The code
-            is valid for 15 minutes, for one key, and the key arrives awaiting approval.
+            is valid for 15 minutes, for one key, and the key is active as soon as it arrives.
           </p>
           <div>
             <.button variant="primary" href={@to.("key_code")}>Create enrolment code</.button>
@@ -477,7 +440,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
             value=""
             rows="3"
             placeholder="The public key the node printed"
-            hint="Its fingerprint is shown before you add it. A key you paste is approved as you add it."
+            hint="Its fingerprint is shown before you add it. It is active as soon as you add it."
           />
           <div class="flex flex-wrap gap-2">
             <.button type="button">Add public key</.button>
@@ -524,10 +487,9 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         <dd>Allowed, for the key it enrols</dd>
       </dl>
 
-      <p class="text-[13px]/[18px] text-muted">
-        On {@node.name}, enrol with this code. The key it makes arrives on Access key awaiting
-        approval: compare its fingerprint with the one {@node.name} prints before you approve
-        it.
+      <p id="code-issued-key" class="text-[13px]/[18px] text-muted">
+        On {@node.name}, enrol with this code. The key it brings is active as soon as it
+        arrives here. If its fingerprint is not the one qory prints, revoke it.
       </p>
       <div><.button href={@next}>Done</.button></div>
     </div>
@@ -589,7 +551,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
 
   ## The node and the page
 
-  defp current_key(node), do: Enum.find(node.keys, &(&1.state == :approved))
+  defp current_key(node), do: Enum.find(node.keys, &(&1.state == :active))
 
   # The node and the page of it that `tab` names; the first node's Overview without one.
   defp find(tab) do
@@ -618,25 +580,9 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   defp view("key_code"), do: {:code, nil}
   defp view("settings"), do: {:settings, nil}
   defp view("key_replacement"), do: {:key, :replacement}
-  defp view("key_replaced"), do: {:key, :replaced}
-  defp view("key_approved"), do: {:key, :approved}
-  defp view("key_rejected"), do: {:key, :rejected}
   defp view("key_member"), do: {:key, :member}
 
-  # The node as a variation leaves it: a replacement beside its key, approved or awaiting
-  # approval, or its key awaiting approval approved or rejected.
+  # The node as a variation leaves it: a replacement beside its key, both active.
   defp vary(node, :replacement), do: %{node | keys: node.keys ++ [Sample.replacement_key()]}
-
-  defp vary(node, :replaced),
-    do: %{node | keys: node.keys ++ [approved(Sample.replacement_key())]}
-
-  defp vary(node, :approved), do: %{node | keys: Enum.map(node.keys, &approved/1)}
-
-  defp vary(node, :rejected),
-    do: %{node | keys: Enum.reject(node.keys, &(&1.state == :pending))}
-
   defp vary(node, _variant), do: node
-
-  defp approved(%{state: :pending} = key), do: %{key | state: :approved, by: "dana", on: "today"}
-  defp approved(key), do: key
 end
