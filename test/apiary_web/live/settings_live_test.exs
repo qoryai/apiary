@@ -15,12 +15,12 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
       # The software domain's words, and no skin word: no apiary, no hive.
-      # A flat column: the section's h2 and its fields, no card of its own.
-      assert has_element?(lv, "h2#settings-section-title", "General")
+      # A flat column: the section's h1 and its fields, no card of its own.
+      assert has_element?(lv, "h1#settings-section-title", "General")
       assert has_element?(lv, "#organisation-form label", "Name")
       refute has_element?(lv, "#settings-section-organisation .card")
       assert has_element?(lv, "#organisation-form button[type=submit].btn-primary", "Save")
-      assert has_element?(lv, "#owners-part h3", "Owners")
+      assert has_element?(lv, "#owners-part h2", "Owners")
       refute has_element?(lv, "#workspace-form")
       refute has_element?(lv, "#retention-form")
       assert html =~ "The name of this organisation, where its pages are, and who owns it."
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#owners", user.email)
       assert has_element?(lv, "#owners", other_owner.email)
       refute has_element?(lv, "#owners", member.email)
-      assert has_element?(lv, "#owners-part h3 .q-part-n", "2")
+      assert has_element?(lv, "#owners-part h2 .q-part-n", "2")
 
       # With two owners, the last-owner rule holds nobody in place, and is not said.
       refute has_element?(lv, "#owners-note", "only owner")
@@ -343,8 +343,10 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute render(lv) =~ "Elsewhere"
 
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "h1", "Organisation settings")
-      assert has_element?(lv, "h2#settings-section-title", "General")
+      refute has_element?(lv, "h1", "Organisation settings")
+      assert has_element?(lv, "#settings-tabs-heading", "Organisation settings")
+      assert has_element?(lv, "h1#settings-section-title", "General")
+      assert page_title(lv) == "General · Organisation settings · #{org.name} · Qory Apiary"
 
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
       assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
@@ -387,7 +389,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       assert has_element?(lv, "#delete-organisation-confirm[disabled]", "Yes, delete")
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "h2#settings-section-title", "General")
+      assert has_element?(lv, "h1#settings-section-title", "General")
 
       cancel = lv |> element("#delete-organisation-confirming-cancel") |> render()
       assert cancel =~ "focus" and cancel =~ "#delete-organisation-button"
@@ -438,8 +440,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#settings-tab-organisation, #settings-tab-organisation_settings")
 
       assert has_element?(lv, "#settings-tab-runs[aria-current=page]", "Runs")
-      assert has_element?(lv, "h1", "Workspace settings")
-      assert has_element?(lv, "h2#settings-section-title", "Runs")
+      refute has_element?(lv, "h1", "Workspace settings")
+      assert has_element?(lv, "#settings-tabs-heading", "Workspace settings")
+      assert has_element?(lv, "#settings-tabs-place", scope.workspace.name)
+      assert has_element?(lv, "h1#settings-section-title", "Runs")
+      assert has_element?(lv, "#breadcrumb-section[aria-current='page']", "Runs")
 
       assert has_element?(
                lv,
@@ -447,7 +452,9 @@ defmodule ApiaryWeb.SettingsLiveTest do
                "How long this workspace keeps runs, their events and their logs."
              )
 
-      assert page_title(lv) =~ "Runs · Workspace settings"
+      assert page_title(lv) ==
+               "Runs · Workspace settings · #{scope.workspace.name} · #{scope.organisation.name} · Qory Apiary"
+
       assert has_element?(lv, "#retention-form")
       refute has_element?(lv, "#workspace-form")
 

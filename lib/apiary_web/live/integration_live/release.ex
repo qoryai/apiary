@@ -44,15 +44,12 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
-      <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb :if={@moving} navigate={Common.connection_path(@current_scope, @moving)}>
         {elem(Common.names(@moving), 0)}
       </:crumb>
       <:crumb>{if @moving, do: gettext("Change version"), else: gettext("Add integration")}</:crumb>
 
       <.settings_page
-        heading={gettext("Workspace settings")}
         section={:integrations}
         title={title(@release, @description)}
         measure="list"

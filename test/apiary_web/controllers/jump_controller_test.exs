@@ -35,7 +35,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert people["href"] == workspace_path(scope, "/settings/people")
     settings_runs = Enum.find(go_to["items"], &(&1["label"] == "Workspace settings › Runs"))
     assert settings_runs["href"] == workspace_path(scope, "/settings/runs")
-    assert "Profile" in labels(go_to)
+    assert "Account" in labels(go_to)
+    refute "Profile" in labels(go_to)
 
     # Go to opens the whole lists: a narrowing is the list's address, never carried here.
     runs = Enum.find(go_to["items"], &(&1["label"] == "Runs"))

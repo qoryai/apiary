@@ -170,7 +170,8 @@ window.addEventListener("phx:page-loading-start", _info => {
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // The page's title, where focus goes when the page changed under the reader: a settings
-// section's own (the level's h1 is the same on every section), else the page's h1. The
+// section's own (the page's h1, or a node's settings' h2 under the node's), else the
+// page's h1. The
 // notices above it (an edition's, `#shell-notices`) describe it, so a screen reader says
 // them too: they sit before the title, where reading on from it never comes.
 const focusTitle = () => {

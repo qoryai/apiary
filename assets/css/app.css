@@ -1653,9 +1653,9 @@
     color: var(--q-faint);
   }
   /* The drawer, below 768 px: one piece that scrolls, its close button kept at the top,
-     so on a short screen Settings and its sections at the foot never squeeze the
-     scope's pages; the foot still sits at the bottom of a tall one. The parent Settings
-     is drawn lighter than its current section listed under it: one selected card. */
+     so on a short screen the foot never squeezes the scope's pages; the foot still sits
+     at the bottom of a tall one. The level's settings at the foot, the parent of a
+     settings page whose section the disclosure under the bar marks, is drawn lighter. */
   @media (max-width: 767px) {
     .q-sidebar {
       overflow-y: auto;
@@ -1680,11 +1680,6 @@
     /* The organisation's tile over the sidebar's icons. */
     .q-topbar {
       padding-left: 0.625rem;
-    }
-    /* The drawer's copy of the second column: from here the column itself shows them,
-       once. In this layer, which a utility's `md:hidden` does not beat. */
-    .q-drawer-sections {
-      display: none;
     }
     /* A menu or a tooltip of the sidebar may reach past its edge, over the page. */
     #shell .drawer-side {
@@ -1780,62 +1775,102 @@
 
   /* ---- The second column: a level's sections beside the sidebar (Layouts) ----
      Settings, Your settings and the Instance open their sections as a column of the
-     frame. On phones it is not drawn here: the drawer lists the sections. From 768 px it
-     is a row of links at the top of the page, as a page's tabs are; from 1024 px a column
-     beside the sidebar, the page beside it. */
+     frame. From 1024 px a column beside the sidebar, under its heading (the level, and
+     the place beneath it), the page beside it. Below 1024 px, at every width, the heading
+     is a full-width button under the top bar (`#settings-disclosure`) that opens the
+     links in place, one per line, pushing the page down: not sticky, not a modal. */
   .q-second {
+    display: block;
+    flex: none;
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  .q-second-heading {
     display: none;
   }
+  .q-second-toggle {
+    display: flex;
+    width: 100%;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 1rem;
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    outline-offset: -2px;
+  }
+  .q-second-toggle:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-second-toggle-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .q-second-toggle-place {
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .q-second-toggle-i {
+    flex: none;
+    color: var(--q-faint);
+    transition: rotate 120ms var(--q-ease-out);
+  }
+  .q-second-toggle[aria-expanded="true"] .q-second-toggle-i {
+    rotate: 180deg;
+  }
+  .q-second-list {
+    display: none;
+    gap: 1px;
+    padding: 0 0.5rem 0.5rem;
+  }
+  .q-second-toggle[aria-expanded="true"] + .q-second-list {
+    display: grid;
+  }
+  .q-second-link {
+    display: flex;
+    min-width: 0;
+    min-height: 2.5rem;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0.5rem;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+    outline-offset: -2px;
+    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  /* Labels wrap rather than truncate. */
+  .q-second-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .q-second-link:hover {
+    color: var(--color-base-content);
+    background-color: var(--color-base-200);
+  }
+  .q-second-link[aria-current] {
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-second-n {
+    margin-left: auto;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
   @media (min-width: 768px) {
-    .q-second {
-      display: flex;
-      flex: none;
-      gap: 4px 20px;
-      overflow-x: auto;
+    .q-second-toggle {
       padding-inline: 1.5rem;
-      border-bottom: 1px solid var(--q-border-subtle);
-      scrollbar-width: none;
     }
-    .q-second::-webkit-scrollbar {
-      display: none;
-    }
-    .q-second-heading {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-    .q-second-link {
-      display: flex;
-      flex: none;
-      min-width: 0;
-      height: 2.5rem;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: -1px;
-      border-bottom: 2px solid transparent;
-      color: var(--q-muted);
-      font-size: 0.84375rem;
-      font-weight: 400;
-      white-space: nowrap;
-      outline-offset: -2px;
-      transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
-    }
-    .q-second-link:hover {
-      color: var(--color-base-content);
-    }
-    .q-second-link[aria-current] {
-      border-bottom-color: var(--color-primary);
-      color: var(--color-base-content);
-      font-weight: 500;
-    }
-    .q-second-n {
-      color: var(--q-faint);
-      font-size: 0.75rem;
-      font-weight: 400;
-      font-variant-numeric: tabular-nums;
+    .q-second-list {
+      padding-inline: 1rem;
     }
   }
   @media (min-width: 1024px) {
@@ -1850,47 +1885,44 @@
       width: 13.5rem;
       height: calc(100dvh - var(--q-bar));
       align-content: start;
-      gap: 1px;
       overflow-y: auto;
       padding: 12px 8px;
       border-right: 1px solid var(--q-border-subtle);
       border-bottom: 0;
     }
     .q-second-heading {
-      position: static;
-      width: auto;
-      height: auto;
-      overflow: hidden;
-      clip-path: none;
-      padding: 0 8px 4px;
-      color: var(--q-faint);
+      display: grid;
+      min-width: 0;
+      padding: 0 8px 6px;
       font-size: 0.75rem;
       line-height: 1rem;
+    }
+    .q-second-level {
+      color: var(--q-faint);
       font-weight: 500;
+    }
+    .q-second-place {
+      overflow: hidden;
+      color: var(--q-muted);
       text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .q-second-toggle {
+      display: none;
+    }
+    .q-second-list,
+    .q-second-toggle[aria-expanded="true"] + .q-second-list {
+      display: grid;
+      align-content: start;
+      padding: 0;
     }
     .q-second-link {
-      height: 2rem;
-      margin-bottom: 0;
-      padding-inline: 8px;
-      border-bottom: 0;
-      border-radius: var(--radius-field);
-      font-size: 0.875rem;
-    }
-    .q-second-link:hover,
-    .q-second-link[aria-current] {
-      background-color: var(--color-base-200);
-    }
-    .q-second-n {
-      margin-left: auto;
+      min-height: 2rem;
+      padding: 4px 8px;
     }
     #shell-content.q-has-second > main {
       align-self: stretch;
     }
-  }
-  /* In the phone drawer: the sections under Settings, set in under it. */
-  .q-nav-sub {
-    padding-left: 36px;
   }
 
   /* ---- A page's header (PageComponents.page_header) ---- */

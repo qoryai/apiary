@@ -116,7 +116,7 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :foot,
         key: :settings,
-        label: gettext("Settings"),
+        label: gettext("Workspace settings"),
         icon: "hero-cog-6-tooth",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings" end
       },
@@ -152,7 +152,7 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :foot,
         key: :organisation,
-        label: gettext("Settings"),
+        label: gettext("Organisation settings"),
         icon: "hero-cog-6-tooth",
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings" end,
         place: :organisation
@@ -162,7 +162,7 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :account,
         key: :user_settings,
-        label: gettext("Profile"),
+        label: gettext("Account"),
         icon: "hero-user-circle",
         path: ~p"/users/settings",
         place: :person
@@ -308,8 +308,8 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   account_menu_entries/2 is what the account menu lists in `scope`, as
-  `ApiaryWeb.Nav.Entry` values in their groups (`section`): `:account`, Your settings and
-  Your organisations, then the edition's (`c:ApiaryWeb.Edition.account_menu_entries/1`,
+  `ApiaryWeb.Nav.Entry` values in their groups (`section`): `:account`, Settings (the
+  person's own, under "Your personal account") and Your organisations, then the edition's (`c:ApiaryWeb.Edition.account_menu_entries/1`,
   `:account` where it names no group); `:instance`, after the theme, the core's Instance,
   where the person may open a section of the Instance level (`instance`, as
   `instance_sections/1` gives them), leading to the first, then the edition's. An entry's
@@ -324,7 +324,7 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :account,
         key: :settings,
-        label: gettext("Your settings"),
+        label: gettext("Settings"),
         icon: "hero-user-circle",
         path: ~p"/users/settings",
         place: :person
@@ -458,6 +458,17 @@ defmodule ApiaryWeb.Layouts do
     doc:
       "the key of the page's own section in the second column; on a person's own page `nav` serves"
 
+  attr :section_path, :string,
+    default: nil,
+    doc:
+      "on a page under a section of a level's settings (one that adds `crumb` segments), where the breadcrumb's section segment leads: the section's own path unless given, such as a tab of it"
+
+  attr :section_current, :string,
+    default: nil,
+    values: [nil, "page", "true"],
+    doc:
+      "how the second column marks the page's section: `\"page\"` where the page is the section's own, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none. A tab of the section other than the one its entry leads to passes `\"true\"`"
+
   attr :narrowed, :map,
     default: nil,
     doc:
@@ -500,6 +511,13 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:foot, foot(scope, level, entries))
       |> assign(:settings_page, settings_page?(current))
       |> assign(:second, second_column(scope, place, level, entries, instance, assigns))
+
+    assigns =
+      assign(
+        assigns,
+        :trail,
+        settings_trail(assigns.foot, assigns.second, assigns.settings_page, assigns)
+      )
       |> assign(
         :pins,
         if(level == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
@@ -527,10 +545,11 @@ defmodule ApiaryWeb.Layouts do
         nav={@nav}
         nav_entries={@nav_entries}
         crumb={@crumb}
-        settings={@settings_page}
+        trail={@trail}
         sidebar={@user != nil}
         instance={@instance}
         section={@section}
+        second={@second}
       />
 
       <div :if={@user} class="drawer md:drawer-open">
@@ -599,6 +618,25 @@ defmodule ApiaryWeb.Layouts do
   defp settings_page?(%Entry{section: section}), do: section in [:foot, :settings]
   defp settings_page?(nil), do: false
 
+  # The breadcrumb's segments of a page of a level's settings, which the frame writes: the
+  # level ("Workspace settings", the sidebar's foot), leading to its General, then the
+  # page's section, the page itself or, on a page that adds `crumb` segments, a link to the
+  # section (`section_path`, else the section's own path). Nil on any other page.
+  defp settings_trail({%Entry{} = entry, path}, second, true, assigns) do
+    section =
+      case second && Enum.find(second.entries, fn {e, _path} -> e.key == second.current end) do
+        {%Entry{label: label}, section_path} ->
+          %{label: label, path: assigns.section_path || section_path}
+
+        nil ->
+          nil
+      end
+
+    %{label: entry.label, path: path, section: section}
+  end
+
+  defp settings_trail(_foot, _second, _settings_page, _assigns), do: nil
+
   # The scope the page belongs to: its entry's; without one the place the page names, else
   # the organisation's when the page has an organisation and the person's when it has
   # none.
@@ -650,20 +688,31 @@ defmodule ApiaryWeb.Layouts do
 
       %{
         kind: kind,
-        label: second_label(kind),
+        label: second_label(kind, place),
+        place_name: second_place(kind, place, organisation, workspace),
         id: second_id(kind),
         current: assigns.section || assigns.nav,
         # The current section is the page, or, on a page under it that adds its own
-        # segments to the breadcrumb (Invite people, Edit secret), the page's parent.
-        aria_current: if(assigns.crumb == [], do: "page", else: "true"),
+        # segments to the breadcrumb (Invite people, Edit secret) or on a tab of it other
+        # than the one its entry leads to, the page's parent.
+        aria_current:
+          assigns.section_current || if(assigns.crumb == [], do: "page", else: "true"),
         entries: for(entry <- list, do: {entry, Entry.path(entry, organisation, workspace)})
       }
     end
   end
 
-  defp second_label(:settings), do: gettext("Settings")
-  defp second_label(:person), do: gettext("Your settings")
-  defp second_label(:instance), do: gettext("Instance")
+  # The second column's heading, which names its navigation: the level's settings.
+  defp second_label(:settings, :organisation), do: gettext("Organisation settings")
+  defp second_label(:settings, _workspace), do: gettext("Workspace settings")
+  defp second_label(:person, _place), do: gettext("Your settings")
+  defp second_label(:instance, _place), do: gettext("Instance")
+
+  # The place whose settings they are, beneath the heading: the workspace's name, or the
+  # organisation's; none for a person's own and the Instance's.
+  defp second_place(:settings, :organisation, %{name: name}, _workspace), do: name
+  defp second_place(:settings, _place, _organisation, %{name: name}), do: name
+  defp second_place(_kind, _place, _organisation, _workspace), do: nil
 
   defp second_id(:settings), do: "settings-tabs"
   defp second_id(:person), do: "nav-group-account"
@@ -716,10 +765,11 @@ defmodule ApiaryWeb.Layouts do
   attr :nav, :atom, required: true
   attr :nav_entries, :list, required: true
   attr :crumb, :list, required: true
-  attr :settings, :boolean, required: true
+  attr :trail, :map, required: true
   attr :sidebar, :boolean, required: true
   attr :instance, :list, required: true
   attr :section, :atom, required: true
+  attr :second, :map, required: true
 
   defp top_bar(assigns) do
     # An Instance page offers what a person's own page does.
@@ -762,9 +812,10 @@ defmodule ApiaryWeb.Layouts do
         nav={@nav}
         nav_entries={@nav_entries}
         crumb={@crumb}
-        settings={@settings}
+        trail={@trail}
         instance={@instance}
         here={@section || @nav}
+        second={@second}
       />
 
       <div class="flex-1"></div>
@@ -799,10 +850,12 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # Where the page is: the organisation and the workspace, each a link to its home, and
-  # the page's own segments; a page of an organisation's or a workspace's settings ends
-  # with Settings. With more than one place to go (or an edition's entry after the
-  # places) the chevron beside the organisation and the workspace opens the switcher. A
-  # person's own page names itself.
+  # the page's own segments. On a page of an organisation's or a workspace's settings the
+  # frame writes the level ("Workspace settings", leading to its General) and the section
+  # before them (`settings_trail/4`), and the page adds only what follows the section.
+  # With more than one place to go (or an edition's entry after the places) the chevron
+  # beside the organisation and the workspace opens the switcher. A person's own page
+  # names itself.
   attr :scope, :any, required: true
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
@@ -811,9 +864,10 @@ defmodule ApiaryWeb.Layouts do
   attr :nav, :atom, required: true
   attr :nav_entries, :list, required: true
   attr :crumb, :list, required: true
-  attr :settings, :boolean, required: true
+  attr :trail, :map, default: nil
   attr :instance, :list, default: []
   attr :here, :atom, default: nil
+  attr :second, :map, default: nil
 
   defp breadcrumb(%{place: :person} = assigns) do
     assigns =
@@ -851,17 +905,19 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # An Instance page: Instance, leading to its first section, then the section and what
-  # the page adds.
+  # the page adds. With one section, and so no second column whose disclosure names the
+  # level on a phone, a phone's bar keeps Instance before the section.
   defp breadcrumb(%{place: :instance} = assigns) do
     assigns =
       assigns
       |> assign(:first, List.first(assigns.instance))
       |> assign(:here, Enum.find(assigns.instance, &(&1.key == assigns.here)))
+      |> assign(:keep, is_nil(assigns.second) and assigns.crumb == [])
 
     ~H"""
     <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
       <ol class="q-trail">
-        <li class={["q-trail-item", (@here || @crumb != []) && "q-trail-lead"]}>
+        <li class={["q-trail-item", (@here || @crumb != []) && !@keep && "q-trail-lead"]}>
           <.link
             :if={@first}
             navigate={Entry.path(@first, @organisation, @workspace)}
@@ -872,7 +928,7 @@ defmodule ApiaryWeb.Layouts do
           <span :if={!@first} class="q-trail-link q-trail-page">{gettext("Instance")}</span>
         </li>
         <li :if={@here} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
-          <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+          <span class={["q-trail-sep", !@keep && "max-md:hidden"]} aria-hidden="true">/</span>
           <.link
             :if={@crumb != []}
             navigate={Entry.path(@here, @organisation, @workspace)}
@@ -906,7 +962,7 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:places, places)
       |> assign(:switcher_entries, switcher_entries)
       |> assign(:workspace, if(assigns.place == :workspace, do: assigns.workspace))
-      |> assign(:settings, assigns.settings and assigns.crumb == [])
+      |> assign(:after_place, assigns.trail != nil or assigns.crumb != [])
 
     ~H"""
     <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
@@ -919,7 +975,7 @@ defmodule ApiaryWeb.Layouts do
         <ol class="q-trail">
           <li class={[
             "q-trail-item",
-            (@workspace || @crumb != [] || @settings) && "q-trail-lead"
+            (@workspace || @after_place) && "q-trail-lead"
           ]}>
             <.link
               navigate={~p"/#{@organisation}"}
@@ -937,7 +993,7 @@ defmodule ApiaryWeb.Layouts do
           </li>
           <li
             :if={@workspace}
-            class={["q-trail-item", (@crumb != [] || @settings) && "q-trail-lead"]}
+            class={["q-trail-item", @after_place && "q-trail-lead"]}
           >
             <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
             <.link
@@ -953,13 +1009,8 @@ defmodule ApiaryWeb.Layouts do
               label={gettext("Switch workspace, current: %{name}", name: @workspace.name)}
             />
           </li>
+          <.settings_crumbs :if={@trail} trail={@trail} crumb={@crumb} />
           <.crumbs crumb={@crumb} />
-          <li :if={@settings} class="q-trail-item">
-            <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
-            <span id="breadcrumb-settings" class="q-trail-link q-trail-page" aria-current="page">
-              {gettext("Settings")}
-            </span>
-          </li>
         </ol>
 
         <.switcher
@@ -974,6 +1025,57 @@ defmodule ApiaryWeb.Layouts do
         />
       </div>
     </nav>
+    """
+  end
+
+  # The level's segments of a page of its settings (`settings_trail/4`): the level, a link
+  # to its General, then the section, the page itself unless the page adds segments after
+  # it.
+  attr :trail, :map, required: true
+  attr :crumb, :list, required: true
+
+  defp settings_crumbs(assigns) do
+    assigns = assign(assigns, :last, if(assigns.trail.section, do: :section, else: :level))
+
+    ~H"""
+    <li class={["q-trail-item", (@last == :section || @crumb != []) && "q-trail-lead"]}>
+      <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+      <.link
+        :if={@last == :section || @crumb != []}
+        id="breadcrumb-settings"
+        navigate={@trail.path}
+        class="q-trail-link"
+      >
+        {@trail.label}
+      </.link>
+      <span
+        :if={@last == :level && @crumb == []}
+        id="breadcrumb-settings"
+        class="q-trail-link q-trail-page"
+        aria-current="page"
+      >
+        {@trail.label}
+      </span>
+    </li>
+    <li :if={@trail.section} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+      <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+      <.link
+        :if={@crumb != []}
+        id="breadcrumb-section"
+        navigate={@trail.section.path}
+        class="q-trail-link"
+      >
+        {@trail.section.label}
+      </.link>
+      <span
+        :if={@crumb == []}
+        id="breadcrumb-section"
+        class="q-trail-link q-trail-page"
+        aria-current="page"
+      >
+        {@trail.section.label}
+      </span>
+    </li>
     """
   end
 
@@ -1270,10 +1372,12 @@ defmodule ApiaryWeb.Layouts do
   attr :scope, :any, required: true
   attr :entries, :list, required: true
 
-  # The account menu at the right end of the top bar: who you are and your level where
-  # the page is; your settings and organisations (and the edition's beside them); the
-  # theme, set once and kept; the Instance, for whoever may open a section of it; log out.
-  # What is about Qory Apiary itself is the brand menu's, at the sidebar's foot.
+  # The account menu at the right end of the top bar: who you are, your email over "Your
+  # personal account" (an account has no name, only its email), so that Settings under
+  # them reads as the account's own; your organisations (and the edition's entries beside
+  # them); the theme, set once and kept; the Instance, for whoever may open a section of
+  # it; log out. What is about Qory Apiary itself is the brand menu's, at the sidebar's
+  # foot.
   defp account_menu(assigns) do
     assigns =
       assigns
@@ -1306,8 +1410,8 @@ defmodule ApiaryWeb.Layouts do
         <li role="presentation">
           <div class="grid cursor-default grid-flow-row gap-0 px-2 pb-2 pt-1.5 hover:bg-transparent">
             <span class="truncate font-medium" title={@user.email}>{@user.email}</span>
-            <span id="user-menu-level" class="truncate text-xs/4 text-faint">
-              {level_sentence(@scope, @organisation)}
+            <span id="user-menu-account" class="truncate text-xs/4 text-faint">
+              {gettext("Your personal account")}
             </span>
           </div>
         </li>
@@ -1546,15 +1650,6 @@ defmodule ApiaryWeb.Layouts do
             </span>
           </.link>
         </nav>
-
-        <%!-- On phones, a person's or the Instance's sections, the second column's, in the
-             drawer after the sidebar they came from, under their heading. --%>
-        <.drawer_sections
-          :if={@second && @second.kind != :settings}
-          second={@second}
-          counts={@counts}
-          heading
-        />
       </div>
 
       <div class="q-sidebar-foot">
@@ -1566,12 +1661,6 @@ defmodule ApiaryWeb.Layouts do
           path={elem(@foot, 1)}
           current={@settings_page}
           parent={@second != nil and @second.kind == :settings}
-          counts={@counts}
-        />
-        <%!-- On phones, the sections of Settings, the second column's, under Settings. --%>
-        <.drawer_sections
-          :if={@second && @second.kind == :settings}
-          second={@second}
           counts={@counts}
         />
         <div id="brand-foot" class="q-brand-row">
@@ -1597,62 +1686,64 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The second column (`second_column/6`): from 1024 px a column of the level's sections
-  # beside the sidebar, under its heading; from 768 px a row of links at the top of the
-  # page; on phones it is not here but in the drawer (`drawer_sections/1`).
+  # beside the sidebar, under its heading, which names the level and, beneath it, the
+  # place ("Workspace settings", Main) and names the navigation. Below 1024 px the heading
+  # is a full-width button under the top bar (`#settings-disclosure`, a disclosure) that
+  # opens the same links in place, pushing the page down: not a modal, not sticky. Escape
+  # closes it and gives the button the focus back; a choice closes it, and a navigation
+  # renders it closed.
   attr :second, :map, required: true
   attr :counts, :any, required: true
 
   defp second_column(assigns) do
-    ~H"""
-    <nav
-      id={@second.id}
-      class="q-second"
-      aria-labelledby={"#{@second.id}-heading"}
-    >
-      <p id={"#{@second.id}-heading"} class="q-second-heading">{@second.label}</p>
-      <.link
-        :for={{entry, path} <- @second.entries}
-        id={second_link_id(@second.kind, entry.key)}
-        navigate={path}
-        aria-current={entry.key == @second.current && @second.aria_current}
-        class="q-second-link"
-      >
-        <span class="truncate">{entry.label}</span>
-        <span :if={count = second_count(@counts, entry)} class="q-second-n">
-          {Format.number(count)}
-        </span>
-      </.link>
-    </nav>
-    """
-  end
+    # Escape, on the button or on a link of the list it opened.
+    assigns =
+      assign(
+        assigns,
+        :escape,
+        JS.set_attribute({"aria-expanded", "false"}, to: "#settings-disclosure")
+        |> JS.focus(to: "#settings-disclosure")
+      )
 
-  # The second column's sections in the phone drawer: under Settings at the sidebar's
-  # foot, or, for a person's and the Instance's, a group of their own under its heading.
-  attr :second, :map, required: true
-  attr :counts, :any, required: true
-  attr :heading, :boolean, default: false
-
-  defp drawer_sections(assigns) do
     ~H"""
-    <nav
-      id="drawer-sections"
-      class={["q-drawer-sections md:hidden", @heading && "q-nav-group"]}
-      aria-label={@second.label}
-    >
-      <p :if={@heading} class="q-nav-heading" aria-hidden="true">{@second.label}</p>
-      <.link
-        :for={{entry, path} <- @second.entries}
-        id={"drawer-section-#{entry.key}"}
-        navigate={path}
-        aria-current={entry.key == @second.current && @second.aria_current}
-        class={["q-nav-item", !@heading && "q-nav-sub"]}
-      >
-        <.icon :if={@heading && entry.icon} name={entry.icon} class="q-nav-icon size-[18px]" />
-        <span class="q-nav-text">{entry.label}</span>
-        <span :if={count = second_count(@counts, entry)} class="q-nav-count">
-          {Format.number(count)}
+    <nav id={@second.id} class="q-second" aria-labelledby={"#{@second.id}-heading"}>
+      <p class="q-second-heading">
+        <span id={"#{@second.id}-heading"} class="q-second-level">{@second.label}</span>
+        <span :if={@second.place_name} id={"#{@second.id}-place"} class="q-second-place">
+          {@second.place_name}
         </span>
-      </.link>
+      </p>
+      <button
+        id="settings-disclosure"
+        type="button"
+        class="q-second-toggle"
+        aria-expanded="false"
+        aria-controls={"#{@second.id}-list"}
+        phx-click={JS.toggle_attribute({"aria-expanded", "true", "false"})}
+        phx-keydown={@escape}
+        phx-key="Escape"
+      >
+        <span class="q-second-toggle-text">
+          {@second.label}<span :if={@second.place_name} class="q-second-toggle-place"> · {@second.place_name}</span>
+        </span>
+        <.icon name="hero-chevron-down-micro" class="q-second-toggle-i size-4" />
+      </button>
+      <div id={"#{@second.id}-list"} class="q-second-list">
+        <.link
+          :for={{entry, path} <- @second.entries}
+          id={second_link_id(@second.kind, entry.key)}
+          navigate={path}
+          aria-current={entry.key == @second.current && @second.aria_current}
+          class="q-second-link"
+          phx-keydown={@escape}
+          phx-key="Escape"
+        >
+          <span class="q-second-text">{entry.label}</span>
+          <span :if={count = second_count(@counts, entry)} class="q-second-n">
+            {Format.number(count)}
+          </span>
+        </.link>
+      </div>
     </nav>
     """
   end
@@ -2040,32 +2131,6 @@ defmodule ApiaryWeb.Layouts do
   defp alive_title(n),
     do:
       ngettext("%{number} run alive now", "%{number} runs alive now", n, number: Format.number(n))
-
-  # The level the person acts at where the page is, their membership's
-  # (`Apiary.Access.level/1`); a reader, who reads the organisation through the edition's
-  # reach and has no membership there, is told so, in the edition's words where it has
-  # them.
-  defp level_sentence(scope, %{name: name}) do
-    case {Access.level(scope), Access.reader(scope)} do
-      {:owner, _reader} ->
-        gettext("Owner of %{name}", name: name)
-
-      {:admin, _reader} ->
-        gettext("Admin of %{name}", name: name)
-
-      {:member, _reader} ->
-        gettext("Member of %{name}", name: name)
-
-      {nil, reader} when not is_nil(reader) ->
-        ApiaryWeb.Edition.reader_sentence(:level, scope) ||
-          gettext("Reading %{name}", name: name)
-
-      _none ->
-        gettext("Not part of an organisation yet")
-    end
-  end
-
-  defp level_sentence(_scope, _organisation), do: gettext("Not part of an organisation yet")
 
   # A translated sentence with its accented words between asterisks, so the sentence stays
   # whole in the catalogue: "With Qory *you don't have to*." Every part is escaped.

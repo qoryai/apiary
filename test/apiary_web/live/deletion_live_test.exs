@@ -223,7 +223,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       render_async(lv)
       refute has_element?(lv, "#delete-account-blocked")
-      # Deleting the account is the danger zone that ends Profile, and no entry of the list.
+      # Deleting the account is the danger zone that ends Account, and no entry of the list.
       assert has_element?(lv, "#danger-zone #delete-account", "Delete account")
       refute has_element?(lv, "#sidebar a[href='/users/settings/delete']")
       lv |> element("a#delete-account-button") |> render_click()

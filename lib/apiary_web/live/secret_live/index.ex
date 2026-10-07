@@ -91,13 +91,8 @@ defmodule ApiaryWeb.SecretLive.Index do
       nav={:settings}
       sections={@sections}
       section={:secrets}
+      section_path={list_path(@current_scope, @view, @query)}
     >
-      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
-        {gettext("Settings")}
-      </:crumb>
-      <:crumb navigate={list_path(@current_scope, @view, @query)}>
-        {gettext("Secrets and variables")}
-      </:crumb>
       <:crumb>{crumb_words(@act)}</:crumb>
 
       <.page_form
@@ -126,7 +121,6 @@ defmodule ApiaryWeb.SecretLive.Index do
       section={:secrets}
     >
       <.settings_page
-        heading={gettext("Workspace settings")}
         section={:secrets}
         measure="list"
         title={gettext("Secrets and variables")}

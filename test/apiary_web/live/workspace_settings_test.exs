@@ -91,8 +91,9 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
 
         assert has_element?(lv, "#settings-tabs #settings-tab-#{key}[aria-current=page]")
         refute has_element?(lv, "#main #settings-tabs")
-        assert has_element?(lv, "#main h1", "Workspace settings")
-        assert has_element?(lv, "h2#settings-section-title", title)
+        refute has_element?(lv, "#main h1", "Workspace settings")
+        assert has_element?(lv, "#main h1#settings-section-title", title)
+        assert has_element?(lv, "#breadcrumb-section[aria-current='page']", title)
         assert has_element?(lv, "aside#sidebar #nav-settings[aria-current=true]")
       end
     end
@@ -102,7 +103,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       {:ok, lv, _html} = live(conn, settings_path(scope, "/runs"))
 
       assert has_element?(lv, "#settings-section-runs #retention-form")
-      assert has_element?(lv, "#settings-section-runs #retention-pruned h3", "Pruned")
+      assert has_element?(lv, "#settings-section-runs #retention-pruned h2", "Pruned")
       refute has_element?(lv, "#retention-pruned form, #retention-pruned button")
     end
 
