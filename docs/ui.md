@@ -64,7 +64,7 @@ person's own page and an Instance page, the one the person came from (Two levels
   as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New node, New node pool, Add
-  integration, New secret, New variable and New access key, then, on every page, Invite
+  integration (to Integrations' cards, `#add-part`), New secret, New variable and New access key, then, on every page, Invite
   people; before the core's, whatever the edition offers there
   (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or the
   organisation as its place says. **The account menu** holds who they are, their email
@@ -198,7 +198,16 @@ replaces the navigation it is in.
   `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
-  (`/settings/integrations`) and Secrets and variables (`/settings/secrets`, below), each
+  (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: one list, Set up in this
+  workspace, each row its name, its kind, Runtime, API or Program (one added from a
+  release), a program's version and where it applies; then, for whoever may change it,
+  Add an integration, a card for each thing to add by name, its kind a small muted word:
+  the runtimes of the runner's catalogue, the built-in APIs, the named releases
+  (`ApiaryWeb.IntegrationLive.Named`, none yet) and the workspace's own custom APIs, then
+  From a release… and Custom API…; a card's act opens its form with its item chosen,
+  `?runtime=` or `?definition=`, an unknown one opening the form as it starts; the page
+  says once that no run receives any of it yet) and Secrets and variables
+  (`/settings/secrets`, below), each
   with `security` and for a reader of it (`connection.read`, `secret.read`), Runs
   (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
   `/settings/retention`, its path before, sends on with its query), and Access keys
@@ -266,7 +275,7 @@ frame's second column (Two levels, under The shell; `#settings-tabs`,
 muted, the current one in the text colour on a light fill, with a count where it helps
 (an organisation's People, Access keys, from the navigation's `counts`); below 1024 px it
 is the disclosure under the top bar (Two levels, under The shell). A section is flat, no
-card: its fields straight under its heading (`SettingsComponents.part/1`, an `<h2>` where
+card (Integrations' Add an integration, a grid of a card per thing to add, aside): its fields straight under its heading (`SettingsComponents.part/1`, an `<h2>` where
 it has more than one part, such as Owners; the danger zone's lines are `<h3>`s), the fields as wide as the column, and at the
 foot of a form
 its one button, primary where it is the section's main action, beside one muted line
