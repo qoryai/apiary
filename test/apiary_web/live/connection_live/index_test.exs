@@ -598,6 +598,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert attribute(view, "#connections-target-all", "href") ==
                workspace_path(scope, "/network")
 
+      # "Show all destinations" is a patch that pushes history, so Back narrows again.
+      assert attribute(view, "#connections-target-all", "data-phx-link") == "patch"
+      assert attribute(view, "#connections-target-all", "data-phx-link-state") == "push"
+
       # The sidebar's Runs and Network access carry the target; nothing else does.
       assert attribute(view, "#nav-runs", "href") ==
                workspace_path(scope, "/runs?target=acme%2Fshop")
@@ -653,6 +657,63 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert attribute(view, "#connections-target-runs", "href") ==
                workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")
+    end
+
+    test "the runs with no target: the line names them, Runs keeps them, nothing carries", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, %{}, egress: [%{"host" => "loose.example"}])
+
+      view = open(conn, workspace_path(scope, "/network?target=none"))
+
+      # No target, so no policy of its own to link to.
+      assert text(view, "#connections-target-note") ==
+               "Showing Unassigned only. Runs Show all destinations"
+
+      refute has_element?(view, "#connections-target-policy")
+      assert has_element?(view, "##{dst("loose.example")}")
+      refute has_element?(view, "##{dst("registry.example")}")
+      refute has_element?(view, "##{dst("billing.example")}")
+
+      assert attribute(view, "#connections-target-runs", "href") ==
+               workspace_path(scope, "/runs?target=none")
+
+      assert attribute(view, "#connections-target-all", "href") ==
+               workspace_path(scope, "/network")
+
+      # Not one target: the sidebar links plainly.
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs")
+      assert attribute(view, "#nav-network", "href") == workspace_path(scope, "/network")
+      assert attribute(view, "#nav-runs", "aria-label") == nil
+      assert attribute(view, "#nav-network", "aria-label") == nil
+    end
+
+    test "a path on two systems given alone covers both, with no one policy to link to", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop("gitlab.com"), egress: [%{"host" => "mirror.example"}])
+
+      view = open(conn, workspace_path(scope, "/network?target=acme/shop"))
+
+      assert has_element?(view, "#connections-target-note")
+      refute has_element?(view, "#connections-target-policy")
+
+      # The rows of both targets on the path, and of no other.
+      assert has_element?(view, "##{dst("registry.example")}")
+      assert has_element?(view, "##{dst("mirror.example")}")
+      refute has_element?(view, "##{dst("billing.example")}")
+
+      # The path is carried as it was given, without a system.
+      for selector <- ["#nav-runs", "#connections-target-runs"] do
+        assert attribute(view, selector, "href") ==
+                 workspace_path(scope, "/runs?target=acme%2Fshop"),
+               selector
+      end
+
+      assert attribute(view, "#nav-network", "href") ==
+               workspace_path(scope, "/network?target=acme%2Fshop")
     end
 
     test "every way of clearing drops the target, and the sidebar then links plainly", %{

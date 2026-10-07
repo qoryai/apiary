@@ -34,7 +34,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       |> Common.mount(target)
       |> assign(reload: &load/1, list_query: %RuleList{}, ruled_host: nil, allowed: %{})
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
-      |> assign(composer_open: false, summary: nil, would: nil, params: %{})
+      |> assign(composer_open: false, summary: nil, would: nil, params: %{}, shown: nil)
 
     if connected?(socket),
       do: socket |> load() |> assign(loaded: true, network: network_path(socket, target)),
@@ -156,7 +156,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
         do: assign(socket, :dialog, nil),
         else: socket
 
-    {:noreply, apply_action(socket, socket.assigns.action, params)}
+    action = socket.assigns.action
+
+    {:noreply,
+     socket
+     |> apply_action(action, params)
+     |> Common.heading_focus(socket.assigns.shown, action)
+     |> assign(:shown, action)}
   end
 
   # The list's query is the URL's (`RuleList`), written back without what it does not
@@ -341,12 +347,21 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
         case result do
           {:ok, _rule} ->
+            would = Common.would(scope, target, would)
+            socket = load(socket)
+            locked = socket.assigns.locked_denies
+
             socket
-            |> load()
-            |> assign(:would, Common.would(scope, target, would))
+            |> assign(:would, would)
             |> assign(
               :announce,
               gettext("%{host} is allowed for this target.", host: destination.host)
+            )
+            |> Common.focus_next_allow(
+              would,
+              key,
+              "target-mode-confirm",
+              &(not Enum.any?(locked, fn lock -> Grammar.covers?(lock, &1.host) end))
             )
 
           {:error, error} ->
@@ -745,7 +760,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :locked_denies, :list, required: true
 
   defp target_mode_ask(%{becomes: "enforce"} = assigns) do
-    shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
+    shown = if assigns.would, do: Common.would_shown(assigns.would), else: []
 
     left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
 
@@ -757,10 +772,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
       question={gettext("Enforce %{target}?", target: @name)}
       return={@return}
     >
-      <p class="text-muted">
+      <:effect>
         <.rich text={mode_lead("enforce")} />
         {whose_words(@setting, "enforce")} {gettext("Other targets do not change.")}
-      </p>
+      </:effect>
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
         <div>
           <span>
@@ -812,11 +827,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 </span>
               <% true -> %>
                 <button
+                  id={"would-#{Common.would_key(destination)}-allow"}
                   type="button"
                   class="btn btn-xs"
                   phx-click={JS.push("would_allow", value: %{key: Common.would_key(destination)})}
                 >
-                  {gettext("Allow here")}
+                  {gettext("Allow %{host} here", host: Common.would_name(destination))}
                 </button>
             <% end %>
           </li>
@@ -869,7 +885,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       question={gettext("Observe %{target}?", target: @name)}
       return={@return}
     >
-      <p class="text-muted">
+      <:effect>
         <.rich text={mode_lead("observe")} />
         {whose_words(@setting, "observe")}
         <span :if={@setting != "follow"}>
@@ -877,7 +893,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
             mode: @workspace
           )}
         </span>
-      </p>
+      </:effect>
       <p class="text-muted">
         {gettext("The rules stay as they are, locked ones too.")}
         <span :if={@locked_denies == []}>{gettext("A deny holds in either mode.")}</span>

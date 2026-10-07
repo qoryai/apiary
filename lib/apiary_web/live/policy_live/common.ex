@@ -835,6 +835,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def focus(socket, id), do: push_event(socket, "policy:focus", %{id: id})
 
   @doc """
+  After a patch between a version and its export (Export, Done), the focus goes to the
+  heading of what is shown now, so it never falls to the page's body: `from` is the view
+  shown before the patch, `to` the one shown now.
+  """
+  def heading_focus(socket, :version, :export), do: focus(socket, "policy-export-h")
+  def heading_focus(socket, :export, :version), do: focus(socket, "policy-version-h")
+  def heading_focus(socket, _from, _to), do: socket
+
+  @doc """
   Puts the composer's values into its fields in the browser. A patch leaves a field that
   has focus as the reader typed it, so what the server sets (a repair, a cleared form, the
   next pasted host) is sent as well.
@@ -875,6 +884,33 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc "The DOM-safe key of a destination of the list."
   def would_key(%{host: host, path: path}), do: ApiaryWeb.RunComponents.dom_token({host, path})
+
+  @doc "The destinations an enforce confirm lists, each on its row: the first eight."
+  def would_shown(%{destinations: destinations}), do: Enum.take(destinations, 8)
+
+  @doc "A destination of the list as its Allow names it: the host, and its path where it has one."
+  def would_name(%{host: host, path: path}) when is_binary(path), do: host <> path
+  def would_name(%{host: host}), do: host
+
+  @doc """
+  After an Allow of the list, the focus goes on to the next Allow still open among those
+  shown, after the one acted on and then from the top, so that a reader allowing several
+  goes from one to the next; with none left, to the confirm's act (`fallback`).
+  `allowable?` leaves out a row that shows no Allow, as one a locked deny covers.
+  """
+  def focus_next_allow(socket, would, key, fallback, allowable? \\ fn _destination -> true end)
+
+  def focus_next_allow(socket, %{open: open} = would, key, fallback, allowable?) do
+    {before, from} = would |> would_shown() |> Enum.split_while(&(would_key(&1) != key))
+
+    next =
+      Enum.find(Enum.drop(from, 1) ++ before, &(would_key(&1) in open and allowable?.(&1)))
+
+    focus(socket, if(next, do: "would-#{would_key(next)}-allow", else: fallback))
+  end
+
+  def focus_next_allow(socket, _unavailable, _key, fallback, _allowable?),
+    do: focus(socket, fallback)
 
   ## The words of a change
 
