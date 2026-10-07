@@ -3746,19 +3746,35 @@
   .q-rl .q-rl-st {
     width: 1%;
   }
+  /* A quiet run's note goes on its own line under the state's word, and may wrap, so the
+     State column keeps about a state's width and the run keeps its room. */
+  .q-rl .q-rl-st .q-st-quiet {
+    display: inline-grid;
+    grid-template-columns: auto auto;
+    gap: 1px 6px;
+  }
+  .q-rl .q-rl-st .q-st-quiet .q-quiet {
+    grid-column: 2;
+    flex-wrap: wrap;
+    gap: 0 5px;
+  }
   .q-rl .q-rl-run {
     width: 100%;
     max-width: 0;
   }
+  /* The title, then the target in the room that is left: the target is cut to an
+     ellipsis, or goes, before the title loses a letter. */
   .q-rl-tt {
-    display: flex;
+    display: grid;
     min-width: 0;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: minmax(0, max-content);
     align-items: baseline;
     gap: 12px;
   }
   .q-rl-title {
     min-width: 0;
-    flex: 0 1 auto;
     overflow: hidden;
     color: var(--color-base-content);
     font-size: 0.875rem;
@@ -3777,7 +3793,9 @@
     font-size: 0.8125rem;
   }
   .q-rl-inl {
-    flex: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .q-rl-faint {
     color: var(--q-faint);
@@ -5049,7 +5067,8 @@
       max-width: none;
     }
     .q-rl-tt {
-      flex-direction: column;
+      grid-auto-flow: row;
+      grid-template-columns: minmax(0, 1fr);
       gap: 0;
     }
     .q-rl-tt .q-rl-title {

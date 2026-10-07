@@ -237,7 +237,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{row(live_run)} time[data-tick=duration][data-base='90'][data-now]"
              )
 
-      assert has_element?(view, "#{row(quiet)} .q-st-quiet")
+      # the note is the state's, in its cell, where the list puts it under the word; the
+      # target follows the title in the run's cell, where it gives way before the title
+      assert has_element?(view, "#{row(quiet)} td.q-rl-st .q-st-quiet > .q-quiet")
+      assert has_element?(view, "#{row(quiet)} td.q-rl-run .q-rl-title + .q-rl-inl")
 
       assert text(view, "#{row(quiet)} .q-quiet") =~
                ~r/^No heartbeat for \d\d s \. Heartbeats are due every 30 s\./
