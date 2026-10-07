@@ -198,11 +198,18 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     new = workspace_path(scope, "/targets/acme/billing")
 
     assert redirected_to(get(conn, old)) == new
-
-    assert redirected_to(get(conn, old <> "/-/policy?view=all")) ==
-             new <> "/-/policy?view=all"
-
+    assert redirected_to(get(conn, old <> "?since=30d")) == new <> "?since=30d"
     assert {:error, {:redirect, %{to: ^new}}} = live(conn, old)
+  end
+
+  @tag needs: :security
+  test "an old address of a tab is sent on to the same tab, with its query",
+       %{conn: conn, scope: scope} do
+    started_run(scope, repo("github.example", "acme/billing"))
+    old = workspace_path(scope, "/targets/github.example/acme/billing/-/policy?view=all")
+
+    assert redirected_to(get(conn, old)) ==
+             workspace_path(scope, "/targets/acme/billing/-/policy?view=all")
   end
 
   test "the old Runs and Network access tabs send on to the lists narrowed to the target, with the query",
