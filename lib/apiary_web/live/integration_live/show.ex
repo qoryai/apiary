@@ -316,6 +316,16 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           </dd>
           <dt :if={@definition} class="text-faint">{gettext("Hosts")}</dt>
           <dd :if={@definition} class="q-mono">{Enum.join(@definition["hosts"], ", ")}</dd>
+          <dt :if={@definition && @definition["paths"]} class="text-faint">{gettext("Paths")}</dt>
+          <dd :if={@definition && @definition["paths"]} class="q-mono">
+            {Enum.join(@definition["paths"], ", ")}
+          </dd>
+          <dt :if={@definition} class="text-faint">{gettext("Auth")}</dt>
+          <dd :if={@definition} class="q-mono">
+            {@definition["auth"]["scheme"]}<span :if={@definition["auth"]["header"]}> · {@definition[
+              "auth"
+            ]["header"]}</span>
+          </dd>
           <dt :if={@definition} class="text-faint">{gettext("Definition digest")}</dt>
           <dd :if={@definition} class="q-mono break-all">
             {Apiary.Kinds.ServiceDefinition.digest(@definition)}

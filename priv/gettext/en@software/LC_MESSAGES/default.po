@@ -3062,6 +3062,7 @@ msgid "Audit log"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
+#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Auth"
 msgstr ""
@@ -8008,6 +8009,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/definition.ex
+#: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #, elixir-autogen, elixir-format
 msgid "Paths"
