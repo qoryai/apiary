@@ -16,6 +16,22 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
   defp ipath(scope, rest \\ ""),
     do: "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/integrations#{rest}"
 
+  # The ids of the cards in each group of Add an integration, in order.
+  defp card_ids(lv) do
+    doc = lv |> render() |> LazyHTML.from_fragment()
+
+    for id <- ["add-group-agent", "add-group-apis", "add-group-programs"], into: %{} do
+      {id, doc |> LazyHTML.query("##{id}-cards > li") |> LazyHTML.attribute("id")}
+    end
+  end
+
+  defp lv_section(html) do
+    html
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("#settings-section-integrations")
+    |> LazyHTML.to_html()
+  end
+
   defp member_conn(scope, level) do
     %{user: user} = member_fixture(scope, level)
     log_in_user(build_conn(), user)
@@ -31,14 +47,14 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#settings-section-title", "Integrations")
     end
 
-    test "says once that runs don't receive integrations yet, and never that they do",
+    test "says once that runs don't use any of it yet, and never that they do",
          %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, ipath(scope))
 
       assert has_element?(
                lv,
                "#not-on-runs",
-               "Runs don't receive integrations yet. Today a run receives only its security policy."
+               "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
              )
 
       refute html =~ "applies to runs"
@@ -52,51 +68,111 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#connections-empty", "Nothing is set up in this workspace yet.")
       assert has_element?(lv, "#add-part h2", "Add an integration")
 
-      assert has_element?(lv, "#add-card-runtime-claude h3", "Claude Code")
-      assert has_element?(lv, "#add-card-runtime-claude-kind", "Runtime")
+      assert has_element?(lv, "#add-card-runtime-claude h4", "Claude Code")
+      assert has_element?(lv, "#add-card-runtime-claude-kind", "Agent")
 
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
-               "Anthropic's coding agent, with an API key or an OAuth credential."
+               "Runs start Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
              )
 
-      assert has_element?(lv, "#add-card-api-sentry h3", "Sentry")
+      assert has_element?(lv, "#add-card-api-sentry h4", "Sentry")
       assert has_element?(lv, "#add-card-api-sentry-kind", "API")
-      assert has_element?(lv, "#add-card-api-sentry", "sent as a bearer token")
-      assert has_element?(lv, "#add-card-api-npm h3", "npm registry")
+
+      assert has_element?(
+               lv,
+               "#add-card-api-sentry",
+               "The agent may call Sentry's API on sentry.io, such as to read issues."
+             )
+
+      assert has_element?(lv, "#add-card-api-npm h4", "npm registry")
       assert has_element?(lv, "#add-card-api-npm-kind", "API")
 
-      assert has_element?(lv, "#add-card-release h3", "From a release…")
+      assert has_element?(
+               lv,
+               "#add-card-api-npm",
+               "The agent may install and publish packages on registry.npmjs.org."
+             )
+
+      assert has_element?(lv, "#add-card-release h4", "From a release…")
       assert has_element?(lv, "#add-card-release", "or at an https address.")
       assert has_element?(lv, ~s(#add-integration[href="#{ipath(scope, "/add")}"]))
       assert has_element?(lv, "#add-integration", "Add from a release")
 
-      assert has_element?(lv, "#add-card-custom-api h3", "Custom API…")
+      assert has_element?(lv, "#add-card-custom-api h4", "Custom API…")
+
+      assert has_element?(
+               lv,
+               "#add-card-custom-api",
+               "Describe another API the agent may call: its hosts and how its token is sent."
+             )
+
       assert has_element?(lv, ~s(#new-definition[href="#{ipath(scope, "/definitions/new")}"]))
       assert has_element?(lv, "#new-definition", "New custom API")
 
-      # The cards in order: the catalogue's, the built-in APIs, then the two ways to more.
-      ids =
+      # The cards in their groups, in order: the agent, the APIs the agent may call ending
+      # with Custom API…, then the programs ending with From a release….
+      assert card_ids(lv) == %{
+               "add-group-agent" => ["add-card-runtime-claude"],
+               "add-group-apis" => [
+                 "add-card-api-npm",
+                 "add-card-api-sentry",
+                 "add-card-custom-api"
+               ],
+               "add-group-programs" => ["add-card-release"]
+             }
+    end
+
+    test "groups the cards under three headings, each its sentence and a list it names",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope))
+
+      groups =
         lv
         |> render()
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#add-cards > li")
+        |> LazyHTML.query("#add-cards > div")
         |> LazyHTML.attribute("id")
 
-      assert ids == [
-               "add-card-runtime-claude",
-               "add-card-api-npm",
-               "add-card-api-sentry",
-               "add-card-release",
-               "add-card-custom-api"
-             ]
+      assert groups == ["add-group-agent", "add-group-apis", "add-group-programs"]
+
+      for {id, heading, sentence} <- [
+            {"add-group-agent", "Agent",
+             "The coding agent a run starts in the repositories it applies to."},
+            {"add-group-apis", "APIs the agent may call",
+             "Outside APIs the agent reaches while it works. The runner adds the API's token to the agent's requests, so the agent never holds it."},
+            {"add-group-programs", "Programs",
+             "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's repositories."}
+          ] do
+        assert has_element?(lv, "##{id} h3##{id}-title", heading)
+        assert has_element?(lv, "##{id}-about", sentence)
+
+        assert has_element?(
+                 lv,
+                 ~s(##{id} ul##{id}-cards[role=list][aria-labelledby="#{id}-title"])
+               )
+      end
+
+      # The page's headings in order: the part, its group, then the group's cards.
+      assert has_element?(lv, "#add-part h2", "Add an integration")
+      refute has_element?(lv, "#add-cards li h3")
+
+      # The runner's design that the agent never holds a token is never said of the agent.
+      refute lv |> element("#add-group-agent") |> render() =~ "never holds"
     end
 
     test "offers no card it can't add: no forge's own, no named release yet",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
-      cards = lv |> element("#add-cards") |> render()
+      # The cards themselves; the Programs group's sentence names GitHub's token as an
+      # example of what a program gets a run.
+      cards =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#add-cards li")
+        |> LazyHTML.text()
 
       for name <- ["GitHub", "GitLab", "Bitbucket"], do: refute(cards =~ name)
       refute has_element?(lv, "[id^=add-card-named-]")
@@ -123,7 +199,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#service-definition-about", "sentry.io")
 
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime?runtime=claude"))
-      assert has_element?(lv, "#new-runtime-page-title", "Set up a runtime")
+      assert has_element?(lv, "#new-runtime-page-title", "Set up an agent")
       assert has_element?(lv, "#connection_runtime option[value='claude'][selected]")
     end
 
@@ -161,7 +237,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
 
       assert has_element?(
                lv,
-               ~s(#{card} h3 a[href="#{ipath(scope, "/definitions/#{definition.public_id}")}"]),
+               ~s(#{card} h4 a[href="#{ipath(scope, "/definitions/#{definition.public_id}")}"]),
                "Status API"
              )
 
@@ -171,17 +247,11 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       own = ipath(scope, "/new-service?definition=own%3A#{definition.public_id}")
       assert has_element?(lv, ~s(#{card}-act[href="#{own}"]))
 
-      # Before the two ways to more.
-      ids =
-        lv
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#add-cards > li")
-        |> LazyHTML.attribute("id")
-
-      assert Enum.drop_while(ids, &(&1 != "add-card-own-#{definition.public_id}")) == [
+      # Among the APIs the agent may call, after the built-in ones, before Custom API….
+      assert card_ids(lv)["add-group-apis"] == [
+               "add-card-api-npm",
+               "add-card-api-sentry",
                "add-card-own-#{definition.public_id}",
-               "add-card-release",
                "add-card-custom-api"
              ]
 
@@ -255,7 +325,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
         |> LazyHTML.from_fragment()
         |> LazyHTML.query("#add-card-named-github-com-acme-tracker")
 
-      assert LazyHTML.text(LazyHTML.query(card, "h3")) =~ "Acme Tracker"
+      assert LazyHTML.text(LazyHTML.query(card, "h4")) =~ "Acme Tracker"
       assert LazyHTML.text(card) =~ "github.com/acme/tracker"
 
       assert LazyHTML.text(LazyHTML.query(card, "#add-card-named-github-com-acme-tracker-kind")) =~
@@ -270,10 +340,14 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
 
       assert href == ipath(scope, "/add?source=github.com%2Facme%2Ftracker")
 
-      # Before the two ways to more, after the built-in APIs.
-      [_before, rest] = String.split(html, "add-card-named-github-com-acme-tracker", parts: 2)
-      assert rest =~ "add-card-release\""
-      refute rest =~ "add-card-api-"
+      # Among the programs, before From a release….
+      ids =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#add-group-programs-cards > li")
+        |> LazyHTML.attribute("id")
+
+      assert ids == ["add-card-named-github-com-acme-tracker", "add-card-release"]
 
       {:ok, lv, _html} = live(conn, href)
       assert has_element?(lv, "#add-integration-page-title", "Add from a release")
@@ -282,14 +356,31 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#release_version[value='']")
     end
 
-    test "lists what is set up in one list, each row leading to its page",
+    test "lists what is set up in one list, in group order, each row leading to its page",
          %{conn: conn, scope: scope} do
-      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
-      {:ok, service} = Connections.create_service(scope, %{service: "npm"})
+      # Set up in the groups' reverse order: the list puts them in theirs.
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})
+      {:ok, service} = Connections.create_service(scope, %{service: "npm"})
+      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
 
       {:ok, lv, _html} = live(conn, ipath(scope))
+
+      rows =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#connections > tr")
+        |> LazyHTML.attribute("id")
+
+      assert rows == [
+               "connection-#{runtime.public_id}",
+               "connection-#{service.public_id}",
+               "connection-#{integration.public_id}"
+             ]
+
+      assert has_element?(lv, "#set-up-part thead th", "For runs in")
+      refute render(lv) =~ "Applies to"
 
       assert has_element?(lv, "#set-up-part .q-part-n", "3")
       refute has_element?(lv, "#connections-empty")
@@ -298,7 +389,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, row, "Every repository")
       assert has_element?(lv, "#{row} a", "Claude Code")
       assert has_element?(lv, "#{row} a .q-mono", "(claude)")
-      assert has_element?(lv, row, "Runtime")
+      assert has_element?(lv, row, "Agent")
+      refute has_element?(lv, row, "Runtime")
 
       row = "#connections #connection-#{integration.public_id}"
       assert has_element?(lv, "#{row} a", "GitHub")
@@ -316,7 +408,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
                ~s(#connection-#{runtime.public_id} a[href="#{ipath(scope, "/#{runtime.public_id}")}"])
              )
 
-      # A runtime set up already is still offered: a workspace may set one up again.
+      # An agent set up already is still offered: a workspace may set one up again.
       assert has_element?(lv, "#add-card-runtime-claude-act")
     end
 
@@ -328,6 +420,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       refute html =~ ">Services<"
       refute html =~ "New service"
       refute html =~ "New runtime"
+      refute lv_section(html) =~ "Runtime"
     end
 
     test "Add integration is in the top bar's New, for an owner or an admin, and leads to the cards",
@@ -380,10 +473,13 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert {:ok, []} = Connections.list_connections(scope)
     end
 
-    test "names no product of its own", %{conn: conn, scope: scope} do
+    test "names no product of its own, only Qory Apiary, whose settings these are not",
+         %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
+      section = lv |> element("#settings-section-integrations") |> render()
 
-      refute lv |> element("#settings-section-integrations") |> render() =~ "Qory"
+      assert section =~ "Not Qory Apiary&#39;s own settings."
+      refute String.replace(section, "Qory Apiary", "") =~ "Qory"
     end
 
     test "has the section as its h1 and its title", %{conn: conn, scope: scope} do
@@ -393,8 +489,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
 
       assert has_element?(
                lv,
-               "#settings-section-integrations",
-               "What this workspace sets up for its runs, and where each applies."
+               "#settings-section-integrations header",
+               "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
              )
 
       assert page_title(lv) =~
@@ -410,11 +506,17 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
   end
 
   describe "the forms" do
-    test "Set up a runtime sets one up and opens it", %{conn: conn, scope: scope} do
+    test "Set up an agent sets one up and opens it", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
-      assert has_element?(lv, "#new-runtime-page-title", "Set up a runtime")
+      assert has_element?(lv, "#new-runtime-page-title", "Set up an agent")
+      assert has_element?(lv, "#new-runtime-page", "Choose the coding agent runs start.")
       assert has_element?(lv, "#breadcrumb-section", "Integrations")
-      assert page_title(lv) =~ "Set up a runtime · Workspace settings"
+      assert has_element?(lv, "#breadcrumb", "Set up an agent")
+      assert page_title(lv) =~ "Set up an agent · Workspace settings"
+      assert has_element?(lv, "label[for=connection_runtime]", "Agent")
+      assert has_element?(lv, "#new-runtime-form fieldset legend", "For runs in")
+      assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
+      refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
       assert has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection_runtime[aria-describedby=runtime-catalogue]")
 
@@ -450,8 +552,10 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#new-service-page",
-               "Set up a built-in API or one of this workspace's own."
+               "Choose an outside API the agent may call while it works."
              )
+
+      assert has_element?(lv, "#new-service-form fieldset legend", "For runs in")
 
       assert has_element?(lv, "label[for=connection_definition]", "API")
 

@@ -306,7 +306,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           <.input
             field={@form[:applies_to]}
             type="radio"
-            label={pgettext("plain", "Applies to")}
+            label={Common.applies_label()}
             options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
             hint={gettext("You choose the targets on its page, once it is added.")}
           />
