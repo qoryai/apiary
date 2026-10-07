@@ -40,6 +40,17 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view
   end
 
+  # An element's text as it is read: unlike text/2, its tags add no space.
+  defp name(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -450,7 +461,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       refute text(view, "#mode-would") =~ "bin.paste.example"
       assert text(view, "#mode-would") =~ "1 destination"
 
-      view |> element("#mode-would button", "Allow files.cdn.example here") |> render_click()
+      view |> element("#mode-would button", "Allow here: files.cdn.example") |> render_click()
       assert own(scope, target, "files.cdn.example")
       # None left open: the focus goes to the act.
       assert_push_event(view, "policy:focus", %{id: "target-mode-confirm"})
@@ -526,13 +537,11 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
         "would-#{ApiaryWeb.PolicyLive.Common.would_key(%{host: host, path: nil})}-allow"
       end
 
-      assert has_element?(view, "button##{allow.("mirror.example")}", "Allow mirror.example here")
-
-      assert has_element?(
-               view,
-               "button##{allow.("files.cdn.example")}",
-               "Allow files.cdn.example here"
-             )
+      # Each reads "Allow here"; its name goes on with the destination.
+      for host <- ~w(mirror.example files.cdn.example) do
+        assert name(view, "button##{allow.(host)}") == "Allow here: #{host}"
+        assert text(view, "button##{allow.(host)} .sr-only") == ": #{host}"
+      end
 
       view |> element("##{allow.("mirror.example")}") |> render_click()
       next = allow.("files.cdn.example")

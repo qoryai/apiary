@@ -28,6 +28,17 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     view
   end
 
+  # An element's text as it is read: unlike text/2, its tags add no space.
+  defp name(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -850,7 +861,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#mode-would-n") == "1 destination"
 
       view
-      |> element("#mode-would button", "Allow files.cdn.example for the workspace")
+      |> element("#mode-would button", "Allow for the workspace: files.cdn.example")
       |> render_click()
 
       assert rule(scope, "files.cdn.example")
@@ -888,8 +899,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
         "would-#{Common.would_key(%{host: host, path: nil})}-allow"
       end
 
+      # Each reads "Allow for the workspace"; its name goes on with the destination.
       for host <- ~w(assets.example mirror.example files.cdn.example) do
-        assert has_element?(view, "button##{allow.(host)}", "Allow #{host} for the workspace")
+        assert name(view, "button##{allow.(host)}") == "Allow for the workspace: #{host}"
+        assert text(view, "button##{allow.(host)} .sr-only") == ": #{host}"
       end
 
       # The one acted on goes; the focus goes to the next Allow still open, then from the
