@@ -64,14 +64,29 @@ defmodule ApiaryWeb.ActivityLive do
               name="workspace_id"
               label={gettext("Workspace")}
               value={@filters.workspace_id}
-              options={for w <- @workspaces, do: {w.name, w.id, nil}}
+              options={
+                narrowed(
+                  for(w <- @workspaces, do: {w.name, w.id, nil}),
+                  @narrow["workspace_id"],
+                  @filters.workspace_id
+                )
+              }
+              query={@narrow["workspace_id"]}
               remove={page_path(@current_scope, %{@filters | workspace_id: nil, page: 1})}
             />
             <.filter
               name="action"
               label={gettext("Action")}
               value={@filters.action}
-              options={for {value, label} <- action_options(@current_scope), do: {label, value, nil}}
+              options={
+                narrowed(
+                  for({value, label} <- action_options(@current_scope), do: {label, value, nil}),
+                  @narrow["action"],
+                  @filters.action
+                )
+              }
+              query={@narrow["action"]}
+              search_label={gettext("Find an action")}
               remove={page_path(@current_scope, %{@filters | action: nil, page: 1})}
             />
             <ApiaryWeb.Extension.slot name={:activity_filters} scope={@current_scope} />
@@ -80,7 +95,7 @@ defmodule ApiaryWeb.ActivityLive do
           <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
             <span id="activity-error">
               {gettext(
-                "The activity could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+                "The audit log could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
               )}
             </span>
           </.notice>
@@ -91,7 +106,7 @@ defmodule ApiaryWeb.ActivityLive do
             class="overflow-hidden rounded-box border border-line bg-base-100 shadow-xs"
             aria-busy="true"
           >
-            <span class="sr-only">{gettext("Loading the activity")}</span>
+            <span class="sr-only">{gettext("Loading the audit log")}</span>
             <div
               :for={n <- 1..8}
               class="flex items-center gap-6 border-b border-line px-4 py-3.5 last:border-b-0"
@@ -109,7 +124,7 @@ defmodule ApiaryWeb.ActivityLive do
               tone="neutral"
               title={gettext("No entries on this page")}
             >
-              {gettext("The activity has fewer pages than that.")}
+              {gettext("The audit log has fewer pages than that.")}
               <:actions>
                 <.button
                   id="activity-first-page"
@@ -127,8 +142,8 @@ defmodule ApiaryWeb.ActivityLive do
               tone="neutral"
               title={
                 if filtered?(@filters),
-                  do: gettext("No activity matches these filters"),
-                  else: gettext("No activity yet")
+                  do: gettext("No entries match these filters"),
+                  else: gettext("No entries yet")
               }
             >
               {if filtered?(@filters),
@@ -243,9 +258,10 @@ defmodule ApiaryWeb.ActivityLive do
 
     {:ok,
      assign(socket,
-       page_title: gettext("Audit log"),
+       page_title: gettext("Audit log · %{organisation}", organisation: scope.organisation.name),
        workspaces: Organisations.list_workspaces(scope),
        filters: %{workspace_id: nil, action: nil, page: 1},
+       narrow: %{},
        rows: nil,
        more?: false,
        loading: false,
@@ -273,7 +289,13 @@ defmodule ApiaryWeb.ActivityLive do
 
   def handle_event("filter", _params, socket), do: {:noreply, socket}
 
-  # The menus hold every value there is: there is nothing to narrow on the server.
+  # What the reader typed in a filter's box, which narrows its options (`narrowed/3`).
+  def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
+      when name in ~w(workspace_id action) and is_binary(q) do
+    {:noreply,
+     assign(socket, :narrow, Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256)))}
+  end
+
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
   @impl true
@@ -346,6 +368,21 @@ defmodule ApiaryWeb.ActivityLive do
   end
 
   defp filtered?(filters), do: not is_nil(filters.workspace_id) or not is_nil(filters.action)
+
+  # A filter's options whose words hold what the reader typed in its box, whatever the
+  # case; the chosen value stays, so that its chip still names it. Every value is on the
+  # page already: the narrowing reads nothing.
+  defp narrowed(options, query, chosen) do
+    case String.downcase(String.trim(query || "")) do
+      "" ->
+        options
+
+      text ->
+        Enum.filter(options, fn {label, value, _count} ->
+          value == chosen or String.contains?(String.downcase(label), text)
+        end)
+    end
+  end
 
   defp page_path(scope, filters) do
     query =

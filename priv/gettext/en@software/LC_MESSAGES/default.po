@@ -2618,11 +2618,6 @@ msgstr ""
 msgid "Address of its description.json"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/configuration.ex
-#, elixir-autogen, elixir-format
-msgid "Addresses in the audit log"
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/member_live/workspace.ex
@@ -3085,6 +3080,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Audit log entries"
+msgstr ""
+
+#: lib/apiary_web/live/activity_live.ex
+#, elixir-autogen, elixir-format
+msgid "Audit log · %{organisation}"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -4673,6 +4673,11 @@ msgstr ""
 msgid "Every change made to this organisation and its workspaces: who made it, when, and what it changed."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Every day, %{from}–%{to} UTC"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Every destination this target's runs reached in the last 14 days is covered by a rule."
@@ -4968,6 +4973,11 @@ msgstr ""
 msgid "Find a variable by name or value"
 msgstr ""
 
+#: lib/apiary_web/live/activity_live.ex
+#, elixir-autogen, elixir-format
+msgid "Find an action"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Find an organisation or workspace"
@@ -5107,7 +5117,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "From an address"
+msgid "From an https address"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5347,7 +5357,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "How long an audit log entry keeps the address and the client it came from."
+msgid "How long an audit log entry keeps the IP address and the browser or program it came from, never longer than the entries."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -5373,6 +5383,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "How the console shows things to you, in every organisation you belong to."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "IP addresses in the audit log"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -6260,7 +6275,7 @@ msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
-msgid "Loading the activity"
+msgid "Loading the audit log"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -6881,16 +6896,6 @@ msgstr ""
 msgid "No access keys yet"
 msgstr ""
 
-#: lib/apiary_web/live/activity_live.ex
-#, elixir-autogen, elixir-format
-msgid "No activity matches these filters"
-msgstr ""
-
-#: lib/apiary_web/live/activity_live.ex
-#, elixir-autogen, elixir-format
-msgid "No activity yet"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "No changes yet"
@@ -6984,7 +6989,17 @@ msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
+msgid "No entries match these filters"
+msgstr ""
+
+#: lib/apiary_web/live/activity_live.ex
+#, elixir-autogen, elixir-format
 msgid "No entries on this page"
+msgstr ""
+
+#: lib/apiary_web/live/activity_live.ex
+#, elixir-autogen, elixir-format
+msgid "No entries yet"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -7720,11 +7735,6 @@ msgstr ""
 msgid "On %{reported}; %{in_force} in force"
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/configuration.ex
-#, elixir-autogen, elixir-format
-msgid "Once a day"
-msgstr ""
-
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Once you leave this page, the secret is not shown again."
@@ -8363,11 +8373,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
-msgstr ""
-
-#: lib/apiary_web/live/instance_live/configuration.ex
-#, elixir-autogen, elixir-format
-msgid "Pruning runs"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -9082,6 +9087,11 @@ msgstr ""
 msgid "Run preview"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Run pruning"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run started"
@@ -9233,7 +9243,7 @@ msgstr "Runs, repositories and the policy fill in once the first run lands; unti
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "Runs, their terminal log and timeline, the network access they made, and how long they are kept."
+msgid "Runs, their terminal log and timeline, the connections they made, and how long they are kept."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -9492,13 +9502,18 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "Set by"
+msgid "Set by %{variable}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set by a target too"
 msgstr "Set by a repository too"
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Set in the application's configuration"
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -10069,16 +10084,6 @@ msgstr ""
 msgid "That workspace cannot be deleted here."
 msgstr ""
 
-#: lib/apiary_web/live/activity_live.ex
-#, elixir-autogen, elixir-format
-msgid "The activity could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
-msgstr ""
-
-#: lib/apiary_web/live/activity_live.ex
-#, elixir-autogen, elixir-format
-msgid "The activity has fewer pages than that."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "The argument doesn't match what its description allows."
@@ -10087,6 +10092,16 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "The arrow keys move between the modes without choosing one; Space or Enter asks."
+msgstr ""
+
+#: lib/apiary_web/live/activity_live.ex
+#, elixir-autogen, elixir-format
+msgid "The audit log could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+msgstr ""
+
+#: lib/apiary_web/live/activity_live.ex
+#, elixir-autogen, elixir-format
+msgid "The audit log has fewer pages than that."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -10117,6 +10132,16 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The connections could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "The default: %{variable} is not set"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "The default: the application's configuration does not set it"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -10631,7 +10656,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "The security policy, which each run receives with its run configuration."
+msgid "The security policy, which Qory serves to a workspace's runs once it has a rule or a mode set."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -11160,7 +11185,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "To change a value, whoever runs the server changes the setting it is set by and starts the server again."
+msgid "To change a value, whoever runs the server changes the setting named beside it and starts the server again."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -11620,7 +11645,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "What whoever runs this server set for the whole instance, as the server read it when it started. Nothing here changes it."
+msgid "What whoever runs this server set for the whole instance, or the default, as the server read it when it started. Nothing here changes it."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

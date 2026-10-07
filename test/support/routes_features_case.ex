@@ -47,7 +47,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.UserLive.Login,
     ApiaryWeb.UserLive.Confirmation,
     ApiaryWeb.InvitationLive.Accept,
-    ApiaryWeb.InstanceLive.Configuration
+    ApiaryWeb.InstanceLive.Configuration,
+    ApiaryWeb.InstanceController
   ]
 
   # Development only (`:dev_routes`), never in a release.

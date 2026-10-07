@@ -273,7 +273,7 @@ whole database schema whatever its features, so nothing is migrated.
 | `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
-its owners and admins read in its settings, under Audit log, `/:org/settings/audit-log`: who made it (a person, an access
+its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access
 key, or Qory itself for its own scheduled work), when, from which address and client, and
 what it changed. An entry never holds a secret, nor a person's name or email address: it
 names a person by their account, and the page looks the address up when it shows it.

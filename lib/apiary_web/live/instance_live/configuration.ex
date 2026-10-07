@@ -8,17 +8,17 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   (`ApiaryWeb.Layouts.instance_sections/1`).
 
   Each line is a value the application already reads, as it read it when the server
-  started, with the setting of the server's environment it comes from where it has one:
-  the features
+  started, with where it comes from: the setting of the server's environment that set it,
+  or the default, where that setting is not set (`config/runtime.exs` keeps each as it
+  read it). They are the features
   (`Apiary.Features`, `QORY_FEATURES`), whether an integration may come from an address
   (`Apiary.Integrations.Source.url_sources?/0`, `INTEGRATION_URL_SOURCES`), how long the
   audit trail keeps an entry and its address (`Apiary.Audit`), the grace period before a
   deleted workspace or organisation is purged (`Apiary.Deletion.grace_days/0`), the
   invitations an organisation sends a day (`Apiary.Instance.invitations_per_day/0`), and
-  whether the server prunes runs by their workspace's retention
-  (`Apiary.Retention.Scheduler.enabled?/0`, the application's configuration, which no
-  setting of the environment changes). Nothing here changes them: the server reads them
-  when it starts.
+  whether and when the server prunes runs by their workspace's retention
+  (`Apiary.Retention.Scheduler`, the application's configuration, which no setting of the
+  environment changes). Nothing here changes them: the server reads them when it starts.
   """
   use ApiaryWeb, :live_view
 
@@ -45,7 +45,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
       >
         <:subtitle>
           {gettext(
-            "What whoever runs this server set for the whole instance, as the server read it when it started. Nothing here changes it."
+            "What whoever runs this server set for the whole instance, or the default, as the server read it when it started. Nothing here changes it."
           )}
         </:subtitle>
 
@@ -56,21 +56,23 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               id={"config-feature-#{feature.name}"}
               label={feature.label}
               value={if feature.on, do: gettext("On"), else: gettext("Off")}
-              variable="QORY_FEATURES"
               mono_label
             >
               {feature.description}
             </.setting>
           </dl>
+          <p id="config-features-source" class="text-[12px] text-faint">
+            <.rich text={@sources.features} />
+          </p>
         </SettingsComponents.part>
 
         <SettingsComponents.part id="config-integrations" title={gettext("Integrations")}>
           <dl class="grid gap-4">
             <.setting
               id="config-url-sources"
-              label={gettext("From an address")}
+              label={gettext("From an https address")}
               value={if @url_sources, do: gettext("Allowed"), else: gettext("Not allowed")}
-              variable="INTEGRATION_URL_SOURCES"
+              source={@sources.url_sources}
             >
               {if @url_sources,
                 do:
@@ -91,22 +93,25 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               id="config-audit-retention"
               label={gettext("Audit log entries")}
               value={days(@audit_days)}
-              variable="AUDIT_RETENTION_DAYS"
+              source={@sources.audit}
             >
               {gettext("How long the audit log keeps an entry. Older entries are deleted once a day.")}
             </.setting>
             <.setting
               id="config-audit-address-retention"
-              label={gettext("Addresses in the audit log")}
+              label={gettext("IP addresses in the audit log")}
               value={days(@address_days)}
-              variable="AUDIT_ADDRESS_RETENTION_DAYS"
+              source={@sources.address}
             >
-              {gettext("How long an audit log entry keeps the address and the client it came from.")}
+              {gettext(
+                "How long an audit log entry keeps the IP address and the browser or program it came from, never longer than the entries."
+              )}
             </.setting>
             <.setting
               id="config-run-pruning"
-              label={gettext("Pruning runs")}
-              value={if @pruning, do: gettext("Once a day"), else: gettext("Off")}
+              label={gettext("Run pruning")}
+              value={pruning(@pruning)}
+              source={@sources.pruning}
             >
               {if @pruning,
                 do:
@@ -127,7 +132,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               id="config-grace"
               label={gettext("Grace period")}
               value={days(@grace_days)}
-              variable="DELETION_GRACE_DAYS"
+              source={@sources.grace}
             >
               {gettext(
                 "How long a deleted workspace or organisation is kept, and its deletion can still be cancelled, before it is purged."
@@ -142,7 +147,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               id="config-invitations-per-day"
               label={gettext("Invitations a day")}
               value={Format.number(@invitations)}
-              variable="INVITATIONS_PER_DAY"
+              source={@sources.invitations}
             >
               {gettext("How many invitations an organisation sends in 24 hours.")}
             </.setting>
@@ -151,7 +156,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
         <p id="config-note" class="q-foot-note">
           {gettext(
-            "To change a value, whoever runs the server changes the setting it is set by and starts the server again."
+            "To change a value, whoever runs the server changes the setting named beside it and starts the server again."
           )}
         </p>
       </.settings_page>
@@ -162,12 +167,16 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :value, :string, required: true
-  attr :variable, :string, default: nil, doc: "the setting of the server's environment"
+
+  attr :source, :any,
+    default: nil,
+    doc: "rich text: the setting the value comes from, or that it is the default"
+
   attr :mono_label, :boolean, default: false, doc: "the label is a name the setting takes"
   slot :inner_block, doc: "one sentence: what the value decides"
 
-  # One value: what it is, its value, one sentence of what it decides, and the setting of
-  # the server's environment it comes from.
+  # One value: what it is, its value, one sentence of what it decides, and where it comes
+  # from: the setting that set it, or the default.
   defp setting(assigns) do
     ~H"""
     <div id={@id} class="grid gap-x-6 gap-y-1 text-[13px]/[20px] sm:grid-cols-[200px_minmax(0,1fr)]">
@@ -175,8 +184,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
       <dd class="m-0 flex min-w-0 flex-col gap-0.5">
         <span id={"#{@id}-value"} class="font-medium">{@value}</span>
         <span :if={@inner_block != []} class="text-muted">{render_slot(@inner_block)}</span>
-        <span :if={@variable} class="text-[12px] text-faint">
-          {gettext("Set by")} <code class="q-mono">{@variable}</code>
+        <span :if={@source} id={"#{@id}-source"} class="text-[12px] text-faint">
+          <.rich text={@source} />
         </span>
       </dd>
     </div>
@@ -193,9 +202,10 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
          url_sources: Source.url_sources?(),
          audit_days: Audit.retention_days(),
          address_days: Audit.address_retention_days(),
-         pruning: Scheduler.enabled?(),
+         pruning: Scheduler.enabled?() && pruning_hour(),
          grace_days: Deletion.grace_days(),
-         invitations: Instance.invitations_per_day()
+         invitations: Instance.invitations_per_day(),
+         sources: sources()
        )}
     else
       raise ApiaryWeb.NotFound
@@ -220,13 +230,62 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   defp description(:observability),
     do:
       gettext(
-        "Runs, their terminal log and timeline, the network access they made, and how long they are kept."
+        "Runs, their terminal log and timeline, the connections they made, and how long they are kept."
       )
 
+  # As `Apiary.Policy.managed?/1` has it: no policy is served until the first rule or the
+  # first mode set in the workspace, a target's included.
   defp description(:security),
-    do: gettext("The security policy, which each run receives with its run configuration.")
+    do:
+      gettext(
+        "The security policy, which Qory serves to a workspace's runs once it has a rule or a mode set."
+      )
 
   defp description(_feature), do: nil
+
+  # Where each value comes from: the setting of the server's environment, as
+  # `config/runtime.exs` read it, where whoever runs the server set it; the default where
+  # it is not set or blank, which every reader of these settings takes for unset.
+  # Pruning is the application's configuration, which no setting of the environment changes.
+  defp sources do
+    %{
+      features: env_source("QORY_FEATURES", :features_setting),
+      url_sources: env_source("INTEGRATION_URL_SOURCES", :integration_url_sources_setting),
+      audit: env_source("AUDIT_RETENTION_DAYS", :audit_retention_setting),
+      address: env_source("AUDIT_ADDRESS_RETENTION_DAYS", :audit_address_retention_setting),
+      grace: env_source("DELETION_GRACE_DAYS", :deletion_grace_setting),
+      invitations: env_source("INVITATIONS_PER_DAY", :invitations_per_day_setting),
+      pruning:
+        if(Keyword.take(scheduler_config(), [:enabled, :hour]) == [],
+          do: gettext("The default: the application's configuration does not set it"),
+          else: gettext("Set in the application's configuration")
+        )
+    }
+  end
+
+  defp env_source(variable, key) do
+    if blank?(Application.get_env(:apiary, key)),
+      do:
+        rich_gettext("The default: %{variable} is not set", variable: {:code, variable, "q-mono"}),
+      else: rich_gettext("Set by %{variable}", variable: {:code, variable, "q-mono"})
+  end
+
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_value), do: true
+
+  # The hour of the night the pruning starts, UTC, as `Apiary.Retention.Scheduler` reads it
+  # from the application's configuration: 3 when it names none. It prunes at a moment
+  # within that hour, chosen at random.
+  defp pruning_hour, do: Keyword.get(scheduler_config(), :hour, 3)
+
+  defp scheduler_config, do: Application.get_env(:apiary, Scheduler, [])
+
+  defp pruning(false), do: gettext("Off")
+
+  defp pruning(hour),
+    do: gettext("Every day, %{from}–%{to} UTC", from: clock(hour), to: clock(rem(hour + 1, 24)))
+
+  defp clock(hour), do: String.pad_leading(Integer.to_string(hour), 2, "0") <> ":00"
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 end
