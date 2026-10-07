@@ -292,7 +292,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{id}-toggle[aria-expanded=true][aria-controls='#{id}-runs']")
       assert text(view, "##{id}-runs") =~ "2 runs reached this destination"
 
-      first = text(view, "##{id}-run-#{b.run_id}")
+      # Each run names its target as it is addressed: acme/shop is on two systems.
+      first = view |> text("##{id}-run-#{b.run_id}") |> String.replace(" / ", "/")
       assert first =~ "Running"
       assert first =~ "gitlab.example/acme/shop"
       assert first =~ "1 denied"
@@ -308,6 +309,18 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       view |> element("##{id}-toggle") |> render_click()
       refute has_element?(view, "##{id}-runs")
+
+      # A target no other system has is its path alone.
+      api =
+        started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"},
+          egress: [@registry]
+        )
+
+      view = open(conn, scope)
+      view |> element("##{id}-toggle") |> render_click()
+      named = text(view, "##{id}-run-#{api.run_id}")
+      assert named =~ "acme/api"
+      refute named =~ "github.example"
     end
 
     test "more than ten runs page in place", %{conn: conn, scope: scope} do

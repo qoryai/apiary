@@ -377,6 +377,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             acts={@acts}
             panel={@rule_panel}
             security={@security}
+            shared={@shared}
           />
 
           <.empty_state

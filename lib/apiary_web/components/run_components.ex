@@ -1947,6 +1947,11 @@ defmodule ApiaryWeb.RunComponents do
     doc:
       "table and workspace: the row's open panel (`rule_panel/1`), shown under it; nil for none"
 
+  attr :shared, :any,
+    default: nil,
+    doc:
+      "workspace: the paths on more than one system (a MapSet), so a run's target is named as it is addressed; nil names it in full"
+
   slot :trailing, doc: "what the slot holds when `act` is not given"
 
   def connection_row(%{variant: "inline"} = assigns) do
@@ -2172,9 +2177,13 @@ defmodule ApiaryWeb.RunComponents do
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
-                {if hit.run.target_system && hit.run.target_path,
-                  do: "#{hit.run.target_system}/#{hit.run.target_path}",
-                  else: gettext("Unassigned")}
+                <.target_name
+                  :if={hit.run.target_system && hit.run.target_path}
+                  path={hit.run.target_path}
+                  system={hit.run.target_system}
+                  shared={@shared}
+                />
+                {if !(hit.run.target_system && hit.run.target_path), do: gettext("Unassigned")}
               </span>
               <span class={["tabular-nums", hit.denied > 0 && "q-bad"]}>
                 {if hit.denied > 0,
@@ -2701,6 +2710,11 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the page's open panel of a row's Allow or Deny (`rule_panel/1`), shown under its row"
 
+  attr :shared, :any,
+    default: nil,
+    doc:
+      "the paths on more than one system (a MapSet): how a destination's runs name their target"
+
   attr :class, :any, default: nil
 
   def connections_table(assigns) do
@@ -2771,6 +2785,7 @@ defmodule ApiaryWeb.RunComponents do
             act={@security && @acts && @acts[@row_id.(row)]}
             panel={@security && panel_of(@panel, @row_id.(row))}
             security={@security}
+            shared={@shared}
           />
         </tbody>
       </table>
