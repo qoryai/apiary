@@ -1408,7 +1408,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Unlock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("A target may set its own value of %{name} again.", name: @variable.name)}
+      {gettext("A target's own value of %{name} applies again.", name: @variable.name)}
       <span :if={@ignored > 0} id="unlock-targets">
         {ngettext(
           "%{number} target set its own: the lock no longer sets it aside.",
@@ -2087,11 +2087,11 @@ defmodule ApiaryWeb.SecretLive.Index do
            socket,
            if(value.value_id,
              do:
-               gettext("%{value_id} of %{name} is changed.",
+               gettext("%{value_id} of %{name} is saved.",
                  value_id: value.value_id,
                  name: secret.name
                ),
-             else: gettext("The value of %{name} is changed.", name: secret.name)
+             else: gettext("The value of %{name} is saved.", name: secret.name)
            )
          )}
 

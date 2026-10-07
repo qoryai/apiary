@@ -1813,12 +1813,12 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} of %{name} is changed."
+msgid "%{value_id} of %{name} is now %{new}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} of %{name} is now %{new}."
+msgid "%{value_id} of %{name} is saved."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -2350,11 +2350,6 @@ msgstr ""
 msgid "A target is listed here once a run of this workspace names it."
 msgstr ""
 
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "A target may set its own value of %{name} again."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
@@ -2375,6 +2370,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A target's own rule for this host still decides there."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A target's own value of %{name} applies again."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -11083,7 +11083,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The value of %{name} is changed."
+msgid "The value of %{name} is saved."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
