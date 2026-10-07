@@ -173,15 +173,25 @@ defmodule ApiaryWeb.Routes do
         get "/run-configuration", RunConfigurationController, :show
       end
 
-      # LiveDashboard and the Swoosh mailbox preview, in development only.
+      # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
+      # and styles carry the request's nonce (`ApiaryWeb.ContentSecurityPolicy`), and they
+      # may frame their own pages, as the mailbox frames a message.
       if Application.compile_env(:apiary, :dev_routes) do
         import Phoenix.LiveDashboard.Router
 
-        scope "/dev" do
-          pipe_through :browser
+        pipeline :dev_tools do
+          plug ApiaryWeb.ContentSecurityPolicy, allow_frames: :self
+        end
 
-          live_dashboard "/dashboard", metrics: ApiaryWeb.Telemetry
-          forward "/mailbox", Plug.Swoosh.MailboxPreview
+        scope "/dev" do
+          pipe_through [:browser, :dev_tools]
+
+          live_dashboard "/dashboard",
+            metrics: ApiaryWeb.Telemetry,
+            csp_nonce_assign_key: :csp_nonce
+
+          forward "/mailbox", Plug.Swoosh.MailboxPreview,
+            csp_nonce_assign_key: %{script: :csp_nonce, style: :csp_nonce}
         end
       end
     end
@@ -201,6 +211,16 @@ defmodule ApiaryWeb.Routes do
         if Application.compile_env(:apiary, :dev_routes) do
           import PhoenixStorybook.Router
 
+          # The library's own pipeline, and the storybook may frame its own pages (a story
+          # in an iframe container); its scripts carry the request's nonce
+          # (`ApiaryWeb.ContentSecurityPolicy`).
+          pipeline :storybook_browser do
+            plug :accepts, ["html"]
+            plug :fetch_session
+            plug :protect_from_forgery
+            plug ApiaryWeb.ContentSecurityPolicy, allow_frames: :self
+          end
+
           scope "/" do
             storybook_assets("/dev/storybook/assets")
           end
@@ -208,7 +228,9 @@ defmodule ApiaryWeb.Routes do
           scope "/" do
             live_storybook("/dev/storybook",
               backend_module: ApiaryWeb.Storybook,
-              assets_path: "/dev/storybook/assets"
+              assets_path: "/dev/storybook/assets",
+              pipeline: false,
+              csp_nonce_assign_key: :csp_nonce
             )
           end
         end

@@ -30,18 +30,26 @@ defmodule ApiaryWeb.FeaturesTest do
   setup :register_and_log_in_user
 
   # What a request is answered: the status, the body and the headers, all but the request's
-  # own id. An error the endpoint renders and raises again is taken as it was sent.
+  # own id and its nonce (`ApiaryWeb.ContentSecurityPolicy`). An error the endpoint renders
+  # and raises again is taken as it was sent.
   defp answer(request) do
     conn = request.()
-    {conn.status, conn.resp_body, headers(conn.resp_headers)}
+    {conn.status, without_nonce(conn.resp_body), headers(conn.resp_headers)}
   rescue
     _error ->
       {status, headers, body} = assert_error_sent(:not_found, request)
-      {status, body, headers(headers)}
+      {status, without_nonce(body), headers(headers)}
   end
 
-  defp headers(headers),
-    do: headers |> Enum.reject(fn {name, _} -> name == "x-request-id" end) |> Enum.sort()
+  defp headers(headers) do
+    headers
+    |> Enum.reject(fn {name, _} -> name == "x-request-id" end)
+    |> Enum.map(fn {name, value} -> {name, without_nonce(value)} end)
+    |> Enum.sort()
+  end
+
+  defp without_nonce(text),
+    do: String.replace(text, ~r/nonce(-|=")[A-Za-z0-9+\/=]+/, "nonce\\1…")
 
   # The workspace's policy made while the instance still had `security`, as on an instance
   # launched with it and restarted without: its rows stay, and nothing of it may show.

@@ -21,18 +21,25 @@ defmodule ApiaryWeb.PathScopeTest do
   @organisation_pages ["/settings/people", "/settings", "/audit-log"]
 
   # A response, whether the pipeline sent it or the endpoint rendered an error, without
-  # the request id.
+  # the request id and the request's nonce (`ApiaryWeb.ContentSecurityPolicy`).
   defp answer(request) do
     conn = request.()
-    {conn.status, conn.resp_body, headers(conn.resp_headers)}
+    {conn.status, without_nonce(conn.resp_body), headers(conn.resp_headers)}
   rescue
     _error ->
       {status, headers, body} = assert_error_sent(:not_found, request)
-      {status, body, headers(headers)}
+      {status, without_nonce(body), headers(headers)}
   end
 
-  defp headers(headers),
-    do: headers |> Enum.reject(fn {name, _} -> name == "x-request-id" end) |> Enum.sort()
+  defp headers(headers) do
+    headers
+    |> Enum.reject(fn {name, _} -> name == "x-request-id" end)
+    |> Enum.map(fn {name, value} -> {name, without_nonce(value)} end)
+    |> Enum.sort()
+  end
+
+  defp without_nonce(text),
+    do: String.replace(text, ~r/nonce(-|=")[A-Za-z0-9+\/=]+/, "nonce\\1…")
 
   defp not_found?(conn, path), do: conn |> get(path) |> response(404) == "Not Found"
 
