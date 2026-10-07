@@ -1990,7 +1990,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     assign(socket,
       rule_panel: %{
-        anchor: "cx-#{row.id}-act",
+        anchor: "cx-#{row.id}-#{action}",
         connection_id: row.id,
         action: action,
         host: act.host,
@@ -2028,7 +2028,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     assign(socket,
       rule_panel: %{
-        anchor: "cx-#{row.id}-act",
+        anchor: "cx-#{row.id}-lock",
         host: act.host,
         refusal: %{
           rule_option: act.rule_option,
@@ -2047,7 +2047,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The slot's button says whether its panel is open.
   defp mark_expanded(%{assigns: %{acts: acts, rule_panel: panel}} = socket) when is_map(acts) do
-    open = panel && String.replace_suffix(panel.anchor, "-act", "")
+    open = panel && row_of_anchor(panel.anchor)
     action = panel && panel[:action]
 
     assign(socket,
@@ -2234,7 +2234,7 @@ defmodule ApiaryWeb.RunLive.Show do
     rule_options =
       for {row, rule_option} <- rule_options, do: {row, Rules.answered(rule_option, row, changes)}
 
-    # Who locked a locked rule, for the menu of the rows it decides: one read.
+    # Who locked a locked rule, for the lock's hint on the rows it decides: one read.
     locks =
       Rules.locks(
         scope,

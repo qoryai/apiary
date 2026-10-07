@@ -507,7 +507,9 @@ look alike are one level too many, and nothing is boxed inside a row.
   floats in the top layer so the table's scroll region never clips it. A choice of one,
   such as a person's level, is a set of `menuitemradio` items with what each means. A
   destructive item asks on its row, at a path of its own (No modals, above); red is for
-  that confirmation's button only. No bordered button on every row.
+  that confirmation's button only. No bordered button on every row. Network access is
+  the exception: Allow and Deny are icons and the row has no ⋯ menu (Lists, A
+  destination).
 - **Columns grow with the table**, not the screen: `from="sm" | "md" | "lg"` shows a
   column from 600, 1000 or 1300 px of the table's own width (a container query), so a
   table in a narrow pane reflows as it would on a narrow screen.
@@ -598,7 +600,9 @@ version. Only the version in force is exported; another version's path sends on 
   `denied:yes`; `decision:`, `tools:`, `seen:` on Network access) become the URL's
   parameters and show as tokens, and the other words are the free text, `q`, matched as
   text without regard to case (a run's id, task or target; a destination's host or
-  path). A word it cannot read is said in a notice, never dropped in silence.
+  path). A word it cannot read is said in a notice, never dropped in silence. On Network
+  access the field suggests the hosts in the list as one types (a combobox, at most 8,
+  from the host filter's query); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
   a menu, each section searches its values on the server over every value there is,
   fifty shown and more on asking, each counted under the other filters
@@ -625,13 +629,16 @@ version. Only the version in force is exported; another version's path sends on 
   so nothing is cut at the right: the reason from 600 px, the last seen from 780, the runs
   from 840, the attempts and the outcome from 1300. A run's Network access tab draws the
   same row without the runs, its title the request line, its times the offsets inside the
-  run; only the timeline's inline connections keep a glyph. A row's one text action, Allow on a destination that needs allowing and Deny on
-  an allowed one, shows on hover, on focus inside the row and while the row's panel or
-  menu is open (always on a touch screen, in the menu alone below 600 px of table); the ⋯
-  menu (`rule_menu/1`) holds Allow… and Deny… under Policy, then Show only and Copy with
-  the row's host under This list, a long host cut in the middle and whole in its title
-  and accessible name. A locked rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
-  rule changes it, and leads to the rule. Where only the level above the workspace allows
+  run; only the timeline's inline connections keep a glyph. A row's acts are two icons,
+  Allow (a check in a circle) and Deny (the deny mark), each with a hint and the host in
+  its name, in two fixed slots so they line up: only the one that would change something
+  shows, both where no rule decides the host. They show on hover, on focus inside the row
+  and while the row's panel is open, always on a touch screen, and at every width. There
+  is no ⋯ menu. The host has a copy icon beside it (it copies the host), shown the same
+  way. Where the rule in force is the one the reason names, its name links to it. A
+  locked rule, the wall and a deny of the level above are a faint lock whose hint says
+  why (who locked it and when, where known); a locked rule's lock opens its refusal in
+  place, with the way to the rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
   here would not be in force and leads to that level's policy with the host, for a reader
   who may change it there, and with the way back to this page (`back`,
@@ -641,7 +648,7 @@ version. Only the version in force is exported; another version's path sends on 
   first, the most denied attempts first and then the most recently seen, as To
   review weighs them; the rest by when they were first seen, so they hold still.
 - **A row's rule is asked for in place** (`RunComponents.rule_panel/1`), never in a
-  popover, a dialog or a sheet: Allow, Deny, Allow…, Deny… and a locked rule's lock open
+  popover, a dialog or a sheet: Allow, Deny and a locked rule's lock open
   a row of the table's own right under the row (`#<row>-panel`), in the page's flow, the
   row and its panel in the chosen row's tint. It holds the rule's form, its title ("Deny
   registry.example"), the paths a path rule would change, For (this target, or one target
@@ -651,8 +658,8 @@ version. Only the version in force is exported; another version's path sends on 
   or the way to the level above's policy with Cancel. The trigger says it is open
   (`aria-expanded`, `aria-controls`), never that it opens a dialog. The focus goes into it
   as it opens, on the option chosen (else the first), Close, or the way to the level
-  above, and back to the row's action as it goes, or to the row's ⋯ menu where the
-  action is hidden (the `RulePanel` hook); Enter sends the form once its button can,
+  above, and back to the icon that opened it as it goes, or, where it is gone, to Show
+  the rule or the row's copy icon (the `RulePanel` hook); Enter sends the form once its button can,
   Escape cancels it wherever the focus is. One panel is open at a time.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
@@ -963,8 +970,9 @@ needs becomes a component, or an attribute of one, not a copy.
 - **Tooltips** (`.tooltip` with `data-tip`) take no box while hidden, so a right-hand one
   never widens a phone's page; shown, they wrap at 36ch or the window. Escape hides the
   one under the pointer or focus until the pointer leaves or focus moves (`app.js`).
-- **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>`, `<.filter_menu>`,
-  `<.sort_menu>` and `<.filter_tokens>` are a list's controls; `<.state_word>` says a
+- **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>` (with `suggest`, a
+  combobox of suggestions), `<.filter_menu>`, `<.sort_menu>` and `<.filter_tokens>` are a
+  list's controls; `<.state_word>` says a
   row's state in words; `<.sparkline>` draws runs a day.
 - **`<.empty_state>`** says what is missing and offers the one next step. Where it titles
   the page (`heading="h1"`), its title is the page's `<h1>` and takes the focus as a

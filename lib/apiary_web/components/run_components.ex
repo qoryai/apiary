@@ -7,7 +7,7 @@ defmodule ApiaryWeb.RunComponents do
   targets, the pager; docs/ui.md, Lists), a target's one notation, the runs table and the
   preview beside it, the filter chips the Activity page keeps, tabs, the connection row
   with its reason, the connections tables (the content of Network access, with a row's
-  text actions and ⋯ menu) and the new-items pill.
+  Allow and Deny icons and its host's copy icon) and the new-items pill.
 
   Everything rendered here is a field of an event or a count of events; what the record
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.
@@ -36,12 +36,8 @@ defmodule ApiaryWeb.RunComponents do
       badge: 1,
       button: 1,
       icon: 1,
-      menu_divider: 1,
-      menu_heading: 1,
-      menu_item: 1,
       mono: 1,
       notice: 1,
-      row_menu: 1,
       term: 1
     ]
 
@@ -1911,9 +1907,11 @@ defmodule ApiaryWeb.RunComponents do
   only strong text; the runs and the attempts are muted numbers; allowed and denied are a
   thin split with their numbers, the denied one red only when there is one; the reason is
   one muted line, whole on hover, and folds under the destination below 600 px of table.
-  Columns join as the table widens (`connections_table/1`). A row's acts are
-  `rule_action/1` and `rule_menu/1`; what they open (`panel`, `rule_panel/1`) is a row of
-  its own right under the row, in the table's flow.
+  Columns join as the table widens (`connections_table/1`). The host has a copy icon
+  beside it (`<id>-copy`, it copies the host); a row's acts are `rule_actions/1`, Allow and
+  Deny as icons; what they open (`panel`, `rule_panel/1`) is a row of its own right under
+  the row, in the table's flow. Where the rule in force is the rule the reason names, its
+  name links to it (`<id>-rule`).
 
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
@@ -1940,13 +1938,9 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "workspace: a function from a run to its Network access tab"
 
-  attr :host_path, :any,
-    default: nil,
-    doc: "table and workspace: a function from a host to the list narrowed to it, for the menu"
-
   attr :act, :map,
     default: nil,
-    doc: "table and workspace: what the row may ask of the policy, see `rule_action/1`"
+    doc: "table and workspace: what the row may ask of the policy, see `rule_actions/1`"
 
   attr :security, :boolean,
     default: true,
@@ -2011,9 +2005,9 @@ defmodule ApiaryWeb.RunComponents do
       data-decision={@c.decision}
     >
       <td class="q-cx-d">
-        <.destination_title c={@c} line />
+        <.destination_title c={@c} line copy_id={"#{@id}-copy"} />
         <span :if={@security} class="q-cx-fold">
-          <.reason c={@c} variant="workspace" />
+          <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} />
         </span>
       </td>
       <td class="q-num q-from-lg">{Format.number(@c.attempts)}</td>
@@ -2022,7 +2016,12 @@ defmodule ApiaryWeb.RunComponents do
       </td>
       <td :if={@security} class="q-why q-from-sm">
         <span :if={!elsewhere?(@act)} class="q-why-l" title={reason_title(@c, @mixed)}>
-          <.reason c={@c} variant="workspace" />
+          <.reason
+            c={@c}
+            variant="workspace"
+            rule_path={rule_link(@act, @c)}
+            rule_id={"#{@id}-rule"}
+          />
         </span>
         <span
           :if={elsewhere?(@act)}
@@ -2033,27 +2032,25 @@ defmodule ApiaryWeb.RunComponents do
           <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
           {gettext("%{name} allows only its own hosts", name: @act.allow_elsewhere.name)}
         </span>
-        <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
+        <.after_line
+          :if={@act && @act[:after]}
+          id={"#{@id}-after"}
+          line={@act.after}
+          rule_path={@act[:rule_path]}
+          rule_id={"#{@id}-rule"}
+        />
       </td>
       <td class="q-cx-nw q-from-lg">
         <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
       </td>
       <td class="q-meta q-cx-nw q-cx-seen"><.seen c={@c} started_at={@started_at} /></td>
       <td :if={@security} class="q-cx-acts">
-        <.rule_action
+        <.rule_actions
           :if={@act}
-          id={"#{@id}-act"}
+          id={@id}
           connection={@c}
           controls={"#{@id}-panel"}
           {rule_action_attrs(@act)}
-        />
-        <.rule_menu
-          :if={@act}
-          id={"#{@id}-menu"}
-          act_id={"#{@id}-act"}
-          connection={@c}
-          act={@act}
-          host_path={@host_path}
         />
         {if !@act, do: render_slot(@trailing)}
       </td>
@@ -2096,9 +2093,9 @@ defmodule ApiaryWeb.RunComponents do
         </button>
       </td>
       <td class="q-cx-d">
-        <.destination_title c={@c} />
+        <.destination_title c={@c} copy_id={"#{@id}-copy"} />
         <span :if={@security} class="q-cx-fold">
-          <.reason c={@c} variant="workspace" />
+          <.reason c={@c} variant="workspace" rule_path={rule_link(@act, @c)} />
         </span>
       </td>
       <td class="q-num q-cx-runs">{Format.number(@c.runs)}</td>
@@ -2107,11 +2104,24 @@ defmodule ApiaryWeb.RunComponents do
         <.split allowed={@c.allowed} denied={@c.denied} share={@share} />
       </td>
       <td :if={@security} class="q-why q-from-sm">
+        <%!-- The level above's rule: "Main · denied", which leads to the rule there. --%>
         <span :if={@act && @act[:above]} class="q-why-l q-above-why" id={"#{@id}-above"}>
           <span class="q-tile" aria-hidden="true">{String.first(@act.above.name)}</span>
-          {@act.above.name} · {if @act.above.action == :deny,
-            do: gettext("denied"),
-            else: gettext("allowed")}
+          <.link
+            :if={@act[:rule_path]}
+            id={"#{@id}-rule"}
+            navigate={@act.rule_path}
+            class="q-rule-a"
+          >
+            {@act.above.name} · {if @act.above.action == :deny,
+              do: gettext("denied"),
+              else: gettext("allowed")}
+          </.link>
+          <span :if={!@act[:rule_path]}>
+            {@act.above.name} · {if @act.above.action == :deny,
+              do: gettext("denied"),
+              else: gettext("allowed")}
+          </span>
         </span>
         <%!-- What holds is the level above's: only it allows a host here, which the row says
              where it can be read, not in a tooltip alone; the record's reason is the title. --%>
@@ -2129,31 +2139,35 @@ defmodule ApiaryWeb.RunComponents do
           class="q-why-l"
           title={reason_title(@c, @mixed)}
         >
-          <.reason c={@c} variant="workspace" /><span
+          <.reason
+            c={@c}
+            variant="workspace"
+            rule_path={rule_link(@act, @c)}
+            rule_id={"#{@id}-rule"}
+          /><span
             :if={@mixed}
             class="text-faint"
           > · {gettext("last attempt")}</span>
         </span>
-        <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
+        <.after_line
+          :if={@act && @act[:after]}
+          id={"#{@id}-after"}
+          line={@act.after}
+          rule_path={@act[:rule_path]}
+          rule_id={"#{@id}-rule"}
+        />
       </td>
       <td class="q-cx-nw q-from-lg">
         <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
       </td>
       <td class="q-meta q-cx-nw q-cx-seen"><.relative_time at={@c.last_seen_at} /></td>
       <td :if={@security} class="q-cx-acts">
-        <.rule_action
+        <.rule_actions
           :if={@act}
-          id={"#{@id}-act"}
+          id={@id}
           connection={@c}
           controls={"#{@id}-panel"}
           {rule_action_attrs(@act)}
-        />
-        <.rule_menu
-          id={"#{@id}-menu"}
-          act_id={"#{@id}-act"}
-          connection={@c}
-          act={@act}
-          host_path={@host_path}
         />
         {if !@act, do: render_slot(@trailing)}
       </td>
@@ -2236,6 +2250,16 @@ defmodule ApiaryWeb.RunComponents do
   defp elsewhere?(%{rule_option: :can_allow, allow_elsewhere: %{}}), do: true
   defp elsewhere?(_act), do: false
 
+  # The rule the reason names links to the rule in force only when they are one: a record
+  # that names a rule since replaced is about the past. A rule just added has the after
+  # line's link, and a locked one its refusal's.
+  defp rule_link(%{rule_option: option, rule_path: path, entry_host: host}, %{rule: host})
+       when option in [:can_allow, :can_deny, :above_deny] and is_binary(path) and
+              is_binary(host),
+       do: path
+
+  defp rule_link(_act, _c), do: nil
+
   # Both spellings of a connection, as one map with every key present.
   defp normalise(connection) do
     get = fn keys -> Enum.find_value(keys, &Map.get(connection, &1)) end
@@ -2305,6 +2329,7 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :c, :map, required: true
   attr :line, :boolean, default: false, doc: "a run's row: the request line after the host"
+  attr :copy_id, :string, default: nil, doc: "the id of the host's copy icon; nil for none"
 
   # The destination as a row's title: the host in mono, the port faint, the path muted and
   # cut in the middle. A tool invocation leads with its tool, as everywhere.
@@ -2328,9 +2353,39 @@ defmodule ApiaryWeb.RunComponents do
       title={destination_title_words(@c)}
       data-request-id={@c.request_id}
     >
-      <span class="q-cx-h">{@c.host}<span class="q-cx-p">:{@c.port}</span></span>
+      <span class="q-cx-h">{@c.host}<span class="q-cx-p">:{@c.port}</span><.host_copy
+        :if={@copy_id}
+        id={@copy_id}
+        host={@c.host}
+      /></span>
       <span :if={@trail} class="q-cx-path">{middle(@trail, 96)}</span>
     </span>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :host, :string, required: true
+
+  # The host's copy icon, on its line: it copies the host, which Allow, Deny and the
+  # `host:` filter act on, and its name and hint say so. "Copied" is said in the shell's
+  # one announcer, never in a live region of each row (docs/ui.md). Its empty title keeps
+  # the destination's own from showing over its hint.
+  defp host_copy(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      phx-hook="CopyToClipboard"
+      class="copy-btn q-cx-copy row-reveal tooltip tooltip-right"
+      data-copy={@host}
+      data-copied-words={gettext("Copied")}
+      data-tip={gettext("Copy %{host}", host: @host)}
+      aria-label={gettext("Copy %{host}", host: @host)}
+      title=""
+    >
+      <span class="copy-idle"><.icon name="hero-clipboard-document" class="size-3.5" /></span>
+      <span class="copy-done"><.icon name="hero-check-micro" class="size-3.5" /></span>
+    </button>
     """
   end
 
@@ -2416,6 +2471,7 @@ defmodule ApiaryWeb.RunComponents do
   defp request_line(c), do: c.method
 
   attr :c, :map, required: true
+  attr :copy_id, :string, default: nil, doc: "a row's: the id of the host's copy icon"
 
   # A tool invocation is named by its tool: the request line follows, and the host, which
   # may be a name that exists only on the runner's machine, comes last and faint. A
@@ -2432,6 +2488,7 @@ defmodule ApiaryWeb.RunComponents do
       <.tool_mark name={@c.tool} />
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
       <span class="q-on">{@c.host}:{@c.port}</span>
+      <.host_copy :if={@copy_id} id={@copy_id} host={@c.host} />
     </span>
     """
   end
@@ -2463,6 +2520,8 @@ defmodule ApiaryWeb.RunComponents do
   attr :c, :map, required: true
   attr :variant, :string, required: true
   attr :security, :boolean, default: true
+  attr :rule_path, :string, default: nil, doc: "where the rule the reason names is, to link it"
+  attr :rule_id, :string, default: nil, doc: "the id of that link"
 
   # Without security only the inline row has a reason, and it is the record's: the
   # decision, and the tool a request was for. Which rule matched, and in which mode, is
@@ -2498,11 +2557,13 @@ defmodule ApiaryWeb.RunComponents do
         <b>{gettext("Host allowed, no path rule matches.")}</b> {mode_sentence(@c.mode, :denies)}
       <% :denied_by_rule -> %>
         {gettext("Rule")}
-        <.rule value={@c.rule} /><span :if={@c.path_rule}>, {gettext("path")}
+        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
+          "path"
+        )}
         <.rule value={@c.path_rule} /></span>
       <% :tool_by_rule -> %>
         <.rich text={handed_sentence(@c)}>
-          <:part name={:rule}><.rule value={@c.rule} /></:part>
+          <:part name={:rule}><.rule value={@c.rule} path={@rule_path} id={@rule_id} /></:part>
           <:part name={:path}><.rule value={@c.path_rule || ""} /></:part>
         </.rich>
       <% :tool_no_rule -> %>
@@ -2516,7 +2577,9 @@ defmodule ApiaryWeb.RunComponents do
         <span :if={@variant == "inline"}><b>{gettext("Allowed")}</b> {gettext("by rule")}</span><span :if={
           @variant != "inline"
         }>{gettext("Rule")}</span>
-        <.rule value={@c.rule} /><span :if={@c.path_rule}>, {gettext("path")}
+        <.rule value={@c.rule} path={@rule_path} id={@rule_id} /><span :if={@c.path_rule}>, {gettext(
+          "path"
+        )}
         <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("credential")}
         <.rule value={@c.credential} /></span>
       <% :unknown -> %>
@@ -2608,6 +2671,14 @@ defmodule ApiaryWeb.RunComponents do
   defp mode_sentence(_mode, :lets_through), do: gettext("It was let through.")
 
   attr :value, :string, required: true
+  attr :path, :string, default: nil, doc: "the rule's page, where the name links to it"
+  attr :id, :string, default: nil
+
+  defp rule(%{path: path} = assigns) when is_binary(path) do
+    ~H"""
+    <.link id={@id} navigate={@path} class="q-rule-a"><.mono class="q-rule" bare>{@value}</.mono></.link>
+    """
+  end
 
   defp rule(assigns) do
     ~H"""
@@ -2703,14 +2774,10 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :run_path, :any, default: nil
 
-  attr :host_path, :any,
-    default: nil,
-    doc: "a function from a host to the list narrowed to it, for a row's menu; nil offers none"
-
   attr :acts, :map,
     default: nil,
     doc:
-      "a row's DOM id => what it may ask of the policy (`rule_action/1`); nil leaves the slots empty"
+      "a row's DOM id => what it may ask of the policy (`rule_actions/1`); nil leaves the slots empty"
 
   attr :security, :boolean,
     default: true,
@@ -2791,7 +2858,6 @@ defmodule ApiaryWeb.RunComponents do
             started_at={@started_at}
             open={@open[destination_key(row)]}
             run_path={@run_path}
-            host_path={@host_path}
             act={@security && @acts && @acts[@row_id.(row)]}
             panel={@security && panel_of(@panel, @row_id.(row))}
             security={@security}
@@ -2803,9 +2869,21 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  # The panel is of the row whose text action it goes back to.
-  defp panel_of(%{anchor: anchor} = panel, id), do: if(anchor == "#{id}-act", do: panel)
+  # The panel is of the row whose Allow, Deny or lock opened it.
+  defp panel_of(%{anchor: anchor} = panel, id), do: if(row_of_anchor(anchor) == id, do: panel)
   defp panel_of(_panel, _id), do: nil
+
+  @doc """
+  The row a panel's anchor is of: the anchor is the id of the control that opened the
+  panel, `<row>-allow`, `<row>-deny` or `<row>-lock`; nil for any other id.
+  """
+  def row_of_anchor(anchor) when is_binary(anchor) do
+    Enum.find_value(~w(-allow -deny -lock), fn suffix ->
+      if String.ends_with?(anchor, suffix), do: String.replace_suffix(anchor, suffix, "")
+    end)
+  end
+
+  def row_of_anchor(_anchor), do: nil
 
   defp default_row_id(%{id: id}) when is_binary(id), do: "cx-#{id}"
   defp default_row_id(row), do: destination_id(row)
@@ -2846,37 +2924,46 @@ defmodule ApiaryWeb.RunComponents do
       deny: act[:deny] == true,
       above: act[:above],
       allow_elsewhere: act[:allow_elsewhere],
-      allow_path: act[:allow_path]
+      allow_path: act[:allow_path],
+      locked: act[:locked]
     }
   end
 
   @doc """
-  A row's text action: what its rule option lets the reader ask of the policy, shown on
-  hover, on focus inside the row and while its panel or menu is open, never a bordered
-  button on every row (docs/ui.md, Lists). `:can_allow` is Allow and `:can_deny` Deny, each
-  opening the row's panel (`rule_panel/1`) under the row, one action a row: Allow on a
-  denied destination, Deny on an allowed one; a `:can_allow` row with `deny`, which no rule
-  decides yet, has Deny… in its menu. A locked rule of the workspace (`:locked_deny`,
-  `:locked_allow`) is a faint lock, always shown, that opens the refusal there; the wall's
-  refusals (`:wall`) are a faint lock that says no rule changes this; a host no rule can
-  name (`:unnameable`) says so to a screen reader alone; a rule that answers the row
-  (`{:rule_added, _}`) links to it. The rest of a row's acts are its menu (`rule_menu/1`).
-  `data-action` names what a text action asks; one that opens the panel says whether it is
-  open (`aria-expanded`) and which element it is (`controls`).
+  A row's acts (docs/ui.md, Lists): two fixed slots, Allow then Deny, so every Deny sits in
+  one column; a slot whose act does not apply holds an empty 24 px gap, and nothing is ever
+  a disabled control. Allow (a check in a circle) and Deny (the deny mark) are icons, each
+  with a hint and the host in its name, shown on hover, on focus inside the row and while
+  the row's panel is open, always on a touch screen, at every width; each opens the row's
+  panel (`rule_panel/1`) under the row, and says whether it is open (`aria-expanded`). Only
+  the act that would change something shows: Allow on a `:can_allow` row, Deny on a
+  `:can_deny` one, both on a `:can_allow` row no rule decides (`deny`). Where only the
+  level above the workspace allows a host (`allow_elsewhere`), Allow opens a panel that
+  leads there, for a reader who may change it there (`allow_path`); the rest see a lock.
+
+  Where no rule here can change the row, the Allow slot holds a faint lock whose hint says
+  why, reachable by the keyboard: a deny of the level above (`:above_deny`), the wall
+  (`:wall`). A locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a lock
+  button whose hint says who locked it and when, where known (`locked`), and which opens
+  the refusal in place. A host no rule can name (`:unnameable`) says so to a screen
+  reader alone; a row a rule answers (`{:rule_added, _}`) has its way to the rule in its
+  after line (`after_line/1`). The controls are `<id>-allow`, `<id>-deny` and `<id>-lock`,
+  `id` being the row's.
 
   `values` ride on the `rule_open` event; they name the row and are looked up among the
   rows the page holds, never trusted.
   """
-  attr :id, :string, required: true
+  attr :id, :string, required: true, doc: "the row's id"
   attr :connection, :map, required: true
   attr :rule_option, :any, required: true
   attr :values, :map, default: %{}
   attr :rule_path, :string, default: nil
-  attr :entry_host, :string, default: nil, doc: "the host of the locked rule, for the tooltip"
+  attr :entry_host, :string, default: nil, doc: "the host of the rule that decides the row"
   attr :expanded, :boolean, default: false
   attr :expanded_action, :atom, default: nil, doc: "which of two actions the open panel is of"
-  attr :controls, :string, default: nil, doc: "the id of the row's panel, which the action opens"
+  attr :controls, :string, default: nil, doc: "the id of the row's panel, which the acts open"
   attr :deny, :boolean, default: false, doc: "a `:can_allow` row no rule decides: Deny too"
+  attr :locked, :any, default: nil, doc: "`%{by:, at:}` of a locked rule, where known"
 
   attr :above, :any,
     default: nil,
@@ -2890,304 +2977,190 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the level above's page with the host, to allow it there"
 
-  # Where the level above the workspace allows only its own hosts, Allow opens a panel
-  # that says so and leads to its page, with the host, for a reader who may change it
-  # there; the rest see a lock. Deny, where no rule decides the host, is in the menu.
-  def rule_action(%{rule_option: :can_allow, allow_elsewhere: %{}} = assigns) do
+  def rule_actions(%{rule_option: option} = assigns) when option in [:can_allow, :can_deny] do
+    host = assigns.connection.host
+    elsewhere = assigns.allow_elsewhere
+
     assigns =
       assign(assigns,
-        tip:
-          gettext("Only %{name}'s policy allows a host here", name: assigns.allow_elsewhere.name)
+        allow: option == :can_allow,
+        deny: option == :can_deny or assigns.deny,
+        allow_open: assigns.expanded and assigns.expanded_action == :allow,
+        deny_open: assigns.expanded and assigns.expanded_action == :deny,
+        allow_tip:
+          if(elsewhere,
+            do: gettext("Allow in %{name}'s policy", name: elsewhere.name),
+            else: gettext("Allow %{host}", host: host)
+          ),
+        elsewhere_lock:
+          elsewhere && !assigns.allow_path &&
+            gettext("Only %{name}'s policy allows a host here", name: elsewhere.name)
       )
 
     ~H"""
-    <button
-      :if={@allow_path}
-      type="button"
-      id={@id}
-      class="q-act-t q-hov"
-      data-action="allow"
-      phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
-      aria-controls={@controls}
-      aria-expanded={to_string(@expanded)}
-      aria-label={gettext("Allow %{host}", host: @connection.host)}
-    >
-      {gettext("Allow")}
-    </button>
-    <span :if={!@allow_path} id={@id} class="q-act-lock" title={@tip}>
-      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+    <span class="q-acts-pair">
+      <.act_icon
+        :if={@allow && !@elsewhere_lock}
+        id={"#{@id}-allow"}
+        action="allow"
+        tip={@allow_tip}
+        label={gettext("Allow %{host}", host: @connection.host)}
+        open={@allow_open}
+        controls={@controls}
+        values={@values}
+      />
+      <.act_lock :if={@allow && @elsewhere_lock} id={"#{@id}-lock"} tip={@elsewhere_lock} />
+      <.act_gap :if={!@allow} />
+      <.act_icon
+        :if={@deny}
+        id={"#{@id}-deny"}
+        action="deny"
+        tip={gettext("Deny %{host}", host: @connection.host)}
+        label={gettext("Deny %{host}", host: @connection.host)}
+        open={@deny_open}
+        controls={@controls}
+        values={@values}
+      />
+      <.act_gap :if={!@deny} />
     </span>
     """
   end
 
-  def rule_action(%{rule_option: rule_option} = assigns)
-      when rule_option in [:can_allow, :can_deny] do
-    action = if rule_option == :can_allow, do: :allow, else: :deny
+  def rule_actions(%{rule_option: option} = assigns)
+      when option in [:locked_deny, :locked_allow] do
+    host = assigns.entry_host || assigns.connection.host
+    assigns = assign(assigns, :tip, locked_tip(option, host, assigns.locked))
+
+    ~H"""
+    <span class="q-acts-pair">
+      <button
+        type="button"
+        id={"#{@id}-lock"}
+        class="q-act-lock tooltip tooltip-left"
+        data-tip={@tip}
+        phx-click={
+          JS.push("rule_open",
+            value:
+              Map.put(@values, "action", if(@rule_option == :locked_deny, do: "allow", else: "deny"))
+          )
+        }
+        aria-controls={@controls}
+        aria-expanded={to_string(@expanded)}
+        aria-label={@tip}
+      >
+        <.icon name="hero-lock-closed-micro" class="size-3.5" />
+      </button>
+      <.act_gap />
+    </span>
+    """
+  end
+
+  def rule_actions(%{rule_option: :above_deny} = assigns) do
+    name = (assigns.above && assigns.above.name) || "?"
+    host = assigns.entry_host || assigns.connection.host
 
     assigns =
-      assign(assigns,
-        action: Atom.to_string(action),
-        # Expanded while its own panel is open, not a Deny… the menu opened.
-        open: assigns.expanded and assigns.expanded_action in [nil, false, action]
+      assign(
+        assigns,
+        :tip,
+        gettext("%{name}'s policy denies %{host}", name: name, host: host) <>
+          ". " <> gettext("No workspace or target rule can allow it.")
       )
 
+    ~H"""
+    <span class="q-acts-pair"><.act_lock id={"#{@id}-lock"} tip={@tip} /><.act_gap /></span>
+    """
+  end
+
+  def rule_actions(%{rule_option: :wall} = assigns) do
+    ~H"""
+    <span class="q-acts-pair">
+      <.act_lock id={"#{@id}-lock"} tip={gettext("No rule changes this")} /><.act_gap />
+    </span>
+    """
+  end
+
+  def rule_actions(%{rule_option: {:rule_added, _action}} = assigns) do
+    ~H"""
+    <span class="q-acts-pair"><.act_gap /><.act_gap /></span>
+    """
+  end
+
+  def rule_actions(assigns) do
+    ~H"""
+    <span class="q-acts-pair"><.act_gap /><.act_gap /></span><span class="sr-only">{gettext(
+      "No rule can name this host"
+    )}</span>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :action, :string, required: true, values: ~w(allow deny)
+  attr :tip, :string, required: true
+  attr :label, :string, required: true
+  attr :open, :boolean, default: false
+  attr :controls, :string, default: nil
+  attr :values, :map, default: %{}
+
+  # Allow or Deny: an icon in a 24 px box, its hint the console's tooltip, its name the
+  # host's.
+  defp act_icon(assigns) do
     ~H"""
     <button
       type="button"
       id={@id}
-      class="q-act-t q-hov"
+      class="q-act-i q-hov tooltip tooltip-left"
       data-action={@action}
-      phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
+      data-tip={@tip}
+      aria-label={@label}
       aria-controls={@controls}
       aria-expanded={to_string(@open)}
-      aria-label={
-        if @action == "deny",
-          do: gettext("Deny %{host}", host: @connection.host),
-          else: gettext("Allow %{host}", host: @connection.host)
-      }
+      phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
     >
-      {if @action == "deny", do: gettext("Deny"), else: gettext("Allow")}
+      <.icon
+        name={if @action == "deny", do: "hero-no-symbol-micro", else: "hero-check-circle-micro"}
+        class="size-4"
+      />
     </button>
     """
   end
 
-  def rule_action(%{rule_option: rule_option} = assigns)
-      when rule_option in [:locked_deny, :locked_allow] do
-    assigns =
-      assign(
-        assigns,
-        :tip,
-        locked_tip(rule_option, assigns.entry_host || assigns.connection.host)
-      )
+  attr :id, :string, required: true
+  attr :tip, :string, required: true
 
+  # Why no rule here changes the row: a faint lock, its hint reachable by the keyboard.
+  defp act_lock(assigns) do
     ~H"""
-    <button
-      type="button"
-      id={@id}
-      class="q-act-lock tooltip tooltip-left"
-      data-tip={@tip}
-      phx-click={
-        JS.push("rule_open",
-          value:
-            Map.put(@values, "action", if(@rule_option == :locked_deny, do: "allow", else: "deny"))
-        )
-      }
-      aria-controls={@controls}
-      aria-expanded={to_string(@expanded)}
-      aria-label={@tip}
-    >
-      <.icon name="hero-lock-closed-micro" class="size-3.5" />
-    </button>
-    """
-  end
-
-  def rule_action(%{rule_option: {:rule_added, _action}} = assigns) do
-    ~H"""
-    <.link
-      :if={@rule_path}
-      id={@id}
-      navigate={@rule_path}
-      class="q-act-t q-hov"
-      aria-label={gettext("The rule for %{host}", host: @connection.host)}
-    >
-      {gettext("Rule")}
-    </.link>
-    """
-  end
-
-  def rule_action(%{rule_option: :above_deny} = assigns) do
-    assigns =
-      assign(
-        assigns,
-        :tip,
-        gettext("Decided by %{name}'s policy", name: (assigns.above && assigns.above.name) || "?")
-      )
-
-    ~H"""
-    <span id={@id} class="q-act-lock" title={@tip}>
+    <span id={@id} class="q-act-lock tooltip tooltip-left" tabindex="0" data-tip={@tip}>
       <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
     </span>
     """
   end
 
-  def rule_action(%{rule_option: :wall} = assigns) do
+  defp act_gap(assigns) do
     ~H"""
-    <span id={@id} class="q-act-lock" title={gettext("No rule changes this")}>
-      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{gettext(
-        "No rule changes this"
-      )}</span>
-    </span>
+    <span class="q-act-gap" aria-hidden="true"></span>
     """
   end
 
-  def rule_action(assigns) do
-    ~H|<span id={@id} class="sr-only">{gettext("No rule can name this host")}</span>|
+  # The locked rule, and who locked it and when where the newest history says so.
+  defp locked_tip(option, host, locked) do
+    rule =
+      if option == :locked_deny,
+        do: gettext("A locked workspace rule denies %{rule}.", rule: host),
+        else: gettext("A locked workspace rule allows %{rule}.", rule: host)
+
+    case locked do
+      %{by: by, at: %DateTime{} = at} when is_binary(by) ->
+        rule <> " " <> gettext("Locked by %{name} on %{date}.", name: by, date: Format.date(at))
+
+      %{by: by} when is_binary(by) ->
+        rule <> " " <> gettext("Locked by %{name}.", name: by)
+
+      _unknown ->
+        rule
+    end
   end
-
-  defp locked_tip(:locked_deny, host),
-    do: gettext("A locked workspace rule denies %{host}", host: host)
-
-  defp locked_tip(_locked_allow, host),
-    do: gettext("A locked workspace rule allows %{host}", host: host)
-
-  @doc """
-  A row's ⋯ menu (`CoreComponents.row_menu/1`), beside its text action and shown with it:
-  Allow… and Deny… where the row may ask for them, opening the same panel, whose focus
-  goes back to the text action (`act_id`), and the rule in force that decides the row,
-  where one does; where no one here changes what happened, why (the locked rule and who
-  locked it, when the newest history says so, or the wall) with the way to the rule; the
-  rule that answers the row; then, under This list, Show only and Copy with the row's host
-  (cut in the middle past 32 characters, the whole host its title and in its accessible
-  name): Show only where the list can be narrowed to the host (`host_path`). The policy's
-  items are headed Policy where no heading of their own says what decides the row. A
-  rule's link (`rule_path`) leads to the rule in its policy's Network access section.
-  """
-  attr :id, :string, required: true
-  attr :act_id, :string, required: true, doc: "the row's text action, the panel's anchor"
-  attr :connection, :map, required: true, doc: "the row's connection, as the row reads it"
-  attr :act, :map, default: nil, doc: "the row's act, as `rule_action/1` reads it; nil for none"
-  attr :host_path, :any, default: nil
-
-  def rule_menu(assigns) do
-    act = assigns.act || %{}
-    option = act[:rule_option]
-
-    assigns =
-      assign(assigns,
-        kind: menu_kind(option),
-        option: option,
-        values: act[:values] || %{},
-        rule_path: act[:rule_path],
-        locked: act[:locked],
-        both: option == :can_allow and act[:deny] == true,
-        entry_host: act[:entry_host] || assigns.connection.host,
-        above: act[:above],
-        above_linked: act[:above_linked] == true,
-        above_can_change: act[:above_can_change] == true,
-        allow_elsewhere: act[:allow_elsewhere],
-        allow_path: act[:allow_path],
-        host_shown: middle(assigns.connection.host, 32)
-      )
-      |> then(&assign(&1, :host_cut, &1.host_shown != &1.connection.host))
-
-    ~H"""
-    <.row_menu
-      id={@id}
-      class="q-hov"
-      label={gettext("Actions for %{label}", label: @connection.host)}
-    >
-      <%= case @kind do %>
-        <% :above -> %>
-          <.menu_heading
-            title={gettext("%{name}'s policy denies %{host}", name: @above.name, host: @entry_host)}
-            sub={gettext("No workspace or target rule can allow it.")}
-          />
-          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
-            {cond do
-              @above_can_change -> gettext("Change in %{name}'s policy", name: @above.name)
-              @above_linked -> gettext("View in %{name}'s policy", name: @above.name)
-              true -> gettext("Show the rule")
-            end}
-          </.menu_item>
-          <.menu_divider />
-        <% :locked -> %>
-          <.menu_heading title={locked_words(@locked)} sub={locked_holds(@option)} />
-          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
-            {gettext("Show the locked rule")}
-          </.menu_item>
-          <.menu_divider />
-        <% :wall -> %>
-          <.menu_heading
-            title={gettext("No rule changes this")}
-            sub={reason_title(@connection, false)}
-          />
-          <.menu_divider />
-        <% :unnameable -> %>
-          <.menu_heading title={gettext("No rule can name this host")} />
-          <.menu_divider />
-        <% :rule -> %>
-          <.menu_heading :if={@rule_path} title={gettext("Policy")} />
-          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
-            {gettext("Show the rule")}
-          </.menu_item>
-          <.menu_divider :if={@rule_path} />
-        <% :open -> %>
-          <.menu_heading :if={!@allow_elsewhere} title={gettext("Policy")} />
-          <.menu_heading
-            :if={@allow_elsewhere}
-            title={gettext("%{name} allows only its own hosts", name: @allow_elsewhere.name)}
-            sub={gettext("An allow of the workspace or of a target would not be in force.")}
-          />
-          <.menu_item :if={@allow_elsewhere && @allow_path} id={"#{@id}-allow"} navigate={@allow_path}>
-            {gettext("Allow in %{name}'s policy", name: @allow_elsewhere.name)}
-          </.menu_item>
-          <.menu_item
-            :if={@option == :can_allow && !@allow_elsewhere}
-            id={"#{@id}-allow"}
-            phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
-          >
-            {gettext("Allow…")}
-          </.menu_item>
-          <.menu_item
-            :if={@option == :can_deny or @both}
-            id={"#{@id}-deny"}
-            phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
-          >
-            {gettext("Deny…")}
-          </.menu_item>
-          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
-            {if @above && @above_linked,
-              do: gettext("Show the rule in %{name}'s policy", name: @above.name),
-              else: gettext("Show the rule")}
-          </.menu_item>
-          <.menu_divider />
-        <% nil -> %>
-      <% end %>
-      <.menu_heading title={gettext("This list")} />
-      <.menu_item
-        :if={@host_path}
-        id={"#{@id}-host"}
-        patch={@host_path.(@connection.host)}
-        title={@host_cut && @connection.host}
-        aria-label={@host_cut && gettext("Show only %{host}", host: @connection.host)}
-      >
-        {gettext("Show only %{host}", host: @host_shown)}
-      </.menu_item>
-      <.menu_item
-        id={"#{@id}-copy"}
-        phx-hook="CopyToClipboard"
-        data-copy={@connection.host}
-        data-copied-words={gettext("Copied")}
-        title={@host_cut && @connection.host}
-        aria-label={@host_cut && gettext("Copy %{host}", host: @connection.host)}
-      >
-        {gettext("Copy %{host}", host: @host_shown)}
-      </.menu_item>
-    </.row_menu>
-    """
-  end
-
-  defp menu_kind(:above_deny), do: :above
-  defp menu_kind(option) when option in [:locked_deny, :locked_allow], do: :locked
-  defp menu_kind(option) when option in [:can_allow, :can_deny], do: :open
-  defp menu_kind({:rule_added, _action}), do: :rule
-  defp menu_kind(:wall), do: :wall
-  defp menu_kind(:unnameable), do: :unnameable
-  defp menu_kind(_none), do: nil
-
-  # Who locked the rule and when, as a heading; the newest history may not say.
-  defp locked_words(%{by: by, at: %DateTime{} = at}) when is_binary(by),
-    do: gettext("Locked by %{name} on %{date}", name: by, date: Format.date(at))
-
-  defp locked_words(%{by: by}) when is_binary(by), do: gettext("Locked by %{name}", name: by)
-  defp locked_words(_unknown), do: gettext("A locked rule of the workspace")
-
-  # What a locked rule means for the row, as the refusal says it.
-  defp locked_holds(:locked_deny),
-    do: gettext("It holds against every target, so no rule added here would change what happens.")
-
-  defp locked_holds(_locked_allow),
-    do: gettext("It holds against every target, so a deny added here would change nothing.")
 
   @doc """
   The line a row gains once a rule answers it. The row above it is the record and stays as
@@ -3199,6 +3172,8 @@ defmodule ApiaryWeb.RunComponents do
   """
   attr :id, :string, required: true
   attr :line, :map, required: true
+  attr :rule_path, :string, default: nil, doc: "the rule's page: the line ends with Show the rule"
+  attr :rule_id, :string, default: nil, doc: "the id of that link"
 
   def after_line(assigns) do
     ~H"""
@@ -3215,6 +3190,9 @@ defmodule ApiaryWeb.RunComponents do
           gettext("by %{name}", name: @line.by)}</span><span :if={
           @line.state != :in_force && @line.at
         }> · <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
+        <.link :if={@rule_path} id={@rule_id} navigate={@rule_path} class="q-after-rule">
+          {gettext("Show the rule")}
+        </.link>
       </span>
     </div>
     """
@@ -3279,7 +3257,7 @@ defmodule ApiaryWeb.RunComponents do
   The form changes with `rule_change` and is sent with `rule_submit`: Enter sends it once
   its button says what it does. Cancel and Escape send `rule_cancel`. A refusal, and the
   way to the level above, have no form. The `RulePanel` hook moves the focus into the
-  panel as it opens and back to the row's action (`anchor`) as it goes.
+  panel as it opens and back to the control that opened it (`anchor`) as it goes.
   """
   attr :id, :string, default: "rule-panel"
   attr :panel, :map, required: true
@@ -3542,9 +3520,9 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   # The panel's own element: a group named by its title, in the page's flow. Escape
-  # cancels it wherever the focus is, as an inline confirmation does; the menu button is
-  # where the focus goes back to when the row's action is hidden in a narrow table. One
-  # panel keeps its id from row to row, so the hook tells a new one by its anchor and
+  # cancels it wherever the focus is, as an inline confirmation does. The focus goes back
+  # to the control that opened it (`anchor`), or where that is gone, to the row's Show the
+  # rule or its copy icon (`data-back`). One panel keeps its id from row to row, so the hook tells a new one by its anchor and
   # its kind (`data-kind`: allow, deny, refusal or elsewhere).
   attr :id, :string, required: true
   attr :anchor, :string, required: true
@@ -3562,7 +3540,7 @@ defmodule ApiaryWeb.RunComponents do
       phx-hook="RulePanel"
       data-anchor={@anchor}
       data-kind={@kind}
-      data-menu={String.replace_suffix(@anchor, "-act", "-menu-button")}
+      data-back={back_of(@anchor)}
       phx-window-keydown="rule_cancel"
       phx-key="Escape"
       {@rest}
@@ -3570,6 +3548,10 @@ defmodule ApiaryWeb.RunComponents do
       {render_slot(@inner_block)}
     </div>
     """
+  end
+
+  defp back_of(anchor) do
+    if row = row_of_anchor(anchor), do: "#{row}-rule #{row}-copy"
   end
 
   # What the domain will do is said for the level chosen, and for no other.
