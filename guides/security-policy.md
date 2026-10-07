@@ -134,8 +134,10 @@ Members edit rules. Only an owner locks, unlocks, changes or removes a locked ru
 
 ## Observe and enforce
 
-The workspace has a mode, one line at the top of `/:org/:workspace/policy`: Observe or
-Enforce, then a sentence of what it does and how many repositories follow it.
+The workspace has a mode, a card at the top of `/:org/:workspace/policy`, above its tabs:
+Observe or Enforce, then a sentence of what it does and how many repositories follow it.
+Change mode opens the choices in the card; a pick only selects, and the button that names
+it saves it.
 
 - **Observe** records every connection and denies only what a deny rule names. A host no
   rule names is let through, and the record says so. A deny holds in observe as in enforce,

@@ -73,6 +73,24 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
   defp rule(scope, host), do: Enum.find(Policy.list_rules(scope, nil), &(&1.host == host))
 
+  # The mode's choices: Change mode opens them, where they are shut; a pick only selects.
+  defp pick_mode(view, mode) do
+    if has_element?(view, "#policy-mode-change") do
+      view |> element("#policy-mode-change") |> render_click()
+    end
+
+    view |> form("#policy-mode-form", %{"mode" => mode}) |> render_change()
+    view
+  end
+
+  defp set_mode(view), do: view |> form("#policy-mode-form") |> render_submit()
+
+  # The ids of the page's parts in their order, for where the card is.
+  defp order(view, ids) do
+    html = render(view)
+    Enum.map(ids, fn id -> :binary.match(html, ~s(id="#{id}")) end)
+  end
+
   defp as_member(%{scope: scope}) do
     %{user: member} = member_fixture(scope, :member)
     log_in_user(build_conn(), member)
@@ -144,15 +162,18 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#policy-first-version") =~ "Version 1 is rendered by the first change"
       refute has_element?(view, "#policy-tabs a", "Document")
-      assert has_element?(view, "#policy-mode-observe[aria-checked=true]")
+      assert text(view, "#policy-mode-value") == "Observe"
 
       assert text(view, "#policy-mode-fact") ==
                "Not served yet: it applies from the first change here."
 
-      # One line, the mode a segmented control and its sentence beside it, never inside it.
-      assert has_element?(view, "#policy-mode-line.q-modeline #policy-mode[role=radiogroup]")
-      refute has_element?(view, "#policy-mode a")
-      assert has_element?(view, "#policy-mode-under #policy-mode-fact")
+      # A card that states the mode, not a control: no radio until Change mode opens them.
+      assert has_element?(view, "section#policy-mode.q-modecard[aria-labelledby=policy-mode-h]")
+      assert name(view, "#policy-mode-h") == "Mode: Observe"
+      assert text(view, "#policy-mode-source") == "Workspace default"
+      refute has_element?(view, "#policy-mode [role=radio]")
+      refute has_element?(view, "#policy-mode input")
+      assert has_element?(view, "#policy-mode-change[aria-expanded=false]", "Change mode")
     end
 
     test "removing the last rule gives the focus to adding the first", %{
@@ -799,8 +820,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#rule-#{plain.id}-menu")
       refute has_element?(view, "#rule-#{plain.id}-menu button", "Lock")
 
-      assert has_element?(view, "#policy-mode[aria-disabled=true]")
-      assert has_element?(view, "#policy-mode-enforce[aria-disabled=true]")
+      # The card as an owner sees it, with nothing to change and no control drawn off.
+      assert text(view, "#policy-mode-value") == "Observe"
+      refute has_element?(view, "#policy-mode-change")
+      refute has_element?(view, "#policy-mode [aria-disabled]")
       assert text(view, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
     end
 
@@ -826,8 +849,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     test "a crafted event gets the refusal, and nothing changes", %{scope: scope} = context do
       view = open(as_member(context), scope)
 
-      render_hook(view, "mode_ask", %{"mode" => "enforce"})
-      refute has_element?(view, "#mode-enforce")
+      render_hook(view, "mode_open", %{})
+      refute has_element?(view, "#policy-mode-form")
+      assert text(view, "#policy-write-error") == "Only an owner or an admin sets a mode."
+      render_hook(view, "mode_pick", %{"mode" => "enforce"})
+      render_hook(view, "mode_set", %{"mode" => "enforce"})
+      refute has_element?(view, "#policy-mode-form")
       assert Policy.get_mode(scope) == "observe"
 
       render_hook(view, "lock_toggle", %{"id" => rule(scope, "github.example").id})
@@ -845,6 +872,85 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       :ok
     end
 
+    test "the card is above the tabs on every tab, and not on a version or its export", %{
+      conn: conn,
+      scope: scope
+    } do
+      for rest <- ~w(/policy /policy/targets /policy/history) do
+        view = open(conn, scope, rest)
+        [header, card, tabs] = order(view, ~w(policy-header policy-mode policy-tabs))
+        assert header < card and card < tabs, rest
+      end
+
+      # The Document tab is the version in force: the version states its own mode.
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, workspace_path(scope, "/policy/document"))
+
+      assert to == workspace_path(scope, "/policy/versions/1")
+
+      for rest <- ~w(/policy/versions/1 /policy/versions/1/export) do
+        view = open(conn, scope, rest)
+        refute has_element?(view, "#policy-mode"), rest
+      end
+    end
+
+    test "Change mode opens the choices in place: native radios, the current one checked",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+      view |> element("#policy-mode-change") |> render_click()
+
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-opt-observe"})
+      refute has_element?(view, "#policy-mode-change")
+      refute has_element?(view, "#policy-page dialog")
+
+      assert has_element?(
+               view,
+               "#policy-mode form#policy-mode-form fieldset legend#policy-mode-legend"
+             )
+
+      assert text(view, "#policy-mode-legend") == "Choose the workspace's default mode"
+      assert has_element?(view, "input#policy-mode-opt-observe[type=radio][name=mode][checked]")
+      assert has_element?(view, "input#policy-mode-opt-enforce[type=radio][name=mode]")
+      refute has_element?(view, "input#policy-mode-opt-enforce[checked]")
+      refute has_element?(view, "#policy-mode [role=radio]")
+      assert text(view, "#policy-mode-current") == "Current"
+      assert has_element?(view, "#policy-mode-opt-observe-h #policy-mode-current")
+
+      assert text(view, "#policy-mode-opt-enforce-p") == "A connection no rule allows is denied."
+
+      # The pick is the mode now: nothing is asked, and only Cancel is offered.
+      assert text(view, "#policy-mode-now") == "Observe is the mode now."
+      refute has_element?(view, "#policy-mode-q")
+      refute has_element?(view, "#policy-mode-set")
+      assert has_element?(view, "#policy-mode-cancel")
+    end
+
+    test "a pick only selects; the question follows the pick, and nothing saves until its button",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+
+      pick_mode(view, "enforce")
+      assert Policy.get_mode(scope) == "observe"
+      assert text(view, "#policy-mode-value") == "Observe"
+      assert has_element?(view, "input#policy-mode-opt-enforce[checked]")
+      assert text(view, "#policy-mode-q") == "Set the workspace's default to enforce?"
+      assert text(view, "#policy-mode-set") =~ "Set the default to enforce"
+      assert has_element?(view, "#policy-mode-set.btn-primary[type=submit]")
+      refute has_element?(view, "#flash-info")
+
+      # Back to the mode now: the question goes, nothing was saved.
+      pick_mode(view, "observe")
+      refute has_element?(view, "#policy-mode-q")
+      refute has_element?(view, "#mode-would")
+      assert text(view, "#policy-mode-now") == "Observe is the mode now."
+      assert Policy.get_mode(scope) == "observe"
+
+      view |> element("#policy-mode-cancel") |> render_click()
+      refute has_element?(view, "#policy-mode-form")
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
+      assert Policy.get_mode(scope) == "observe"
+    end
+
     test "what enforce would deny names a tool invocation by its tool", %{
       conn: conn,
       scope: scope
@@ -852,7 +958,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       started_run(scope, shop(), egress: [tool_invocation_data(%{"rule" => ""})])
 
       view = open(conn, scope)
-      view |> element("#policy-mode-enforce") |> render_click()
+      pick_mode(view, "enforce")
 
       assert has_element?(view, "#mode-would .q-dest-tool .q-tool-name", "files")
       assert text(view, "#mode-would .q-dest-tool") =~ "files.tools.internal"
@@ -867,12 +973,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope)
       assert text(view, "#policy-mode-fact") =~ "1 attempt to 1 destination had no rule"
 
-      view |> element("#policy-mode-enforce") |> render_click()
+      pick_mode(view, "enforce")
       assert Policy.get_mode(scope) == "observe"
-      assert text(view, "#mode-enforce") =~ "Set the workspace's default to enforce"
-      assert text(view, "#mode-enforce") =~ "a connection no rule allows is denied"
+      assert text(view, "#policy-mode-q") =~ "Set the workspace's default to enforce"
+      assert text(view, "#policy-mode-q-effect") =~ "a connection no rule allows is denied"
 
-      assert text(view, "#mode-enforce") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "in the 1 repository that follows the workspace's default"
 
       assert text(view, "#mode-would") =~ "files.cdn.example"
@@ -884,15 +990,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert rule(scope, "files.cdn.example")
       assert text(view, "#mode-would-n") == "none left"
-      assert_push_event(view, "policy:focus", %{id: "mode-confirm"})
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
+      assert has_element?(view, "input#policy-mode-opt-enforce[checked]")
 
-      view |> element("#mode-confirm") |> render_click()
+      set_mode(view)
       assert Policy.get_mode(scope) == "enforce"
-      assert has_element?(view, "#policy-mode-enforce[aria-checked=true]")
+      refute has_element?(view, "#policy-mode-form")
+      assert text(view, "#policy-mode-value") == "Enforce"
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
 
       assert text(view, "#flash-info") =~
                "The workspace's default is enforce. 1 repository follows it. Version"
 
+      assert text(view, "#policy-announce") =~ "The workspace's default is enforce."
       assert text(view, "#nav-policy-mode") == "enforce"
     end
 
@@ -910,7 +1020,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       )
 
       view = open(conn, scope)
-      view |> element("#policy-mode-enforce") |> render_click()
+      pick_mode(view, "enforce")
 
       # Most attempts first: assets.example, mirror.example, files.cdn.example.
       allow = fn host ->
@@ -924,7 +1034,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       end
 
       # The one acted on goes; the focus goes to the next Allow still open, then from the
-      # top, and with none left to the act.
+      # top, and with none left to the button that saves the pick.
       view |> element("##{allow.("mirror.example")}") |> render_click()
       next = allow.("files.cdn.example")
       assert_push_event(view, "policy:focus", %{id: ^next})
@@ -935,70 +1045,90 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_push_event(view, "policy:focus", %{id: ^first})
 
       view |> element("##{first}") |> render_click()
-      assert_push_event(view, "policy:focus", %{id: "mode-confirm"})
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
       assert text(view, "#mode-would-n") == "none left"
+      assert Policy.get_mode(scope) == "observe"
     end
 
-    test "with nothing to deny the list gives way to a sentence; cancel changes nothing",
+    test "with nothing to deny the list gives way to a sentence; Escape changes nothing",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
-      view |> element("#policy-mode-enforce") |> render_click()
+      pick_mode(view, "enforce")
       assert text(view, "#mode-would-none") =~ "Every destination your runs reached"
 
-      # The confirm is in place under the switch, not a dialog; Cancel takes the focus.
-      assert has_element?(view, "#policy-mode-line + section#mode-enforce")
-      refute has_element?(view, "dialog#mode-enforce")
-      assert has_element?(view, "#mode-enforce-cancel[phx-mounted]")
+      # The question is in the card, under the options, not a dialog; what it does is read
+      # with it and with its button.
+      assert has_element?(view, "#policy-mode-form #policy-mode-q")
+      refute has_element?(view, "#policy-page dialog")
 
-      # What it does is read with the confirm and with Cancel, which has the focus.
-      assert has_element?(view, "section#mode-enforce[aria-describedby=mode-enforce-effect]")
-      assert has_element?(view, "#mode-enforce-cancel[aria-describedby=mode-enforce-effect]")
-      assert text(view, "#mode-enforce-effect") =~ "a connection no rule allows is denied"
-
-      view |> element("#mode-enforce button", "Cancel") |> render_click()
-      refute has_element?(view, "#mode-enforce")
-      assert_push_event(view, "policy:focus", %{id: "policy-mode-observe"})
-      assert Policy.get_mode(scope) == "observe"
-
-      # The list of keys `?` shows is a panel in the page, hidden until asked, not a dialog.
       assert has_element?(
                view,
-               "#policy-page section#policy-keys[hidden]",
-               "Space asks to switch"
+               "[role=group][aria-labelledby=policy-mode-q][aria-describedby=policy-mode-q-effect]"
              )
 
+      assert has_element?(view, "#policy-mode-set[aria-describedby=policy-mode-q-effect]")
+
+      # Escape is the PolicyPage hook's, with the focus in the choices: an Escape for the
+      # palette or a search leaves them open. The hook sends mode_cancel.
+      refute has_element?(view, "#policy-mode-form[phx-window-keydown]")
+      render_hook(view, "mode_cancel", %{})
+      refute has_element?(view, "#policy-mode-form")
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
+      assert Policy.get_mode(scope) == "observe"
+
+      # The list of keys `?` shows is a panel in the page, hidden until asked, not a dialog;
+      # the modes are native radios, and it has no line for them.
+      assert has_element?(view, "#policy-page section#policy-keys[hidden]", "This list")
+      refute render(view) =~ "Space asks to switch"
       refute has_element?(view, "dialog#policy-keys")
 
-      # Another tab leaves the confirm behind.
-      view |> element("#policy-mode-enforce") |> render_click()
+      # The choices stay open on another tab, the card being above the tabs.
+      pick_mode(view, "enforce")
       view |> element("#policy-tabs a", "History") |> render_click()
+      assert has_element?(view, "input#policy-mode-opt-enforce[checked]")
+      assert has_element?(view, "#policy-mode-q")
       view |> element("#policy-tabs a", "Rules") |> render_click()
-      refute has_element?(view, "#mode-enforce")
+      assert has_element?(view, "#policy-mode-q")
+      assert Policy.get_mode(scope) == "observe"
     end
 
-    test "going back to observe asks too, and says a deny still holds", %{
+    test "going back to observe asks too, says a deny still holds, and is never red", %{
       conn: conn,
       scope: scope
     } do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, scope)
+      assert text(view, "#policy-mode-value") == "Enforce"
 
-      view |> element("#policy-mode-observe") |> render_click()
+      pick_mode(view, "observe")
+      assert text(view, "#policy-mode-q") == "Set the workspace's default to observe?"
 
-      assert text(view, "#mode-observe") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "only what a deny rule names is denied in the runs that name no repository"
 
-      assert text(view, "#mode-observe") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "The rules stay as they are, locked ones too: a deny holds in either mode."
 
-      assert has_element?(view, "section#mode-observe[aria-describedby=mode-observe-effect]")
-      assert has_element?(view, "#mode-observe-cancel[aria-describedby=mode-observe-effect]")
+      assert has_element?(view, "#policy-mode-set.btn-primary", "Set the default to observe")
+      refute has_element?(view, "#policy-mode .btn-error")
 
-      assert text(view, "#mode-observe-effect") =~
-               "only what a deny rule names is denied in the runs that name no repository"
-
-      view |> element("#mode-confirm") |> render_click()
+      set_mode(view)
       assert Policy.get_mode(scope) == "observe"
+      assert text(view, "#policy-mode-value") == "Observe"
+      assert text(view, "#flash-info") =~ "The workspace's default is observe."
+    end
+
+    test "submitting the mode now saves nothing and closes the choices", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, scope)
+      view |> element("#policy-mode-change") |> render_click()
+      render_hook(view, "mode_set", %{})
+      refute has_element?(view, "#policy-mode-form")
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
+      refute has_element?(view, "#flash-info")
+      assert Policy.list_changes(scope, nil, 1).total == 1
     end
   end
 
@@ -1021,12 +1151,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     } do
       view = open(conn, scope)
 
-      assert text(view, "#policy-mode-under") =~
+      assert text(view, "#policy-mode-effect") =~
                "Followed by 1 of 2 repositories; 1 sets its own and enforces"
 
       assert has_element?(
                view,
-               "#policy-mode-under a[href='#{workspace_path(scope, "/policy/targets?mode=own")}']"
+               "#policy-mode-effect a[href='#{workspace_path(scope, "/policy/targets?mode=own")}']"
              )
 
       assert text(view, "#nav-policy-mode") == "observe"
@@ -1049,8 +1179,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
     test "the confirm names those that do not change", %{conn: conn, scope: scope} do
       view = open(conn, scope)
-      view |> element("#policy-mode-enforce") |> render_click()
-      assert text(view, "#mode-enforce") =~ "1 repository sets its own mode and does not change."
+      pick_mode(view, "enforce")
+
+      assert text(view, "#policy-mode-q-effect") =~
+               "1 repository sets its own mode and does not change."
     end
 
     test "the targets list has a Mode column, and ?mode=own keeps those with their own",

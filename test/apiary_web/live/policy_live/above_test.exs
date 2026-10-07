@@ -201,30 +201,28 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert Process.alive?(view.pid)
     end
 
-    test "the floor fixes the mode switch on enforce, and a mode asked for is ignored",
+    test "the floor fixes the mode on enforce, and a mode asked for is ignored",
          %{conn: conn, scope: scope} do
       above!([], floor: true)
       view = open(conn, workspace_path(scope, "/policy"))
 
       assert text(view, "#policy-above") =~ "applies here: 0 rules , enforce required"
-      assert has_element?(view, "#policy-mode[data-floor=true][aria-disabled=true]")
-      assert has_element?(view, "#policy-mode-enforce[aria-checked=true]")
-      # the mode it forbids carries the lock, not its own glyph
-      assert has_element?(
-               view,
-               "#policy-mode-observe[aria-disabled=true] .hero-lock-closed-micro"
-             )
-
-      refute has_element?(view, "#policy-mode-enforce .hero-lock-closed-micro")
+      assert has_element?(view, "#policy-mode[data-floor=true]")
+      assert text(view, "#policy-mode-value") == "Enforce"
+      # The tile carries the lock; the badge says who requires it, and nothing else.
+      assert has_element?(view, "#policy-mode .q-modecard-tile .hero-lock-closed")
+      assert has_element?(view, "#policy-mode-required .hero-lock-closed-micro")
       assert text(view, "#policy-mode-required") == "Required by Eight Wonders"
-      refute text(view, "#policy-mode-enforce") =~ "Workspace default"
+      refute has_element?(view, "#policy-mode-source")
 
-      assert text(view, "#policy-mode-under") =~
+      assert text(view, "#policy-mode-effect") =~
                "No workspace or repository may observe: Eight Wonders requires enforce."
 
-      refute has_element?(view, "#policy-mode-observe[phx-click]")
-      render_hook(view, "mode_ask", %{"mode" => "observe"})
-      render_hook(view, "mode_confirm", %{})
+      refute has_element?(view, "#policy-mode-change")
+      render_hook(view, "mode_open", %{"mode" => "observe"})
+      refute has_element?(view, "#policy-mode-form")
+      render_hook(view, "mode_pick", %{"mode" => "observe"})
+      render_hook(view, "mode_set", %{})
       assert Policy.get_mode(scope) == "observe"
       assert text(view, "#nav-policy-mode") == "enforce"
     end
@@ -293,17 +291,18 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert text(view, "#policy-hosts-note") =~
                "Eight Wonders's and #{scope.workspace.name}'s follow"
 
-      assert has_element?(view, "#policy-target-mode[data-floor=true]")
-      assert has_element?(view, "#policy-target-mode-enforce[aria-checked=true]")
-      assert has_element?(view, "#policy-target-mode-observe[aria-disabled=true]")
-      assert text(view, "#policy-target-mode-required") == "Required by Eight Wonders"
+      assert has_element?(view, "#policy-mode[data-floor=true]")
+      assert text(view, "#policy-mode-value") == "Enforce"
+      assert has_element?(view, "#policy-mode .q-modecard-tile .hero-lock-closed")
+      assert text(view, "#policy-mode-required") == "Required by Eight Wonders"
 
-      assert text(view, "#policy-target-mode-effect") =~
+      assert text(view, "#policy-mode-effect") =~
                "Its own observe, set by #{ApiaryWeb.People.short(scope.user.email)} today, is not in force: Eight Wonders requires enforce."
 
-      refute has_element?(view, "#policy-target-mode-follow[phx-click]")
-      render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
-      render_hook(view, "target_mode_confirm", %{})
+      refute has_element?(view, "#policy-mode-change")
+      render_hook(view, "mode_open", %{"mode" => "enforce"})
+      refute has_element?(view, "#policy-mode-form")
+      render_hook(view, "mode_set", %{})
       assert Policy.get_mode(scope, target).own == "observe"
     end
   end
@@ -478,7 +477,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
       assert hosts(view) == ["sms.example", "paste.example", "cdn.example"]
       refute render(view) =~ "Eight Wonders"
-      refute has_element?(view, "#policy-target-mode[data-floor=true]")
+      refute has_element?(view, "#policy-mode[data-floor=true]")
     end
 
     test "decides no row of Network access", %{conn: conn, scope: scope} do

@@ -53,9 +53,11 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       view = open(conn, workspace_path(scope, "/policy"))
       before = rules(scope)
 
-      for event <- ~w(mode_confirm lock_confirm remove_confirm target_mode_confirm) do
+      for event <- ~w(mode_pick lock_confirm remove_confirm mode_cancel) do
         render_hook(view, event, %{})
       end
+
+      render_hook(view, "mode_pick", %{"mode" => "enforce"})
 
       assert rules(scope) == before
       assert Policy.get_mode(scope) == "observe"
@@ -107,8 +109,9 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       assert rule(scope, "github.example").action == "allow"
       refute has_element?(view, "#policy-composer")
 
-      render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
-      render_hook(view, "target_mode_confirm", %{})
+      render_hook(view, "mode_open", %{"mode" => "enforce"})
+      render_hook(view, "mode_pick", %{"mode" => "enforce"})
+      render_hook(view, "mode_set", %{})
       assert Policy.get_mode(scope, target).own == nil
 
       # Rules are a member's to edit, the workspace's too: these are allowed, not refused.
@@ -221,7 +224,10 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       render_hook(view, "composer_paste", %{"hosts" => [1, %{}, "ok.example"]})
       render_hook(view, "composer_paste", %{"hosts" => "nope"})
       render_hook(view, "would_allow", %{"key" => %{}})
-      render_hook(view, "mode_ask", %{"mode" => ["enforce"]})
+      render_hook(view, "mode_open", %{"mode" => ["enforce"]})
+      render_hook(view, "mode_pick", %{"mode" => ["enforce"]})
+      render_hook(view, "mode_pick", %{"mode" => "burn"})
+      render_hook(view, "mode_set", %{"mode" => %{}})
       render_hook(view, "show_rule", %{"host" => 1})
       render_hook(view, "compare", %{"compare" => %{}})
       render_hook(view, "rules_search", %{"q" => ["x"]})

@@ -8165,37 +8165,153 @@
     }
   }
 
-  /* ---- A target's mode, one line ---- */
-  .q-modeline {
+  /* ---- The mode card, above a policy page's tabs (`PolicyComponents.mode_card/1`) ----
+     The mode in force as a status: a honey tile (primary-soft-content on primary-soft,
+     7.6:1 light and 9.5:1 dark), the mode large, whose it is as a badge. Honey is never
+     its border: it is 2:1 on the page. Change mode opens the choices in the card, option
+     cards with native radios, the picked one raised. */
+  .q-modecard {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+    padding: 16px 20px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+  }
+  .q-modecard-main {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px 14px;
+  }
+  .q-modecard-tile {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border-radius: var(--radius-field);
+    background-color: var(--color-primary-soft);
+    color: var(--color-primary-soft-content);
+  }
+  .q-modecard-text {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+  }
+  .q-modecard-title {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
+    align-items: flex-end;
+    gap: 4px 10px;
   }
-  .q-modeline-h {
-    width: 64px;
+  .q-modecard-h {
+    display: grid;
+  }
+  .q-modecard-label {
+    color: var(--q-muted);
+    font-size: 0.71875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .q-modecard-value {
+    color: var(--color-base-content);
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 24px;
+  }
+  .q-modecard-title > .badge {
+    margin-bottom: 2px;
+  }
+  .q-modecard-p {
+    max-width: 80ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
+  }
+  .q-modecard-p b {
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-modecard-form {
+    display: grid;
+    gap: 14px;
+    padding-top: 16px;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-modecard-form > fieldset {
+    min-width: 0;
+  }
+  .q-modecard-legend {
+    margin-bottom: 10px;
+    color: var(--color-base-content);
     font-size: 0.875rem;
     font-weight: 600;
   }
-  .q-modeline-seg > button {
-    height: 28px;
-    padding-inline: 10px;
-    font-size: 0.8125rem;
+  .q-modeopts {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 12px;
   }
-  .q-modeline-seg > button[aria-checked="true"] {
+  .q-modeopt {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-content: start;
+    gap: 4px 10px;
+    padding: 14px 16px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    /* base-100, not base-200: the radio's ring (border-field) keeps 3:1 against it. */
     background-color: var(--color-base-100);
+    cursor: pointer;
+    transition:
+      border-color 120ms var(--q-ease-out),
+      background-color 120ms var(--q-ease-out);
+  }
+  .q-modeopt:hover {
+    border-color: var(--q-border-field);
+  }
+  .q-modeopt:has(:checked) {
+    border-color: var(--q-border-field);
     box-shadow: var(--q-shadow-xs);
+  }
+  .q-modeopt .radio {
+    margin-top: 0;
+  }
+  .q-modeopt-h {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
     color: var(--color-base-content);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 20px;
   }
-  .q-modeline-seg > button[aria-disabled="true"] {
-    color: var(--q-faint);
-    cursor: not-allowed;
+  .q-modeopt-p {
+    grid-column: 2;
+    max-width: 52ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
   }
-  /* Under the floor the forbidden mode is struck through beside its lock. */
-  .q-modeline-seg[data-floor] > button[aria-disabled="true"] {
-    text-decoration: line-through;
-    text-decoration-color: var(--q-border-field);
+  .q-modeask {
+    display: grid;
+    max-width: 80ch;
+    gap: 12px;
   }
+  .q-modecard-act {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .q-modeline-p {
     flex: 1 1 30rem;
     max-width: 80ch;
@@ -8222,13 +8338,17 @@
       flex: 1;
       height: 40px;
     }
-    .q-modeline-h {
-      width: auto;
+    .q-modeopts {
+      grid-auto-flow: row;
     }
-    .q-modeline-seg {
-      max-width: 100%;
-      overflow-x: auto;
-      scrollbar-width: none;
+  }
+  @media (max-width: 479.98px) {
+    .q-modecard-main {
+      grid-template-columns: 40px minmax(0, 1fr);
+    }
+    .q-modecard-change {
+      grid-column: 1 / -1;
+      width: 100%;
     }
   }
 }
@@ -9652,13 +9772,6 @@
   }
   .q-pr td.q-pr-src .q-tile {
     margin-right: 6px;
-  }
-  .q-modeline-req {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--q-faint);
-    font-size: 0.78125rem;
   }
   .q-above-why {
     display: inline-flex;

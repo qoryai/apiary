@@ -148,14 +148,16 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :workspace_c_id}, answer: :not_found},
 
       # The security policy.
-      {:"security_policy.set_mode", :member, "/:org/:workspace/policy", "mode_ask",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/policy", "mode_open",
        %{"mode" => "enforce"}},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/policy", "mode_confirm", %{},
-       answer: :ignored},
-      {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_confirm",
-       %{}, prelude: [{"mode_ask", %{"mode" => "enforce"}}]},
+      {:"security_policy.set_mode", :member, "/:org/:workspace/policy", "mode_set",
+       %{"mode" => "enforce"}},
+      {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_set",
+       %{"mode" => "enforce"}, prelude: [{"mode_open", %{"mode" => "enforce"}}]},
       {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
-       "target_mode_ask", %{"setting" => "enforce"}},
+       "mode_open", %{"mode" => "enforce"}},
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "mode_set", %{"mode" => "enforce"}},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy", "composer_save", %{},
        prelude: [{"composer_change", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
       # Another organisation's owner, on its own policy, naming this one's rule.

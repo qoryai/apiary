@@ -41,7 +41,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   end
 
   # An element's text as it is read: unlike text/2, its tags add no space.
-  defp name(view, selector) do
+  defp read_name(view, selector) do
     view
     |> element(selector)
     |> render()
@@ -102,6 +102,18 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     compose(view)
     view |> form("#policy-composer", rule: params) |> render_change()
   end
+
+  # The mode's choices: Change mode opens them, where they are shut; a pick only selects.
+  defp pick_mode(view, setting) do
+    if has_element?(view, "#policy-mode-change") do
+      view |> element("#policy-mode-change") |> render_click()
+    end
+
+    view |> form("#policy-mode-form", %{"mode" => setting}) |> render_change()
+    view
+  end
+
+  defp set_mode(view), do: view |> form("#policy-mode-form") |> render_submit()
 
   defp workspace_rule(scope, host),
     do: Enum.find(Policy.list_rules(scope, nil), &(&1.host == host))
@@ -474,15 +486,48 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   describe "the target's mode" do
     test "follows the workspace until an owner says otherwise, and says where it comes from",
-         %{conn: conn, scope: scope, path: path} do
+         %{conn: conn, scope: scope, target: target, path: path} do
       view = open(conn, path)
 
-      assert has_element?(view, "#policy-target-mode-follow[aria-checked=true]")
+      assert text(view, "#policy-mode-value") == "Observe"
+      assert read_name(view, "#policy-mode-h") == "Mode: Observe"
+      assert text(view, "#policy-mode-source") == "Follows #{scope.workspace.name}"
+      assert has_element?(view, "#policy-mode-source .hero-link-micro")
+      assert has_element?(view, "#policy-mode .q-modecard-tile .hero-eye")
 
-      assert text(view, "#policy-target-mode-effect") ==
+      assert text(view, "#policy-mode-effect") ==
                "It follows #{scope.workspace.name}, which observes. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
-      assert text(view, "#policy-target-mode-follow") == "Follow #{scope.workspace.name}"
+      # The card is above the views, on each of them, and not on a version or its export.
+      for rest <- ["", "/history"] do
+        view = open(conn, path <> rest)
+        html = render(view)
+        {card, _} = :binary.match(html, ~s(id="policy-mode"))
+        {views, _} = :binary.match(html, ~s(id="policy-tabs"))
+        assert card < views
+      end
+
+      {:ok, _} = Policy.allow(scope, target, %{host: "a.example"})
+
+      for rest <- ["/versions/1", "/versions/1/export"] do
+        refute has_element?(open(conn, path <> rest), "#policy-mode")
+      end
+
+      view = open(conn, path)
+      view |> element("#policy-mode-change") |> render_click()
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-opt-follow"})
+      assert text(view, "#policy-mode-legend") == "Choose the mode for acme/shop"
+
+      assert text(view, "#policy-mode-opt-follow-h") ==
+               "Follow #{scope.workspace.name} Current"
+
+      assert has_element?(view, "#policy-mode-opt-follow-h .hero-link")
+      refute has_element?(view, "#policy-mode .hero-arrow-uturn-left")
+
+      assert text(view, "#policy-mode-opt-follow-p") ==
+               "#{scope.workspace.name}'s mode, now observe. It changes when #{scope.workspace.name}'s does."
+
+      assert text(view, "#policy-mode-now") == "Follow #{scope.workspace.name} is the mode now."
     end
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
@@ -495,37 +540,28 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       )
 
       view = open(conn, path)
-      view |> element("#policy-target-mode-enforce") |> render_click()
+      pick_mode(view, "enforce")
 
       assert Policy.get_mode(scope, target).own == nil
-      assert text(view, "#target-mode-enforce") =~ "Enforce acme/shop?"
+      assert text(view, "#policy-mode-q") == "Enforce acme/shop?"
 
-      # In place under the switch, not a dialog; Cancel gives the focus back to the radio
-      # of the mode as it is.
-      assert has_element?(view, "#policy-target-mode + section#target-mode-enforce")
-      refute has_element?(view, "dialog#target-mode-enforce")
+      # In the card, under the options, not a dialog; what it does is read with it and with
+      # its button.
+      assert has_element?(view, "#policy-mode #policy-mode-form #policy-mode-q")
+      refute has_element?(view, "#policy-page dialog")
+      assert has_element?(view, "[role=group][aria-describedby=policy-mode-q-effect]")
+      assert has_element?(view, "#policy-mode-set[aria-describedby=policy-mode-q-effect]")
 
-      # What it does is read with the confirm and with Cancel, which has the focus.
-      assert has_element?(
-               view,
-               "section#target-mode-enforce[aria-describedby=target-mode-enforce-effect]"
-             )
-
-      assert has_element?(
-               view,
-               "#target-mode-enforce-cancel[aria-describedby=target-mode-enforce-effect]"
-             )
-
-      assert text(view, "#target-mode-enforce-effect") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "a connection no rule allows is denied in this repository's runs"
 
       assert has_element?(view, "#policy-page section#policy-keys[hidden]")
-      view |> element("#target-mode-enforce-cancel") |> render_click()
-      refute has_element?(view, "#target-mode-enforce")
-      assert_push_event(view, "policy:focus", %{id: "policy-target-mode-follow"})
-      view |> element("#policy-target-mode-enforce") |> render_click()
+      view |> element("#policy-mode-cancel") |> render_click()
+      refute has_element?(view, "#policy-mode-form")
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
+      pick_mode(view, "enforce")
 
-      assert text(view, "#target-mode-enforce") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "The mode becomes this repository's own: it stays enforce"
 
       assert text(view, "#mode-would") =~ "Let through in this repository's runs"
@@ -536,19 +572,26 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       view |> element("#mode-would button", "Allow here: files.cdn.example") |> render_click()
       assert own(scope, target, "files.cdn.example")
-      # None left open: the focus goes to the act.
-      assert_push_event(view, "policy:focus", %{id: "target-mode-confirm"})
+      # None left open: the focus goes to the button that saves the pick.
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
+      assert has_element?(view, "input#policy-mode-opt-enforce[checked]")
 
-      view |> element("#target-mode-confirm", "Enforce this repository") |> render_click()
+      assert has_element?(view, "#policy-mode-set.btn-primary", "Enforce this repository")
+      set_mode(view)
 
       assert %{mode: "enforce", own: "enforce", workspace: "observe"} =
                Policy.get_mode(scope, target)
 
-      assert has_element?(view, "#policy-target-mode-enforce[aria-checked=true]")
+      refute has_element?(view, "#policy-mode-form")
+      assert text(view, "#policy-mode-value") == "Enforce"
+      assert text(view, "#policy-mode-source") == "Its own"
+      assert has_element?(view, "#policy-mode .q-modecard-tile .hero-shield-exclamation")
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
       assert text(view, "#flash-info") =~ "acme/shop enforces on its own. Version"
+      assert text(view, "#policy-announce") =~ "This repository's mode is enforce."
       refute text(view, "#flash-info") =~ "github.example"
 
-      assert text(view, "#policy-target-mode-effect") =~
+      assert text(view, "#policy-mode-effect") =~
                "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
     end
 
@@ -557,37 +600,35 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
 
-      assert text(view, "#policy-target-mode-effect") =~
+      assert text(view, "#policy-mode-effect") =~
                "which enforces. A connection no rule allows is denied."
 
-      view |> element("#policy-target-mode-observe") |> render_click()
+      pick_mode(view, "observe")
+      assert text(view, "#policy-mode-q") == "Observe acme/shop?"
 
-      assert text(view, "#target-mode-observe") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "only what a deny rule names is denied in this repository's runs"
 
-      assert text(view, "#target-mode-observe") =~
+      assert text(view, "#policy-mode-form") =~
                "A deny holds in either mode: *.paste.example stays denied in this repository"
 
-      assert has_element?(
-               view,
-               "section#target-mode-observe[aria-describedby=target-mode-observe-effect]"
-             )
-
-      assert text(view, "#target-mode-observe-effect") =~
-               "only what a deny rule names is denied in this repository's runs"
-
-      view |> element("#target-mode-confirm", "Observe this repository") |> render_click()
+      # Observe can be undone as easily: its button is the primary one, never red.
+      assert has_element?(view, "#policy-mode-set.btn-primary", "Observe this repository")
+      refute has_element?(view, "#policy-mode .btn-error")
+      set_mode(view)
       assert Policy.get_mode(scope, target).own == "observe"
 
-      assert text(view, "#policy-target-mode-effect") =~
+      assert text(view, "#policy-mode-effect") =~
                "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
-      view |> element("#policy-target-mode-follow") |> render_click()
+      pick_mode(view, "follow")
+      assert text(view, "#policy-mode-q") == "Let acme/shop follow #{scope.workspace.name}?"
 
-      assert text(view, "#target-mode-enforce") =~
+      assert text(view, "#policy-mode-q-effect") =~
                "The mode follows the workspace's default from now on"
 
-      view |> element("#target-mode-confirm", "Follow the workspace") |> render_click()
+      assert has_element?(view, "#policy-mode-set", "Follow #{scope.workspace.name}")
+      set_mode(view)
       assert Policy.get_mode(scope, target).own == nil
 
       assert text(view, "#flash-info") =~ "acme/shop follows the workspace: enforce."
@@ -605,7 +646,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       )
 
       view = open(conn, path)
-      view |> element("#policy-target-mode-enforce") |> render_click()
+      pick_mode(view, "enforce")
 
       allow = fn host ->
         "would-#{ApiaryWeb.PolicyLive.Common.would_key(%{host: host, path: nil})}-allow"
@@ -613,7 +654,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       # Each reads "Allow here"; its name goes on with the destination.
       for host <- ~w(mirror.example files.cdn.example) do
-        assert name(view, "button##{allow.(host)}") == "Allow here: #{host}"
+        assert read_name(view, "button##{allow.(host)}") == "Allow here: #{host}"
         assert text(view, "button##{allow.(host)} .sr-only") == ": #{host}"
       end
 
@@ -622,21 +663,104 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert_push_event(view, "policy:focus", %{id: ^next})
 
       view |> element("##{next}") |> render_click()
-      assert_push_event(view, "policy:focus", %{id: "target-mode-confirm"})
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
     end
 
-    test "a setting that changes nothing today is immediate, and says so",
+    # Until 2026-10-07 a setting that changed nothing today saved on its click; every
+    # change now asks, and says that nothing changes today.
+    test "a setting that changes nothing today asks too, and says so",
          %{conn: conn, scope: scope, target: target, path: path} do
+      {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
-      view |> element("#policy-target-mode-observe") |> render_click()
 
-      refute has_element?(view, "#target-mode-observe")
-      assert Policy.get_mode(scope, target).own == "observe"
+      pick_mode(view, "enforce")
+      refute has_element?(view, "#flash-info")
+      assert Policy.get_mode(scope, target).own == nil
+      assert text(view, "#policy-mode-q") == "Enforce acme/shop?"
+
+      assert text(view, "#policy-mode-q-effect") ==
+               "Nothing changes today: #{scope.workspace.name} enforces too. From now on acme/shop stays on enforce whatever #{scope.workspace.name}'s mode becomes."
+
+      refute has_element?(view, "#mode-would")
+
+      set_mode(view)
+      assert Policy.get_mode(scope, target).own == "enforce"
 
       assert text(view, "#flash-info") =~
-               "acme/shop observes on its own. Nothing changes today: the workspace's default is observe too."
+               "acme/shop enforces on its own. Nothing changes today: the workspace's default is enforce too."
 
       refute text(view, "#flash-info") =~ "github.example"
+
+      # And back: following the workspace changes nothing today either, and asks.
+      pick_mode(view, "follow")
+
+      assert text(view, "#policy-mode-q-effect") ==
+               "Nothing changes today: #{scope.workspace.name} enforces too. The mode follows the workspace's default from now on, and changes when it does."
+
+      assert Policy.get_mode(scope, target).own == "enforce"
+    end
+
+    test "on a workspace nobody has changed, a mode of its own is its first change, and says so",
+         %{conn: _conn} do
+      other = scope_fixture()
+      started_run(other, shop())
+      [%{target: target}] = Policy.list_targets(other)
+      refute Policy.managed?(other)
+
+      view =
+        open(
+          log_in_user(build_conn(), other.user),
+          target_path(other, target.system, target.path, ["policy"])
+        )
+
+      # It follows the workspace, which observes: picking observe changes the mode of
+      # none of its runs, but it starts serving every machine of the workspace a policy.
+      pick_mode(view, "observe")
+      effect = text(view, "#policy-mode-q-effect")
+      refute effect =~ "Nothing changes today"
+      assert effect =~ "only what a deny rule names is denied in this repository's runs"
+
+      assert effect =~
+               "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
+
+      refute effect =~ "other repositories do not change"
+
+      pick_mode(view, "enforce")
+      effect = text(view, "#policy-mode-q-effect")
+      assert effect =~ "This is the workspace's first change"
+      refute effect =~ "Other repositories do not change."
+      refute Policy.managed?(other)
+    end
+
+    test "picks never save, and only the last pick's question shows; Cancel keeps the mode",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      view = open(conn, path)
+
+      pick_mode(view, "observe")
+      assert text(view, "#policy-mode-q") == "Observe acme/shop?"
+      assert has_element?(view, "#policy-mode-set", "Observe this repository")
+
+      pick_mode(view, "enforce")
+      assert text(view, "#policy-mode-q") == "Enforce acme/shop?"
+      assert has_element?(view, "#policy-mode-set", "Enforce this repository")
+      refute render(view) =~ "Observe acme/shop?"
+
+      pick_mode(view, "follow")
+      assert has_element?(view, "input#policy-mode-opt-follow[checked]")
+      refute has_element?(view, "input#policy-mode-opt-enforce[checked]")
+      refute has_element?(view, "#policy-mode-q")
+      assert text(view, "#policy-mode-now") == "Follow #{scope.workspace.name} is the mode now."
+
+      assert %{own: nil, mode: "enforce"} = Policy.get_mode(scope, target)
+      assert text(view, "#policy-mode-value") == "Enforce"
+      refute has_element?(view, "#flash-info")
+
+      view |> element("#policy-mode-cancel") |> render_click()
+      refute has_element?(view, "#policy-mode-form")
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
+      assert %{own: nil, mode: "enforce"} = Policy.get_mode(scope, target)
+      assert text(view, "#policy-mode-source") == "Follows #{scope.workspace.name}"
     end
 
     test "its history words the change", %{
@@ -660,11 +784,16 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       %{user: member} = member_fixture(scope, :member)
       view = open(log_in_user(build_conn(), member), path)
 
-      assert has_element?(view, "#policy-target-mode-enforce[aria-disabled=true]")
-      assert text(view, "#policy-target-mode-owners") == "Only an owner or an admin sets a mode."
+      assert text(view, "#policy-mode-value") == "Observe"
+      refute has_element?(view, "#policy-mode-change")
+      refute has_element?(view, "#policy-mode [aria-disabled]")
+      assert text(view, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
 
-      render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
-      refute has_element?(view, "#target-mode-enforce")
+      render_hook(view, "mode_open", %{})
+      refute has_element?(view, "#policy-mode-form")
+      assert text(view, "#policy-write-error") == "Only an owner or an admin sets a mode."
+      render_hook(view, "mode_pick", %{"mode" => "enforce"})
+      render_hook(view, "mode_set", %{"mode" => "enforce"})
       assert Policy.get_mode(scope, target).own == nil
     end
   end

@@ -588,6 +588,11 @@ msgstr ""
 msgid "%{minutes} m %{seconds} s"
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{mode} is the mode now."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{ms} ms"
@@ -1951,6 +1956,11 @@ msgid "%{words} could not be read, so it is not applied."
 msgid_plural "%{words} could not be read, so they are not applied."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workspace}'s mode, now %{mode}. It changes when %{workspace}'s does."
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -3350,11 +3360,6 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
-msgid "Between the two modes; Space asks to switch"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
 msgid "Breadcrumb"
 msgstr ""
 
@@ -3440,6 +3445,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change in %{name}'s policy"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Change mode"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -3642,6 +3652,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a target of this workspace for it to apply to."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the mode for %{target}"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the workspace's default mode"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -4104,6 +4124,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Credentials"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Current"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -4793,7 +4818,7 @@ msgstr ""
 msgid "Enforce"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Enforce %{target}?"
 msgstr ""
@@ -4813,7 +4838,7 @@ msgstr ""
 msgid "Enforce mode denies it."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Enforce this target"
 msgstr ""
@@ -5320,11 +5345,6 @@ msgstr ""
 msgid "Follow the end of the log (End)"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Follow the workspace"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Followed by %{number} of %{total} target; %{own}."
@@ -5335,6 +5355,11 @@ msgstr[1] ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Following"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Follows %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -5410,6 +5435,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "From an https address"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "From now on %{target} stays on %{mode} whatever %{workspace}'s mode becomes."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -6108,6 +6138,11 @@ msgstr ""
 msgid "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its own"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Its own first"
@@ -6522,6 +6557,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Left the organisation"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Let %{target} follow %{workspace}?"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -7910,6 +7950,16 @@ msgstr ""
 msgid "Not you? Log out"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing changes today: %{workspace} enforces too."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing changes today: %{workspace} observes too."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing has been pruned yet. The pruning job runs every night."
@@ -8011,7 +8061,7 @@ msgstr ""
 msgid "Observe"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Observe %{target}?"
 msgstr ""
@@ -8021,7 +8071,7 @@ msgstr ""
 msgid "Observe mode lets it through."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Observe this target"
 msgstr ""
@@ -9894,22 +9944,22 @@ msgstr ""
 msgid "Set in the application's configuration"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set the default to enforce"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set the default to observe"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set the workspace's default to enforce?"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set the workspace's default to observe?"
 msgstr ""
@@ -9964,8 +10014,7 @@ msgstr ""
 msgid "Set when the workspace was created. It decides the words its pages use."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Setting"
 msgstr ""
@@ -10521,11 +10570,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "The argument doesn't match what its description allows."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "The arrow keys move between the modes without choosing one; Space or Enter asks."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -11417,6 +11461,7 @@ msgid "This is the instance's organisation, whose owners run the instance, so it
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
 msgstr ""
@@ -12263,6 +12308,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace created"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace default"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

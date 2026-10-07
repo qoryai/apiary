@@ -9,7 +9,8 @@
 //                                    ?  shows or hides the list of keys, a panel in the
 //                                       page (#policy-keys), never an overlay; Escape and
 //                                       its Close hide it
-//   arrows inside a [data-roving] radiogroup move between its radios
+//   Escape, with the focus in the mode's choices (#policy-mode-form), closes them
+//   (`mode_cancel`): an Escape elsewhere, the palette's or a search's, leaves them open
 //
 // RuleComposer, on the composer's form: a pasted list of hosts, one per line, goes to the
 // server as a list, which fills the composer with the first and queues the rest.
@@ -83,14 +84,9 @@ export const PolicyPage = {
   },
 
   key(e) {
-    const roving = e.target.closest?.("[data-roving]")
-    if (roving && ["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp"].includes(e.key)) {
-      const radios = [...roving.querySelectorAll("[role=radio]")]
-      const at = radios.indexOf(document.activeElement)
-      if (at < 0) return
+    if (e.key === "Escape" && e.target.closest?.("#policy-mode-form")) {
       e.preventDefault()
-      const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : -1
-      radios[(at + step + radios.length) % radios.length].focus()
+      this.pushEvent("mode_cancel", {})
       return
     }
     if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
