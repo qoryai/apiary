@@ -6,7 +6,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{AccessKeys, Deletion, Nodes, Repo, SigningKey}
+  alias Apiary.{Accounts, AccessKeys, Deletion, Nodes, Organisations, Repo, SigningKey}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Audit.Entry
   alias Apiary.Contract.{Ed25519, SignedMessage}
@@ -256,6 +256,76 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       )
 
       assert_unauthorized(enrol(body(code, pair)))
+    end
+  end
+
+  describe "the code refused, 401 unsigned, once its maker may no longer make it" do
+    # The code is the approval of the key it brings only while the person who made it is
+    # still an owner or an admin of its workspace. An admin makes it here, as the sole
+    # owner cannot be demoted.
+    setup %{scope: owner, node: node} do
+      %{scope: admin, membership: membership, user: user} = member_fixture(owner, :admin)
+      Map.merge(code(admin, node), %{admin: admin, membership: membership, user: user})
+    end
+
+    defp assert_refused(code, row, node) do
+      pair = ed25519_key_pair()
+      conn = enrol(body(code, pair))
+      assert conn.status == 401
+      assert conn.resp_body == ~s({"error":"unauthorized"})
+      assert_unsigned(conn)
+
+      assert %EnrolmentCode{used_at: nil} = Repo.get!(EnrolmentCode, row.id)
+      assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^node.id), :count) == 0
+      assert Repo.get(PublicKey, pair.public_key) == nil
+    end
+
+    test "an admin's code enrols while they are an admin", %{code: code, user: user} do
+      pair = ed25519_key_pair()
+      assert enrol(body(code, pair)).status == 201
+      assert Repo.get_by!(AccessKey, public_key: pair.public_key).created_by_id == user.id
+    end
+
+    test "made a member since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+      assert_refused(code, row, node)
+    end
+
+    test "suspended since, and enrols again once active", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.suspend_member(owner, membership.id)
+      assert_refused(code, row, node)
+
+      {:ok, _} = Organisations.activate_member(owner, membership.id)
+      assert enrol(body(code, ed25519_key_pair())).status == 201
+    end
+
+    test "removed since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.remove_member(owner, membership.id)
+      assert_refused(code, row, node)
+    end
+
+    test "their account deleted since", ctx do
+      %{user: user, code: code, row: row, node: node} = ctx
+      {:ok, _} = Accounts.delete_user(user, origin: nil)
+      assert_refused(code, row, node)
+    end
+
+    test "the same code again, with the same key, once the maker is a member", ctx do
+      %{scope: owner, membership: membership, code: code} = ctx
+      pair = ed25519_key_pair()
+      assert enrol(body(code, pair)).status == 201
+
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+      conn = enrol(body(code, pair))
+      assert conn.status == 401
+      assert_unsigned(conn)
+
+      # The key it made stays, active: revoking it is an owner's or an admin's to do.
+      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
+      assert AccessKey.status(key) == :active
     end
   end
 

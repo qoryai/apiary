@@ -20,8 +20,8 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
        `X-Qory-Contract-Version` that names no revision served
        (`ApiaryWeb.Contract.ContractVersion`);
     4. `401` `{"error":"unauthorized"}`, unsigned, when the code is not accepted: used,
-       expired, cancelled, never made, or carrying another fingerprint than the
-       instance's key's;
+       expired, cancelled, never made, carrying another fingerprint than the instance's
+       key's, or made by someone who is no longer an owner or an admin of its workspace;
     5. once the code is accepted, every answer is signed: `409` `key_invalid` for a key
        the key checks or the ledger refuse, a proof that does not verify, or a timestamp
        more than 300 seconds from the server's clock; `409` `key_limit` for a node that

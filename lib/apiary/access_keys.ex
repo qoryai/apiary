@@ -10,8 +10,9 @@ defmodule Apiary.AccessKeys do
       it brings gets, and is returned once, kept only as its SHA-256; an outstanding one
       is cancelled with `cancel_code/2` (`access_key.cancel_code`);
     * a machine **enrols** a key with a code (`enrol/2`, the runner contract's
-      enrolment): the code is the approval, so the key is active as it is made; the
-      code is the authority, and the key itself the actor of its entry, `access_key.add`;
+      enrolment): the code is the approval, so the key is active as it is made, while
+      the code's maker is still an owner or an admin of its workspace; the code is the
+      authority, and the key itself the actor of its entry, `access_key.add`;
     * a **pasted key** (`add_access_key/3`, `access_key.add`) is active as it is
       entered;
     * a key is **revoked** (`revoke_access_key/2`, `access_key.revoke`), and every key of
@@ -445,9 +446,14 @@ defmodule Apiary.AccessKeys do
   signing key (`Apiary.SigningKey.fingerprint/0`), its SHA-256 is an enrolment code's, of a
   workspace and an organisation in use (neither marked for deletion, nor stopped by the
   edition), its node is in use, its row matches its integrity code, and it is neither
-  cancelled nor expired, and not yet used. Anything else is `{:error, :unauthorized}`,
-  whatever the reason. The node's row is locked `FOR UPDATE`, then the code's, so two
-  machines never redeem one code, and the limit counts every change before it.
+  cancelled nor expired, and not yet used, and **its maker is still an owner or an admin**
+  of its workspace: their account in use, their membership neither suspended nor removed
+  nor lowered to member, so that they could make the code now (`access_key.create_code`,
+  `Apiary.Access`). Anything else is `{:error, :unauthorized}`, whatever the reason. The
+  maker's membership is read `FOR SHARE`, in the lock order of docs/access.md, so a
+  change of it waits for the enrolment, or comes first and is seen; then the node's row is
+  locked `FOR UPDATE`, then the code's, so two machines never redeem one code, and the
+  limit counts every change before it.
 
   **Then the key is checked**: the key checks (`Apiary.Contract.Ed25519`), the proof, under
   the key, and the proof's timestamp, within 300 seconds of `now`; any of them refused is
@@ -464,7 +470,8 @@ defmodule Apiary.AccessKeys do
 
   **A repeat** of a used code is the same answer again: a request whose code made a key,
   with the same public key, a proof that verifies and a fresh timestamp, while the code
-  would not have expired and the key is not revoked, is `{:ok, key}` for that key, as it is now, and changes nothing; so a machine
+  would not have expired, its maker is still an owner or an admin and the key is not
+  revoked, is `{:ok, key}` for that key, as it is now, and changes nothing; so a machine
   whose answer was lost may ask again. Any other key on a used code is
   `{:error, :unauthorized}`. The public keys are compared in constant time.
 
@@ -499,8 +506,10 @@ defmodule Apiary.AccessKeys do
   end
 
   defp redeem(%EnrolmentCode{} = found, request, now, origin) do
-    with {:ok, node} <- lock_enrolling_node(found),
+    with :ok <- maker_may_enrol(found),
+         {:ok, node} <- lock_enrolling_node(found),
          {:ok, code} <- lock_code(found),
+         true <- code.created_by_id == found.created_by_id || {:error, :unauthorized},
          {:ok, state} <- code_state(code, request, now),
          {:ok, public_key} <- authenticate(request, now) do
       case state do
@@ -509,6 +518,28 @@ defmodule Apiary.AccessKeys do
       end
     end
   end
+
+  # The code is the approval of the key it brings only while its maker could make it now:
+  # an owner or an admin of its workspace, their account in use and their membership
+  # neither suspended, nor removed, nor lowered to member (`access_key.create_code`). Their
+  # membership is read again `FOR SHARE`, with the organisation, the workspace and the
+  # account before it, in the lock order of docs/access.md, before the node is locked: a
+  # change of the maker's level, a suspension or a removal waits for the enrolment, or
+  # comes first and refuses the code. A code whose maker's account is gone, or that names
+  # none, is refused too.
+  defp maker_may_enrol(%EnrolmentCode{created_by_id: maker_id} = code)
+       when is_binary(maker_id) do
+    with {:ok, scope} <-
+           Apiary.Organisations.job_scope(code.organisation_id, code.workspace_id, maker_id),
+         %Scope{user: %Apiary.Accounts.User{}} = scope <- Access.reload(scope, lock: :share),
+         :ok <- Access.check(scope, :"access_key.create_code", code) do
+      :ok
+    else
+      _refused -> {:error, :unauthorized}
+    end
+  end
+
+  defp maker_may_enrol(%EnrolmentCode{}), do: {:error, :unauthorized}
 
   defp lock_enrolling_node(%EnrolmentCode{} = code) do
     query =
