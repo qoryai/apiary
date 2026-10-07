@@ -22,7 +22,12 @@ defmodule ApiaryWeb.RunLive.Index do
   which takes the target away and keeps the rest; narrowed to a node, the same line names
   the node, with no Network access. The narrowing lives in the address alone: the page
   gives the frame its target (`ApiaryWeb.Layouts.narrowed/2`), so the sidebar's Runs and
-  Network access carry it, and nothing else does.
+  Network access carry it, and nothing else does. What the address names is read with it
+  (`ApiaryWeb.Narrowing`), so all of this is right from the first render. A path that two
+  targets share, given alone, is the path on both systems: the line says so, "Showing
+  acme/shop only, on github.com and gitlab.com.", each system a link to the runs of its
+  target. The rail, the Filter menu and a typed `repo:` write a target as the line does,
+  its system only where its path is shared, and mark a path given alone as its target.
 
   From 1920 px a preview pane beside the list shows the run chosen (`?run=`, patched by a
   click or ↑ and ↓ while the list has focus; the first row until then): its state, its
