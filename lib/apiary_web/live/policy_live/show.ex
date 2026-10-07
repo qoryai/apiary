@@ -7,7 +7,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   document, and the export. The Network access page's rule links (`?rule=`) lead to the
   rule in that section.
 
-  One LiveView, five live actions, so a tab is a patch. Filters, the opened change, the
+  One LiveView, five live actions, so a tab is a patch. A version and its export name
+  themselves in the frame's breadcrumb, after Policy. Filters, the opened change, the
   compared version and the export page are in the URL. The page calls `Apiary.Policy`
   and nothing under it, except the contract's grammar for the reading line. It follows
   `policy:<workspace>` and reads again at most once per 250 ms.
@@ -803,30 +804,38 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="list"
     >
+      <:crumb
+        :if={@live_action in [:version, :export] && @v}
+        navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
+      >
+        {gettext("Policy")}
+      </:crumb>
+      <:crumb
+        :if={@live_action in [:version, :export] && @v}
+        navigate={
+          @live_action == :export &&
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
+        }
+      >
+        {gettext("Version %{version}", version: @v.configuration.version)}
+      </:crumb>
+      <:crumb :if={@live_action == :export && @v}>{gettext("Export")}</:crumb>
+
       <div
         id="policy-page"
         phx-hook="PolicyPage"
         class="q-policy grid grid-cols-[minmax(0,1fr)] gap-6"
       >
-        <div :if={@live_action == :version && @v} class="grid gap-3">
-          <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
-              "Policy"
-            )}</.link>
-            <.icon name="hero-chevron-right-micro" class="size-3" />
-            <span class="q-here" aria-current="page">
-              {gettext("Version %{version}", version: @v.configuration.version)}
-            </span>
-          </nav>
-          <.version_head v={@v} base={@base} />
-        </div>
+        <.version_head :if={@live_action == :version && @v} v={@v} base={@base} />
 
-        <.header :if={!(@live_action in [:version, :export] && @v)}>
-          {gettext("Policy")}
-          <:subtitle>
+        <.page_header
+          :if={!(@live_action in [:version, :export] && @v)}
+          id="policy-header"
+          title={gettext("Policy")}
+        >
+          <:description>
             {gettext("What the runs of this workspace may reach through the runner's proxy.")}
-            <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
-          </:subtitle>
+          </:description>
           <:actions>
             <div :if={@managed? && @version} class="q-head-side">
               <.version_pill
@@ -860,7 +869,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
               </.tooltip>
             </div>
           </:actions>
-        </.header>
+          <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
+        </.page_header>
 
         <.policy_tabs
           :if={!(@live_action == :export && @v)}
@@ -906,6 +916,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
+          crumbs={false}
           policy={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
           version={@v.configuration.version}
           done={
@@ -1007,42 +1018,46 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp policy_tabs(assigns) do
     ~H"""
-    <.tabs id="policy-tabs" label={gettext("Policy")}>
+    <.page_tabs id="policy-tabs" label={gettext("Policy")} current={tab_key(@live_action)}>
       <:tab
+        key={:rules}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
         icon="hero-shield-check"
-        current={@live_action == :rules}
-        count={@rules > 0 && @rules}
+        count={if @rules > 0, do: @rules}
       >
         {gettext("Rules")}
       </:tab>
       <:tab
+        key={:targets}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
         icon="hero-book-open"
-        current={@live_action == :targets}
-        count={@targets > 0 && @targets}
+        count={if @targets > 0, do: @targets}
       >
         {gettext("Targets")}
       </:tab>
       <:tab
+        key={:history}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/history"}
         icon="hero-clock"
-        current={@live_action == :history}
-        count={@changes > 0 && @changes}
+        count={if @changes > 0, do: @changes}
       >
         {gettext("History")}
       </:tab>
       <:tab
         :if={@document}
+        key={:document}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/document"}
         icon="hero-document-text"
-        current={@live_action in [:version, :export, :document]}
       >
         {gettext("Document")}
       </:tab>
-    </.tabs>
+    </.page_tabs>
     """
   end
+
+  # The tab a live action is under: a version and its export are the Document's.
+  defp tab_key(action) when action in [:version, :export, :document], do: :document
+  defp tab_key(action), do: action
 
   defp rules_tab(assigns) do
     edit? = Common.may?(assigns.current_scope, :"security_policy.edit")
