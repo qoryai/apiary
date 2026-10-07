@@ -1142,6 +1142,15 @@ defmodule ApiaryWeb.LayoutsTest do
 
         assert text == label
 
+        # The separator is seen, not read: the button's name is the level and the place.
+        # The column's heading carries the place's full name, which it may cut short.
+        if label =~ " · " do
+          assert html =~ ~s(<span aria-hidden="true"> · </span>)
+
+          assert attribute(html, "nav.q-second .q-second-place", "title") ==
+                   scope.workspace.name
+        end
+
         # The list follows the button, every link in it, each closing on Escape.
         assert before?(html, ~s(id="settings-disclosure"), ~s(id="#{list}"))
         assert attribute(html, "##{list} a.q-second-link", "phx-key") == "Escape"

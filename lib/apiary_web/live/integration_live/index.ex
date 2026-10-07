@@ -162,7 +162,11 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
     ~H"""
     <SettingsComponents.part id="add-part" title={gettext("Add an integration")}>
-      <ul id="add-cards" class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-3">
+      <ul
+        id="add-cards"
+        role="list"
+        class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-3"
+      >
         <.add_card
           :for={runtime <- Runtimes.list()}
           id={"add-card-runtime-#{runtime.name}"}

@@ -1716,7 +1716,12 @@ defmodule ApiaryWeb.Layouts do
     <nav id={@second.id} class="q-second" aria-labelledby={"#{@second.id}-heading"}>
       <p class="q-second-heading">
         <span id={"#{@second.id}-heading"} class="q-second-level">{@second.label}</span>
-        <span :if={@second.place_name} id={"#{@second.id}-place"} class="q-second-place">
+        <span
+          :if={@second.place_name}
+          id={"#{@second.id}-place"}
+          class="q-second-place"
+          title={@second.place_name}
+        >
           {@second.place_name}
         </span>
       </p>
@@ -1731,7 +1736,7 @@ defmodule ApiaryWeb.Layouts do
         phx-key="Escape"
       >
         <span class="q-second-toggle-text">
-          {@second.label}<span :if={@second.place_name} class="q-second-toggle-place"> · {@second.place_name}</span>
+          {@second.label}<span :if={@second.place_name} class="q-second-toggle-place"><span aria-hidden="true"> · </span>{@second.place_name}</span>
         </span>
         <.icon name="hero-chevron-down-micro" class="q-second-toggle-i size-4" />
       </button>

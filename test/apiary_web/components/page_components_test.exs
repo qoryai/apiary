@@ -61,6 +61,46 @@ defmodule ApiaryWeb.PageComponentsTest do
     assert attribute(html, "#target-tabs-overview", "aria-current") == nil
     assert attribute(html, "#target-tabs-settings", "class") =~ "q-tabs-end"
     assert text(html, "#target-tabs-policy .q-tabs-n") =~ "2"
+
+    # A thing's bar sticks and scrolls sideways: it carries no section class.
+    assert attribute(html, "nav#target-tabs", "class") |> String.split() == ["q-tabs"]
+  end
+
+  test "a settings section's tabs: in the flow under its h1, wrapping, without bleed" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <.page_tabs id="secrets-tabs" label="Secrets and variables" current={:secrets} place="section">
+        <:tab key={:secrets} patch="/acme/shop/settings/secrets" count={2}>Secrets</:tab>
+        <:tab key={:variables} patch="/acme/shop/settings/variables" count={3}>Variables</:tab>
+      </.page_tabs>
+      """)
+
+    assert attribute(html, "nav#secrets-tabs", "class") |> String.split() ==
+             ["q-tabs", "q-tabs-section"]
+
+    assert attribute(html, "nav#secrets-tabs", "aria-label") == "Secrets and variables"
+    assert attribute(html, "#secrets-tabs-secrets", "aria-current") == "page"
+
+    # The class undoes what makes a thing's bar a bar: not sticky, no bleed to the gutter,
+    # no side padding, wrapping in place of the sideways scroll; and the root keeps no room
+    # for a sticky bar that a section's tabs are not.
+    css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+    [rule] = Regex.run(~r/\.q-tabs\.q-tabs-section \{([^}]*)\}/, css, capture: :all_but_first)
+
+    for declaration <- [
+          "position: static;",
+          "flex-wrap: wrap;",
+          "margin-inline: 0;",
+          "padding-inline: 0;",
+          "overflow: visible;"
+        ] do
+      assert rule =~ declaration
+    end
+
+    refute css =~ ":root:has(.q-tabs) {"
+    assert css =~ ":root:has(.q-tabs:not(.q-tabs-section)) {"
   end
 
   test "a settings page: the section's title is its one h1; the frame names the level" do

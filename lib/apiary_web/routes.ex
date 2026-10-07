@@ -222,11 +222,11 @@ defmodule ApiaryWeb.Routes do
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
-            # A person's settings, one section a page: Profile (email, password, deleting the
+            # A person's settings, one section a page: Account (email, password, deleting the
             # account) and Preferences.
             live "/users/settings", UserLive.Settings, :edit
             live "/users/settings/preferences", UserLive.Settings, :preferences
-            # The confirmation of deleting one's own account, in place in Profile's danger zone.
+            # The confirmation of deleting one's own account, in place in Account's danger zone.
             live "/users/settings/delete", UserLive.Settings, :delete
             live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
             # A user's organisations: each in use, and those marked for deletion that they

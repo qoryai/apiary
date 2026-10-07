@@ -556,6 +556,23 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       {:ok, lv, _html} = live(conn, secrets_path(scope, "?q=nothing-like-it"))
       assert render(lv) =~ "No secret matches"
     end
+
+    test "the Variables tab keeps the search and drops the secrets' values filter",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "?q=bot&values=one"))
+
+      href =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#secrets-tabs-variables")
+        |> LazyHTML.attribute("href")
+
+      assert href == [variables_path(scope, "?q=bot")]
+
+      lv |> element("#secrets-tabs-variables") |> render_click()
+      assert_patch(lv, variables_path(scope, "?q=bot"))
+    end
   end
 
   describe "secrets, as an admin and as a member" do

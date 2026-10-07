@@ -28,6 +28,22 @@ defmodule ApiaryWeb.Storybook.Page.PageTabs do
           ~s|<:tab key={:connections} patch="#" icon="hero-globe-alt" count={2} tone="error">Network access</:tab>|,
           ~s|<:tab key={:details} patch="#" icon="hero-information-circle">Details</:tab>|
         ]
+      },
+      %Variation{
+        id: :a_settings_section,
+        description:
+          "A settings section's tabs, Secrets | Variables with their counts: in the flow " <>
+            "under the section's h1, wrapping, not sticky and without bleed.",
+        attributes: %{
+          id: "secrets-tabs",
+          label: "Secrets and variables",
+          current: :secrets,
+          place: "section"
+        },
+        slots: [
+          ~s|<:tab key={:secrets} patch="#" count={4}>Secrets</:tab>|,
+          ~s|<:tab key={:variables} patch="#" count={12}>Variables</:tab>|
+        ]
       }
     ]
   end

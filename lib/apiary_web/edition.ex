@@ -122,8 +122,9 @@ defmodule ApiaryWeb.Edition do
   @doc """
   What the pages say to a reader (`Apiary.Access.reader/1`), a person who reads the
   organisation of `scope` through the edition's reach, with no membership there, and
-  changes nothing: `:level`, the account menu's line where a member's level would be;
-  `:refused`, the sentence of a change a page refuses them. Nil for the core's words.
+  changes nothing: `:refused`, the sentence of a change a page refuses them. Nil for the
+  core's words. The core no longer asks for `:level` (the account menu's line where a
+  member's level was); it stays in the type so that editions which answer it compile.
   """
   @callback reader_sentence(:level | :refused, Scope.t()) :: String.t() | nil
 

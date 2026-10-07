@@ -255,12 +255,12 @@ defmodule ApiaryWeb.MemberLive.Index do
           }
           class="mt-4 grid gap-3"
         >
-          <h3 class="flex items-baseline gap-2 text-[14px]/5 font-semibold">
+          <h2 class="flex items-baseline gap-2 text-[14px]/5 font-semibold">
             {gettext("Pending invitations")}
             <span :if={@invitations != []} class="text-[12.5px] font-normal tabular-nums text-faint">
               {Format.number(length(@invitations))}
             </span>
-          </h3>
+          </h2>
           <p :if={@invitations == []} class="text-[12.5px] text-muted">
             {gettext("No pending invitations.")}
           </p>

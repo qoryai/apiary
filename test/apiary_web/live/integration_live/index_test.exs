@@ -172,7 +172,18 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, ~s(#{card}-act[href="#{own}"]))
 
       # Before the two ways to more.
-      assert lv |> render() |> String.split(card) |> List.last() =~ "add-card-release"
+      ids =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#add-cards > li")
+        |> LazyHTML.attribute("id")
+
+      assert Enum.drop_while(ids, &(&1 != "add-card-own-#{definition.public_id}")) == [
+               "add-card-own-#{definition.public_id}",
+               "add-card-release",
+               "add-card-custom-api"
+             ]
 
       {:ok, lv, _html} = live(conn, own)
 
@@ -180,6 +191,47 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
                lv,
                "#connection_definition option[value='own:#{definition.public_id}'][selected]"
              )
+    end
+
+    test "another organisation's custom API is neither a card nor a choice",
+         %{conn: conn, scope: scope} do
+      other = sign_up_fixture().scope
+
+      {:ok, definition} =
+        Connections.create_service_definition(
+          other,
+          Jason.encode!(%{
+            "version" => 1,
+            "key" => "billing-api",
+            "title" => "Billing API",
+            "hosts" => ["billing.example.com"],
+            "auth" => %{"scheme" => "bearer", "secret" => "key"},
+            "declares" => [%{"id" => "key", "title" => "API key"}]
+          })
+        )
+
+      {:ok, lv, html} = live(conn, ipath(scope))
+      refute has_element?(lv, "#add-card-own-#{definition.public_id}")
+      refute html =~ "Billing API"
+      refute html =~ "billing.example.com"
+
+      {:ok, lv, html} =
+        live(conn, ipath(scope, "/new-service?definition=own%3A#{definition.public_id}"))
+
+      assert has_element?(lv, "#connection_definition option[value='builtin:npm'][selected]")
+
+      refute has_element?(
+               lv,
+               "#connection_definition option[value='own:#{definition.public_id}']"
+             )
+
+      refute has_element?(lv, "#new-service-page [role=alert]")
+
+      for html <- [html, render(lv)] do
+        refute html =~ definition.public_id
+        refute html =~ "Billing API"
+        refute html =~ "billing.example.com"
+      end
     end
 
     test "a named release is a card that opens Add from a release, its source filled in",
