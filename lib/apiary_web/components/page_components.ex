@@ -29,13 +29,17 @@ defmodule ApiaryWeb.PageComponents do
   @doc """
   page_header/1 is a page's header: its title, the page's one `<h1>`; one line under it of
   what the page is for (`description`); and at the right at most one primary and one
-  default action (`actions`), under the title on a phone. Beside the title, a state or a
-  tag (`badge`); under the description, what the page says of itself before its content,
-  such as the line of a narrowed list (`inner_block`).
+  default action (`actions`), or, where the page makes two peer kinds, two default
+  actions and no primary, as on Nodes; under the title on a phone. Beside the title, a
+  state or a tag (`badge`); under the description, what the page says of itself before
+  its content, such as the line of a narrowed list (`inner_block`).
 
       <.page_header title={gettext("Nodes")}>
         <:description>{gettext("The machines and pools your runs run on.")}</:description>
-        <:actions><.button variant="primary" navigate={new_path}>{gettext("New node")}</.button></:actions>
+        <:actions>
+          <.button patch={new_node_path}>{gettext("New node")}</.button>
+          <.button patch={new_pool_path}>{gettext("New node pool")}</.button>
+        </:actions>
       </.page_header>
   """
   attr :id, :string, default: "page-header"

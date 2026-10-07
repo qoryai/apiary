@@ -24,9 +24,9 @@ defmodule ApiaryWeb.NodeLive.Index do
   Everyone in the workspace reads the list (`node.read`); a member sees it without the
   buttons, and a form's path refuses them.
 
-  Under its title, once, the plain line that runners can't use a node's keys yet, so no
-  run is placed on a node today, with the way to the workspace's access keys
-  (`ApiaryWeb.NodeComponents.not_yet/1`). The sidebar's Nodes leads here: the pages pass
+  Under its title, once, the plain line that nodes receive no runs yet, since Qory can't
+  check a node's key yet, and that machines send their runs with a workspace access key
+  until it can, with the way to them (`ApiaryWeb.NodeComponents.not_yet/1`). The sidebar's Nodes leads here: the pages pass
   `nav: :nodes`, so Nodes is the current entry on the list and on the New node and New
   node pool forms.
 

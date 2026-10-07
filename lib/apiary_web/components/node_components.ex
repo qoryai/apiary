@@ -2,10 +2,10 @@ defmodule ApiaryWeb.NodeComponents do
   @moduledoc """
   What the Nodes list and a node's page say alike (`docs/ui.md`, Nodes): a node's state in
   words, from what it is doing (`Apiary.Nodes.activity/3`), the sentence that says what an
-  instance is, and the line that says runners can't use a node's keys yet. And what a
-  node's page's two LiveViews share: its header (`node_header/1`) and its tabs
-  (`node_tabs/1`), Overview, Access key and Settings; and an enrolment code's expiry
-  (`code_expiry/1`).
+  instance is, and the line that says nodes receive no runs yet, since Qory can't check a
+  node's key yet. And what a node's page's two LiveViews share: its header
+  (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings; and
+  an enrolment code's expiry (`code_expiry/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one

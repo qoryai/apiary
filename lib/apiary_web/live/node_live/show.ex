@@ -7,9 +7,9 @@ defmodule ApiaryWeb.NodeLive.Show do
   Overview and Settings are patches of this LiveView; Access key is
   `ApiaryWeb.NodeLive.AccessKey`'s, a navigation:
 
-  - **Overview** (`/nodes/:node_id`): first, once, the plain line that runners can't use a
-    node's keys yet, so no run is placed on a node today, with the way to the workspace's
-    access keys; then what the node is doing (`Apiary.Nodes.activity/3`).
+  - **Overview** (`/nodes/:node_id`): first, once, the plain line that nodes receive no
+    runs yet, since Qory can't check a node's key yet, with the way to the workspace's
+    access keys, which machines send their runs with until it can; then what the node is doing (`Apiary.Nodes.activity/3`).
     A Node's instance, running or when it was last seen; a pool's running instances,
     "3 of 10"; the starts refused at the instance limit; the sentence that says an
     instance is a claim; and its recent runs (`runs.node_id`, for a reader of the record,

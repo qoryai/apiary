@@ -57,7 +57,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   end
 
   describe "the tab" do
-    test "is a tab of the node's page, and says once that runners can't use these keys yet",
+    test "is a tab of the node's page, and says once that Qory can't check these keys yet",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       {:ok, lv, html} = live(conn, tab_path(scope, node))

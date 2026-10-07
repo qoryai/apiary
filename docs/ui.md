@@ -153,7 +153,9 @@ person's own page and an Instance page, the one the person came from (Two levels
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
-  description and at most one primary and one default action. Card titles are `<h2>`.
+  description and at most one primary and one default action, or, where the page makes
+  two peer kinds (Nodes: New node and New node pool), two default actions and no
+  primary. Card titles are `<h2>`.
 
 ## No modals
 
