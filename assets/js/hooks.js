@@ -18,6 +18,7 @@ import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
 import {RulePanel} from "./hooks/rule_panel"
 import {DaysChart, OverviewPage} from "./hooks/overview"
 import {FamilyBoxes} from "./hooks/family_boxes"
+import {SecretValues} from "./hooks/secret_values"
 
 export {autoDismiss}
 
@@ -41,4 +42,5 @@ export const hooks = {
   DaysChart,
   OverviewPage,
   FamilyBoxes,
+  SecretValues,
 }

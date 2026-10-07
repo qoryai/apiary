@@ -18,6 +18,11 @@ msgstr ""
 msgid "A rule allows or denies a host."
 msgstr ""
 
+#: lib/apiary/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "A secret holds at most %{count} values."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an email address, such as dana@example.com."
@@ -46,6 +51,7 @@ msgstr ""
 ## effect: edit them in PO (`.po`) files instead.
 ## From Ecto.Changeset.cast/4
 #: lib/apiary/integrations.ex
+#: lib/apiary/secrets.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen
 msgid "can't be blank"
@@ -108,6 +114,7 @@ msgstr ""
 msgid "is already a member of this organisation"
 msgstr ""
 
+#: lib/apiary/secrets.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen, elixir-format
 msgid "is already a value ID of this secret"

@@ -300,6 +300,287 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert [_one] = secrets(scope)
     end
 
+    test "New secret offers one value or several, and saves several at once",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/new"))
+
+      assert has_element?(
+               lv,
+               "#secret-page",
+               "A secret holds one value, such as a token, or several under one name, such as one per app. Once a value is saved, nobody sees it again."
+             )
+
+      # The choice: native radios in a fieldset with its legend, One value to start, with
+      # its one Value and no Value ID.
+      assert has_element?(lv, "fieldset#secret_values_kind legend", "Values")
+      assert has_element?(lv, "#secret_values_kind-0[type=radio][value=one][checked]")
+      assert has_element?(lv, "label[for=secret_values_kind-0]", "One value")
+      assert has_element?(lv, "#secret_values_kind-1[type=radio][value=several]")
+      refute has_element?(lv, "#secret_values_kind-1[checked]")
+
+      assert has_element?(
+               lv,
+               "label[for=secret_values_kind-1]",
+               "Several values, each with a value ID"
+             )
+
+      assert has_element?(
+               lv,
+               "#secret-one-value:not([hidden]) textarea[name='secret[value]']:not([disabled])"
+             )
+
+      refute has_element?(lv, "#secret_value_id")
+      refute has_element?(lv, "#secret_values_kind[aria-describedby]")
+
+      # Several: two rows to start, each a group with its value ID and its value, neither
+      # removable; the browser adds the others from the template, its fields off. While
+      # One value is chosen, their fields are off too, as the server renders them.
+      assert has_element?(lv, "#secret-several-values[hidden]")
+      assert has_element?(lv, "#secret-several-values[data-max='32']")
+      assert has_element?(lv, "#secret-form[phx-hook=SecretValues][data-refused-saves='0']")
+
+      for index <- [0, 1] do
+        assert has_element?(lv, "#secret-value-#{index} legend", "Value #{index + 1}")
+        assert has_element?(lv, "input[name='secret[values][#{index}][value_id]'][disabled]")
+        assert has_element?(lv, "textarea[name='secret[values][#{index}][value]'][disabled]")
+        refute has_element?(lv, "#secret-value-#{index}-remove")
+      end
+
+      refute has_element?(lv, "#secret-value-2")
+      assert has_element?(lv, "#secret-add-value[type=button]", "Add another value")
+      refute has_element?(lv, "#secret-add-value[disabled]")
+      assert has_element?(lv, "#secret-values-full[hidden]")
+      html = render(lv)
+      assert html =~ ~s(name="secret[values][__INDEX__][value_id]")
+      assert html =~ ~s(id="secret-value-__INDEX__-remove")
+      assert html =~ ~s(aria-label="Remove value __NUMBER__")
+      assert has_element?(lv, "#secret-several-values[data-remove='Remove value __NUMBER__']")
+
+      # Still no change event: a value travels only with Save.
+      refute lv |> element("#secret-form") |> render() =~ "phx-change"
+
+      # Saved with Several values: every value the browser sent once the hook turned
+      # their fields on, the third one it added, in one save; the one value's field is
+      # not read.
+      html =
+        lv
+        |> form("#secret-form",
+          secret: %{name: "GITHUB_APP_PRIVATE_KEY", values_kind: "several", note: "One per app"}
+        )
+        |> render_submit(%{
+          secret: %{
+            value: "not-stored",
+            values: %{
+              "0" => %{value_id: "main-app", value: @value},
+              "1" => %{value_id: "bot-app", value: "bot-#{@value}"},
+              "5" => %{value_id: "ci", value: "ci-#{@value}"}
+            }
+          }
+        })
+
+      refute_value(html)
+      assert_patch(lv, secrets_path(scope))
+      html = render(lv)
+      refute_value(html)
+      assert html =~ "GITHUB_APP_PRIVATE_KEY is saved."
+
+      [secret] = secrets(scope)
+      assert Enum.map(secret.values, & &1.value_id) == ~w(bot-app ci main-app)
+      assert reveal(scope, secret, "main-app") == {:ok, @value}
+      assert reveal(scope, secret, "bot-app") == {:ok, "bot-#{@value}"}
+      assert reveal(scope, secret, "ci") == {:ok, "ci-#{@value}"}
+      assert reveal(scope, secret) == {:error, :not_found}
+      assert has_element?(lv, "#secret-#{secret.public_id}", "3 values")
+      assert has_element?(lv, "#secret-#{secret.public_id}-ci-value-id", "ci")
+
+      # Saved with One value: the rows of several, filled or not, are not read.
+      lv |> element("#new-secret") |> render_click()
+
+      lv
+      |> form("#secret-form", secret: %{name: "FORGE_TOKEN", values_kind: "one", value: @value})
+      |> render_submit(%{
+        secret: %{values: %{"0" => %{value_id: "main-app", value: "not-stored"}}}
+      })
+
+      assert_patch(lv, secrets_path(scope))
+      forge = Enum.find(secrets(scope), &(&1.name == "FORGE_TOKEN"))
+      assert [%{value_id: nil}] = forge.values
+      assert reveal(scope, forge) == {:ok, @value}
+    end
+
+    test "a refused save of several values shows each error under its row, and no value",
+         %{conn: conn, scope: scope} do
+      secret!(scope, %{name: "FORGE_TOKEN"})
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/new"))
+
+      # A value ID twice: the error under the second, the rows as they were sent, each
+      # value empty to write again, Several still chosen.
+      html =
+        lv
+        |> form("#secret-form", secret: %{name: "DEPLOY_KEYS", values_kind: "several"})
+        |> render_submit(%{
+          secret: %{
+            values: %{
+              "0" => %{value_id: "shop", value: @value},
+              "1" => %{value_id: "docs", value: @value},
+              "7" => %{value_id: "shop", value: @value}
+            }
+          }
+        })
+
+      refute_value(html)
+      assert has_element?(lv, "#secret-form")
+      assert has_element?(lv, "#secret_values_kind-1[checked]")
+      refute has_element?(lv, "#secret_values_kind-0[checked]")
+      assert has_element?(lv, "#secret-several-values:not([hidden])")
+      assert has_element?(lv, "#secret-one-value[hidden] textarea[disabled]")
+      refute has_element?(lv, "#secret-several-values [disabled]:not([id='secret-add-value'])")
+
+      # A refused save is counted, so the hook lets the server's rows stand.
+      assert has_element?(lv, "#secret-form[data-refused-saves='1']")
+
+      assert has_element?(
+               lv,
+               "#secret_values_2_value_id-error",
+               "is already a value ID of this secret"
+             )
+
+      assert has_element?(lv, "#secret_values_2_value_id[aria-invalid=true]")
+      refute has_element?(lv, "#secret_values_0_value_id-error")
+      refute has_element?(lv, "#secret_values_1_value_id-error")
+
+      for {index, value_id} <- [{0, "shop"}, {1, "docs"}, {2, "shop"}] do
+        assert has_element?(lv, "#secret_values_#{index}_value_id[value=#{value_id}]")
+
+        assert lv |> element("#secret_values_#{index}_value") |> render() =~ "></textarea>"
+      end
+
+      # The third row, past the first two, can be removed; the first two cannot.
+      assert has_element?(lv, "#secret-value-2-remove[aria-label='Remove value 3']", "Remove")
+      refute has_element?(lv, "#secret-value-1-remove")
+      assert has_element?(lv, "#secret-value-2 legend", "Value 3")
+      assert secrets(scope) |> length() == 1
+
+      # A row left empty: its own errors, under its own fields.
+      html =
+        lv
+        |> form("#secret-form",
+          secret: %{
+            values_kind: "several",
+            values: %{
+              "0" => %{value_id: "shop", value: @value},
+              "1" => %{value_id: "", value: ""}
+            }
+          }
+        )
+        |> render_submit(%{secret: %{values: %{"2" => %{value_id: "Docs", value: @value}}}})
+
+      refute_value(html)
+      refute has_element?(lv, "#secret_values_0_value_id-error")
+      refute has_element?(lv, "#secret_values_0_value-error")
+      assert has_element?(lv, "#secret_values_1_value_id-error", "can't be blank")
+      assert has_element?(lv, "#secret_values_1_value-error", "can't be blank")
+      assert has_element?(lv, "#secret_values_2_value_id-error", "must be lowercase letters")
+
+      # A name another secret has: under the name, the rows kept as they were sent.
+      html =
+        lv
+        |> form("#secret-form",
+          secret: %{
+            name: "forge_token",
+            values_kind: "several",
+            values: %{
+              "0" => %{value_id: "shop", value: @value},
+              "1" => %{value_id: "docs", value: @value},
+              "2" => %{value_id: "billing", value: @value}
+            }
+          }
+        )
+        |> render_submit()
+
+      refute_value(html)
+      assert html =~ "is already the name of a secret in this workspace"
+      assert has_element?(lv, "#secret_values_2_value_id[value=billing]")
+      refute has_element?(lv, "#secret_values_2_value_id-error")
+      assert has_element?(lv, "#secret-form[data-refused-saves='3']")
+
+      # A value ID or a value that is not text, as only a crafted request sends: an
+      # error on its own field, the page still there, nothing of it shown back.
+      html =
+        render_hook(lv, "create_secret", %{
+          "secret" => %{
+            "name" => "SHAPES",
+            "values_kind" => "several",
+            "values" => %{
+              "0" => %{"value_id" => %{"a" => "b"}, "value" => @value},
+              "1" => %{"value_id" => "docs", "value" => %{"a" => @value}}
+            }
+          }
+        })
+
+      refute_value(html)
+      assert has_element?(lv, "#secret_values_0_value_id-error", "is invalid")
+      assert has_element?(lv, "#secret_values_0_value_id[value='']")
+      assert has_element?(lv, "#secret_values_1_value-error", "is invalid")
+      assert [_one] = secrets(scope)
+    end
+
+    test "New secret holds at most #{32} values, and says so where they are",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/new"))
+
+      many = Map.new(0..32, &{to_string(&1), %{value_id: "v#{&1}", value: @value}})
+
+      html =
+        lv
+        |> form("#secret-form", secret: %{name: "MANY", values_kind: "several"})
+        |> render_submit(%{secret: %{values: many}})
+
+      refute_value(html)
+
+      # Refused on their count before any is looked at: said once, under the rows, and
+      # describing the Values choice; the rows start again.
+      assert has_element?(lv, "#secret-values-error", "A secret holds at most 32 values.")
+
+      assert has_element?(
+               lv,
+               "fieldset#secret_values_kind[aria-invalid=true][aria-describedby='secret-values-error']"
+             )
+
+      assert has_element?(lv, "#secret-values-full[hidden]")
+      assert has_element?(lv, "#secret-value-1")
+      refute has_element?(lv, "#secret-value-2")
+      refute has_element?(lv, "#secret-add-value[disabled]")
+      assert secrets(scope) == []
+
+      # Thirty-two rows sent back after a refusal: Add another value is off, and the line
+      # beside it says why.
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/new"))
+      twice = Map.put(Map.delete(many, "32"), "31", %{value_id: "v0", value: @value})
+
+      lv
+      |> form("#secret-form", secret: %{name: "MANY", values_kind: "several"})
+      |> render_submit(%{secret: %{values: twice}})
+
+      assert has_element?(lv, "#secret_values_31_value_id-error", "is already a value ID")
+      assert has_element?(lv, "#secret-value-31")
+      assert has_element?(lv, "#secret-add-value[disabled]")
+      assert has_element?(lv, "#secret-values-full:not([hidden])", "at most 32 values")
+      refute has_element?(lv, "#secret-values-error")
+      refute has_element?(lv, "#secret_values_kind[aria-describedby]")
+
+      # Thirty-two are saved: on the page as it opens, the 33rd row not there to send.
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/new"))
+
+      lv
+      |> form("#secret-form", secret: %{name: "MANY", values_kind: "several"})
+      |> render_submit(%{secret: %{values: Map.delete(many, "32")}})
+
+      assert_patch(lv, secrets_path(scope))
+      assert [%{values: values}] = secrets(scope)
+      assert length(values) == 32
+    end
+
     test "adds a value, naming the one it holds, and lists each value with who changed it",
          %{conn: conn, scope: scope} do
       secret = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY"})

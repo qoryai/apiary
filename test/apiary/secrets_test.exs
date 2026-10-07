@@ -331,6 +331,138 @@ defmodule Apiary.SecretsTest do
                {:error, :too_many_values}
     end
 
+    test "create_secret/2 stores several values at once, each under its value id",
+         %{scope: scope} do
+      assert {:ok, secret} =
+               Secrets.create_secret(scope, %{
+                 name: "GITHUB_APP_PRIVATE_KEY",
+                 note: "One per app",
+                 # As a form sends them: by index, taken in its order, not the map's.
+                 values: %{
+                   "10" => %{"value_id" => "ci", "value" => "ci value"},
+                   "2" => %{"value_id" => " bot-app ", "value" => "bot value"},
+                   "0" => %{"value_id" => "main-app", "value" => @value}
+                 },
+                 # Beside several values, the fields of one value are not looked at.
+                 value: "not stored",
+                 value_id: "not-stored"
+               })
+
+      assert Enum.map(secret.values, & &1.value_id) == ["bot-app", "ci", "main-app"]
+      assert reveal(scope, secret, "main-app") == {:ok, @value}
+      assert reveal(scope, secret, "bot-app") == {:ok, "bot value"}
+      assert reveal(scope, secret, "ci") == {:ok, "ci value"}
+      assert reveal(scope, secret, "not-stored") == {:error, :not_found}
+      assert reveal(scope, secret, nil) == {:error, :not_found}
+
+      # One entry, the value ids in the order they came, never a value.
+      assert [created] = trail(secret)
+      assert created.details["change"] == "created"
+      assert created.after["value_ids"] == ["main-app", "bot-app", "ci"]
+      kept = Jason.encode!([created.before, created.after, created.details])
+      for value <- [@value, "bot value", "ci value"], do: refute(kept =~ value)
+
+      # A list is taken as it is.
+      assert {:ok, secret} =
+               Secrets.create_secret(scope, %{
+                 name: "DEPLOY_KEYS",
+                 values: [%{value_id: "shop", value: "a"}, %{value_id: "docs", value: "b"}]
+               })
+
+      assert Enum.map(secret.values, & &1.value_id) == ["docs", "shop"]
+    end
+
+    test "create_secret/2 refuses several values with any of them wrong, storing none",
+         %{scope: scope} do
+      value = "plaintext-that-must-not-stay"
+
+      assert {:error, changeset} =
+               Secrets.create_secret(scope, %{
+                 name: "1BAD",
+                 values: %{
+                   "0" => %{"value_id" => "main-app", "value" => value},
+                   "1" => %{"value_id" => "main-app", "value" => value},
+                   "2" => %{"value_id" => "Main", "value" => ""},
+                   "3" => %{"value_id" => "", "value" => value}
+                 }
+               })
+
+      assert changeset.errors[:name]
+
+      assert [first, duplicate, wrong, unnamed] = changeset.changes.values
+      assert first.errors == []
+      assert {"is already a value ID of this secret", _} = duplicate.errors[:value_id]
+      assert wrong.errors[:value_id]
+      assert {"can't be blank", _} = wrong.errors[:value]
+      assert {"can't be blank", _} = unnamed.errors[:value_id]
+      refute unnamed.errors[:value]
+
+      # Neither the secret's changeset nor a value's under it keeps a value.
+      refute Map.has_key?(changeset.params, "values")
+      refute inspect(changeset, limit: :infinity, structs: false) =~ value
+
+      for child <- changeset.changes.values do
+        refute Map.has_key?(child.params, "value")
+        refute Map.has_key?(child.changes, :value)
+      end
+
+      # A value id that is another's once trimmed is the same value id.
+      assert {:error, changeset} =
+               Secrets.create_secret(scope, %{
+                 name: "KEYS",
+                 values: %{
+                   "0" => %{"value_id" => "main", "value" => "a"},
+                   "1" => %{"value_id" => " main ", "value" => "b"}
+                 }
+               })
+
+      assert [_main, again] = changeset.changes.values
+      assert {"is already a value ID of this secret", _} = again.errors[:value_id]
+
+      # None, and more than the most a secret holds.
+      assert {:error, changeset} = Secrets.create_secret(scope, %{name: "NONE", values: %{}})
+      assert {"can't be blank", _} = changeset.errors[:values]
+
+      many = Map.new(0..32, &{to_string(&1), %{"value_id" => "v#{&1}", "value" => "x"}})
+      assert {:error, changeset} = Secrets.create_secret(scope, %{name: "MANY", values: many})
+      assert {"A secret holds at most %{count} values.", opts} = changeset.errors[:values]
+      assert opts[:count] == 32
+      # Refused on their count, before any of them is looked at: none is under it.
+      refute Map.has_key?(changeset.changes, :values)
+      refute Map.has_key?(changeset.params, "values")
+
+      # Counted as they were sent, whatever they hold.
+      junk = Map.new(0..32, &{"key-#{&1}", "not a value"})
+      assert {:error, changeset} = Secrets.create_secret(scope, %{name: "MANY", values: junk})
+      assert {"A secret holds at most %{count} values.", _} = changeset.errors[:values]
+
+      # A value ID or a value that is not text is an error on its own row.
+      assert {:error, changeset} =
+               Secrets.create_secret(scope, %{
+                 name: "SHAPES",
+                 values: %{
+                   "0" => %{"value_id" => %{"a" => "b"}, "value" => "x"},
+                   "1" => %{"value_id" => "docs", "value" => %{"a" => "b"}},
+                   "2" => %{"value_id" => ["shop"], "value" => 7}
+                 }
+               })
+
+      assert [map_id, map_value, other] = changeset.changes.values
+      assert {"is invalid", _} = map_id.errors[:value_id]
+      refute map_id.errors[:value]
+      assert map_value.errors[:value]
+      refute map_value.errors[:value_id]
+      assert other.errors[:value_id] && other.errors[:value]
+
+      assert Secrets.list_secrets(scope) == {:ok, []}
+
+      # The most a secret holds is stored.
+      assert {:ok, secret} =
+               Secrets.create_secret(scope, %{name: "MANY", values: Map.delete(many, "32")})
+
+      assert length(secret.values) == Secrets.max_values()
+    end
+
     test "set_value/4 replaces a value, under a new nonce", %{scope: scope} do
       secret = create!(scope, %{name: "API_KEY"})
       before = row!(secret, nil)
@@ -586,6 +718,13 @@ defmodule Apiary.SecretsTest do
 
       assert {:ok, [%Secret{name: "API_KEY"}]} = Secrets.list_secrets(member)
       assert Secrets.create_secret(member, %{name: "MINE", value: "x"}) == {:error, :forbidden}
+
+      assert Secrets.create_secret(member, %{
+               name: "MINE",
+               values: [%{value_id: "shop", value: "x"}, %{value_id: "docs", value: "y"}]
+             }) == {:error, :forbidden}
+
+      assert {:ok, [%Secret{name: "API_KEY"}]} = Secrets.list_secrets(member)
       assert Secrets.update_secret(member, secret, %{name: "RENAMED"}) == {:error, :forbidden}
       assert Secrets.set_value(member, secret, nil, "x") == {:error, :forbidden}
 

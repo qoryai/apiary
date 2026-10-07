@@ -405,6 +405,23 @@ by name or the latest change.
   than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
   ("NAME is on the runner's deny list.", which describes the name's field while it
   shows) and "On the runner's deny list" on its row.
+- **New secret** asks for its name, then **Values**, native radios in a fieldset with that
+  legend: "One value" (to start), its one Value, with no value ID; or "Several values,
+  each with a value ID", a Value ID and a Value for each, two to start, each row a group
+  named for whoever hears it ("Value 3"), the rows past the first two with Remove (named
+  "Remove value 3" for whoever hears it), and "Add another value" under them, off at 32
+  with "A secret holds at most 32 values." beside it. The group not chosen is hidden and
+  its fields are off, as the server renders it and as the `SecretValues` hook keeps it:
+  the choice and the rows work in the browser alone, nothing is sent before Save, and
+  Save sends the values of the choice taken, not the other's, and stores the secret with
+  all its values at once (`Apiary.Secrets.create_secret/2`). A render the server sends
+  for anything but a save (a count in the sidebar) keeps the choice, the rows and what
+  is written in them, which the hook holds in the browser for that moment alone; the
+  name and the note are not kept, as on every form. A refused save shows the rows that
+  were sent, each with its value ID and its errors under its own fields (a value ID
+  twice, one not lowercase or not text, a row left empty), and every value empty, to
+  write again, as one value's is. More than 32 values are refused before any is read,
+  once, under the rows, the Values choice described by it, and the rows start again.
 - **The forms are pages** of the section (A form is a page, above), each at a path of its
   own: for secrets New secret (`/settings/secrets/new`), Edit name and note (`/:id/edit`,
   "Edit the name and note of FORGE_TOKEN", its values left as they are), Add value
