@@ -375,9 +375,9 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     # Each choice is linked by an address that names it alone, never this one again: the
     # path alone for acme's shop, which no other system has, and the system and the path
-    # for acme/shop.
+    # for acme/shop. Each is named as it is addressed: shop, and the system and the path.
     links = [
-      {acme, "/targets/shop", "acme/shop"},
+      {acme, "/targets/shop", "shop"},
       {github, "/targets/github.example/acme/shop", "github.example/acme/shop"},
       {Targets.get(scope, "gitlab.example", "acme/shop"), "/targets/gitlab.example/acme/shop",
        "gitlab.example/acme/shop"}
@@ -390,7 +390,8 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
              )
 
       view = open(conn, workspace_path(scope, link))
-      assert has_element?(view, "#target-header h1", name)
+      assert has_element?(view, "#target-header h1", ~r/^\s*#{Regex.escape(name)}\s*$/)
+      assert page_title(view) =~ name
     end
 
     # An old tab's address that reads as both: the page that names each, with the tab and
@@ -417,7 +418,8 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     started_run(scope, repo("codeberg.org", "acme/billing"))
     started_run(scope, repo("acme", "billing"))
     view = open(conn, workspace_path(scope, "/targets/codeberg.org/acme/billing"))
-    assert has_element?(view, "#target-header h1", "codeberg.org/acme/billing")
+    assert has_element?(view, "#target-header h1", ~r/^\s*codeberg\.org\/acme\/billing\s*$/)
+    assert page_title(view) =~ "codeberg.org/acme/billing"
   end
 
   test "a system named - is addressed, as the address's first segment", %{

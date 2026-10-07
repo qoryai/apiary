@@ -164,9 +164,9 @@ defmodule ApiaryWeb.TargetLive.Show do
       with_system && by_path != [] ->
         {:ambiguous, Enum.uniq_by([with_system | by_path], & &1.id), path}
 
-      # The system stays in the address where the path alone would not name this target.
-      with_system &&
-          (Targets.shared?(scope, with_system.path) or read_with_system?(scope, with_system)) ->
+      # The system stays in the address, and so in the name, where the path alone would
+      # not name this target.
+      with_system && with_system?(scope, with_system) ->
         {:ok, with_system, true, :current}
 
       match?([_], by_path) ->
@@ -189,8 +189,13 @@ defmodule ApiaryWeb.TargetLive.Show do
     if Target.label(system) && Target.label(path), do: Targets.get(scope, system, path)
   end
 
-  # Whether the target's path alone, as an address, also reads as another target's system
+  # Whether the target's address must carry its system, and so its name
+  # (`TargetComponents.with_system?/3`, given the page's `shared`): its path is shared by
+  # another target, or its path alone, as an address, reads as another target's system
   # and path.
+  defp with_system?(scope, target),
+    do: Targets.shared?(scope, target.path) or read_with_system?(scope, target)
+
   defp read_with_system?(scope, %Target{path: path}) do
     case String.split(path, "/", parts: 2) do
       [system, rest] -> get(scope, system, rest) != nil
@@ -462,7 +467,7 @@ defmodule ApiaryWeb.TargetLive.Show do
         <.target_name
           path={@target.path}
           system={@target.system}
-          shared={shared_paths(@target, @shared)}
+          shared={@shared}
         />
       </:crumb>
 
@@ -527,7 +532,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           <.target_name
             path={@target.path}
             system={@target.system}
-            shared={shared_paths(@target, @shared)}
+            shared={@shared}
             class="min-w-0 truncate"
           />
         </h1>
@@ -796,12 +801,8 @@ defmodule ApiaryWeb.TargetLive.Show do
     path <> "?" <> URI.encode_query(Enum.sort(target_params) ++ params)
   end
 
-  # The target in words, as it is addressed: its system only where its path is shared.
+  # The target in words, as it is addressed: its system only where its address has it.
   defp name(target, shared), do: target_label(target.system, target.path, shared)
-
-  # The page's `shared` as `<.target_name>` takes it: the target's path, where it is shared.
-  defp shared_paths(target, true), do: MapSet.new([target.path])
-  defp shared_paths(_target, _shared), do: MapSet.new()
 
   # The target in its system, when the system is a host name: https, the path's segments
   # escaped.

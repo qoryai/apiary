@@ -67,7 +67,7 @@ defmodule ApiaryWeb.TargetComponents do
           String.t()
   def target_path(organisation, workspace, system, path, rest, shared) do
     segments =
-      if(is_binary(system) and shared?(shared, path), do: [system], else: []) ++
+      if(with_system?(system, path, shared), do: [system], else: []) ++
         path_segments(path) ++ if(rest == [], do: [], else: ["-" | rest])
 
     ~p"/#{organisation}/#{workspace}/targets/#{segments}"
@@ -82,8 +82,19 @@ defmodule ApiaryWeb.TargetComponents do
   """
   @spec target_label(String.t() | nil, String.t(), shared | nil) :: String.t()
   def target_label(system, path, shared) when is_binary(path) do
-    if is_binary(system) and shared?(shared, path), do: "#{system}/#{path}", else: path
+    if with_system?(system, path, shared), do: "#{system}/#{path}", else: path
   end
+
+  @doc """
+  with_system?/3 is the one test of a target's address (`target_path/6`) and its name
+  (`target_label/3`, `ApiaryWeb.RunComponents.target_name/1`): whether both carry the
+  system, which they do together or not at all. They do where `shared` says the path alone
+  would not name the target alone: `true`, as a target's page passes it where its path is
+  shared or reads as another target's system and path, or the workspace's shared paths
+  holding the path. A nil system never does.
+  """
+  @spec with_system?(String.t() | nil, String.t(), shared | nil) :: boolean
+  def with_system?(system, path, shared), do: is_binary(system) and shared?(shared, path)
 
   @doc """
   shared?/2 says whether `path` is shared by `shared`, a boolean or the workspace's shared
