@@ -198,7 +198,7 @@ defmodule Apiary.Access do
       feature: :security,
       roles: @admins
     ),
-    # Stored secrets and variables, which the run configuration delivers.
+    # Stored secrets and variables, for runs; runs don't receive them yet.
     Action.new(
       :"secret.read",
       "read the stored secrets: their names, notes and value IDs, never a value",

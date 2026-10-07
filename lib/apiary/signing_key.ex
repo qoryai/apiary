@@ -16,9 +16,10 @@ defmodule Apiary.SigningKey do
   is made from it on each call (`current/0`), which costs one Ed25519 key generation.
 
   **What is refused.** A seed that is not 32 bytes, and a seed the runner contract
-  publishes in its fixtures (`fixtures/known-answers/keys.json` and
-  `fixtures/sealed/vectors.json`: the bytes 1 to 32, 33 to 64, 65 to 96, 161 to 192 and
-  193 to 224), whose key every runner refuses as a pin. `boot!/0` checks the seed when
+  publishes or names: in `fixtures/known-answers/keys.json`, the bytes 1 to 32, 65 to 96
+  and 161 to 192; in `fixtures/sealed/vectors.json`, 33 to 64; and in its README, the
+  second fixture access key's, 193 to 224, whose secret is published elsewhere. The
+  contract's sides refuse these keys. `boot!/0` checks the seed when
   the application starts, and checks the public key it makes against the contract's key
   checks too (`Apiary.Contract.Ed25519.check_public_key/1`), so the instance does not
   start with a key a machine would refuse. Every refusal names the variable, never its

@@ -1197,11 +1197,16 @@ keeps to it:
   nothing.
 - Scripts, stylesheets, images, fonts and form targets are the console's own origin (an
   image may also be a `data:` address), and no page is framed, except the development
-  tools' own pages under `/dev`.
+  tools' own pages under `/dev`. Inline styles are allowed (`style-src 'self'
+  'unsafe-inline'`): `<style>` elements and `style` attributes, which the run page's
+  terminal writes as it runs.
 
 `ApiaryWeb.ContentSecurityPolicyTest` (`test/apiary_web/content_security_policy_test.exs`)
-requests every GET route, signed in and out, and fails on anything the policy refuses; a
-route with a parameter it does not fill fails until it is filled there.
+requests every GET route, signed in and out, and checks each page's markup, its dead
+render and a LiveView's connected one, without a browser: it fails on the header missing
+or changed, and on anything in the markup the policy would refuse. What runs in a browser
+(a script or a style a bundle creates) it does not see. A route with a parameter it does
+not fill fails until it is filled there.
 
 ## The run page
 

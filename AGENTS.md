@@ -54,7 +54,8 @@ repository; the rules for people are the same, and are written out in
 - **Quality gate.** `mise x -- mix precommit` before a pull request: it compiles with
   warnings as errors, drops unused lock entries, formats, builds the documentation with
   warnings as errors (`mix docs --warnings-as-errors`) and runs the tests. CI runs the
-  same checks plus `MIX_ENV=prod mix assets.deploy`.
+  same checks plus the browser scripts' tests (`node --test 'assets/js/test/*.test.mjs'`)
+  and `MIX_ENV=prod mix assets.deploy`.
 - **Editions.** The core names no edition's module and describes no edition's features:
   it asks `Apiary.Edition` and `ApiaryWeb.Edition`, which the configuration points at
   one, at the places an edition may add to the core or narrow it

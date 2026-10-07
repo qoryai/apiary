@@ -377,9 +377,12 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   answers JSON only (no content negotiation on `Accept`).
 - The public base URL of the document comes from the application's own URL configuration,
   not from the request's `Host` header.
-- On every endpoint, a `X-Qory-Contract-Version` that is not the integer `1` (absent,
-  another number, not a number, sent twice) is `400` with the versions served, once the
-  request has verified, after the `429` and the instance id's `400`.
+- On every signed endpoint, a `X-Qory-Contract-Version` that is not the integer `1`
+  (absent, another number, not a number, sent twice) is `400` with the versions served,
+  once the request has verified, after the `429` and the instance id's `400`. At
+  enrolment the header is read before the code, unsigned: sent twice it is `400`
+  `bad_request`, and any other value that is not `1` is `400` with the versions served,
+  after the per-address `429`.
 - The body limit is 2 MiB, twice the mebibyte a runner cuts a batch at, and it is checked
   before the signature.
 - The rate limit is per access key and per node: 50 batches a second, 100 at once
