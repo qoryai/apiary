@@ -1020,8 +1020,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} item needs attention"
-msgid_plural "%{number} items need attention"
+msgid "%{number} item to review"
+msgid_plural "%{number} items to review"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1102,8 +1102,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} more item needs attention."
-msgid_plural "%{number} more items need attention."
+msgid "%{number} more item to review."
+msgid_plural "%{number} more items to review."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2117,12 +2117,7 @@ msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A key lets a machine post its runs to this workspace. Its secret is shown once, as soon as the key is created."
-msgstr ""
-
-#: lib/apiary_web/live/access_key_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "A key lets the machines of this workspace post their runs; one key can serve many hosts."
+msgid "A key lets a machine send its runs to this workspace. Its secret is shown once, as soon as the key is created."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -2188,6 +2183,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "A locked workspace rule denies %{rule}. Only an owner can change it."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A machine sends its runs to this workspace with one of these keys: a key id and a secret, pasted into its runner file. One key can serve many machines. Node keys, which belong to one machine or pool, will replace these once Qory can check them."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3897,6 +3897,11 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy %{host}"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Copy block"
@@ -3941,11 +3946,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copy the digest"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Copy the host"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -7038,11 +7038,6 @@ msgstr ""
 msgid "Name the release of a program: its description is fetched, and you add it from there."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Needs attention"
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -7748,6 +7743,12 @@ msgstr ""
 msgid "Nodes"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Nodes receive no runs yet: Qory can't check a node's key yet. Until it can, machines send their runs with a workspace access key, from %{link}."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -8258,11 +8259,6 @@ msgstr ""
 msgid "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Only this host"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -8604,6 +8600,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -8782,6 +8779,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary menu, version %{version}"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Qory can't check these keys yet, so this node receives no runs. Until it can, machines send their runs with a workspace access key, from %{link}."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -9541,17 +9543,6 @@ msgstr ""
 msgid "Runner"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/index.ex
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Runners can't use a node's keys yet, so no run is placed on a node today. Runs still use the workspace's access keys, in %{link}."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Runners can't use these keys or enrolment codes yet. Runs still use the workspace's access keys, in %{link}."
-msgstr ""
-
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
@@ -9998,11 +9989,6 @@ msgstr ""
 msgid "Settings › %{page}"
 msgstr ""
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "Settings › Access keys"
-msgstr ""
-
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Several values"
@@ -10053,6 +10039,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show more"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show only %{host}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11435,6 +11426,7 @@ msgstr ""
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "This list"
@@ -11692,6 +11684,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "To choose its targets, change where it applies under %{settings}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "To review"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -12308,6 +12305,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings › %{page}"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace settings › Access keys"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex

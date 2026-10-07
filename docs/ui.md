@@ -153,7 +153,9 @@ person's own page and an Instance page, the one the person came from (Two levels
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
-  description and at most one primary and one default action. Card titles are `<h2>`.
+  description and at most one primary and one default action, or, where the page makes
+  two peer kinds (Nodes: New node and New node pool), two default actions and no
+  primary. Card titles are `<h2>`.
 
 ## No modals
 
@@ -602,8 +604,9 @@ version. Only the version in force is exported; another version's path sends on 
   run; only the timeline's inline connections keep a glyph. A row's one text action, Allow on a destination that needs allowing and Deny on
   an allowed one, shows on hover, on focus inside the row and while the row's panel or
   menu is open (always on a touch screen, in the menu alone below 600 px of table); the ⋯
-  menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the host. A locked
-  rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
+  menu (`rule_menu/1`) holds Allow… and Deny… under Policy, then Show only and Copy with
+  the row's host under This list, a long host cut in the middle and whole in its title
+  and accessible name. A locked rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
   rule changes it, and leads to the rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
   here would not be in force and leads to that level's policy with the host, for a reader
@@ -611,8 +614,8 @@ version. Only the version in force is exported; another version's path sends on 
   `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
   row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
-  first, the most denied attempts first and then the most recently seen, as Needs
-  attention weighs them; the rest by when they were first seen, so they hold still.
+  first, the most denied attempts first and then the most recently seen, as To
+  review weighs them; the rest by when they were first seen, so they hold still.
 - **A row's rule is asked for in place** (`RunComponents.rule_panel/1`), never in a
   popover, a dialog or a sheet: Allow, Deny, Allow…, Deny… and a locked rule's lock open
   a row of the table's own right under the row (`#<row>-panel`), in the page's flow, the
@@ -652,8 +655,8 @@ words say so. The workspace's window is **fourteen days**:
   line under the views says when it happens.
 - **The overview's summary** counts the chart's fourteen UTC days, and each number leads
   to its list over the same days (`?from=` the first of them; the denied attempts to
-  Network access, whose Denied view counts the destinations the summary names). **Needs
-  attention** weighs the same fourteen days but lists only what is still denied, no rule
+  Network access, whose Denied view counts the destinations the summary names). **To
+  review** weighs the same fourteen days but lists only what is still denied, no rule
   having allowed it since, and its "and n more" says so.
 - **The Policy page's** fact beside the mode and the enforce preview read fourteen days,
   so "See them" lands on the same numbers; a rule's use is its last fourteen days.
@@ -672,7 +675,7 @@ what needs the reader, then what their agents did, and never grows with the data
 
 - **The summary**: alive now, runs, runs that ended badly and denied attempts over
   fourteen days, each a link to the list it counts over the same days.
-- **Needs attention**: one line an item, on columns the list holds (each row a subgrid,
+- **To review**: one line an item, on columns the list holds (each row a subgrid,
   so they line up whatever an act says), its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
   it; five shown and "and n more". Its Allow is Network access's: the same panel, in
@@ -737,7 +740,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   seen, its last run, and its mode only where it sets its own) and Open on the system when
   the system is a host name; the breadcrumb's third segment is the target.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
-    runs; the destinations it was denied in 14 days), beside a plain About column (the
+    runs; the destinations it was denied in 14 days, each with a faint barred circle,
+    never red), beside a plain About column (the
     system and path, when it was first seen and by which run, the same path elsewhere,
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
@@ -783,8 +787,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   and the kind; one search, `?q=`, words of a name or an id, and the Filter menu's Kind
   (`?kind=node`, `?kind=pool`), each a token under the bar; Sort by Name or Last seen
   (`?sort=seen`: running first, never seen last). Owners and admins have **New node**
-  (primary) and **New node pool** in the header; with no node yet, the empty state
-  offers both, and tells a member that an owner or admin adds nodes.
+  and **New node pool**, side by side and alike, in the header; with no node yet, the
+  empty state offers both, and tells a member that an owner or admin adds nodes.
 - **New node and New node pool** are pages of the Nodes section at paths of their own,
   `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending

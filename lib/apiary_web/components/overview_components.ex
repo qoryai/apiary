@@ -2,7 +2,7 @@ defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
   The components of the workspace overview, each a level of its own look (`docs/ui.md`,
   Lists): the summary (the largest numbers on the page), then blocks, each one box with a
-  band and rows or lines and nothing boxed inside it: Needs attention, the fourteen-day
+  band and rows or lines and nothing boxed inside it: To review, the fourteen-day
   chart, the active targets and Guard; and the empty workspace's one box.
 
   Every number here is a count the workspace already keeps: `runs` columns the projector
@@ -215,7 +215,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   def cost_text(_cost), do: gettext("n/a")
 
-  ## Needs attention
+  ## To review
 
   @doc """
   The list of acts: one line an item, its mark, its subject (the only strong text), where
@@ -250,14 +250,14 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <section :if={@items != []} id={@id} class="q-blk q-att" aria-labelledby={"#{@id}-h"}>
       <div class="q-band">
-        <h2 id={"#{@id}-h"}>{gettext("Needs attention")}</h2>
+        <h2 id={"#{@id}-h"}>{gettext("To review")}</h2>
         <span id={"#{@id}-n"} class="q-band-n">{Format.number(@count)}</span>
       </div>
       <ul
         id={"#{@id}-list"}
         class="q-rows"
         aria-label={
-          ngettext("%{number} item needs attention", "%{number} items need attention", @count,
+          ngettext("%{number} item to review", "%{number} items to review", @count,
             number: Format.number(@count)
           )
         }

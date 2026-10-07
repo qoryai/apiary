@@ -817,7 +817,7 @@ defmodule Apiary.Runs do
   end
 
   # Denied first: the destinations whose last attempt was denied, the most denied attempts
-  # first and then the most recently seen, as Needs attention weighs them; the rest by
+  # first and then the most recently seen, as To review weighs them; the rest by
   # first seen, newest first, so such a row does not move when it is seen again (see
   # Record.connections/3). Or the order the reader chose.
   defp destination_order(sort) do

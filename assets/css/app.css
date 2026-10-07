@@ -6790,7 +6790,7 @@
   .q-cxt.q-cxt-run tr.q-rule-sub > td {
     padding-left: 16px;
   }
-  /* In Needs attention: under the item's subject, inside the item. */
+  /* In To review: under the item's subject, inside the item. */
   .q-ar:has(> .q-ar-panel),
   .q-ar:has(> .q-ar-panel):hover {
     background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
@@ -8424,7 +8424,7 @@
     }
   }
 
-  /* ---- 2. Needs attention: mark, subject, where, reason, when, one act. The list holds
+  /* ---- 2. To review: mark, subject, where, reason, when, one act. The list holds
      the columns and each row is a subgrid of them, so the columns line up whatever the
      length of a row's act. ---- */
   .q-att > .q-rows {
@@ -9484,7 +9484,7 @@
     text-underline-offset: 2px;
   }
 
-  /* Denied destinations: the plain red glyph, one line each. */
+  /* Denied destinations: a faint grey glyph, one line each. */
   .q-tgt-dn > li {
     display: grid;
     height: 44px;

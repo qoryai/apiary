@@ -57,7 +57,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   end
 
   describe "the tab" do
-    test "is a tab of the node's page, and says once that runners can't use these keys yet",
+    test "is a tab of the node's page, and says once that Qory can't check these keys yet",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       {:ok, lv, html} = live(conn, tab_path(scope, node))
@@ -73,11 +73,18 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#not-on-runs",
-               "Runners can't use these keys or enrolment codes yet."
+               "Qory can't check these keys yet, so this node receives no runs."
              )
 
-      assert has_element?(lv, "#not-on-runs", "Runs still use the workspace's access keys, in")
-      assert has_element?(lv, "#not-on-runs-keys", "Settings › Access keys")
+      assert has_element?(
+               lv,
+               "#not-on-runs",
+               "Until it can, machines send their runs with a workspace access key, from"
+             )
+
+      assert has_element?(lv, "#not-on-runs-keys", "Workspace settings › Access keys")
+      # Flush against the full stop: no space before it.
+      assert lv |> element("#not-on-runs") |> render() =~ ~r{Access keys</a>\.}
 
       assert has_element?(
                lv,
@@ -293,7 +300,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert_patch(lv, tab_path(scope, node, "/add"))
       assert has_element?(lv, "#key-add-title", "Add a public key")
       assert has_element?(lv, "#key-add", "approved as you add it")
-      assert has_element?(lv, "#not-on-runs", "Runners can't use these keys")
+      assert has_element?(lv, "#not-on-runs", "Qory can't check these keys yet")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add a public key")
       assert has_element?(lv, ~s{#key-add-save-cancel[href="#{tab_path(scope, node)}"]})
       refute_untrue(render(lv))
@@ -473,7 +480,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#not-on-runs",
-               "Runners can't use these keys or enrolment codes yet"
+               "Qory can't check these keys yet, so this node receives no runs"
              )
 
       html =

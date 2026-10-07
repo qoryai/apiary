@@ -109,6 +109,9 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(view, "#target-denied", "files.cdn.example")
     assert has_element?(view, "#target-denied", "1 attempt in 1 run")
+    # The heading says "Denied"; each row's mark is a faint grey bullet, never red.
+    assert has_element?(view, "#target-denied li .hero-no-symbol-micro.size-3\\.5.text-faint")
+    refute has_element?(view, "#target-denied .text-error")
 
     assert has_element?(
              view,

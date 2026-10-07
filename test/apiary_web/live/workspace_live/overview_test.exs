@@ -476,7 +476,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
-  describe "needs attention" do
+  describe "to review" do
     @tag needs: :security
     test "is absent when there is nothing to do", %{conn: conn, scope: scope} do
       started_run(scope, shop())
@@ -513,7 +513,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       view = open(conn, scope)
 
+      assert text(view, "#attention-h") == "To review"
       assert text(view, "#attention-n") == "5"
+      assert has_element?(view, "#attention-list[aria-label='5 items to review']")
       assert has_element?(view, "#attention-more", "and 1 more")
 
       assert has_element?(
@@ -971,7 +973,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert [_] = Liveness.check(DateTime.utc_now())
       render_async(view, 5_000)
       assert has_element?(view, "#att-run-#{other.run_id}[data-kind=lost].q-arrived", "Lost")
-      assert text(view, "#overview-announcer") == "1 more item needs attention."
+      assert text(view, "#overview-announcer") == "1 more item to review."
     end
 
     test "a quiet run the check finds lost turns its row to Lost in place", %{

@@ -138,7 +138,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       >
         <:subtitle>
           {gettext(
-            "A key lets the machines of this workspace post their runs; one key can serve many hosts."
+            "A machine sends its runs to this workspace with one of these keys: a key id and a secret, pasted into its runner file. One key can serve many machines. Node keys, which belong to one machine or pool, will replace these once Qory can check them."
           )}
         </:subtitle>
         <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
@@ -647,7 +647,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   defp page_sentence(%{live_action: :new}),
     do:
       gettext(
-        "A key lets a machine post its runs to this workspace. Its secret is shown once, as soon as the key is created."
+        "A key lets a machine send its runs to this workspace. Its secret is shown once, as soon as the key is created."
       )
 
   # The browser's title: a page is named by its title, the list by the section.

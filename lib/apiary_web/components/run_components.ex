@@ -3036,9 +3036,11 @@ defmodule ApiaryWeb.RunComponents do
   goes back to the text action (`act_id`), and the rule in force that decides the row,
   where one does; where no one here changes what happened, why (the locked rule and who
   locked it, when the newest history says so, or the wall) with the way to the rule; the
-  rule that answers the row; then Only this host, where the list can be narrowed to it
-  (`host_path`), and Copy the host. A rule's link (`rule_path`) leads to the rule in its
-  policy's Network access section.
+  rule that answers the row; then, under This list, Show only and Copy with the row's host
+  (cut in the middle past 32 characters, the whole host its title and in its accessible
+  name): Show only where the list can be narrowed to the host (`host_path`). The policy's
+  items are headed Policy where no heading of their own says what decides the row. A
+  rule's link (`rule_path`) leads to the rule in its policy's Network access section.
   """
   attr :id, :string, required: true
   attr :act_id, :string, required: true, doc: "the row's text action, the panel's anchor"
@@ -3063,8 +3065,10 @@ defmodule ApiaryWeb.RunComponents do
         above_linked: act[:above_linked] == true,
         above_can_change: act[:above_can_change] == true,
         allow_elsewhere: act[:allow_elsewhere],
-        allow_path: act[:allow_path]
+        allow_path: act[:allow_path],
+        host_shown: middle(assigns.connection.host, 32)
       )
+      |> then(&assign(&1, :host_cut, &1.host_shown != &1.connection.host))
 
     ~H"""
     <.row_menu
@@ -3102,11 +3106,13 @@ defmodule ApiaryWeb.RunComponents do
           <.menu_heading title={gettext("No rule can name this host")} />
           <.menu_divider />
         <% :rule -> %>
+          <.menu_heading :if={@rule_path} title={gettext("Policy")} />
           <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
             {gettext("Show the rule")}
           </.menu_item>
           <.menu_divider :if={@rule_path} />
         <% :open -> %>
+          <.menu_heading :if={!@allow_elsewhere} title={gettext("Policy")} />
           <.menu_heading
             :if={@allow_elsewhere}
             title={gettext("%{name} allows only its own hosts", name: @allow_elsewhere.name)}
@@ -3137,16 +3143,25 @@ defmodule ApiaryWeb.RunComponents do
           <.menu_divider />
         <% nil -> %>
       <% end %>
-      <.menu_item :if={@host_path} id={"#{@id}-host"} patch={@host_path.(@connection.host)}>
-        {gettext("Only this host")}
+      <.menu_heading title={gettext("This list")} />
+      <.menu_item
+        :if={@host_path}
+        id={"#{@id}-host"}
+        patch={@host_path.(@connection.host)}
+        title={@host_cut && @connection.host}
+        aria-label={@host_cut && gettext("Show only %{host}", host: @connection.host)}
+      >
+        {gettext("Show only %{host}", host: @host_shown)}
       </.menu_item>
       <.menu_item
         id={"#{@id}-copy"}
         phx-hook="CopyToClipboard"
         data-copy={@connection.host}
         data-copied-words={gettext("Copied")}
+        title={@host_cut && @connection.host}
+        aria-label={@host_cut && gettext("Copy %{host}", host: @connection.host)}
       >
-        {gettext("Copy the host")}
+        {gettext("Copy %{host}", host: @host_shown)}
       </.menu_item>
     </.row_menu>
     """
@@ -3250,7 +3265,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a row's Allow or Deny opens: a panel in place, in the page's flow under the row it
-  is of (`connection_row/1`'s `panel`, a Needs attention item), never an overlay. `panel`
+  is of (`connection_row/1`'s `panel`, a To review item), never an overlay. `panel`
   is the page's state of it:
 
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,

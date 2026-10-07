@@ -4,10 +4,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   keys and its outstanding enrolment codes, over `Apiary.AccessKeys` as it is. Its header
   and tabs are the node's page's (`ApiaryWeb.NodeComponents`).
 
-  **What is true today.** No runner uses a node's key yet: runs still use the workspace's
-  access keys, and no enrolment is built, so nothing takes a code. The tab says so once,
-  plainly, above everything else, with the way to the workspace's access keys (Settings ›
-  Access keys), and none of its lines says a node posts, enrols or connects with what it
+  **What is true today.** Qory can't check a node's key yet, so the node receives no runs:
+  machines send their runs with a workspace access key, and no enrolment is built, so
+  nothing takes a code. The tab says so once, plainly, above everything else, with the
+  way to the workspace's access keys (Workspace settings › Access keys), and none of its lines says a node posts, enrols or connects with what it
   holds. The add and code pages say it too.
 
   - **Keys**, those in use first, then the revoked and the rejected, newest first: each its
@@ -759,7 +759,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp not_yet_text,
     do:
       rich_gettext(
-        "Runners can't use these keys or enrolment codes yet. Runs still use the workspace's access keys, in %{link}.",
+        "Qory can't check these keys yet, so this node receives no runs. Until it can, machines send their runs with a workspace access key, from %{link}.",
         link: {:part, :link}
       )
 

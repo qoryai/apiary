@@ -740,4 +740,58 @@ defmodule ApiaryWeb.RunComponentsTest do
              ) == "1 new line"
     end
   end
+
+  describe "rule_menu" do
+    defp rule_menu(host, act) do
+      render_component(&RunComponents.rule_menu/1,
+        id: "m",
+        act_id: "m-act",
+        connection: %{host: host},
+        act: act,
+        host_path: &"/acme/main/network?host=#{&1}"
+      )
+      |> LazyHTML.from_fragment()
+    end
+
+    defp texts(doc, selector),
+      do: doc |> LazyHTML.query(selector) |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+    test "the policy's items under Policy, the list's under This list, naming the host" do
+      doc = rule_menu("api.example.com", %{rule_option: :can_allow, values: %{}})
+
+      assert texts(doc, ".q-mh-t") == ["Policy", "This list"]
+      assert texts(doc, "#m-allow") == ["Allow…"]
+      assert texts(doc, "#m-host") == ["Show only api.example.com"]
+      assert texts(doc, "#m-copy") == ["Copy api.example.com"]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-copy"), "data-copy") == [
+               "api.example.com"
+             ]
+
+      # A short host is whole: no title, no accessible name beside its words.
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-host, #m-copy"), "title") == []
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-host, #m-copy"), "aria-label") == []
+    end
+
+    test "a long host is cut in the middle, whole in its title and accessible name" do
+      host = "artifacts.build-01.spot-runners.eu-west.example.com"
+      doc = rule_menu(host, nil)
+
+      # No policy part: the list's heading alone.
+      assert texts(doc, ".q-mh-t") == ["This list"]
+
+      [shown] = texts(doc, "#m-host")
+      assert shown == "Show only " <> RunComponents.middle(host, 32)
+      assert shown =~ "…"
+      assert String.length(shown) == String.length("Show only ") + 32
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-host"), "title") == [host]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-host"), "aria-label") == [
+               "Show only #{host}"
+             ]
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-copy"), "aria-label") == ["Copy #{host}"]
+      assert LazyHTML.attribute(LazyHTML.query(doc, "#m-copy"), "data-copy") == [host]
+    end
+  end
 end

@@ -24,9 +24,9 @@ defmodule ApiaryWeb.NodeLive.Index do
   Everyone in the workspace reads the list (`node.read`); a member sees it without the
   buttons, and a form's path refuses them.
 
-  Under its title, once, the plain line that runners can't use a node's keys yet, so no
-  run is placed on a node today, with the way to the workspace's access keys
-  (`ApiaryWeb.NodeComponents.not_yet/1`). The sidebar's Nodes leads here: the pages pass
+  Under its title, once, the plain line that nodes receive no runs yet, since Qory can't
+  check a node's key yet, and that machines send their runs with a workspace access key
+  until it can, with the way to them (`ApiaryWeb.NodeComponents.not_yet/1`). The sidebar's Nodes leads here: the pages pass
   `nav: :nodes`, so Nodes is the current entry on the list and on the New node and New
   node pool forms.
 
@@ -413,18 +413,18 @@ defmodule ApiaryWeb.NodeLive.Index do
           )}
         </:description>
         <:actions :if={@may_create}>
+          <.button id="new-node" patch={new_path(@current_scope, :node)}>
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("New node")}
+          </.button>
           <.button id="new-node-pool" patch={new_path(@current_scope, :pool)}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New node pool")}
-          </.button>
-          <.button id="new-node" variant="primary" patch={new_path(@current_scope, :node)}>
-            <.icon name="hero-plus-micro" class="size-4" />{gettext("New node")}
           </.button>
         </:actions>
         <NodeComponents.not_yet
           scope={@current_scope}
           text={
             rich_gettext(
-              "Runners can't use a node's keys yet, so no run is placed on a node today. Runs still use the workspace's access keys, in %{link}.",
+              "Nodes receive no runs yet: Qory can't check a node's key yet. Until it can, machines send their runs with a workspace access key, from %{link}.",
               link: {:part, :link}
             )
           }

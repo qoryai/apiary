@@ -31,6 +31,10 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
       assert html =~ ~r/Last used.*Runner/s
+
+      # The intro says what these keys are, and that node keys will replace them.
+      assert html =~ "A machine sends its runs to this workspace with one of these keys"
+      assert html =~ "Node keys, which belong to one machine or pool, will replace these"
       assert lv |> element("#key-#{used.id}") |> render() =~ "5 minutes ago"
 
       row = lv |> element("#key-#{silent.id}") |> render()
@@ -61,6 +65,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       refute has_element?(lv, "#new-key")
       assert has_element?(lv, "#settings-tab-keys[aria-current=true]")
       assert has_element?(lv, "#settings-section-title", "New access key")
+      assert render(lv) =~ "A key lets a machine send its runs to this workspace."
       assert render(lv) =~ "Its secret is shown once"
       assert has_element?(lv, "#breadcrumb a[href='#{keys}']", "Access keys")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "New access key")
