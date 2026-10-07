@@ -142,6 +142,23 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(from i in Instance, where: i.workspace_id == ^main.id) > 0
     assert count(from r in Run, where: r.workspace_id == ^main.id and not is_nil(r.node_id)) > 0
 
+    # The recordings' runs name CI runners too, but Dana's laptop key posted them: only
+    # the history's runs are placed on a node.
+    laptop =
+      Repo.all(
+        from k in AccessKey,
+          where: k.workspace_id == ^main.id and k.label == "dana-laptop",
+          select: k.id
+      )
+
+    assert Repo.exists?(
+             from r in Run, where: r.access_key_id in ^laptop and like(r.host, "ci-runner-%")
+           )
+
+    refute Repo.exists?(
+             from r in Run, where: r.access_key_id in ^laptop and not is_nil(r.node_id)
+           )
+
     # Secrets, variables and integrations are the security feature's.
     if Apiary.Features.on?(:security) do
       assert count(from s in Secret, where: s.workspace_id == ^main.id) == 4
@@ -183,6 +200,25 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
     assert_raise Mix.Error, ~r/not the demo's/, fn -> fill() end
     refute Repo.exists?(from o in Organisation, where: o.slug == "acme")
+  end
+
+  test "an instance with the demo's organisation and another one is refused" do
+    sign_up_fixture(%{email: "dana@example.com", organisation_name: "Acme"})
+    sign_up_fixture()
+
+    assert_raise Mix.Error, ~r/not the demo's/, fn -> fill() end
+    refute Repo.exists?(Run)
+  end
+
+  test "a fill that stopped before its last step is refused, not served as whole" do
+    # Dana and Acme are the fill's first step; her pins, its last, are missing.
+    sign_up_fixture(%{email: "dana@example.com", organisation_name: "Acme"})
+
+    assert_raise Mix.Error, ~r/fill did not finish: run demo-up.sh with --reset/, fn ->
+      fill()
+    end
+
+    refute Repo.exists?(Run)
   end
 
   describe "the database it fills" do

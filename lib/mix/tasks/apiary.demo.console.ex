@@ -19,8 +19,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   `APIARY_DEV_DATABASE` names the database the app is configured with (`config/dev.exs`
   reads it) and `DATABASE_URL`, which would replace that database, is unset; and it never
   fills `apiary_dev` or `apiary_core_dev`, the databases people work in. It refuses an
-  instance that has an organisation other than its own, so the database you work in is
-  never filled by mistake.
+  instance that has any organisation other than its own, Acme, so the database you work
+  in is never filled by mistake, and an Acme whose fill did not finish (below).
 
   ## What it makes
 
@@ -29,7 +29,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * **dana@example.com** signs up first, so she owns the organisation **Acme** (`acme`)
       and runs the instance, with its workspace **Main** (`main`).
     * **Main** gets `mix apiary.demo.history`'s history: `--runs` runs (6,000) over
-      `--days` days (56) across 150 repositories on github.com, gitlab.com and
+      `--days` days (56) across about 150 repositories on github.com, gitlab.com and
       codeberg.org, of every outcome, with subagents, terminals and network; its access
       keys; a dozen people at every level, one suspended, and two invitations pending;
       and the security policy, with versions, a lock and repositories of their own.
@@ -38,23 +38,29 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * The six recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
       the last day.
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
-      keys added by their public keys (one revoked, one replaced), an enrolment code
-      cancelled and one outstanding, and instances: the history's runs on the machines
-      of those names are placed on them.
+      keys added by their public keys (build-01's first key replaced and revoked), an
+      enrolment code cancelled and one outstanding, and instances: the history's runs on
+      the machines of those names are placed on them. The recordings' runs name some of
+      those machines too, but they were posted with Dana's laptop key and are placed on
+      no node.
     * Secrets, one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
       fetched, and one release whose fetch failed. Runs do not receive these yet.
-    * Dana pins three repositories.
     * Where the edition allows an organisation a second workspace, **Shop ops**
       (`shop-ops`) is made too, with a smaller history of its own; the core's allows
       one.
+    * Last, Dana pins three repositories.
 
-  Running it again on the instance it filled adds nothing of that. Either way it ends by
-  bringing what lives for minutes up to now: it replays the running recording, a run
-  alive for about half an hour, and makes build-02 an enrolment code when it has none
-  outstanding, which lives fifteen minutes. To fill again from nothing, drop the
-  database and create it again.
+  Running it again on the instance it filled adds nothing of that. Dana's pins, the
+  fill's last step, mark a fill that finished: an Acme without them the task takes for
+  one that stopped half way, and refuses rather than serve it as whole. To fill again
+  from nothing, drop the database and create it again.
+
+  Whether it filled the instance or found it filled, it ends by bringing what lives for
+  minutes up to now: it replays the running recording, a run alive for about half an
+  hour, and makes build-02 an enrolment code when it has none outstanding, which lives
+  fifteen minutes.
 
   ## Signing in
 
@@ -74,6 +80,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Run, Target}
+  alias Apiary.Targets.Pin
   alias Mix.Tasks.Apiary.Demo
   alias Mix.Tasks.Apiary.Demo.History
 
@@ -124,6 +131,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       %User{} = owner ->
         Mix.shell().info("The demo is there already: nothing more is made.")
         owner
+
+      :unfinished ->
+        Mix.raise(
+          "The demo's fill did not finish: run demo-up.sh with --reset, " <>
+            "or drop the database and create it again"
+        )
 
       :other ->
         Mix.raise(
@@ -177,34 +190,30 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       """
   end
 
-  # Whether the instance has no organisation in use, is the demo's (its first organisation
-  # is Acme, owned by Dana), or is anybody else's.
+  # Whether the instance has no organisation in use, is the demo's, is a fill of it that
+  # did not finish, or is anybody else's. The demo's has one organisation in use, Acme,
+  # owned by Dana, who has the pins the fill makes last; an instance with any other
+  # organisation in use is somebody else's.
   defp instance do
-    first =
-      Repo.one(
-        from o in Organisation,
-          where: is_nil(o.deletion_marked_at),
-          order_by: [asc: o.inserted_at, asc: o.id],
-          limit: 1
-      )
+    in_use = Repo.all(from o in Organisation, where: is_nil(o.deletion_marked_at))
 
-    case first do
-      nil ->
-        :empty
-
-      %Organisation{slug: "acme"} = organisation ->
-        user = Accounts.get_user_by_email(@owner)
-
-        if user && Repo.exists?(owned(organisation, user)), do: user, else: :other
-
-      %Organisation{} ->
-        :other
+    with [%Organisation{slug: "acme"} = acme] <- in_use,
+         %User{} = owner <- Accounts.get_user_by_email(@owner),
+         true <- Repo.exists?(owned(acme, owner)) do
+      if Repo.exists?(pinned(acme, owner)), do: owner, else: :unfinished
+    else
+      [] -> :empty
+      _ -> :other
     end
   end
 
   defp owned(organisation, user) do
     from m in Organisations.Membership,
       where: m.organisation_id == ^organisation.id and m.user_id == ^user.id and m.level == :owner
+  end
+
+  defp pinned(organisation, user) do
+    from p in Pin, where: p.organisation_id == ^organisation.id and p.user_id == ^user.id
   end
 
   ## The fill
@@ -232,8 +241,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       connections(main)
     end
 
-    pins(main)
-
     second =
       with %Scope{} = scope <- second_workspace(main, owner) do
         History.run(
@@ -245,6 +252,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         if Apiary.Features.on?(scope, :security), do: variables_of_second(scope)
         [scope_of_second(owner, scope)]
       end
+
+    # Last, as they mark a fill that finished (instance/0).
+    pins(main)
 
     counts([main | second || []])
     owner
@@ -365,10 +375,12 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     {:ok, _cancelled} = AccessKeys.cancel_code(scope, code)
 
+    # The history posts the runs of build-01 and build-02 with its key build-eu, and those
+    # of the CI runners with ci-fleet (mix apiary.demo.history).
     placed =
-      place(scope, build_01, ["build-01"], [key_01]) +
-        place(scope, build_02, ["build-02"], [key_02]) +
-        place(scope, pool, ci_runners(), [pool_a, pool_b])
+      place(scope, build_01, {"build-eu", ["build-01"]}, [key_01]) +
+        place(scope, build_02, {"build-eu", ["build-02"]}, [key_02]) +
+        place(scope, pool, {"ci-fleet", ci_runners()}, [pool_a, pool_b])
 
     Mix.shell().info("Nodes build-01, build-02 and spot-runners: #{placed} runs placed on them")
   end
@@ -390,13 +402,18 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     key
   end
 
-  # The history's runs on the machines of `hosts` ran on `node`, each machine one of its
-  # instances: the runs say so, and each instance was last seen with its last run.
-  defp place(%Scope{workspace: workspace}, node, hosts, keys) do
+  # The history's runs on the machines of `hosts`, which it posted with its key `label`,
+  # ran on `node`, each machine one of its instances: the runs say so, and each instance
+  # was last seen with its last run. The recordings' runs name some of the same machines
+  # but were posted with Dana's laptop key, so they stay on no node.
+  defp place(%Scope{workspace: workspace} = scope, node, {label, hosts}, keys) do
+    posted_with = for key <- AccessKeys.list_access_keys(scope), key.label == label, do: key.id
+
     {placed, _} =
       Repo.update_all(
         from(r in Run,
           where: r.workspace_id == ^workspace.id and r.host in ^hosts,
+          where: r.access_key_id in ^posted_with,
           update: [set: [node_id: ^node.id, instance_id: r.host]]
         ),
         []
