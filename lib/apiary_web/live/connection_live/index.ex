@@ -281,7 +281,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           heading={gettext("Most destinations")}
           rail={@rail}
           chosen={Narrowing.chosen(@narrowing, @filters.target)}
-          chosen_count={@listing && @listing.summary.destinations}
+          chosen_count={@loaded == @filters && @listing && @listing.summary.destinations}
           shared={@shared}
           query={@rail_query}
           path={
@@ -483,6 +483,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
      assign(socket,
        page_title: gettext("Network access"),
        filters: Filters.new(:connections),
+       # The filters the listing was read for.
+       loaded: nil,
        listing: nil,
        views: nil,
        rail: nil,
@@ -763,6 +765,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       {:noreply,
        socket
        |> assign(
+         loaded: filters,
          listing: loaded.listing,
          views: loaded.views,
          rail: loaded.rail,

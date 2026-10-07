@@ -296,7 +296,7 @@ defmodule ApiaryWeb.RunLive.Index do
               label={gettext("Targets")}
               rail={@rail}
               chosen={Narrowing.chosen(@narrowing, @filters.target)}
-              chosen_count={@listing && @listing.total}
+              chosen_count={loaded_total(@loaded, @filters, @listing)}
               shared={@shared}
               query={@rail_query}
               path={
@@ -1299,6 +1299,13 @@ defmodule ApiaryWeb.RunLive.Index do
     params = if run, do: Map.put(params, "run", run), else: params
     ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{params}"
   end
+
+  # How many runs the list holds under the filters on the page, once they are the ones the
+  # listing was read for: the rail's count of a chosen target it misses.
+  defp loaded_total(%Filters{} = loaded, filters, %{total: total}),
+    do: if(Filters.same?(loaded, filters), do: total)
+
+  defp loaded_total(_loaded, _filters, _listing), do: nil
 
   # A run's id as the URL may carry it, the id the runner prints.
   defp run_id(value) when is_binary(value) do
