@@ -10913,7 +10913,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
-msgid "The release's description.json is not a valid description of an integration."
+msgid "The release's description.json is not a valid description of a program."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex

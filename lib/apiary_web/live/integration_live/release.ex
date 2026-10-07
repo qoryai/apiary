@@ -351,7 +351,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       )
 
   defp failure("description_invalid"),
-    do: gettext("The release's description.json is not a valid description of an integration.")
+    do: gettext("The release's description.json is not a valid description of a program.")
 
   defp failure("placeholder_conflict"),
     do: gettext("The release's description.json names a placeholder that isn't allowed.")
