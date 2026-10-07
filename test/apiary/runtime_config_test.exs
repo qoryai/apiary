@@ -6,6 +6,7 @@ defmodule Apiary.RuntimeConfigTest do
     "DATABASE_URL" => "ecto://apiary:apiary@localhost/apiary",
     "SECRET_KEY_BASE" => String.duplicate("s", 64),
     "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("k", 32)),
+    "APIARY_SIGNING_SECRET" => Base.encode64(String.duplicate("g", 32)),
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
@@ -84,6 +85,49 @@ defmodule Apiary.RuntimeConfigTest do
         assert_raise RuntimeError, ~r/APIARY_ENCRYPTION_SECRET is not 32 bytes/, fn ->
           prod_config()
         end
+      end
+    end
+  end
+
+  describe "APIARY_SIGNING_SECRET" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    test "its 32 bytes are the signing key's seed, and nothing derives them" do
+      config = prod_config()
+      assert get_in(config, [:apiary, Apiary.SigningKey, :seed]) == String.duplicate("g", 32)
+
+      # A secret of its own: the encryption secret is read as it was, and the seed is
+      # not it.
+      assert get_in(config, [:apiary, Apiary.KeyDerivation, :secret]) ==
+               String.duplicate("k", 32)
+    end
+
+    test "missing or blank, it stops the boot, naming the variable: there is no fallback" do
+      for set <- [&System.delete_env/1, &System.put_env(&1, "")] do
+        set.("APIARY_SIGNING_SECRET")
+        error = assert_raise RuntimeError, fn -> prod_config() end
+        assert error.message =~ "APIARY_SIGNING_SECRET is missing"
+        assert error.message =~ "openssl rand -base64 32"
+      end
+    end
+
+    test "not 32 bytes in base64, it stops the boot, naming the variable and never the value" do
+      for value <- [
+            Base.encode64(String.duplicate("g", 31)),
+            Base.encode64(String.duplicate("g", 33)),
+            # The contract's fixture signing seed as the fixtures write it, base64url
+            # without padding.
+            "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2A",
+            Base.url_encode64(<<0xFB>> <> String.duplicate("g", 31)),
+            Base.encode64(String.duplicate("g", 32)) <> "\n",
+            "not base64!"
+          ] do
+        System.put_env("APIARY_SIGNING_SECRET", value)
+        error = assert_raise RuntimeError, fn -> prod_config() end
+        assert error.message =~ "APIARY_SIGNING_SECRET is not 32 bytes in base64"
+        refute error.message =~ String.trim(value)
       end
     end
   end

@@ -2,14 +2,15 @@
 
 Postgres is the only state of Qory Apiary. The container holds nothing that a restart does
 not rebuild, and nothing is written to a disk outside the database. A backup is therefore
-three things:
+four things:
 
 1. a dump of the database;
 2. `APIARY_ENCRYPTION_SECRET`;
-3. `SECRET_KEY_BASE`.
+3. `APIARY_SIGNING_SECRET`;
+4. `SECRET_KEY_BASE`.
 
-Keep the two values beside the dumps and not inside them, in a password manager or a secret
-store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the access key
+Keep the three values beside the dumps and not inside them, in a password manager or a
+secret store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the access key
 secrets and the stored secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET`
 protects nothing of them.
 
@@ -61,7 +62,7 @@ a dump restores under the release it was taken under or under a later one.
 ### The compose installation
 
 On a new machine, with the repository checked out and `.env` holding the same
-`APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`:
+`APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`:
 
 ```sh
 docker compose up -d postgres
@@ -150,6 +151,16 @@ So does the security policy, with its versions and history.
 For the same reason `APIARY_ENCRYPTION_SECRET` must never change on a running installation
 once an access key or a stored secret exists.
 
+### `APIARY_SIGNING_SECRET`
+
+It is the seed of the key the instance signs its answers to runners with, and every machine
+pins that key's public half. It encrypts nothing and keys nothing in the database, and it is
+not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, on its own.
+
+**Losing or changing `APIARY_SIGNING_SECRET` means pinning every machine again.** The
+instance then signs under another key, and each machine refuses its answers until it pins
+the new public key. Nothing in the database is lost.
+
 ### `SECRET_KEY_BASE`
 
 It signs the session cookie and the "Keep me signed in" cookie. With another value every
@@ -165,7 +176,8 @@ A backup that has never been restored is a hope. Once, and after any change to h
 are taken, restore the newest dump on another machine:
 
 1. Check the repository out at the tag the installation runs.
-2. Write a `.env` with the installation's `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`, a
+2. Write a `.env` with the installation's `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET`
+   and `SECRET_KEY_BASE`, a
    new database password in `POSTGRES_PASSWORD` and `DATABASE_URL`, `PUBLIC_URL=http://localhost:4100`
    and `MAIL_TO_LOG=true`. The drill sends no mail, and nobody else signs in to it.
 3. Restore as under "The compose installation" above.
