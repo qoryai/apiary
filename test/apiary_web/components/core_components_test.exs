@@ -6,6 +6,32 @@ defmodule ApiaryWeb.CoreComponentsTest do
 
   alias ApiaryWeb.CoreComponents
 
+  @endpoint ApiaryWeb.Endpoint
+
+  defmodule RowMenuLive do
+    use Phoenix.LiveView
+
+    alias ApiaryWeb.CoreComponents
+
+    def mount(_params, _session, socket), do: {:ok, assign(socket, show: false, name: "Rename")}
+
+    def handle_event("set", params, socket) do
+      {:noreply,
+       assign(
+         socket,
+         Enum.map(params, fn {key, value} -> {String.to_existing_atom(key), value} end)
+       )}
+    end
+
+    def render(assigns) do
+      ~H"""
+      <CoreComponents.row_menu id="row" label="Actions for build-01">
+        <CoreComponents.menu_item :if={@show} phx-click="noop">{@name}</CoreComponents.menu_item>
+      </CoreComponents.row_menu>
+      """
+    end
+  end
+
   describe "an input with a prefix" do
     test "shows the prefix before the value as one field, read with it" do
       form = Phoenix.Component.to_form(%{"slug" => "data"}, as: :workspace)
@@ -82,6 +108,74 @@ defmodule ApiaryWeb.CoreComponentsTest do
       items = html |> LazyHTML.from_fragment() |> LazyHTML.query("[role=menuitem]")
       assert Enum.count(items) == 2
       assert LazyHTML.attribute(items, "tabindex") == ["-1", "-1"]
+    end
+  end
+
+  describe "a row's menu" do
+    test "with no slot shows no trigger and no list" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.row_menu id="row" label="Actions for build-01" />
+        """)
+
+      assert String.trim(html) == ""
+    end
+
+    test "whose items are each left out shows no trigger and no list" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.row_menu id="row" label="Actions for build-01">
+          <CoreComponents.menu_item :if={false} patch="/keys/1/rotate">Rotate</CoreComponents.menu_item>
+          <CoreComponents.menu_divider :if={false} />
+          <CoreComponents.menu_item :if={false} phx-click="copy">Copy</CoreComponents.menu_item>
+        </CoreComponents.row_menu>
+        """)
+
+      assert String.trim(html) == ""
+    end
+
+    test "with an item shows its trigger and the item" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.row_menu id="row" label="Actions for build-01">
+          <CoreComponents.menu_item :if={false} phx-click="copy">Copy</CoreComponents.menu_item>
+          <CoreComponents.menu_item patch="/keys/1/rotate">Rotate</CoreComponents.menu_item>
+        </CoreComponents.row_menu>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert doc |> LazyHTML.query("#row > button#row-button") |> LazyHTML.attribute("aria-label") ==
+               ["Actions for build-01"]
+
+      items = LazyHTML.query(doc, "#row > ul[role=menu] [role=menuitem]")
+      assert items |> Enum.map(&LazyHTML.text/1) |> Enum.map(&String.trim/1) == ["Rotate"]
+    end
+
+    test "gains and loses its trigger as its items come and go in a live view" do
+      {:ok, view, html} =
+        live_isolated(Phoenix.ConnTest.build_conn(), __MODULE__.RowMenuLive)
+
+      refute html =~ "row-button"
+      refute has_element?(view, "#row")
+
+      render_click(view, "set", %{"show" => true})
+      assert has_element?(view, "#row > button#row-button")
+      assert has_element?(view, "#row [role=menuitem]", "Rename")
+
+      render_click(view, "set", %{"name" => "Rotate"})
+      assert has_element?(view, "#row [role=menuitem]", "Rotate")
+      refute has_element?(view, "#row [role=menuitem]", "Rename")
+
+      render_click(view, "set", %{"show" => false})
+      refute has_element?(view, "#row")
+      refute has_element?(view, "#row-button")
     end
   end
 

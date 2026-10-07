@@ -1395,8 +1395,11 @@ defmodule ApiaryWeb.CoreComponents do
   slot :inner_block
 
   def row_menu(assigns) do
+    assigns = assign(assigns, :items?, not blank_slot?(assigns.inner_block))
+
     ~H"""
     <div
+      :if={@items?}
       id={@id}
       class={["q-rowmenu dropdown dropdown-end", @class]}
       phx-hook="Menu"
@@ -1425,6 +1428,21 @@ defmodule ApiaryWeb.CoreComponents do
       </ul>
     </div>
     """
+  end
+
+  # Whether a slot renders nothing but whitespace: absent, or each of its items left out
+  # by its `:if`. It renders the slot on its own, apart from the template's render, so the
+  # menu's markup keeps its change tracking.
+  defp blank_slot?([]), do: true
+
+  defp blank_slot?(slot) do
+    assigns = %{slot: slot}
+
+    ~H"{render_slot(@slot)}"
+    |> Phoenix.HTML.Safe.to_iodata()
+    |> IO.iodata_to_binary()
+    |> String.trim()
+    |> Kernel.==("")
   end
 
   @doc """
