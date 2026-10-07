@@ -343,9 +343,9 @@ defmodule ApiaryWeb.UserAuth do
   The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
   Members, with the policy's mode beside Policy, the targets the person pinned in the
   workspace (`pins`, `Apiary.Targets.list_pins/2`), the sections of the Instance level the
-  person may open (`instance`, `ApiaryWeb.Layouts.instance_sections/1`), for the account
-  menu and the Instance's second column, and the edition's beside its entries
-  (`c:ApiaryWeb.Edition.nav_counts/1`).
+  person may open (`instance`, `ApiaryWeb.Layouts.instance_sections/1`), for the Qory
+  Apiary menu's Instance settings and the Instance's second column, and the edition's
+  beside its entries (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
 

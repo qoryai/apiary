@@ -5761,10 +5761,7 @@ msgstr "In the repository %{target}, which has rules of its own: %{refusal}"
 msgid "In the workspace's baseline: %{refusal}"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5783,9 +5780,16 @@ msgstr ""
 msgid "Instance limit"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
-msgid "Instance › %{page}"
+msgid "Instance settings"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Instance settings › %{page}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

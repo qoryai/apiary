@@ -280,9 +280,10 @@ defmodule ApiaryWeb.Routes do
   stays the one they came from and the Instance's sections open beside it
   (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
   block's routes go into the `live_session :instance`, after the core's. The core's one
-  page here is Instance › Configuration (`ApiaryWeb.InstanceLive.Configuration`), for the
-  instance's admins; `/instance` itself sends on to the first section the person may
-  open, and is not found for whoever may open none (`ApiaryWeb.InstanceController`).
+  page here is Instance settings › Configuration
+  (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
+  sends on to the first section the person may open, and is not found for whoever may
+  open none (`ApiaryWeb.InstanceController`).
   """
   defmacro instance_routes(opts \\ [], block \\ []) do
     routes =

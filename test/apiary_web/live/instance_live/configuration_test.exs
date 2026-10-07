@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
   @moduledoc """
-  Instance › Configuration (`ApiaryWeb.InstanceLive.Configuration`): what whoever runs the
-  server set, read only, for the instance's admins, behind the account menu's Instance;
-  anyone else is answered as a path that does not exist. The suite's instance has had its
+  Instance settings › Configuration (`ApiaryWeb.InstanceLive.Configuration`): what whoever
+  runs the server set, read only, for the instance's admins, behind the Qory Apiary menu's
+  Instance settings; anyone else is answered as a path that does not exist. The suite's instance has had its
   first sign-up; a test that needs an instance admin hides its organisation inside its
   sandbox (`Apiary.EditionKit`), so the organisation it signs up is the instance's.
   """
@@ -10,6 +10,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures, only: [member_fixture: 1]
 
   alias Apiary.{Audit, Deletion, Features, Instance}
   alias Apiary.Retention.Scheduler
@@ -62,7 +63,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       {:ok, view, html} = live(conn, ~p"/instance/configuration")
 
-      assert html =~ ~r{<title[^>]*>\s*Configuration · Instance · Qory Apiary\s*</title>}
+      assert html =~ ~r{<title[^>]*>\s*Configuration · Instance settings · Qory Apiary\s*</title>}
       # The section is the page's one h1; the level is the breadcrumb's and the title's.
       assert text(view, "h1#settings-section-title") =~ "Configuration"
       refute has_element?(view, "#main h1", "Instance")
@@ -189,18 +190,33 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert conn |> get(~p"/instance") |> redirected_to(302) == "/instance/configuration"
     end
 
-    test "is the account menu's Instance, a page of its own beside the sidebar the person came from",
+    test "is the Qory Apiary menu's Instance settings, a page of its own beside the sidebar the person came from",
          %{conn: conn, scope: scope} do
+      # Instance settings leads to the first section the person may open: Configuration
+      # in the core, whatever the edition puts before it.
+      [first | _] = ApiaryWeb.Layouts.instance_sections(scope)
+      path = ApiaryWeb.Nav.Entry.path(first, scope.organisation, scope.workspace)
+      instance = "#sidebar #brand-menu a#brand-menu-instance[href='#{path}']"
+
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
-      assert has_element?(view, "#user-menu-instance[href='/instance/configuration']")
+      assert has_element?(view, instance, "Instance settings")
+      # The account menu has no Instance: the level is not the person's.
+      refute has_element?(view, "#user-menu-instance")
 
       {:ok, view, _html} = live(conn, ~p"/instance/configuration")
-      assert has_element?(view, "#user-menu-instance[href='/instance/configuration']")
+      assert has_element?(view, instance, "Instance settings")
+      refute has_element?(view, "#user-menu-instance")
 
       # The core's Instance has the one section: no second column.
       refute has_element?(view, "#instance-tabs")
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
-      assert has_element?(view, "#breadcrumb a[href='/instance/configuration']", "Instance")
+
+      assert has_element?(
+               view,
+               "#breadcrumb a[href='/instance/configuration']",
+               "Instance settings"
+             )
+
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Configuration")
 
       # With no second column and so no disclosure, a phone's bar keeps both segments.
@@ -213,17 +229,45 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
     end
   end
 
+  describe "for a plain member of the instance's organisation" do
+    setup do
+      Apiary.EditionKit.hide_instance_organisation()
+      :ok
+    end
+
+    setup :register_and_log_in_user
+
+    test "the Qory Apiary menu has no Instance settings, and the page is not found",
+         %{conn: conn, scope: scope} do
+      assert Apiary.Access.instance_admin?(scope)
+      member = member_fixture(scope)
+      refute Apiary.Access.instance_admin?(member.scope)
+
+      conn = log_in_user(conn, member.user)
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+      assert has_element?(view, "#brand-menu a#brand-menu-docs")
+      refute has_element?(view, "#brand-menu-instance")
+      refute has_element?(view, "#user-menu-instance")
+
+      assert_raise ApiaryWeb.NotFound, fn -> live(conn, ~p"/instance/configuration") end
+    end
+  end
+
   describe "for anyone else" do
     setup :register_and_log_in_user
 
-    test "is not found, and the account menu has no Instance", %{conn: conn, scope: scope} do
+    test "is not found, and the Qory Apiary menu has no Instance settings for the owner of another organisation",
+         %{conn: conn, scope: scope} do
       refute Apiary.Access.instance_admin?(scope)
+      assert Apiary.Access.level(scope) == :owner
 
       assert_raise ApiaryWeb.NotFound, fn -> live(conn, ~p"/instance/configuration") end
       # With no section to open, the level itself is not found either.
       assert_error_sent :not_found, fn -> get(conn, ~p"/instance") end
 
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+      assert has_element?(view, "#brand-menu a#brand-menu-docs")
+      refute has_element?(view, "#brand-menu-instance")
       refute has_element?(view, "#user-menu-instance")
     end
   end

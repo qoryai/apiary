@@ -79,10 +79,11 @@ defmodule ApiaryWeb.Edition do
   @doc """
   The edition's entries of the account menu, after the core's of the same group
   (`ApiaryWeb.Layouts.account_menu_entries/1`), in the scope of the page: each an
-  `ApiaryWeb.Nav.Entry` whose `section` says its group, `:account` (with Your settings and
-  Your organisations, the default) or `:instance` (after the theme, before Log out, where
-  the instance's admins find Instance), and whose `action`, where it has one, is asked of
-  the organisation before it is offered.
+  `ApiaryWeb.Nav.Entry` whose `section` says its group, `:account` (with Settings and
+  Your organisations, the default) or `:instance` (after the theme, before Log out), and
+  whose `action`, where it has one, is asked of the organisation before it is offered.
+  The Instance level is not the account menu's: its Instance settings is in the Qory
+  Apiary menu (`c:instance_sections/1`).
   """
   @callback account_menu_entries(Scope.t()) :: [Entry.t()]
 
@@ -90,8 +91,9 @@ defmodule ApiaryWeb.Edition do
   The edition's sections of the Instance level, before the core's Configuration
   (`ApiaryWeb.Layouts.instance_sections/1`): each an `ApiaryWeb.Nav.Entry` with
   `place: :instance` and a path, a string, only those the scope's person may open. The
-  account menu leads to the first; with two or more they open as the second column of
-  the Instance's pages.
+  Qory Apiary menu's Instance settings, shown to whoever may open one, leads to the
+  first; with two or more they open as the second column of the Instance's pages, under
+  the heading Instance settings.
   """
   @callback instance_sections(Scope.t()) :: [Entry.t()]
 

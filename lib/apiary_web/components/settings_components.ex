@@ -174,7 +174,7 @@ defmodule ApiaryWeb.SettingsComponents do
     do: [gettext("Organisation settings"), organisation.name]
 
   defp title_level(_scope, :person), do: [gettext("Your settings")]
-  defp title_level(_scope, :instance), do: [gettext("Instance")]
+  defp title_level(_scope, :instance), do: [gettext("Instance settings")]
 
   # The settings' actions are asked of the organisation: listing its workspaces, whose
   # deletion is its.

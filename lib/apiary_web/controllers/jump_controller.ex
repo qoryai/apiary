@@ -194,7 +194,7 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("Preferences › %{page}", page: label)
 
   defp go_to_label(%Entry{place: :instance, label: label}),
-    do: gettext("Instance › %{page}", page: label)
+    do: gettext("Instance settings › %{page}", page: label)
 
   defp go_to_label(%Entry{label: label}), do: label
 
@@ -211,7 +211,7 @@ defmodule ApiaryWeb.JumpController do
 
   defp where(%Entry{place: :workspace}, scope), do: scope.workspace.name
   defp where(%Entry{place: :organisation}, scope), do: scope.organisation.name
-  defp where(%Entry{place: :instance}, _scope), do: gettext("Instance")
+  defp where(%Entry{place: :instance}, _scope), do: gettext("Instance settings")
   defp where(%Entry{}, _scope), do: gettext("Your account")
 
   defp targets(%{workspace: %{} = workspace} = scope, text) when text != "" do

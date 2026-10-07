@@ -256,16 +256,16 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert Enum.count(labels, &(&1 == "Organisation settings › People")) == 1
   end
 
-  test "an instance admin goes to Instance › Configuration; nobody else does",
+  test "an instance admin goes to Instance settings › Configuration; nobody else does",
        %{conn: conn, user: user, scope: scope} do
     go_to = fn -> group(jump(conn, workspace_path(scope, "/jump"), "configuration"), "Go to") end
 
-    refute "Instance › Configuration" in labels(go_to.())
+    refute "Instance settings › Configuration" in labels(go_to.())
 
     {:ok, %{granted?: true}} = Organisations.grant_instance_admin(user)
 
-    item = Enum.find(go_to.()["items"], &(&1["label"] == "Instance › Configuration"))
+    item = Enum.find(go_to.()["items"], &(&1["label"] == "Instance settings › Configuration"))
     assert item["href"] == "/instance/configuration"
-    assert item["detail"] == "Instance"
+    assert item["detail"] == "Instance settings"
   end
 end
