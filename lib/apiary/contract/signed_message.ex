@@ -1,10 +1,11 @@
 defmodule Apiary.Contract.SignedMessage do
   @moduledoc ~S"""
-  SignedMessage builds the two messages the server contract signs with Ed25519
-  (`Apiary.Contract.Ed25519`): a request's, which a runner signs under its access key,
-  and an answer's, which the server signs under its own key. Each is lines joined by
-  `\n`, with no newline after the last. Pure functions; nothing here touches the
-  database, a connection or a log, and nothing here holds a key.
+  SignedMessage builds the three messages the server contract signs with Ed25519
+  (`Apiary.Contract.Ed25519`): a request's, which a runner signs under its access key; an
+  enrolment's proof, which a machine signs under the new key it enrols; and an answer's,
+  which the server signs under its own key. Each is lines joined by `\n`, with no newline
+  after the last. Pure functions; nothing here touches the database, a connection or a
+  log, and nothing here holds a key.
 
   **The request string** (`request/5`): `qory-request-ed25519-v1`, the access key id and
   the instance id exactly as their headers carry them, an absent instance id as an empty
@@ -12,18 +13,23 @@ defmodule Apiary.Contract.SignedMessage do
   query when there is one, nothing decoded, reordered or normalised; and last, for a GET
   the timestamp as sent in `X-Qory-Timestamp`, for a POST the raw body.
 
+  **The proof of an enrolment** (`enrolment/4`): `qory-enrol-ed25519-v1`; the code as the
+  body carries it, `qec_`, its 26 characters and the server's fingerprints after it; the
+  public key as the body carries it; the name; and the timestamp in decimal.
+
   **The answer string** (`answer/5`): `qory-answer-ed25519-v1`; the status, three decimal
   digits; the request's `X-Qory-Signature-Ed25519` exactly as sent, or an enrolment's
   `proof`; the lower-case hex SHA-256 of the body as sent, before any content coding, the
   SHA-256 of the empty string for no body; the answer's `X-Qory-Configuration`, and its
   `X-Qory-Run-Configuration`, each empty when the answer has none.
 
-  The contract's known answers for both are in `fixtures/known-answers/signatures.json`
+  The contract's known answers for all three are in `fixtures/known-answers/signatures.json`
   of the runner's contract directory, and `test/contract/ed25519_known_answers_test.exs`
   replays them.
   """
 
   @request_tag "qory-request-ed25519-v1"
+  @enrolment_tag "qory-enrol-ed25519-v1"
   @answer_tag "qory-answer-ed25519-v1"
 
   @doc ~S"""
@@ -51,6 +57,31 @@ defmodule Apiary.Contract.SignedMessage do
       target,
       ?\n,
       last
+    ])
+  end
+
+  @doc ~S"""
+  enrolment/4 is the message an enrolment's `proof` signs: the request body's `code`,
+  `public_key` (base64url, exactly as the body carries it) and `name`, and its `timestamp`
+  in decimal.
+
+      iex> Apiary.Contract.SignedMessage.enrolment("qec_X.fp", "pk", "build-01", 1700000000)
+      "qory-enrol-ed25519-v1\nqec_X.fp\npk\nbuild-01\n1700000000"
+  """
+  @spec enrolment(String.t(), String.t(), String.t(), non_neg_integer) :: binary
+  def enrolment(code, public_key, name, timestamp)
+      when is_binary(code) and is_binary(public_key) and is_binary(name) and
+             is_integer(timestamp) and timestamp >= 0 do
+    IO.iodata_to_binary([
+      @enrolment_tag,
+      ?\n,
+      code,
+      ?\n,
+      public_key,
+      ?\n,
+      name,
+      ?\n,
+      Integer.to_string(timestamp)
     ])
   end
 
