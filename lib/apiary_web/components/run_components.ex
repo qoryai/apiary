@@ -3250,7 +3250,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a row's Allow or Deny opens: a panel in place, in the page's flow under the row it
-  is of (`connection_row/1`'s `panel`, a Needs attention item), never an overlay. `panel`
+  is of (`connection_row/1`'s `panel`, a To review item), never an overlay. `panel`
   is the page's state of it:
 
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
   The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in. It
-  answers two questions, in this order: what needs you (the Needs attention list, a list
+  answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
   level has its own look (`docs/ui.md`, Lists): the summary is the largest type on the
@@ -1320,8 +1320,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           announce(
             socket,
             ngettext(
-              "%{number} more item needs attention.",
-              "%{number} more items need attention.",
+              "%{number} more item to review.",
+              "%{number} more items to review.",
               length(arrived),
               number: Format.number(length(arrived))
             )
@@ -1339,7 +1339,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     count = length(hidden)
 
     case first.kind do
-      # What Needs attention counts: the destinations denied in the fourteen days that no
+      # What To review counts: the destinations denied in the fourteen days that no
       # rule has allowed since. Network access's Denied counts every one denied then.
       :denied ->
         %{

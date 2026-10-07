@@ -605,8 +605,8 @@ version. Only the version in force is exported; another version's path sends on 
   `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
   row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
-  first, the most denied attempts first and then the most recently seen, as Needs
-  attention weighs them; the rest by when they were first seen, so they hold still.
+  first, the most denied attempts first and then the most recently seen, as To
+  review weighs them; the rest by when they were first seen, so they hold still.
 - **A row's rule is asked for in place** (`RunComponents.rule_panel/1`), never in a
   popover, a dialog or a sheet: Allow, Deny, Allow…, Deny… and a locked rule's lock open
   a row of the table's own right under the row (`#<row>-panel`), in the page's flow, the
@@ -646,8 +646,8 @@ words say so. The workspace's window is **fourteen days**:
   line under the views says when it happens.
 - **The overview's summary** counts the chart's fourteen UTC days, and each number leads
   to its list over the same days (`?from=` the first of them; the denied attempts to
-  Network access, whose Denied view counts the destinations the summary names). **Needs
-  attention** weighs the same fourteen days but lists only what is still denied, no rule
+  Network access, whose Denied view counts the destinations the summary names). **To
+  review** weighs the same fourteen days but lists only what is still denied, no rule
   having allowed it since, and its "and n more" says so.
 - **The Policy page's** fact beside the mode and the enforce preview read fourteen days,
   so "See them" lands on the same numbers; a rule's use is its last fourteen days.
@@ -666,7 +666,7 @@ what needs the reader, then what their agents did, and never grows with the data
 
 - **The summary**: alive now, runs, runs that ended badly and denied attempts over
   fourteen days, each a link to the list it counts over the same days.
-- **Needs attention**: one line an item, on columns the list holds (each row a subgrid,
+- **To review**: one line an item, on columns the list holds (each row a subgrid,
   so they line up whatever an act says), its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
   it; five shown and "and n more". Its Allow is Network access's: the same panel, in

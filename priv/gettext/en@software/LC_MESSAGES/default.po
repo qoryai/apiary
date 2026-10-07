@@ -1020,8 +1020,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} item needs attention"
-msgid_plural "%{number} items need attention"
+msgid "%{number} item to review"
+msgid_plural "%{number} items to review"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1102,8 +1102,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} more item needs attention."
-msgid_plural "%{number} more items need attention."
+msgid "%{number} more item to review."
+msgid_plural "%{number} more items to review."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -7024,11 +7024,6 @@ msgstr ""
 msgid "Name the release of a program: its description is fetched, and you add it from there."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Needs attention"
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -11642,6 +11637,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "To choose its targets, change where it applies under %{settings}."
 msgstr "To choose its repositories, change where it applies under %{settings}."
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "To review"
+msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/format.ex

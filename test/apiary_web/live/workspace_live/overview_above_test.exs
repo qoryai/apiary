@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
   @moduledoc """
-  Needs attention under a level above the workspace's policy (`Apiary.Policy.Above`), with
+  To review under a level above the workspace's policy (`Apiary.Policy.Above`), with
   the edition's answer faked: a denied destination only that level could allow, or one its
   own deny holds, offers no allow of the workspace, which would not be in force.
   """
