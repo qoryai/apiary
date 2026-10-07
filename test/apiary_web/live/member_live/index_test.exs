@@ -99,6 +99,9 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       html = render(lv)
       assert html =~ "Invitation sent to bee@example.com"
       assert html =~ "Pending invitations"
+      # A part of the page under its h1, People.
+      assert has_element?(lv, "h2", "Pending invitations")
+      refute has_element?(lv, "h3", "Pending invitations")
       assert [invitation] = Organisations.list_invitations(scope)
       assert has_element?(lv, "#invitation-#{invitation.id}", "bee@example.com")
 
