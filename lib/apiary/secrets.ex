@@ -167,11 +167,21 @@ defmodule Apiary.Secrets do
   ## Writing
 
   @doc """
-  create_secret/2 stores a new secret of the scope's workspace (`secret.write`), with its
-  first value: `attrs` has `name`, `note` (optional), `value`, and `value_id`, optional,
-  for a secret that will have several. `{:ok, secret}`, its values loaded without their
-  ciphertext; or `{:error, refusal}`, a changeset whose errors are on `name`, `note`,
-  `value` or `value_id`.
+  create_secret/2 stores a new secret of the scope's workspace (`secret.write`) with its
+  values, in one transaction. `attrs` has `name`, `note` (optional), and either
+
+  - `value`, and `value_id`, optional: a secret of one value; or
+  - `values`, a list of maps, each with `value_id`, required, and `value`, or a map of
+    them by index, as a form sends them, taken in the order of the index: a secret of
+    several values, at most `max_values/0`, each value id unique in the secret. A
+    `value` or `value_id` beside them is not looked at.
+
+  `{:ok, secret}`, its values loaded without their ciphertext; or `{:error, refusal}`, a
+  changeset whose errors are on `name`, `note`, `value` or `value_id`, or, for several
+  values, on `values` (none, or more than `max_values/0`) and on each value's own
+  changeset under `values`, in the order they came, on its `value_id` and its `value`;
+  for several values the changeset always has theirs under it. The changeset holds no
+  value, nor do the changesets of the values under it.
   """
   @spec create_secret(Scope.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
   def create_secret(%Scope{} = scope, attrs) do
@@ -188,21 +198,132 @@ defmodule Apiary.Secrets do
         }
         |> Secret.changeset(attrs)
 
-      value_changeset = Value.changeset(%Value{}, attrs)
+      {how, value_changesets} = new_values(attrs)
 
       with :ok <- Access.check(scope, :"secret.write", workspace),
-           :ok <- valid(secret_changeset, value_changeset),
-           {:ok, secret} <- Repo.insert(secret_changeset),
-           {:ok, value} <- insert_value(scope, workspace, secret, value_changeset),
+           :ok <- valid_new(how, secret_changeset, value_changesets),
+           {:ok, secret} <-
+             secret_changeset |> Repo.insert() |> with_values(how, value_changesets),
+           {:ok, value_ids} <- insert_values(scope, workspace, secret, value_changesets),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"secret.write", secret, %{
-               after: %{name: secret.name, note: secret.note, value_ids: [value.value_id]},
+               after: %{name: secret.name, note: secret.note, value_ids: value_ids},
                details: %{change: "created", secret_id: secret.public_id, name: secret.name}
              }) do
         {:ok, secret}
       end
     end)
     |> reload()
+  end
+
+  # A new secret's values: its one value, its value id optional; or several, each with a
+  # value id, unique among them.
+  defp new_values(%{"values" => values}) do
+    changesets =
+      values
+      |> in_order()
+      |> Enum.map(fn value ->
+        value = Map.new(value, fn {key, field} -> {to_string(key), field} end)
+        Value.changeset(%Value{}, value, value_id: :required)
+      end)
+      |> unique_value_ids()
+
+    {:several, changesets}
+  end
+
+  defp new_values(attrs), do: {:one, [Value.changeset(%Value{}, attrs)]}
+
+  # A form's values by index ("0", "1", …), in the order of the index; a list as it is.
+  defp in_order(values) when is_list(values), do: Enum.filter(values, &is_map/1)
+
+  defp in_order(values) when is_map(values) do
+    values
+    |> Enum.flat_map(fn {index, value} ->
+      case Integer.parse(to_string(index)) do
+        {index, ""} when is_map(value) -> [{index, value}]
+        _other -> []
+      end
+    end)
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  defp in_order(_values), do: []
+
+  # A value id taken by a value before it is refused on the later one.
+  defp unique_value_ids(changesets) do
+    {changesets, _seen} =
+      Enum.map_reduce(changesets, MapSet.new(), fn changeset, seen ->
+        case Ecto.Changeset.get_field(changeset, :value_id) do
+          nil ->
+            {changeset, seen}
+
+          value_id ->
+            if MapSet.member?(seen, value_id),
+              do:
+                {Ecto.Changeset.add_error(
+                   changeset,
+                   :value_id,
+                   dgettext_noop("errors", "is already a value ID of this secret")
+                 ), seen},
+              else: {changeset, MapSet.put(seen, value_id)}
+        end
+      end)
+
+    changesets
+  end
+
+  # A new secret's changesets, all checked before anything is written. For one value, its
+  # errors on the secret's changeset, so a form shows every error at once; for several,
+  # the values' changesets under the secret's, each with its own, and the count of them
+  # on `values`.
+  defp valid_new(:one, secret, [value]), do: valid(secret, value)
+
+  defp valid_new(:several, secret, values) do
+    count = length(values)
+
+    secret =
+      cond do
+        count == 0 ->
+          Ecto.Changeset.add_error(secret, :values, dgettext_noop("errors", "can't be blank"),
+            validation: :required
+          )
+
+        count > @max_values ->
+          Ecto.Changeset.add_error(
+            secret,
+            :values,
+            dgettext_noop("errors", "A secret holds at most %{count} values."),
+            count: @max_values,
+            validation: :length,
+            kind: :max
+          )
+
+        true ->
+          secret
+      end
+
+    if secret.valid? and Enum.all?(values, & &1.valid?) do
+      :ok
+    else
+      {:error, %{Ecto.Changeset.put_assoc(secret, :values, values) | valid?: false}}
+    end
+  end
+
+  # A new secret the database refused, its name taken: for several values, with their
+  # changesets under it all the same, so a form shows each as it was.
+  defp with_values({:error, %Ecto.Changeset{} = secret}, :several, values),
+    do: {:error, %{Ecto.Changeset.put_assoc(secret, :values, values) | valid?: false}}
+
+  defp with_values(result, _how, _values), do: result
+
+  defp insert_values(scope, workspace, secret, changesets) do
+    Enum.reduce_while(changesets, {:ok, []}, fn changeset, {:ok, value_ids} ->
+      case insert_value(scope, workspace, secret, changeset) do
+        {:ok, value} -> {:cont, {:ok, value_ids ++ [value.value_id]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   @doc """
@@ -590,9 +711,21 @@ defmodule Apiary.Secrets do
 
   # A changeset handed back to a caller keeps no plaintext: not in its params, under a
   # string or an atom key, nor in its changes.
+  # The values under a new secret's changeset are scrubbed too, and the `values` the
+  # form sent dropped from its params.
   defp scrub(%Ecto.Changeset{} = changeset) do
-    params = changeset.params && Map.drop(changeset.params, ["value", :value])
-    %{changeset | params: params, changes: Map.delete(changeset.changes, :value)}
+    params = changeset.params && Map.drop(changeset.params, ["value", :value, "values", :values])
+
+    changes =
+      case Map.delete(changeset.changes, :value) do
+        %{values: values} = changes when is_list(values) ->
+          %{changes | values: Enum.map(values, &scrub/1)}
+
+        changes ->
+          changes
+      end
+
+    %{changeset | params: params, changes: changes}
   end
 
   defp fetch_value(%Secret{values: values}, value_id) do
