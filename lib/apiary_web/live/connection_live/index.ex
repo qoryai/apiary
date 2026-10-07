@@ -1093,7 +1093,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.system}/#{r.path}",
+          label: ApiaryWeb.TargetComponents.target_label(r.system, r.path, socket.assigns.shared),
           runs: r.runs,
           connection_id: r.connection_id
         }

@@ -6,7 +6,8 @@ defmodule ApiaryWeb.TargetComponents do
 
   **The notation.** A target is its path in mono; its system goes before it, faint, only
   where the same path is in more than one system of the workspace
-  (`Apiary.Runs.shared_paths/2`) and on the target's own header.
+  (`Apiary.Runs.shared_paths/2`), its own header included. In words, in titles, labels
+  and toasts, it is named the same way (`target_label/3`).
 
   **The address** follows the notation (question 9, answer A): `target_path/5` is where a
   target's page is, its path alone, `/:org/:workspace/targets/acme/shop`, and its system
@@ -135,15 +136,20 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   The star that pins a target for the reader, or takes the pin away: a toggle button that
-  sends `pin` with the target's id.
+  sends `pin` with the target's id. Its spoken name names the target as it is addressed
+  (`target_label/3`): its system too only where its path is `shared`.
   """
   attr :id, :string, required: true
   attr :target, :map, required: true
   attr :pinned, :boolean, required: true
   attr :label, :boolean, default: false, doc: "the word beside the star, as a header has it"
+  attr :shared, :any, default: false, doc: "whether the target's path is shared (`t:shared/0`)"
   attr :class, :any, default: nil
 
   def pin_button(assigns) do
+    %{target: target, shared: shared} = assigns
+    assigns = assign(assigns, :name, target_label(target.system, target.path, shared))
+
     ~H"""
     <button
       id={@id}
@@ -156,8 +162,8 @@ defmodule ApiaryWeb.TargetComponents do
           do: nil,
           else:
             if(@pinned,
-              do: gettext("Unpin %{target}", target: "#{@target.system}/#{@target.path}"),
-              else: gettext("Pin %{target}", target: "#{@target.system}/#{@target.path}")
+              do: gettext("Unpin %{target}", target: @name),
+              else: gettext("Pin %{target}", target: @name)
             )
       }
       class={[if(@label, do: "btn btn-sm q-tgt-pinbtn", else: "q-tgt-pin"), @class]}

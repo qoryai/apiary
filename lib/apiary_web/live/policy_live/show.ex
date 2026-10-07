@@ -739,15 +739,27 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   # The targets' own rules a lock of this rule would put out of force: a rule on the
   # same host, or an allow below a locked `*.` deny. Read for the targets that have
-  # rules of their own, at most fifty of them.
+  # rules of their own, at most fifty of them. Each is named as it is addressed (`name`):
+  # one read of the paths it names.
   defp held_by_lock(scope, rule) do
-    for {target, own} <- target_rules(scope),
-        other <- own,
-        other.kind == "host",
-        other.host == rule.host or
-          (rule.action == "deny" and other.action == "allow" and
-             Grammar.covers?(rule.host, other.host)),
-        do: %{target: target, rule: other}
+    held =
+      for {target, own} <- target_rules(scope),
+          other <- own,
+          other.kind == "host",
+          other.host == rule.host or
+            (rule.action == "deny" and other.action == "allow" and
+               Grammar.covers?(rule.host, other.host)),
+          do: %{target: target, rule: other}
+
+    shared = Apiary.Runs.shared_paths(scope, Enum.map(held, & &1.target.path))
+
+    for %{target: target} = one <- held,
+        do:
+          Map.put(
+            one,
+            :name,
+            ApiaryWeb.TargetComponents.target_label(target.system, target.path, shared)
+          )
   end
 
   defp overriders(scope, rule) do
@@ -1393,7 +1405,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <td role="cell" class="q-c-target">
                 <.link
                   navigate={
-                    ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, ["policy"])
+                    ApiaryWeb.TargetComponents.target_path(
+                      @scope,
+                      row.system,
+                      row.path,
+                      ["policy"],
+                      @shared
+                    )
                   }
                   class="q-target-name q-rowlink"
                   title={"#{row.system}/#{row.path}"}
@@ -1438,11 +1456,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
                           do:
                             ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                           else:
-                            ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [
-                              "policy",
-                              "versions",
-                              to_string(row.detail.version.version)
-                            ])
+                            ApiaryWeb.TargetComponents.target_path(
+                              @scope,
+                              row.system,
+                              row.path,
+                              ["policy", "versions", to_string(row.detail.version.version)],
+                              @shared
+                            )
                       }
                       class="q-mono hover:underline"
                     >
@@ -1780,7 +1800,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         )}</b>: <span
         :for={{held, i} <- Enum.with_index(@shown)}
         phx-no-format
-      >{if i > 0, do: "; "}<span class="font-mono text-[12.5px]">{held.target.system}/{held.target.path}</span> ({held.rule.host})</span><span
+      >{if i > 0, do: "; "}<span class="font-mono text-[12.5px]">{held.name}</span> ({held.rule.host})</span><span
         :if={@more > 0}
         phx-no-format
       >; {ngettext("and %{number} more", "and %{number} more", @more, number: Format.number(@more))}</span>. {gettext(

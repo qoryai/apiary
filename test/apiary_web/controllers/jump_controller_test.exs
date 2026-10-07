@@ -150,6 +150,28 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
   end
 
+  test "a target whose path another system has is at its address, with its system",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop())
+    started_run(scope, shop("gitlab.example"))
+    started_run(scope, %{"forge" => "github.example", "repository" => "acme/shopfront"})
+
+    hrefs =
+      jump(conn, workspace_path(scope, "/jump"), "shop")
+      |> group("Repositories")
+      |> Map.fetch!("items")
+      |> Map.new(&{{&1["detail"], &1["label"]}, &1["href"]})
+
+    assert hrefs == %{
+             {"github.example", "acme/shop"} =>
+               workspace_path(scope, "/targets/github.example/acme/shop"),
+             {"gitlab.example", "acme/shop"} =>
+               workspace_path(scope, "/targets/gitlab.example/acme/shop"),
+             {"github.example", "acme/shopfront"} =>
+               workspace_path(scope, "/targets/acme/shopfront")
+           }
+  end
+
   test "places by name and slug", %{conn: conn, user: user, scope: scope} do
     other = sign_up_fixture(%{organisation_name: "Northwind"})
     %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})

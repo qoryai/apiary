@@ -413,6 +413,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     summary = Policy.mode_summary(scope)
     targets = Policy.list_targets(scope)
     rules = Policy.list_rules(scope, nil)
+    own = Enum.filter(targets, &(&1.own_mode != nil))
 
     version =
       case Common.served_version(scope, nil, summary.managed?) do
@@ -425,7 +426,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       targets: length(targets),
       with_rules: Enum.count(targets, &(&1.rule_count > 0)),
       following: Enum.count(targets, &is_nil(&1.own_mode)),
-      own: Enum.filter(targets, &(&1.own_mode != nil)),
+      own: own,
+      # The one target the guard may name, named as it is addressed: one read, or none.
+      shared: Runs.shared_paths(scope, for(%{target: t} <- own, length(own) == 1, do: t.path)),
       version: version,
       allow_rules: Enum.count(rules, &(&1.kind == "host" and &1.action == "allow")),
       suggestions:
@@ -942,11 +945,18 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     reached =
       Runs.destination_targets(scope, @denied_filters, {item.host, item.port, item.path})
 
+    # Each target named as it is addressed: one read of the paths the panel names.
+    shared =
+      Runs.shared_paths(
+        scope,
+        for(%{target_id: id, path: p} when is_binary(id) <- reached, do: p)
+      )
+
     targets =
       for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.system}/#{r.path}",
+          label: ApiaryWeb.TargetComponents.target_label(r.system, r.path, shared),
           runs: r.runs,
           connection_id: r.connection_id
         }

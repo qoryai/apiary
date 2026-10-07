@@ -151,13 +151,25 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   test "the star pins a target for the reader, and the sidebar lists it", %{
     conn: conn,
     scope: scope,
-    shop: shop
+    shop: shop,
+    api: api
   } do
     view = open(conn, scope)
     refute has_element?(view, "#nav-group-pinned")
 
+    # Its spoken name names the target as it is addressed: the system only where the
+    # path is shared.
+    assert has_element?(view, "#target-pin-#{shop.id}[aria-label='Pin github.example/acme/shop']")
+    assert has_element?(view, "#target-pin-#{api.id}[aria-label='Pin acme/api']")
+
     view |> element("#target-pin-#{shop.id}") |> render_click()
     assert has_element?(view, "#target-pin-#{shop.id}[aria-pressed=true]")
+
+    assert has_element?(
+             view,
+             "#target-pin-#{shop.id}[aria-label='Unpin github.example/acme/shop']"
+           )
+
     assert has_element?(view, "#nav-pin-#{shop.id}", "acme/shop")
     assert Targets.pinned?(scope, shop)
 

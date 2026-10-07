@@ -380,6 +380,7 @@ defmodule ApiaryWeb.TargetLive.Index do
             <.pin_button
               id={"target-pin-#{row.target.id}"}
               target={row.target}
+              shared={row.shared}
               pinned={MapSet.member?(@pinned, row.target.id)}
             />
           </:col>

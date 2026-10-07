@@ -719,6 +719,38 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute has_element?(lv, "#variable-target-#{Enum.at(targets, 0).id}")
     end
 
+    test "a repository of a variable links to its page at its address",
+         %{conn: conn, scope: scope} do
+      variable = variable!(scope, :workspace, "NODE_ENV", "production")
+      shop = target!(scope, "acme/shop")
+      billing = target!(scope, "acme/billing")
+
+      other =
+        Repo.insert!(%Apiary.Runs.Target{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          system: "gitlab.example",
+          path: "acme/shop",
+          first_seen_at: DateTime.utc_now()
+        })
+
+      for target <- [shop, billing, other], do: variable!(scope, target, "NODE_ENV", "test")
+
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/targets"))
+
+      # Its system is in the address only where its path is shared.
+      for {target, path} <- [
+            {shop, "/targets/github.example/acme/shop"},
+            {other, "/targets/gitlab.example/acme/shop"},
+            {billing, "/targets/acme/billing"}
+          ] do
+        assert has_element?(
+                 lv,
+                 "#variable-target-#{target.id} a[href='#{workspace_path(scope, path)}']"
+               )
+      end
+    end
+
     test "deletes a variable", %{conn: conn, scope: scope} do
       variable = variable!(scope, :workspace, "NODE_ENV", "production")
       {:ok, lv, _html} = live(conn, variables_path(scope))

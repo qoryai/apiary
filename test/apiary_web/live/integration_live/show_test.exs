@@ -155,6 +155,37 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       refute has_element?(lv, "#target-#{shop.id}")
     end
 
+    test "a chosen target links to its page at its address, its system there where its path is shared",
+         %{conn: conn, scope: scope} do
+      shop = target!(scope, "acme/shop")
+      billing = target!(scope, "acme/billing")
+
+      Apiary.Repo.insert!(%Apiary.Runs.Target{
+        organisation_id: scope.organisation.id,
+        workspace_id: scope.workspace.id,
+        system: "gitlab.example",
+        path: "acme/shop",
+        first_seen_at: DateTime.utc_now()
+      })
+
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
+      {:ok, runtime} = Connections.put_target(scope, runtime, shop.id)
+      {:ok, runtime} = Connections.put_target(scope, runtime, billing.id)
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
+
+      assert has_element?(
+               lv,
+               "#target-#{shop.id} a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
+             )
+
+      assert has_element?(
+               lv,
+               "#target-#{billing.id} a[href='#{workspace_path(scope, "/targets/acme/billing")}']"
+             )
+    end
+
     test "after an Add, the next row's Add takes the focus", %{conn: conn, scope: scope} do
       billing = target!(scope, "acme/billing")
       docs = target!(scope, "acme/docs")
