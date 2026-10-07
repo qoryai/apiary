@@ -1,7 +1,8 @@
 # The tests tagged :contract replay the fixtures of the server contract, which live in
-# the runner's repository (`Apiary.ContractFixtures.contract_dir/0` says where they are
-# looked for). Without them the tests are excluded and one line says so; CI sets
-# CONTRACT_FIXTURES_REQUIRED=1, which makes their absence a failure.
+# the runner's repository at the commit in .runner-contract-ref
+# (`Apiary.ContractFixtures.contract_dir/0` says where they are looked for). Without them
+# the tests are excluded and one line says so; CI sets CONTRACT_FIXTURES_REQUIRED=1, which
+# makes their absence a failure.
 exclude =
   cond do
     Apiary.ContractFixtures.contract_dir() ->
@@ -14,7 +15,8 @@ exclude =
     true ->
       IO.puts(
         "Excluding the :contract tests: no runner contract directory " <>
-          "(set RUNNER_CONTRACT_DIR to contracts/runner/v1 of a qoryai/runner checkout)"
+          "(set RUNNER_CONTRACT_DIR to contracts/runner/v1 of a qoryai/runner checkout, " <>
+          "or fetch #{Apiary.ContractFixtures.pinned_ref()} into ../../runner/main)"
       )
 
       [:contract]

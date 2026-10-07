@@ -2,7 +2,8 @@ defmodule Apiary.ContractFixtures do
   @moduledoc """
   Test helpers for the receiving side of the server contract: events as they
   are on the wire, signed deliveries, the published key of the contract's
-  fixtures, and where the runner's contract directory is.
+  fixtures, where the runner's contract directory is, and its fixtures: the
+  Ed25519 keys, known answers, signed requests and enrolments.
   """
 
   import Plug.Conn, only: [put_req_header: 3]
@@ -15,7 +16,8 @@ defmodule Apiary.ContractFixtures do
   @content_type "application/cloudevents-batch+json"
   @published_key_id "ak_f1xt0re000000000"
   @published_secret "fixture-secret-not-a-real-one"
-  @default_dir "../../runner/main/contracts/runner/v1"
+  @sibling "../../runner/main"
+  @contract "contracts/runner/v1"
 
   def content_type, do: @content_type
   def published_key_id, do: @published_key_id
@@ -133,13 +135,127 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The runner's contract directory: `RUNNER_CONTRACT_DIR`, else the sibling
-  checkout when it is there, else nil.
+  The runner's contract directory: `RUNNER_CONTRACT_DIR`, else the contract at the
+  commit in `.runner-contract-ref`, taken once from the sibling checkout of qoryai/runner
+  (`../../runner/main`) with `git archive` into the build directory, whatever that
+  checkout has checked out; else nil. The checkout is only read.
   """
   def contract_dir do
     case System.get_env("RUNNER_CONTRACT_DIR") do
-      dir when dir in [nil, ""] -> if File.dir?(@default_dir), do: Path.expand(@default_dir)
+      dir when dir in [nil, ""] -> pinned_dir()
       dir -> if File.dir?(dir), do: Path.expand(dir)
+    end
+  end
+
+  @doc "The commit of qoryai/runner in `.runner-contract-ref`."
+  def pinned_ref do
+    Mix.Project.project_file()
+    |> Path.dirname()
+    |> Path.join(".runner-contract-ref")
+    |> File.read!()
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.find(&(&1 != "" and not String.starts_with?(&1, "#")))
+  end
+
+  defp pinned_dir do
+    ref = pinned_ref()
+    root = Path.join([Mix.Project.build_path(), "runner-contract", ref])
+    dir = Path.join(root, @contract)
+    sibling = Path.expand(@sibling, Path.dirname(Mix.Project.project_file()))
+
+    cond do
+      File.dir?(dir) -> dir
+      File.dir?(sibling) and System.find_executable("git") -> archive(sibling, ref, root, dir)
+      true -> nil
+    end
+  end
+
+  # Extracted beside the destination and renamed into place, so two suites starting
+  # together never read half a directory.
+  defp archive(sibling, ref, root, dir) do
+    case System.cmd("git", ["-C", sibling, "archive", "--format=tar", ref, @contract],
+           stderr_to_stdout: false
+         ) do
+      {tar, 0} ->
+        partial = "#{root}.#{System.unique_integer([:positive])}"
+        File.mkdir_p!(partial)
+        :ok = :erl_tar.extract({:binary, tar}, [{:cwd, String.to_charlist(partial)}])
+
+        case File.rename(partial, root) do
+          :ok -> :ok
+          {:error, _already_there} -> File.rm_rf!(partial)
+        end
+
+        if File.dir?(dir), do: dir
+
+      {_output, _status} ->
+        nil
+    end
+  end
+
+  @doc "contract_json!/1 decodes `fixtures/<path>` of the runner's contract directory."
+  def contract_json!(path), do: path |> contract_file!() |> Jason.decode!()
+
+  @doc "contract_file!/1 reads `fixtures/<path>` of the runner's contract directory as bytes."
+  def contract_file!(path) do
+    dir = contract_dir() || raise "no runner contract directory"
+    dir |> Path.join("fixtures") |> Path.join(path) |> File.read!()
+  end
+
+  @doc """
+  known_answers!/1 decodes `fixtures/known-answers/<name>.json`: `"keys"`,
+  `"signatures"`, `"discovery"` or `"small-order"`.
+  """
+  def known_answers!(name) when name in ~w(keys signatures discovery small-order),
+    do: contract_json!("known-answers/#{name}.json")
+
+  @doc """
+  fixture_key!/1 is one of the contract's fixture keys of `known-answers/keys.json`
+  (`"access_key"`, `"pending_access_key"`, `"signing_key"`, `"next_signing_key"`), with
+  its raw `:seed`, its raw `:public_key` derived from the seed and checked against the
+  published one, and the published `:fingerprint`, plus `:access_key_id` and
+  `:instance_id` where the file gives them. Test support only: every instance refuses
+  these keys.
+  """
+  def fixture_key!(name)
+      when name in ~w(access_key pending_access_key signing_key next_signing_key) do
+    entry = Map.fetch!(known_answers!("keys"), name)
+
+    encoded_seed =
+      case entry do
+        %{"secret" => "qak_" <> seed} -> seed
+        %{"seed" => seed} -> seed
+      end
+
+    {:ok, seed} = Apiary.Contract.Ed25519.decode(encoded_seed, 32)
+    {public_key, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+    {:ok, ^public_key} = Apiary.Contract.Ed25519.decode(entry["public_key"], 32)
+
+    %{
+      seed: seed,
+      public_key: public_key,
+      fingerprint: entry["fingerprint"],
+      access_key_id: entry["access_key_id"],
+      instance_id: entry["instance_id"]
+    }
+  end
+
+  @doc """
+  signed_fixtures/0 is every `fixtures/signed/*.json` of the runner's contract
+  directory, decoded, by file name, sorted; empty without the directory.
+  """
+  def signed_fixtures do
+    case contract_dir() do
+      nil ->
+        []
+
+      dir ->
+        dir
+        |> Path.join("fixtures/signed/*.json")
+        |> Path.wildcard()
+        |> Enum.sort()
+        |> Enum.map(&{Path.basename(&1), &1 |> File.read!() |> Jason.decode!()})
     end
   end
 end
