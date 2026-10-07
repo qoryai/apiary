@@ -2917,12 +2917,17 @@
   }
   .q-tokens {
     display: flex;
+    min-width: 0;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
   }
+  /* A token is never wider than its line: a long value (`q-tok-v`) ends in an ellipsis,
+     whole in its title, and the key and the × keep their place. */
   .q-tok {
     display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
     height: 24px;
     align-items: center;
     gap: 4px;
@@ -2933,10 +2938,20 @@
     font-size: 0.78125rem;
     white-space: nowrap;
   }
+  .q-tok-k {
+    flex: none;
+  }
+  .q-tok-v {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .q-tok-x {
     display: grid;
     width: 18px;
     height: 18px;
+    flex: none;
     place-items: center;
     border-radius: 3px;
     color: var(--q-faint);
@@ -8228,6 +8243,13 @@
   .q-tname-sys {
     color: var(--q-faint);
     font-weight: 400;
+  }
+  /* The narrowed line of a list (`#runs-narrowed`, `#connections-target-note`): a long
+     target's name wraps anywhere rather than widen the page. */
+  .q-narrowed-name,
+  .q-narrowed-name .q-tname {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   /* ---- 1. The summary: the largest numbers on the page, in one strip ---- */
