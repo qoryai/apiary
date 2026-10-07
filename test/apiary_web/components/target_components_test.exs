@@ -28,6 +28,30 @@ defmodule ApiaryWeb.TargetComponentsTest do
              "/acme/main/targets/acme/billing"
   end
 
+  test "a target's name carries its system exactly where its address does" do
+    for {system, path, shared} <- [
+          {"gitlab.com", "acme/shop", @shared},
+          {"github.com", "acme/billing", @shared},
+          {"codeberg.org", "acme/billing", true},
+          {"codeberg.org", "acme/billing", false},
+          {"github.com", "acme/billing", nil},
+          {nil, "acme/shop", true}
+        ] do
+      with_system? = TargetComponents.with_system?(system, path, shared)
+      address = TargetComponents.target_path(@scope, system, path, [], shared)
+      name = TargetComponents.target_label(system, path, shared)
+
+      assert address == "/acme/main/targets/" <> name
+      assert with_system? == (name == "#{system}/#{path}")
+      assert with_system? == String.starts_with?(address, "/acme/main/targets/#{system}/")
+    end
+
+    assert TargetComponents.target_label("codeberg.org", "acme/billing", true) ==
+             "codeberg.org/acme/billing"
+
+    assert TargetComponents.target_label("codeberg.org", "acme/billing", false) == "acme/billing"
+  end
+
   test "Filters.target_params/3 gives the system only for a path in the set" do
     assert Filters.target_params("gitlab.com", "acme/shop", @shared) ==
              %{"system" => "gitlab.com", "target" => "acme/shop"}

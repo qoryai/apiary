@@ -538,9 +538,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   # A code expired (`schedule_expiry/1`): the codes read again, and a confirmation of the
-  # code that expired closed, since there is nothing left to revoke.
+  # code that expired closed, since there is nothing left to revoke. The timer the page
+  # holds stays for `load/1` to cancel: a read in between may have set another while this
+  # one's message waited.
   def handle_info(:codes_expire, socket) do
-    socket = socket |> assign(:expiry_timer, nil) |> load()
+    socket = load(socket)
 
     case socket.assigns do
       %{code: %EnrolmentCode{id: id}, codes: codes} ->

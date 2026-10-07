@@ -44,6 +44,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     ])
   end
 
+  # The timer of the next expiry the page holds (`schedule_expiry/1`).
+  defp expiry_timer(lv), do: :sys.get_state(lv.pid).socket.assigns.expiry_timer
+
   # Not one line says a node enrols, posts or connects with these, nor names a command.
   defp refute_untrue(html) do
     refute html =~ "access-key enrol"
@@ -325,16 +328,14 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                AccessKeys.list_for_node(scope, node)
     end
 
-    test "Cancel and Back lead back to the tab, the focus on the button that opened the page",
+    test "Cancel leads back to the tab, the focus on the button that opened the page",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope)
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
       for {open, leave, page} <- [
             {"#key-add-button", "#key-add-save-cancel", "/add"},
-            {"#key-add-button", "#key-add-back", "/add"},
-            {"#code-new-button", "#code-new-save-cancel", "/new-code"},
-            {"#code-new-button", "#code-new-back", "/new-code"}
+            {"#code-new-button", "#code-new-save-cancel", "/new-code"}
           ] do
         lv |> element(open) |> render_click()
         assert_patch(lv, tab_path(scope, node, page))
@@ -342,6 +343,20 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert_patch(lv, tab_path(scope, node))
         assert_push_event(lv, "run:focus", %{id: id})
         assert "#" <> id == open
+      end
+    end
+
+    test "the breadcrumb leads back to the tab from each form; the form has no Back link",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      tab = tab_path(scope, node)
+
+      for {page, form} <- [{"/add", "#key-add"}, {"/new-code", "#code-new"}] do
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, page))
+        refute has_element?(lv, form <> "-back")
+
+        assert {:error, {:live_redirect, %{to: ^tab}}} =
+                 lv |> element("#breadcrumb a[href='#{tab}']", "Access key") |> render_click()
       end
     end
 
@@ -602,6 +617,23 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute flash =~ "revoked"
       assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
       refute has_element?(lv, "#code-#{row.id}")
+    end
+
+    test "a code's expiry read again leaves one timer, the one the page holds",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, _row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      held = expiry_timer(lv)
+      assert is_integer(Process.read_timer(held))
+
+      # An expiry whose message waited while a read set the timer the page holds: that
+      # timer is cancelled, not left running beside the new one.
+      send(lv.pid, :codes_expire)
+      _ = render(lv)
+
+      refute Process.read_timer(held)
+      assert is_integer(Process.read_timer(expiry_timer(lv)))
     end
 
     test "its expiry says Expired once it is past" do
