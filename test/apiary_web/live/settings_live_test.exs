@@ -122,12 +122,29 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert html =~ "This workspace keeps everything."
       assert html =~ "Nothing is pruned: this workspace keeps everything."
 
+      # The line under the fields describes each, and a field's error in its place.
+      for field <- ~w(events log) do
+        assert has_element?(
+                 lv,
+                 "#retention_#{field}_retention_days[aria-describedby=retention-help]"
+               )
+      end
+
+      assert has_element?(lv, "#retention-help", "In days; empty keeps everything.")
+
       html =
         lv
         |> form("#retention-form", retention: %{events_retention_days: "0"})
         |> render_change()
 
       assert html =~ "must be between 1 and 3650 days, or empty to keep everything"
+
+      assert has_element?(
+               lv,
+               "#retention_events_retention_days[aria-describedby=retention_events_retention_days-error]"
+             )
+
+      assert has_element?(lv, "#retention_log_retention_days[aria-describedby=retention-help]")
 
       html =
         lv

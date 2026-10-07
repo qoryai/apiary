@@ -312,13 +312,13 @@ defmodule ApiaryWeb.SettingsLive do
         </SettingsComponents.save>
       </.form>
 
-      <%!-- The workspace's type, its domain, read only: chosen when it was created, and
+      <%!-- The workspace's type, its domain, read only: set when it was created, and
            nothing changes it after. --%>
       <dl id="workspace-type" class="grid gap-1.5">
         <dt class="text-[13px]/[18px] font-medium">{gettext("Type")}</dt>
         <dd id="workspace-type-value" class="m-0">{workspace_type(@current_scope.workspace)}</dd>
         <dd class="m-0 text-[12.5px]/[18px] text-muted">
-          {gettext("Chosen when the workspace was created. It decides the words its pages use.")}
+          {gettext("Set when the workspace was created. It decides the words its pages use.")}
         </dd>
       </dl>
     </SettingsComponents.part>
@@ -384,6 +384,7 @@ defmodule ApiaryWeb.SettingsLive do
           <.input
             field={@retention_form[:events_retention_days]}
             type="text"
+            aria-describedby={described_by(@retention_form[:events_retention_days], "retention-help")}
             label={gettext("Keep a run's events for")}
             placeholder={gettext("Forever")}
             inputmode="numeric"
@@ -393,6 +394,7 @@ defmodule ApiaryWeb.SettingsLive do
           <.input
             field={@retention_form[:log_retention_days]}
             type="text"
+            aria-describedby={described_by(@retention_form[:log_retention_days], "retention-help")}
             label={gettext("Keep a run's log output for")}
             placeholder={gettext("Forever")}
             inputmode="numeric"
@@ -400,7 +402,7 @@ defmodule ApiaryWeb.SettingsLive do
             disabled={!may?(@current_scope, :"retention.edit")}
           />
         </div>
-        <p class="max-w-[72ch] text-[13px]/[20px] text-muted">
+        <p id="retention-help" class="max-w-[72ch] text-[13px]/[20px] text-muted">
           {gettext(
             "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
           )}
@@ -453,11 +455,12 @@ defmodule ApiaryWeb.SettingsLive do
   end
 
   # A workspace's domain, read as its type (`Apiary.Lingo.Domain`): the software domain,
-  # the only one there is, is "A software workspace".
+  # the only one there is, is "A software workspace"; any other, a test's, is its name
+  # alone, which no sentence around it would read right for every name.
   defp workspace_type(workspace) do
     case Apiary.Lingo.Domain.for_workspace(workspace).name() do
       "software" -> gettext("A software workspace")
-      name -> gettext("A %{type} workspace", type: name)
+      name -> name
     end
   end
 
@@ -960,6 +963,14 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp retention_set?(workspace),
     do: is_integer(workspace.events_retention_days) or is_integer(workspace.log_retention_days)
+
+  # What describes a retention field: the line under the fields, unless the field shows an
+  # error, which then describes it: `CoreComponents.input/1` writes its own
+  # aria-describedby from its errors, before one passed to it, and a browser keeps the
+  # first.
+  defp described_by(field, id) do
+    unless field.errors != [] and Phoenix.Component.used_input?(field), do: id
+  end
 
   defp retention_summary(%{events_retention_days: nil, log_retention_days: nil}),
     do: gettext("This workspace keeps everything.")

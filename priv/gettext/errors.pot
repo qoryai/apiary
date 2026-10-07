@@ -428,10 +428,10 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "would give a run more than %{count} variables"
+msgid "would raise a target's variables above %{count}"
 msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "would give a run more than 64 KiB of variables"
+msgid "would raise a target's variables above 64 KiB"
 msgstr ""

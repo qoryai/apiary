@@ -284,7 +284,7 @@ defmodule Apiary.VariablesTest do
       assert {:error, changeset} =
                Variables.create_variable(scope, :workspace, %{name: "W121", value: ""})
 
-      assert error(changeset, :name) == "would give a run more than 128 variables"
+      assert error(changeset, :name) == "would raise a target's variables above 128"
 
       assert {:error, _} = Variables.create_variable(scope, site, %{name: "T9", value: ""})
 
@@ -310,7 +310,7 @@ defmodule Apiary.VariablesTest do
       assert {:error, changeset} =
                Variables.update_variable(scope, last, %{value: String.duplicate("v", 4033)})
 
-      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert error(changeset, :value) == "would raise a target's variables above 64 KiB"
 
       assert {:error, _} =
                Variables.create_variable(scope, :workspace, %{name: "MORE", value: "x"})
@@ -334,7 +334,7 @@ defmodule Apiary.VariablesTest do
       assert {:error, changeset} =
                Variables.create_variable(scope, :workspace, %{name: "A", value: "123456"})
 
-      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert error(changeset, :value) == "would raise a target's variables above 64 KiB"
       assert {:ok, _} = Variables.create_variable(scope, :workspace, %{name: "A", value: "12345"})
     end
 
@@ -372,7 +372,7 @@ defmodule Apiary.VariablesTest do
 
       assert {:error, unlock} = Variables.unlock_variable(scope, locked)
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, locked)
-      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert error(changeset, :value) == "would raise a target's variables above 64 KiB"
       assert changeset.errors == unlock.errors
 
       assert Repo.reload!(locked).locked
@@ -393,7 +393,7 @@ defmodule Apiary.VariablesTest do
       # 3 bytes longer than the workspace's: larger, and past 128.
       assert {:error, unlock} = Variables.unlock_variable(scope, locked)
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, locked)
-      assert error(changeset, :name) == "would give a run more than 128 variables"
+      assert error(changeset, :name) == "would raise a target's variables above 128"
       assert changeset.errors == unlock.errors
       assert Repo.reload!(locked).locked
       assert deleted_entries() == 0
@@ -432,7 +432,7 @@ defmodule Apiary.VariablesTest do
 
       # Deleted, the workspace's BIG would take the repository to 69631 bytes.
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, own)
-      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert error(changeset, :value) == "would raise a target's variables above 64 KiB"
       assert Repo.reload!(own)
       assert values(scope, site)["BIG"] == "x"
       assert deleted_entries() == 0
@@ -451,7 +451,7 @@ defmodule Apiary.VariablesTest do
       # Its own BIG keeps the name when deleted, and gives back the workspace's longer
       # value: larger, and still past 128.
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, big)
-      assert error(changeset, :name) == "would give a run more than 128 variables"
+      assert error(changeset, :name) == "would raise a target's variables above 128"
       assert Repo.reload!(big)
 
       # An unlocked workspace variable and one of the repository's own each take a name

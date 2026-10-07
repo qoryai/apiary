@@ -278,6 +278,8 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/add-value",
        "add_value",
        %{"secret_value" => %{"first_value_id" => "a", "value_id" => "b", "value" => "c"}}},
+      {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/edit",
+       "update_secret", %{"secret" => %{"name" => "SNEAKY"}}},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/delete",
        "delete_secret", %{}},
       # This organisation's secret, in a dialog of another organisation's path: the dialog

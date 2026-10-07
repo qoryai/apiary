@@ -117,7 +117,7 @@ defmodule Apiary.VariablesAboveTest do
 
     # Deleted, the level above's BIG would take the workspace to 69631 bytes.
     assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, own)
-    assert {"would give a run more than 64 KiB of variables", []} = changeset.errors[:value]
+    assert {"would raise a target's variables above 64 KiB", []} = changeset.errors[:value]
     assert Repo.reload!(own)
 
     changes =

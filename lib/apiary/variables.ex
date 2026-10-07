@@ -610,7 +610,7 @@ defmodule Apiary.Variables do
     refuse(
       changeset,
       :name,
-      dgettext_noop("errors", "would give a run more than %{count} variables"),
+      dgettext_noop("errors", "would raise a target's variables above %{count}"),
       count: Resolution.max_names()
     )
   end
@@ -619,7 +619,7 @@ defmodule Apiary.Variables do
     refuse(
       changeset,
       :value,
-      dgettext_noop("errors", "would give a run more than 64 KiB of variables")
+      dgettext_noop("errors", "would raise a target's variables above 64 KiB")
     )
   end
 
