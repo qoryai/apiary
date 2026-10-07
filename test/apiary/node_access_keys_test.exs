@@ -55,7 +55,6 @@ defmodule Apiary.NodeAccessKeysTest do
       assert key.arrived_by == :paste
       assert key.allow_secrets
       assert key.approved_by_id == scope.user.id
-      assert key.secret_primary == nil
       assert "ak_" <> _ = key.key_id
       assert String.length(AccessKey.fingerprint(key)) == 22
 
@@ -285,9 +284,8 @@ defmodule Apiary.NodeAccessKeysTest do
       assert {:error, changeset} = paste(scope, node, %{label: "build-01"})
       assert errors_on(changeset).label == ["is already the label of a key of this node"]
 
-      # Another node's key, and today's key of the workspace, may have it.
+      # Another node's key may have it.
       assert {:ok, _} = paste(scope, node_fixture(scope), %{label: "build-01"})
-      assert %{access_key: _} = access_key_fixture(scope, %{label: "build-01"})
 
       # Once the first is revoked, the node's next key may have it.
       {:ok, _} = AccessKeys.revoke_access_key(scope, first)
@@ -412,14 +410,6 @@ defmodule Apiary.NodeAccessKeysTest do
       %{access_key: key} = pending_key_fixture(scope, node)
       assert AccessKeys.revoke_access_key(scope, key) == {:error, :pending}
     end
-
-    test "a node's key has no secret to rotate", ctx do
-      %{scope: scope, node: node} = ctx
-      {:ok, key} = paste(scope, node)
-
-      assert AccessKeys.rotate_access_key(scope, key) == {:error, :not_found}
-      assert AccessKeys.retire_previous_secret(scope, key) == {:error, :not_found}
-    end
   end
 
   describe "the integrity code" do
@@ -471,11 +461,6 @@ defmodule Apiary.NodeAccessKeysTest do
 
       tampered = %{row | allow_secrets: true}
       assert EnrolmentCode.verify_integrity(tampered) == {:error, :mismatch}
-    end
-
-    test "a node's key verifies no request under a secret", ctx do
-      {:ok, key} = paste(ctx.scope, ctx.node)
-      assert AccessKey.secrets(key) == []
     end
   end
 
@@ -638,16 +623,6 @@ defmodule Apiary.NodeAccessKeysTest do
       assert {:ok, _} = paste(admin, node)
     end
 
-    test "every member still revokes today's keys", ctx do
-      %{scope: member} = member_fixture(ctx.scope, :member)
-      %{access_key: key} = access_key_fixture(ctx.scope)
-
-      assert {:ok, revoked} = AccessKeys.revoke_access_key(member, key)
-      assert [_created, entry] = entries("access_key", key.id)
-      assert entry.action == "access_key.revoke_secret_key"
-      assert AccessKey.status(revoked) == :revoked
-    end
-
     test "another organisation's node, keys and codes are not reachable", ctx do
       %{scope: scope, node: node} = ctx
       %{access_key: pending} = pending_key_fixture(scope, node)
@@ -679,7 +654,6 @@ defmodule Apiary.NodeAccessKeysTest do
       %{access_key: pending} = pending_key_fixture(scope, pool, %{label: "spot-a"})
       {:ok, _} = paste(scope, gone)
       {:ok, _} = Nodes.delete_node(scope, gone)
-      access_key_fixture(scope)
 
       other = workspace_scope(scope.user, workspace_fixture(scope.organisation))
       {:ok, _} = paste(other, node_fixture(other))
@@ -690,39 +664,28 @@ defmodule Apiary.NodeAccessKeysTest do
     end
   end
 
-  describe "the workspace's keys of today" do
-    test "are listed without a node's keys, as the settings page has them", ctx do
-      %{scope: scope, node: node} = ctx
-      %{access_key: today} = access_key_fixture(scope)
-      {:ok, node_key} = paste(scope, node)
-
-      assert Enum.map(AccessKeys.list_access_keys(scope), & &1.id) == [today.id]
-      assert_raise Ecto.NoResultsError, fn -> AccessKeys.get_access_key!(scope, node_key.id) end
-      assert [listed] = AccessKeys.list_for_node(scope, node)
-      assert listed.id == node_key.id
-    end
-  end
-
   describe "the database" do
-    test "holds a public key to a node, and a row to one credential", ctx do
+    test "holds every key to a public key, a node, a time received and an arrival", ctx do
       %{scope: scope, node: node} = ctx
       {:ok, key} = paste(scope, node)
 
-      assert_raise Postgrex.Error, ~r/access_keys_credential_check/, fn ->
-        Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
-          set: [secret_primary: "not-a-secret"]
-        )
+      assert_raise Postgrex.Error, ~r/not_null_violation/, fn ->
+        Repo.update_all(from(k in AccessKey, where: k.id == ^key.id), set: [received_at: nil])
       end
 
-      %{access_key: today} = access_key_fixture(scope)
+      nullable =
+        Repo.query!("""
+        SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_name = 'access_keys'
+        """).rows
+        |> Map.new(fn [column, nullable] -> {column, nullable} end)
 
-      assert_raise Postgrex.Error,
-                   ~r/access_keys_node_key_check|access_keys_credential_check/,
-                   fn ->
-                     Repo.update_all(from(k in AccessKey, where: k.id == ^today.id),
-                       set: [secret_primary: nil]
-                     )
-                   end
+      for column <- ~w(public_key node_id received_at arrived_by),
+          do: assert(nullable[column] == "NO", column)
+
+      # No secret column is left.
+      for gone <- ~w(secret_primary secret_secondary rotated_at),
+          do: refute(Map.has_key?(nullable, gone), gone)
     end
 
     test "a node's key names a node of its own workspace", ctx do

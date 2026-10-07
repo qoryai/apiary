@@ -32,18 +32,17 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       and runs the instance, with its workspace **Main** (`main`).
     * **Main** gets `mix apiary.demo.history`'s history: `--runs` runs (6,000) over
       `--days` days (56) across about 150 repositories on github.com, gitlab.com and
-      codeberg.org, of every outcome, with subagents, terminals and network; its access
-      keys; a dozen people at every level, one suspended, and two invitations pending;
+      codeberg.org, of every outcome, with subagents, terminals and network; its nodes,
+      one per machine group, each run placed on one as the instance of its host, and
+      their access keys; a dozen people at every level, one suspended, and two invitations pending;
       and the security policy, with versions, a lock and repositories of their own.
       `acme/shop` is on all three forges and `acme/billing` on two, so a path names more
       than one repository.
     * The six recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
-      the last day.
+      the last day, under the key of the node **dana-laptop**.
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
-      keys added by their public keys; build-01's first key was replaced and revoked.
-      No run is placed on a node and no instance is recorded, as the app does neither
-      yet, though the history's runs name machines called build-01 and build-02.
-      build-02 has an outstanding enrolment code (below).
+      keys added by their public keys; build-01's first key was replaced and revoked. No
+      run is placed on them. build-02 has an outstanding enrolment code (below).
     * Secrets, one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
@@ -360,13 +359,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     Mix.shell().info("#{length(@replays)} recordings replayed")
   end
 
-  # The key Dana's laptop posts with, as a verified request carries it.
+  # The key of the node Dana's laptop runs as, as a verified request carries it.
   defp laptop_key!(scope) do
     key =
       scope
-      |> AccessKeys.list_access_keys()
-      |> Enum.find(&(&1.label == "dana-laptop" and is_nil(&1.revoked_at))) ||
-        Mix.raise("Main has no key dana-laptop")
+      |> AccessKeys.list_workspace_node_keys()
+      |> Enum.find(&(&1.node.name == "dana-laptop" and &1.label == "dana-laptop")) ||
+        Mix.raise("Main has no node dana-laptop with its key")
 
     Demo.access_key!(key.key_id)
   end
@@ -395,8 +394,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     add_key!(scope, pool, "spot-runners-a", false)
     add_key!(scope, pool, "spot-runners-b", false)
 
-    # No run is placed on a node, and no instance recorded: nothing in the app does either
-    # yet, so the demo does not.
     Mix.shell().info("Nodes build-01, build-02 and spot-runners, with their keys")
   end
 

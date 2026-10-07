@@ -135,11 +135,6 @@ msgstr ""
 msgid "is already the label of a key of this node"
 msgstr ""
 
-#: lib/apiary/access_keys/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "is already the label of an active key in this workspace"
-msgstr ""
-
 #: lib/apiary/nodes/node.ex
 #, elixir-autogen, elixir-format
 msgid "is already the name of a node in this workspace"

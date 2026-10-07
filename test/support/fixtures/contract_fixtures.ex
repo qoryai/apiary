@@ -16,14 +16,12 @@ defmodule Apiary.ContractFixtures do
 
   @content_type "application/cloudevents-batch+json"
   @published_key_id "ak_f1xt0re000000000"
-  @published_secret "fixture-secret-not-a-real-one"
   @instance_id "i_gYKDhIWGh4iJiouMjY6PkA"
   @sibling "../../runner/main"
   @contract "contracts/runner/v1"
 
   def content_type, do: @content_type
   def published_key_id, do: @published_key_id
-  def published_secret, do: @published_secret
 
   @doc "The instance id the signing helpers claim unless told otherwise: the contract's fixture instance."
   def instance_id, do: @instance_id
@@ -119,23 +117,6 @@ defmodule Apiary.ContractFixtures do
 
   defp one([value]), do: value
   defp one([]), do: nil
-
-  @doc """
-  The key the contract's fixtures are signed under, in the scope's workspace. Test
-  support only: no production code accepts a chosen key id or secret.
-  """
-  def published_key_fixture(%Scope{organisation: organisation, workspace: workspace, user: user}) do
-    Repo.insert!(%AccessKey{
-      organisation_id: organisation.id,
-      workspace_id: workspace.id,
-      created_by_id: user.id,
-      key_id: @published_key_id,
-      label: "the contract's fixtures",
-      secret_primary: @published_secret
-    })
-    # As a verified key does, it carries its workspace (`fetch_for_verification/1`).
-    |> Map.put(:workspace, workspace)
-  end
 
   @doc "An event as it is on the wire. `type` is given without the `dev.qory.` prefix."
   def wire_event(subject, sequence, type, data \\ %{}, opts \\ []) do

@@ -1,19 +1,14 @@
 defmodule Apiary.AccessKeys.AccessKey do
   @moduledoc """
   A workspace's credential for the server contract, named by its key id, `ak_` and
-  sixteen characters (`Apiary.PublicId`). It is one of two:
+  sixteen characters (`Apiary.PublicId`): one Ed25519 public key (`public_key`, 32 bytes)
+  on a node or a node pool of the workspace (`node_id`). Apiary holds no secret of it. It
+  arrived by an enrolment code or by a paste (`arrived_by`), awaits approval until an
+  owner or an admin approves it (a pasted key is approved as it is entered), and carries
+  the stored-secrets flag (`allow_secrets`) it was made with.
 
-    * **today's key**, with up to two signing secrets the server made, encrypted at rest
-      and never shown after creation, and no node: `secret_primary`, `secret_secondary`,
-      `rotated_at`;
-    * **a node's key**: one Ed25519 public key (`public_key`, 32 bytes) on a node or a
-      node pool of the workspace (`node_id`), with no secret. It arrived by an enrolment
-      code or by a paste (`arrived_by`), awaits approval until an owner or an admin
-      approves it (a pasted key is approved as it is entered), and carries the
-      stored-secrets flag (`allow_secrets`) it was made with.
-
-  A node's key's node, public key, stored-secrets flag and arrival are fixed when it is
-  made (`insert_changeset/2`): no changeset casts them after, and the database refuses an
+  A key's node, public key, stored-secrets flag and arrival are fixed when it is made
+  (`insert_changeset/2`): no changeset casts them after, and the database refuses an
   UPDATE that changes them. Its row carries an integrity code (`Apiary.Integrity`) over
   `integrity_fields/1`, which `Apiary.AccessKeys` writes with every change of those
   fields and checks before the key is trusted.
@@ -30,9 +25,6 @@ defmodule Apiary.AccessKeys.AccessKey do
   schema "access_keys" do
     field :key_id, :string
     field :label, :string
-    field :secret_primary, Apiary.Encrypted.Binary, redact: true
-    field :secret_secondary, Apiary.Encrypted.Binary, redact: true
-    field :rotated_at, :utc_datetime_usec
     field :revoked_at, :utc_datetime_usec
     field :last_used_at, :utc_datetime_usec
     field :last_runner_version, :string
@@ -48,9 +40,6 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :integrity_code, :binary, redact: true
     field :integrity_key_id, :string
     field :last_pending_at, :utc_datetime_usec
-    # Set by the queries that leave the secret columns unloaded (listings and
-    # everything handed to the web layer): whether a previous secret still verifies.
-    field :rotating, :boolean, virtual: true, default: false
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -68,8 +57,7 @@ defmodule Apiary.AccessKeys.AccessKey do
 
   @doc """
   changeset/2 is the changeset of a key's label: 1 to 80 characters without control
-  characters, unique among the workspace's keys in use for today's key, and among the
-  node's keys in use for a node's key.
+  characters, unique among the node's keys in use.
   """
   @spec changeset(t, map) :: Ecto.Changeset.t()
   def changeset(access_key, attrs) do
@@ -79,11 +67,6 @@ defmodule Apiary.AccessKeys.AccessKey do
     |> validate_length(:label, min: 1, max: 80)
     |> validate_format(:label, ~r/\A[^[:cntrl:]]+\z/u,
       message: dgettext_noop("errors", "must not contain control characters")
-    )
-    |> unique_constraint([:organisation_id, :workspace_id, :label],
-      name: :access_keys_active_label_index,
-      error_key: :label,
-      message: dgettext_noop("errors", "is already the label of an active key in this workspace")
     )
     |> unique_constraint([:node_id, :label],
       name: :access_keys_node_label_index,
@@ -105,7 +88,7 @@ defmodule Apiary.AccessKeys.AccessKey do
   end
 
   @doc """
-  insert_changeset/2 is the changeset of a new node's key, `access_key` carrying its
+  insert_changeset/2 is the changeset of a new key, `access_key` carrying its
   organisation, workspace, node, key id, public key, arrival and maker as the caller set
   them: the label as `changeset/2` checks it, and the stored-secrets flag from `attrs`,
   the one time it is cast.
@@ -126,60 +109,24 @@ defmodule Apiary.AccessKeys.AccessKey do
   end
 
   @doc """
-  status/1 is `:revoked` once revoked (or, for a node's key, rejected), `:pending` for a
-  node's key that awaits approval, `:rotating` while a previous secret of today's key
-  still verifies, else `:active`.
+  status/1 is `:revoked` once revoked or rejected, `:pending` while it awaits approval,
+  else `:active`.
   """
-  @spec status(t) :: :revoked | :pending | :rotating | :active
+  @spec status(t) :: :revoked | :pending | :active
   def status(%__MODULE__{revoked_at: revoked_at}) when not is_nil(revoked_at), do: :revoked
 
-  def status(%__MODULE__{public_key: public_key, approved_at: nil}) when is_binary(public_key),
-    do: :pending
-
-  def status(%__MODULE__{rotating: true}), do: :rotating
-  def status(%__MODULE__{secret_secondary: secondary}) when not is_nil(secondary), do: :rotating
+  def status(%__MODULE__{approved_at: nil}), do: :pending
   def status(%__MODULE__{}), do: :active
 
-  @doc "The schema fields a listing loads: everything except the two secret columns."
-  def public_fields, do: __schema__(:fields) -- [:secret_primary, :secret_secondary]
-
-  @doc "The key as the web layer may hold it: no secrets, `rotating` set from the secondary."
-  def without_secrets(%__MODULE__{} = access_key) do
-    %{
-      access_key
-      | rotating: access_key.rotating || not is_nil(access_key.secret_secondary),
-        secret_primary: nil,
-        secret_secondary: nil
-    }
-  end
-
   def never_used?(%__MODULE__{last_used_at: last_used_at}), do: is_nil(last_used_at)
-
-  @doc """
-  The secrets that verify a request: the primary and, during a rotation, the previous
-  one. A node's key has none, so no secret verifies a request under it.
-  """
-  def secrets(%__MODULE__{secret_primary: nil}), do: []
-  def secrets(%__MODULE__{secret_primary: primary, secret_secondary: nil}), do: [primary]
-
-  def secrets(%__MODULE__{secret_primary: primary, secret_secondary: secondary}),
-    do: [primary, secondary]
 
   @doc "A fresh key id: `ak_` and 16 lowercase Crockford base32 characters (`Apiary.PublicId`)."
   def generate_key_id, do: Apiary.PublicId.generate("ak")
 
-  @doc "A fresh secret: 32 random bytes as base64url without padding."
-  def generate_secret do
-    :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-  end
-
-  @doc "node_key?/1 says whether `access_key` is a node's key, with a public key."
-  @spec node_key?(t) :: boolean
-  def node_key?(%__MODULE__{public_key: public_key}), do: is_binary(public_key)
-
   @doc """
-  fingerprint/1 is a node's key's fingerprint, `base64url(SHA-256(public key)[:16])`, 22
-  characters (`Apiary.Contract.Ed25519.fingerprint/1`), or nil for today's key.
+  fingerprint/1 is a key's fingerprint, `base64url(SHA-256(public key)[:16])`, 22
+  characters (`Apiary.Contract.Ed25519.fingerprint/1`), or nil for a struct that holds no
+  public key.
   """
   @spec fingerprint(t) :: String.t() | nil
   def fingerprint(%__MODULE__{public_key: <<_::binary-size(32)>> = key}),
@@ -188,7 +135,7 @@ defmodule Apiary.AccessKeys.AccessKey do
   def fingerprint(%__MODULE__{}), do: nil
 
   @doc """
-  integrity_fields/1 is what a node's key's integrity code covers, in its fixed order:
+  integrity_fields/1 is what a key's integrity code covers, in its fixed order:
   what names it and binds it to its workspace and node, its public key, its stored-secrets
   flag and rate, how and when it arrived, and its approval and revocation. Its label and
   its last use are outside the code.
@@ -216,7 +163,7 @@ defmodule Apiary.AccessKeys.AccessKey do
   end
 
   @doc """
-  put_integrity/1 sets a node's key's integrity code and its key id from the fields of
+  put_integrity/1 sets a key's integrity code and its key id from the fields of
   `changeset` as they will be written (`integrity_fields/1`).
   """
   @spec put_integrity(Ecto.Changeset.t()) :: Ecto.Changeset.t()
@@ -234,12 +181,10 @@ defmodule Apiary.AccessKeys.AccessKey do
   end
 
   @doc """
-  verify_integrity/1 checks a node's key's integrity code against its row: `:ok`, or
-  `{:error, :mismatch | :unknown_key}` (`Apiary.Integrity.verify/5`). Today's key has no
-  code, and nothing to check.
+  verify_integrity/1 checks a key's integrity code against its row: `:ok`, or
+  `{:error, :mismatch | :unknown_key}` (`Apiary.Integrity.verify/5`).
   """
   @spec verify_integrity(t) :: :ok | {:error, :mismatch | :unknown_key}
-  def verify_integrity(%__MODULE__{public_key: nil}), do: :ok
 
   def verify_integrity(%__MODULE__{} = key) do
     Apiary.Integrity.verify(

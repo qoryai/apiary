@@ -12,9 +12,7 @@ defmodule Apiary.KeyDerivationTest do
     values:
       {"177466b95597544b", "9cb21f43cb1109e63ad703da4ed8d6fafff5e4686ca53a32b1fcaef824452080"},
     integrity:
-      {"00c237515a3185d8", "d1ab9a54546e72272622c028ba38845262ea3a0732b383b1dc888841c8519bbf"},
-    access_keys:
-      {"a1cdd4cbfb998b28", "452e721b7f0254d9d2a58a741b8a4ad96b3cf33f3bea95e75d594ed78a56df68"}
+      {"00c237515a3185d8", "d1ab9a54546e72272622c028ba38845262ea3a0732b383b1dc888841c8519bbf"}
   }
 
   setup do

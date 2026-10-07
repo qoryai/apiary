@@ -116,19 +116,32 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(from p in Apiary.Targets.Pin, where: p.user_id == ^dana.id) == 3
   end
 
-  test "gives Main nodes with keys and no runs on them, secrets, variables and integrations" do
+  test "gives Main nodes with keys, its runs placed on the history's, secrets, variables and integrations" do
     fill()
 
     main = main_workspace()
 
-    nodes = Repo.all(from n in Node, where: n.workspace_id == ^main.id, select: {n.name, n.kind})
-    assert Enum.sort(nodes) == [{"build-01", :node}, {"build-02", :node}, {"spot-runners", :pool}]
+    nodes =
+      Repo.all(from n in Node, where: n.workspace_id == ^main.id, select: {n.name, n.kind})
+      |> Map.new()
 
-    node_keys =
-      Repo.all(from k in AccessKey, where: k.workspace_id == ^main.id and not is_nil(k.node_id))
+    # The console's own, with no run placed on them.
+    assert Map.take(nodes, ["build-01", "build-02", "spot-runners"]) ==
+             %{"build-01" => :node, "build-02" => :node, "spot-runners" => :pool}
 
-    assert Enum.any?(node_keys, & &1.revoked_at)
-    assert Enum.count(node_keys, &is_nil(&1.revoked_at)) == 4
+    # The history's: a node per machine group, a pool for a fleet.
+    assert nodes["ci-fleet"] == :pool
+    assert nodes["dana-laptop"] == :node
+
+    console =
+      Repo.all(
+        from k in AccessKey,
+          join: n in assoc(k, :node),
+          where: k.workspace_id == ^main.id and n.name in ["build-01", "build-02", "spot-runners"]
+      )
+
+    assert Enum.any?(console, & &1.revoked_at)
+    assert Enum.count(console, &is_nil(&1.revoked_at)) == 4
 
     assert count(
              from c in EnrolmentCode,
@@ -139,15 +152,20 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
              from c in EnrolmentCode, where: c.workspace_id == ^main.id and is_nil(c.cancelled_at)
            ) == 1
 
-    # Nothing in the app places a run on a node or records an instance yet, so neither
-    # does the demo, though the history's runs name machines called build-01 and build-02.
-    assert Repo.exists?(
+    # Every run of Main is placed on a node; the history's on the instance of its host,
+    # which is recorded, the recordings' on dana-laptop, as no instance.
+    refute Repo.exists?(from r in Run, where: r.workspace_id == ^main.id and is_nil(r.node_id))
+
+    refute Repo.exists?(
              from r in Run,
-               where: r.workspace_id == ^main.id and r.host in ["build-01", "build-02"]
+               join: n in assoc(r, :node),
+               where: r.workspace_id == ^main.id,
+               where: n.name in ["build-01", "build-02", "spot-runners"]
            )
 
-    refute Repo.exists?(from r in Run, where: not is_nil(r.node_id) or not is_nil(r.instance_id))
-    refute Repo.exists?(Instance)
+    dana = Repo.get_by!(Node, workspace_id: main.id, name: "dana-laptop")
+    assert Repo.exists?(from r in Run, where: r.node_id == ^dana.id and is_nil(r.instance_id))
+    assert Repo.exists?(from i in Instance, where: i.node_id == ^dana.id and i.name == "dana-mbp")
 
     # Secrets, variables and integrations are the security feature's.
     if Apiary.Features.on?(:security) do

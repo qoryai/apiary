@@ -93,7 +93,7 @@ Every context, schema and plug carries a `@moduledoc`, and every public context 
 `@doc`. The conventions:
 
 - The first sentence starts with the name and is a complete sentence: `Organisations
-  holds ...`, `create_access_key/2 creates ...`.
+  holds ...`, `add_access_key/3 adds ...`.
 - A moduledoc says what the module owns, the words it defines, how a caller uses it, and
   the invariants a caller must not break, such as which scope a function expects.
 - Say what the function does, including what it refuses (`{:error, :forbidden}`,

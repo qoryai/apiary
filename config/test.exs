@@ -51,8 +51,7 @@ config :phoenix,
   sort_verified_routes_query_params: true
 
 # APIARY_ENCRYPTION_SECRET in test: every key the instance uses is derived from it
-# (Apiary.KeyDerivation), the access key secrets' (Apiary.Vault) among them. Not a
-# secret: local databases only.
+# (Apiary.KeyDerivation). Not a secret: local databases only.
 config :apiary, Apiary.KeyDerivation,
   secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
 

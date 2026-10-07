@@ -1,7 +1,6 @@
 defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
   use ApiaryWeb.ConnCase, async: true
 
-  import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures, except: [signed_get: 4, signed_get: 5]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -278,12 +277,6 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
   test "an unknown key is 401", %{conn: conn, secret: secret} do
     conn = signed_get(conn, "ak_0000000000000000", secret)
-    assert json_response(conn, 401) == @unauthorized
-  end
-
-  test "today's key, with a secret and no public key, is 401", %{conn: conn, scope: scope} do
-    %{access_key: key, secret: secret} = access_key_fixture(scope)
-    conn = signed_get(conn, key.key_id, secret)
     assert json_response(conn, 401) == @unauthorized
   end
 

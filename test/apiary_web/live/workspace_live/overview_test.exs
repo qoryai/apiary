@@ -824,9 +824,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         pending_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
 
       long_ago(pending, 40)
-      # Nor is a workspace key of today's kind, which no page lists any more.
-      %{access_key: old} = access_key_fixture(scope, label: "hmac-runner")
-      long_ago(old, 40)
 
       view = open(conn, scope)
       assert text(view, "#att-key-#{idle.id}") =~ "old-runner #{idle.key_id}"
@@ -844,7 +841,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       refute has_element?(view, "#att-key-#{fresh.id}")
       refute has_element?(view, "#att-key-#{pending.id}")
-      refute has_element?(view, "#att-key-#{old.id}")
 
       # A member may not revoke a node's key: the list, which holds acts, has no item for it.
       %{user: member} = member_fixture(scope, :member)

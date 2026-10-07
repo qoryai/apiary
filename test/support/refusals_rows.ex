@@ -356,13 +356,6 @@ defmodule ApiaryWeb.RefusalsRows do
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],
-      # A workspace's keys of today's kind: their page is removed, and the actions go
-      # with the keys themselves.
-      no_page_any_more: [
-        :"access_key.create",
-        :"access_key.rotate",
-        :"access_key.revoke_secret_key"
-      ],
       no_page_yet: [
         :"secret.use",
         :"connection.read",

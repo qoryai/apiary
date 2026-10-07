@@ -98,7 +98,7 @@ defmodule Apiary.SuspensionsTest do
 
     test "nothing is removed: activated, they act again with the reach they had", ctx do
       in_main = workspace_scope(ctx.member.user, ctx.owner.workspace)
-      %{access_key: key} = access_key_fixture(ctx.member.scope)
+      %{access_key: key} = access_key_fixture(ctx.owner)
 
       {:ok, _} = Organisations.suspend_member(ctx.owner, ctx.member.membership.id)
 
@@ -117,7 +117,9 @@ defmodule Apiary.SuspensionsTest do
       assert %Membership{} =
                Organisations.suspended_membership(ctx.member.user, ctx.owner.organisation.slug)
 
-      assert {:error, :forbidden} = AccessKeys.revoke_access_key(ctx.member.scope, key)
+      assert Access.authorize(ctx.member.scope, :"node.read", ctx.owner.workspace) ==
+               {:error, :forbidden}
+
       # The key is the workspace's, not theirs: it keeps working.
       assert {:ok, _} = AccessKeys.fetch_for_verification(key.key_id)
 
@@ -126,9 +128,9 @@ defmodule Apiary.SuspensionsTest do
       assert Organisations.suspended_membership(ctx.member.user, ctx.owner.organisation.slug) ==
                nil
 
-      assert Access.authorize(in_main, :"access_key.create", ctx.owner.workspace) == :ok
+      assert Access.authorize(in_main, :"node.read", ctx.owner.workspace) == :ok
       assert workspace_scope(ctx.member.user, ctx.owner.workspace)
-      assert {:ok, _} = AccessKeys.revoke_access_key(ctx.member.scope, key)
+      assert Access.authorize(ctx.member.scope, :"node.read", ctx.owner.workspace) == :ok
     end
 
     test "each suspension and activation is an entry; one that changes nothing is none", ctx do

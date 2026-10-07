@@ -256,14 +256,6 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
       assert json_response(conn, 401) == @unauthorized
       assert log =~ "does not match its integrity code"
     end
-
-    test "of today's kind, with a secret and no public key, verifies nothing", ctx do
-      %{access_key: key, secret: secret} = access_key_fixture(ctx.scope)
-
-      for conn <- each_endpoint(key.key_id, secret) ++ each_endpoint(key.key_id, "another key") do
-        assert json_response(conn, 401) == @unauthorized
-      end
-    end
   end
 
   describe "the log" do

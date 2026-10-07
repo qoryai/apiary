@@ -10,9 +10,8 @@ four things:
 4. `SECRET_KEY_BASE`.
 
 Keep the three values beside the dumps and not inside them, in a password manager or a
-secret store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the access key
-secrets and the stored secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET`
-protects nothing of them.
+secret store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the stored
+secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET` protects nothing of them.
 
 ## Back up
 
@@ -100,8 +99,8 @@ curl http://localhost:4100/health
 ```
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
-that has one of the workspace's access keys: if it appears, the access key secrets were
-restored readable, which means `APIARY_ENCRYPTION_SECRET` is the right one.
+that has one of the workspace's access keys: if it appears, the keys' integrity codes
+verified, which means `APIARY_ENCRYPTION_SECRET` is the right one.
 
 ## What each key is for
 
@@ -109,8 +108,6 @@ restored readable, which means `APIARY_ENCRYPTION_SECRET` is the right one.
 
 It encrypts what the database holds secret:
 
-- the secrets of access keys, the columns `secret_primary` and `secret_secondary` of the
-  table `access_keys`;
 - the values of the workspaces' stored secrets, the table `secret_values`, each encrypted
   under its workspace's data key, which is kept in `workspace_data_keys` encrypted under a
   key derived from `APIARY_ENCRYPTION_SECRET`.
@@ -122,25 +119,11 @@ are keyed by it too: a row changed outside the application no longer matches its
 copy and no way to recover them: each value has to be entered again, in the workspace's
 secrets, from wherever it came from.
 
-Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, the access key secrets
-cannot be read either. What that looks like, so it is recognised:
-
-- Every signed request of a runner holding such a key, the configuration document and every
-  batch of events among them, is answered `503` with
-  `{"error":"unavailable"}`, never `401`: the instance is at fault, not the machine. The
-  runner fails closed, so no machine starts a run against this server and no events
-  arrive. For each request the log has `access key secret cannot be decrypted
-  key_id=ak_…: APIARY_ENCRYPTION_SECRET is not the key the secret was encrypted with`.
-- The console still shows every key on **Access keys** with its label, key id and last
-  use, since the page never reads a secret. It cannot show a secret again, by design.
-- **Rotate** on such a key issues a new secret, shown once, in place of the ones nobody can
-  read, which are dropped; **Revoke** revokes as ever.
-
-The way out is therefore a new secret for every machine: rotate each key under the new
-`APIARY_ENCRYPTION_SECRET`, or create a new key, and paste the `server` block into each
-machine's runner file ([The runner file's `server` section](runner-file.md)). When the right
-`APIARY_ENCRYPTION_SECRET` turns up, put it back before rotating and every existing secret
-reads again.
+Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity
+code verifies either, so the instance trusts none of them: every signed request of a runner
+is answered `401`, no machine starts a run against this server and no events arrive. For each
+request the log has `access key row does not match its integrity code key_id=ak_…`. Put the
+right `APIARY_ENCRYPTION_SECRET` back and every key verifies again.
 
 Everything else survives: accounts, organisations, workspaces and memberships, runs,
 events, logs, connections, and the access keys' own rows with their labels and key ids.
@@ -187,9 +170,9 @@ are taken, restore the newest dump on another machine:
    <!-- feature: security -->
    So are the policy and its history.
    <!-- /feature -->
-6. Prove the access key secrets are readable. On the same machine, with the `qory` command,
-   point a runner file's `server` section at `http://localhost:4100` with the access key and
-   secret of a key that existed when the dump was taken, and start a run. A run that starts
+6. Prove the access keys verify. On the same machine, with the `qory` command, point a
+   runner file's `server` section at `http://localhost:4100` with an access key that existed
+   when the dump was taken, and start a run. A run that starts
    and appears under **Runs** proves the dump and `APIARY_ENCRYPTION_SECRET` belong together. A
    run that does not start because the server refuses its requests means they do not.
 7. Delete the drill: `docker compose down --volumes`, then the `.env` and the dump's copy.

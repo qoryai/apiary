@@ -70,9 +70,6 @@ defmodule Apiary.RuntimeConfigTest do
 
       assert get_in(config, [:apiary, Apiary.KeyDerivation, :secret]) ==
                String.duplicate("k", 32)
-
-      # The access key cipher takes its derived key when the vault starts.
-      assert get_in(config, [:apiary, Apiary.Vault, :ciphers]) == nil
     end
 
     test "missing, or not 32 bytes in base64, it stops the boot, naming the variable" do

@@ -189,8 +189,7 @@ if config_env() == :prod do
       """
 
   # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
-  # (Apiary.KeyDerivation): the access key secrets' (Apiary.Vault), the stored values'
-  # and the integrity codes'. Changing it makes every stored secret unreadable, so keep
+  # (Apiary.KeyDerivation): the stored values' and the integrity codes'. Changing it makes every stored secret unreadable, so keep
   # it with the database backups.
   encryption_secret =
     case System.get_env("APIARY_ENCRYPTION_SECRET") do

@@ -7,6 +7,7 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
   import Ecto.Query
 
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Nodes.Instance
   alias Apiary.Organisations.{Invitation, Membership}
   alias Apiary.Repo
   alias Apiary.Runs.{Event, Run, Target}
@@ -62,16 +63,35 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
     assert DateTime.diff(DateTime.utc_now(), oldest, :day) >= 5
   end
 
-  test "keys are made per machine, one revoked and one never used; people join at every level",
+  test "nodes and keys are made per machine, one revoked and one never used; people join at every level",
        %{scope: scope} do
     fill(scope)
 
-    keys = Repo.all(from k in AccessKey, where: k.workspace_id == ^scope.workspace.id)
+    keys =
+      Repo.all(from k in AccessKey, where: k.workspace_id == ^scope.workspace.id, preload: :node)
+
     by_label = Map.new(keys, &{&1.label, &1})
 
     assert by_label["legacy-ci"].revoked_at
     assert is_nil(by_label["staging-bot"].last_used_at)
     assert by_label["ci-fleet"].last_used_at
+    assert by_label["ci-fleet"].node.kind == :pool
+    assert by_label["dana-laptop"].node.kind == :node
+    assert Enum.all?(keys, &(&1.public_key && &1.approved_at))
+
+    # ci-fleet holds a second key, as when its key is replaced.
+    assert by_label["ci-fleet-next"].node_id == by_label["ci-fleet"].node_id
+    assert is_nil(by_label["ci-fleet-next"].revoked_at)
+
+    # Each run is on its machine's node, as the instance of its host, recorded.
+    runs = runs(scope)
+    assert Enum.all?(runs, &(&1.node_id && &1.instance_id))
+    fleet = by_label["ci-fleet"].node_id
+
+    names =
+      Repo.all(from i in Instance, where: i.node_id == ^fleet, select: i.name)
+
+    assert names != [] and Enum.all?(names, &String.starts_with?(&1, "ci-runner-"))
 
     levels =
       Repo.all(

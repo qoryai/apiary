@@ -47,15 +47,14 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview and Settings.
-- Access keys of nodes, beside today's keys: each holds one Ed25519 public key and belongs
+- Access keys of nodes: each holds one Ed25519 public key and belongs
   to one node or node pool, with its stored-secrets flag fixed when it is made. Owners and
   admins make single-use enrolment codes, valid for 15 minutes, add a pasted key, approved
   at once, approve or reject a key that awaits approval, and revoke one, each in the audit
   trail; a node holds at most two approved keys and one awaiting approval, and deleting a
   node revokes its keys. Every public key received passes the contract's key checks, and
   a public key serves one access key, ever, on the instance. Each key's row carries an
-  integrity code, checked before the key is trusted. Revoking today's keys is now the
-  action `access_key.revoke_secret_key`; nothing else about them changes.
+  integrity code, checked before the key is trusted.
 - A node's instances: what a runner using the node's access key reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation. An
   instance runs while it has a run the lost-run check holds alive. The Nodes list says
@@ -128,9 +127,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   repositories that set their own, with New variable, Change value, Lock, Unlock and
   Delete variable. Members read them; owners and admins change them. A parameter named
   `value` is filtered out of the logs, a LiveView event's included.
-- `APIARY_ENCRYPTION_SECRET`, 32 bytes, encrypts what the database holds secret: the
-  access key secrets, and each workspace's stored values under a data key of its own,
-  with AES-256-GCM, wrapped by a key derived from it. Losing it loses every stored
+- `APIARY_ENCRYPTION_SECRET`, 32 bytes, encrypts what the database holds secret: each
+  workspace's stored values under a data key of its own, with AES-256-GCM, wrapped by a key derived from it. Losing it loses every stored
   value. Integrity codes for stored rows are keyed from it as well.
 - Runtimes, integrations and services for the runs, without a page yet
   (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's

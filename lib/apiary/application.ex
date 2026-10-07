@@ -45,7 +45,6 @@ defmodule Apiary.Application do
       [
         ApiaryWeb.Telemetry,
         Apiary.Repo,
-        Apiary.Vault,
         {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Apiary.PubSub},
         {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},

@@ -56,9 +56,6 @@ defmodule Apiary.AuditChanges do
       :"workspace.delete",
       :"workspace.restore",
       :"workspace.purge",
-      :"access_key.create",
-      :"access_key.rotate",
-      :"access_key.revoke_secret_key",
       :"access_key.create_code",
       :"access_key.cancel_code",
       :"access_key.add",
@@ -205,26 +202,6 @@ defmodule Apiary.AuditChanges do
     before = entries()
     {:ok, _} = Organisations.update_workspace(scope, %{name: "Renamed"})
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
-  end
-
-  def make(:"access_key.create", %{scope: scope}) do
-    before = entries()
-    {:ok, key, secret} = AccessKeys.create_access_key(scope, %{label: "build-01"})
-    %{scope: scope, subject: {"access_key", key.id}, secret: secret, before: before}
-  end
-
-  def make(:"access_key.rotate", %{scope: scope}) do
-    %{access_key: key} = access_key_fixture(scope)
-    before = entries()
-    {:ok, key, secret} = AccessKeys.rotate_access_key(scope, key)
-    %{scope: scope, subject: {"access_key", key.id}, secret: secret, before: before}
-  end
-
-  def make(:"access_key.revoke_secret_key", %{scope: scope}) do
-    %{access_key: key} = access_key_fixture(scope)
-    before = entries()
-    {:ok, _} = AccessKeys.revoke_access_key(scope, key)
-    %{scope: scope, subject: {"access_key", key.id}, before: before}
   end
 
   def make(:"access_key.create_code", %{scope: scope}) do
@@ -472,11 +449,6 @@ defmodule Apiary.AuditChanges do
     suspended
   end
 
-  defp prepare(:"access_key.rotate", %{scope: scope}), do: access_key_fixture(scope).access_key
-
-  defp prepare(:"access_key.revoke_secret_key", %{scope: scope}),
-    do: access_key_fixture(scope).access_key
-
   defp prepare(:"access_key.create_code", %{scope: scope}), do: node_fixture(scope)
 
   defp prepare(:"access_key.cancel_code", %{scope: scope}) do
@@ -566,14 +538,7 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"workspace.rename", scope, _),
     do: Organisations.update_workspace(scope, %{name: "Renamed"})
 
-  defp attempt(:"access_key.create", scope, _),
-    do: AccessKeys.create_access_key(scope, %{label: "build-01"})
-
-  defp attempt(:"access_key.rotate", scope, key), do: AccessKeys.rotate_access_key(scope, key)
-
-  defp attempt(action, scope, key)
-       when action in [:"access_key.revoke_secret_key", :"access_key.revoke"],
-       do: AccessKeys.revoke_access_key(scope, key)
+  defp attempt(:"access_key.revoke", scope, key), do: AccessKeys.revoke_access_key(scope, key)
 
   defp attempt(:"access_key.create_code", scope, node),
     do: AccessKeys.create_enrolment_code(scope, node, %{})

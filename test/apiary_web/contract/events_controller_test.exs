@@ -2,7 +2,6 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   use ApiaryWeb.ConnCase, async: false
   # Not async: a test here changes the global log level, which would race async modules.
 
-  import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
   import Ecto.Query
@@ -562,8 +561,6 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       good = sign_request(secret, key.key_id, instance_id(), "POST", "/v1/events", body)
       %{access_key: revoked, secret: revoked_secret} = contract_key_fixture(scope)
       {:ok, _} = AccessKeys.revoke_access_key(scope, revoked)
-      # Today's key, with a secret and no public key, verifies nothing.
-      %{access_key: hmac_key} = access_key_fixture(scope)
       {:ok, raw} = Apiary.Contract.Ed25519.decode(good, 64)
 
       attempts = [
@@ -571,9 +568,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         {"ak_0000000000000000", secret, []},
         {"ak_SHOUTING00000000", secret, []},
         {"ak_" <> <<255>> <> "00000000000000", secret, []},
-        # a revoked key, on the ping as on anything else; a key that is no node's
+        # a revoked key, on the ping as on anything else
         {revoked.key_id, revoked_secret, []},
-        {hmac_key.key_id, secret, []},
         # the signature: another key's, padded, in the standard alphabet, hex, short, empty
         {key.key_id, "another secret", []},
         {key.key_id, secret, [signature: good <> "=="]},
