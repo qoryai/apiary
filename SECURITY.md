@@ -35,6 +35,9 @@ earlier one.
   removed.
 - Sign-in, confirmation, password reset or an invitation link can be used by someone the
   link was not sent to.
+- A page of the console runs a script that is not the console's own: one without the
+  request's nonce, an `on…=` attribute or a `javascript:` address, while the page's
+  `Content-Security-Policy` header reaches the browser as the release sent it.
 
 The wall, the proxy and the signed delivery on the machine are the
 [runner](https://github.com/qoryai/runner)'s, and so is its

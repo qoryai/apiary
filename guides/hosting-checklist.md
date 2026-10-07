@@ -74,6 +74,9 @@ being one. Every variable named here is described in [Install and configure](ins
   <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
+- **The security headers.** Every page carries a `Content-Security-Policy` that lets only
+  the console's own scripts run. The proxy must pass it on as it is: not strip it, not
+  replace it with one of its own, and not add a second.
 
 ## Upgrades
 

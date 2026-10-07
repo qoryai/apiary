@@ -191,6 +191,10 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   credentials, so private releases are not supported. Who may read and
   change them are the actions `connection.read` and `connection.write`, every change is in
   the audit trail, and each row carries an integrity code.
+- A `Content-Security-Policy` on every page of the console, the storybook and the
+  documentation: only the console's own scripts run, and a script injected into a page,
+  inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
+  browser. A reverse proxy must pass the header on, neither stripping nor replacing it.
 
 ### Migrations
 

@@ -113,6 +113,12 @@ The web side is under `lib/apiary_web/`:
   reach, or none. The names a slug can never be are in `reserved_slugs.ex`, with the
   edition's, and a new top-level path or organisation page is added there in the same
   change.
+- `content_security_policy.ex`: the `content-security-policy` the endpoint puts on every
+  answer of the router and on `/docs`, with a fresh nonce per request (`@csp_nonce`):
+  only the console's own bundles and scripts that carry the nonce run, and no page writes
+  an `on…=` attribute or a `javascript:` address. A reverse proxy must pass the header on,
+  neither stripping nor replacing it. `ApiaryWeb.ContentSecurityPolicyTest` loads every
+  page and fails on anything the policy would refuse.
 
 Migrations are under `priv/repo/migrations/`, one per change; an edition's are in a
 folder of its own, run with the core's as one sequence by version
