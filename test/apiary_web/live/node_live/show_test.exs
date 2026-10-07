@@ -191,6 +191,24 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       lv |> form("#node-form", node: %{instance_limit: "3"}) |> render_submit()
       assert Repo.get!(Node, pool.id).instance_limit == 3
     end
+
+    test "an admin made a member while the page is open reads it, with nothing to change", %{
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      %{user: user, membership: membership} = member_fixture(scope, :admin)
+      conn = log_in_user(build_conn(), user)
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/settings"))
+      assert has_element?(lv, "#node-save")
+
+      Repo.update!(Ecto.Changeset.change(membership, level: :member))
+      send(lv.pid, {:membership_changed, %{organisation_id: scope.organisation.id}})
+
+      assert has_element?(lv, "#node-settings-readonly")
+      assert has_element?(lv, "#node-form input[name='node[name]'][disabled]")
+      refute has_element?(lv, "#node-save")
+      refute has_element?(lv, "#node-danger")
+    end
   end
 
   describe "deleting a node" do
@@ -204,6 +222,14 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert_patch(lv, node_path(scope, node, "/settings/delete"))
       refute has_element?(lv, "#delete-node-dialog")
       assert has_element?(lv, "#node-danger #delete-node #delete-node-form", "build-01 leaves")
+
+      assert has_element?(
+               lv,
+               "#delete-node-form",
+               "Its access keys and its enrolment codes are revoked."
+             )
+
+      refute has_element?(lv, "#delete-node-form", "cancelled")
       assert has_element?(lv, "#delete-node-confirming", "Delete build-01?")
       # No field to type: Cancel takes the focus, and the red button is ready.
       assert has_element?(lv, "#delete-node-confirming-cancel[phx-mounted]")

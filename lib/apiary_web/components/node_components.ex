@@ -4,7 +4,8 @@ defmodule ApiaryWeb.NodeComponents do
   words, from what it is doing (`Apiary.Nodes.activity/3`), the sentence that says what an
   instance is, and the line that says runners can't use a node's keys yet. And what a
   node's page's two LiveViews share: its header (`node_header/1`) and its tabs
-  (`node_tabs/1`), Overview, Access key and Settings.
+  (`node_tabs/1`), Overview, Access key and Settings; and an enrolment code's expiry
+  (`code_expiry/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
@@ -171,6 +172,28 @@ defmodule ApiaryWeb.NodeComponents do
         </:part>
       </.rich>
     </.not_on_runs>
+    """
+  end
+
+  @doc """
+  code_expiry/1 is an enrolment code's expiry, as a term and its description in a `<dl>`:
+  "Expires" and the moment, as the reader's clock writes it, or "Expired" once `now` is
+  past it. The description is the moment, or the page's own words (`inner_block`). The
+  term's id is the description's, then `-label`.
+  """
+  attr :id, :string, required: true
+  attr :at, DateTime, required: true, doc: "when the code expires"
+  attr :now, DateTime, required: true, doc: "the moment the page last read the codes"
+  slot :inner_block, doc: "the description's words, where the moment alone does not do"
+
+  def code_expiry(assigns) do
+    ~H"""
+    <dt id={"#{@id}-label"} class="text-faint">
+      {if DateTime.after?(@at, @now), do: gettext("Expires"), else: gettext("Expired")}
+    </dt>
+    <dd id={@id}>
+      {if @inner_block == [], do: Format.datetime(@at), else: render_slot(@inner_block)}
+    </dd>
     """
   end
 

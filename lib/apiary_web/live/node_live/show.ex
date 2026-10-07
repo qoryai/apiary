@@ -44,7 +44,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   alias Apiary.{Access, Nodes, Runs}
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Runs.{Filters, Run}
-  alias ApiaryWeb.{NodeComponents, People, SettingsComponents}
+  alias ApiaryWeb.{NodeComponents, People, SettingsComponents, UserAuth}
 
   @tick :timer.seconds(15)
   @coalesce_ms 250
@@ -64,6 +64,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           |> assign_may()
           |> assign_form(Nodes.change_node(node))
           |> assign_activity()
+          |> UserAuth.on_membership_change(&assign_may/1)
 
         if connected?(socket) do
           Nodes.subscribe(scope)
@@ -898,7 +899,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         )}
         <:lost>
           {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
+            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys and its enrolment codes are revoked. Its runs stay in the record. This cannot be undone.",
             name: @node.name
           )}
         </:lost>
