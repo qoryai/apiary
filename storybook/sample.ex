@@ -489,8 +489,8 @@ defmodule ApiaryWeb.Storybook.Sample do
   node's one is kept as `last` once it stops. `keys` are its access keys, `seen` when it
   last posted and `runs` its runs of 14 days. Its times are this minute's.
 
-    * build-01, running, its key approved;
-    * build-02, last seen 2 hours ago, its first key awaiting approval;
+    * build-01, running, its key active;
+    * build-02, last seen 2 hours ago, its first key enrolled with a code today;
     * mac-mini, last seen 3 days ago, its key revoked;
     * ci-runners, a pool of at most 10 with 3 running;
     * spot-runners, a pool without a limit with 5 running;
@@ -507,9 +507,10 @@ defmodule ApiaryWeb.Storybook.Sample do
         keys: [
           key(
             "ak_7q2m9f4cxkd8b1ah",
-            :approved,
+            :active,
             "Xq3vR8kT1mZp6LwN2bYc9H",
             stored_secrets: true,
+            way: :code,
             by: "dana",
             on: "2 Sept 2026"
           )
@@ -523,12 +524,12 @@ defmodule ApiaryWeb.Storybook.Sample do
         keys: [
           key(
             "ak_3xkd8b1ap4n6w2ze",
-            :pending,
+            :active,
             "Lm7Tq2Wv9Xc4Bn8Kd1Rf6H",
             stored_secrets: true,
+            way: :code,
             by: "dana",
-            on: "today",
-            asked: ago.(2 * 3600)
+            on: "today"
           )
         ],
         seen: ago.(2 * 3600),
@@ -561,9 +562,10 @@ defmodule ApiaryWeb.Storybook.Sample do
         keys: [
           key(
             "ak_h8r5t1qj7q2m9f4c",
-            :approved,
+            :active,
             "Qa1Ws2Ed3Rf4Tg5Yh6Uj7I",
             stored_secrets: true,
+            way: :pasted,
             by: "dana",
             on: "3 Sept 2026"
           )
@@ -584,9 +586,10 @@ defmodule ApiaryWeb.Storybook.Sample do
         keys: [
           key(
             "ak_2q9wd7nb4kx3v6jt",
-            :approved,
+            :active,
             "Mn8Bv7Cx6Za5Sd4Fg3Hj2K",
             stored_secrets: false,
+            way: :pasted,
             by: "lee",
             on: "14 Sept 2026"
           )
@@ -600,9 +603,10 @@ defmodule ApiaryWeb.Storybook.Sample do
         keys: [
           key(
             "ak_9f4cxkd8b1ah7q2m",
-            :approved,
+            :active,
             "Zx9Cv8Bn7Mq6Wp5Ol4Ik3U",
             stored_secrets: true,
+            way: :code,
             by: "sam",
             on: "21 Sept 2026"
           )
@@ -616,15 +620,15 @@ defmodule ApiaryWeb.Storybook.Sample do
 
   @doc """
   The key a node enrols to replace its own, as the mock-up of a replacement draws it: it
-  arrived with an enrolment code a minute ago and awaits approval.
+  arrived with an enrolment code today and is active, beside the current key.
   """
   @spec replacement_key() :: map()
   def replacement_key do
-    key("ak_w2ze3xkd8b1ap4n6", :pending, "Ty5Rn3Vb8Xk1Mq7Lp2Wd9H",
+    key("ak_w2ze3xkd8b1ap4n6", :active, "Ty5Rn3Vb8Xk1Mq7Lp2Wd9H",
       stored_secrets: true,
+      way: :code,
       by: "dana",
-      on: "today",
-      asked: DateTime.add(DateTime.utc_now(), -60)
+      on: "today"
     )
   end
 
@@ -638,9 +642,10 @@ defmodule ApiaryWeb.Storybook.Sample do
   defp instance(id, runs, version, since),
     do: %{id: id, runs: runs, version: version, since: since}
 
-  # `by` and `on` are who approved the key and when, who revoked it for a revoked one, and
-  # who made its enrolment code for one awaiting approval, which arrived `asked`.
+  # A key is `:active` or `:revoked`. `way` is how an active one arrived, `:code` with an
+  # enrolment code or `:pasted`; `by` and `on` are who made its code or pasted it and when,
+  # or who revoked it and when for a revoked one.
   defp key(id, state, fingerprint, opts) do
-    Map.merge(%{id: id, state: state, fingerprint: fingerprint, asked: nil}, Map.new(opts))
+    Map.merge(%{id: id, state: state, fingerprint: fingerprint, way: nil}, Map.new(opts))
   end
 end
