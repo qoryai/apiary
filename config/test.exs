@@ -36,6 +36,11 @@ config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
+# The development routes (the storybook, LiveDashboard, the mailbox preview) in test too, so
+# that ApiaryWeb.ContentSecurityPolicyTest loads their pages under the policy as it loads
+# the console's.
+config :apiary, dev_routes: true
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
