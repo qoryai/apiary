@@ -8244,8 +8244,17 @@
     color: var(--q-faint);
     font-weight: 400;
   }
-  /* The narrowed line of a list (`#runs-narrowed`, `#connections-target-note`): a long
-     target's name wraps anywhere rather than widen the page. */
+  /* The narrowed line of a list (`#runs-narrowed`, `#connections-target-note`): its links
+     are underlined at rest, as beside its words their hue alone would set them apart, and
+     a long target's name wraps anywhere rather than widen the page. */
+  #runs-narrowed .q-link,
+  #connections-target-note .q-link {
+    text-decoration-color: color-mix(in oklab, currentColor 55%, transparent);
+  }
+  #runs-narrowed .q-link:hover,
+  #connections-target-note .q-link:hover {
+    text-decoration-color: currentColor;
+  }
   .q-narrowed-name,
   .q-narrowed-name .q-tname {
     overflow-wrap: anywhere;
