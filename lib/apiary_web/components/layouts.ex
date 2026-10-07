@@ -179,8 +179,8 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's, a new access key on a workspace's page and an invitation on an
-  organisation's too; of them, only what the reader may do there, each entry's action
+  then the core's, a new access key and Add integration on a workspace's page and an
+  invitation on an organisation's too; of them, only what the reader may do there, each entry's action
   asked of the workspace or the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
@@ -196,6 +196,17 @@ defmodule ApiaryWeb.Layouts do
           action: :"access_key.create"
         }
 
+    # Add integration, the workspace's first step towards one, asks for a release.
+    integration =
+      place == :workspace && workspace &&
+        %Entry{
+          key: :integration,
+          label: gettext("Add integration"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/#{workspace}/settings/integrations/add",
+          action: :"connection.write"
+        }
+
     invite = %Entry{
       key: :invite,
       label: gettext("Invite people"),
@@ -205,7 +216,8 @@ defmodule ApiaryWeb.Layouts do
       action: :"member.invite"
     }
 
-    for %Entry{} = entry <- ApiaryWeb.Edition.new_entries(scope, place) ++ [key, invite],
+    for %Entry{} = entry <-
+          ApiaryWeb.Edition.new_entries(scope, place) ++ [key, integration, invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end

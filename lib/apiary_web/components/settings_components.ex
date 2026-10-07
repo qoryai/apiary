@@ -12,7 +12,8 @@ defmodule ApiaryWeb.SettingsComponents do
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
     People (who reaches it, and at what level: read here, managed in the organisation's
-    People), Access keys, Runs (how long it keeps runs, their events and their logs), and,
+    People), with the `security` feature Integrations (`ApiaryWeb.IntegrationLive.Index`),
+    Access keys, Runs (how long it keeps runs, their events and their logs), and,
     with the `security` feature, Secrets and variables (`ApiaryWeb.SecretLive.Index`).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting

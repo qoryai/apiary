@@ -36,7 +36,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   alias ApiaryWeb.{RunComponents, SettingsComponents, TargetComponents}
 
   @tabs [:overview, :targets, :settings]
-  @writes [:add_target, :remove_target, :settings, :version, :delete]
+  @writes [:add_target, :remove_target, :version, :delete]
 
   @impl true
   def render(%{live_action: :add_target} = assigns) do
@@ -159,7 +159,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             />
             <p :if={Common.url_source?(@connection.source)} class="text-[13px]/5 text-muted">
               {gettext(
-                "An integration from an address has one release: what its address serves. Apiary fetches it again, and you move to it from there."
+                "An integration from an address has one release: what its address serves. Qory fetches it again, and you move to it from there."
               )}
             </p>
             <.page_form_foot
@@ -228,7 +228,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
         <Common.not_yet />
         <.notice :if={!@connection.intact} kind={:error}>
-          {gettext("%{name} fails its integrity check: its record is not as Apiary wrote it.",
+          {gettext("%{name} fails its integrity check: its record is not as Qory wrote it.",
             name: @connection.name
           )}
         </.notice>
@@ -259,6 +259,26 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             {(@runtime && @runtime.title) || @connection.name}
             <span class="q-mono text-muted">({@connection.name})</span>
           </dd>
+          <dt :if={@runtime} class="text-faint">{gettext("Hosts")}</dt>
+          <dd :if={@runtime} class="q-mono">{Enum.join(Runtimes.hosts(@runtime), ", ")}</dd>
+          <dt :if={@runtime && @runtime.reserves != []} class="text-faint">
+            {gettext("Reserved variables")}
+          </dt>
+          <dd :if={@runtime && @runtime.reserves != []} class="q-mono">
+            {Enum.join(@runtime.reserves, ", ")}
+          </dd>
+          <dt :if={@runtime && @runtime.denies != []} class="text-faint">
+            {gettext("Denied variables")}
+          </dt>
+          <dd :if={@runtime && @runtime.denies != []} class="q-mono">
+            {Enum.join(@runtime.denies, ", ")}
+          </dd>
+          <dt :if={@runtime && @runtime.credential_files != []} class="text-faint">
+            {gettext("Credential files")}
+          </dt>
+          <dd :if={@runtime && @runtime.credential_files != []} class="q-mono">
+            {Enum.join(@runtime.credential_files, ", ")}
+          </dd>
         <% end %>
         <%= if @connection.kind == "integration" do %>
           <dt class="text-faint">{gettext("Source")}</dt>
@@ -274,6 +294,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
               )}
             </span>
           </dd>
+          <dt class="text-faint">{gettext("Released on")}</dt>
+          <dd>{Common.released_on(@connection.forge_kind)}</dd>
           <dt class="text-faint">{gettext("Description digest")}</dt>
           <dd class="q-mono break-all">{@connection.description_sha256}</dd>
         <% end %>
@@ -294,8 +316,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           </dd>
           <dt :if={@definition} class="text-faint">{gettext("Hosts")}</dt>
           <dd :if={@definition} class="q-mono">{Enum.join(@definition["hosts"], ", ")}</dd>
+          <dt :if={@definition} class="text-faint">{gettext("Definition digest")}</dt>
+          <dd :if={@definition} class="q-mono break-all">
+            {Apiary.Kinds.ServiceDefinition.digest(@definition)}
+          </dd>
         <% end %>
-        <dt class="text-faint">{gettext("Applies to")}</dt>
+        <dt class="text-faint">{pgettext("plain", "Applies to")}</dt>
         <dd>
           <.link
             patch={Common.connection_path(@current_scope, @connection, :targets)}
@@ -320,25 +346,23 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     <SettingsComponents.part
       :if={@connection.kind == "integration"}
       id="connection-ways"
-      title={gettext("How it is used")}
+      title={gettext("Its ways")}
     >
       <p :if={@description && "credential" in @description.ways} class="text-[13px]/5">
-        {gettext("Calls its API.")}
+        {gettext("Calls its API: the one way Qory supports.")}
       </p>
       <p
         :if={@description && "tool" in @description.ways}
         id="connection-tool-way"
         class="text-[13px]/5 text-muted"
       >
-        {gettext(
-          "Its description also offers it as a tool (MCP). Apiary doesn't support that way yet."
-        )}
+        {gettext("Its description also offers it as a tool (MCP). Qory doesn't support that way yet.")}
       </p>
       <p
         :if={!@description || "credential" not in @description.ways}
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description offers no way Apiary supports yet.")}
+        {gettext("Its description offers no way Qory supports yet.")}
       </p>
     </SettingsComponents.part>
 
@@ -368,7 +392,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <p :if={@secrets != []} id="connection-secrets-unlinked" class="text-[13px]/5 text-muted">
         <.rich text={
           rich_gettext(
-            "Apiary can't link a stored secret to it yet. The workspace's secrets are in %{secrets}.",
+            "Qory can't link a stored secret to it yet. The workspace's secrets are in %{secrets}.",
             secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets and variables")}
           )
         } />
@@ -507,7 +531,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     do: gettext("It no longer applies to that target.")
 
   defp target_removal_sentence(_connection),
-    do: gettext("It still applies there, as to every target; only the target's way is dropped.")
+    do: gettext("It still applies there, since it applies to every target.")
 
   ## Settings
 
@@ -530,7 +554,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <.input
           field={@form[:applies_to]}
           type="radio"
-          label={gettext("Applies to")}
+          label={pgettext("plain", "Applies to")}
           options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
           hint={gettext("Chosen targets are listed under Targets.")}
         />
@@ -612,7 +636,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         question={gettext("Delete %{name}?", name: @connection.name)}
         submit="delete"
       >
-        {gettext("It is removed from this workspace with where it applies. This cannot be undone.")}
+        {pgettext(
+          "plain",
+          "It is removed from this workspace with where it applies. This cannot be undone."
+        )}
       </SettingsComponents.danger_action>
     </SettingsComponents.danger_zone>
     """
@@ -870,7 +897,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
          |> find(socket.assigns.find.params["text"] || "")
          |> put_flash(
            :info,
-           gettext("%{name} now applies to %{target}.",
+           pgettext("plain", "%{name} now applies to %{target}.",
              name: connection.name,
              target: target && target.target.path
            )

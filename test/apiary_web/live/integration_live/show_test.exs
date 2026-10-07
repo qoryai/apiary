@@ -14,7 +14,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
   setup :register_and_log_in_user
 
-  defp path(scope, connection, rest \\ ""),
+  defp ipath(scope, connection, rest \\ ""),
     do:
       "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/integrations/#{connection.public_id}#{rest}"
 
@@ -32,11 +32,11 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     test "says what a runtime is, its id, where it applies and the secrets it declares",
          %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
-      {:ok, lv, html} = live(conn, path(scope, runtime))
+      {:ok, lv, html} = live(conn, ipath(scope, runtime))
 
       assert has_element?(lv, "#connection-tabs-overview[aria-current=page]")
       assert has_element?(lv, "#connection-id", runtime.public_id)
-      assert has_element?(lv, "#connection-facts", "Every target")
+      assert has_element?(lv, "#connection-facts", "Every repository")
       assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
       assert has_element?(lv, "#connection-secrets-unlinked", "can't link a stored secret")
@@ -53,11 +53,11 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
           settings: %{"url" => "https://tracker.example.com"}
         })
 
-      {:ok, lv, _html} = live(conn, path(scope, integration))
+      {:ok, lv, _html} = live(conn, ipath(scope, integration))
 
       assert has_element?(lv, "#connection-publisher", "Acme")
       assert has_element?(lv, "#connection-publisher", "github.com/acme")
-      assert has_element?(lv, "#connection-ways", "Calls its API.")
+      assert has_element?(lv, "#connection-ways", "Calls its API")
       assert has_element?(lv, "#connection-tool-way", "doesn't support that way yet")
       assert has_element?(lv, "#connection-plain-settings", "https://tracker.example.com")
     end
@@ -72,7 +72,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
 
-      {:ok, lv, _html} = live(conn, path(scope, runtime, "/targets"))
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
       assert has_element?(lv, "#connection-targets-empty")
 
       {:ok, lv, _html} =
@@ -88,7 +88,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert target_id == shop.id
       refute has_element?(lv, "#candidate-#{shop.id}")
 
-      {:ok, lv, _html} = live(conn, path(scope, runtime, "/targets"))
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
       assert has_element?(lv, "#target-#{shop.id}", "acme/shop")
 
       lv |> element("#target-#{shop.id} a", "Remove") |> render_click()
@@ -101,9 +101,9 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
     test "a connection for every target offers no target to add", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
-      {:ok, lv, _html} = live(conn, path(scope, runtime, "/targets"))
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
 
-      assert has_element?(lv, "#connection-applies", "every target")
+      assert has_element?(lv, "#connection-applies", "every repository")
       refute has_element?(lv, "#add-target")
     end
   end
@@ -111,7 +111,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   describe "Settings" do
     test "where it applies and a service's name are saved", %{conn: conn, scope: scope} do
       {:ok, service} = Connections.create_service(scope, %{service: "npm"})
-      {:ok, lv, _html} = live(conn, path(scope, service, "/settings"))
+      {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
 
       lv
       |> form("#connection-form", connection: %{applies_to: "selected", name: "Packages"})
@@ -124,7 +124,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})
 
-      {:ok, lv, _html} = live(conn, path(scope, integration, "/settings"))
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
       assert has_element?(lv, "#connection-setting-app_id")
       refute has_element?(lv, "#connection-setting-private_key")
 
@@ -148,7 +148,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
     test "deleting asks in place, then removes it", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
-      {:ok, lv, _html} = live(conn, path(scope, runtime, "/settings"))
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
 
       lv |> element("#delete-connection-button") |> render_click()
       assert has_element?(lv, "#delete-connection-confirming", "Delete claude?")
@@ -163,7 +163,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     test "another version is asked for, and leads to the release", %{conn: conn, scope: scope} do
       release = ready_release!(scope, github_description())
       {:ok, integration} = Connections.create_integration(scope, release.id, %{})
-      {:ok, lv, _html} = live(conn, path(scope, integration, "/version"))
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/version"))
 
       {:error, {:live_redirect, %{to: to}}} =
         lv |> form("#version-form", version: %{version: "0.2.0"}) |> render_submit()
@@ -176,20 +176,25 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       conn = member_conn(scope, :member)
 
-      {:ok, lv, _html} = live(conn, path(scope, runtime, "/targets"))
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
       refute has_element?(lv, "#add-target")
 
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
+      assert has_element?(lv, "#connection-readonly", "Only owners and admins")
+      refute has_element?(lv, "#connection-form")
+      refute has_element?(lv, "#delete-connection")
+
       assert {:error, {:live_redirect, %{flash: flash}}} =
-               live(conn, path(scope, runtime, "/settings"))
+               live(conn, ipath(scope, runtime, "/version"))
 
       assert flash["error"] =~ "Only owners and admins"
 
-      assert {:error, {:live_redirect, _}} = live(conn, path(scope, runtime, "/delete"))
+      assert {:error, {:live_redirect, _}} = live(conn, ipath(scope, runtime, "/delete"))
     end
 
     test "a connection the workspace does not have is not found", %{conn: conn, scope: scope} do
       assert_raise ApiaryWeb.NotFound, fn ->
-        live(conn, path(scope, %{public_id: "con_0123456789abcdef"}))
+        live(conn, ipath(scope, %{public_id: "con_0123456789abcdef"}))
       end
     end
   end

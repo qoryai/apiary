@@ -67,7 +67,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <div :if={@release.state == "pending"} id="release-pending" class="grid gap-2">
           <p class="inline-flex items-center gap-2 text-[13.5px]/5">
             <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
-            {gettext("Apiary is fetching the release's description.json and checksums.txt.")}
+            {gettext("Qory is fetching the release's description.json and checksums.txt.")}
           </p>
           <p class="text-[13px]/5 text-muted">
             {gettext("This page shows what it says once it is read.")}
@@ -148,16 +148,20 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             )}
           </span>
         </dd>
+        <dt :if={@description.domains} class="text-faint">{gettext("Domains")}</dt>
+        <dd :if={@description.domains} class="q-mono">{Enum.join(@description.domains, ", ")}</dd>
+        <dt class="text-faint">{gettext("Released on")}</dt>
+        <dd>{Common.released_on(@release.forge_kind)}</dd>
         <dt class="text-faint">{gettext("Roles")}</dt>
         <dd class="q-mono">{Enum.join(@description.roles, ", ")}</dd>
         <dt class="text-faint">{gettext("Ways")}</dt>
         <dd id="release-ways">
           <span :if={"credential" in @description.ways}>{gettext("Calls its API")}</span>
           <span :if={"tool" in @description.ways} class="text-muted">
-            {gettext("Also a tool (MCP), which Apiary doesn't support yet")}
+            {gettext("Also a tool (MCP), which Qory doesn't support yet")}
           </span>
           <span :if={"credential" not in @description.ways} class="text-muted">
-            {gettext("No way Apiary supports yet")}
+            {gettext("No way Qory supports yet")}
           </span>
         </dd>
         <dt class="text-faint">{gettext("Secrets")}</dt>
@@ -165,6 +169,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           <span :for={secret <- @description.secrets} class="block">
             <span class="q-mono">{secret.name}</span>
             <span class="text-muted">· {secret.title}</span>
+            <span :if={secret.secret_name} class="q-mono text-muted">· {secret.secret_name}</span>
           </span>
         </dd>
         <dd :if={@description.secrets == []} class="text-muted">{gettext("None")}</dd>
@@ -189,7 +194,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       </dl>
       <p class="text-[12.5px]/[18px] text-faint">
         {gettext(
-          "Nothing verifies the publisher's name: check the source. Apiary only reads the release, and runs nothing of it."
+          "Nothing verifies the publisher's name: check the source. Qory only reads the release, and runs nothing of it."
         )}
       </p>
     </SettingsComponents.part>
@@ -275,7 +280,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           <.input
             field={@form[:applies_to]}
             type="radio"
-            label={gettext("Applies to")}
+            label={pgettext("plain", "Applies to")}
             options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
             hint={gettext("You choose the targets on its page, once it is added.")}
           />
@@ -288,7 +293,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               {gettext("Add %{title}", title: @description.title)}
             </.button>
             <:note :if={@description.secrets != []}>
-              {gettext("Apiary can't link a stored secret to it yet.")}
+              {gettext("Qory can't link a stored secret to it yet.")}
             </:note>
           </SettingsComponents.save>
         </div>
@@ -306,14 +311,14 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   defp failure("fetch_failed"),
     do:
       gettext(
-        "Apiary couldn't fetch the release's description.json and checksums.txt. Check the source and the version, and that the release is public."
+        "Qory couldn't fetch the release's description.json and checksums.txt. Check the source and the version, and that the release is public."
       )
 
   defp failure("description_invalid"),
     do: gettext("The release's description.json is not a valid description of an integration.")
 
   defp failure("placeholder_conflict"),
-    do: gettext("The release's description.json names a placeholder Apiary refuses.")
+    do: gettext("The release's description.json names a placeholder Qory refuses.")
 
   defp failure("integration_source_mismatch"),
     do:
@@ -321,7 +326,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         "What the release serves doesn't match its source: its checksums.txt, its version, or a description of the same version fetched before."
       )
 
-  defp failure(_code), do: gettext("Apiary couldn't read the release.")
+  defp failure(_code), do: gettext("Qory couldn't read the release.")
 
   ## Mount, params and the poll
 

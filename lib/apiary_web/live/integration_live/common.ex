@@ -257,6 +257,12 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     end
   end
 
+  @doc "released_on/1 is where a release is published, by its forge's kind: the forge, or an address."
+  def released_on("github"), do: "GitHub"
+  def released_on("gitlab"), do: "GitLab"
+  def released_on("forgejo"), do: "Codeberg"
+  def released_on(_none), do: gettext("An https address")
+
   @doc "url_source?/1 says whether `source` is an https address, not a forge path."
   def url_source?(source) when is_binary(source), do: String.starts_with?(source, "https://")
   def url_source?(_source), do: false
@@ -273,7 +279,8 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     names =
       for %Connection{public_id: id, name: name} <- connections, id in ids, do: name
 
-    gettext(
+    pgettext(
+      "plain",
       "It would overlap with %{names} where both apply: the same runtime, the same integration, or a host in common.",
       names: Enum.join(if(names == [], do: ids, else: names), ", ")
     )
@@ -288,8 +295,8 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     )
   end
 
-  def refusal(:runtime_unknown, _), do: gettext("That runtime is not in Apiary's catalogue.")
-  def refusal(:service_unknown, _), do: gettext("That service definition is not one Apiary has.")
+  def refusal(:runtime_unknown, _), do: gettext("That runtime is not in Qory's catalogue.")
+  def refusal(:service_unknown, _), do: gettext("That service definition is not one Qory has.")
   def refusal(:release_not_ready, _), do: gettext("The release is not ready to add.")
 
   def refusal(:integration_source_refused, _),

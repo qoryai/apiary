@@ -5,7 +5,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   calls connections, in four parts, each a list whose row leads to its page
   (`ApiaryWeb.IntegrationLive.Show`, `ApiaryWeb.IntegrationLive.Definition`):
 
-    * **Runtimes**, from Apiary's catalogue (`Apiary.Kinds.Runtimes`);
+    * **Runtimes**, from Qory's catalogue (`Apiary.Kinds.Runtimes`);
     * **Integrations**, each added from a release on github.com, gitlab.com or
       codeberg.org, or at an https address while the instance accepts one
       (`Apiary.Integrations.Source`);
@@ -83,7 +83,8 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         measure="list"
       >
         <:subtitle>
-          {gettext(
+          {pgettext(
+            "plain",
             "The runtimes, integrations and services set up in this workspace, and where each applies."
           )}
         </:subtitle>
@@ -104,7 +105,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           count={length(@runtimes)}
         >
           <p class="text-[13px]/5 text-muted">
-            {gettext("The agents a run can start, from Apiary's catalogue.")}
+            {gettext("Agent runtimes from Qory's catalogue.")}
           </p>
           <.table
             :if={@runtimes != []}
@@ -116,7 +117,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             <:col :let={connection} label={gettext("Runtime")} kind="title">
               <.name_cell connection={connection} scope={@current_scope} />
             </:col>
-            <:col :let={connection} label={gettext("Applies to")}>
+            <:col :let={connection} label={pgettext("plain", "Applies to")}>
               {Common.applies_word(connection)}
             </:col>
           </.table>
@@ -136,9 +137,15 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           count={length(@integrations)}
         >
           <p class="text-[13px]/5 text-muted">
-            {gettext(
-              "Programs their publishers release on github.com, gitlab.com or codeberg.org, or at an https address."
-            )}
+            {if @url_sources,
+              do:
+                gettext(
+                  "Programs their publishers release on github.com, gitlab.com or codeberg.org, or at an https address."
+                ),
+              else:
+                gettext(
+                  "Programs their publishers release on github.com, gitlab.com or codeberg.org."
+                )}
           </p>
           <.table
             :if={@integrations != []}
@@ -158,7 +165,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             <:col :let={connection} label={gettext("Version")} from="sm">
               <span class="q-mono">{connection.version}</span>
             </:col>
-            <:col :let={connection} label={gettext("Applies to")}>
+            <:col :let={connection} label={pgettext("plain", "Applies to")}>
               {Common.applies_word(connection)}
             </:col>
           </.table>
@@ -173,9 +180,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           count={length(@services)}
         >
           <p class="text-[13px]/5 text-muted">
-            {gettext(
-              "APIs a run may call with a stored secret, each set up from a service definition."
-            )}
+            {gettext("APIs that take a secret, each set up from a service definition.")}
           </p>
           <.table
             :if={@services != []}
@@ -190,7 +195,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             <:col :let={connection} label={gettext("Definition")} from="sm">
               <.definition_word connection={connection} definitions={@definitions} />
             </:col>
-            <:col :let={connection} label={gettext("Applies to")}>
+            <:col :let={connection} label={pgettext("plain", "Applies to")}>
               {Common.applies_word(connection)}
             </:col>
           </.table>
@@ -211,7 +216,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         >
           <p class="text-[13px]/5 text-muted">
             {gettext(
-              "This workspace's own service definitions, beside the %{count} built into Apiary: %{names}.",
+              "This workspace's own service definitions, beside the %{count} built into Qory: %{names}.",
               count: length(Services.list()),
               names: Enum.map_join(Services.list(), ", ", & &1["title"])
             )}
@@ -370,7 +375,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           </.button>
           <:note>
             {gettext(
-              "Apiary reads the release's description.json and checksums.txt, and runs nothing of it. You add it once it is read."
+              "Qory reads the release's description.json and checksums.txt, and runs nothing of it. You add it once it is read."
             )}
           </:note>
         </.page_form_foot>
@@ -398,7 +403,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             )}
           </p>
           <p :if={Runtimes.hosts(@runtime) != []}>
-            {gettext("It sets them on %{hosts}.", hosts: Enum.join(Runtimes.hosts(@runtime), ", "))}
+            {gettext("Its hosts: %{hosts}.", hosts: Enum.join(Runtimes.hosts(@runtime), ", "))}
           </p>
         </div>
         <.applies_input form={@form} />
@@ -427,7 +432,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         />
         <div :if={@chosen} id="service-definition-about" class="grid gap-1 text-[13px]/5 text-muted">
           <p :if={@chosen["description"]}>{@chosen["description"]}</p>
-          <p>{gettext("It reaches %{hosts}.", hosts: Enum.join(@chosen["hosts"], ", "))}</p>
+          <p>{gettext("Its hosts: %{hosts}.", hosts: Enum.join(@chosen["hosts"], ", "))}</p>
         </div>
         <.input
           field={@form[:name]}
@@ -454,7 +459,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     <.input
       field={@form[:applies_to]}
       type="radio"
-      label={gettext("Applies to")}
+      label={pgettext("plain", "Applies to")}
       options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
       hint={gettext("You choose the targets on its page, once it is set up.")}
     />
@@ -511,10 +516,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   defp form_sentence(:add_integration),
     do:
       gettext(
-        "Name the release of an integration: Apiary fetches its description, and you add it from there."
+        "Name the release of an integration: Qory fetches its description, and you add it from there."
       )
 
-  defp form_sentence(:new_runtime), do: gettext("Set up a runtime of Apiary's catalogue.")
+  defp form_sentence(:new_runtime), do: gettext("Set up a runtime of Qory's catalogue.")
 
   defp form_sentence(:new_service),
     do: gettext("Set up a service from a built-in definition or one of this workspace's own.")
