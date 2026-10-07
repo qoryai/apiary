@@ -9,20 +9,14 @@ defmodule ApiaryWeb.InstanceController do
       GET /instance
 
   The sections are read in the scope the Instance's pages have: the person's, with the
-  workspace they opened last (`ApiaryWeb.UserAuth`'s `:load_organisation`).
+  workspace they opened last (`ApiaryWeb.UserAuth.home_scope/1`).
   """
   use ApiaryWeb, :controller
 
-  alias Apiary.Organisations
   alias ApiaryWeb.Nav.Entry
 
   def show(conn, _params) do
-    # The session's key for the workspace opened last, as `ApiaryWeb.UserAuth` writes it.
-    scope =
-      Organisations.load_home_scope(
-        conn.assigns.current_scope,
-        get_session(conn, :last_workspace_id)
-      )
+    scope = ApiaryWeb.UserAuth.home_scope(conn)
 
     case ApiaryWeb.Layouts.instance_sections(scope) do
       [first | _] -> redirect(conn, to: Entry.path(first, scope.organisation, scope.workspace))

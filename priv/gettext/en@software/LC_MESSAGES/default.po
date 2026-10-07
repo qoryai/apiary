@@ -10136,6 +10136,11 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
+msgid "The default: %{variable} is empty"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
 msgid "The default: %{variable} is not set"
 msgstr ""
 

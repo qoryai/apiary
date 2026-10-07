@@ -145,7 +145,8 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert text(view, "#config-features-source") == "Set by QORY_FEATURES"
     end
 
-    test "says the default where whoever runs the server set nothing", %{conn: conn} do
+    test "says the default where whoever runs the server set nothing, or an empty value",
+         %{conn: conn} do
       put_settings(
         features_setting: nil,
         integration_url_sources_setting: nil,
@@ -161,11 +162,20 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       assert html =~ "What whoever runs this server set for the whole instance, or the default"
 
+      # Set to an empty or blank value: the default too, and said so.
+      empty = ["config-audit-retention", "config-audit-address-retention"]
+
       for {id, variable} <- @variables do
-        assert text(view, "##{id}-source") == "The default: #{variable} is not set"
+        if id in empty,
+          do: assert(text(view, "##{id}-source") == "The default: #{variable} is empty"),
+          else: assert(text(view, "##{id}-source") == "The default: #{variable} is not set")
       end
 
       assert text(view, "#config-features-source") == "The default: QORY_FEATURES is not set"
+
+      put_settings(features_setting: "")
+      {:ok, view, _html} = live(conn, ~p"/instance/configuration")
+      assert text(view, "#config-features-source") == "The default: QORY_FEATURES is empty"
 
       # The scheduler's own hour, 3, and the default that starts it.
       assert text(view, "#config-run-pruning-value") == "Every day, 03:00–04:00 UTC"
