@@ -255,7 +255,11 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
         )
 
       refute_policy(render(view))
-      assert has_element?(view, "#connections-target-note", "github.example/acme/shop")
+      # The target by its path, its system only where another system has the path too.
+      assert has_element?(view, "#connections-target-note", "acme/shop")
+      refute has_element?(view, "#connections-target-note", "github.example/")
+      assert has_element?(view, "#connections-target-runs", "Runs")
+      assert has_element?(view, "#connections-target-all", "Show all destinations")
       refute has_element?(view, "#connections-target-policy")
     end
 
