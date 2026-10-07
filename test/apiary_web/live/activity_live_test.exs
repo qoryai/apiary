@@ -24,6 +24,18 @@ defmodule ApiaryWeb.ActivityLiveTest do
   defp text(view, selector),
     do: view |> element(selector) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
 
+  # The Action filter's options, as `{value, words}`, in the order it shows them.
+  defp action_options(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#filter-action-form li")
+    |> Enum.map(fn li ->
+      [value] = li |> LazyHTML.query("input") |> LazyHTML.attribute("value")
+      {value, li |> LazyHTML.text() |> String.trim()}
+    end)
+  end
+
   # The ids of the rows, in the order the table shows them.
   defp row_ids(view) do
     view
@@ -86,6 +98,40 @@ defmodule ApiaryWeb.ActivityLiveTest do
       refute has_element?(view, "#settings-tabs")
       refute has_element?(view, "#nav-organisation[aria-current='page']")
       refute has_element?(view, "#nav-activity")
+    end
+
+    test "its title names the organisation", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+      assert page_title(view) =~ "Audit log · #{scope.organisation.name}"
+    end
+
+    test "the Action filter's box narrows its options, keeping the chosen one",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope, "?action=workspace.rename")
+      every = action_options(view)
+
+      assert has_element?(view, "#filter-action-search[aria-label='Find an action']")
+
+      view
+      |> form("#filter-action-narrow")
+      |> render_change(%{"_filter" => "action", "q" => "ACCESS KEY"})
+
+      narrowed = action_options(view)
+      assert length(narrowed) < length(every)
+      assert {"access_key.create", "Access key created"} in narrowed
+      # The chosen action stays, so its chip still names it.
+      assert List.keymember?(narrowed, "workspace.rename", 0)
+      assert has_element?(view, "#filter-action-button", "Workspace renamed")
+
+      for {value, words} <- narrowed, value != "workspace.rename" do
+        assert String.downcase(words) =~ "access key"
+      end
+
+      view
+      |> form("#filter-action-narrow")
+      |> render_change(%{"_filter" => "action", "q" => ""})
+
+      assert action_options(view) == every
     end
 
     test "its old paths send on to it, with the query", %{conn: conn, scope: scope} do
@@ -212,7 +258,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
     } do
       for page <- ["7", "99999999999999999999"] do
         view = open(conn, scope, "?page=#{page}")
-        assert has_element?(view, "#activity-past-end")
+        assert text(view, "#activity-past-end") =~ "The audit log has fewer pages than that."
         refute has_element?(view, "#activity-empty")
 
         view |> element("#activity-first-page") |> render_click()
@@ -356,7 +402,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
     test "says so when nothing matches", %{conn: conn, scope: scope} do
       view = open(conn, scope, "?action=run.close")
-      assert has_element?(view, "#activity-empty")
+      assert has_element?(view, "#activity-empty", "No entries match these filters")
       assert has_element?(view, "#activity-filters-clear")
     end
   end

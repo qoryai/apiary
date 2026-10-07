@@ -686,6 +686,10 @@ defmodule ApiaryWeb.RunComponents do
   attr :query, :string, default: nil, doc: "what the reader typed to narrow the options"
   attr :narrow, :string, default: "narrow", doc: "the event of the narrowing box"
 
+  attr :search_label, :string,
+    default: nil,
+    doc: "the narrowing box's name; nil says Find a <label>"
+
   attr :groups, :list,
     default: [],
     doc: """
@@ -769,6 +773,7 @@ defmodule ApiaryWeb.RunComponents do
           total={@total}
           query={@query}
           narrow={@narrow}
+          search_label={@search_label}
           groups={@groups}
           tips={@tips}
         />
