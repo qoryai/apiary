@@ -106,10 +106,17 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Lingo
       end
 
-      # A request of the server contract, signed with an access key.
+      # A request of the server contract, signed with a node's access key: discovery.
       pipeline :contract do
         plug :accepts, ["json"]
         plug ApiaryWeb.Contract.SignedRequest
+      end
+
+      # The same, for the events endpoint and the run configuration, which a key's rate
+      # limit holds.
+      pipeline :contract_limited do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest, rate_limit: true
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -151,7 +158,7 @@ defmodule ApiaryWeb.Routes do
       end
 
       scope "/v1", ApiaryWeb.Contract do
-        pipe_through :contract
+        pipe_through :contract_limited
 
         post "/events", EventsController, :create
         get "/run-configuration", RunConfigurationController, :show

@@ -1,27 +1,124 @@
 defmodule Apiary.ContractFixtures do
   @moduledoc """
   Test helpers for the receiving side of the server contract: events as they
-  are on the wire, signed deliveries, the published key of the contract's
-  fixtures, where the runner's contract directory is, and its fixtures: the
+  are on the wire, requests signed as a runner signs them under a node's access key, a
+  check of the server's signed answers, the contract's fixture keys held as a receiver
+  under test holds them, where the runner's contract directory is, and its fixtures: the
   Ed25519 keys, known answers, signed requests and enrolments.
   """
 
-  import Plug.Conn, only: [put_req_header: 3]
+  import Plug.Conn, only: [put_req_header: 3, get_req_header: 2, get_resp_header: 2]
 
+  alias Apiary.{AccessKeys, Repo, SigningKey}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Contract.Signature
-  alias Apiary.Repo
+  alias Apiary.Contract.{Ed25519, SignedMessage}
 
   @content_type "application/cloudevents-batch+json"
   @published_key_id "ak_f1xt0re000000000"
   @published_secret "fixture-secret-not-a-real-one"
+  @instance_id "i_gYKDhIWGh4iJiouMjY6PkA"
   @sibling "../../runner/main"
   @contract "contracts/runner/v1"
 
   def content_type, do: @content_type
   def published_key_id, do: @published_key_id
   def published_secret, do: @published_secret
+
+  @doc "The instance id the signing helpers claim unless told otherwise: the contract's fixture instance."
+  def instance_id, do: @instance_id
+
+  @doc """
+  A node's access key that signs requests as a runner does: a node of the scope's
+  workspace (`attrs` `:node`, else a new node, kind `node`), with a key pasted on it, so
+  approved. Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
+  request carries it (`Apiary.AccessKeys.fetch_for_verification/1`, with its workspace
+  and node), and its raw 32-byte seed, which `signed_post/5` and `signed_get/5` sign with.
+  """
+  def contract_key_fixture(%Scope{} = scope, attrs \\ %{}) do
+    attrs = Map.new(attrs)
+    node = Map.get_lazy(attrs, :node, fn -> Apiary.NodesFixtures.node_fixture(scope) end)
+    %{access_key: key, pair: pair} = Apiary.AccessKeysFixtures.node_key_fixture(scope, node)
+    {:ok, key} = AccessKeys.fetch_for_verification(key.key_id)
+    %{access_key: key, secret: pair.secret, node: key.node}
+  end
+
+  @doc """
+  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`,
+  approved, or `"pending_access_key"`, awaiting approval), held under its published id on
+  `node`, as a receiver under test holds it. Written straight into the table, past the key
+  checks, which refuse every fixture key: test support only.
+  """
+  def fixture_access_key!(%Scope{user: user}, node, name)
+      when name in ~w(access_key pending_access_key) do
+    entry = Map.fetch!(known_answers!("keys"), name)
+    %{public_key: public_key} = fixture_key!(name)
+    now = DateTime.utc_now()
+    approved? = name == "access_key"
+
+    %AccessKey{
+      id: Ecto.UUID.generate(),
+      organisation_id: node.organisation_id,
+      workspace_id: node.workspace_id,
+      node_id: node.id,
+      key_id: Map.fetch!(entry, "access_key_id"),
+      public_key: public_key,
+      created_by_id: user.id,
+      arrived_by: :paste,
+      received_at: now,
+      approved_at: if(approved?, do: now),
+      approved_by_id: if(approved?, do: user.id)
+    }
+    |> AccessKey.insert_changeset(%{allow_secrets: false, label: name})
+    |> AccessKey.put_integrity()
+    |> Repo.insert!()
+  end
+
+  @doc """
+  sign_request/6 is the `X-Qory-Signature-Ed25519` a runner sends: the Ed25519 signature
+  under `seed` of the request string (`Apiary.Contract.SignedMessage.request/5`), in
+  base64url without padding. A `seed` that is not 32 bytes, such as "not the secret", is
+  taken as the seed of its SHA-256: a key that is not the access key's, for a test of a
+  wrong one.
+  """
+  def sign_request(seed, key_id, instance_id, method, target, last) do
+    seed = if byte_size(seed) == 32, do: seed, else: :crypto.hash(:sha256, seed)
+    message = SignedMessage.request(key_id, instance_id, method, target, last)
+    Ed25519.encode(:crypto.sign(:eddsa, :none, message, [seed, :ed25519]))
+  end
+
+  @doc """
+  signed_answer?/1 says whether the answer in `conn` is signed as the contract has it:
+  `Cache-Control: no-store, no-transform`, and an `X-Qory-Signature-Ed25519` that
+  verifies under the instance's public key (`Apiary.SigningKey`) over the answer string
+  of its status, the request's signature, its body and its digest headers.
+  """
+  def signed_answer?(%Plug.Conn{} = conn) do
+    with [request_signature] <- get_req_header(conn, "x-qory-signature-ed25519"),
+         [signature] <- get_resp_header(conn, "x-qory-signature-ed25519"),
+         ["no-store, no-transform"] <- get_resp_header(conn, "cache-control"),
+         {:ok, signature} <- Ed25519.decode(signature, 64) do
+      message =
+        SignedMessage.answer(
+          conn.status,
+          request_signature,
+          conn.resp_body || "",
+          one(get_resp_header(conn, "x-qory-configuration")),
+          one(get_resp_header(conn, "x-qory-run-configuration"))
+        )
+
+      Ed25519.verify(message, signature, SigningKey.public_key())
+    else
+      _ -> false
+    end
+  end
+
+  @doc "unsigned_answer?/1 says whether the answer in `conn` carries no signature."
+  def unsigned_answer?(%Plug.Conn{} = conn),
+    do: get_resp_header(conn, "x-qory-signature-ed25519") == []
+
+  defp one([value]), do: value
+  defp one([]), do: nil
 
   @doc """
   The key the contract's fixtures are signed under, in the scope's workspace. Test
@@ -62,7 +159,8 @@ defmodule Apiary.ContractFixtures do
        wire_event(subject, 1, "ping", %{
          "runner_version" => "0.4.0",
          "events" => ["*"],
-         "contract_version" => 1
+         "contract_version" => 1,
+         "interval_seconds" => 30
        }),
        wire_event(subject, 2, "run.started", %{
          "runtime" => "claude",
@@ -79,21 +177,32 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  Posts `body` (a binary, or events to encode) to the events endpoint, signed with
-  `secret` under `key_id`, with `X-Qory-Contract-Version: 1` as the runner sends it.
-  Options: `:signature`, `:content_type` (nil for none), `:delivery`,
-  `:run_configuration`, `:user_agent`, `:headers` (a list sent beside the others).
+  Posts `body` (a binary, or events to encode) to the events endpoint as a runner does:
+  under `key_id`, signed with the Ed25519 `seed`, from the instance `instance_id/0`, with
+  `X-Qory-Contract-Version: 1`. Options: `:signature`, `:instance_id` (nil for none),
+  `:instance_name`, `:content_type` (nil for none), `:contract_version` (nil for none),
+  `:delivery`, `:run_configuration`, `:user_agent`, `:target` (what is signed and posted
+  to, `/v1/events` unless given), `:headers` (a list sent beside the others).
   """
-  def signed_post(conn, key_id, secret, body, opts \\ []) do
+  def signed_post(conn, key_id, seed, body, opts \\ []) do
     body = if is_binary(body), do: body, else: Jason.encode!(body)
+    instance_id = Keyword.get(opts, :instance_id, @instance_id)
+    target = Keyword.get(opts, :target, "/v1/events")
+
+    signature =
+      Keyword.get_lazy(opts, :signature, fn ->
+        sign_request(seed, key_id, instance_id, "POST", target, body)
+      end)
 
     headers =
       [
-        {"x-qory-access-key", key_id},
-        {"x-qory-signature-256", Keyword.get(opts, :signature, Signature.sign(secret, body))},
+        {"x-qory-access-key-id", key_id},
+        {"x-qory-instance-id", instance_id},
+        {"x-qory-instance-name", Keyword.get(opts, :instance_name, "build-01")},
+        {"x-qory-signature-ed25519", signature},
         {"user-agent", Keyword.get(opts, :user_agent, "qory-runner/0.4.0")},
         {"content-type", Keyword.get(opts, :content_type, @content_type)},
-        {"x-qory-contract-version", "1"},
+        {"x-qory-contract-version", Keyword.get(opts, :contract_version, "1")},
         {"x-qory-delivery", Keyword.get_lazy(opts, :delivery, &Ecto.UUID.generate/0)},
         {"x-qory-run-configuration", Keyword.get(opts, :run_configuration)}
       ]
@@ -104,33 +213,46 @@ defmodule Apiary.ContractFixtures do
     |> Enum.reject(fn {_name, value} -> is_nil(value) end)
     |> Enum.reduce(conn, fn {name, value}, conn -> put_req_header(conn, name, value) end)
     |> then(&%{&1 | req_headers: &1.req_headers ++ Keyword.get(opts, :headers, [])})
-    |> Phoenix.ConnTest.dispatch(ApiaryWeb.Endpoint, :post, "/v1/events", body)
+    |> Phoenix.ConnTest.dispatch(ApiaryWeb.Endpoint, :post, target, body)
   end
 
   @doc """
-  A signed GET of `target`, a path with its query exactly as it is sent, with
-  `X-Qory-Contract-Version: 1` as the runner sends it. Options: `:timestamp`,
-  `:signature`, `:contract_version` (nil for none), `:headers` (sent beside the others).
+  A signed GET of `target`, a path with its query exactly as it is sent, as a runner
+  sends it: under `key_id`, signed with the Ed25519 `seed`, from the instance
+  `instance_id/0`, with `X-Qory-Contract-Version: 1`. Options: `:timestamp` (nil for
+  none, signed as an empty line), `:signature`, `:instance_id` (nil for none),
+  `:contract_version` (nil for none, a list for each of its values), `:user_agent`,
+  `:headers` (sent beside the others).
   """
-  def signed_get(conn, key_id, secret, target, opts \\ []) do
-    timestamp = Keyword.get(opts, :timestamp, System.os_time(:second))
-    canonical = Signature.canonical_string("GET", target, timestamp)
-
-    conn
-    |> put_req_header("x-qory-access-key", key_id)
-    |> put_req_header("x-qory-timestamp", to_string(timestamp))
-    |> put_req_header(
-      "x-qory-signature-256",
-      Keyword.get(opts, :signature, Signature.sign(secret, canonical))
-    )
-    |> put_req_header("user-agent", "qory-runner/0.4.0")
-    |> then(fn conn ->
-      case Keyword.get(opts, :contract_version, "1") do
-        nil -> conn
-        version -> put_req_header(conn, "x-qory-contract-version", version)
+  def signed_get(conn, key_id, seed, target, opts \\ []) do
+    timestamp =
+      case Keyword.get(opts, :timestamp, System.os_time(:second)) do
+        nil -> nil
+        timestamp -> to_string(timestamp)
       end
-    end)
-    |> then(&%{&1 | req_headers: &1.req_headers ++ Keyword.get(opts, :headers, [])})
+
+    instance_id = Keyword.get(opts, :instance_id, @instance_id)
+
+    signature =
+      Keyword.get_lazy(opts, :signature, fn ->
+        sign_request(seed, key_id, instance_id, "GET", target, timestamp || "")
+      end)
+
+    versions =
+      for version <- opts |> Keyword.get(:contract_version, "1") |> List.wrap(),
+          do: {"x-qory-contract-version", to_string(version)}
+
+    [
+      {"x-qory-access-key-id", key_id},
+      {"x-qory-instance-id", instance_id},
+      {"x-qory-instance-name", "build-01"},
+      {"x-qory-timestamp", timestamp},
+      {"x-qory-signature-ed25519", signature},
+      {"user-agent", Keyword.get(opts, :user_agent, "qory-runner/0.4.0")}
+    ]
+    |> Enum.reject(fn {_name, value} -> is_nil(value) end)
+    |> Enum.reduce(conn, fn {name, value}, conn -> put_req_header(conn, name, value) end)
+    |> then(&%{&1 | req_headers: &1.req_headers ++ versions ++ Keyword.get(opts, :headers, [])})
     |> Phoenix.ConnTest.dispatch(ApiaryWeb.Endpoint, :get, target, nil)
   end
 

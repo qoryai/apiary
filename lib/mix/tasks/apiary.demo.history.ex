@@ -833,8 +833,14 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp ends(%{duration: duration}), do: duration
 
-  defp ping(spec),
-    do: %{"runner_version" => runner_version(spec), "events" => ["*"], "contract_version" => 1}
+  defp ping(spec) do
+    %{
+      "runner_version" => runner_version(spec),
+      "events" => ["*"],
+      "contract_version" => 1,
+      "interval_seconds" => 30
+    }
+  end
 
   defp started(spec) do
     {command, args} = command(spec)

@@ -9,7 +9,6 @@ defmodule ApiaryWeb.FeaturesTest do
   # Not async: the tests switch the instance's features, which are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
-  import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Phoenix.LiveViewTest
 
@@ -75,7 +74,7 @@ defmodule ApiaryWeb.FeaturesTest do
     end
 
     test "the run configuration endpoint answers as one that does not exist", ctx do
-      %{access_key: key, secret: secret} = access_key_fixture(ctx.scope)
+      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
 
       askers = [
         {"signed", &signed_get(build_conn(), key.key_id, secret, &1)},
@@ -107,17 +106,23 @@ defmodule ApiaryWeb.FeaturesTest do
 
     test "the contract names no run section and serves no run configuration", ctx do
       managed_before_security_went(ctx.scope)
-      %{access_key: key, secret: secret} = access_key_fixture(ctx.scope)
+      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
 
       conn = signed_get(build_conn(), key.key_id, secret, "/.well-known/qory-configuration")
       assert conn.status == 200
       refute Map.has_key?(Jason.decode!(conn.resp_body), "run")
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(false)]
+
+      assert get_resp_header(conn, "x-qory-configuration") == [
+               Configuration.digest(key.node, false)
+             ]
 
       {_subject, events} = first_events()
       conn = signed_post(build_conn(), key.key_id, secret, events)
       assert conn.status in 200..299
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(false)]
+
+      assert get_resp_header(conn, "x-qory-configuration") == [
+               Configuration.digest(key.node, false)
+             ]
     end
 
     test "the context writes no policy, whichever surface asks", %{scope: scope} do
@@ -143,11 +148,14 @@ defmodule ApiaryWeb.FeaturesTest do
 
     test "the contract names the run section of a managed workspace", ctx do
       {:ok, _rule} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
-      %{access_key: key, secret: secret} = access_key_fixture(ctx.scope)
+      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
 
       conn = signed_get(build_conn(), key.key_id, secret, "/.well-known/qory-configuration")
       assert Map.has_key?(Jason.decode!(conn.resp_body), "run")
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+
+      assert get_resp_header(conn, "x-qory-configuration") == [
+               Configuration.digest(key.node, true)
+             ]
     end
   end
 end

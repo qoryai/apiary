@@ -4,11 +4,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Ecto.Query
 
   alias Apiary.AccessKeys
-  alias Apiary.Contract.Signature
+  alias Apiary.AccessKeys.AccessKey
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Delivery, Event, Run}
@@ -18,7 +19,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{access_key: key, secret: secret} = access_key_fixture(scope)
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
     %{scope: scope, key: key, secret: secret}
   end
 
@@ -38,15 +39,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   # A delivery signed as the runner signs it, with `versions` as its X-Qory-Contract-Version
   # headers: none, one or several.
   defp post_with_versions(key, secret, batch, versions) do
-    body = Jason.encode!(batch)
     sent = for version <- versions, do: {"x-qory-contract-version", version}
-
-    build_conn()
-    |> put_req_header("x-qory-access-key", key.key_id)
-    |> put_req_header("x-qory-signature-256", Signature.sign(secret, body))
-    |> put_req_header("content-type", content_type())
-    |> then(&%{&1 | req_headers: &1.req_headers ++ sent})
-    |> post("/v1/events", body)
+    signed_post(build_conn(), key.key_id, secret, batch, contract_version: nil, headers: sent)
   end
 
   describe "a valid delivery" do
@@ -56,7 +50,10 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       conn = signed_post(conn, key.key_id, secret, batch)
 
       assert response(conn, 202) == ""
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest()]
+
+      assert get_resp_header(conn, "x-qory-configuration") == [
+               Configuration.digest(key.node, false)
+             ]
 
       run = run!(scope, subject)
       assert run.organisation_id == scope.organisation.id
@@ -79,7 +76,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       conn = signed_post(conn, key.key_id, secret, [ping], user_agent: "qory-runner/0.4.1")
       assert response(conn, 202)
 
-      key = AccessKeys.get_access_key!(scope, key.id)
+      key = Repo.get!(AccessKey, key.id)
       assert key.last_used_at
       assert key.last_runner_version == "0.4.1"
       assert key.last_contract_version == 1
@@ -99,20 +96,20 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       before = DateTime.utc_now()
       assert build_conn() |> signed_post(key.key_id, secret, [future]) |> response(202)
-      first = AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at
+      first = Repo.get!(AccessKey, key.id).last_heartbeat_at
 
       assert DateTime.compare(first, before) != :lt
       assert DateTime.diff(first, before) < 60
 
       # The same heartbeat delivered again is not a new heartbeat.
       assert build_conn() |> signed_post(key.key_id, secret, [future]) |> response(202)
-      assert AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at == first
+      assert Repo.get!(AccessKey, key.id).last_heartbeat_at == first
 
       # A new one moves it on.
       next = wire_event(subject, 2, "run.heartbeat", beat, time: "1999-01-01T00:00:00Z")
       assert build_conn() |> signed_post(key.key_id, secret, [next]) |> response(202)
 
-      assert DateTime.compare(AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at, first) !=
+      assert DateTime.compare(Repo.get!(AccessKey, key.id).last_heartbeat_at, first) !=
                :lt
     end
 
@@ -127,7 +124,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              |> signed_post(key.key_id, secret, [beat], user_agent: "curl/8")
              |> response(202)
 
-      key = AccessKeys.get_access_key!(scope, key.id)
+      key = Repo.get!(AccessKey, key.id)
       assert key.last_runner_version == "0.4.0"
       assert key.last_contract_version == 1
     end
@@ -140,7 +137,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              |> signed_post(key.key_id, secret, batch, delivery: delivery)
              |> response(202)
 
-      used = AccessKeys.get_access_key!(scope, key.id).last_used_at
+      used = Repo.get!(AccessKey, key.id).last_used_at
 
       assert build_conn()
              |> signed_post(key.key_id, secret, batch,
@@ -149,18 +146,9 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              )
              |> response(202)
 
-      key = AccessKeys.get_access_key!(scope, key.id)
+      key = Repo.get!(AccessKey, key.id)
       assert key.last_used_at == used
       assert key.last_runner_version == "0.4.0"
-    end
-
-    test "either secret verifies during a rotation", %{scope: scope, key: key, secret: old} do
-      {:ok, _key, new} = AccessKeys.rotate_access_key(scope, key)
-
-      for secret <- [old, new] do
-        {_subject, batch} = first_events()
-        assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
-      end
     end
 
     test "sent again, byte for byte, is answered 202 and stores nothing twice",
@@ -265,7 +253,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "a subject that exists under another workspace is simply another run there",
          %{scope: scope, key: key, secret: secret} do
       %{scope: other} = sign_up_fixture()
-      %{access_key: other_key, secret: other_secret} = access_key_fixture(other)
+      %{access_key: other_key, secret: other_secret} = contract_key_fixture(other)
       {subject, [ping, _]} = first_events()
       # The same subject, other events: ids are unique within a workspace.
       other_ping = wire_event(subject, 1, "ping", ping["data"])
@@ -291,7 +279,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       secret: secret
     } do
       %{scope: other} = sign_up_fixture()
-      %{access_key: other_key, secret: other_secret} = access_key_fixture(other)
+      %{access_key: other_key, secret: other_secret} = contract_key_fixture(other)
       {subject, batch} = first_events()
 
       assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
@@ -351,7 +339,10 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       conn = signed_post(build_conn(), key.key_id, secret, [started])
       assert response(conn, 410) == ""
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest()]
+
+      assert get_resp_header(conn, "x-qory-configuration") == [
+               Configuration.digest(key.node, false)
+             ]
 
       run = run!(scope, subject)
       assert run.state == "closed"
@@ -378,13 +369,15 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "a body of exactly 2 MiB is read and verified", %{conn: conn, key: key, secret: secret} do
       body = String.duplicate(" ", ApiaryWeb.Contract.RawBody.max_bytes())
       conn = signed_post(conn, key.key_id, secret, body)
-      assert json_response(conn, 400) == %{"error" => "invalid_batch"}
+      assert json_response(conn, 400) == %{"error" => "invalid_request"}
     end
 
-    test "a bad signature is 401 before the content type is looked at", %{conn: conn, key: key} do
+    test "another content type is 415 before the signature is looked at, unsigned",
+         %{conn: conn, key: key} do
       {_subject, batch} = first_events()
       conn = signed_post(conn, key.key_id, "not the secret", batch, content_type: "text/plain")
-      assert json_response(conn, 401) == @unauthorized
+      assert json_response(conn, 415) == %{"error" => "unsupported_media_type"}
+      assert unsigned_answer?(conn)
     end
 
     test "another content type is 415, whatever the body", %{key: key, secret: secret} do
@@ -393,6 +386,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       for content_type <- ["application/json", "text/plain", "application/x-www-form-urlencoded"] do
         conn = signed_post(build_conn(), key.key_id, secret, batch, content_type: content_type)
         assert json_response(conn, 415) == %{"error" => "unsupported_media_type"}
+        assert unsigned_answer?(conn)
       end
     end
 
@@ -418,6 +412,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
                  "error" => "unsupported_contract_version",
                  "supported" => [1]
                }
+
+        assert signed_answer?(conn)
       end
 
       refute Repo.exists?(
@@ -465,7 +461,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       for body <- bodies do
         conn = signed_post(build_conn(), key.key_id, secret, body)
-        assert json_response(conn, 400) == %{"error" => "invalid_batch"}
+        assert json_response(conn, 400) == %{"error" => "invalid_request"}
+        assert signed_answer?(conn)
       end
 
       assert Repo.aggregate(Run, :count) == 0
@@ -501,26 +498,26 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "the encoded path is the events endpoint too: nothing is parsed before the signature",
          %{key: key, secret: secret} do
       for path <- ["/v1/%65vents", "/%761/events"] do
+        # JSON is not parsed as JSON: the content type is refused, and nothing else.
         conn =
-          build_conn()
-          |> put_req_header("content-type", "application/json")
-          |> put_req_header("x-qory-access-key", key.key_id)
-          |> put_req_header("x-qory-signature-256", "sha256=" <> String.duplicate("0", 64))
-          |> post(path, "{not json")
+          signed_post(build_conn(), key.key_id, secret, "{not json",
+            target: path,
+            content_type: "application/json"
+          )
+
+        assert json_response(conn, 415) == %{"error" => "unsupported_media_type"}
+
+        conn =
+          signed_post(build_conn(), key.key_id, secret, "{not json",
+            target: path,
+            signature: String.duplicate("A", 86)
+          )
 
         assert json_response(conn, 401) == @unauthorized
 
-        body = "[not a batch"
-
-        conn =
-          build_conn()
-          |> put_req_header("content-type", content_type())
-          |> put_req_header("x-qory-access-key", key.key_id)
-          |> put_req_header("x-qory-signature-256", Signature.sign(secret, body))
-          |> put_req_header("x-qory-contract-version", "1")
-          |> post(path, body)
-
-        assert json_response(conn, 400) == %{"error" => "invalid_batch"}
+        # The path is signed as it was sent, encoded.
+        conn = signed_post(build_conn(), key.key_id, secret, "[not a batch", target: path)
+        assert json_response(conn, 400) == %{"error" => "invalid_request"}
       end
     end
 
@@ -535,20 +532,20 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       body = "[{\"id\": "
 
       conn =
-        signed_post(build_conn(), key.key_id, secret, body,
-          signature: "sha256=" <> String.duplicate("0", 64)
-        )
+        signed_post(build_conn(), key.key_id, secret, body, signature: String.duplicate("A", 86))
 
       assert json_response(conn, 401) == @unauthorized
+      assert unsigned_answer?(conn)
 
       conn = signed_post(build_conn(), key.key_id, secret, body)
-      assert json_response(conn, 400) == %{"error" => "invalid_batch"}
+      assert json_response(conn, 400) == %{"error" => "invalid_request"}
+      assert signed_answer?(conn)
     end
 
     test "a body changed after signing is refused", %{scope: scope, key: key, secret: secret} do
       {subject, batch} = first_events()
       body = Jason.encode!(batch)
-      signature = Apiary.Contract.Signature.sign(secret, body)
+      signature = sign_request(secret, key.key_id, instance_id(), "POST", "/v1/events", body)
       tampered = String.replace(body, "dev-laptop", "dev-laptoq")
 
       conn = signed_post(build_conn(), key.key_id, secret, tampered, signature: signature)
@@ -560,36 +557,68 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              )
     end
 
-    test "every failure is the same 401", %{scope: scope, key: key, secret: secret} do
+    test "every failure is the same 401, unsigned", %{scope: scope, key: key, secret: secret} do
       {_subject, batch} = first_events()
       body = Jason.encode!(batch)
-      good = Apiary.Contract.Signature.sign(secret, body)
-      %{access_key: revoked, secret: revoked_secret} = access_key_fixture(scope)
+      good = sign_request(secret, key.key_id, instance_id(), "POST", "/v1/events", body)
+      %{access_key: revoked, secret: revoked_secret} = contract_key_fixture(scope)
       {:ok, _} = AccessKeys.revoke_access_key(scope, revoked)
+      # Today's key, with a secret and no public key, verifies nothing.
+      %{access_key: hmac_key} = access_key_fixture(scope)
+      {:ok, raw} = Apiary.Contract.Ed25519.decode(good, 64)
 
       attempts = [
         # an unknown key, a key of the wrong shape, one that is not UTF-8
         {"ak_0000000000000000", secret, []},
         {"ak_SHOUTING00000000", secret, []},
         {"ak_" <> <<255>> <> "00000000000000", secret, []},
-        # a revoked key, on the ping as on anything else
+        # a revoked key, on the ping as on anything else; a key that is no node's
         {revoked.key_id, revoked_secret, []},
-        # the signature: another secret, no prefix, upper case, empty
+        {hmac_key.key_id, secret, []},
+        # the signature: another key's, padded, in the standard alphabet, hex, short, empty
         {key.key_id, "another secret", []},
-        {key.key_id, secret, [signature: String.replace_prefix(good, "sha256=", "")]},
-        {key.key_id, secret, [signature: String.upcase(good)]},
+        {key.key_id, secret, [signature: good <> "=="]},
+        {key.key_id, secret, [signature: Base.encode64(raw, padding: false)]},
+        {key.key_id, secret, [signature: Base.encode16(raw, case: :lower)]},
+        {key.key_id, secret, [signature: binary_part(good, 0, 85)]},
         {key.key_id, secret, [signature: ""]},
-        # a header sent twice
-        {key.key_id, secret, [headers: [{"x-qory-signature-256", good}]]},
-        {key.key_id, secret, [headers: [{"x-qory-access-key", key.key_id}]]},
-        {key.key_id, secret, [headers: [{"x-qory-timestamp", "1"}, {"x-qory-timestamp", "1"}]]}
+        # signed for another instance than the one claimed, or for another path
+        {key.key_id, secret, [signature: good, instance_id: "i_another"]},
+        {key.key_id, secret,
+         [signature: sign_request(secret, key.key_id, instance_id(), "POST", "/v1/other", body)]}
       ]
 
       for {key_id, secret, opts} <- attempts do
         conn = signed_post(build_conn(), key_id, secret, body, opts)
         assert json_response(conn, 401) == @unauthorized
+        assert unsigned_answer?(conn)
       end
 
+      assert Repo.aggregate(Run, :count) == 0
+    end
+
+    test "a header the signature depends on sent twice is 400 bad_request, unsigned",
+         %{key: key, secret: secret} do
+      {_subject, batch} = first_events()
+      body = Jason.encode!(batch)
+      good = sign_request(secret, key.key_id, instance_id(), "POST", "/v1/events", body)
+
+      for header <- [
+            {"x-qory-signature-ed25519", good},
+            {"x-qory-access-key-id", key.key_id},
+            {"x-qory-instance-id", instance_id()}
+          ] do
+        conn = signed_post(build_conn(), key.key_id, secret, body, headers: [header])
+        assert json_response(conn, 400) == %{"error" => "bad_request"}
+        assert unsigned_answer?(conn)
+      end
+
+      conn =
+        signed_post(build_conn(), key.key_id, secret, body,
+          headers: [{"x-qory-timestamp", "1"}, {"x-qory-timestamp", "1"}]
+        )
+
+      assert json_response(conn, 400) == %{"error" => "bad_request"}
       assert Repo.aggregate(Run, :count) == 0
     end
 
@@ -604,15 +633,15 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
     test "a signed GET of the events endpoint's pipeline still needs its timestamp",
          %{key: key, secret: secret} do
-      # The POST rules are for a POST only: the discovery GET signed over an empty
-      # body, as a POST would be, is refused.
+      # The POST rules are for a POST only: the discovery GET signed over an empty last
+      # line, as a POST of no body would be, verifies, and is refused for its timestamp.
       conn =
-        build_conn()
-        |> put_req_header("x-qory-access-key", key.key_id)
-        |> put_req_header("x-qory-signature-256", Apiary.Contract.Signature.sign(secret, ""))
-        |> get("/.well-known/qory-configuration")
+        signed_get(build_conn(), key.key_id, secret, "/.well-known/qory-configuration",
+          timestamp: nil
+        )
 
       assert json_response(conn, 401) == @unauthorized
+      assert unsigned_answer?(conn)
     end
   end
 
@@ -621,8 +650,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "a whole delivery at debug level", %{scope: scope, key: key, secret: secret} do
       {subject, batch} = first_events()
       body = Jason.encode!(batch)
-      signature = Apiary.Contract.Signature.sign(secret, body)
-      "sha256=" <> hex = signature
+      signature = sign_request(secret, key.key_id, instance_id(), "POST", "/v1/events", body)
+      seed = Apiary.Contract.Ed25519.encode(secret)
       level = Logger.level()
       Logger.configure(level: :debug)
       on_exit(fn -> Logger.configure(level: level) end)
@@ -639,22 +668,22 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       Logger.configure(level: level)
 
       assert log =~ "POST /v1/events"
-      refute log =~ secret
-      refute log =~ hex
+      refute log =~ seed
+      refute log =~ signature
       run = run!(scope, subject)
 
       rows =
-        [run, Repo.all(Delivery), AccessKeys.get_access_key!(scope, key.id)]
+        [run, Repo.all(Delivery), Repo.get!(AccessKey, key.id)]
         |> inspect(limit: :infinity, printable_limit: :infinity)
 
-      refute rows =~ secret
-      refute rows =~ hex
+      refute rows =~ seed
+      refute rows =~ signature
 
       for table <- ~w(runs events deliveries log_chunks connections targets) do
         %{rows: rows} = Repo.query!("SELECT row_to_json(t)::text FROM #{table} t", [], log: false)
         text = Enum.join(List.flatten(rows), "\n")
-        refute text =~ secret
-        refute text =~ hex
+        refute text =~ seed
+        refute text =~ signature
       end
     end
   end

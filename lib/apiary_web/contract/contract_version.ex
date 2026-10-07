@@ -9,9 +9,9 @@ defmodule ApiaryWeb.Contract.ContractVersion do
   `supported/0`, which is `[1]`; anything else, the header absent or sent twice included,
   is refused with `400` and `{"error":"unsupported_contract_version","supported":[1]}`.
 
-  A controller calls `fetch/1` once the request has verified, so a request that does not
-  is `401` whatever its header says, and answers a refusal with `refuse/1`. Where the
-  check falls among an endpoint's other refusals is the controller's to say.
+  `ApiaryWeb.Contract.SignedRequest` calls `fetch/1` once the request has verified, so a
+  request that does not is `401` whatever its header says, and answers a refusal with
+  `refuse/1`, signed, where the contract's order of refusals puts it.
   """
 
   import Plug.Conn

@@ -38,20 +38,23 @@ and every run configuration is validated against them before it is stored.
 
 ## Who is asking: the access key
 
-Every request names an access key and is signed with that key's secret. The key decides
-the workspace: a run is stored in the workspace of the key that delivered it.
+Every request names a node's access key, an Ed25519 key, and is signed with that key's
+secret, which never leaves the machine: the server holds the public key alone. The key
+decides the workspace and the node: a run is stored in the workspace of the key that
+delivered it, on the key's node or node pool.
 <!-- feature: security -->
 A run configuration is the one of the key's workspace.
 <!-- /feature -->
-After a rotation either of a key's two secrets verifies, until the previous one is retired
-or the key is revoked.
 
 On every request:
 
 | Header | Value |
 |---|---|
-| `X-Qory-Access-Key` | the key id, `ak_` and 16 lower-case Crockford base32 characters |
+| `X-Qory-Access-Key-Id` | the key id, `ak_` and 16 lower-case Crockford base32 characters |
+| `X-Qory-Instance-Id` | the instance id, `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`: which running copy of the runner is asking |
+| `X-Qory-Instance-Name` | the instance's display name, unsigned, for display alone |
 | `X-Qory-Contract-Version` | the revision the runner implements, `1` |
+| `X-Qory-Signature-Ed25519` | the Ed25519 signature of the request string, 64 bytes in base64url without padding |
 | `User-Agent` | `qory-runner/<version>` |
 
 The server serves revision 1 of contract v1 and nothing else. On every endpoint, a request
@@ -59,11 +62,29 @@ that verifies but whose `X-Qory-Contract-Version` is not `1`, absent or sent twi
 is answered `400` with `{"error":"unsupported_contract_version","supported":[1]}`, and
 nothing is served. A request that does not verify is `401` whatever the header says.
 
-The server records the runner's version and the contract version on the key, which is what
-the **Runner** column of the access keys page shows. The runner's version never decides the
-answer.
+The server records the runner's version and the contract version on the key, and each
+instance it hears from on the key's node. The runner's version never decides the answer.
 
 ## Signed requests
+
+**The request string** is six lines joined by a line feed, with none after the last:
+`qory-request-ed25519-v1`; the access key id and the instance id, exactly as their headers
+carry them, an absent instance id as an empty line; the method, in upper case; the request
+target exactly as sent, the path, then `?` and the query only when the query is not empty,
+nothing decoded, re-ordered or normalised on either side; and last, for a GET the value of
+`X-Qory-Timestamp` as sent, for a POST the raw request body.
+
+```text
+qory-request-ed25519-v1
+ak_f1xt0re000000000
+i_gYKDhIWGh4iJiouMjY6PkA
+GET
+/.well-known/qory-configuration
+1700000000
+```
+
+The contract's known answers for these strings are in its
+`fixtures/known-answers/signatures.json`.
 
 ### A signed GET
 
@@ -71,27 +92,7 @@ For the configuration document.
 <!-- feature: security -->
 The run configuration is fetched the same way.
 <!-- /feature -->
-
-| Header | Value |
-|---|---|
-| `X-Qory-Timestamp` | Unix seconds, UTC, a decimal integer |
-| `X-Qory-Signature-256` | `sha256=` and the lower-case hex HMAC SHA-256 of the canonical string, keyed with the secret |
-
-The canonical string is three lines joined by a line feed, with none after the last:
-
-```text
-GET
-/.well-known/qory-configuration?x=1
-1700000000
-```
-
-1. the method, in upper case;
-2. the request target exactly as sent: the path, then `?` and the query only when the query
-   is not empty. Nothing is decoded, re-ordered or normalised on either side;
-3. the value of `X-Qory-Timestamp` as sent.
-
-A known answer: the secret `test-secret` over the string above gives
-`sha256=e8cc6260e2740e9282f2b45fa8bc590e3afe0e59eb53882b19cdb0f87a613c02`.
+It carries `X-Qory-Timestamp`, Unix seconds, UTC, a decimal integer.
 
 **The five-minute window.** The server accepts the request when its own clock and the
 timestamp differ by at most 300 seconds, earlier or later alike. A machine whose clock is
@@ -106,23 +107,54 @@ For the events endpoint.
 |---|---|
 | `Content-Type` | `application/cloudevents-batch+json` |
 | `X-Qory-Delivery` | a UUID per batch; a retry of the batch carries the same one |
-| `X-Qory-Signature-256` | `sha256=` and the lower-case hex HMAC SHA-256 of the raw request body, keyed with the secret |
 <!-- feature: security -->
 | `X-Qory-Run-Configuration` | optional: the digest of the run configuration the run holds |
 <!-- /feature -->
 
 No timestamp is signed and no window is checked: a replayed batch is a duplicate, and the
-server discards duplicates by event id. The signature is verified over the bytes as
+server discards duplicates by event id. The signature covers the path and the body, so a
+body signed for one endpoint fails at every other, and it is verified over the bytes as
 received, before anything parses them.
+
+### Signed answers
+
+Every answer to a request that verified is signed with the server's own Ed25519 key, the
+key every machine pins as `apiary_public_key`: `X-Qory-Signature-Ed25519` over the answer's
+status, the request's signature, the SHA-256 of the body, and the answer's
+`X-Qory-Configuration` and `X-Qory-Run-Configuration`, with
+`Cache-Control: no-store, no-transform`. A runner treats an answer without a valid
+signature as no answer. Every `401` goes out unsigned, and so does a refusal before the
+request is verified (`413`, `415`, a header sent twice).
+
+### Refusals, in order
+
+On every endpoint, the first refusal that applies is the answer:
+
+1. `413`, a body over 2 MiB (the events endpoint);
+2. `415`, a content type other than `application/cloudevents-batch+json` (the events
+   endpoint);
+3. `400` `bad_request`, unsigned, for `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`,
+   `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice;
+4. `401`, any failure of authentication (below);
+5. `429` `rate_limited`, the key's rate is spent (the events endpoint and the run
+   configuration);
+6. `400` `bad_request`, signed, an instance id absent or outside its pattern;
+7. `409` `key_pending`, signed, a key that awaits approval;
+8. `400` `unsupported_contract_version`;
+9. `400` `invalid_request`, a body the contract refuses (the events endpoint);
+10. `401`, a GET's timestamp that is not an integer or is outside the window;
+11. then each endpoint's own.
+
+A refusal after verification is `application/json`, `{"error":"<code>"}`, signed.
 
 ### Failure
 
 Every failure of authentication is `401` with the body `{"error":"unauthorized"}` and
-nothing more: a header missing, empty or sent twice, a key id of the wrong shape, a key the
-server does not know or has revoked, a timestamp that is not an integer or is outside the
-window, a signature that does not match. The body never says which, and nothing about the
-request's headers is logged. The comparison is constant-time, and the key is looked up only
-after its shape is checked.
+nothing more, unsigned: a key id or signature missing or empty, a key id of the wrong shape,
+a key the server does not know, has revoked, or that is no node's, a signature that does
+not verify, a stale timestamp. The body never says which, and nothing about the request's
+headers is logged. The key is looked up only after its shape is checked, and the signature
+is verified cofactorless, as RFC 8032 defines it.
 
 ## The endpoints
 
@@ -135,9 +167,15 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 ```json
 {
   "version": 1,
-  "events": {"url": "https://qory.example/v1/events", "types": ["*"]}
+  "node_id": "nd_f1xt0re000000000",
+  "events": {"url": "https://qory.example/v1/events", "types": ["*"]},
+  "apiary_public_key": [{"alg": "ed25519", "public_key": "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"}]
 }
 ```
+
+`node_id` is the key's node or node pool, and `apiary_public_key` lists the server's
+signing key, for information: a runner verifies under the key it pinned. The document, and
+its digest, differ by node.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A runner's `server.url` is that address, and the
@@ -148,7 +186,7 @@ For a workspace whose policy somebody has made, the document has a `run` section
 `"run": {"url": "https://qory.example/v1/run-configuration"}`. A workspace nobody has
 given a policy is answered the document without `run`, and its machines run under the
 policy of their own runner file ([The security policy](security-policy.md)). The document
-is therefore one of two, by workspace, and so is its digest.
+is therefore one of two for a node, by its workspace, and so is its digest.
 <!-- /feature -->
 
 ### Events: `POST /v1/events`
@@ -159,34 +197,42 @@ this order, and the first refusal that applies is the answer:
 | Status | When | Body |
 |---|---|---|
 | `413` | the body is over 2 MiB, or cannot be read | `{"error":"payload_too_large"}` |
-| `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `415` | the content type is not `application/cloudevents-batch+json` | `{"error":"unsupported_media_type"}` |
+| `400` | a header the signature depends on is sent twice | `{"error":"bad_request"}` |
+| `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
+| `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
+| `409` | the key awaits approval | `{"error":"key_pending"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch, or is over a limit | `{"error":"invalid_batch"}` |
+| `400` | the body is not a batch, is over a limit, or holds a ping whose `interval_seconds` is absent or not from 1 to 300 | `{"error":"invalid_request"}` |
 | `410` | the workspace has closed the run: the delivery is recorded, no event is stored | empty |
+| `409` | the ping of a new run, from an instance beyond its node's instance limit: nothing is stored | `{"error":"instance_limit"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
 To a runner a `2xx` means accepted, `410` means send nothing more for this run, and anything
 else is retried with backoff until the run ends. The ping that opens a run is a batch like
-any other: a `202` lets the run start, and a revoked key, a bad signature or an unsupported
-version does not.
+any other: a `202` lets the run start, and a revoked key, a bad signature, a key awaiting
+approval, an instance beyond the limit or an unsupported version does not.
 
 - **The envelope is checked, the data is not.** Each event has `id` and `subject` (lower-case
   UUIDs), `type` (beginning `dev.qory.`), `sequence` (ten digits, from `0000000001`),
   `source`, `time` (RFC 3339) and `data` (an object), all of one subject. A batch holds at
   most 1000 events; a runner cuts one at a hundred. A type this release does not know is
   stored like any other, so a newer runner's events are kept until a release reads them.
+  A ping's `interval_seconds` is read too, the heartbeat interval the run uses.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again and nothing is stored.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
-  The run is created on the first event of a subject the key's workspace has not seen. The
+  The run is created on the first event of a subject the key's workspace has not seen, on
+  the key's node and the instance the request claimed. A node runs one instance at a time,
+  and a node pool up to its instance limit: an instance counts while one of its runs is
+  live. The
   events are projected into the run, its connections and its log after the answer, in
   order of `sequence`, never of arrival.
-- **The rate** is per access key and per node: 50 batches a second, 100 at once. Every
-  request that passed the `413`, the `401` and the `415` spends one, whatever it is answered
-  after that.
+- **The rate** is per access key and per server node: 50 batches a second, 100 at once.
+  Every request that passed the `413`, the `415` and the `401` spends one, whatever it is
+  answered after that.
 - **The digests.** Every `202` and `410` carries `X-Qory-Configuration`. A runner that
   holds another digest fetches the document again; nothing in an answer's body is read.
   <!-- feature: security -->
@@ -210,9 +256,10 @@ baseline.
 | Status | When | Body |
 |---|---|---|
 | `200` | the workspace has a policy | the run configuration |
-| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | nobody has made the workspace's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
+| `409` | the key awaits approval | `{"error":"key_pending"}` |
 | `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
@@ -220,7 +267,7 @@ To a runner anything but `200` is no run, or a reload that failed and is tried a
 next answer. The endpoint never answers `304`.
 
 A `200` carries `X-Qory-Run-Configuration: sha256=<hex>`, `ETag` with the same string
-quoted, `X-Qory-Configuration` and `Cache-Control: no-store`:
+quoted, `X-Qory-Configuration` and `Cache-Control: no-store, no-transform`:
 
 ```json
 {"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}

@@ -17,6 +17,14 @@ defmodule Apiary.ContractSchema do
     )
   end
 
+  @doc "The validator of one document of the contract, by its schema's file name, such as `configuration.schema.json`."
+  def document!(contract_dir, name) do
+    JSV.build!(%{"$ref" => @base <> name},
+      resolver: {__MODULE__, contract_dir},
+      formats: true
+    )
+  end
+
   @doc "`:ok`, or `{:error, error}` with what the schema refuses in `event`, a decoded map."
   def validate(root, event) do
     case JSV.validate(event, root) do

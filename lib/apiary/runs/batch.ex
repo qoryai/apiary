@@ -15,6 +15,10 @@ defmodule Apiary.Runs.Batch do
   `data` nested no deeper than `max_depth/0`, a `time` Postgres has a timestamp
   for, no NUL in a `type`.
 
+  One event's `data` is read beyond the envelope, because the contract refuses the batch
+  otherwise: a ping (`dev.qory.ping`) carries `interval_seconds`, an integer from 1 to
+  `max_interval_seconds/0`, 300, the heartbeat interval its run uses.
+
   Pure: nothing here touches the database or logs.
   """
 
@@ -31,12 +35,17 @@ defmodule Apiary.Runs.Batch do
   @max_events 1000
   @max_depth 64
   @years 1970..9999
+  @ping "dev.qory.ping"
+  @max_interval_seconds 300
 
   @doc "The most events a batch may hold."
   def max_events, do: @max_events
 
   @doc "The deepest `data` may nest, the object itself being level one."
   def max_depth, do: @max_depth
+
+  @doc "The longest heartbeat interval a ping may announce, in seconds."
+  def max_interval_seconds, do: @max_interval_seconds
 
   @doc "Parses the raw body of a delivery."
   def parse(body) when is_binary(body) do
@@ -78,6 +87,7 @@ defmodule Apiary.Runs.Batch do
          sequence = String.to_integer(sequence),
          true <- sequence >= 1,
          true <- storable?(type),
+         true <- ping_interval?(type, data),
          {:ok, time} <- time(time),
          {:ok, data} <- data(data) do
       {:ok,
@@ -95,6 +105,12 @@ defmodule Apiary.Runs.Batch do
   end
 
   defp event(_item), do: :error
+
+  defp ping_interval?(@ping, %{"interval_seconds" => seconds}) when is_integer(seconds),
+    do: seconds in 1..@max_interval_seconds
+
+  defp ping_interval?(@ping, _data), do: false
+  defp ping_interval?(_type, _data), do: true
 
   defp time(value) do
     case DateTime.from_iso8601(value) do

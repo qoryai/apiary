@@ -8,10 +8,8 @@ defmodule ApiaryWeb.LogMetadataTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Contract.Signature
   alias Apiary.LogMetadata
 
   @none %{organisation_id: nil, workspace_id: nil, user_id: nil}
@@ -157,22 +155,18 @@ defmodule ApiaryWeb.LogMetadataTest do
   describe "a contract call" do
     setup do
       %{scope: scope} = sign_up_fixture()
-      %{access_key: key, secret: secret} = access_key_fixture(scope)
+      %{access_key: key, secret: secret} = Apiary.ContractFixtures.contract_key_fixture(scope)
       %{scope: scope, key: key, secret: secret}
     end
 
-    defp signed_get(conn, key_id, secret) do
-      path = "/.well-known/qory-configuration"
-      timestamp = System.os_time(:second)
-      signature = Signature.sign(secret, Signature.canonical_string("GET", path, timestamp))
-
-      conn
-      |> put_req_header("x-qory-access-key", key_id)
-      |> put_req_header("x-qory-timestamp", to_string(timestamp))
-      |> put_req_header("x-qory-signature-256", signature)
-      |> put_req_header("x-qory-contract-version", "1")
-      |> get(path)
-    end
+    defp signed_get(conn, key_id, secret),
+      do:
+        Apiary.ContractFixtures.signed_get(
+          conn,
+          key_id,
+          secret,
+          "/.well-known/qory-configuration"
+        )
 
     test "carries the ids of its access key's organisation and workspace, and no person", %{
       conn: conn,

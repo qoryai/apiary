@@ -20,7 +20,8 @@ defmodule Apiary.Runs.IngestPrunedTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, key: published_key_fixture(scope)}
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
+    %{scope: scope, key: key, secret: secret}
   end
 
   # The synthetic record as it is on the wire, with ids that stay the same over a replay.
@@ -130,12 +131,13 @@ defmodule Apiary.Runs.IngestPrunedTest do
   test "the endpoint answers 410 with the digests in force and an empty body", %{
     conn: conn,
     scope: scope,
-    key: key
+    key: key,
+    secret: secret
   } do
     {_run, events} = received(scope, key)
     prune(scope, %{events_retention_days: 30})
 
-    conn = signed_post(conn, published_key_id(), published_secret(), Jason.encode!(events))
+    conn = signed_post(conn, key.key_id, secret, Jason.encode!(events))
 
     assert response(conn, 410) == ""
     assert [<<"sha256=", _::binary>>] = get_resp_header(conn, "x-qory-configuration")
