@@ -832,7 +832,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
                   class="btn btn-xs"
                   phx-click={JS.push("would_allow", value: %{key: Common.would_key(destination)})}
                 >
-                  {gettext("Allow %{host} here", host: Common.would_name(destination))}
+                  {gettext("Allow here")}<span class="sr-only">: {Common.would_name(destination)}</span>
                 </button>
             <% end %>
           </li>

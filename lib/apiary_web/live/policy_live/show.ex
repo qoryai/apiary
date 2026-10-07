@@ -1580,7 +1580,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
               class="btn btn-xs"
               phx-click={JS.push("would_allow", value: %{key: would_key(destination)})}
             >
-              {gettext("Allow %{host} for the workspace", host: Common.would_name(destination))}
+              {gettext("Allow for the workspace")}<span class="sr-only">: {Common.would_name(
+                destination
+              )}</span>
             </button>
             <span :if={!MapSet.member?(@would.open, would_key(destination))} class="q-done">
               <.icon name="hero-check-micro" class="size-3" />{gettext("Allowed")}

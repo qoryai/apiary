@@ -469,14 +469,14 @@ defmodule ApiaryWeb.PolicyLive.Views do
   the look of `inline_confirm/1`, for a confirm that also shows a list (what enforce would
   deny): the question, what happens (`effect`, a paragraph of its own, `<id>-effect`), the
   rest (`inner_block`), then the act's button and Cancel. Never an overlay. Cancel takes
-  the focus as it shows; the section and Cancel are described by the effect, so it is read
-  with them. Cancel and Escape send `dialog_cancel` with `return`, the control the focus
-  goes back to.
+  the focus as it shows; where there is an effect, the section and Cancel are described by
+  it, so it is read with them. Cancel and Escape send `dialog_cancel` with `return`, the
+  control the focus goes back to.
   """
   attr :id, :string, required: true
   attr :question, :string, required: true
   attr :return, :string, required: true, doc: "the id of the control the focus goes back to"
-  slot :effect, required: true, doc: "what the act does, the sentence the confirm is read with"
+  slot :effect, doc: "what the act does, the sentence the confirm is read with"
   slot :inner_block, doc: "what follows the effect: the list, the notes"
   slot :action, required: true, doc: "the act's button"
 
@@ -488,13 +488,13 @@ defmodule ApiaryWeb.PolicyLive.Views do
       id={@id}
       class="grid max-w-[80ch] gap-3 rounded-box border border-line bg-base-100 p-4"
       aria-labelledby={"#{@id}-question"}
-      aria-describedby={"#{@id}-effect"}
+      aria-describedby={@effect != [] && "#{@id}-effect"}
       phx-window-keydown={@cancel}
       phx-key="Escape"
     >
       <h3 id={"#{@id}-question"} class="q-confirm-q">{@question}</h3>
       <div class="q-confirm-sub grid gap-3">
-        <p id={"#{@id}-effect"} class="text-muted">{render_slot(@effect)}</p>
+        <p :if={@effect != []} id={"#{@id}-effect"} class="text-muted">{render_slot(@effect)}</p>
         {render_slot(@inner_block)}
       </div>
       <div class="q-confirm-act">
@@ -503,7 +503,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           id={"#{@id}-cancel"}
           type="button"
           class="btn btn-xs"
-          aria-describedby={"#{@id}-effect"}
+          aria-describedby={@effect != [] && "#{@id}-effect"}
           phx-click={@cancel}
           phx-mounted={JS.focus()}
         >

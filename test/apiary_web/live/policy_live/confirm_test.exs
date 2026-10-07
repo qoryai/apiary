@@ -5,6 +5,7 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
+  import Phoenix.Component, only: [sigil_H: 2]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Policy
@@ -14,6 +15,58 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
   setup do
     Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0, nav_window: 0)
     :ok
+  end
+
+  # The confirm in place, as the policy pages and an edition's pages call it.
+  describe "confirm_panel" do
+    test "an effect describes the confirm and its Cancel" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <ApiaryWeb.PolicyLive.Views.confirm_panel id="ask" question="Enforce?" return="mode">
+          <:effect>Runs are denied what no rule allows.</:effect>
+          <p id="ask-more">You can switch back.</p>
+          <:action><button id="ask-confirm">Enforce</button></:action>
+        </ApiaryWeb.PolicyLive.Views.confirm_panel>
+        """)
+
+      document = LazyHTML.from_fragment(html)
+
+      assert LazyHTML.text(LazyHTML.query(document, "p#ask-effect")) =~
+               "Runs are denied what no rule allows."
+
+      assert LazyHTML.attribute(LazyHTML.query(document, "section#ask"), "aria-describedby") ==
+               ["ask-effect"]
+
+      assert LazyHTML.attribute(LazyHTML.query(document, "#ask-cancel"), "aria-describedby") ==
+               ["ask-effect"]
+
+      assert Enum.count(LazyHTML.query(document, "#ask-more")) == 1
+    end
+
+    test "renders without an effect, and is described by nothing" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <ApiaryWeb.PolicyLive.Views.confirm_panel id="ask" question="Leave acme?" return="leave">
+          <p id="ask-more">The workspaces of acme stay.</p>
+          <:action><button id="ask-confirm">Leave</button></:action>
+        </ApiaryWeb.PolicyLive.Views.confirm_panel>
+        """)
+
+      document = LazyHTML.from_fragment(html)
+
+      assert Enum.count(LazyHTML.query(document, "section#ask:not([aria-describedby])")) == 1
+      assert Enum.count(LazyHTML.query(document, "#ask-cancel:not([aria-describedby])")) == 1
+      assert Enum.count(LazyHTML.query(document, "#ask-effect")) == 0
+
+      assert LazyHTML.text(LazyHTML.query(document, "#ask-more")) =~
+               "The workspaces of acme stay."
+
+      assert Enum.count(LazyHTML.query(document, "#ask-confirm")) == 1
+    end
   end
 
   # `/:org/:workspace/policy?confirm=enforce` is the overview's one-click nudge.

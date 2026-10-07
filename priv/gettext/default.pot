@@ -2734,14 +2734,8 @@ msgid "Allow %{host} for %{target}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Allow %{host} for the workspace"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Allow %{host} here"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -2783,6 +2777,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Allow for the workspace"
 msgstr ""
@@ -2799,6 +2794,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Allow here"
 msgstr ""
