@@ -840,8 +840,8 @@ A thing's tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's 
 (`--q-gutter`). The frame is set in the content's sizes, never smaller: a sidebar item and
 a tab 14 px and regular, the current one medium (and a tab's underline honey, the current
 step); a count 12 px in the sans face, a tab's in a filled pill and a tab's denials red
-words without one; a pinned target 12.5 px mono; an entry of the second column 14 px, and
-13.5 px in its row of links.
+words without one; a pinned target 12.5 px mono; an entry of the second column 14 px, in the column and in
+its disclosure alike.
 The classes of the shell are in `app.css`'s shell block, and they are
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its own parts on phones in that block.
