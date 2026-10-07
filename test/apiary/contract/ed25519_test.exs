@@ -8,6 +8,7 @@ defmodule Apiary.Contract.Ed25519Test do
   @fixture_signing_key "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"
   @torsion_key "KH9r2npX9PKHPzv_Xl6pwmCmpjQ73zfHq800btWQTBE"
   @fixture_next_signing_key "C0eCPnEJXdWb54rCccV27zifh7ZFYasHz5pOvNAtIEE"
+  @fixture_pending_access_key "dSnEVtk40rj-kPpsz5FtNGdwpkvLt7UyO2h6zeIM0Aw"
 
   # The contract's enrolment known answer: the proof, under the fixture access key, of the
   # five lines of the example body.
@@ -98,7 +99,7 @@ defmodule Apiary.Contract.Ed25519Test do
         assert Ed25519.decode_public_key(encoded) == {:error, :fixture}
       end
 
-      assert length(Ed25519.fixture_keys()) == 3
+      assert length(Ed25519.fixture_keys()) == 4
       assert Ed25519.encode(hd(Ed25519.fixture_keys())) == @fixture_access_key
     end
 
@@ -177,6 +178,16 @@ defmodule Apiary.Contract.Ed25519Test do
       assert Ed25519.fingerprint(public) == "52vzzF--Ic7qH_eZWi5K2A"
       assert public in Ed25519.fixture_keys()
       assert Ed25519.decode_public_key(@fixture_next_signing_key) == {:error, :fixture}
+    end
+
+    test "the fixture access key that awaits approval matches its published key, and is refused" do
+      seed = :binary.list_to_bin(Enum.to_list(193..224))
+      {public, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+
+      assert Ed25519.encode(public) == @fixture_pending_access_key
+      assert Ed25519.fingerprint(public) == "8fzINP5keC1Ov9CZczT20A"
+      assert public in Ed25519.fixture_keys()
+      assert Ed25519.decode_public_key(@fixture_pending_access_key) == {:error, :fixture}
     end
 
     test "is 22 characters of SHA-256's first 16 bytes" do
