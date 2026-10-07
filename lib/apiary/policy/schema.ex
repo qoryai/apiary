@@ -3,7 +3,7 @@ defmodule Apiary.Policy.Schema do
   The contract's `run-configuration.schema.json` and the `policy.schema.json` it refers
   to, vendored under `priv/contract/`, and the validation every rendered document passes
   before it is stored. A test compares the vendored files with the runner's contract
-  directory when `RUNNER_CONTRACT_DIR` is set, as CI sets it.
+  directory at the commit in `.runner-contract-ref`.
 
   The schema's patterns are anchored with `^` and `$`, and `$` also matches before a final
   newline: `"api.example\n"` passes them. This validation is the check of the document's

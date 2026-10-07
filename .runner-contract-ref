@@ -1,4 +1,5 @@
-# The commit of qoryai/runner whose contracts/runner/v1 the :contract tests replay in CI:
-# a commit on the runner's next branch. It is pinned by commit, since no tag of the runner
-# has these files yet; the next tag comes with the joint release.
-531c9201119f63cf6f546af12ddeb8f8442a431c
+# The commit of qoryai/runner whose contracts/runner/v1 the :contract tests replay, in CI and
+# in development (Apiary.ContractFixtures.contract_dir/0): a commit on the runner's next
+# branch, the contract with Ed25519 access keys. It is pinned by commit, since no tag of the
+# runner has these files yet; the next tag comes with the joint release.
+4176ff4da6457c80b16ce85ab52d4a69479e80bf

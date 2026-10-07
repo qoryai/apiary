@@ -34,9 +34,9 @@ jobs:
       - uses: actions/checkout@v7
 
       # The node's command is built from source: qory at the ref in .qory-e2e-ref, against
-      # the runner at the ref in .runner-contract-ref, the one whose contract the tests
-      # replay. The whole history is fetched, so a ref may be a tag, a branch or a short
-      # commit id. Both live outside the workspace's tracked files, under tmp/.
+      # the runner at the ref in .runner-e2e-ref, the runner that qory is written for. The
+      # whole history is fetched, so a ref may be a tag, a branch or a short commit id. Both
+      # live outside the workspace's tracked files, under tmp/.
       - name: Fetch the runner's repository
         uses: actions/checkout@v7
         with:
@@ -55,7 +55,7 @@ jobs:
 
       - name: Check out the pinned refs
         run: |
-          git -C tmp/runner checkout --detach "$(grep -v '^#' .runner-contract-ref | head -n 1 | tr -d '[:space:]')"
+          git -C tmp/runner checkout --detach "$(grep -v '^#' .runner-e2e-ref | head -n 1 | tr -d '[:space:]')"
           git -C tmp/qory checkout --detach "$(grep -v '^#' .qory-e2e-ref | head -n 1 | tr -d '[:space:]')"
 
       - name: Install the toolchain pinned in mise.toml

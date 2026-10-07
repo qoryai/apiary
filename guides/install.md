@@ -137,6 +137,7 @@ For example: ecto://USER:PASS@HOST/DATABASE
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
 | `APIARY_ENCRYPTION_SECRET` | required | Encrypts what the database holds secret: the access key secrets, and the values of the workspaces' stored secrets, under keys derived from it. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key or a stored secret exists, or every one of them becomes unreadable: losing it loses every stored value, for good. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to runners with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the runner contract's published fixture seeds are refused at boot. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
 
 ```text
 environment variable SECRET_KEY_BASE is missing.
@@ -151,6 +152,21 @@ It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
 ```text
 environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
 Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is missing.
+It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
+Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+Generate one with: openssl rand -base64 32
+```
+
+```text
+APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, and every runner refuses its key. Generate one with: openssl rand -base64 32
 ```
 
 ### Public address and port
@@ -465,7 +481,8 @@ boot with an error that does not name the variable.
 ## Backups
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
-two values to keep beside it are `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`.
+three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
+`SECRET_KEY_BASE`.
 [Backup and restore](backup.md) has the commands for the compose installation and for an
 external Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so

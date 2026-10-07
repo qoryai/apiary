@@ -133,7 +133,7 @@ top of `run.sh`; the ones that matter:
 | `E2E_WORK` | where the job writes, `tmp/e2e` by default (ignored by git) |
 
 In CI it is the workflow `.github/workflows/e2e.yml`, on a Linux runner, with qory at the
-commit in `.qory-e2e-ref` and the runner at the one in `.runner-contract-ref`.
+commit in `.qory-e2e-ref` and the runner at the one in `.runner-e2e-ref`.
 
 ## Not covered
 

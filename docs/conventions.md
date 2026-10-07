@@ -78,12 +78,14 @@ edition's too. No file of the core names an edition's module
 (`test/apiary/edition_boundary_test.exs`).
 
 The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
-from a checkout of qoryai/runner: `RUNNER_CONTRACT_DIR`, or `../../runner/main/contracts/runner/v1`
-when that is there. Without one they are excluded and a line says so; CI checks the runner
-out at the commit in `.runner-contract-ref` and sets `CONTRACT_FIXTURES_REQUIRED=1`, which
-makes their absence a failure. The commit is one on the runner's `next` branch, pinned by
-its id since no tag of the runner has these files yet; the next tag comes with the joint
-release.
+at the commit in `.runner-contract-ref`: `RUNNER_CONTRACT_DIR`, or else that commit's
+`contracts/runner/v1`, taken once with `git archive` from the checkout `../../runner/main`
+into `_build/` (that checkout is only read, whatever it has checked out). Without either
+they are excluded and a line says so; CI checks the runner out at that commit and sets
+`CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is one on
+the runner's `next` branch, pinned by its id since no tag of the runner has these files
+yet; the next tag comes with the joint release. The end to end job builds qory against
+the runner at `.runner-e2e-ref`, pinned apart.
 
 ## Doc comments
 

@@ -25,8 +25,8 @@ Where this page and the contract disagree, the contract wins. Two files in the s
 repository tie the two together:
 
 - `.runner-contract-ref` pins the ref of the runner's repository whose fixtures the server's
-  tests replay, in development and in CI: every signed request, the batches, and a recorded
-  run in any order, batching and repetition.
+  tests replay, in development and in CI: the known answers of its signatures, the batches,
+  and a recorded run in any order, batching and repetition.
 - `docs/contract-assumptions.md` is the server's full reading of the contract, with
   everything the contract has not fixed and the server chose, under "Assumed". This page is
   a summary of it.

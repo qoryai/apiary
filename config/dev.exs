@@ -108,3 +108,8 @@ config :swoosh, :api_client, false
 # secret: local databases only.
 config :apiary, Apiary.KeyDerivation,
   secret: Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+
+# APIARY_SIGNING_SECRET in dev: the seed of the instance's own signing key
+# (Apiary.SigningKey), which a machine pins as apiary_public_key. A fixed 32 bytes of its
+# own, never derived from the encryption secret above. Not a secret: local instances only.
+config :apiary, Apiary.SigningKey, seed: "qory apiary dev signing seed 001"

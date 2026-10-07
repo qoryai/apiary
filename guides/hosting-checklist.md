@@ -16,10 +16,12 @@ being one. Every variable named here is described in [Install and configure](ins
   is not set: with it, log-in links and invitation links, which are credentials, are
   written to the log. Send yourself a log-in link before inviting anybody, and check that
   `MAIL_FROM` is an address your relay may send from.
-- **The two keys, kept.** `SECRET_KEY_BASE` and `APIARY_ENCRYPTION_SECRET` are generated once
-  and stored where the database backups are stored, not only in the `.env` of the machine.
+- **The three keys, kept.** `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and
+  `APIARY_SIGNING_SECRET` are generated once, each on its own, and stored where the
+  database backups are stored, not only in the `.env` of the machine.
   `APIARY_ENCRYPTION_SECRET` never changes once an access key or a stored secret exists,
-  and losing it loses every stored secret value.
+  and losing it loses every stored secret value. Every machine pins the key of
+  `APIARY_SIGNING_SECRET`, so changing or losing it means pinning every machine again.
   [Backup and restore](backup.md) says what each loss costs.
 - **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
   all of them. A feature that is off is absent for everybody on the instance, so decide

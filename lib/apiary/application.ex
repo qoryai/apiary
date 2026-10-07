@@ -22,8 +22,10 @@ defmodule Apiary.Application do
     # the boot before anything is started.
     Apiary.Features.boot!()
     # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
-    # TRUSTED_PROXIES or integration setting stops the boot too, and so does an edition's
-    # table or subject the core has already, or a page whose feature is none there is.
+    # TRUSTED_PROXIES, APIARY_SIGNING_SECRET or integration setting stops the boot too, and
+    # so does an edition's table or subject the core has already, or a page whose feature
+    # is none there is.
+    Apiary.SigningKey.boot!()
     Apiary.Audit.boot!()
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
