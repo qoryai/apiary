@@ -105,10 +105,14 @@ A named run configuration that does not answer `200` is no run either.
 A redirect is not followed.
 
 Once the run is under way the server never delays the session. Events are posted behind a
-queue, what is undelivered when the run ends is kept under `.qory/runs/<id>/undelivered/`
-in the checkout, and `qory run resend <run-id>` sends a finished run's record to the server
-again. The record itself, `.qory/runs/<id>/events.jsonl` and `output.log`, is written
-whatever the server does.
+queue. At the end of a run qory prints where the run's record is:
+`qory run: the record is in <folder>/<id>`. By default that is
+`$XDG_STATE_HOME/qory/runs/<checkout folder name>-<12 hex>/<id>/`, or
+`~/.local/state/qory/runs/…` when `XDG_STATE_HOME` is not set, on Linux and macOS alike,
+and not in the checkout. The record itself, `events.jsonl` and `output.log`, is written
+there whatever the server does. What is undelivered when the run ends is kept beside it
+under `undelivered/`, and `qory run resend <run-id>` sends a finished run's record to the
+server again.
 
 [The server contract](contract.md) says how requests are signed and what the server answers.
 
