@@ -98,7 +98,7 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your workspace. Until a run reaches it, the
-overview is one box, **Send your first run**: Add a node, Enrol the machine, See runs here.
+overview is one box, **Send your first run**: Add a node, Give it a key, See runs here.
 Steps 5 to 8 below are those steps.
 
 Signing up created an organisation with the name you gave, one workspace in it named
