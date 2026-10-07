@@ -1131,11 +1131,21 @@ defmodule ApiaryWeb.RunComponents do
   behind a button that asks for them; the runs without a target last. Choosing one is a
   link that sets the target (`path`, a function of the target, nil for every one). Below
   1280 px the rail is not shown and the Filter menu's section does its work.
+
+  The chosen target (`chosen`, a `{system, path}`) is marked as the page's. Where it is
+  neither pinned nor among the targets listed, as one of 150 can be, it comes first,
+  under every run, with its count (`chosen_count`: what the list holds with it), so the
+  rail always shows what the list is narrowed to.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :rail, :map, default: nil, doc: "`Apiary.Runs.target_counts/3`; nil while it loads"
   attr :chosen, :any, default: nil, doc: "the target the filters hold"
+
+  attr :chosen_count, :integer,
+    default: nil,
+    doc: "how many the list holds with the chosen target, for it where the rail misses it"
+
   attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :path, :any, required: true
   attr :query, :string, default: nil
@@ -1151,6 +1161,7 @@ defmodule ApiaryWeb.RunComponents do
       assigns
       |> assign(:shared, assigns.shared || MapSet.new())
       |> assign(:heading, assigns.heading || gettext("Most runs"))
+      |> assign_missing_chosen()
 
     ~H"""
     <nav id={@id} class="q-rail" aria-label={@label}>
@@ -1188,6 +1199,14 @@ defmodule ApiaryWeb.RunComponents do
           <span class="q-rail-name q-rail-plain">{gettext("All targets")}</span>
           <span class="q-rail-n">{Format.number(@rail.all)}</span>
         </.link>
+        <.rail_target
+          :if={@missing}
+          id={@id}
+          target={@missing}
+          chosen={@chosen}
+          shared={@shared}
+          path={@path}
+        />
       </div>
       <%= if @rail && @rail.pinned != [] do %>
         <h3 class="q-rail-h">{gettext("Pinned")}</h3>
@@ -1241,6 +1260,27 @@ defmodule ApiaryWeb.RunComponents do
     </nav>
     """
   end
+
+  # The chosen target where the rail misses it (`target_rail/1`): neither pinned nor
+  # listed, and no search narrowing the rail. It is one of the `more` no longer behind the
+  # button, when the list holds any of it.
+  defp assign_missing_chosen(%{rail: %{} = rail, chosen: {system, path}} = assigns)
+       when is_binary(system) and is_binary(path) and is_integer(assigns.chosen_count) do
+    listed? = Enum.any?(rail.pinned ++ rail.targets, &({&1.system, &1.path} == {system, path}))
+
+    if listed? or assigns.query not in [nil, ""] do
+      assign(assigns, :missing, nil)
+    else
+      count = assigns.chosen_count
+      more = if count > 0, do: max(rail.more - 1, 0), else: rail.more
+
+      assigns
+      |> assign(:missing, %{system: system, path: path, runs: count})
+      |> assign(:rail, %{rail | more: more})
+    end
+  end
+
+  defp assign_missing_chosen(assigns), do: assign(assigns, :missing, nil)
 
   attr :id, :string, required: true
   attr :target, :map, required: true
@@ -1907,6 +1947,11 @@ defmodule ApiaryWeb.RunComponents do
     doc:
       "table and workspace: the row's open panel (`rule_panel/1`), shown under it; nil for none"
 
+  attr :shared, :any,
+    default: nil,
+    doc:
+      "workspace: the paths on more than one system (a MapSet), so a run's target is named as it is addressed; nil names it in full"
+
   slot :trailing, doc: "what the slot holds when `act` is not given"
 
   def connection_row(%{variant: "inline"} = assigns) do
@@ -2132,9 +2177,13 @@ defmodule ApiaryWeb.RunComponents do
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
-                {if hit.run.target_system && hit.run.target_path,
-                  do: "#{hit.run.target_system}/#{hit.run.target_path}",
-                  else: gettext("Unassigned")}
+                <.target_name
+                  :if={hit.run.target_system && hit.run.target_path}
+                  path={hit.run.target_path}
+                  system={hit.run.target_system}
+                  shared={@shared}
+                />
+                {if !(hit.run.target_system && hit.run.target_path), do: gettext("Unassigned")}
               </span>
               <span class={["tabular-nums", hit.denied > 0 && "q-bad"]}>
                 {if hit.denied > 0,
@@ -2661,6 +2710,11 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the page's open panel of a row's Allow or Deny (`rule_panel/1`), shown under its row"
 
+  attr :shared, :any,
+    default: nil,
+    doc:
+      "the paths on more than one system (a MapSet): how a destination's runs name their target"
+
   attr :class, :any, default: nil
 
   def connections_table(assigns) do
@@ -2731,6 +2785,7 @@ defmodule ApiaryWeb.RunComponents do
             act={@security && @acts && @acts[@row_id.(row)]}
             panel={@security && panel_of(@panel, @row_id.(row))}
             security={@security}
+            shared={@shared}
           />
         </tbody>
       </table>

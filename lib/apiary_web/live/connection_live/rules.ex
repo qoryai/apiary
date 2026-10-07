@@ -30,29 +30,39 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The page of one version of the baseline (`nil`) or of a target (an `Apiary.Runs.Target`,
   or anything with its `system` and `path`): the workspace's policy page, or the target's
-  Policy tab (`ApiaryWeb.TargetComponents.target_path/4`).
+  Policy tab at its address (`ApiaryWeb.TargetComponents.target_path/5`), its system in it
+  only where `shared` (a boolean, or the workspace's shared paths) says its path is shared.
+  A caller that does not say writes the path alone.
   """
-  def version_path(scope, target, n, query \\ %{})
+  def version_path(scope, target, n, query \\ %{}, shared \\ false)
 
-  def version_path(scope, nil, n, query),
+  def version_path(scope, nil, n, query, _shared),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}?#{query}"
 
-  def version_path(scope, %{system: system, path: path}, n, query),
+  def version_path(scope, %{system: system, path: path}, n, query, shared),
     do:
-      TargetComponents.target_path(scope, system, path, ["policy", "versions", to_string(n)]) <>
+      TargetComponents.target_path(
+        scope,
+        system,
+        path,
+        ["policy", "versions", to_string(n)],
+        shared
+      ) <>
         query_string(query)
 
   @doc """
   The rule of `host` in the Network access section of the workspace's policy page (`nil`)
   or of a target's Policy tab (`target`, with its `system` and `path`), which lands on the
-  page of the list that holds it.
+  page of the list that holds it. `shared` as `version_path/5` takes it.
   """
-  def rule_path(scope, nil, host),
+  def rule_path(scope, target, host, shared \\ false)
+
+  def rule_path(scope, nil, host, _shared),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
 
-  def rule_path(scope, %{system: system, path: path}, host),
+  def rule_path(scope, %{system: system, path: path}, host, shared),
     do:
-      TargetComponents.target_path(scope, system, path, ["policy"]) <>
+      TargetComponents.target_path(scope, system, path, ["policy"], shared) <>
         query_string(%{"rule" => host})
 
   defp query_string(query) when query == %{}, do: ""
@@ -84,13 +94,15 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The version a digest names for the target (or the baseline, `nil`): `%{n, digest,
   scope, target_id, label, path, rendered_at}`, or nil when this workspace rendered
-  nothing with that digest. One indexed read.
+  nothing with that digest. One indexed read. `shared` as `version_of/4` takes it.
   """
-  def version(_scope, _target, digest) when not is_binary(digest), do: nil
+  def version(scope, target, digest, shared \\ nil)
 
-  def version(scope, target, digest) do
+  def version(_scope, _target, digest, _shared) when not is_binary(digest), do: nil
+
+  def version(scope, target, digest, shared) do
     case Policy.configuration_for_digest(scope, target, digest) do
-      {:ok, configuration} -> version_of(scope, configuration, target)
+      {:ok, configuration} -> version_of(scope, configuration, target, shared)
       _ -> nil
     end
   end
@@ -98,24 +110,27 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each target's, so every version is named with its `label`:
-  "workspace baseline", or the target's system and path when `target` is the one the
-  configuration is of. Its `path` is in `scope`'s workspace: the target's Policy tab for a
-  target's version, the target read when it is not `target`, and nil when it cannot be.
+  "workspace baseline", or the target as it is addressed when `target` is the one the
+  configuration is of (`version_label/3`). Its `path` is in `scope`'s workspace: the
+  target's Policy tab for a target's version, the target read when it is not `target`,
+  and nil when it cannot be. `shared` is said of `target`'s path (`version_label/3`); a
+  target read by its id is written by its path alone.
   """
-  def version_of(scope, configuration, target \\ nil) do
+  def version_of(scope, configuration, target \\ nil, shared \\ nil) do
     holder = holder(scope, configuration.target_id, target)
+    holder_shared = if holder && target && holder.id == target.id, do: shared
 
     %{
       n: configuration.version,
       digest: configuration.digest,
       scope: if(configuration.target_id, do: :target, else: :workspace),
       target_id: configuration.target_id,
-      label: version_label(configuration.target_id, target),
+      label: version_label(configuration.target_id, target, shared),
       rendered_at: configuration.rendered_at,
       path:
         if(configuration.target_id && is_nil(holder),
           do: nil,
-          else: version_path(scope, holder, configuration.version)
+          else: version_path(scope, holder, configuration.version, %{}, holder_shared)
         )
     }
   end
@@ -130,10 +145,21 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     end
   end
 
-  @doc "The words that say whose numbering a version is in."
-  def version_label(nil, _target), do: gettext("the workspace's policy")
-  def version_label(id, %{id: id, system: system, path: path}), do: "#{system}/#{path}"
-  def version_label(_id, _target), do: gettext("target")
+  @doc """
+  The words that say whose numbering a version is in: the workspace's policy, or the
+  target as it is addressed, its path, and its system before it only where `shared` (a
+  boolean, or the workspace's shared paths) says its path is shared
+  (`ApiaryWeb.TargetComponents.target_label/3`). A caller that does not say names it in
+  full, `system/path`.
+  """
+  def version_label(id, target, shared \\ nil)
+  def version_label(nil, _target, _shared), do: gettext("the workspace's policy")
+  def version_label(id, %{id: id, system: system, path: path}, nil), do: "#{system}/#{path}"
+
+  def version_label(id, %{id: id, system: system, path: path}, shared),
+    do: TargetComponents.target_label(system, path, shared)
+
+  def version_label(_id, _target, _shared), do: gettext("target")
 
   @doc """
   `Policy.digests/2`, whatever shape it answers in, as `%{in_force, reported, applied,
@@ -360,7 +386,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The words of the toast, from the rule the domain made. `where` is the holder the rule
   went to: `:workspace`, `:this_target`, or `{:target, label}` for a target named by its
-  label (`version_label/2`).
+  label (`version_label/3`).
   """
   def toast(rule, action, host, path, where) do
     pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"

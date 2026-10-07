@@ -498,7 +498,15 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <:col :let={row} label={gettext("Target")} kind="title">
         <.link
           :if={row.target}
-          navigate={TargetComponents.target_path(@current_scope, row.target.system, row.target.path)}
+          navigate={
+            TargetComponents.target_path(
+              @current_scope,
+              row.target.system,
+              row.target.path,
+              [],
+              @shared
+            )
+          }
           class="hover:underline"
         >
           <RunComponents.target_name

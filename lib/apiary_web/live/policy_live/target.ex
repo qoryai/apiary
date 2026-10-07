@@ -21,17 +21,20 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
+  alias Apiary.Runs.Filters
   alias ApiaryWeb.PolicyLive.{Common, RuleList, Show}
 
   @doc """
-  mount/2 is the tab's assigns for `target`, a target of the scope's workspace, and the
-  subscription to the policy's changes. The tab is read once, by the connected mount:
-  the first render is its skeleton.
+  mount/3 is the tab's assigns for `target`, a target of the scope's workspace, and the
+  subscription to the policy's changes. `shared` is whether the target's path is shared
+  by another target of the workspace, as its page's address says; read once when nil.
+  The tab names and addresses the target by it. The tab is read once, by the connected
+  mount: the first render is its skeleton.
   """
-  def mount(socket, target) do
+  def mount(socket, target, shared \\ nil) do
     socket =
       socket
-      |> Common.mount(target)
+      |> Common.mount(target, if(is_boolean(shared), do: [shared: shared], else: []))
       |> assign(reload: &load/1, list_query: %RuleList{}, ruled_host: nil, allowed: %{})
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(composer_open: false, summary: nil, would: nil, params: %{}, shown: nil)
@@ -45,8 +48,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   # the address only where another system has the same path.
   defp network_path(socket, target) do
     scope = socket.assigns.current_scope
-    shared? = MapSet.member?(Apiary.Runs.shared_paths(scope, [target.path]), target.path)
-    params = Apiary.Runs.Filters.target_params(if(shared?, do: target.system), target.path)
+    params = Filters.target_params(target.system, target.path, socket.assigns.holder_shared)
     ~p"/#{scope.organisation}/#{scope.workspace}/network?#{params}"
   end
 
@@ -274,8 +276,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     %{versions: (own && own.version) || 0, since: since}
   end
 
-  defp title(%{assigns: %{holder: %{system: system, path: path}}}),
-    do: gettext("%{target} · Policy", target: "#{system}/#{path}")
+  defp title(socket), do: gettext("%{target} · Policy", target: Common.holder_name(socket))
 
   ## Events
 
@@ -426,10 +427,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
           if action == "allow",
             do:
               {Policy.deny(scope, target, %{host: rule.host}),
-               gettext("%{host} is denied for %{target}.", host: rule.host, target: name(target))},
+               gettext("%{host} is denied for %{target}.", host: rule.host, target: name(socket))},
             else:
               {Policy.allow(scope, target, %{host: rule.host}),
-               gettext("%{host} is allowed for %{target}.", host: rule.host, target: name(target))}
+               gettext("%{host} is allowed for %{target}.", host: rule.host, target: name(socket))}
 
         case result do
           {:ok, written} ->
@@ -529,7 +530,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
             else:
               {gettext("%{host} is allowed for %{target}.",
                  host: host,
-                 target: name(socket.assigns.holder)
+                 target: name(socket)
                ), gettext("%{host} is allowed for this target.", host: host)}
 
         socket =
@@ -561,7 +562,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           do:
             gettext("The workspace's rule for %{host} is restored for %{target}.",
               host: rule.host,
-              target: name(target)
+              target: name(socket)
             ),
           else: gettext("The rule %{host} is removed.", host: rule.host)
 
@@ -574,7 +575,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
     end
   end
 
-  defp name(%{system: system, path: path}), do: "#{system}/#{path}"
+  # The target in words, as it is addressed (`Common.holder_name/1`).
+  defp name(socket), do: Common.holder_name(socket)
 
   # After an act on a row, focus stays on the row: its menu, when it is on the page.
   defp focus_host(socket, host) do
@@ -966,7 +968,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         activity_now: activity,
         listing: Common.listing(assigns),
         workspace: scope.workspace.name,
-        target_name: "#{assigns.holder.system}/#{assigns.holder.path}"
+        target_name: Common.holder_name(%{assigns: assigns})
       )
 
     ~H"""
@@ -985,7 +987,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       setting={elem(@dialog, 1)}
       becomes={elem(@dialog, 2)}
       return={"policy-target-mode-#{@mode.own || "follow"}"}
-      name={Common.holder_name(%{assigns: %{holder: @holder}})}
+      name={@target_name}
       workspace={@mode.workspace}
       would={@would}
       locked_denies={@locked_denies}

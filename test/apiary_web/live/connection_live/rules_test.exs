@@ -85,6 +85,36 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     :ok
   end
 
+  describe "a target's version and rule, named and addressed" do
+    test "its system only where its path is shared; a caller that does not say names it in full",
+         %{scope: scope} do
+      target = %{id: "t", system: "github.example", path: "acme/shop"}
+      shared = MapSet.new(["acme/shop"])
+
+      assert Rules.version_label("t", target, false) == "acme/shop"
+      assert Rules.version_label("t", target, MapSet.new()) == "acme/shop"
+      assert Rules.version_label("t", target, true) == "github.example/acme/shop"
+      assert Rules.version_label("t", target, shared) == "github.example/acme/shop"
+      assert Rules.version_label("t", target) == "github.example/acme/shop"
+      assert Rules.version_label(nil, target, true) == "the workspace's policy"
+
+      assert Rules.version_path(scope, target, 3) ==
+               workspace_path(scope, "/targets/acme/shop/-/policy/versions/3")
+
+      assert Rules.version_path(scope, target, 3, %{"compare" => 2}, shared) ==
+               workspace_path(
+                 scope,
+                 "/targets/github.example/acme/shop/-/policy/versions/3?compare=2"
+               )
+
+      assert Rules.rule_path(scope, target, "x.example") ==
+               workspace_path(scope, "/targets/acme/shop/-/policy?rule=x.example")
+
+      assert Rules.rule_path(scope, target, "x.example", true) ==
+               workspace_path(scope, "/targets/github.example/acme/shop/-/policy?rule=x.example")
+    end
+  end
+
   describe "the workspace's Network access page" do
     test "a row's acts are text and its menu; a locked rule says who locked it, the wall why",
          %{conn: conn, scope: scope} do
@@ -238,6 +268,30 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert render(view) =~ "files.cdn.example is allowed for gitlab.example/acme/shop."
     end
 
+    test "a target no other system has is named by its path alone, in the panel and the toast",
+         %{conn: conn, scope: scope} do
+      docs = %{"host" => "docs.cdn.example", "decision" => "denied", "rule" => ""}
+
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/docs"},
+        egress: [docs]
+      )
+
+      target = Enum.find(Policy.list_targets(scope), &(&1.target.path == "acme/docs")).target
+
+      view = open(conn, scope)
+      view |> element("##{dst("docs.cdn.example")}-act") |> render_click()
+      assert text(view, "#rule-panel-target") =~ "acme/docs · 1 run"
+      refute text(view, "#rule-panel-target") =~ "github.example"
+
+      view
+      |> form("#rule-panel-form", %{"for" => "target", "target" => target.id})
+      |> render_change()
+
+      view |> form("#rule-panel-form") |> render_submit()
+      assert [%{host: "docs.cdn.example"}] = Policy.list_rules(scope, target)
+      assert render(view) =~ "docs.cdn.example is allowed for acme/docs."
+    end
+
     test "with repo set, that target is chosen, and its policy is a link away", %{
       conn: conn,
       scope: scope
@@ -245,9 +299,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       github = target(scope, "github.example")
       view = open(conn, scope, "/network?system=github.example&target=acme/shop")
 
+      # The path is on two systems: its policy's address keeps the system.
       assert has_element?(
                view,
-               ~s(#connections-target-policy[href="#{target_path(scope, github.system, github.path, ["policy"])}"]),
+               ~s(#connections-target-policy[href="#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}"]),
                "Its policy"
              )
 
@@ -264,6 +319,19 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert [%{host: "files.cdn.example"}] = Policy.list_rules(scope, github)
       line = text(view, "##{dst("files.cdn.example")}-after")
       assert line =~ "Allowed for this repository in v1 · of github.example/acme/shop by you"
+
+      # The rule and its version are at the target's own address, its system kept.
+      policy = workspace_path(scope, "/targets/github.example/acme/shop/-/policy")
+
+      assert has_element?(
+               view,
+               ~s(a##{dst("files.cdn.example")}-act[href="#{policy}?rule=files.cdn.example"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(##{dst("files.cdn.example")}-after a[href="#{policy}/versions/1"])
+             )
     end
 
     test "a row denied before and allowed since by a rule added lately keeps its line", %{

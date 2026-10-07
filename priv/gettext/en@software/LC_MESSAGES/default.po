@@ -7000,11 +7000,6 @@ msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Network access of this target"
-msgstr "Network access of this repository"
-
-#: lib/apiary_web/live/connection_live/index.ex
-#, elixir-autogen, elixir-format
 msgid "Network access of this workspace"
 msgstr ""
 
@@ -7024,6 +7019,7 @@ msgid "Network access rules of the workspace"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Network access, narrowed to %{name}"
 msgstr ""
@@ -9622,6 +9618,7 @@ msgid "Runs, 14 days"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs, narrowed to %{name}"
 msgstr ""
@@ -10066,6 +10063,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Show the rule in %{name}'s policy"
 msgstr ""
+
+#: lib/apiary_web/live/narrowing.ex
+#, elixir-autogen, elixir-format
+msgid "Showing %{name} only, on %{first} and %{last}."
+msgid_plural "Showing %{name} only, on %{list}, and %{last}."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex

@@ -13,7 +13,6 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures, only: [shop: 0]
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
 
   alias Apiary.Policy
   alias Apiary.Repo
@@ -178,11 +177,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       path =
-        target_path(scope, target.system, target.path, [
-          "policy",
-          "versions",
-          "#{configuration.version}"
-        ])
+        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{configuration.version}")
 
       assert has_element?(
                view,
@@ -234,18 +229,20 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert own.version == 1
       heard_policy_change(view, scope)
 
-      assert text(view, "#run-drift") == "Behind v1 · github.example/acme/shop"
+      # A target no other system has is named by its path alone.
+      assert text(view, "#run-drift") == "Behind v1 · acme/shop"
       notice = text(view, "#run-behind")
       assert notice =~ "It last reported v#{baseline.version} of the workspace's policy"
-      assert notice =~ "github.example/acme/shop's v1"
+      assert notice =~ " acme/shop's v1"
+      refute notice =~ "github.example"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = target_path(scope, target.system, target.path, ["policy", "versions", "1"])
+      path = workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")
 
       assert has_element?(
                view,
                ~s(#run-behind-diff[href="#{path}"]),
-               "Open github.example/acme/shop's v1"
+               "Open acme/shop's v1"
              )
 
       # the details tab names both
@@ -253,7 +250,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
       assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
-      assert text(view, "#policy-in-force") =~ "v1 · of github.example/acme/shop"
+      assert text(view, "#policy-in-force") =~ "v1 · of acme/shop"
     end
 
     test "a digest no version here has is not rendered here, and links nowhere", %{
@@ -293,19 +290,15 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       heard_policy_change(view, scope)
 
       # versions count per holder: every one named says whose it is
-      assert text(view, "#run-drift") == "Behind v#{new.version} · github.example/acme/shop"
+      assert text(view, "#run-drift") == "Behind v#{new.version} · acme/shop"
       assert text(view, "#run-behind") =~ "This run is behind the policy in force."
-
-      assert text(view, "#run-behind") =~
-               "It last reported github.example/acme/shop's v#{old.version}"
-
-      assert text(view, "#run-behind") =~ "github.example/acme/shop's v#{new.version}"
-
-      assert text(view, "#run-behind") =~
-               "it decides by github.example/acme/shop's v#{old.version}"
+      assert text(view, "#run-behind") =~ "It last reported acme/shop's v#{old.version}"
+      assert text(view, "#run-behind") =~ " acme/shop's v#{new.version}"
+      assert text(view, "#run-behind") =~ "it decides by acme/shop's v#{old.version}"
+      refute text(view, "#run-behind") =~ "github.example"
 
       compare =
-        target_path(scope, target.system, target.path, ["policy", "versions", "#{new.version}"]) <>
+        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{new.version}") <>
           "?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
@@ -585,7 +578,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
              )
 
       assert has_element?(view, "#rule-panel-form button[type=submit]:not([disabled])")
-      assert text(view, "#rule-panel") =~ "This repository github.example/acme/shop"
+      assert text(view, "#rule-panel") =~ "This repository acme/shop"
       assert text(view, "#rule-panel") =~ "The whole workspace"
       assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=true]))
       assert text(view, "#rule-panel-submit") == "Allow for this repository"
@@ -637,19 +630,17 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "Rule added"
 
       assert line =~
-               "Allowed for this repository in v#{new.version} · of github.example/acme/shop by you"
+               "Allowed for this repository in v#{new.version} · of acme/shop by you"
 
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule =
-        target_path(scope, target.system, target.path, ["policy"]) <> "?rule=files.cdn.example"
-
+      rule = workspace_path(scope, "/targets/acme/shop/-/policy?rule=files.cdn.example")
       assert has_element?(view, ~s(a#cx-#{id}-act[href="#{rule}"]), "Rule")
 
       # the toast names the change and the version
       html = render(view)
-      assert html =~ "files.cdn.example is allowed for github.example/acme/shop."
+      assert html =~ "files.cdn.example is allowed for acme/shop."
       assert html =~ "Version #{new.version}. Running sessions have it within a heartbeat."
       assert has_element?(view, "#run-drift", "Behind v#{new.version}")
 
@@ -659,10 +650,52 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "In force in this run"
 
       assert line =~
-               "Allowed for this repository in v#{new.version} · of github.example/acme/shop . The run has reported it."
+               "Allowed for this repository in v#{new.version} · of acme/shop . The run has reported it."
 
       refute line =~ "has not reloaded"
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied))
+    end
+
+    test "a target whose path another system has is named and linked with its system", %{
+      conn: conn,
+      scope: scope
+    } do
+      Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop("gitlab.example"))
+      digest = in_force(scope, nil).digest
+      run = policy_run(scope, applied: digest, egress: [@registry, @denied])
+      target = target(scope, run)
+      run = report(run, digest)
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+
+      # The crumb and the header's link land on its page at its address.
+      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      assert has_element?(view, "#run-target[href='#{page}']")
+      assert has_element?(view, "#breadcrumb a[href='#{page}']")
+
+      view |> element("#cx-#{id}-act") |> render_click()
+      assert text(view, "#rule-panel") =~ "This repository github.example/acme/shop"
+      view |> form("#rule-panel-form") |> render_submit()
+      new = in_force(scope, target)
+
+      assert render(view) =~ "files.cdn.example is allowed for github.example/acme/shop."
+      line = text(view, "#cx-#{id}-after")
+
+      assert line =~
+               "Allowed for this repository in v#{new.version} · of github.example/acme/shop by you"
+
+      assert has_element?(
+               view,
+               ~s(#cx-#{id}-after a[href="#{page}/-/policy/versions/#{new.version}"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(a#cx-#{id}-act[href="#{page}/-/policy?rule=files.cdn.example"]),
+               "Rule"
+             )
+
+      assert text(view, "#run-drift") == "Behind v#{new.version} · github.example/acme/shop"
     end
 
     test "once the run reloaded and the row's last attempt is allowed by the rule, the line stays",
@@ -698,9 +731,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       line = text(view, "#cx-#{id}-after")
       assert line =~ "In force in this run"
 
-      assert line =~
-               "Allowed for this repository in v#{new.version} · of github.example/acme/shop"
-
+      assert line =~ "Allowed for this repository in v#{new.version} · of acme/shop"
       assert line =~ "The run reloaded at #0030."
       assert text(view, "a#cx-#{id}-act") == "Rule"
 
@@ -991,7 +1022,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert [%{paths: ["/v1/*", "/v2/x"]}] = Policy.list_rules(scope, target(scope, run))
 
       assert render(view) =~
-               "/v2/x on api.pathed.example is allowed for github.example/acme/shop."
+               "/v2/x on api.pathed.example is allowed for acme/shop."
 
       assert text(view, "#cx-#{id}-after") =~ "Allowed for this repository"
     end

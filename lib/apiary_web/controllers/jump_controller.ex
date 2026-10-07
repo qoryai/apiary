@@ -217,11 +217,15 @@ defmodule ApiaryWeb.JumpController do
   defp targets(%{workspace: %{} = workspace} = scope, text) when text != "" do
     items =
       if Access.can?(scope, :"run.read", workspace) do
-        for target <- Runs.search_targets(scope, text, @per_group) do
+        targets = Runs.search_targets(scope, text, @per_group)
+        # Each at its address: one read of the paths listed.
+        shared = Runs.shared_paths(scope, Enum.map(targets, & &1.path))
+
+        for target <- targets do
           item(
             target.path,
             target.system,
-            ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path),
+            ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path, [], shared),
             "hero-folder"
           )
         end

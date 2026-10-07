@@ -556,14 +556,17 @@ defmodule ApiaryWeb.PolicyLive.Views do
     """
   end
 
-  # The lead of the export: what is exported, as of which version, and in which files.
+  # The lead of the export: what is exported, as of which version, and in which files. A
+  # target is named as it is addressed; the file's own head keeps its system and path.
   defp export_lead(export) do
     subject =
       if export.workspace,
         do:
           {:b, gettext("the workspace %{name}", name: export.workspace),
            "font-medium text-base-content"},
-        else: {:b, export.subject, "font-mono text-[12.5px] font-medium text-base-content"}
+        else:
+          {:b, export[:name] || export.subject,
+           "font-mono text-[12.5px] font-medium text-base-content"}
 
     version =
       {:b, gettext("version %{version}", version: export.version),

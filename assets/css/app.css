@@ -2948,12 +2948,17 @@
   }
   .q-tokens {
     display: flex;
+    min-width: 0;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
   }
+  /* A token is never wider than its line: a long value (`q-tok-v`) ends in an ellipsis,
+     whole in its title, and the key and the × keep their place. */
   .q-tok {
     display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
     height: 24px;
     align-items: center;
     gap: 4px;
@@ -2964,10 +2969,20 @@
     font-size: 0.78125rem;
     white-space: nowrap;
   }
+  .q-tok-k {
+    flex: none;
+  }
+  .q-tok-v {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .q-tok-x {
     display: grid;
     width: 18px;
     height: 18px;
+    flex: none;
     place-items: center;
     border-radius: 3px;
     color: var(--q-faint);
@@ -3777,19 +3792,35 @@
   .q-rl .q-rl-st {
     width: 1%;
   }
+  /* A quiet run's note goes on its own line under the state's word, and may wrap, so the
+     State column keeps about a state's width and the run keeps its room. */
+  .q-rl .q-rl-st .q-st-quiet {
+    display: inline-grid;
+    grid-template-columns: auto auto;
+    gap: 1px 6px;
+  }
+  .q-rl .q-rl-st .q-st-quiet .q-quiet {
+    grid-column: 2;
+    flex-wrap: wrap;
+    gap: 0 5px;
+  }
   .q-rl .q-rl-run {
     width: 100%;
     max-width: 0;
   }
+  /* The title, then the target in the room that is left: the target is cut to an
+     ellipsis, or goes, before the title loses a letter. */
   .q-rl-tt {
-    display: flex;
+    display: grid;
     min-width: 0;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: minmax(0, max-content);
     align-items: baseline;
     gap: 12px;
   }
   .q-rl-title {
     min-width: 0;
-    flex: 0 1 auto;
     overflow: hidden;
     color: var(--color-base-content);
     font-size: 0.875rem;
@@ -3808,7 +3839,9 @@
     font-size: 0.8125rem;
   }
   .q-rl-inl {
-    flex: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .q-rl-faint {
     color: var(--q-faint);
@@ -5080,7 +5113,8 @@
       max-width: none;
     }
     .q-rl-tt {
-      flex-direction: column;
+      grid-auto-flow: row;
+      grid-template-columns: minmax(0, 1fr);
       gap: 0;
     }
     .q-rl-tt .q-rl-title {
@@ -5216,7 +5250,7 @@
    the runs list and the connections pages is in the section above; the run page's own
    look of a shared piece (a connection line in the timeline) is scoped to the page here.
    A work surface: the column takes the width, the details rail sits beside it from
-   1440 px, and the terminal fills the window below the tab bar. */
+   1440 px but on the Terminal tab, and the terminal fills the window below the tab bar. */
 @layer qory {
   /* ---- The work surface: the column, and the details rail from 1440 px ---- */
   .q-run {
@@ -5357,8 +5391,16 @@
   .q-run-meta a:hover {
     color: var(--color-base-content);
   }
+  /* A long target gives way: on a line of its own it ends in an ellipsis, whole in its
+     title. */
+  .q-run-meta > #run-target {
+    min-width: 0;
+  }
   .q-run-meta .q-tname {
+    min-width: 0;
+    overflow: hidden;
     font-size: 0.78125rem;
+    text-overflow: ellipsis;
   }
   .q-run-target:hover .q-tname {
     text-decoration: underline;
@@ -5375,16 +5417,17 @@
     align-items: center;
     gap: 8px;
   }
-  /* From 1440 px the rail is beside the column, and the tab bar ends at the column. */
+  /* From 1440 px the rail is beside the column, and the tab bar ends at the column; not on
+     the wide Terminal tab (`q-run-wide`), where Details stays a tab, as on Details itself. */
   @media (min-width: 1440px) {
-    .q-run {
+    .q-run:not(.q-run-wide) {
       grid-template-columns: minmax(0, 1fr) 320px;
     }
-    .q-run .q-tabs {
+    .q-run:not(.q-run-wide) .q-tabs {
       margin-right: 0;
       padding-right: 0;
     }
-    #run-tab-details {
+    .q-run:not(.q-run-wide):not(.q-run-on-details) #run-tab-details {
       display: none;
     }
   }
@@ -5404,6 +5447,9 @@
       max-height: calc(100dvh - var(--q-bar) - 2.5rem);
       overflow: auto;
       scrollbar-width: thin;
+    }
+    .q-run-wide .q-run-rail {
+      display: none;
     }
   }
   .q-rail-title {
@@ -6397,6 +6443,10 @@
   @media (max-width: 767.98px) {
     .q-run-sub {
       flex-direction: column;
+    }
+    /* The meta lines take the column's width, so a long line is cut, never the page. */
+    .q-run-meta-wrap {
+      align-self: stretch;
     }
     .q-run-head h1 {
       font-size: 1.125rem;
@@ -8224,6 +8274,22 @@
   .q-tname-sys {
     color: var(--q-faint);
     font-weight: 400;
+  }
+  /* The narrowed line of a list (`#runs-narrowed`, `#connections-target-note`): its links
+     are underlined at rest, as beside its words their hue alone would set them apart, and
+     a long target's name wraps anywhere rather than widen the page. */
+  #runs-narrowed .q-link,
+  #connections-target-note .q-link {
+    text-decoration-color: color-mix(in oklab, currentColor 55%, transparent);
+  }
+  #runs-narrowed .q-link:hover,
+  #connections-target-note .q-link:hover {
+    text-decoration-color: currentColor;
+  }
+  .q-narrowed-name,
+  .q-narrowed-name .q-tname {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   /* ---- 1. The summary: the largest numbers on the page, in one strip ---- */

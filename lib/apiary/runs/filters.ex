@@ -778,14 +778,30 @@ defmodule Apiary.Runs.Filters do
           String.t() => String.t()
         }
   def target_params(system, path, shared) when is_binary(path) do
+    {system, path} = link_target({system, path}, shared)
+    target_params(system, path)
+  end
+
+  @doc """
+  A target of the filters as the console's links write it (question 9, answer A):
+  `{nil, path}`, the path alone, unless the path is `shared` by another target of the
+  workspace, where the pair stays whole. `shared` is a boolean, or the workspace's shared
+  paths (`Apiary.Runs.shared_paths/2`). `nil` and `:none` are themselves. A rail's link and
+  a Filter menu's option write a target through it, so they match the short address the
+  sidebar and the narrowed line write.
+  """
+  @spec link_target(target(), boolean | MapSet.t(String.t()) | nil) :: target()
+  def link_target({system, path}, shared) when is_binary(path) do
     shared? =
       case shared do
         %MapSet{} -> MapSet.member?(shared, path)
         shared -> shared == true
       end
 
-    target_params(if(shared?, do: system), path)
+    {if(shared?, do: system), path}
   end
+
+  def link_target(target, _shared), do: target
 
   defp target_params(:none), do: %{"target" => "none"}
   defp target_params({system, path}), do: target_params(system, path)

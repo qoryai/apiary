@@ -670,7 +670,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
   would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
   the workspace does not have, and a tab the page does not know, are not found. The header
-  is the target in full with the reader's pin, one muted line (its runs since it was first
+  names the target as it is addressed (its path, its system before it only where two
+  targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
   the system is a host name; the breadcrumb's third segment is the target.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
@@ -678,10 +679,9 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     system and path, when it was first seen and by which run, the same path elsewhere,
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
-  - **Runs**: its latest runs, one line each, and all of them in the runs list.
-  - **Network access**: the Network access page's content with the target fixed
-    (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target section,
-    token or rail, and "New activity" leading the tab.
+  - Its runs and its Network access are the workspace's lists narrowed to it
+    (`/runs?target=acme/shop`, `/network?target=acme/shop`); the old `…/-/runs`,
+    `…/-/network` and `…/-/connections` send on there with their query.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode on one line (Follow the workspace, by its name, Observe or Enforce, and whose
     the mode is), the rules in force for it on the list pattern with their Source, and
@@ -1036,7 +1036,8 @@ a chosen row are query parameters.
 
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
-on its own) sits beside it. The top bar's breadcrumb ends with the run's target, a link to
+on its own) sits beside it, on every tab but Terminal, which is wide and takes the
+whole width (`q-run-wide`). The top bar's breadcrumb ends with the run's target, a link to
 the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
 
 - **The header is two lines**: the title (the task, or the run's short id) alone, then
@@ -1051,12 +1052,13 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   cells of v1 are the rail's. A run that ended badly says how under the meta line, in one
   cut line whole on hover: the last result of its timeline that was no success, else its
   last failed turn or tool, with "Jump to it", the timeline at that item.
-- **The tabs**, Timeline, Terminal, Network access and, below 1440 px, Details, stick under
-  the top bar; each is a live action of the one LiveView, so a tab is a patch.
+- **The tabs**, Timeline, Terminal, Network access and Details (from 1440 px only on
+  Terminal and on Details itself, where there is no rail), stick under the top bar; each is a live action of the one LiveView, so a tab is a patch.
 - **The Details rail** is key and value lines under small headings (Run, Labels, Command,
   Record, Policy in force), no card and no chip; the run's labels are its own
-  identifiers, in mono, and one that names the target leads to its page. Below 1440 px the
-  Details tab shows this same element in the column, its sections as cards
+  identifiers, in mono, and one that names the target leads to its page. Below 1440 px,
+  and from it when Terminal took the rail's room, the Details tab shows this same element
+  in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a

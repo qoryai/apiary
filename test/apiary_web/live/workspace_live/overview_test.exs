@@ -328,6 +328,23 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert Enum.at(rows, 1) =~ "gitlab.example/acme/shop"
       assert Enum.at(rows, 2) =~ "acme/t1"
       refute Enum.at(rows, 2) =~ "github.example"
+
+      # Each links to its page at its address: the system in it where the path is shared.
+      for {system, path} <- [
+            {"github.example", "/targets/github.example/acme/shop"},
+            {"gitlab.example", "/targets/gitlab.example/acme/shop"}
+          ] do
+        target = Apiary.Targets.get(scope, system, "acme/shop")
+        assert has_element?(view, "#active-#{target.id} a[href='#{workspace_path(scope, path)}']")
+      end
+
+      t1 = Apiary.Targets.get(scope, "github.example", "acme/t1")
+
+      assert has_element?(
+               view,
+               "#active-#{t1.id} a[href='#{workspace_path(scope, "/targets/acme/t1")}']"
+             )
+
       assert has_element?(view, "#overview-targets-all", "All 10 repositories")
     end
 
@@ -391,10 +408,36 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
 
       assert text(view, "#overview-own") =~ "acme/shop observes; the rest follow the workspace."
+      refute text(view, "#overview-own") =~ "github.example"
+
+      assert has_element?(
+               view,
+               "#overview-own a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']",
+               "acme/shop"
+             )
 
       assert has_element?(
                view,
                "#overview-own-review[href='#{workspace_path(scope, "/policy/targets")}']"
+             )
+    end
+
+    @tag needs: :security
+    test "policy: a target with a mode of its own whose path another system has is named with its system",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      {:ok, _} = Policy.set_mode(scope, target, "enforce")
+
+      view = open(conn, scope)
+
+      assert text(view, "#overview-own") =~
+               "github.example/acme/shop enforces; the rest follow the workspace."
+
+      assert has_element?(
+               view,
+               "#overview-own a[href='#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}']"
              )
     end
 
@@ -491,7 +534,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#attention-list li[data-kind=denied]:first-child button[aria-label='Allow files.cdn.example for github.example/acme/shop']",
+               "#attention-list li[data-kind=denied]:first-child button[aria-label='Allow files.cdn.example for acme/shop']",
                "Allow here"
              )
 
@@ -539,6 +582,47 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       # The idle key is the sixth: on the keys page, not on this list.
       refute has_element?(view, "#att-key-#{idle.id}")
+    end
+
+    @tag needs: :security
+    test "a run behind a shared target's policy compares at the target's own address", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, shop(), ago: 0)
+      # Another system has the path: the target's address keeps its system.
+      started_run(scope, shop("gitlab.example"), ago: 0)
+      {:ok, target} = Policy.get_target(scope, Repo.get!(Run, run.id).target_id)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      {:ok, _} = Policy.allow(scope, target, %{host: "one.example"})
+      {:ok, old} = Policy.current_configuration(scope, target)
+      {:ok, _} = Policy.allow(scope, target, %{host: "two.example"})
+      {:ok, new} = Policy.current_configuration(scope, target)
+
+      # In force long enough for a run still on the one before to be behind.
+      Repo.update_all(
+        from(c in Apiary.Policy.RunConfiguration, where: c.id == ^new.id),
+        set: [rendered_at: DateTime.add(DateTime.utc_now(), -600, :second)]
+      )
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [reported_run_configuration_digest: old.digest]
+      )
+
+      view = open(conn, scope)
+
+      compare =
+        workspace_path(
+          scope,
+          "/targets/github.example/acme/shop/-/policy/versions/#{new.version}?compare=#{old.version}"
+        )
+
+      assert has_element?(
+               view,
+               ~s(#att-run-#{run.run_id}-act[href="#{compare}"]),
+               "What changed"
+             )
     end
 
     @tag needs: :security
@@ -706,6 +790,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "##{item}-act[aria-expanded=true]")
       assert has_element?(view, "#rule-panel", "files.cdn.example")
       assert has_element?(view, "#rule-panel-submit", "Allow for the repository")
+      # The target is named as it is addressed: its path, where no other system has it.
+      assert text(view, "#rule-panel-target") =~ "acme/shop · 1 run"
+      refute text(view, "#rule-panel-target") =~ "github.example"
       # The one target is chosen, so its option takes the focus.
       assert has_element?(view, "#rule-panel input[value=target][checked][data-autofocus]")
 
@@ -726,8 +813,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "##{item}.q-resolved .q-mark-ok")
       assert has_element?(view, "##{item}-done", "Allowed here")
 
-      assert text(view, "#overview-announcer") =~
-               "files.cdn.example is allowed for github.example/acme/shop."
+      assert text(view, "#overview-announcer") =~ "files.cdn.example is allowed for acme/shop."
 
       # The policy topic re-reads the list: the struck row stays where it is, and the
       # workspace is managed now, so the unmanaged item resolves in words too. A target's

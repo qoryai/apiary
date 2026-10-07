@@ -237,7 +237,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{row(live_run)} time[data-tick=duration][data-base='90'][data-now]"
              )
 
-      assert has_element?(view, "#{row(quiet)} .q-st-quiet")
+      # the note is the state's, in its cell, where the list puts it under the word; the
+      # target follows the title in the run's cell, where it gives way before the title
+      assert has_element?(view, "#{row(quiet)} td.q-rl-st .q-st-quiet > .q-quiet")
+      assert has_element?(view, "#{row(quiet)} td.q-rl-run .q-rl-title + .q-rl-inl")
 
       assert text(view, "#{row(quiet)} .q-quiet") =~
                ~r/^No heartbeat for \d\d s \. Heartbeats are due every 30 s\./
@@ -751,8 +754,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       shop_link = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/shop"})}"
       assert text(view, shop_link) == "acme/shop 2"
 
+      # A path no other system has is written alone, as its address is.
       view |> element(shop_link) |> render_click()
-      assert_patch(view, runs(scope, "?system=github.example&target=acme%2Fshop"))
+      assert_patch(view, runs(scope, "?target=acme%2Fshop"))
       render_async(view)
       assert has_element?(view, row(shop_run))
       refute has_element?(view, row(api))
@@ -871,8 +875,16 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   end
 
   describe "narrowed to a target (the narrowing ruling)" do
-    defp target_page(scope, system, rest \\ []),
-      do: ApiaryWeb.TargetComponents.target_path(scope, system, "acme/shop", rest)
+    # A target's page, or a tab of it, as its address is written: the path alone, unless
+    # `system` is given for a path two systems share.
+    defp target_page(scope, system \\ nil, rest \\ []) do
+      tab = if rest == [], do: "", else: "/-/" <> Enum.join(rest, "/")
+
+      workspace_path(
+        scope,
+        "/targets/" <> if(system, do: system <> "/", else: "") <> "acme/shop" <> tab
+      )
+    end
 
     defp href(view, selector, href), do: has_element?(view, ~s(#{selector}[href="#{href}"]))
 
@@ -880,7 +892,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     # those two on a list that is not narrowed to a target.
     defp plain_sidebar?(view, scope, carried \\ false) do
       plain =
-        [overview: "", targets: "/targets", settings: "/settings"] ++
+        [overview: "", targets: "/targets", nodes: "/nodes", settings: "/settings"] ++
           if(Apiary.Features.on?(:security), do: [policy: "/policy"], else: []) ++
           if(carried, do: [], else: [runs: "/runs", network: "/network"])
 
@@ -899,7 +911,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, row(api))
       assert has_element?(view, "#page-header #runs-narrowed")
       assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/shop only."
-      assert href(view, "a#runs-narrowed-name", target_page(scope, "github.example"))
+      assert href(view, "a#runs-narrowed-name", target_page(scope))
 
       assert href(
                view,
@@ -909,20 +921,29 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert text(view, "#runs-narrowed-network") == "Network access"
 
-      if Apiary.Features.on?(:security) do
-        assert href(
-                 view,
-                 "#runs-narrowed-policy",
-                 target_page(scope, "github.example", ["policy"])
-               )
+      # Out of the sentence, each link is named by it.
+      assert has_element?(
+               view,
+               ~s(#runs-narrowed-network[aria-label="Network access, narrowed to acme/shop"])
+             )
 
+      if Apiary.Features.on?(:security) do
+        assert href(view, "#runs-narrowed-policy", target_page(scope, nil, ["policy"]))
         assert text(view, "#runs-narrowed-policy") == "Its policy"
+        assert has_element?(view, "#runs-narrowed-policy[aria-describedby=runs-narrowed-what]")
       else
         refute has_element?(view, "#runs-narrowed-policy")
       end
 
       assert href(view, "#runs-narrowed-all", runs(scope))
       assert text(view, "#runs-narrowed-all") == "Show all runs"
+      assert has_element?(view, "#runs-narrowed-all[aria-describedby=runs-narrowed-what]")
+
+      # Its links differ from the text by more than their hue, and when "Show all runs"
+      # takes the line away, focus goes from it to the page's title.
+      assert has_element?(view, "#runs-narrowed a.q-link")
+      assert has_element?(view, "#runs-narrowed[phx-remove]")
+      assert has_element?(view, "#page-header-title[tabindex='-1']")
 
       # The sidebar's Runs and Network access carry the target; nothing else does.
       assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
@@ -961,6 +982,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, runs(scope, "?state=failed&target=acme/shop"))
 
       assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+      assert href(view, "#nav-runs", workspace_path(scope, "/runs?target=acme%2Fshop"))
 
       assert href(
                view,
@@ -985,20 +1007,222 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "Showing the runs of gitlab.example/acme/shop only."
 
       assert href(view, "a#runs-narrowed-name", target_page(scope, "gitlab.example"))
+
+      if Apiary.Features.on?(:security),
+        do:
+          assert(
+            href(view, "#runs-narrowed-policy", target_page(scope, "gitlab.example", ["policy"]))
+          )
+
       assert href(view, "#runs-narrowed-network", carried)
       assert href(view, "#nav-network", carried)
 
-      # The path alone is that path on both systems: no one target's page to lead to.
-      view = open(conn, runs(scope, "?target=acme/shop"))
-      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/shop only."
+      assert has_element?(
+               view,
+               ~s(#runs-narrowed-network[aria-label="Network access, narrowed to gitlab.example/acme/shop"])
+             )
+    end
+
+    test "a path on two systems given alone covers both, and names each system's runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, runs(scope, "?state=failed&target=acme/shop"))
+
+      # The words of the sentence, a link's full stop after it.
+      what = fn -> view |> text("#runs-narrowed-what") |> String.replace(" .", ".") end
+      assert what.() == "Showing acme/shop only, on github.example and gitlab.example."
+
+      # Each system leads to the runs of its own target, the other filters kept.
+      for system <- ["github.example", "gitlab.example"] do
+        assert href(
+                 view,
+                 "#runs-narrowed-what a[data-phx-link=patch]",
+                 runs(scope, "?state=failed&system=#{system}&target=acme%2Fshop")
+               ),
+               system
+      end
+
+      # No one target: no name to lead to, no one policy.
       refute has_element?(view, "a#runs-narrowed-name")
       refute has_element?(view, "#runs-narrowed-policy")
+      refute has_element?(view, "#runs-rail [aria-current=true]")
 
+      # The path is carried as it was given.
       assert href(
                view,
                "#runs-narrowed-network",
                workspace_path(scope, "/network?target=acme%2Fshop")
              )
+
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+
+      # Three systems: "a, b, and c".
+      started_run(scope, shop("codeberg.example"))
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      assert view |> text("#runs-narrowed-what") |> String.replace(~r/ ([.,])/, "\\1") ==
+               "Showing acme/shop only, on codeberg.example, github.example, and gitlab.example."
+
+      # Following one narrows to its target.
+      view
+      |> element(
+        "#runs-narrowed-what a[href='#{runs(scope, "?system=gitlab.example&target=acme%2Fshop")}']"
+      )
+      |> render_click()
+
+      assert_patch(view, runs(scope, "?system=gitlab.example&target=acme%2Fshop"))
+      render_async(view)
+
+      assert view |> text("#runs-narrowed-what") |> String.replace(" / ", "/") ==
+               "Showing the runs of gitlab.example/acme/shop only."
+    end
+
+    test "the line is whole from the first render, before the list lands", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+
+      {:ok, _view, html} = live(conn, runs(scope, "?system=gitlab.example&target=acme/shop"))
+      first = LazyHTML.from_document(html)
+
+      attribute = fn selector ->
+        first |> LazyHTML.query(selector) |> LazyHTML.attribute("href") |> List.first()
+      end
+
+      # The list is still its skeleton; the line, its links and the carry are not.
+      assert html =~ "runs-loading"
+      assert attribute.("a#runs-narrowed-name") == target_page(scope, "gitlab.example")
+
+      assert attribute.("#nav-network") ==
+               workspace_path(scope, "/network?system=gitlab.example&target=acme%2Fshop")
+
+      if Apiary.Features.on?(:security),
+        do:
+          assert(
+            attribute.("#runs-narrowed-policy") ==
+              target_page(scope, "gitlab.example", ["policy"])
+          )
+    end
+
+    test "a patch to another target names it at once, and to a missing one leads nowhere", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      view = open(conn, runs(scope, "?target=acme/shop"))
+      assert href(view, "a#runs-narrowed-name", target_page(scope))
+
+      render_patch(view, runs(scope, "?target=acme/api"))
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/api only."
+      assert href(view, "a#runs-narrowed-name", workspace_path(scope, "/targets/acme/api"))
+
+      if Apiary.Features.on?(:security),
+        do:
+          assert(
+            href(
+              view,
+              "#runs-narrowed-policy",
+              workspace_path(scope, "/targets/acme/api/-/policy")
+            )
+          )
+
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fapi"))
+
+      render_patch(view, runs(scope, "?target=acme/nowhere"))
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/nowhere only."
+      refute has_element?(view, "a#runs-narrowed-name")
+      refute has_element?(view, "#runs-narrowed-policy")
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fnowhere"))
+    end
+
+    test "the rail, the Filter menu and a typed repo: match the short address and write it", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      shop_link = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/shop"})}"
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      # The rail marks the one target of the path, and writes the path alone.
+      assert has_element?(view, "#{shop_link}[aria-current=true]")
+      refute has_element?(view, "#runs-rail-all[aria-current]")
+      assert href(view, shop_link, runs(scope, "?target=acme%2Fshop"))
+
+      # The Filter menu holds it once, chosen.
+      options =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#filter-target-form input[name=target]")
+
+      values = LazyHTML.attribute(options, "value")
+      shop_value = Apiary.Runs.Filters.target_value({nil, "acme/shop"})
+      assert Enum.count(values, &(&1 == shop_value)) == 1
+      refute Apiary.Runs.Filters.target_value({"github.example", "acme/shop"}) in values
+
+      assert has_element?(
+               view,
+               ~s(#filter-target-form input[name=target][value='#{shop_value}'][checked])
+             )
+
+      # Choosing in the menu writes the path alone.
+      api_value = Apiary.Runs.Filters.target_value({nil, "acme/api"})
+      view |> form("#filter-target-form") |> render_change(%{"target" => api_value})
+      assert_patch(view, runs(scope, "?target=acme%2Fapi"))
+
+      # And so does typing it, with or without its system.
+      for typed <- ["repo:acme/shop", "repo:github.example/acme/shop", "target:ACME/shop"] do
+        render_patch(view, runs(scope, "?target=acme/api"))
+        view |> form("#runs-query", %{"q" => typed}) |> render_submit()
+        assert_patch(view, runs(scope, "?target=acme%2Fshop"))
+      end
+
+      # Where the path is shared, every one of them writes the system.
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, runs(scope, "?system=gitlab.example&target=acme/shop"))
+      gitlab_link = "#runs-rail-t-#{RunComponents.dom_token({"gitlab.example", "acme/shop"})}"
+      assert has_element?(view, "#{gitlab_link}[aria-current=true]")
+      assert href(view, shop_link, runs(scope, "?system=github.example&target=acme%2Fshop"))
+
+      view |> form("#runs-query", %{"q" => "repo:github.example/acme/shop"}) |> render_submit()
+      assert_patch(view, runs(scope, "?system=github.example&target=acme%2Fshop"))
+    end
+
+    test "with many targets, the chosen one missing from the rail comes first, with its count",
+         %{conn: conn, scope: scope} do
+      for n <- 1..21 do
+        started_run(scope, %{"forge" => "github.example", "repository" => "acme/r#{n}"})
+        started_run(scope, %{"forge" => "github.example", "repository" => "acme/r#{n}"})
+      end
+
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/quiet"})
+      quiet = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/quiet"})}"
+
+      view = open(conn, scope)
+      refute has_element?(view, quiet)
+      assert text(view, "#runs-rail-more") == "2 more"
+
+      view = open(conn, runs(scope, "?target=acme/quiet"))
+      assert text(view, quiet) == "acme/quiet 1"
+      assert has_element?(view, "#{quiet}[aria-current=true]")
+
+      # Right under every run, before the busiest; one fewer behind the button.
+      [_all, first | _] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs-rail a")
+        |> LazyHTML.attribute("id")
+
+      assert "##{first}" == quiet
+      assert text(view, "#runs-rail-more") == "1 more"
     end
 
     test "Show all runs, the token's ×, the rail's All targets and Clear each drop the target, in a new history entry",

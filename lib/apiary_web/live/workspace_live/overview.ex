@@ -413,6 +413,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     summary = Policy.mode_summary(scope)
     targets = Policy.list_targets(scope)
     rules = Policy.list_rules(scope, nil)
+    own = Enum.filter(targets, &(&1.own_mode != nil))
 
     version =
       case Common.served_version(scope, nil, summary.managed?) do
@@ -425,7 +426,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       targets: length(targets),
       with_rules: Enum.count(targets, &(&1.rule_count > 0)),
       following: Enum.count(targets, &is_nil(&1.own_mode)),
-      own: Enum.filter(targets, &(&1.own_mode != nil)),
+      own: own,
+      # The one target the guard may name, named as it is addressed: one read, or none.
+      shared: Runs.shared_paths(scope, for(%{target: t} <- own, length(own) == 1, do: t.path)),
       version: version,
       allow_rules: Enum.count(rules, &(&1.kind == "host" and &1.action == "allow")),
       suggestions:
@@ -458,12 +461,17 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     else
       holders = reported |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
       versions = Policy.newest_versions(scope, [nil | holders])
+      targets = Map.new(holders, &{&1, holder_of(scope, &1)})
+
+      # A target's versions are at its address, its system there only where its path is
+      # shared: one read for the targets of the runs that are behind.
+      shared = Runs.shared_paths(scope, for({_id, %{path: path}} <- targets, do: path))
 
       for run <- reported,
           in_force = versions[run.target_id] || versions[nil],
           in_force.digest != run.reported_run_configuration_digest,
           into: %{} do
-        holder = holder_of(scope, run.target_id)
+        holder = run.target_id && targets[run.target_id]
 
         reported_version =
           case Policy.configuration_for_digest(
@@ -471,11 +479,12 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                  holder,
                  run.reported_run_configuration_digest
                ) do
-            {:ok, configuration} -> version_map(scope, configuration, holder)
+            {:ok, configuration} -> version_map(scope, configuration, holder, shared)
             _ -> nil
           end
 
-        {run.id, %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
+        {run.id,
+         %{in_force: version_map(scope, in_force, holder, shared), reported: reported_version}}
       end
     end
   end
@@ -491,8 +500,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   # A target's version is on its Policy tab: `holder` is the run's target, the one target
   # a run's versions are of; no path when it could not be read.
-  defp version_map(scope, configuration, holder) do
+  defp version_map(scope, configuration, holder, shared) do
     holder = if configuration.target_id, do: holder
+    shared = holder != nil and MapSet.member?(shared, holder.path)
 
     %{
       n: configuration.version,
@@ -500,10 +510,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       rendered_at: configuration.rendered_at,
       target_id: configuration.target_id,
       holder: holder,
+      shared: shared,
       path:
         if(configuration.target_id && is_nil(holder),
           do: nil,
-          else: Rules.version_path(scope, holder, configuration.version)
+          else: Rules.version_path(scope, holder, configuration.version, %{}, shared)
         )
     }
   end
@@ -942,11 +953,18 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     reached =
       Runs.destination_targets(scope, @denied_filters, {item.host, item.port, item.path})
 
+    # Each target named as it is addressed: one read of the paths the panel names.
+    shared =
+      Runs.shared_paths(
+        scope,
+        for(%{target_id: id, path: p} when is_binary(id) <- reached, do: p)
+      )
+
     targets =
       for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.system}/#{r.path}",
+          label: ApiaryWeb.TargetComponents.target_label(r.system, r.path, shared),
           runs: r.runs,
           connection_id: r.connection_id
         }
@@ -1212,7 +1230,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp compare_path(scope, in_force, %{n: m, target_id: same})
        when same == in_force.target_id and (is_nil(same) or in_force.holder != nil),
-       do: Rules.version_path(scope, in_force.holder, in_force.n, %{"compare" => m})
+       do:
+         Rules.version_path(
+           scope,
+           in_force.holder,
+           in_force.n,
+           %{"compare" => m},
+           in_force.shared
+         )
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 
