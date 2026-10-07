@@ -44,6 +44,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     ])
   end
 
+  # The timer of the next expiry the page holds (`schedule_expiry/1`).
+  defp expiry_timer(lv), do: :sys.get_state(lv.pid).socket.assigns.expiry_timer
+
   # Not one line says a node enrols, posts or connects with these, nor names a command.
   defp refute_untrue(html) do
     refute html =~ "access-key enrol"
@@ -614,6 +617,23 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute flash =~ "revoked"
       assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
       refute has_element?(lv, "#code-#{row.id}")
+    end
+
+    test "a code's expiry read again leaves one timer, the one the page holds",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, _row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      held = expiry_timer(lv)
+      assert is_integer(Process.read_timer(held))
+
+      # An expiry whose message waited while a read set the timer the page holds: that
+      # timer is cancelled, not left running beside the new one.
+      send(lv.pid, :codes_expire)
+      _ = render(lv)
+
+      refute Process.read_timer(held)
+      assert is_integer(Process.read_timer(expiry_timer(lv)))
     end
 
     test "its expiry says Expired once it is past" do
