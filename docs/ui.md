@@ -174,10 +174,10 @@ the console keeps. Every other act happens on a page, in place:
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
   Revoke, Rotate, Remove, Suspend or Clear turns that row into the question, "Delete
   FORGE_TOKEN?", what is lost, "Yes, delete" and Cancel; a danger zone's line expands
-  under its sentence, with the field to type where one is asked; a page's own switch,
-  such as the policy's mode, opens its confirmation under it. Each keeps the path it had,
-  which opens the page with that confirmation showing and never acts by itself; Cancel and
-  Escape go back.
+  under its sentence, with the field to type where one is asked; a page's own setting,
+  such as the policy's mode, opens its choices in place and asks under them. Each keeps
+  the path it had, which opens the page with that confirmation showing and never acts by
+  itself; Cancel and Escape go back.
 - **What is undone as easily as it is done acts at once**, with a flash that says what it
   did: Lock and Unlock of a variable, a plain Remove of a policy rule. It asks in place
   only when something is lost or set aside.
@@ -523,21 +523,27 @@ A target's Policy tab shows each rule's Source; its own rules come first and hav
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;
 the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
-Above the rules, the workspace's mode is one line, as a target's is
-(`PolicyComponents.mode_switch/1`, `target_mode/1`): Mode, Observe | Enforce as a
-segmented radio group, a required mode's lock and whose it is, then one sentence of what
-the mode does and who follows it, and the record of the last 7 days with its link, beside
-the control and never inside it.
+The mode is a card above the tabs, the same on the workspace's Policy page, on each of
+its tabs, and on a target's Policy tab, above its views (`PolicyComponents.mode_card/1`);
+a version and its export, which state their own mode, have none. It states the mode in
+force: a honey tile with the mode's icon (a lock where a level above requires enforce),
+"Mode: Enforce" as its heading, whose it is as a badge (Workspace default; Follows the
+workspace, by its name, or Its own; Required by the level), one sentence of what the mode
+does and who follows it, and on the workspace's the record of the last 14 days with its
+link. A member sees the card with no Change mode and the line that says who may.
 
 The policy pages confirm in place, never over the page:
 
-- **A mode** is asked, never switched at once (a click, or Space or Enter on the radio;
-  `?confirm=enforce` lands asking): a panel under the switch
-  (`PolicyLive.Views.confirm_panel/1`, in `inline_confirm/1`'s look) asks the question,
-  says what the mode denies and in whose runs, and for enforce lists what the last 14 days
-  let through with no rule, each with its Allow; then the act's button and Cancel. Cancel
-  takes the focus as the panel shows; Cancel or Escape gives it back to the mode in force.
-  Another tab leaves the question.
+- **A mode** is chosen, then confirmed, never switched at once. Change mode opens the
+  choices in the card (`?confirm=enforce` lands with them open and Enforce picked): one
+  option card per mode (Follow the workspace first on a target), each a native radio with
+  what it does, the mode now marked Current. A pick only selects. A pick that is not the
+  mode now asks under the options: the question, what it does and in whose runs (or that
+  nothing changes today, and what changes from now on), for enforce what the last 14 days
+  let through with no rule, each with its Allow; then one primary button that names the
+  pick and Cancel. Escape cancels; saving or cancelling gives the focus back to Change
+  mode, and the save is said in the page's status region. The choices stay open on
+  another tab.
 - **A rule's row** asks for its own acts where they cost something: a Lock that would put
   a target's own rule out of force, and the Remove of a locked rule or of one a target
   overrides. The row becomes its `inline_confirm/1` (`rule_list/1`'s `confirming`): the
@@ -649,7 +655,7 @@ words say so. The workspace's window is **fourteen days**:
   Network access, whose Denied view counts the destinations the summary names). **Needs
   attention** weighs the same fourteen days but lists only what is still denied, no rule
   having allowed it since, and its "and n more" says so.
-- **The Policy page's** fact beside the mode and the enforce preview read fourteen days,
+- **The Policy page's** fact on the mode card and the enforce preview read fourteen days,
   so "See them" lands on the same numbers; a rule's use is its last fourteen days.
 - **The targets index** counts runs, the share that ended well and denied attempts over
   the same fourteen days, each column saying so; a **target's page** counts its denied
@@ -739,8 +745,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     (`/runs?target=acme/shop`, `/network?target=acme/shop`); the old `…/-/runs`,
     `…/-/network` and `…/-/connections` send on there with their query.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
-    mode on one line (Follow the workspace, by its name, Observe or Enforce, and whose
-    the mode is), the rules in force for it on the list pattern with their Source, and
+    mode card (Follow the workspace, by its name, Observe or Enforce, and whose the mode
+    is), the rules in force for it on the list pattern with their Source, and
     its history and document as views under the page's tabs. Its old paths, `/policy/targets/:target_id/…`, send on here
     (`ApiaryWeb.TargetMovedController`).
 

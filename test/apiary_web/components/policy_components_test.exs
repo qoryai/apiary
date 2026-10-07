@@ -476,88 +476,233 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     end
   end
 
-  test "the target's mode is a radio group, its radios checked and never pressed" do
-    assigns = %{}
+  describe "mode_card" do
+    defp card(html), do: LazyHTML.from_fragment(html)
+    defp all(doc, selector), do: doc |> LazyHTML.query(selector) |> Enum.to_list()
 
-    html =
-      rendered_to_string(~H"""
-      <PolicyComponents.target_mode
-        id="rm"
-        setting="follow"
-        effective="enforce"
-        workspace_default="enforce"
-        workspace="Main"
-        can_edit={false}
-      />
-      """)
+    defp text_of(doc, selector),
+      do: doc |> LazyHTML.query(selector) |> LazyHTML.text() |> squeeze()
 
-    assert html =~ ~s(role="radiogroup")
-    assert html =~ ~s(id="rm-follow" type="button" role="radio" aria-checked="true")
-    refute html =~ "aria-pressed"
-    assert text(html) =~ "Follow Main Observe Enforce"
+    defp squeeze(text), do: text |> String.replace(~r/\s+/, " ") |> String.trim()
 
-    assert html =~
-             ~s(id="rm-enforce" type="button" role="radio" aria-checked="false" aria-disabled="true")
+    test "the workspace's mode as it is: the mode, the default's badge, what it does, Change mode" do
+      assigns = %{scope: @scope}
 
-    assert text(html) =~ "It follows Main, which enforces. A connection no rule allows is denied."
-    assert html =~ "Only an owner or an admin sets a mode."
+      doc =
+        card(
+          rendered_to_string(~H"""
+          <PolicyComponents.mode_card
+            level={:workspace}
+            scope={@scope}
+            mode="enforce"
+            can_edit={true}
+            following={3}
+            fact={%{denied: 9, destinations: 3}}
+          />
+          """)
+        )
 
-    own =
-      rendered_to_string(~H"""
-      <PolicyComponents.target_mode
-        id="rm"
-        setting="observe"
-        effective="observe"
-        workspace_default="enforce"
-        workspace="Main"
-        set={%{by: "sam", at: DateTime.utc_now()}}
-        can_edit={true}
-      />
-      """)
+      assert [_] = all(doc, "section#policy-mode.q-modecard[aria-labelledby=policy-mode-h]")
+      assert text_of(doc, "#policy-mode-h") == "Mode: Enforce"
+      assert text_of(doc, "#policy-mode-value") == "Enforce"
+      assert text_of(doc, "#policy-mode-source") == "Workspace default"
+      assert [_] = all(doc, ".q-modecard-tile .hero-shield-exclamation")
 
-    assert text(own) =~
-             "Its own, set by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules."
+      assert text_of(doc, "#policy-mode-effect") ==
+               "A connection no rule allows is denied. All 3 repositories follow it."
 
-    refute own =~ "aria-disabled"
-  end
+      assert text_of(doc, "#policy-mode-fact") ==
+               "In the last 14 days it denied 9 attempts to 3 destinations. See them"
 
-  test "the workspace's mode is one line: the radios, then its sentence, the fact and the owners' line" do
-    assigns = %{scope: @scope}
+      assert [button] = all(doc, "button#policy-mode-change")
+      assert LazyHTML.attribute(button, "aria-expanded") == ["false"]
+      assert LazyHTML.attribute(button, "aria-controls") == ["policy-mode-form"]
+      assert LazyHTML.attribute(button, "phx-click") == ["mode_open"]
+      refute LazyHTML.attribute(button, "class") |> hd() =~ "btn-primary"
 
-    html =
-      rendered_to_string(~H"""
-      <PolicyComponents.mode_switch scope={@scope} mode="observe" can_edit={false} served={false} />
-      """)
+      # A status, not a control: no radio and no form until Change mode.
+      assert all(doc, "[role=radio], [role=radiogroup], input, form") == []
+      assert all(doc, "#policy-mode-owners") == []
+    end
 
-    doc = LazyHTML.from_fragment(html)
+    test "choosing: native radios in a fieldset, the pick checked, the current one marked" do
+      assigns = %{scope: @scope}
 
-    # The group is described by the line under it; no link or sentence inside a radio.
-    assert [group] = LazyHTML.query(doc, "#policy-mode[role=radiogroup]") |> Enum.to_list()
-    assert LazyHTML.attribute(group, "aria-describedby") == ["policy-mode-under"]
-    assert LazyHTML.query(doc, "[role=radio] a") |> Enum.empty?()
-    assert LazyHTML.query(doc, "[role=radio] p") |> Enum.empty?()
+      doc =
+        card(
+          rendered_to_string(~H"""
+          <PolicyComponents.mode_card
+            level={:workspace}
+            scope={@scope}
+            mode="observe"
+            can_edit={true}
+            pick="observe"
+          />
+          """)
+        )
 
-    # A member's other mode is drawn and named disabled; the chosen one is not.
-    assert html =~ ~r/id="policy-mode-enforce"[^>]*aria-disabled="true"/
-    refute html =~ ~r/id="policy-mode-observe"[^>]*aria-disabled="true"/
+      assert all(doc, "#policy-mode-change") == []
+      assert [form] = all(doc, "form#policy-mode-form")
+      assert LazyHTML.attribute(form, "phx-change") == ["mode_pick"]
+      assert LazyHTML.attribute(form, "phx-submit") == ["mode_set"]
+      assert LazyHTML.attribute(form, "phx-window-keydown") == ["mode_cancel"]
+      assert LazyHTML.attribute(form, "phx-key") == ["Escape"]
 
-    under = doc |> LazyHTML.query("#policy-mode-under") |> LazyHTML.text()
-    assert under =~ "What no rule names is let through and recorded; a deny rule holds."
-    assert under =~ "Not served yet: it applies from the first change here."
-    assert under =~ "Only an owner or an admin sets a mode."
-  end
+      assert text_of(doc, "fieldset legend#policy-mode-legend") ==
+               "Choose the workspace's default mode"
 
-  test "for one who may set it, the group also says what the arrow keys do" do
-    assigns = %{scope: @scope}
+      assert length(all(doc, "fieldset input[type=radio][name=mode]")) == 2
+      assert [_] = all(doc, "input#policy-mode-opt-observe[checked]")
+      assert all(doc, "input#policy-mode-opt-enforce[checked]") == []
+      assert all(doc, "[role=radio]") == []
+      assert text_of(doc, "#policy-mode-opt-observe-h") == "Observe Current"
+      assert [_] = all(doc, "#policy-mode-opt-observe-h #policy-mode-current")
 
-    html =
-      rendered_to_string(~H"""
-      <PolicyComponents.mode_switch scope={@scope} mode="enforce" can_edit={true} following={3} />
-      """)
+      assert text_of(doc, "#policy-mode-opt-observe-p") ==
+               "What no rule names is let through and recorded; a deny rule holds."
 
-    assert html =~ ~s(aria-describedby="policy-mode-keys policy-mode-under")
-    assert html =~ "A connection no rule allows is denied."
-    assert html =~ "All 3 repositories follow it."
-    assert html =~ ~r/id="policy-mode-observe"[^>]*phx-click/
+      # The pick is the mode now: no question, and Cancel alone.
+      assert text_of(doc, "#policy-mode-now") == "Observe is the mode now."
+      assert all(doc, "#policy-mode-q, #policy-mode-set") == []
+      assert [_] = all(doc, "button#policy-mode-cancel[type=button][phx-click=mode_cancel]")
+    end
+
+    test "confirming: the question under the options, its sentence, one button naming the pick" do
+      assigns = %{scope: @scope}
+
+      doc =
+        card(
+          rendered_to_string(~H"""
+          <PolicyComponents.mode_card
+            level={:target}
+            scope={@scope}
+            mode="enforce"
+            setting="follow"
+            workspace_default="enforce"
+            workspace="Main"
+            target="incident-bot"
+            can_edit={true}
+            pick="observe"
+          >
+            <:effect>Only what a deny rule names is denied.</:effect>
+            <p id="more">The rules stay as they are.</p>
+          </PolicyComponents.mode_card>
+          """)
+        )
+
+      assert text_of(doc, "#policy-mode-legend") == "Choose the mode for incident-bot"
+      assert text_of(doc, "#policy-mode-opt-follow-h") == "Follow Main Current"
+      assert [_] = all(doc, "#policy-mode-opt-follow-h .hero-link")
+      assert all(doc, ".hero-arrow-uturn-left") == []
+
+      assert text_of(doc, "#policy-mode-opt-follow-p") ==
+               "Main's mode, now enforce. It changes when Main's does."
+
+      assert [_] = all(doc, "input#policy-mode-opt-observe[checked]")
+
+      assert [_] =
+               all(
+                 doc,
+                 "[role=group][aria-labelledby=policy-mode-q][aria-describedby=policy-mode-q-effect]"
+               )
+
+      assert text_of(doc, "h3#policy-mode-q") == "Observe incident-bot?"
+      assert text_of(doc, "#policy-mode-q-effect") == "Only what a deny rule names is denied."
+      assert [_] = all(doc, "#policy-mode-form #more")
+
+      assert [set] = all(doc, "button#policy-mode-set[type=submit]")
+      assert LazyHTML.attribute(set, "class") |> hd() =~ "btn-primary"
+      assert text_of(doc, "#policy-mode-set .btn-label") == "Observe this repository"
+      assert all(doc, ".btn-error") == []
+      assert all(doc, "#policy-mode-now") == []
+
+      # The source of the mode in force: following the workspace, or its own.
+      assert text_of(doc, "#policy-mode-source") == "Follows Main"
+      assert [_] = all(doc, "#policy-mode-source .hero-link-micro")
+    end
+
+    test "a member sees the card with no Change mode, and the line that says who may" do
+      assigns = %{scope: @scope}
+
+      html =
+        rendered_to_string(~H"""
+        <PolicyComponents.mode_card
+          level={:target}
+          scope={@scope}
+          mode="observe"
+          setting="observe"
+          workspace_default="enforce"
+          workspace="Main"
+          target="incident-bot"
+          set={%{by: "sam", at: DateTime.utc_now()}}
+          pick="enforce"
+        />
+        """)
+
+      doc = card(html)
+      assert all(doc, "#policy-mode-change, form, input, button") == []
+      refute html =~ "aria-disabled"
+      assert text_of(doc, "#policy-mode-source") == "Its own"
+      assert [_] = all(doc, ".q-modecard-tile .hero-eye")
+
+      assert text_of(doc, "#policy-mode-effect") ==
+               "Its own, set by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
+
+      assert text_of(doc, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
+    end
+
+    test "under a level that requires enforce: the lock, who requires it, nothing to change" do
+      assigns = %{scope: @scope}
+
+      doc =
+        card(
+          rendered_to_string(~H"""
+          <PolicyComponents.mode_card
+            level={:workspace}
+            scope={@scope}
+            mode="observe"
+            can_edit={true}
+            following={2}
+            floor={%{name: "Eight Wonders"}}
+            pick="observe"
+          />
+          """)
+        )
+
+      assert [_] = all(doc, "#policy-mode[data-floor=true]")
+      assert text_of(doc, "#policy-mode-value") == "Enforce"
+      assert [_] = all(doc, ".q-modecard-tile .hero-lock-closed")
+      assert text_of(doc, "#policy-mode-required") == "Required by Eight Wonders"
+      assert [_] = all(doc, "#policy-mode-required .hero-lock-closed-micro")
+      assert all(doc, "#policy-mode-source, #policy-mode-change, form, #policy-mode-fact") == []
+
+      assert text_of(doc, "#policy-mode-effect") =~
+               "No workspace or repository may observe: Eight Wonders requires enforce."
+    end
+
+    test "a workspace not served yet says so in its fact line" do
+      assigns = %{scope: @scope}
+
+      doc =
+        card(
+          rendered_to_string(~H"""
+          <PolicyComponents.mode_card
+            level={:workspace}
+            scope={@scope}
+            mode="observe"
+            can_edit={true}
+            served={false}
+          />
+          """)
+        )
+
+      assert text_of(doc, "#policy-mode-value") == "Observe"
+      assert [_] = all(doc, ".q-modecard-tile .hero-eye")
+
+      assert text_of(doc, "#policy-mode-fact") ==
+               "Not served yet: it applies from the first change here."
+
+      assert [_] = all(doc, "#policy-mode-change")
+    end
   end
 end

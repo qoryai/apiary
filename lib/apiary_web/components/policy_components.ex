@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.PolicyComponents do
   @moduledoc """
   The components of the security policy: the version pill and the version link, the mark
-  of a rule, the source chip, the mode switch, the rule composer with its reading line,
+  of a rule, the source chip, the mode card, the rule composer with its reading line,
   the rules table with provenance, the suggestions of the harness, the history of changes
   with its diff, and the document well.
 
@@ -238,117 +238,328 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  ## Mode switch
+  ## Mode card
 
   @doc """
-  The workspace's default mode, one line, as a target's is (`target_mode/1`): Observe |
-  Enforce, then one sentence of what the mode does and who follows it, and the record of
-  the last 14 days with the way to it, beside the control and never inside it. Choosing the
-  other mode never switches at once: it sends `mode_ask`, and the page opens the confirm.
-  The arrow keys move between the two without choosing (the `PolicyPage` hook); Space or
-  Enter asks. A mode is an owner's or an admin's to set: for a member the other mode is
-  `aria-disabled`, drawn faint, and does nothing. Where the level above requires enforce
-  (`floor`), Observe is disabled and drawn so, and the line says who requires it.
+  The mode in force, a card above a policy page's tabs, the same on the workspace's Policy
+  page (`level={:workspace}`) and on a target's Policy tab (`level={:target}`): a tile, the
+  mode as the heading's value ("Mode: Enforce"), whose it is as a badge (the workspace's
+  default; the target follows the workspace or has its own; or the level above requires
+  it), what it does and who follows it, and on the workspace's the record of the last 14
+  days with the way to it.
+
+  Change mode (`mode_open`) opens the choices in the card, never over the page, while
+  `pick` is set: one option card per mode, each a native radio, the current one marked
+  Current. Picking only selects (`mode_pick`); a pick that is not the mode now shows its
+  question under the options, what it does (`effect`) and what follows (the inner block,
+  such as what enforce would deny), and one button that names the pick and saves it
+  (`mode_set`). Cancel and Escape send `mode_cancel`. Nothing saves on a click.
+
+  A reader who may not set a mode sees the card with no Change mode and the line that says
+  who may; where the level above requires enforce (`floor`), the card says so and offers
+  nothing.
   """
   attr :id, :string, default: "policy-mode"
-  attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the workspace's default"
-
-  attr :can_edit, :boolean,
-    default: false,
-    doc: "whether the reader may set the mode (`security_policy.set_mode`)"
-
-  attr :served, :boolean, default: true, doc: "false on a new workspace: nothing is served yet"
-  attr :following, :integer, default: 0, doc: "targets that follow the default"
-  attr :own, :list, default: [], doc: "the modes of the targets that set their own"
+  attr :level, :atom, required: true, values: [:workspace, :target]
 
   attr :scope, :map,
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  attr :fact, :any,
-    default: nil,
-    doc: ":loading, nil, %{denied:, destinations:} or %{uncovered:, destinations:} or :none"
+  attr :mode, :string,
+    required: true,
+    values: ~w(observe enforce),
+    doc: "the mode in force: the workspace's default, or the target's effective mode"
+
+  attr :can_edit, :boolean,
+    default: false,
+    doc: "whether the reader may set the mode (`security_policy.set_mode`)"
 
   attr :floor, :any,
     default: nil,
-    doc: "`%{name:}` where the level above the workspace requires enforce: the switch is fixed"
+    doc: "`%{name:}` where the level above the workspace requires enforce: nothing to change"
 
-  def mode_switch(assigns) do
+  attr :pick, :string,
+    default: nil,
+    doc: "the option picked while the choices are open; nil while they are shut"
+
+  attr :served, :boolean,
+    default: true,
+    doc: "the workspace's: false on a new workspace, nothing is served yet"
+
+  attr :following, :integer, default: 0, doc: "the workspace's: targets that follow the default"
+
+  attr :own, :list,
+    default: [],
+    doc: "the workspace's: the modes of the targets that set their own"
+
+  attr :fact, :any,
+    default: nil,
+    doc:
+      "the workspace's: :loading, nil, %{denied:, destinations:} or %{uncovered:, destinations:} or :none"
+
+  attr :setting, :string,
+    default: "follow",
+    values: ~w(follow observe enforce),
+    doc: "the target's: follow the workspace, or its own mode"
+
+  attr :workspace_default, :string,
+    default: "observe",
+    values: ~w(observe enforce),
+    doc: "the target's: the workspace's default"
+
+  attr :workspace, :string, default: nil, doc: "the target's: the workspace's name"
+  attr :target, :string, default: nil, doc: "the target's: its name as it is addressed"
+
+  attr :set, :any,
+    default: nil,
+    doc: "the target's: who set its own mode and when, `%{by:, at:}`, or nil when unknown"
+
+  slot :effect, doc: "the question's sentence: what the pick does, and in whose runs"
+  slot :inner_block, doc: "what follows the question's sentence: what enforce would deny"
+
+  def mode_card(assigns) do
+    current = if assigns.level == :target, do: assigns.setting, else: assigns.mode
+    floor = assigns.floor
+    open? = assigns.pick != nil and assigns.can_edit and !floor
+    options = mode_options(assigns)
+
     assigns =
-      if assigns.floor,
-        do: assign(assigns, mode: "enforce", can_edit: false, fact: nil),
-        else: assigns
+      assign(assigns,
+        current: current,
+        shown: if(floor, do: "enforce", else: assigns.mode),
+        open?: open?,
+        options: options,
+        picked: open? && Enum.find(options, &(&1.value == assigns.pick))
+      )
 
     ~H"""
     <section
-      id={"#{@id}-line"}
-      class="q-modeline q-modeline-ws"
+      id={@id}
+      class="q-modecard"
       aria-labelledby={"#{@id}-h"}
       data-floor={@floor && "true"}
     >
-      <h2 id={"#{@id}-h"} class="q-modeline-h">{gettext("Mode")}</h2>
-      <div
-        id={@id}
-        class="q-seg q-modeline-seg"
-        role="radiogroup"
-        aria-labelledby={"#{@id}-h"}
-        aria-describedby={
-          Enum.join(Enum.filter([@can_edit && "#{@id}-keys", "#{@id}-under"], &is_binary/1), " ")
-        }
-        aria-disabled={!@can_edit && "true"}
-        data-floor={@floor && "true"}
-        data-roving
-      >
-        <button
-          :for={
-            {mode, name, icon} <- [
-              {"observe", gettext("Observe"), "hero-eye"},
-              {"enforce", gettext("Enforce"), "hero-shield-exclamation"}
-            ]
-          }
-          id={"#{@id}-#{mode}"}
-          type="button"
-          role="radio"
-          aria-checked={to_string(@mode == mode)}
-          aria-disabled={!@can_edit && @mode != mode && "true"}
-          tabindex={if @mode == mode, do: "0", else: "-1"}
-          phx-click={@can_edit && @mode != mode && JS.push("mode_ask", value: %{mode: mode})}
-        >
-          <%!-- Under the level above's floor the mode it forbids carries its lock, so it
-               reads as out of reach, not as merely unchosen. --%>
-          <.icon
-            name={if @floor && @mode != mode, do: "hero-lock-closed-micro", else: icon}
-            class="size-4"
-          />{name}
-        </button>
-      </div>
-      <span :if={@can_edit} id={"#{@id}-keys"} class="sr-only">
-        {gettext("The arrow keys move between the modes without choosing one; Space or Enter asks.")}
-      </span>
-      <span :if={@floor} id={"#{@id}-required"} class="q-modeline-req">
-        <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
-          name: @floor.name
-        )}
-      </span>
-      <p :if={@floor} id={"#{@id}-under"} class="q-modeline-p">
-        {gettext("No workspace or target may observe: %{name} requires enforce.", name: @floor.name)}
-        <.rich text={floor_own_sentence(@scope, @own, @following)} />
-      </p>
-      <p :if={!@floor} id={"#{@id}-under"} class="q-modeline-p">
-        {workspace_effect(@mode)}
-        <.rich text={own_sentence(@scope, @own, @following)} />
-        <span :if={@fact || !@served} id={"#{@id}-fact"}>
-          <.mode_fact
-            scope={@scope}
-            fact={if @served, do: @fact, else: :unserved}
-            following={if @own != [], do: @following}
-          />
+      <div class="q-modecard-main">
+        <span class="q-modecard-tile" aria-hidden="true">
+          <.icon name={if @floor, do: "hero-lock-closed", else: mode_icon(@shown)} class="size-5" />
         </span>
-        <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner or an admin sets a mode.")}</span>
-      </p>
+        <div class="q-modecard-text">
+          <div class="q-modecard-title">
+            <h2 id={"#{@id}-h"} class="q-modecard-h">
+              <span class="q-modecard-label">{gettext("Mode")}<span class="sr-only">: </span></span>
+              <span id={"#{@id}-value"} class="q-modecard-value">{mode_name(@shown)}</span>
+            </h2>
+            <span :if={@floor} id={"#{@id}-required"} class="badge badge-sm">
+              <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
+                name: @floor.name
+              )}
+            </span>
+            <span
+              :if={!@floor && @level == :workspace}
+              id={"#{@id}-source"}
+              class="badge badge-sm"
+            >
+              {gettext("Workspace default")}
+            </span>
+            <span
+              :if={!@floor && @level == :target && @setting == "follow"}
+              id={"#{@id}-source"}
+              class="badge badge-sm"
+            >
+              <.icon name="hero-link-micro" class="size-3" />{gettext("Follows %{workspace}",
+                workspace: @workspace
+              )}
+            </span>
+            <span
+              :if={!@floor && @level == :target && @setting != "follow"}
+              id={"#{@id}-source"}
+              class="badge badge-sm"
+            >
+              {gettext("Its own")}
+            </span>
+          </div>
+          <p id={"#{@id}-effect"} class="q-modecard-p">
+            <%= cond do %>
+              <% @floor && @level == :workspace -> %>
+                {gettext("No workspace or target may observe: %{name} requires enforce.",
+                  name: @floor.name
+                )}
+                <.rich text={floor_own_sentence(@scope, @own, @following)} />
+              <% @floor -> %>
+                <.rich text={floor_sentence(@setting, @set, @floor.name)} />
+              <% @level == :workspace -> %>
+                {workspace_effect(@mode)}
+                <.rich text={own_sentence(@scope, @own, @following)} />
+              <% true -> %>
+                <.rich text={whose_sentence(@setting, @workspace_default, @workspace, @set)} />
+                {effect_sentence(@mode, @workspace)}
+            <% end %>
+            <span :if={!@floor && !@can_edit} id={"#{@id}-owners"}>
+              {gettext("Only an owner or an admin sets a mode.")}
+            </span>
+          </p>
+          <p
+            :if={@level == :workspace && !@floor && (@fact || !@served)}
+            id={"#{@id}-fact"}
+            class="q-modecard-p"
+          >
+            <.mode_fact
+              scope={@scope}
+              fact={if @served, do: @fact, else: :unserved}
+              following={if @own != [], do: @following}
+            />
+          </p>
+        </div>
+        <.button
+          :if={@can_edit && !@floor && !@open?}
+          id={"#{@id}-change"}
+          type="button"
+          class="q-modecard-change"
+          phx-click="mode_open"
+          aria-controls={"#{@id}-form"}
+          aria-expanded="false"
+        >
+          {gettext("Change mode")}
+        </.button>
+      </div>
+
+      <form
+        :if={@open?}
+        id={"#{@id}-form"}
+        class="q-modecard-form"
+        phx-change="mode_pick"
+        phx-submit="mode_set"
+        phx-window-keydown="mode_cancel"
+        phx-key="Escape"
+      >
+        <fieldset>
+          <legend id={"#{@id}-legend"} class="q-modecard-legend">
+            {if @level == :workspace,
+              do: gettext("Choose the workspace's default mode"),
+              else: gettext("Choose the mode for %{target}", target: @target)}
+          </legend>
+          <div class="q-modeopts">
+            <label :for={option <- @options} class="q-modeopt">
+              <input
+                id={"#{@id}-opt-#{option.value}"}
+                type="radio"
+                class="radio radio-sm radio-primary"
+                name="mode"
+                value={option.value}
+                checked={@pick == option.value}
+                aria-labelledby={"#{@id}-opt-#{option.value}-h"}
+                aria-describedby={"#{@id}-opt-#{option.value}-p"}
+              />
+              <span id={"#{@id}-opt-#{option.value}-h"} class="q-modeopt-h">
+                <.icon name={option.icon} class="size-5" />{option.label}
+                <span :if={option.value == @current} id={"#{@id}-current"} class="badge badge-sm">
+                  {gettext("Current")}
+                </span>
+              </span>
+              <span id={"#{@id}-opt-#{option.value}-p"} class="q-modeopt-p">{option.line}</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <p :if={@pick == @current} id={"#{@id}-now"} class="q-modecard-p">
+          {gettext("%{mode} is the mode now.", mode: @picked.label)}
+        </p>
+        <div
+          :if={@pick != @current}
+          class="q-modeask"
+          role="group"
+          aria-labelledby={"#{@id}-q"}
+          aria-describedby={@effect != [] && "#{@id}-q-effect"}
+        >
+          <h3 id={"#{@id}-q"} class="q-confirm-q">
+            {mode_question(@level, @pick, @target, @workspace)}
+          </h3>
+          <p :if={@effect != []} id={"#{@id}-q-effect"} class="text-muted">
+            {render_slot(@effect)}
+          </p>
+          {render_slot(@inner_block)}
+        </div>
+
+        <div class="q-modecard-act">
+          <.button
+            :if={@pick != @current}
+            id={"#{@id}-set"}
+            type="submit"
+            variant="primary"
+            aria-describedby={@effect != [] && "#{@id}-q-effect"}
+            loading_text={gettext("Setting")}
+          >
+            {mode_submit(@level, @pick, @workspace)}
+          </.button>
+          <button id={"#{@id}-cancel"} type="button" class="btn btn-sm" phx-click="mode_cancel">
+            {gettext("Cancel")}
+          </button>
+        </div>
+      </form>
     </section>
     """
   end
+
+  defp mode_icon("observe"), do: "hero-eye"
+  defp mode_icon("follow"), do: "hero-link"
+  defp mode_icon(_enforce), do: "hero-shield-exclamation"
+
+  defp mode_name("observe"), do: gettext("Observe")
+  defp mode_name(_enforce), do: gettext("Enforce")
+
+  # The choices of the card, in their order: following the workspace first on a target.
+  defp mode_options(%{level: level} = assigns) do
+    own =
+      for mode <- ~w(observe enforce),
+          do: %{
+            value: mode,
+            label: mode_name(mode),
+            icon: mode_icon(mode),
+            line: workspace_effect(mode)
+          }
+
+    if level == :target do
+      follow = %{
+        value: "follow",
+        label: gettext("Follow %{workspace}", workspace: assigns.workspace),
+        icon: mode_icon("follow"),
+        line:
+          gettext("%{workspace}'s mode, now %{mode}. It changes when %{workspace}'s does.",
+            workspace: assigns.workspace,
+            mode: assigns.workspace_default
+          )
+      }
+
+      [follow | own]
+    else
+      own
+    end
+  end
+
+  defp mode_question(:workspace, "enforce", _target, _workspace),
+    do: gettext("Set the workspace's default to enforce?")
+
+  defp mode_question(:workspace, _observe, _target, _workspace),
+    do: gettext("Set the workspace's default to observe?")
+
+  defp mode_question(:target, "follow", target, workspace),
+    do: gettext("Let %{target} follow %{workspace}?", target: target, workspace: workspace)
+
+  defp mode_question(:target, "enforce", target, _workspace),
+    do: gettext("Enforce %{target}?", target: target)
+
+  defp mode_question(:target, _observe, target, _workspace),
+    do: gettext("Observe %{target}?", target: target)
+
+  defp mode_submit(:workspace, "enforce", _workspace), do: gettext("Set the default to enforce")
+  defp mode_submit(:workspace, _observe, _workspace), do: gettext("Set the default to observe")
+
+  defp mode_submit(:target, "follow", workspace),
+    do: gettext("Follow %{workspace}", workspace: workspace)
+
+  defp mode_submit(:target, "enforce", _workspace), do: gettext("Enforce this target")
+  defp mode_submit(:target, _observe, _workspace), do: gettext("Observe this target")
 
   defp workspace_effect("observe"),
     do: gettext("What no rule names is let through and recorded; a deny rule holds.")
@@ -562,89 +773,6 @@ defmodule ApiaryWeb.PolicyComponents do
       rich_ngettext("%{number} destination", "%{number} destinations", n,
         number: {:b, Format.number(n)}
       )
-
-  ## Target mode
-
-  @doc """
-  A target's mode, one line: the choice of following the workspace (by its name), observe
-  or enforce, then whose the mode is (its own, who set it and when, and what the workspace
-  does; or the workspace's) and what the mode in effect does. A radio sends
-  `target_mode_ask`; for a reader who may not set a mode the others are `aria-disabled`.
-  """
-  attr :id, :string, required: true
-  attr :setting, :string, required: true, values: ~w(follow observe enforce)
-  attr :effective, :string, required: true, values: ~w(observe enforce)
-  attr :workspace_default, :string, required: true, values: ~w(observe enforce)
-  attr :workspace, :string, required: true, doc: "the workspace's name"
-
-  attr :set, :any,
-    default: nil,
-    doc: "who set the target's own mode and when, `%{by:, at:}`, or nil when unknown"
-
-  attr :can_edit, :boolean,
-    default: false,
-    doc: "whether the reader may set the mode (`security_policy.set_mode`)"
-
-  attr :floor, :any,
-    default: nil,
-    doc: "`%{name:}` where the level above the workspace requires enforce: the radios are fixed"
-
-  def target_mode(assigns) do
-    assigns =
-      if assigns.floor,
-        do: assign(assigns, own: assigns.setting, setting: "enforce", can_edit: false),
-        else: assign(assigns, own: nil)
-
-    ~H"""
-    <section id={@id} class="q-modeline" aria-labelledby={"#{@id}-h"} data-floor={@floor && "true"}>
-      <h2 id={"#{@id}-h"} class="q-modeline-h">{gettext("Mode")}</h2>
-      <div
-        id={"#{@id}-radios"}
-        class="q-seg q-modeline-seg"
-        role="radiogroup"
-        aria-labelledby={"#{@id}-h"}
-        aria-describedby={"#{@id}-effect"}
-        data-roving
-      >
-        <button
-          :for={
-            {setting, label, icon} <- [
-              {"follow", gettext("Follow %{workspace}", workspace: @workspace),
-               "hero-arrow-uturn-left"},
-              {"observe", gettext("Observe"), "hero-eye"},
-              {"enforce", gettext("Enforce"), "hero-shield-exclamation"}
-            ]
-          }
-          id={"#{@id}-#{setting}"}
-          type="button"
-          role="radio"
-          aria-checked={to_string(@setting == setting)}
-          aria-disabled={!@can_edit && @setting != setting && "true"}
-          tabindex={if @setting == setting, do: "0", else: "-1"}
-          phx-click={
-            @can_edit && @setting != setting &&
-              JS.push("target_mode_ask", value: %{setting: setting})
-          }
-        >
-          <.icon name={icon} class="size-4" />{label}
-        </button>
-      </div>
-      <span :if={@floor} id={"#{@id}-required"} class="q-modeline-req">
-        <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
-          name: @floor.name
-        )}
-      </span>
-      <p :if={@floor} id={"#{@id}-effect"} class="q-modeline-p">
-        <.rich text={floor_sentence(@own, @set, @floor.name)} />
-      </p>
-      <p :if={!@floor} id={"#{@id}-effect"} class="q-modeline-p">
-        <.rich text={whose_sentence(@setting, @workspace_default, @workspace, @set)} />
-        {effect_sentence(@effective, @workspace)}
-        <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner or an admin sets a mode.")}</span>
-      </p>
-    </section>
-    """
-  end
 
   # Under a required mode: a target's own observe is kept and said to be out of force;
   # its own enforce, or following the workspace, is what holds anyway.

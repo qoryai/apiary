@@ -465,9 +465,9 @@ defmodule ApiaryWeb.PolicyLive.Views do
   ## Inline confirmation
 
   @doc """
-  A confirmation in place under the control whose act it confirms (a policy's mode), in
-  the look of `inline_confirm/1`, for a confirm that also shows a list (what enforce would
-  deny): the question, what happens (`effect`, a paragraph of its own, `<id>-effect`), the
+  A confirmation in place under the control whose act it confirms, in the look of
+  `inline_confirm/1`, for a confirm that also shows a list (what enforce would deny): the
+  question, what happens (`effect`, a paragraph of its own, `<id>-effect`), the
   rest (`inner_block`), then the act's button and Cancel. Never an overlay. Cancel takes
   the focus as it shows; where there is an effect, the section and Cancel are described by
   it, so it is read with them. Cancel and Escape send `dialog_cancel` with `return`, the
@@ -547,8 +547,6 @@ defmodule ApiaryWeb.PolicyLive.Views do
         <dd>{gettext("Add a rule: the composer's host field")}</dd>
         <dt><kbd class="kbd kbd-sm">{pgettext("key", "Enter")}</kbd></dt>
         <dd>{gettext("In the composer, save the rule once it reads back")}</dd>
-        <dt><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></dt>
-        <dd>{gettext("Between the two modes; Space asks to switch")}</dd>
         <dt><kbd class="kbd kbd-sm">?</kbd></dt>
         <dd>{gettext("This list")}</dd>
       </dl>

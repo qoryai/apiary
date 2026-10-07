@@ -63,6 +63,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       announce: nil,
       write_error: nil,
       dialog: nil,
+      mode_pick: nil,
       queue: [],
       reload_pending: false,
       touched: MapSet.new(),

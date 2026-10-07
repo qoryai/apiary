@@ -58,10 +58,11 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
     assert has_element?(view, "#policy-rules .q-host", "registry.example")
     refute has_element?(view, "#policy-rules th", "Last 7 days")
 
-    # The enforce confirm has no list to show, and says nothing in its place.
+    # The enforce question has no list to show, and says nothing in its place.
     view = open(conn, workspace_path(scope, "/policy"))
-    view |> element("#policy-mode-enforce") |> render_click()
-    assert has_element?(view, "#mode-enforce")
+    view |> element("#policy-mode-change") |> render_click()
+    view |> form("#policy-mode-form", %{"mode" => "enforce"}) |> render_change()
+    assert has_element?(view, "#policy-mode-q")
     refute has_element?(view, "#mode-would")
     refute has_element?(view, "#mode-would-none")
   end
