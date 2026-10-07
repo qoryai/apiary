@@ -41,7 +41,7 @@ defmodule ApiaryWeb.ActivityLive do
       counts={@nav_counts}
       nav={:audit_log}
     >
-      <div id="audit-log">
+      <div id="audit-log" class="grid grid-cols-[minmax(0,1fr)] gap-5">
         <.page_header title={gettext("Audit log")}>
           <:description>
             {gettext(
