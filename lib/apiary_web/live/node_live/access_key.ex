@@ -1141,19 +1141,28 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               <dd class="flex items-center gap-2">
                 <%!-- The secret's slot: never patched or read by LiveView, empty from the
                      server. The hook writes the secret it holds into the value, as text,
-                     only if this public key, the one the server stored, is its own. --%>
+                     only if this public key, the one the server stored, is its own. Its
+                     ids are the key's: a patch to another key's page (a history jump
+                     between two of them) replaces the slot, and so takes the other key's
+                     secret, and its gone line, out of the page. --%>
                 <div
-                  id="key-generated-secret"
+                  id={"key-generated-secret-#{@key.key_id}"}
                   phx-update="ignore"
+                  data-secret-slot
                   data-public-key={Base.url_encode64(@key.public_key, padding: false)}
                   class="grid min-w-0 flex-1 gap-1"
                 >
                   <code
-                    id="key-generated-secret-value"
+                    id={"key-generated-secret-#{@key.key_id}-value"}
+                    data-secret-value
                     tabindex="-1"
                     class="block min-h-7 min-w-0 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5 empty:hidden"
                   ></code>
-                  <p id="key-generated-secret-gone" class="hidden text-muted">
+                  <p
+                    id={"key-generated-secret-#{@key.key_id}-gone"}
+                    data-secret-gone
+                    class="hidden text-muted"
+                  >
                     {gettext(
                       "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke %{label} and generate another key.",
                       label: @key.label
@@ -1162,7 +1171,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 </div>
                 <.copy_button
                   id="key-generated-secret-copy"
-                  target="#key-generated-secret-value"
+                  target={"#key-generated-secret-#{@key.key_id}-value"}
                   label={gettext("Copy %{name}", name: "QORY_ACCESS_KEY_SECRET")}
                   placement="left"
                   icon_only

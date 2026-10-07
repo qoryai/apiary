@@ -17,6 +17,7 @@ import {
   encodeBase64url,
   generate,
   makeKey,
+  slotStep,
 } from "../hooks/key_pair.js"
 
 const subtle = webcrypto.subtle
@@ -270,6 +271,27 @@ test("base64url is decoded strictly, as the runner does", () => {
   assert.equal(decodeBase64url("AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyB"), null)
   assert.equal(decodeBase64url("ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"), null)
   assert.equal(decodeBase64url(undefined), null)
+})
+
+test("the secret's slot shows only the secret of its own key", () => {
+  const a = "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
+  const b = "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+  const heldA = {secret: "qak_a", publicKey: a}
+
+  // Made on this page: the slot for its key is filled; another key's slot is not.
+  assert.equal(slotStep({held: heldA, filled: null, slotKey: a, shown: false}), "fill")
+  assert.equal(slotStep({held: heldA, filled: null, slotKey: b, shown: false}), "gone")
+  // Filled, and patched again on the same key's page: kept.
+  assert.equal(slotStep({held: null, filled: a, slotKey: a, shown: true}), "keep")
+  // Opened again, or reloaded: nothing held, so the secret is gone.
+  assert.equal(slotStep({held: null, filled: null, slotKey: a, shown: false}), "gone")
+  // A history jump from B's page to A's, the slot keeping B's secret under A's public key:
+  // emptied, and said gone.
+  assert.equal(slotStep({held: null, filled: b, slotKey: a, shown: true}), "wipe")
+  // A shown value the hook never wrote: emptied too.
+  assert.equal(slotStep({held: null, filled: null, slotKey: a, shown: true}), "wipe")
+  // A slot with no public key is filled by nothing.
+  assert.equal(slotStep({held: heldA, filled: null, slotKey: null, shown: false}), "gone")
 })
 
 test("the hook logs nothing, stores nothing and writes the secret as text only", () => {
