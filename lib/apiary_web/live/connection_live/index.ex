@@ -25,7 +25,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   (`Apiary.Runs.tool_invocation?/2`) is a destination like any other and reads as a call to
   its tool (`ApiaryWeb.RunComponents.connection_row/1`); a request a path rule refused
   before it reached the tool reads as any denial. `tools=1` keeps only the destinations of
-  tool invocations. A destination's runs are read only when its
+  tool invocations.
+
+  Narrowed to a target (`target`, with `system` only where two targets share the path),
+  the page says so in one line under its title, "Showing acme/shop only.", with the same
+  target's runs (the Runs list narrowed alike), its policy (the target's Policy tab) and
+  "Show all destinations", which drops the target alone; the sidebar's Runs carries the
+  target meanwhile (`ApiaryWeb.Layouts.narrowed/2`). Nothing else carries it.
+
+  A destination's runs are read only when its
   row opens, ten at a time. While batches land the table does not move under the reader:
   "New activity" shows beside the title, which asks again and keeps the open rows open.
 
@@ -72,44 +80,64 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       counts={@nav_counts}
       nav={:network}
       width="work"
+      narrowed={Layouts.narrowed(@filters.target, @shared)}
     >
       <div id="connections-page" class="q-lp">
-        <.header>
-          {gettext("Network access")}
-          <:subtitle>
+        <.page_header title={gettext("Network access")}>
+          <:description>
             {if @security,
               do:
                 gettext(
                   "Where the runs of this workspace reached out to, and what the policy made of it."
                 ),
               else: gettext("Where the runs of this workspace reached out to.")}
-            <span :if={@filters.target} id="connections-target-note">
-              <.rich text={
-                rich_gettext("Showing %{target} only.",
-                  target: mono_part(target_label(@filters.target))
-                )
-              } />
-              <.link
-                :if={@security && @policy_target}
-                id="connections-target-policy"
-                navigate={
-                  ApiaryWeb.TargetComponents.target_path(
-                    @current_scope,
-                    @policy_target.system,
-                    @policy_target.path,
-                    ["policy"]
-                  )
-                }
-                class="q-link"
-              >
-                {gettext("Its policy")}
-              </.link>
-            </span>
-          </:subtitle>
+          </:description>
           <:actions>
             <.new_status stale={@stale} />
           </:actions>
-        </.header>
+          <p
+            :if={@filters.target}
+            id="connections-target-note"
+            class="q-page-desc flex flex-wrap items-baseline gap-x-3 gap-y-1"
+          >
+            <span>
+              <.rich text={
+                rich_gettext("Showing %{target} only.",
+                  target: mono_part(note_label(@filters.target, @shared))
+                )
+              } />
+            </span>
+            <.link
+              id="connections-target-runs"
+              navigate={runs_path(@current_scope, @filters.target, @shared)}
+              class="q-link"
+            >
+              {gettext("Runs")}
+            </.link>
+            <.link
+              :if={@security && @policy_target}
+              id="connections-target-policy"
+              navigate={
+                ApiaryWeb.TargetComponents.target_path(
+                  @current_scope,
+                  @policy_target.system,
+                  @policy_target.path,
+                  ["policy"]
+                )
+              }
+              class="q-link"
+            >
+              {gettext("Its policy")}
+            </.link>
+            <.link
+              id="connections-target-all"
+              patch={page_path(@page_base, Filters.put(@filters, target: nil))}
+              class="q-link"
+            >
+              {gettext("Show all destinations")}
+            </.link>
+          </p>
+        </.page_header>
 
         <.content {assigns} />
       </div>
@@ -931,9 +959,17 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   ## The rows and the policy
 
   # The target the filters name, when the workspace has it: its policy is what the rows
-  # are weighed against, and where "Its policy" leads.
+  # are weighed against, and where "Its policy" leads. A path without its system names
+  # the one target on that path, when only one system has it.
   defp target_of(scope, {system, path}) when is_binary(system),
     do: Runs.fetch_target(scope, system, path)
+
+  defp target_of(scope, {nil, path}) when is_binary(path) do
+    case Runs.resolve_target(scope, path) do
+      {system, ^path} when is_binary(system) -> Runs.fetch_target(scope, system, path)
+      _several_or_none -> nil
+    end
+  end
 
   defp target_of(_scope, _target), do: nil
 
@@ -1498,9 +1534,29 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: [{label, value, 0} | options]
   end
 
-  defp target_label(:none), do: gettext("Unassigned")
-  defp target_label({nil, path}), do: path
-  defp target_label({system, path}), do: "#{system}/#{path}"
+  # The narrowed line's name of the target: as every page writes a target, its system
+  # only where its path is on more than one.
+  defp note_label(:none, _shared), do: gettext("Unassigned")
+  defp note_label(target, shared), do: target_text(target, shared)
+
+  # The runs of the target the list is narrowed to: the Runs list with the same target,
+  # written as the sidebar carries it (`ApiaryWeb.Layouts.narrowed/2`), its system only
+  # where its path is shared.
+  defp runs_path(scope, target, shared) do
+    params =
+      case target do
+        {system, path} when is_binary(system) and is_binary(path) ->
+          Filters.target_params(if(MapSet.member?(shared, path), do: system), path)
+
+        {nil, path} when is_binary(path) ->
+          Filters.target_params(nil, path)
+
+        _none ->
+          Filters.target_params(nil, nil)
+      end
+
+    ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{params}"
+  end
 
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
   defp range_value(%Filters{}), do: nil

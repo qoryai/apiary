@@ -30,9 +30,21 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
   # instance has `security`; the rows are there in every configuration.
   defp security?, do: Apiary.Features.on?(:security)
 
-  # The note of a page filtered to one target, with its policy's link where there is one.
+  # The line of a page narrowed to one target: its runs, its policy's link where there is
+  # one, and the way back to every destination.
   defp target_note(target),
-    do: "Showing #{target} only." <> if(security?(), do: " Its policy", else: "")
+    do:
+      "Showing #{target} only. Runs" <>
+        if(security?(), do: " Its policy", else: "") <> " Show all destinations"
+
+  defp attribute(view, selector, name) do
+    view
+    |> render()
+    |> LazyHTML.from_document()
+    |> LazyHTML.query(selector)
+    |> LazyHTML.attribute(name)
+    |> List.first()
+  end
 
   defp dst(host, port \\ 443, path \\ ""),
     do: RunComponents.destination_id(%{host: host, port: port, path: path})
@@ -544,6 +556,117 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{dst("new.example")}")
       assert text(view, "##{id}-runs") =~ "3 runs reached this destination"
       refute has_element?(view, "#connections-refresh")
+    end
+  end
+
+  describe "narrowed to a target" do
+    setup %{scope: scope} do
+      started_run(scope, shop("github.com"), egress: [@registry])
+
+      started_run(scope, %{"forge" => "github.com", "repository" => "acme/billing"},
+        egress: [%{"host" => "billing.example"}]
+      )
+
+      :ok
+    end
+
+    test "the line says so, with the target's runs, its policy and the whole list", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, workspace_path(scope, "/network?target=acme/shop"))
+
+      assert text(view, "#connections-target-note") == target_note("acme/shop")
+      assert has_element?(view, "##{dst("registry.example")}")
+      refute has_element?(view, "##{dst("billing.example")}")
+
+      assert attribute(view, "#connections-target-runs", "href") ==
+               workspace_path(scope, "/runs?target=acme%2Fshop")
+
+      if security?() do
+        assert attribute(view, "#connections-target-policy", "href") ==
+                 ApiaryWeb.TargetComponents.target_path(scope, "github.com", "acme/shop", [
+                   "policy"
+                 ])
+      end
+
+      assert attribute(view, "#connections-target-all", "href") ==
+               workspace_path(scope, "/network")
+
+      # The sidebar's Runs and Network access carry the target; nothing else does.
+      assert attribute(view, "#nav-runs", "href") ==
+               workspace_path(scope, "/runs?target=acme%2Fshop")
+
+      assert attribute(view, "#nav-network", "href") ==
+               workspace_path(scope, "/network?target=acme%2Fshop")
+
+      assert attribute(view, "#nav-runs", "aria-label") == "Runs, narrowed to acme/shop"
+
+      for {key, path} <- [overview: "", targets: "/targets", settings: "/settings"] do
+        assert attribute(view, "#nav-#{key}", "href") == workspace_path(scope, path)
+      end
+
+      if security?(),
+        do: assert(attribute(view, "#nav-policy", "href") == workspace_path(scope, "/policy"))
+    end
+
+    test "only the target carries, and its system only where the path is shared", %{
+      conn: conn,
+      scope: scope
+    } do
+      view =
+        open(conn, workspace_path(scope, "/network?target=acme/shop&decision=denied&since=7d"))
+
+      assert attribute(view, "#nav-runs", "href") ==
+               workspace_path(scope, "/runs?target=acme%2Fshop")
+
+      assert attribute(view, "#connections-target-runs", "href") ==
+               workspace_path(scope, "/runs?target=acme%2Fshop")
+
+      # "Show all destinations" drops the target and keeps the rest.
+      assert attribute(view, "#connections-target-all", "href") ==
+               workspace_path(scope, "/network?decision=denied&since=7d")
+
+      started_run(scope, shop("gitlab.com"), egress: [@registry])
+      view = open(conn, workspace_path(scope, "/network?system=gitlab.com&target=acme/shop"))
+
+      assert text(view, "#connections-target-note") == target_note("gitlab.com/acme/shop")
+
+      assert attribute(view, "#nav-runs", "href") ==
+               workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")
+
+      assert attribute(view, "#connections-target-runs", "href") ==
+               workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")
+    end
+
+    test "every way of clearing drops the target, and the sidebar then links plainly", %{
+      conn: conn,
+      scope: scope
+    } do
+      narrowed = workspace_path(scope, "/network?target=acme/shop")
+
+      for selector <- [
+            "#connections-target-all",
+            "#connections-token-target a",
+            "#connections-rail-all",
+            "#connections-tokens-clear"
+          ] do
+        view = open(conn, narrowed)
+        view |> element(selector) |> render_click()
+        to = assert_patch(view)
+        refute to =~ "target=", selector
+        render_async(view, 2_000)
+        refute has_element?(view, "#connections-target-note")
+        assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs")
+        assert attribute(view, "#nav-network", "href") == workspace_path(scope, "/network")
+      end
+    end
+
+    test "a list not narrowed carries nothing", %{conn: conn, scope: scope} do
+      view = open(conn, workspace_path(scope, "/network?decision=denied"))
+      refute has_element?(view, "#connections-target-note")
+      assert attribute(view, "#nav-runs", "href") == workspace_path(scope, "/runs")
+      assert attribute(view, "#nav-runs", "aria-label") == nil
     end
   end
 end
