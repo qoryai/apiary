@@ -19,6 +19,15 @@ defmodule ApiaryWeb.RunLive.NodesTest do
 
   defp row(run), do: "#run-#{run.run_id}"
 
+  # The words of a fragment, a space between any two elements.
+  defp plain(html) do
+    html
+    |> String.replace(~r/<[^>]+>/, " ")
+    |> String.replace(~r/\s+/, " ")
+    |> String.replace(" .", ".")
+    |> String.trim()
+  end
+
   describe "the runs list" do
     test "keeps a node's runs by its id or its name, said as a token", %{
       conn: conn,
@@ -41,6 +50,41 @@ defmodule ApiaryWeb.RunLive.NodesTest do
       render_async(view)
       assert has_element?(view, row(theirs))
       refute has_element?(view, row(mine))
+    end
+
+    test "narrowed to a node, the line names it and leads to its page; nothing carries", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      node_run_fixture(node, "i_1")
+      node_page = workspace_path(scope, "/nodes/#{node.public_id}")
+
+      for value <- [node.public_id, "build-01"] do
+        view = open(conn, workspace_path(scope, "/runs?node=#{value}"))
+
+        assert view |> element("#runs-narrowed-what") |> render() |> plain() ==
+                 "Showing the runs of build-01 only."
+
+        assert has_element?(view, ~s(a#runs-narrowed-name[href="#{node_page}"]), "build-01")
+
+        assert has_element?(
+                 view,
+                 ~s(#runs-narrowed-all[href="#{workspace_path(scope, "/runs")}"])
+               )
+
+        # Network access cannot be narrowed to a node: no link, and nothing carries.
+        refute has_element?(view, "#runs-narrowed-network")
+        refute has_element?(view, "#runs-narrowed-policy")
+        assert has_element?(view, ~s(#nav-network[href="#{workspace_path(scope, "/network")}"]))
+        assert has_element?(view, ~s(#nav-runs[href="#{workspace_path(scope, "/runs")}"]))
+      end
+
+      # With a target too, the line names the target and the node stays a token.
+      view = open(conn, workspace_path(scope, "/runs?node=#{node.public_id}&target=acme/shop"))
+      assert has_element?(view, "#runs-narrowed-what", "acme/shop")
+      assert has_element?(view, "#runs-narrowed-network")
+      assert has_element?(view, "#runs-token-node", node.public_id)
     end
 
     test "a deleted node's runs are found by its id, not its name", %{

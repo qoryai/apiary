@@ -280,44 +280,41 @@ defmodule ApiaryWeb.RunLive.Show do
             </.notice>
           </header>
 
-          <.tabs id="run-tabs" label={gettext("Run")}>
+          <%!-- A thing's tabs (`page_tabs/1`), each `run-tab-<key>`. --%>
+          <.page_tabs id="run-tab" label={gettext("Run")} current={@live_action}>
             <:tab
-              id="run-tab-timeline"
+              key={:timeline}
               patch={tab_path(@current_scope, @run, :timeline, @timeline_query)}
               icon="hero-queue-list"
-              current={@live_action == :timeline}
-              count={@index.session_items > 0 && Format.number(@index.session_items)}
+              count={if @index.session_items > 0, do: @index.session_items}
             >
               {gettext("Timeline")}
             </:tab>
             <:tab
               :if={Access.can?(@current_scope, :"run.read_log", @run)}
-              id="run-tab-terminal"
+              key={:terminal}
               patch={tab_path(@current_scope, @run, :terminal)}
               icon="hero-command-line"
-              current={@live_action == :terminal}
             >
               {gettext("Terminal")}
             </:tab>
             <:tab
-              id="run-tab-connections"
+              key={:connections}
               patch={tab_path(@current_scope, @run, :connections)}
               icon="hero-globe-alt"
-              current={@live_action == :connections}
               count={connections_count(@counts)}
               tone={@counts.denied > 0 && "error"}
             >
               {gettext("Network access")}
             </:tab>
             <:tab
-              id="run-tab-details"
+              key={:details}
               patch={tab_path(@current_scope, @run, :details)}
               icon="hero-clipboard-document-list"
-              current={@live_action == :details}
             >
               {gettext("Details")}
             </:tab>
-          </.tabs>
+          </.page_tabs>
 
           <div class={["q-run-body", @live_action == :terminal && "q-run-body-term"]}>
             <%= cond do %>

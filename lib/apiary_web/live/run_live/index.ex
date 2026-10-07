@@ -17,6 +17,13 @@ defmodule ApiaryWeb.RunLive.Index do
   reader types in the query field is read by `Apiary.Runs.Filters.apply_query/3` into the
   same parameters, the free text as `q`.
 
+  Narrowed to one target, the list says so under its title, "Showing the runs of acme/shop
+  only.", with the target's page, its Network access, its policy and "Show all runs",
+  which takes the target away and keeps the rest; narrowed to a node, the same line names
+  the node, with no Network access. The narrowing lives in the address alone: the page
+  gives the frame its target (`ApiaryWeb.Layouts.narrowed/2`), so the sidebar's Runs and
+  Network access carry it, and nothing else does.
+
   From 1920 px a preview pane beside the list shows the run chosen (`?run=`, patched by a
   click or ↑ and ↓ while the list has focus; the first row until then): its state, its
   facts, its denials and the last lines of its log. The page learns the width from the
@@ -38,7 +45,9 @@ defmodule ApiaryWeb.RunLive.Index do
   use ApiaryWeb.Features, :observability
   on_mount {ApiaryWeb.Access, :"run.read"}
 
+  alias Apiary.Access
   alias Apiary.AccessKeys
+  alias Apiary.Features
   alias Apiary.Nodes
   alias Apiary.Runs
   alias Apiary.Runs.Filters
@@ -66,13 +75,21 @@ defmodule ApiaryWeb.RunLive.Index do
       counts={@nav_counts}
       nav={:runs}
       width="work"
+      narrowed={Layouts.narrowed(@filters.target, @shared)}
     >
       <div id="runs-page" class={["q-lp", @preview_on && "q-lp-preview"]}>
-        <.header>
-          {gettext("Runs")}
-          <:subtitle>
+        <.page_header title={gettext("Runs")}>
+          <:description>
             {gettext("Every run the machines of this workspace have posted, as their events tell it.")}
-          </:subtitle>
+          </:description>
+          <.narrowed_line
+            :if={narrowed_to(@filters)}
+            scope={@current_scope}
+            filters={@filters}
+            shared={@shared}
+            narrowed_to={@narrowed_to}
+            security={@security}
+          />
           <:actions>
             <%!-- Never followed for the reader: a screen reader's cursor leaves focus on the
             body, which looks like "nothing focused". The pill is shown and said politely. --%>
@@ -91,7 +108,7 @@ defmodule ApiaryWeb.RunLive.Index do
               </button>
             </span>
           </:actions>
-        </.header>
+        </.page_header>
 
         <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
           <span id="runs-error">
@@ -491,6 +508,110 @@ defmodule ApiaryWeb.RunLive.Index do
     """
   end
 
+  # The line of a list narrowed to one target or one node, under the title (the narrowing
+  # ruling): what the list shows, the same target's Network access and its policy, and the
+  # way back to every run, which takes away the target or the node and nothing else. The
+  # names lead to their pages once the page has read which target or node they are. A
+  # node's line has no Network access: that list cannot be narrowed to a node.
+  attr :scope, :any, required: true
+  attr :filters, Filters, required: true
+  attr :shared, :any, required: true
+  attr :narrowed_to, :map, default: nil, doc: "what `narrowed_of/2` read, for these filters"
+  attr :security, :boolean, required: true
+
+  defp narrowed_line(assigns) do
+    %{scope: scope, filters: filters, shared: shared} = assigns
+    read = assigns.narrowed_to
+
+    assigns =
+      case narrowed_to(filters) do
+        {:target, {system, path} = target} ->
+          found = match?(%{for: ^target}, read) && read.target
+          narrowed = Layouts.narrowed(target, shared)
+          params = Filters.target_params(if(narrowed.shared, do: system), path)
+
+          assign(assigns,
+            kind: :target,
+            system: system,
+            path: path,
+            page: found && target_page(scope, found, []),
+            policy: found && assigns.security && target_page(scope, found, ["policy"]),
+            network: ~p"/#{scope.organisation}/#{scope.workspace}/network?#{params}",
+            all: page_path(scope, Filters.put(filters, target: nil))
+          )
+
+        {:node, value} ->
+          node = match?(%{for: ^value}, read) && read.node
+
+          assign(assigns,
+            kind: :node,
+            node_name: if(node, do: node.name, else: value),
+            page: node && ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node.public_id}",
+            policy: nil,
+            all: page_path(scope, Filters.put(filters, node: nil))
+          )
+      end
+
+    # The name is given to the sentence rendered whole (no change tracking): a slot passed
+    # on through `rich/1` is not drawn again when only the name's page is read later.
+    assigns = assign(assigns, :name, narrowed_name(Map.delete(assigns, :__changed__)))
+
+    ~H"""
+    <p id="runs-narrowed" class="q-page-desc flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+      <span id="runs-narrowed-what">
+        <.rich text={rich_gettext("Showing the runs of %{name} only.", name: @name)} />
+      </span>
+      <.link :if={@kind == :target} id="runs-narrowed-network" navigate={@network} class="q-link">
+        {gettext("Network access")}
+      </.link>
+      <.link :if={@policy} id="runs-narrowed-policy" navigate={@policy} class="q-link">
+        {gettext("Its policy")}
+      </.link>
+      <.link id="runs-narrowed-all" patch={@all} class="q-link">{gettext("Show all runs")}</.link>
+    </p>
+    """
+  end
+
+  defp narrowed_name(%{kind: :target, page: page} = assigns) when is_binary(page) do
+    ~H"""
+    <.link id="runs-narrowed-name" navigate={@page} class="q-link"><.target_name
+      path={@path}
+      system={@system}
+      shared={@shared}
+    /></.link>
+    """
+  end
+
+  defp narrowed_name(%{kind: :target} = assigns) do
+    ~H"""
+    <.target_name id="runs-narrowed-name" path={@path} system={@system} shared={@shared} />
+    """
+  end
+
+  defp narrowed_name(%{page: page} = assigns) when is_binary(page) do
+    ~H"""
+    <.link id="runs-narrowed-name" navigate={@page} class="q-link">{@node_name}</.link>
+    """
+  end
+
+  defp narrowed_name(assigns) do
+    ~H"""
+    <span id="runs-narrowed-name">{@node_name}</span>
+    """
+  end
+
+  # A target's page, or one of its tabs, by the route helper every page writes it with.
+  defp target_page(scope, {system, path}, rest),
+    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, rest)
+
+  # What the list is narrowed to, as its line names it: one target (`target=` with a path;
+  # never "none"), else one node; a target goes first, and a node beside it stays a token.
+  defp narrowed_to(%Filters{target: {_system, path} = target}) when is_binary(path),
+    do: {:target, target}
+
+  defp narrowed_to(%Filters{node: node}) when is_binary(node), do: {:node, node}
+  defp narrowed_to(%Filters{}), do: nil
+
   ## Lifecycle
 
   @impl true
@@ -532,6 +653,10 @@ defmodule ApiaryWeb.RunLive.Index do
        preview_id: nil,
        jump_error: nil,
        preview: nil,
+       narrowed_to: nil,
+       security:
+         Features.on?(scope, :security) and
+           Access.can?(scope, :"security_policy.read", scope.workspace),
        has_keys: AccessKeys.list_access_keys(scope) != []
      )}
   end
@@ -708,6 +833,7 @@ defmodule ApiaryWeb.RunLive.Index do
          facets: loaded.facets,
          shared: loaded.shared,
          nodes: loaded.nodes,
+         narrowed_to: loaded.narrowed_to,
          workspace_runs: loaded.workspace_runs,
          loaded_at: loaded.at,
          new_ids: MapSet.new(),
@@ -890,6 +1016,7 @@ defmodule ApiaryWeb.RunLive.Index do
             facets: Runs.run_facets(scope, filters, [now: now] ++ facets_opts),
             shared: Runs.shared_paths(scope),
             nodes: nodes_of(scope, listing.runs),
+            narrowed_to: narrowed_of(scope, filters),
             workspace_runs: if(listing.total == 0, do: Runs.count_runs(scope))
           }
         end)
@@ -905,6 +1032,33 @@ defmodule ApiaryWeb.RunLive.Index do
     ids = for %{node_id: id} <- runs, id, uniq: true, do: id
     %{node: n, pool: p} = Nodes.count_nodes(scope)
     if ids != [] or n + p > 0, do: Nodes.names(scope, ids)
+  end
+
+  # Which target or node the narrowed line names, for the links to their pages: the one
+  # target of the filters' system and path, or the one target of a path given alone (none
+  # where the path is on two systems, or on none); the node in use of the public id or the
+  # name. Nil when the list is not narrowed to either.
+  defp narrowed_of(scope, %Filters{} = filters) do
+    case narrowed_to(filters) do
+      {:target, {nil, path} = target} ->
+        case Runs.resolve_target(scope, path) do
+          {system, ^path} when is_binary(system) -> %{for: target, target: {system, path}}
+          _none_or_several -> %{for: target, target: nil}
+        end
+
+      {:target, {system, path} = target} ->
+        %{for: target, target: Runs.fetch_target(scope, system, path) && target}
+
+      {:node, value} ->
+        node =
+          Nodes.get_node(scope, value) ||
+            Enum.find(Nodes.list_nodes(scope, %{q: value}), &(&1.name == value))
+
+        %{for: value, node: node}
+
+      nil ->
+        nil
+    end
   end
 
   defp load_facets(socket) do

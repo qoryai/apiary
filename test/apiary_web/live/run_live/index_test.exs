@@ -870,6 +870,160 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
   end
 
+  describe "narrowed to a target (the narrowing ruling)" do
+    defp target_page(scope, system, rest \\ []),
+      do: ApiaryWeb.TargetComponents.target_path(scope, system, "acme/shop", rest)
+
+    defp href(view, selector, href), do: has_element?(view, ~s(#{selector}[href="#{href}"]))
+
+    # Every entry of the sidebar but Runs and Network access leads plainly, and so do
+    # those two on a list that is not narrowed to a target.
+    defp plain_sidebar?(view, scope, carried \\ false) do
+      plain =
+        [overview: "", targets: "/targets", settings: "/settings"] ++
+          if(Apiary.Features.on?(:security), do: [policy: "/policy"], else: []) ++
+          if(carried, do: [], else: [runs: "/runs", network: "/network"])
+
+      Enum.all?(plain, fn {key, path} ->
+        href(view, "#nav-#{key}", workspace_path(scope, path))
+      end)
+    end
+
+    test "the line says so, leads to the target, its Network access and its policy, and back to every run",
+         %{conn: conn, scope: scope} do
+      shop_run = started_run(scope, shop())
+      api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      assert has_element?(view, row(shop_run))
+      refute has_element?(view, row(api))
+      assert has_element?(view, "#page-header #runs-narrowed")
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/shop only."
+      assert href(view, "a#runs-narrowed-name", target_page(scope, "github.example"))
+
+      assert href(
+               view,
+               "#runs-narrowed-network",
+               workspace_path(scope, "/network?target=acme%2Fshop")
+             )
+
+      assert text(view, "#runs-narrowed-network") == "Network access"
+
+      if Apiary.Features.on?(:security) do
+        assert href(
+                 view,
+                 "#runs-narrowed-policy",
+                 target_page(scope, "github.example", ["policy"])
+               )
+
+        assert text(view, "#runs-narrowed-policy") == "Its policy"
+      else
+        refute has_element?(view, "#runs-narrowed-policy")
+      end
+
+      assert href(view, "#runs-narrowed-all", runs(scope))
+      assert text(view, "#runs-narrowed-all") == "Show all runs"
+
+      # The sidebar's Runs and Network access carry the target; nothing else does.
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+      assert href(view, "#nav-runs", workspace_path(scope, "/runs?target=acme%2Fshop"))
+
+      assert has_element?(
+               view,
+               ~s(#nav-network[aria-label="Network access, narrowed to acme/shop"])
+             )
+
+      assert plain_sidebar?(view, scope, true)
+
+      # The existing parts stay, in the software domain's words.
+      assert token(view, "target") == "repo:acme/shop"
+      assert text(view, "#runs-rail-all") =~ "All repositories"
+    end
+
+    test "a list not narrowed has no line, and its sidebar leads plainly", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+
+      for query <- ["", "?state=failed", "?target=none"] do
+        view = open(conn, runs(scope, query))
+        refute has_element?(view, "#runs-narrowed")
+        assert plain_sidebar?(view, scope), query
+      end
+    end
+
+    test "only the target carries: the state stays on Runs, and Show all runs keeps it", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      view = open(conn, runs(scope, "?state=failed&target=acme/shop"))
+
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+
+      assert href(
+               view,
+               "#runs-narrowed-network",
+               workspace_path(scope, "/network?target=acme%2Fshop")
+             )
+
+      assert href(view, "#runs-narrowed-all", runs(scope, "?state=failed"))
+    end
+
+    test "the system is carried only where two systems share the path", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, runs(scope, "?system=gitlab.example&target=acme/shop"))
+      carried = workspace_path(scope, "/network?system=gitlab.example&target=acme%2Fshop")
+
+      # The system is a faint part of the name, before its path.
+      assert view |> text("#runs-narrowed-what") |> String.replace(" / ", "/") ==
+               "Showing the runs of gitlab.example/acme/shop only."
+
+      assert href(view, "a#runs-narrowed-name", target_page(scope, "gitlab.example"))
+      assert href(view, "#runs-narrowed-network", carried)
+      assert href(view, "#nav-network", carried)
+
+      # The path alone is that path on both systems: no one target's page to lead to.
+      view = open(conn, runs(scope, "?target=acme/shop"))
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/shop only."
+      refute has_element?(view, "a#runs-narrowed-name")
+      refute has_element?(view, "#runs-narrowed-policy")
+
+      assert href(
+               view,
+               "#runs-narrowed-network",
+               workspace_path(scope, "/network?target=acme%2Fshop")
+             )
+    end
+
+    test "Show all runs, the token's ×, the rail's All targets and Clear each drop the target, in a new history entry",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      narrowed = runs(scope, "?state=failed&target=acme/shop")
+
+      for {selector, to} <- [
+            {"#runs-narrowed-all", runs(scope, "?state=failed")},
+            {"#runs-token-target a", runs(scope, "?state=failed")},
+            {"#runs-rail-all", runs(scope, "?state=failed")},
+            {"#runs-tokens-clear", runs(scope)}
+          ] do
+        view = open(conn, narrowed)
+        assert has_element?(view, "#{selector}[data-phx-link=patch][data-phx-link-state=push]")
+        view |> element(selector) |> render_click()
+        assert_patch(view, to)
+        render_async(view)
+
+        refute has_element?(view, "#runs-narrowed"), selector
+        assert plain_sidebar?(view, scope), selector
+      end
+    end
+  end
+
   describe "the preview from 1920 px" do
     setup %{scope: scope} do
       %{
