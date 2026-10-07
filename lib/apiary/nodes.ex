@@ -429,9 +429,9 @@ defmodule Apiary.Nodes do
   @doc """
   placement/2 is what a run records of where it runs, `%{node_id:, instance_id:}`: the
   node of the access key its ping came with, and the instance id that ping claimed, nil
-  when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`); both nil for a key that
-  names no node. The receiving side merges it into the run's row when it creates the run,
-  and the instance id into the delivery's row (`Apiary.Runs.Ingest`).
+  when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`). The receiving side
+  merges it into the run's row when it creates the run, and the instance id into the
+  delivery's row (`Apiary.Runs.Ingest`).
   """
   @spec placement(Node.t() | nil, String.t() | nil) ::
           %{node_id: Ecto.UUID.t() | nil, instance_id: String.t() | nil}
