@@ -17,6 +17,13 @@ defmodule ApiaryWeb.RunLive.Index do
   reader types in the query field is read by `Apiary.Runs.Filters.apply_query/3` into the
   same parameters, the free text as `q`.
 
+  Narrowed to one target, the list says so under its title, "Showing the runs of acme/shop
+  only.", with the target's page, its Network access, its policy and "Show all runs",
+  which takes the target away and keeps the rest; narrowed to a node, the same line names
+  the node, with no Network access. The narrowing lives in the address alone: the page
+  gives the frame its target (`ApiaryWeb.Layouts.narrowed/2`), so the sidebar's Runs and
+  Network access carry it, and nothing else does.
+
   From 1920 px a preview pane beside the list shows the run chosen (`?run=`, patched by a
   click or ↑ and ↓ while the list has focus; the first row until then): its state, its
   facts, its denials and the last lines of its log. The page learns the width from the
