@@ -99,6 +99,127 @@ defmodule Apiary.NodeAccessKeysTest do
     end
   end
 
+  describe "a key made in a browser" do
+    test "is added by its public key as a paste is, marked as made in a browser", ctx do
+      %{scope: scope, node: node} = ctx
+      pair = ed25519_key_pair()
+
+      assert {:ok, key} =
+               AccessKeys.add_access_key(
+                 scope,
+                 node,
+                 %{"label" => "spot-runners", "public_key" => pair.encoded},
+                 arrived_by: :browser
+               )
+
+      assert AccessKey.status(key) == :active
+      assert key.arrived_by == :browser
+      assert key.public_key == pair.public_key
+      assert key.created_by_id == scope.user.id
+      assert is_nil(key.enrolment_code_id)
+      assert %PublicKey{state: :current} = ledger(pair.public_key)
+
+      assert [entry] = entries("access_key", key.id)
+      assert entry.action == "access_key.add"
+      assert entry.after["arrived_by"] == "browser"
+      assert entry.after["fingerprint"] == AccessKey.fingerprint(key)
+
+      # Read back as it was written, and trusted at verification.
+      assert Repo.get!(AccessKey, key.id).arrived_by == :browser
+
+      assert {:ok, %AccessKey{arrived_by: :browser}} =
+               AccessKeys.fetch_for_verification(key.key_id)
+    end
+
+    test "a paste is marked a paste, by default and when asked", ctx do
+      %{scope: scope, node: node} = ctx
+
+      for opts <- [[], [arrived_by: :paste]] do
+        pair = ed25519_key_pair()
+        attrs = %{label: unique_label(), public_key: pair.encoded}
+        assert {:ok, key} = AccessKeys.add_access_key(scope, node, attrs, opts)
+        assert key.arrived_by == :paste
+        assert [entry] = entries("access_key", key.id)
+        assert entry.after["arrived_by"] == "paste"
+        {:ok, _} = AccessKeys.revoke_access_key(scope, key)
+      end
+    end
+
+    test "is no way to add a key as enrolled with a code", ctx do
+      %{scope: scope, node: node} = ctx
+      attrs = %{label: "x", public_key: ed25519_key_pair().encoded}
+
+      for arrived_by <- [:code, :other, "browser", nil] do
+        assert_raise ArgumentError, fn ->
+          AccessKeys.add_access_key(scope, node, attrs, arrived_by: arrived_by)
+        end
+      end
+
+      assert AccessKeys.list_for_node(scope, node) == []
+    end
+
+    test "is checked as a paste is: the key checks, the ledger, the limit", ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, pasted} = paste(scope, node)
+
+      for public_key <- [
+            @small_order,
+            @fixture_access_key,
+            Base.url_encode64(pasted.public_key, padding: false)
+          ] do
+        assert {:error, changeset} =
+                 AccessKeys.add_access_key(scope, node, %{label: "x", public_key: public_key},
+                   arrived_by: :browser
+                 )
+
+        assert cannot_be_used?(changeset)
+      end
+
+      %{access_key: _second} = browser_key_fixture(scope, node)
+
+      assert {:error, :key_limit} =
+               AccessKeys.add_access_key(
+                 scope,
+                 node,
+                 %{label: "x", public_key: ed25519_key_pair().encoded},
+                 arrived_by: :browser
+               )
+    end
+
+    test "a member may not add one", ctx do
+      %{scope: scope, node: node} = ctx
+      %{scope: member} = member_fixture(scope, :member)
+
+      assert {:error, :forbidden} =
+               AccessKeys.add_access_key(
+                 member,
+                 node,
+                 %{label: "x", public_key: ed25519_key_pair().encoded},
+                 arrived_by: :browser
+               )
+    end
+
+    test "its integrity code covers its arrival", ctx do
+      %{scope: scope, node: node} = ctx
+      %{access_key: key} = browser_key_fixture(scope, node)
+
+      assert AccessKey.verify_integrity(key) == :ok
+
+      for arrived_by <- [:paste, :code] do
+        assert AccessKey.verify_integrity(%{key | arrived_by: arrived_by}) == {:error, :mismatch}
+      end
+
+      # The database keeps it fixed, as a paste's.
+      assert_raise Postgrex.Error, ~r/access_keys_fixed_at_insert/, fn ->
+        Repo.update_all(from(k in AccessKey, where: k.id == ^key.id), set: [arrived_by: :paste])
+      end
+
+      {:ok, revoked} = AccessKeys.revoke_access_key(scope, key)
+      assert revoked.arrived_by == :browser
+      assert AccessKey.verify_integrity(Repo.get!(AccessKey, key.id)) == :ok
+    end
+  end
+
   describe "a ledger changed outside the application" do
     test "a key whose row is missing is revoked and deleted with its node all the same", ctx do
       %{scope: scope, node: node} = ctx
@@ -608,6 +729,72 @@ defmodule Apiary.NodeAccessKeysTest do
           do: refute(Map.has_key?(nullable, gone), gone)
     end
 
+    test "holds a key's arrival to a paste, a browser, or a code with its code", ctx do
+      %{scope: scope, node: node} = ctx
+
+      [definition] =
+        Repo.query!("""
+        SELECT pg_get_constraintdef(oid) FROM pg_constraint
+        WHERE conname = 'access_keys_arrived_by_check'
+        """).rows
+        |> List.flatten()
+
+      assert definition =~ "browser"
+
+      insert = fn arrived_by, code_id ->
+        pair = ed25519_key_pair()
+
+        key =
+          %AccessKey{
+            id: Ecto.UUID.generate(),
+            organisation_id: scope.organisation.id,
+            workspace_id: scope.workspace.id,
+            node_id: node.id,
+            key_id: AccessKey.generate_key_id(),
+            public_key: pair.public_key,
+            arrived_by: :paste,
+            received_at: DateTime.utc_now()
+          }
+          |> AccessKey.insert_changeset(%{label: unique_label()})
+          |> AccessKey.put_integrity()
+          |> Ecto.Changeset.apply_changes()
+
+        now = DateTime.utc_now()
+
+        Repo.insert_all("access_keys", [
+          %{
+            id: Ecto.UUID.dump!(key.id),
+            organisation_id: Ecto.UUID.dump!(key.organisation_id),
+            workspace_id: Ecto.UUID.dump!(key.workspace_id),
+            node_id: Ecto.UUID.dump!(key.node_id),
+            key_id: key.key_id,
+            label: key.label,
+            public_key: key.public_key,
+            allow_secrets: false,
+            received_at: now,
+            arrived_by: arrived_by,
+            enrolment_code_id: code_id && Ecto.UUID.dump!(code_id),
+            integrity_code: key.integrity_code,
+            integrity_key_id: key.integrity_key_id,
+            inserted_at: now,
+            updated_at: now
+          }
+        ])
+      end
+
+      %{code: code} = enrolled_key_fixture(scope, node_fixture(scope))
+
+      assert {1, _} = insert.("browser", nil)
+      assert {1, _} = insert.("paste", nil)
+      assert {1, _} = insert.("code", code.id)
+
+      for {arrived_by, code_id} <- [{"code", nil}, {"elsewhere", nil}, {"", nil}] do
+        assert_raise Postgrex.Error, ~r/access_keys_arrived_by_check/, fn ->
+          insert.(arrived_by, code_id)
+        end
+      end
+    end
+
     test "a node's key names a node of its own workspace", ctx do
       %{scope: scope} = ctx
       %{scope: other} = sign_up_fixture()
@@ -631,6 +818,38 @@ defmodule Apiary.NodeAccessKeysTest do
       assert_raise Ecto.ConstraintError, ~r/access_keys_node_id_fkey/, fn ->
         Repo.insert(changeset)
       end
+    end
+  end
+
+  describe "variables/2" do
+    test "is the key id and the pin as JSON, in that order, nothing secret", ctx do
+      %{scope: scope, node: node} = ctx
+      %{access_key: key} = browser_key_fixture(scope, node)
+
+      pin = [
+        %{"alg" => "ed25519", "public_key" => "current-key"},
+        %{"alg" => "ed25519", "public_key" => "next-key"}
+      ]
+
+      assert AccessKeys.variables(key, pin) == [
+               {"QORY_ACCESS_KEY_ID", key.key_id},
+               {"QORY_APIARY_PUBLIC_KEY",
+                ~s([{"alg":"ed25519","public_key":"current-key"},{"alg":"ed25519","public_key":"next-key"}])}
+             ]
+
+      # The server's own pin by default, which the JSON reads back as.
+      assert [{"QORY_ACCESS_KEY_ID", _}, {"QORY_APIARY_PUBLIC_KEY", json}] =
+               AccessKeys.variables(key)
+
+      assert Jason.decode!(json) == Apiary.SigningKey.apiary_public_key()
+
+      # The runner file's variables are these, one line each.
+      %{env: env} = AccessKeys.runner_lines(key, "https://apiary.example", pin)
+
+      assert env ==
+               Enum.map_join(AccessKeys.variables(key, pin), fn {name, value} ->
+                 "#{name}=#{value}\n"
+               end)
     end
   end
 

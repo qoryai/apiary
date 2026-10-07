@@ -12,17 +12,41 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     where the record holds any. A key whose row does not match its integrity code says
     so: it can't be used. Owners and admins revoke an active key, confirmed in place, at
     a path of its own (`…/access-key/keys/:key_id/revoke`), a key named by its key id.
-    With no key, the tab tells a reader who may make an enrolment code how a machine
-    gets one, and anyone else only that there is none.
+    While the node holds no active key, the Keys part leads owners and admins with the
+    way that suits its kind, a heading, one sentence and three buttons, that way first
+    and primary: a node with enrolling the machine with qory (New enrolment code), a pool
+    with Generate a key; then the other two (Generate a key or New enrolment code, and
+    Add a public key). Once it holds an active key, the three buttons stay, plain, the
+    kind's way first. A member reads only that there is no key yet.
   - **Runner file for a key** (`…/access-key/keys/:key_id/runner-file`), a page of its
     own for an active key, linked from its card for everyone who reads the node, since
     nothing on it is secret: the runner file's `server` section (`url`, `access_key_id`,
     `apiary_public_key`) and, for CI, the two variables in place of the last two
     (`Apiary.AccessKeys.runner_lines/3`), each with Copy, where the key's secret is, and
     Done back to the tab.
+  - **Generate a key** (`…/access-key/generate`), a page of its own: a label and the
+    stored-secrets flag. The browser makes the key (the `GenerateKey` hook,
+    `assets/js/hooks/generate_key.js`) and sends Qory its public half alone, in the one
+    event `generate_key` (`{"key" => %{"label", "allow_secrets", "public_key"}}`); the
+    form has no field for anything else, and no `phx-submit`. The event is taken only on
+    that page, with its form open, from one who may add keys, and only as exactly those
+    three strings: any other field, or a label or flag holding `qak_` (an access key's
+    secret, in any case), is refused before anything is stored, and the public key passes
+    the strict decoding a paste's does, which no secret passes. The key is added as a paste is
+    (`Apiary.AccessKeys.add_access_key/4`, `arrived_by: :browser`), and the page patches
+    to **Variables for a key** (`…/access-key/keys/:key_id/generated`), rendered by the
+    same clause so that the hook's `<section id="key-generate">` lives through the patch:
+    the key id and the pin (`Apiary.AccessKeys.variables/2`), each with Copy, and the
+    secret's slot, `phx-update="ignore"`, empty from the server, carrying the public key
+    the server stored (`data-public-key`). The hook writes the secret into it only beside
+    its own public key, and empties it as the page goes. The server never has the secret:
+    not in assigns, a render, a log line or the record. Opened again, the page shows the
+    id and the pin, and the hook says the secret is gone. It is the page of an active key
+    the reader made in a browser, while they may add keys; any other key's address goes
+    to its runner file, or back to the tab.
   - **Add a public key** (`…/access-key/add`), a page of its own: a label, the
     stored-secrets flag and the public key, whose fingerprint shows as soon as it reads as
-    one; the key is active as it is added (`Apiary.AccessKeys.add_access_key/3`), and
+    one; the key is active as it is added (`Apiary.AccessKeys.add_access_key/4`), and
     the page goes on to the key's runner file.
   - **Enrolment codes**: the node's outstanding codes, who made each and when, when it
     expires, and the settings of the key it would bring; owners and admins revoke one in
@@ -37,7 +61,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     past); and Done back to the tab.
 
   Leaving a form or a confirmation gives the focus back to the button that opened it, or,
-  where the act took that button away, to the key's heading or to New enrolment code.
+  where the act took that button away, to the key's heading or to New enrolment code;
+  leaving a key's variables, to the key's heading.
 
   **A code is shown once.** It lives in the page's process alone, wrapped in a function so
   no inspection of the process's state prints it, until the reader leaves the page by any
@@ -196,6 +221,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # The button that opened the form, the code shown or the confirmation the page shows.
   defp opener(%{shown: :add_key}), do: :add_key
+  defp opener(%{shown: :generate}), do: :generate
   defp opener(%{shown: :new_code}), do: :new_code
 
   defp opener(%{shown: :revoke, key: %AccessKey{key_id: key_id}}),
@@ -205,6 +231,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp opener(%{shown: :runner_file, key: %AccessKey{key_id: key_id}}),
     do: {:key, key_id, :runner_file}
+
+  defp opener(%{shown: :generated, key: %AccessKey{key_id: key_id}}),
+    do: {:key, key_id, :generated}
 
   defp opener(_assigns), do: nil
 
@@ -220,12 +249,16 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp return_focus(socket, _opener), do: socket
 
   defp focus_id(%{may: may}, :add_key), do: if(may.add_key, do: "key-add-button")
+  defp focus_id(%{may: may}, :generate), do: if(may.add_key, do: "key-generate-button")
   defp focus_id(%{may: may}, :new_code), do: if(may.new_code, do: "code-new-button")
 
   defp focus_id(assigns, {:key, key_id, act}) do
     case Enum.find(assigns.keys, &(&1.key_id == key_id)) do
       nil ->
         nil
+
+      _key when act == :generated ->
+        "key-#{key_id}-title"
 
       key ->
         if act in key_acts(key, assigns.may) or
@@ -251,6 +284,44 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     if socket.assigns.may.add_key,
       do: assign_form(socket, fresh(AccessKeys.change_new_key()), :key),
       else: refused(socket, gettext("Only owners and admins add a node's keys."))
+  end
+
+  defp apply_action(socket, :generate, _params) do
+    cond do
+      not socket.assigns.may.add_key ->
+        refused(socket, gettext("Only owners and admins add a node's keys."))
+
+      at_limit?(socket.assigns.keys) ->
+        to_tab(socket, :error, limit_reached_words(socket.assigns.node))
+
+      true ->
+        assign_form(socket, fresh(AccessKeys.change_new_key()), :key)
+    end
+  end
+
+  # The variables of a key made in this browser: the page Generate a key patches to, and
+  # what a reload of it shows. Only for an active key of this node the reader made so,
+  # while they may add keys; any other active key's address leads to its runner file,
+  # which shows the same id and pin to everyone who reads the node.
+  defp apply_action(socket, :generated, %{"key_id" => key_id}) do
+    %{current_scope: scope, may: may} = socket.assigns
+
+    case Enum.find(socket.assigns.keys, &(&1.key_id == key_id)) do
+      nil ->
+        to_tab(socket, :error, gettext("This node has no such key."))
+
+      %AccessKey{} = key ->
+        cond do
+          state(key) != :active ->
+            to_tab(socket, :error, revoked_words(key))
+
+          key.arrived_by == :browser and key.created_by_id == scope.user.id and may.add_key ->
+            assign(socket, :key, key)
+
+          true ->
+            push_patch(socket, to: key_path(socket.assigns.paths, key, "runner-file"))
+        end
+    end
   end
 
   defp apply_action(socket, :new_code, _params) do
@@ -347,15 +418,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:noreply, socket |> assign_form(changeset, :key) |> assign(:preview, preview(params))}
 
       {:error, :key_limit} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           gettext(
-             "%{name} holds two keys already. Revoke one before you add another.",
-             name: node.name
-           )
-         )}
+        {:noreply, put_flash(socket, :error, limit_reached_words(node))}
 
       {:error, :not_found} ->
         {:noreply, not_found(socket)}
@@ -363,6 +426,48 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins add a node's keys."))}
     end
+  end
+
+  # Generate a key's form, as it is typed: the label and the stored-secrets flag. No key
+  # exists yet, and the form has no other field.
+  def handle_event(
+        "validate_generate",
+        %{"key" => params},
+        %{assigns: %{live_action: :generate, form: %{}}} = socket
+      ) do
+    changeset =
+      params
+      |> form_params()
+      |> Map.take(["label", "allow_secrets"])
+      |> AccessKeys.change_new_key()
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign_form(socket, changeset, :key)}
+  end
+
+  # The key the browser made, by its public half: exactly the label, the stored-secrets
+  # flag and the public key, each a string, none holding an access key's secret. Anything
+  # else is refused before anything is stored, and logged by nothing here. The reply
+  # carries the key id once it is added, which tells the hook to keep the secret for the
+  # page it patches to; any other reply tells it to drop the secret.
+  def handle_event(
+        "generate_key",
+        params,
+        %{assigns: %{live_action: :generate, form: %{}, may: %{add_key: true}}} = socket
+      ) do
+    case generated_key_params(params) do
+      {:ok, attrs} -> add_generated_key(socket, attrs)
+      :error -> {:reply, %{}, to_tab(socket, :error, not_added_words())}
+    end
+  end
+
+  # A key pushed without its page and its form open, or by one who may not add keys:
+  # nothing is added, and the hook drops what it made.
+  def handle_event("generate_key", _params, socket) do
+    if socket.assigns.may.add_key,
+      do: {:reply, %{}, to_tab(socket, :error, not_added_words())},
+      else:
+        {:reply, %{}, refused(socket, gettext("Only owners and admins manage a node's keys."))}
   end
 
   def handle_event(
@@ -472,8 +577,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   # A form's change with no form open: nothing to do.
-  def handle_event(event, _params, socket) when event in ~w(validate_key validate_code),
-    do: {:noreply, socket}
+  def handle_event(event, _params, socket)
+      when event in ~w(validate_key validate_generate validate_code),
+      do: {:noreply, socket}
 
   @impl true
   def handle_info({:nodes_touched, _workspace_id}, socket) do
@@ -504,6 +610,59 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  ## A key made in a browser
+
+  # The event's parameters as the hook sends them, and nothing else: one key, `key`, a map
+  # of exactly `label`, `allow_secrets` and `public_key`, each a string. The label and the
+  # flag hold no `qak_` in any case (the runner's rule for a value that holds a secret).
+  # The public key is not read for it: a random one holds `qak_` now and then, and its
+  # decoding (`Apiary.Contract.Ed25519.decode_public_key/1`, in the paste's checks) takes
+  # 43 characters of base64url alone, which a secret, `qak_` and 43 more, never is.
+  defp generated_key_params(%{"key" => %{} = key} = params) when map_size(params) == 1 do
+    fields = ~w(allow_secrets label public_key)
+
+    if key |> Map.keys() |> Enum.sort() == fields and
+         Enum.all?(key, fn {_name, value} -> is_binary(value) end) and
+         not holds_secret?(key["label"]) and not holds_secret?(key["allow_secrets"]),
+       do: {:ok, Map.take(key, fields)},
+       else: :error
+  end
+
+  defp generated_key_params(_params), do: :error
+
+  defp holds_secret?(value), do: value |> String.downcase() |> String.contains?("qak_")
+
+  defp add_generated_key(socket, attrs) do
+    %{current_scope: scope, node: node} = socket.assigns
+
+    case AccessKeys.add_access_key(scope, node, attrs, arrived_by: :browser) do
+      {:ok, key} ->
+        {:reply, %{key_id: key.key_id},
+         socket
+         |> put_flash(:info, gettext("%{label} is added.", label: key.label))
+         |> load()
+         |> push_patch(to: key_path(socket.assigns.paths, key, "generated"))}
+
+      # A public key refused by the checks or the ledger is none the browser made.
+      {:error, %Ecto.Changeset{errors: errors} = changeset} ->
+        if Keyword.has_key?(errors, :public_key),
+          do: {:reply, %{}, to_tab(socket, :error, not_added_words())},
+          else: {:reply, %{}, assign_form(socket, %{changeset | action: :insert}, :key)}
+
+      {:error, :key_limit} ->
+        {:reply, %{}, to_tab(socket, :error, limit_reached_words(node))}
+
+      {:error, :not_found} ->
+        {:reply, %{}, not_found(socket)}
+
+      {:error, :forbidden} ->
+        {:reply, %{}, refused(socket, gettext("Only owners and admins add a node's keys."))}
+    end
+  end
+
+  defp at_limit?(keys),
+    do: Enum.count(keys, &(state(&1) == :active)) >= AccessKeys.key_limit()
 
   ## Answers
 
@@ -611,6 +770,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       access_key: base <> "/access-key",
       settings: base <> "/settings",
       add_key: base <> "/access-key/add",
+      generate: base <> "/access-key/generate",
       new_code: base <> "/access-key/new-code"
     }
   end
@@ -623,6 +783,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       case assigns do
         %{issued: %{}} -> gettext("New enrolment code")
         %{live_action: :add_key, form: %{}} -> gettext("Add a public key")
+        %{live_action: :generate, form: %{}} -> gettext("Generate a key")
+        %{live_action: :generated, key: %AccessKey{} = key} -> variables_title(key)
         %{live_action: :new_code, form: %{}} -> gettext("New enrolment code")
         %{live_action: :runner_file, key: %AccessKey{} = key} -> runner_file_title(key)
         _tab -> gettext("Access key")
@@ -632,6 +794,16 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   defp revoked_words(key), do: gettext("%{label} is revoked.", label: key.label)
+
+  defp limit_reached_words(node),
+    do:
+      gettext("%{name} holds two keys already. Revoke one before you add another.",
+        name: node.name
+      )
+
+  defp not_added_words, do: gettext("The key wasn't added. Try again.")
+
+  defp variables_title(key), do: gettext("Variables for %{label}", label: key.label)
 
   defp runner_file_title(key), do: gettext("Runner file for %{label}", label: key.label)
 
@@ -664,6 +836,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp arrived_words(%AccessKey{arrived_by: :code} = key),
     do:
       gettext("With an enrolment code %{person} made, %{date}",
+        person: People.email(key.created_by) || gettext("Former member"),
+        date: Format.datetime(key.received_at)
+      )
+
+  defp arrived_words(%AccessKey{arrived_by: :browser} = key),
+    do:
+      gettext("Made in a browser by %{person}, %{date}",
         person: People.email(key.created_by) || gettext("Former member"),
         date: Format.datetime(key.received_at)
       )
@@ -785,6 +964,244 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               {gettext("Done")}
             </.button>
             <:note>{gettext("Once you leave this page, the code is not shown again.")}</:note>
+          </SettingsComponents.save>
+        </div>
+      </section>
+    </Layouts.app>
+    """
+  end
+
+  # Generate a key, then the variables of the key it made: one clause, so the hook's
+  # section (`#key-generate`) is the same element across the patch from the form to the
+  # variables, and carries the secret, which only the browser has, into its slot.
+  def render(%{live_action: action, form: form, key: key} = assigns)
+      when (action == :generate and is_map(form)) or
+             (action == :generated and is_struct(key, AccessKey)) do
+    assigns =
+      assign(assigns,
+        variables: if(action == :generated, do: AccessKeys.variables(key), else: [])
+      )
+
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:nodes}
+      place={:workspace}
+      width="read"
+    >
+      <:crumb navigate={nodes_path(@paths)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
+      <:crumb :if={@live_action == :generate}>{gettext("Generate a key")}</:crumb>
+      <:crumb :if={@live_action == :generated}>{@key.label}</:crumb>
+
+      <section
+        id="key-generate"
+        phx-hook="GenerateKey"
+        class="q-form-page"
+        aria-labelledby={
+          if @live_action == :generate,
+            do: "key-generate-header-title",
+            else: "key-generated-header-title"
+        }
+      >
+        <.page_header
+          :if={@live_action == :generate}
+          id="key-generate-header"
+          title={gettext("Generate a key")}
+        >
+          <:description>
+            {if @node.kind == :pool,
+              do:
+                gettext(
+                  "A key for %{name}, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made.",
+                  name: @node.name
+                ),
+              else:
+                gettext(
+                  "A key for %{name}, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made. For a machine of your own, enrolling it with qory keeps the secret off every screen.",
+                  name: @node.name
+                )}
+          </:description>
+        </.page_header>
+        <.page_header
+          :if={@live_action == :generated}
+          id="key-generated-header"
+          title={variables_title(@key)}
+        >
+          <:description>
+            {gettext("For %{name}. Set these three variables where the runner starts.",
+              name: @node.name
+            )}
+          </:description>
+        </.page_header>
+
+        <div class="q-form-page-body text-[13px]/5">
+          <%!-- Shown by the hook alone, which says why no key can be made here, or that
+               one was lost on its way: hidden by the class, which the hook's show
+               overrides. --%>
+          <div id="key-generate-notices" phx-update="ignore" class="contents">
+            <div id="key-generate-insecure" class="hidden">
+              <.notice kind={:warning}>
+                {gettext(
+                  "This browser makes keys only on a page served over HTTPS. Open Qory over HTTPS, or enrol the machine with qory."
+                )}
+              </.notice>
+            </div>
+            <div id="key-generate-unsupported" class="hidden">
+              <.notice kind={:warning}>
+                {gettext(
+                  "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or enrol the machine with qory."
+                )}
+              </.notice>
+            </div>
+            <div id="key-generate-lost" class="hidden">
+              <.notice kind={:error}>
+                {gettext(
+                  "The connection to Qory dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."
+                )}
+              </.notice>
+            </div>
+          </div>
+
+          <%!-- No `phx-submit`: the hook takes the submit, makes the key and sends its
+               public half alone. The action is the page's own address, so a form whose
+               hook did not start posts its label and choice to the console alone, and
+               never puts them in an address. --%>
+          <.form
+            :if={@live_action == :generate}
+            for={@form}
+            id="key-generate-form"
+            action={@paths.generate}
+            phx-change="validate_generate"
+            class="grid gap-4"
+            novalidate
+          >
+            <.input
+              field={@form[:label]}
+              type="text"
+              label={gettext("Label")}
+              placeholder={if @node.kind == :pool, do: "spot-runners", else: "build-01"}
+              hint={gettext("Up to 80 characters, unique among this node's keys.")}
+              autocomplete="off"
+              spellcheck="false"
+              required
+              phx-mounted={JS.focus()}
+            />
+            <.input
+              field={@form[:allow_secrets]}
+              type="radio"
+              label={gettext("Stored secrets")}
+              options={secrets_options()}
+              hint={gettext("Fixed for the key once it is added. Runs don't receive secrets yet.")}
+            />
+            <.page_form_foot id="key-generate-save" cancel={@paths.access_key} cancel_by="patch">
+              <.button
+                id="key-generate-submit"
+                variant="primary"
+                type="submit"
+                loading_text={gettext("Generating")}
+              >
+                {gettext("Generate key")}
+              </.button>
+            </.page_form_foot>
+          </.form>
+
+          <div :if={@live_action == :generated} id="key-generated-once">
+            <.notice kind={:warning}>
+              <strong>{gettext("The secret is shown once.")}</strong>
+              {gettext(
+                "Copy it now: it was made in this browser, Qory never received it, and it can't be shown again."
+              )}
+            </.notice>
+          </div>
+
+          <dl :if={@live_action == :generated} id="key-generated-variables" class="grid gap-3">
+            <div class="grid gap-1">
+              <dt class="q-mono text-faint">QORY_ACCESS_KEY_ID</dt>
+              <dd class="flex items-center gap-2">
+                <code
+                  id="key-generated-id"
+                  class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
+                >{variable(@variables, "QORY_ACCESS_KEY_ID")}</code>
+                <.copy_button
+                  id="key-generated-id-copy"
+                  target="#key-generated-id"
+                  label={gettext("Copy %{name}", name: "QORY_ACCESS_KEY_ID")}
+                  placement="left"
+                  icon_only
+                />
+              </dd>
+            </div>
+            <div class="grid gap-1">
+              <dt class="q-mono text-faint">QORY_ACCESS_KEY_SECRET</dt>
+              <dd class="flex items-center gap-2">
+                <%!-- The secret's slot: never patched or read by LiveView, empty from the
+                     server. The hook writes the secret it holds into the value, as text,
+                     only if this public key, the one the server stored, is its own. --%>
+                <div
+                  id="key-generated-secret"
+                  phx-update="ignore"
+                  data-public-key={Base.url_encode64(@key.public_key, padding: false)}
+                  class="grid min-w-0 flex-1 gap-1"
+                >
+                  <code
+                    id="key-generated-secret-value"
+                    tabindex="-1"
+                    class="block min-h-7 min-w-0 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5 empty:hidden"
+                  ></code>
+                  <p id="key-generated-secret-gone" class="hidden text-muted">
+                    {gettext(
+                      "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke %{label} and generate another key.",
+                      label: @key.label
+                    )}
+                  </p>
+                </div>
+                <.copy_button
+                  id="key-generated-secret-copy"
+                  target="#key-generated-secret-value"
+                  label={gettext("Copy %{name}", name: "QORY_ACCESS_KEY_SECRET")}
+                  placement="left"
+                  icon_only
+                />
+              </dd>
+            </div>
+            <div class="grid gap-1">
+              <dt class="q-mono text-faint">QORY_APIARY_PUBLIC_KEY</dt>
+              <dd class="flex items-center gap-2">
+                <code
+                  id="key-generated-pin"
+                  class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
+                >{variable(@variables, "QORY_APIARY_PUBLIC_KEY")}</code>
+                <.copy_button
+                  id="key-generated-pin-copy"
+                  target="#key-generated-pin"
+                  label={gettext("Copy %{name}", name: "QORY_APIARY_PUBLIC_KEY")}
+                  placement="left"
+                  icon_only
+                />
+              </dd>
+            </div>
+          </dl>
+
+          <p :if={@live_action == :generated} id="key-generated-where" class="text-muted">
+            <.rich text={
+              rich_gettext(
+                "Only QORY_ACCESS_KEY_SECRET belongs in your CI's secret store; the other two are plain settings. The runner file then needs only %{url}.",
+                url: {:m, "url"}
+              )
+            } />
+          </p>
+
+          <%!-- Done alone: leaving cancels nothing, the key is added. --%>
+          <SettingsComponents.save :if={@live_action == :generated} id="key-generated-done">
+            <.button id="key-generated-done-button" variant="primary" patch={@paths.access_key}>
+              {gettext("Done")}
+            </.button>
+            <:note>{gettext("Once you leave this page, the secret is not shown again.")}</:note>
           </SettingsComponents.save>
         </div>
       </section>
@@ -1056,6 +1473,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # The tab.
   def render(assigns) do
+    ways = ways(assigns.node, assigns.may)
+
+    assigns =
+      assign(assigns,
+        ways: ways,
+        lead: ways != [] and not Enum.any?(assigns.keys, &(state(&1) == :active))
+      )
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -1082,36 +1507,42 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <p :if={!@manages} id="node-keys-members" class="text-[13px]/5 text-muted">
             {gettext("Only owners and admins manage a node's keys.")}
           </p>
-          <div :if={@may.add_key or @may.new_code} class="flex flex-wrap gap-2">
+          <%!-- While the node holds no active key, the way that suits its kind leads:
+               a heading, one sentence, and its button first and primary. --%>
+          <div :if={@lead} id="node-keys-lead" class="grid gap-2">
+            <h3 id="node-keys-lead-title" class="text-[14px]/5 font-medium">
+              {if @node.kind == :pool,
+                do: gettext("Generate a key for this pool"),
+                else: gettext("Enrol this machine with qory")}
+            </h3>
+            <p :if={@node.kind == :pool} class="text-[13px]/5 text-muted">
+              {gettext(
+                "The pool's instances share one key. This browser makes it and shows you the secret once, for your CI's secret store; Qory receives only the public half."
+              )}
+            </p>
+            <p :if={@node.kind != :pool} class="text-[13px]/5 text-muted">
+              <.rich text={
+                rich_gettext(
+                  "Make a code, then run %{enrol} with it on the machine. The machine makes its own key, and the secret never shows on a screen.",
+                  enrol: {:m, "qory access-key enrol"}
+                )
+              } />
+            </p>
+          </div>
+          <div :if={@ways != []} id="node-keys-ways" class="flex flex-wrap gap-2">
             <.button
-              :if={@may.add_key}
-              id="key-add-button"
-              patch={@paths.add_key}
+              :for={{way, index} <- Enum.with_index(@ways)}
+              id={way_id(way)}
+              patch={way_path(@paths, way)}
+              variant={if @lead and index == 0, do: "primary", else: "default"}
               phx-hook="FocusOn"
             >
-              <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a public key")}
-            </.button>
-            <.button
-              :if={@may.new_code}
-              id="code-new-button"
-              patch={@paths.new_code}
-              phx-hook="FocusOn"
-            >
-              <.icon name="hero-plus-micro" class="size-4" />{gettext("New enrolment code")}
+              <.icon name="hero-plus-micro" class="size-4" />{way_words(way)}
             </.button>
           </div>
 
-          <p :if={@keys == []} id="node-keys-none" class="text-[13px]/5 text-muted">
-            <.rich
-              :if={@may.new_code}
-              text={
-                rich_gettext(
-                  "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key %{create} printed there.",
-                  create: {:m, "qory access-key create"}
-                )
-              }
-            />
-            <span :if={!@may.new_code}>{gettext("No key yet.")}</span>
+          <p :if={@keys == [] and @ways == []} id="node-keys-none" class="text-[13px]/5 text-muted">
+            {gettext("No key yet.")}
           </p>
 
           <ul :if={@keys != []} id="node-keys-list" class="grid gap-3">
@@ -1355,6 +1786,35 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     </li>
     """
   end
+
+  # The ways to give the node a key the reader may take, the kind's own first: a node is
+  # one machine of its own, best enrolled with qory, which keeps the secret on it; a pool
+  # is a fleet, typically a CI, whose secret goes into a secret store anyway.
+  defp ways(%Node{kind: kind}, may) do
+    order =
+      if kind == :pool,
+        do: [:generate, :new_code, :add_key],
+        else: [:new_code, :generate, :add_key]
+
+    Enum.filter(order, fn
+      :new_code -> may.new_code
+      _adds -> may.add_key
+    end)
+  end
+
+  defp way_id(:new_code), do: "code-new-button"
+  defp way_id(:generate), do: "key-generate-button"
+  defp way_id(:add_key), do: "key-add-button"
+
+  defp way_path(paths, :new_code), do: paths.new_code
+  defp way_path(paths, :generate), do: paths.generate
+  defp way_path(paths, :add_key), do: paths.add_key
+
+  defp way_words(:new_code), do: gettext("New enrolment code")
+  defp way_words(:generate), do: gettext("Generate a key")
+  defp way_words(:add_key), do: gettext("Add a public key")
+
+  defp variable(variables, name), do: variables |> List.keyfind!(name, 0) |> elem(1)
 
   defp nodes_path(paths), do: String.replace(paths.overview, ~r{/[^/]+$}, "")
 end

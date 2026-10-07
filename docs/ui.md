@@ -831,15 +831,55 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   record. A node the workspace does not have, or a deleted one, is not found.
 - **Access key**, a node's tab, opens on "A machine signs every request with its own
   key. Qory keeps only the public half.", the key limit ("A node holds at most 2 keys at
-  a time."), Add a public key and New enrolment code, then the keys as cards and the
-  outstanding codes. A key is Active from the moment it arrives, enrolled with a code or
-  pasted, until it is revoked: its card names it Active or Revoked, and an active key's
-  Revoke… is confirmed in place; nothing awaits approval. A key whose record doesn't match
-  its integrity code says so on its card: "… It can't be used." With no key it tells owners and admins how a machine gets one:
-  "No key yet. Make an enrolment code and run the command it shows on the machine, or add
-  the public key `qory access-key create` printed there."; a member reads "No key yet."
-  An active key's card links **Runner file lines**,
-  for everyone who reads the node.
+  a time."), the ways to give it a key, then the keys as cards and the outstanding codes.
+  While the node holds no active key, owners and admins are led by the way that suits its
+  kind (`#node-keys-lead`): a node by "Enrol this machine with qory" and "Make a code,
+  then run `qory access-key enrol` with it on the machine. The machine makes its own key,
+  and the secret never shows on a screen.", with New enrolment code (primary), Generate a
+  key and Add a public key; a pool by "Generate a key for this pool" and "The pool's
+  instances share one key. This browser makes it and shows you the secret once, for your
+  CI's secret store; Qory receives only the public half.", with Generate a key (primary),
+  New enrolment code and Add a public key. Once it holds an active key the heading and the
+  sentence go and the three buttons stay, plain, in the same order. A member sees none of
+  them, and with no key reads "No key yet." A key is Active from the moment it arrives,
+  enrolled with a code, pasted or made in a browser, until it is revoked: its card names
+  it Active or Revoked, says how it arrived ("With an enrolment code dana@example.com
+  made, …", "Pasted by …", "Made in a browser by …"), and an active key's Revoke… is
+  confirmed in place; nothing awaits approval. A key whose record doesn't match its
+  integrity code says so on its card: "… It can't be used." An active key's card links
+  **Runner file lines**, for everyone who reads the node.
+- **Generate a key** (`/nodes/:node_id/access-key/generate`, owners and admins; at the
+  key limit it goes back to the tab with "build-01 holds two keys already. Revoke one
+  before you add another.") is a form page: "A key for build-01, made in this browser.
+  Only its public half is sent to Qory, and you see the secret once, as soon as it is
+  made. For a machine of your own, enrolling it with qory keeps the secret off every
+  screen." (a pool's leaves out the last sentence), Label and Stored secrets, and
+  Generate key ("Generating") with Cancel. The browser makes the Ed25519 key (the
+  `GenerateKey` hook) and sends Qory the label, the flag and the public key alone; the
+  form has no other field. Where the browser can't make one it says why and Generate key
+  stays off: "This browser makes keys only on a page served over HTTPS. Open Qory over
+  HTTPS, or enrol the machine with qory." or "This browser can't make an Ed25519 key. Use
+  a current Chrome, Edge, Firefox or Safari, or enrol the machine with qory."; a key lost
+  on its way says "The connection to Qory dropped before the key was confirmed, and its
+  secret is gone. If a new key shows on the Access key tab, revoke it, then generate
+  another." Anything sent beyond those three values, a label or choice holding a secret,
+  or a public key that does not decode as one, goes back to the tab with "The key wasn't
+  added. Try again.", and nothing is added.
+- **Variables for build-01** (`/nodes/:node_id/access-key/keys/:key_id/generated`) is
+  what Generate key leads to, with its flash "build-01 is added.": "For build-01. Set
+  these three variables where the runner starts.", the notice "**The secret is shown
+  once.** Copy it now: it was made in this browser, Qory never received it, and it can't
+  be shown again.", then `QORY_ACCESS_KEY_ID`, `QORY_ACCESS_KEY_SECRET` and
+  `QORY_APIARY_PUBLIC_KEY` (the pin as JSON), each with Copy, "Only
+  QORY_ACCESS_KEY_SECRET belongs in your CI's secret store; the other two are plain
+  settings. The runner file then needs only `url`.", and Done back to the tab ("Once you
+  leave this page, the secret is not shown again."), the focus on the key's heading. The
+  secret is the browser's alone: the server renders its place empty, and the page that
+  made the key fills it. Opened again, the page shows the id and the pin and "Not shown:
+  only the page that made the key held its secret, and this one was opened again. If you
+  didn't copy it, revoke build-01 and generate another key." It is the page of an active
+  key the reader made in a browser while they may add keys; another key's address goes to
+  its runner file, a revoked one's back to the tab.
 - **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`,
   an active key's alone; a revoked one goes back to the tab with "build-01 is revoked.")
   is a page, not a dialog, and what Add key leads to, with its flash "build-01 is

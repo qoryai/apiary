@@ -5,7 +5,7 @@ defmodule Apiary.NodeKeyRacesTest do
   # they run, and they delete it again before they end; the ledger, which outlives an
   # organisation, by the public keys they made.
   #
-  # The rules under test (`Apiary.AccessKeys.add_access_key/3`): a paste locks the node's
+  # The rules under test (`Apiary.AccessKeys.add_access_key/4`): a paste locks the node's
   # row `FOR UPDATE` before it counts the node's keys, so two pastes on one node take
   # turns, and the second counts the first; a public key enters the ledger by its unique
   # key, so two pastes of one key on two nodes wait on each other there, and the second
