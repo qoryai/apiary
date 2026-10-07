@@ -72,7 +72,111 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       {:ok, lv, _html} = live(member_conn(scope, :member), secrets_path(scope))
       assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
-      assert has_element?(lv, "#secrets-view-secrets[aria-current=page]")
+      assert has_element?(lv, "#secrets-tabs-secrets[aria-current=page]")
+    end
+
+    test "has two tabs under its title, links with their counts, each with its own panel",
+         %{conn: conn, scope: scope} do
+      secret!(scope, %{name: "FORGE_TOKEN"})
+      variable!(scope, :workspace, "NODE_ENV", "production")
+      variable!(scope, :workspace, "NPM_REGISTRY", "https://registry.example.com")
+      names = "#{scope.workspace.name} · #{scope.organisation.name}"
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+
+      # The section is the h1, the level is the frame's: the breadcrumb ends with the
+      # section, the page.
+      assert has_element?(lv, "h1#settings-section-title", "Secrets and variables")
+      assert has_element?(lv, "#breadcrumb-settings", "Workspace settings")
+      assert has_element?(lv, "#breadcrumb-section[aria-current=page]", "Secrets and variables")
+      assert page_title(lv) =~ "Secrets and variables · Workspace settings · #{names}"
+
+      # The tabs are links in a navigation named by the section, not an ARIA tablist.
+      assert has_element?(lv, "nav#secrets-tabs[aria-label='Secrets and variables']")
+      refute has_element?(lv, "#secrets-tabs [role=tab]")
+      refute has_element?(lv, "#secrets-tabs[role=tablist]")
+      refute has_element?(lv, "#secrets-views")
+
+      assert has_element?(
+               lv,
+               "#secrets-tabs a#secrets-tabs-secrets[href='#{secrets_path(scope)}'][aria-current=page]",
+               "Secrets"
+             )
+
+      assert has_element?(lv, "#secrets-tabs-secrets .q-tabs-n", "1")
+
+      assert has_element?(
+               lv,
+               "#secrets-tabs a#secrets-tabs-variables[href='#{variables_path(scope)}']:not([aria-current])",
+               "Variables"
+             )
+
+      assert has_element?(lv, "#secrets-tabs-variables .q-tabs-n", "2")
+
+      # The header's action does not change with the tab: each tab's New is in its panel,
+      # beside its search.
+      refute has_element?(lv, "#settings-section-secrets .q-settings-actions")
+      assert has_element?(lv, "#secrets-tabs-panel .q-bar #new-secret")
+      assert has_element?(lv, "#secrets-tabs-panel .q-bar #secrets-search")
+      refute has_element?(lv, "#new-variable")
+
+      # One status line, there from the start: nothing to say on arrival.
+      assert lv |> element("#secrets-and-variables-status[role=status]") |> render() =~
+               ~r{<div[^>]*>\s*</div>}
+
+      lv |> element("#secrets-tabs-variables") |> render_click()
+      assert_patch(lv, variables_path(scope))
+
+      assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
+      refute has_element?(lv, "#secrets-tabs-secrets[aria-current]")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
+      assert has_element?(lv, "#breadcrumb-section[aria-current=page]", "Secrets and variables")
+
+      assert page_title(lv) =~
+               "Variables · Secrets and variables · Workspace settings · #{names}"
+
+      assert has_element?(lv, "#secrets-and-variables-status", "Variables, 2")
+      assert has_element?(lv, "#secrets-tabs-panel .q-bar #new-variable")
+      assert has_element?(lv, "#secrets-tabs-panel .q-bar #variables-search")
+      refute has_element?(lv, "#new-secret")
+
+      assert has_element?(
+               lv,
+               "#secrets-tabs-panel #not-on-runs",
+               "Runs don't receive variables yet."
+             )
+
+      lv |> element("#secrets-tabs-secrets") |> render_click()
+      assert_patch(lv, secrets_path(scope))
+      assert has_element?(lv, "#secrets-and-variables-status", "Secrets, 1")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
+
+      # A search says what it left, in the same line.
+      lv |> form("#secrets-search", q: "forge") |> render_change()
+      assert has_element?(lv, "#secrets-and-variables-status", "1 secret matches")
+      refute has_element?(lv, "#secrets-and-variables-status", "Secrets, 1")
+    end
+
+    test "shows no tabs on a page of a form", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/new"))
+
+      refute has_element?(lv, "#secrets-tabs")
+      refute has_element?(lv, "#secrets-and-variables-status")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
+
+      # The tabs are not segments: the trail goes from the section to the page.
+      assert has_element?(lv, "#breadcrumb-settings", "Workspace settings")
+
+      assert has_element?(
+               lv,
+               "#breadcrumb a#breadcrumb-section[href='#{variables_path(scope)}']",
+               "Secrets and variables"
+             )
+
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New variable")
+
+      assert page_title(lv) =~
+               "New variable · Workspace settings · #{scope.workspace.name} · #{scope.organisation.name}"
     end
 
     test "is another organisation's to read, not this one's", %{scope: scope} do
@@ -114,11 +218,15 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute has_element?(lv, "#secret-page-back")
       assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")
       refute render(lv) =~ "runs are given"
-      assert has_element?(lv, "#breadcrumb a", "Secrets and variables")
+      refute has_element?(lv, "#secrets-tabs")
+      assert has_element?(lv, "#breadcrumb-settings", "Workspace settings")
+      assert has_element?(lv, "#breadcrumb a#breadcrumb-section", "Secrets and variables")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "New secret")
       assert has_element?(lv, "#secret-form textarea[name='secret[value]']")
       assert has_element?(lv, "#secret-save-cancel[href='#{secrets_path(scope)}']", "Cancel")
-      assert page_title(lv) =~ "New secret"
+
+      assert page_title(lv) =~
+               "New secret · Workspace settings · #{scope.workspace.name} · #{scope.organisation.name}"
 
       # The form sends nothing until it is submitted: a value travels only then.
       refute lv |> element("#secret-form") |> render() =~ "phx-change"
@@ -528,7 +636,8 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
          %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, variables_path(scope))
       assert has_element?(lv, "#variables-empty")
-      assert has_element?(lv, "#secrets-view-variables[aria-current=page]")
+      assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
 
       # No run receives a variable yet, which the view says once, and nothing says
       # otherwise.

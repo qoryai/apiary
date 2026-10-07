@@ -110,10 +110,11 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
     @tag needs: :security
     test "Secrets and variables, and each of its pages, are the section's",
          %{conn: conn, scope: scope} do
-      # The section is the page on its lists, and the parent of a page under them.
+      # The section is the page on its first tab, Secrets, the one its entry leads to; it is
+      # the parent on Variables, where the tab is the page, and on a page under them.
       for {rest, current} <- [
             {"/secrets", "page"},
-            {"/variables", "page"},
+            {"/variables", "true"},
             {"/secrets/new", "true"},
             {"/variables/new", "true"}
           ] do

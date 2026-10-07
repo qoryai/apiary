@@ -2,19 +2,23 @@ defmodule ApiaryWeb.SecretLive.Index do
   @moduledoc """
   The workspace's Secrets and variables, a section of its settings
   (`ApiaryWeb.SettingsComponents`, the frame's second column) with the `security` feature:
-  two views of one page, Secrets (`/:org/:workspace/settings/secrets`) and Variables
-  (`…/settings/variables`), each a list on the list pattern (a search, a Filter menu, Sort,
-  the filters in force as tokens, all in the URL; `ApiaryWeb.SecretLive.Query`). Nothing
-  opens over the page: each act is at a path of its own, a form a page of its own
+  two tabs under the section's title (`ApiaryWeb.PageComponents.page_tabs/1`, links, each
+  with its count), Secrets (`/:org/:workspace/settings/secrets`) and Variables
+  (`…/settings/variables`). Each tab's panel holds its New and its list on the list pattern
+  (a search, a Filter menu, Sort, the filters in force as tokens, all in the URL;
+  `ApiaryWeb.SecretLive.Query`); one status line says a switch and what a search left.
+  The second column marks the section as the page on Secrets, and as its parent
+  (`aria-current="true"`) on Variables and on every page of a form, which shows no tabs.
+  Nothing opens over the page: each act is at a path of its own, a form a page of its own
   (`ApiaryWeb.PageComponents.page_form/1`: its title, one sentence, the form, its button
-  and Cancel back to the view, the breadcrumb ending with the section and the page), and
+  and Cancel back to the tab, the breadcrumb ending with the section and the page), and
   so is the list of a variable's targets; a deletion asks to confirm in place, on its row
   (`CoreComponents.inline_confirm/1`). Lock and Unlock act at once from the row's menu;
   their paths, which must not act as they open, ask on the row first. A confirmation the
   context refuses stays open and says why under its question.
 
   No run receives a secret or a variable yet: a run receives its security policy alone.
-  Each view, and each of its pages, says so once, near its top
+  Each tab, and each of its pages, says so once, near its top
   (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a run is
   given what it holds.
 
@@ -92,6 +96,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       sections={@sections}
       section={:secrets}
       section_path={list_path(@current_scope, @view, @query)}
+      section_current="true"
     >
       <:crumb>{crumb_words(@act)}</:crumb>
 
@@ -109,7 +114,24 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
+  # The section: its title and sentence, then its two tabs, Secrets and Variables, each a
+  # link with an address of its own (`page_tabs/1`, not an ARIA tablist) that wraps and
+  # does not stick. Under them the panel of the tab: the line that runs don't receive
+  # these yet, who changes them, its New beside its search, Filter and Sort, and its list.
+  # One status line, there from the start and outside both tabs' parts, says a switch
+  # ("Variables, 7") and what a search left.
   def render(assigns) do
+    assigns =
+      assign(assigns,
+        tokens: Query.tokens(assigns.query),
+        shown:
+          if(assigns.view == :secrets,
+            do: Query.secrets(assigns.secrets, assigns.query),
+            else: Query.variables(assigns.variables, assigns.targets, assigns.query)
+          ),
+        listed: if(assigns.view == :secrets, do: assigns.secrets, else: assigns.variables)
+      )
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -119,6 +141,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       nav={:settings}
       sections={@sections}
       section={:secrets}
+      section_current={if @view == :variables, do: "true", else: "page"}
     >
       <.settings_page
         section={:secrets}
@@ -128,67 +151,86 @@ defmodule ApiaryWeb.SecretLive.Index do
         <:subtitle>
           {gettext("A secret is never shown again once it is saved; a variable is plain text.")}
         </:subtitle>
-        <:actions :if={@view == :secrets && @may_write}>
-          <.button
-            id="new-secret"
-            variant="primary"
-            patch={
-              ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/secrets/new"
-            }
-          >
-            <.icon name="hero-plus-micro" class="size-4" /> {gettext("New secret")}
-          </.button>
-        </:actions>
-        <:actions :if={@view == :variables && @may_edit}>
-          <.button
-            id="new-variable"
-            variant="primary"
-            patch={
-              ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/variables/new"
-            }
-          >
-            <.icon name="hero-plus-micro" class="size-4" /> {gettext("New variable")}
-          </.button>
-        </:actions>
 
-        <div class="-mt-2 grid gap-1">
-          <.not_on_runs>{not_on_runs_words(@view)}</.not_on_runs>
-          <p
-            :if={(@view == :secrets && !@may_write) || (@view == :variables && !@may_edit)}
-            id="secrets-read-only"
-            class="text-[13px]/5 text-muted"
-          >
-            {gettext("Only owners and admins change this.")}
-          </p>
-        </div>
-
-        <.views id="secrets-views" label={gettext("Secrets and variables")}>
-          <:view
-            id="secrets-view-secrets"
+        <.page_tabs
+          id="secrets-tabs"
+          label={gettext("Secrets and variables")}
+          current={@view}
+          place="section"
+        >
+          <:tab
+            key={:secrets}
             patch={list_path(@current_scope, :secrets, Query.for_secrets(@query))}
-            current={@view == :secrets}
-            count={Format.number(length(@secrets))}
+            count={length(@secrets)}
           >
             {gettext("Secrets")}
-          </:view>
-          <:view
-            id="secrets-view-variables"
+          </:tab>
+          <:tab
+            key={:variables}
             patch={list_path(@current_scope, :variables, Query.for_variables(@query))}
-            current={@view == :variables}
-            count={Format.number(length(@variables))}
+            count={length(@variables)}
           >
             {gettext("Variables")}
-          </:view>
-        </.views>
+          </:tab>
+        </.page_tabs>
 
-        <.secrets_view :if={@view == :secrets} {assigns} />
-        <.variables_view :if={@view == :variables} {assigns} />
+        <div id="secrets-tabs-panel" class="grid gap-5">
+          <div class="-mt-2 grid gap-1">
+            <.not_on_runs>{not_on_runs_words(@view)}</.not_on_runs>
+            <p
+              :if={(@view == :secrets && !@may_write) || (@view == :variables && !@may_edit)}
+              id="secrets-read-only"
+              class="text-[13px]/5 text-muted"
+            >
+              {gettext("Only owners and admins change this.")}
+            </p>
+          </div>
+
+          <.secrets_bar :if={@view == :secrets} {assigns} />
+          <.variables_bar :if={@view == :variables} {assigns} />
+
+          <%!-- Always there, so a screen reader hears the tab it switched to and what the
+               search left. Out of sight unless a search narrowed the list. --%>
+          <div
+            id="secrets-and-variables-status"
+            role="status"
+            class={["q-status", !(Query.narrowed?(@query) && @listed != []) && "sr-only"]}
+          >
+            <span :if={@switched} class="sr-only">{switch_words(@view, length(@listed))}</span>
+            <p :if={Query.narrowed?(@query) && @listed != []} class="text-[13px] text-muted">
+              {match_words(@view, length(@shown))}
+            </p>
+          </div>
+
+          <.secrets_list :if={@view == :secrets} {assigns} />
+          <.variables_list :if={@view == :variables} {assigns} />
+        </div>
       </.settings_page>
     </Layouts.app>
     """
   end
 
-  # The one line each view, and each of its pages, says of what it holds: no run receives
+  # What the status line says after a switch: the tab, and how many it holds.
+  defp switch_words(:secrets, number),
+    do: gettext("Secrets, %{number}", number: Format.number(number))
+
+  defp switch_words(:variables, number),
+    do: gettext("Variables, %{number}", number: Format.number(number))
+
+  # What it says while a search or a filter narrows the list.
+  defp match_words(:secrets, number),
+    do:
+      ngettext("%{number} secret matches", "%{number} secrets match", number,
+        number: Format.number(number)
+      )
+
+  defp match_words(:variables, number),
+    do:
+      ngettext("%{number} variable matches", "%{number} variables match", number,
+        number: Format.number(number)
+      )
+
+  # The one line each tab, and each of its pages, says of what it holds: no run receives
   # a secret or a variable yet; a run receives its security policy alone (`/v1`).
   defp not_on_runs_words(:secrets),
     do: gettext("Runs don't receive secrets yet. Today a run receives only its security policy.")
@@ -199,23 +241,28 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## The secrets
 
-  defp secrets_view(assigns) do
-    assigns =
-      assign(assigns,
-        shown: Query.secrets(assigns.secrets, assigns.query),
-        tokens: Query.tokens(assigns.query)
-      )
-
+  # The tab's New, beside its search, Filter and Sort while it holds any, and the filters
+  # in force.
+  defp secrets_bar(assigns) do
     ~H"""
-    <div :if={@secrets != []} class="q-bar">
+    <div :if={@may_write || @secrets != []} class="q-bar">
+      <.button
+        :if={@may_write}
+        id="new-secret"
+        variant="primary"
+        patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/secrets/new"}
+      >
+        <.icon name="hero-plus-micro" class="size-4" /> {gettext("New secret")}
+      </.button>
       <.list_search
+        :if={@secrets != []}
         id="secrets-search"
         value={@query.q}
         label={gettext("Find a secret")}
         placeholder={gettext("Find a secret by name or value ID")}
         change="find"
       />
-      <.filter_menu id="secrets-filter" count={length(@tokens)}>
+      <.filter_menu :if={@secrets != []} id="secrets-filter" count={length(@tokens)}>
         <.menu_heading title={gettext("Values")} />
         <.menu_item
           :for={{values, words} <- [one: gettext("One value"), several: gettext("Several values")]}
@@ -226,7 +273,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           {words}
         </.menu_item>
       </.filter_menu>
-      <.sort_menu id="secrets-sort" current={sort_words(@query.sort)}>
+      <.sort_menu :if={@secrets != []} id="secrets-sort" current={sort_words(@query.sort)}>
         <.menu_item
           :for={sort <- [:name, :changed]}
           id={"secrets-sort-#{sort}"}
@@ -251,16 +298,11 @@ defmodule ApiaryWeb.SecretLive.Index do
         {token_words(token)}
       </:token>
     </.filter_tokens>
+    """
+  end
 
-    <%!-- Always there, so a screen reader hears what the search left. --%>
-    <div id="secrets-status" role="status" class="q-status">
-      <p :if={Query.narrowed?(@query) && @secrets != []} class="text-[13px] text-muted">
-        {ngettext("%{number} secret matches", "%{number} secrets match", length(@shown),
-          number: Format.number(length(@shown))
-        )}
-      </p>
-    </div>
-
+  defp secrets_list(assigns) do
+    ~H"""
     <div :if={@secrets == []} id="secrets-empty">
       <.empty_state
         icon="hero-lock-closed"
@@ -496,24 +538,28 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## The variables
 
-  defp variables_view(assigns) do
-    assigns =
-      assign(assigns,
-        shown: Query.variables(assigns.variables, assigns.targets, assigns.query),
-        tokens: Query.tokens(assigns.query),
-        shared: shared_paths(assigns.targets)
-      )
-
+  # The tab's New, beside its search, Filter and Sort while it holds any, and the filters
+  # in force.
+  defp variables_bar(assigns) do
     ~H"""
-    <div :if={@variables != []} class="q-bar">
+    <div :if={@may_edit || @variables != []} class="q-bar">
+      <.button
+        :if={@may_edit}
+        id="new-variable"
+        variant="primary"
+        patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/variables/new"}
+      >
+        <.icon name="hero-plus-micro" class="size-4" /> {gettext("New variable")}
+      </.button>
       <.list_search
+        :if={@variables != []}
         id="variables-search"
         value={@query.q}
         label={gettext("Find a variable")}
         placeholder={gettext("Find a variable by name or value")}
         change="find"
       />
-      <.filter_menu id="variables-filter" count={length(@tokens)}>
+      <.filter_menu :if={@variables != []} id="variables-filter" count={length(@tokens)}>
         <.menu_heading title={gettext("Lock")} />
         <.menu_item
           :for={{lock, words} <- [yes: gettext("Locked"), no: gettext("Not locked")]}
@@ -533,7 +579,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           {gettext("Set by a target too")}
         </.menu_item>
       </.filter_menu>
-      <.sort_menu id="variables-sort" current={sort_words(@query.sort)}>
+      <.sort_menu :if={@variables != []} id="variables-sort" current={sort_words(@query.sort)}>
         <.menu_item
           :for={sort <- [:name, :changed]}
           id={"variables-sort-#{sort}"}
@@ -558,15 +604,11 @@ defmodule ApiaryWeb.SecretLive.Index do
         {token_words(token)}
       </:token>
     </.filter_tokens>
+    """
+  end
 
-    <div id="variables-status" role="status" class="q-status">
-      <p :if={Query.narrowed?(@query) && @variables != []} class="text-[13px] text-muted">
-        {ngettext("%{number} variable matches", "%{number} variables match", length(@shown),
-          number: Format.number(length(@shown))
-        )}
-      </p>
-    </div>
-
+  defp variables_list(assigns) do
+    ~H"""
     <div :if={@variables == []} id="variables-empty">
       <.empty_state
         icon="hero-variable"
@@ -1458,9 +1500,11 @@ defmodule ApiaryWeb.SecretLive.Index do
     socket =
       socket
       |> assign(
-        page_title: gettext("Secrets and variables") <> " · " <> gettext("Workspace settings"),
+        page_title:
+          SettingsComponents.page_title(scope, :workspace, [gettext("Secrets and variables")]),
         sections: SettingsComponents.sections(scope, :workspace),
         query: %Query{},
+        switched: false,
         act: nil,
         secret: nil,
         value: nil,
@@ -1524,10 +1568,16 @@ defmodule ApiaryWeb.SecretLive.Index do
   @impl true
   def handle_params(params, _uri, socket) do
     action = socket.assigns.live_action
+    view = if(action in [:secrets | @secret_acts], do: :secrets, else: :variables)
+
+    # A switch from one tab to the other, which the status line says; not a page's
+    # first view, nor a return from a page of the same tab.
+    switched =
+      action in [:secrets, :variables] and socket.assigns[:view] not in [nil, view]
 
     socket =
       socket
-      |> assign(view: if(action in [:secrets | @secret_acts], do: :secrets, else: :variables))
+      |> assign(view: view, switched: switched)
       |> assign(
         act: nil,
         secret: nil,
@@ -1546,22 +1596,27 @@ defmodule ApiaryWeb.SecretLive.Index do
     {:noreply, socket |> open(action, params) |> titled()}
   end
 
-  # The browser's title: a page of a form is named by its act, the views by the section.
-  defp titled(%{assigns: %{act: act}} = socket) when act in @pages,
-    do:
-      assign(
-        socket,
-        :page_title,
-        form_title(socket.assigns) <> " · " <> gettext("Workspace settings")
-      )
-
+  # The browser's title, the most specific first (`SettingsComponents.page_title/3`): a
+  # page of a form is named by its act, the Secrets tab by the section, the Variables tab
+  # by the tab and the section.
   defp titled(socket),
+    do: assign(socket, :page_title, title_of(socket.assigns))
+
+  defp title_of(%{act: act} = assigns) when act in @pages,
+    do: SettingsComponents.page_title(assigns.current_scope, :workspace, [form_title(assigns)])
+
+  defp title_of(%{view: :variables} = assigns),
     do:
-      assign(
-        socket,
-        :page_title,
-        gettext("Secrets and variables") <> " · " <> gettext("Workspace settings")
-      )
+      SettingsComponents.page_title(assigns.current_scope, :workspace, [
+        gettext("Variables"),
+        gettext("Secrets and variables")
+      ])
+
+  defp title_of(assigns),
+    do:
+      SettingsComponents.page_title(assigns.current_scope, :workspace, [
+        gettext("Secrets and variables")
+      ])
 
   defp open(socket, action, _params) when action in [:secrets, :variables], do: socket
 

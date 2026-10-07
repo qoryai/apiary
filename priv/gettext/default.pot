@@ -9702,6 +9702,11 @@ msgstr ""
 msgid "Secrets it declares"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets, %{number}"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "See runs here"
@@ -11861,6 +11866,11 @@ msgstr ""
 msgid "Variables"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Variables, %{number}"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -12234,7 +12244,6 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
 msgstr ""
