@@ -2304,12 +2304,12 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A secret holds a value such as a token for a system. Once it is saved, nobody sees it again."
-msgstr "A secret holds a value such as a token for a forge. Once it is saved, nobody sees it again."
+msgid "A secret holds at most %{number} values."
+msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A secret holds at most %{number} values."
+msgid "A secret holds one value, such as a token, or several under one name, such as one per app. Once a value is saved, nobody sees it again."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -2676,6 +2676,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add an integration"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add another value"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -8139,11 +8144,6 @@ msgstr ""
 msgid "Only an owner or an admin sets a mode."
 msgstr ""
 
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Only for a secret that will hold several values: a lowercase name for this one."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only its description.json and checksums.txt are read, and nothing of it runs on the server. You add it once they are read."
@@ -8927,6 +8927,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove"
 msgstr ""
@@ -9980,6 +9981,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Several values"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Several values, each with a value ID"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -11832,6 +11838,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Value %{number}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex

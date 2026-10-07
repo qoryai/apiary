@@ -23,11 +23,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   given what it holds.
 
   - **Secrets** (`Apiary.Secrets`): a secret's name and note, its value ids, who changed
-    each value and when, and what uses it; never a value. New secret, then Edit name and
-    note, Add value, Change value, Rename value and Delete value, and Delete secret. A
-    value is written into a field and sent once: the page never renders it, nor keeps it
-    in an assign, so the field is empty after a save and after a refused one, and the form
-    the context hands back holds none (`Apiary.Secrets.change_secret/2`).
+    each value and when, and what uses it; never a value. New secret, with one value or
+    several, each with its value ID, saved at once (its rows added in the browser alone,
+    by the `SecretValues` hook), then Edit name and note, Add value, Change value, Rename
+    value and Delete value, and Delete secret. A value is written into a field and sent
+    once: the page never renders it, nor keeps it in an assign, so the field is empty
+    after a save and after a refused one, and the form the context hands back holds none
+    (`Apiary.Secrets.change_secret/2`).
   - **Variables** (`Apiary.Variables`): the workspace's own, each with its value, which
     is plain configuration, its lock, and the targets that set their own value or whose
     value a lock sets aside, from their resolution
@@ -801,9 +803,26 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## The pages of a form
 
+  # New secret: its name, then the Values choice, one value or several, each with a value
+  # ID. The choice shows the fields of one or of the other, and "Add another value" adds a
+  # row, in the browser alone (the `SecretValues` hook, assets/js/hooks/secret_values.js):
+  # nothing is sent before Save, and the fields of the choice not taken are not sent then.
   defp form_page(%{act: :new_secret} = assigns) do
+    assigns =
+      assign(assigns,
+        several: assigns.values_kind == "several",
+        full: length(assigns.value_rows) >= Secrets.max_values()
+      )
+
     ~H"""
-    <.form for={@form} id="secret-form" phx-submit="create_secret" class="grid gap-4" novalidate>
+    <.form
+      for={@form}
+      id="secret-form"
+      phx-submit="create_secret"
+      phx-hook="SecretValues"
+      class="grid gap-4"
+      novalidate
+    >
       <.input
         field={@form[:name]}
         label={gettext("Name")}
@@ -814,19 +833,51 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
         phx-mounted={JS.focus()}
       />
-      <.value_field form={@form} />
       <.input
-        field={@form[:value_id]}
-        label={gettext("Value ID")}
-        optional
-        placeholder="main-app"
-        hint={
-          gettext("Only for a secret that will hold several values: a lowercase name for this one.")
-        }
-        autocomplete="off"
-        spellcheck="false"
-        class="font-mono"
+        id="secret_values_kind"
+        name="secret[values_kind]"
+        type="radio"
+        value={@values_kind}
+        label={gettext("Values")}
+        options={[
+          {gettext("One value"), "one"},
+          {gettext("Several values, each with a value ID"), "several"}
+        ]}
       />
+      <div id="secret-one-value" class="grid gap-4" hidden={@several}>
+        <.value_field form={@form} />
+      </div>
+      <div
+        id="secret-several-values"
+        class="grid gap-4"
+        hidden={!@several}
+        data-max={Secrets.max_values()}
+        data-legend={gettext("Value %{number}", number: "__NUMBER__")}
+      >
+        <ol id="secret-values" class="grid gap-4">
+          <.value_row :for={row <- @value_rows} {row} />
+        </ol>
+        <template id="secret-value-template">
+          <.value_row index="__INDEX__" number="__NUMBER__" removable template />
+        </template>
+        <p
+          :for={{message, i} <- Enum.with_index(@values_errors)}
+          id={if i == 0, do: "secret-values-error", else: "secret-values-error-#{i + 1}"}
+          class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        >
+          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />{message}
+        </p>
+        <div class="flex flex-wrap items-center gap-3">
+          <.button id="secret-add-value" type="button" data-add-value disabled={@full}>
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("Add another value")}
+          </.button>
+          <p id="secret-values-full" class="text-[12.5px]/[18px] text-muted" hidden={!@full}>
+            {gettext("A secret holds at most %{number} values.",
+              number: Format.number(Secrets.max_values())
+            )}
+          </p>
+        </div>
+      </div>
       <.input field={@form[:note]} label={gettext("What it is for")} optional autocomplete="off" />
       <.page_form_foot
         id="secret-save"
@@ -1168,7 +1219,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp secret_sentence,
     do:
       gettext(
-        "A secret holds a value such as a token for a system. Once it is saved, nobody sees it again."
+        "A secret holds one value, such as a token, or several under one name, such as one per app. Once a value is saved, nobody sees it again."
       )
 
   defp variable_sentence,
@@ -1395,6 +1446,96 @@ defmodule ApiaryWeb.SecretLive.Index do
     />
     """
   end
+
+  attr :index, :any, required: true, doc: "its index among the values the form sends"
+  attr :number, :any, required: true, doc: "its place among the values, from 1"
+  attr :value_id, :string, default: ""
+  attr :value_id_errors, :list, default: []
+  attr :value_errors, :list, default: []
+  attr :removable, :boolean, default: false
+  attr :template, :boolean, default: false, doc: "the row the hook copies, its fields off"
+
+  # One value of a new secret of several: its value ID and its value, a group named by
+  # its place ("Value 3", for whoever hears it), and Remove past the first two. The value
+  # is written, sent once and never rendered back, as `value_field/1`'s; its value ID is
+  # no secret, and a refused save shows it again.
+  defp value_row(assigns) do
+    ~H"""
+    <li id={"secret-value-#{@index}"} data-value-row data-index={@index}>
+      <fieldset class="grid gap-3 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto] sm:items-start">
+        <legend class="sr-only">{gettext("Value %{number}", number: @number)}</legend>
+        <.input
+          id={"secret_values_#{@index}_value_id"}
+          name={"secret[values][#{@index}][value_id]"}
+          value={@value_id}
+          label={gettext("Value ID")}
+          placeholder={value_id_placeholder(@number)}
+          hint={gettext("Lowercase letters, digits, ., _ and -.")}
+          errors={@value_id_errors}
+          autocomplete="off"
+          spellcheck="false"
+          class="font-mono"
+          disabled={@template}
+        />
+        <.input
+          id={"secret_values_#{@index}_value"}
+          name={"secret[values][#{@index}][value]"}
+          type="textarea"
+          value=""
+          label={gettext("Value")}
+          rows="4"
+          errors={@value_errors}
+          autocomplete="off"
+          spellcheck="false"
+          class="font-mono"
+          disabled={@template}
+        />
+        <.button
+          :if={@removable}
+          id={"secret-value-#{@index}-remove"}
+          type="button"
+          size="xs"
+          class="sm:mt-6"
+          data-remove-value
+        >
+          {gettext("Remove")}
+        </.button>
+      </fieldset>
+    </li>
+    """
+  end
+
+  defp value_id_placeholder(1), do: "main-app"
+  defp value_id_placeholder(2), do: "bot-app"
+  defp value_id_placeholder(_number), do: nil
+
+  # The rows of New secret's values: two to start; after a refused save, the values it
+  # sent, each with its value ID and its errors, and never its value.
+  defp value_rows(changeset \\ nil)
+
+  defp value_rows(%Ecto.Changeset{changes: %{values: [_ | _] = values}}) do
+    values
+    |> Enum.with_index()
+    |> Enum.map(fn {value, index} ->
+      %{
+        index: index,
+        number: index + 1,
+        value_id: to_string((value.params || %{})["value_id"] || ""),
+        value_id_errors: translate_errors(value.errors, :value_id),
+        value_errors: translate_errors(value.errors, :value),
+        removable: index >= 2
+      }
+    end)
+    |> then(&(&1 ++ blank_rows(length(&1))))
+  end
+
+  defp value_rows(_changeset), do: blank_rows(0)
+
+  # Blank rows after `count`, up to two.
+  defp blank_rows(count) when count >= 2, do: []
+
+  defp blank_rows(count),
+    do: for(index <- count..1//1, do: %{index: index, number: index + 1, removable: false})
 
   defp find_from, do: @find_from
 
@@ -1625,7 +1766,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       do:
         assign(socket,
           act: :new_secret,
-          form: secret_form(fresh(Secrets.change_secret(%Secret{})))
+          form: secret_form(fresh(Secrets.change_secret(%Secret{}))),
+          values_kind: "one",
+          value_rows: value_rows(),
+          values_errors: []
         ),
       else: refused(socket)
   end
@@ -1800,15 +1944,30 @@ defmodule ApiaryWeb.SecretLive.Index do
   def handle_event("find_target", %{"q" => q}, socket),
     do: {:noreply, assign(socket, :target_q, String.trim(q))}
 
+  # One value, or several, each with its value ID: only the fields of the choice taken
+  # are read, and a refused save shows the form again, its errors under their fields and
+  # every value empty, to write again.
   def handle_event("create_secret", %{"secret" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
+    kind = if params["values_kind"] == "several", do: "several", else: "one"
 
-    case Secrets.create_secret(scope, Map.take(params, ~w(name note value value_id))) do
+    attrs =
+      if kind == "several",
+        do: params |> Map.take(~w(name note)) |> Map.put("values", params["values"] || %{}),
+        else: Map.take(params, ~w(name note value))
+
+    case Secrets.create_secret(scope, attrs) do
       {:ok, secret} ->
         {:noreply, saved(socket, gettext("%{name} is saved.", name: secret.name))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :form, secret_form(changeset))}
+        {:noreply,
+         assign(socket,
+           form: secret_form(changeset),
+           values_kind: kind,
+           value_rows: if(kind == "several", do: value_rows(changeset), else: value_rows()),
+           values_errors: translate_errors(changeset.errors, :values)
+         )}
 
       {:error, reason} ->
         {:noreply, refusal(socket, reason)}
