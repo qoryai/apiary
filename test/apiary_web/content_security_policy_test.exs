@@ -334,7 +334,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   end
 
   # A parameter's values: most mean one thing wherever they are; `:id`, `:token`,
-  # `:target_id`, `:key_id` and the globs by the route they are in.
+  # `:target_id` and the globs by the route they are in.
   defp value(name, path, params) do
     case value_of(name, path, params) do
       nil -> {:unknown, name}
@@ -363,9 +363,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("story", "/dev/storybook/visual_tests/" <> _, p), do: p.component_stories
   defp value_of("story", "/dev/storybook/" <> _, p), do: p.stories
 
-  defp value_of("key_id", path, p) do
-    if String.ends_with?(path, ["/approve", "/reject"]), do: p.pending_key_id, else: p.key_id
-  end
+  defp value_of("key_id", _path, p), do: p.key_id
 
   defp value_of("target_id", path, p) do
     cond do
@@ -416,7 +414,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
     node = node_fixture(scope)
     instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
-    %{access_key: pending} = pending_key_fixture(scope, node)
     %{access_key: key} = node_key_fixture(scope, node)
     {:ok, code, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
 
@@ -446,7 +443,6 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       membership_id: membership.id,
       node_id: node.public_id,
       instance: "i_1",
-      pending_key_id: pending.key_id,
       key_id: key.key_id,
       code_id: code.id,
       run_id: run.run_id,
