@@ -15,5 +15,6 @@ defmodule ApiaryWeb.Router do
   storybook_routes()
   account_routes()
   visitor_routes()
+  instance_routes()
   organisation_routes()
 end

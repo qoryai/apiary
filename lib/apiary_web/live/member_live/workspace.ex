@@ -31,12 +31,13 @@ defmodule ApiaryWeb.MemberLive.Workspace do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:settings}
+      sections={@sections}
+      section={:people}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:workspace}
-        sections={@sections}
         current={:people}
         measure="list"
         title={gettext("People")}

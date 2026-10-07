@@ -342,7 +342,9 @@ defmodule ApiaryWeb.UserAuth do
   @doc """
   The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
   Members, with the policy's mode beside Policy, the targets the person pinned in the
-  workspace (`pins`, `Apiary.Targets.list_pins/2`), and the edition's beside its entries
+  workspace (`pins`, `Apiary.Targets.list_pins/2`), the sections of the Instance level the
+  person may open (`instance`, `ApiaryWeb.Layouts.instance_sections/1`), for the account
+  menu and the Instance's second column, and the edition's beside its entries
   (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
@@ -350,7 +352,10 @@ defmodule ApiaryWeb.UserAuth do
   def nav_counts(%Scope{workspace: nil} = scope),
     do:
       Map.merge(
-        %{members: scope |> Organisations.list_members() |> length()},
+        %{
+          members: scope |> Organisations.list_members() |> length(),
+          instance: ApiaryWeb.Layouts.instance_sections(scope)
+        },
         ApiaryWeb.Edition.nav_counts(scope)
       )
 
@@ -359,7 +364,8 @@ defmodule ApiaryWeb.UserAuth do
       keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
       alive: Apiary.Runs.count_alive(scope),
-      pins: pins(scope)
+      pins: pins(scope),
+      instance: ApiaryWeb.Layouts.instance_sections(scope)
     }
     |> Map.merge(policy_mode(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))

@@ -2892,6 +2892,11 @@ msgstr ""
 msgid "A−"
 msgstr ""
 
+#: lib/apiary_web/components/page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Back"
+msgstr ""
+
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgid "Back to Qory Apiary"
@@ -3341,6 +3346,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Compared with the policy applied at %{sequence}: %{difference}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Configuration"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
@@ -5015,7 +5025,9 @@ msgstr ""
 msgid "In the workspace's baseline: %{refusal}"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5032,6 +5044,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance limit"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Instance › %{page}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6096,6 +6113,11 @@ msgstr ""
 msgid "Network access · %{target}"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Network access, narrowed to %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Never ran"
@@ -6142,11 +6164,13 @@ msgstr ""
 msgid "New lines"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New node"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New node pool"
@@ -6157,6 +6181,7 @@ msgstr ""
 msgid "New password"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New secret"
@@ -6177,6 +6202,7 @@ msgstr ""
 msgid "New value"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New variable"
@@ -6716,6 +6742,7 @@ msgstr ""
 msgid "Node: one permanent machine."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -8339,6 +8366,11 @@ msgstr ""
 msgid "Runs are not given %{name}: the runner leaves the names on its deny list out of what a run is given."
 msgstr ""
 
+#: lib/apiary_web/components/page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs don't receive these yet."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of %{target}"
@@ -8375,6 +8407,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs, 14 days"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Runs, narrowed to %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

@@ -11,6 +11,7 @@ defmodule ApiaryWeb.Routes do
       public_routes()
       account_routes()
       visitor_routes()
+      instance_routes()
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
@@ -27,6 +28,9 @@ defmodule ApiaryWeb.Routes do
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
   - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
     `live_session :current_user`, with the session's controller routes.
+  - `instance_routes/1`: the Instance level's pages under `/instance`, behind sign-in, in
+    the `live_session :instance`; each page checks its own access. Before
+    `organisation_routes/1`, whose `/:org` would take `/instance`.
   - `organisation_routes/1`: the organisation's pages under `/:org/…` and a workspace's
     under `/:org/:workspace/…`, in the `live_session :workspace`, with the palette's
     answers (`/:org/jump`, `/:org/:workspace/jump`) and a run's raw log beside them,
@@ -35,9 +39,9 @@ defmodule ApiaryWeb.Routes do
     the second of an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
     `test/apiary_web/reserved_slugs_test.exs` holds both lists to the router's routes.
 
-  The three route macros that hold a `live_session` take a `do` block, the caller's routes
+  The four route macros that hold a `live_session` take a `do` block, the caller's routes
   in that `live_session`, with its `on_mount` hooks and pipelines: after the core's in
-  `:require_authenticated_user` and `:current_user`, and in `:workspace` after the
+  `:require_authenticated_user`, `:current_user` and `:instance`, and in `:workspace` after the
   organisation's own pages and before `/:org/:workspace`, so that an organisation page of
   the caller's is not taken for a workspace. The block is wrapped in
   `scope "/", alias: false`, so it names its modules in full:
@@ -269,6 +273,35 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
+  instance_routes/1 defines the Instance level's pages, under `/instance`: what the
+  installation as a whole holds, for the instance's admins (`Apiary.Access.instance_admin?/1`)
+  and whoever else the edition lets in. There is no organisation in the path; the scope
+  carries the workspace the person opened last, as on their own pages, so the sidebar
+  stays the one they came from and the Instance's sections open beside it
+  (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
+  block's routes go into the `live_session :instance`, after the core's. The core has no
+  page here yet: Instance › Configuration comes into it.
+  """
+  defmacro instance_routes(opts \\ [], block \\ []) do
+    routes =
+      quote do
+        scope "/", ApiaryWeb do
+          pipe_through [:browser, :require_authenticated_user]
+
+          live_session :instance,
+            on_mount: [
+              {ApiaryWeb.UserAuth, :require_authenticated},
+              {ApiaryWeb.UserAuth, :load_organisation}
+            ] do
+            unquote(@block)
+          end
+        end
+      end
+
+    compose(routes, opts, block)
+  end
+
+  @doc """
   organisation_routes/1 defines the organisation's pages and its workspaces', and the
   raw log of a run; the block's routes go into the `live_session :workspace`, after the
   organisation's own pages and before the workspace's.
@@ -367,7 +400,7 @@ defmodule ApiaryWeb.Routes do
               # with New node and New node pool as dialogs over it, and a node's page,
               # Overview and Settings, its deletion a dialog over Settings, and clearing an
               # instance a dialog over Overview. `:node_id` is the node's public id; an
-              # instance is named by its instance id. No navigation entry leads here yet.
+              # instance is named by its instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool

@@ -37,13 +37,22 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert settings_runs["href"] == workspace_path(scope, "/settings/runs")
     assert "Profile" in labels(go_to)
 
+    # Go to opens the whole lists: a narrowing is the list's address, never carried here.
     runs = Enum.find(go_to["items"], &(&1["label"] == "Runs"))
     assert runs["href"] == workspace_path(scope, "/runs")
     assert runs["detail"] == scope.workspace.name
 
+    nodes = Enum.find(go_to["items"], &(&1["label"] == "Nodes"))
+    assert nodes["href"] == workspace_path(scope, "/nodes")
+
     # nothing else is listed for nothing typed but what New offers
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
-    assert labels(group(answer, "Actions")) == ["New access key", "Invite people"]
+
+    secrets =
+      if Apiary.Features.on?(:security), do: ["New secret", "New variable"], else: []
+
+    assert labels(group(answer, "Actions")) ==
+             ["New node", "New node pool"] ++ secrets ++ ["New access key", "Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do

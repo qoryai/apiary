@@ -39,12 +39,13 @@ defmodule ApiaryWeb.ActivityLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:audit_log}
+      sections={@sections}
+      section={:audit_log}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         counts={@nav_counts}
         kind={:organisation}
-        sections={@sections}
         current={:audit_log}
         measure="list"
         title={gettext("Audit log")}

@@ -152,17 +152,25 @@ defmodule ApiaryWeb.SettingsComponents do
   @doc """
   layout/1 is a page of the settings: the settings' heading, "Organisation settings" or
   "Workspace settings" (a node's settings, a tab of its page, have the page's heading
-  instead), the list of the sections beside the section (`sections/2`),
-  `current` marked, and the section itself, its title, what it is for and its actions
-  above its content. From 1024 px the list is a column at the page's left edge; below, it
-  is a row of links above the section.
+  instead), and the section itself, its title, what it is for and its actions above its
+  content.
+
+  The list of the sections is the frame's second column: the page passes its sections
+  (`sections/2`) to `ApiaryWeb.Layouts.app/1` as `sections`, its own as `section`, and
+  none here (`ApiaryWeb.PageComponents.settings_page/1` is this page without the list).
+  Given `sections` here, as a node's settings do, the list is in the page, beside the
+  section from 1024 px and a row of links above it below.
 
   A section of forms keeps a 720 px column (`measure="read"`); one that is a list, such
   as the people or the access keys, a 960 px one (`measure="list"`).
   """
   attr :scope, :any, required: true
   attr :kind, :atom, required: true, values: [:organisation, :workspace, :node]
-  attr :sections, :list, required: true, doc: "the sections, as `sections/2` gives them"
+
+  attr :sections, :list,
+    default: nil,
+    doc:
+      "the sections, as `sections/2` gives them, for a list in the page; none where the frame's second column lists them"
 
   attr :counts, :map,
     default: nil,
@@ -177,14 +185,19 @@ defmodule ApiaryWeb.SettingsComponents do
 
   def layout(assigns) do
     ~H"""
-    <div class="q-settings">
+    <div class={["q-settings", !@sections && "q-settings-solo"]}>
       <h1 :if={@kind != :node} class="q-settings-title outline-none" tabindex="-1">
         {if @kind == :organisation,
           do: gettext("Organisation settings"),
           else: gettext("Workspace settings")}
       </h1>
 
-      <nav id="settings-tabs" class="q-settings-nav" aria-label={gettext("Settings")}>
+      <nav
+        :if={@sections}
+        id="settings-tabs"
+        class="q-settings-nav"
+        aria-label={gettext("Settings")}
+      >
         <.link
           :for={entry <- @sections}
           id={"settings-tab-#{entry.key}"}

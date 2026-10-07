@@ -77,6 +77,15 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
         action: :"run.read"
       },
+      # The machines and pools the runs run on, each with its page.
+      %Entry{
+        section: :record,
+        key: :nodes,
+        label: gettext("Nodes"),
+        icon: "hero-server",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/nodes" end,
+        action: :"node.read"
+      },
       # Guard: what the runs reached and what decided it, then the rules that decide. On an
       # instance without the security policy Network access is the group's one entry, the
       # record of it.
@@ -179,22 +188,55 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's, a new access key on a workspace's page and an invitation on an
-  organisation's too; of them, only what the reader may do there, each entry's action
-  asked of the workspace or the organisation as its `place` says.
+  then the core's: on a workspace's page a node, a node pool, a secret, a variable and an
+  access key, and everywhere an invitation; of them, only what the reader may do there,
+  each entry's action asked of the workspace or the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
   def new_entries(%{organisation: %{} = organisation, workspace: workspace} = scope, place) do
-    key =
-      place == :workspace && workspace &&
-        %Entry{
-          key: :key,
-          label: gettext("New access key"),
-          icon: "hero-key",
-          path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
-          action: :"access_key.create"
-        }
+    workspace_entries =
+      if place == :workspace && workspace do
+        [
+          %Entry{
+            key: :node,
+            label: gettext("New node"),
+            icon: "hero-server",
+            path: ~p"/#{organisation}/#{workspace}/nodes/new",
+            action: :"node.create"
+          },
+          %Entry{
+            key: :node_pool,
+            label: gettext("New node pool"),
+            icon: "hero-server-stack",
+            path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
+            action: :"node.create"
+          },
+          %Entry{
+            key: :secret,
+            label: gettext("New secret"),
+            icon: "hero-lock-closed",
+            path: ~p"/#{organisation}/#{workspace}/settings/secrets/new",
+            action: :"secret.write"
+          },
+          %Entry{
+            key: :variable,
+            label: gettext("New variable"),
+            icon: "hero-variable",
+            path: ~p"/#{organisation}/#{workspace}/settings/variables/new",
+            action: :"variable.edit"
+          },
+          %Entry{
+            key: :key,
+            label: gettext("New access key"),
+            icon: "hero-key",
+            path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
+            action: :"access_key.create"
+          }
+        ]
+      else
+        []
+      end
 
     invite = %Entry{
       key: :invite,
@@ -205,7 +247,8 @@ defmodule ApiaryWeb.Layouts do
       action: :"member.invite"
     }
 
-    for %Entry{} = entry <- ApiaryWeb.Edition.new_entries(scope, place) ++ [key, invite],
+    for %Entry{} = entry <-
+          ApiaryWeb.Edition.new_entries(scope, place) ++ workspace_entries ++ [invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end
@@ -225,6 +268,102 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
+  instance_sections/1 is the Instance level's sections the scope's person may open, as
+  `ApiaryWeb.Nav.Entry` values with `place: :instance`: the edition's
+  (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Configuration, for an
+  instance admin (`Apiary.Access.instance_admin?/1`). It reads the database, so it is read
+  once with the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`),
+  not on every render: the account menu's Instance leads to the first, and with two or
+  more the Instance's pages list them as the second column.
+  """
+  @spec instance_sections(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
+  def instance_sections(%{user: %{}} = scope) do
+    configuration =
+      Access.instance_admin?(scope) &&
+        %Entry{
+          section: :instance,
+          key: :configuration,
+          label: gettext("Configuration"),
+          icon: "hero-adjustments-vertical",
+          # Instance › Configuration's route comes into `ApiaryWeb.Routes.instance_routes/1`
+          # with its page; until then its path is written out here.
+          path: "/instance/configuration",
+          place: :instance
+        }
+
+    for %Entry{} = entry <- ApiaryWeb.Edition.instance_sections(scope) ++ [configuration],
+        do: %{entry | place: :instance, section: entry.section || :instance}
+  end
+
+  def instance_sections(_scope), do: []
+
+  @doc """
+  account_menu_entries/2 is what the account menu lists in `scope`, as
+  `ApiaryWeb.Nav.Entry` values in their groups (`section`): `:account`, Your settings and
+  Your organisations, then the edition's (`c:ApiaryWeb.Edition.account_menu_entries/1`,
+  `:account` where it names no group); `:instance`, after the theme, the core's Instance,
+  where the person may open a section of the Instance level (`instance`, as
+  `instance_sections/1` gives them), leading to the first, then the edition's. An entry's
+  action, where it has one, is asked of the organisation.
+  """
+  @spec account_menu_entries(Apiary.Accounts.Scope.t() | nil, [Entry.t()]) :: [Entry.t()]
+  def account_menu_entries(scope, instance \\ []) do
+    organisation = scope_field(scope, :organisation)
+    workspace = scope_field(scope, :workspace)
+
+    core = [
+      %Entry{
+        section: :account,
+        key: :settings,
+        label: gettext("Your settings"),
+        icon: "hero-user-circle",
+        path: ~p"/users/settings",
+        place: :person
+      },
+      %Entry{
+        section: :account,
+        key: :organisations,
+        label: gettext("Your organisations"),
+        icon: "hero-building-office-2",
+        path: ~p"/users/organisations",
+        place: :person
+      },
+      match?([%Entry{} | _], instance) &&
+        %Entry{
+          section: :instance,
+          key: :instance,
+          label: gettext("Instance"),
+          icon: "hero-server-stack",
+          path: Entry.path(hd(instance), organisation, workspace),
+          place: :instance
+        }
+    ]
+
+    edition =
+      for %Entry{} = entry <- ApiaryWeb.Edition.account_menu_entries(scope),
+          do: %{entry | section: entry.section || :account}
+
+    for %Entry{} = entry <- core ++ edition,
+        is_nil(entry.action) or (organisation && nav_open?(scope, entry.action, organisation)),
+        do: entry
+  end
+
+  @doc """
+  narrowed/2 is the value of `app/1`'s `narrowed` for a list narrowed to `target`, as the
+  list's filters parsed it (`{system, path}`, `{nil, path}` for the path on every system),
+  given the paths shared by two systems of the workspace (`Apiary.Runs.shared_paths/2`, or
+  whether this one is): the system is carried only where the path is shared. Nil for no
+  target, or `:none`.
+  """
+  @spec narrowed(term, MapSet.t() | boolean) :: map | nil
+  def narrowed({system, path}, shared) when is_binary(path) do
+    shared? = if is_boolean(shared), do: shared, else: MapSet.member?(shared, path)
+    %{system: system, path: path, shared: shared? and is_binary(system)}
+  end
+
+  def narrowed(_target, _shared), do: nil
+
+  @doc """
   The application shell: a 48 px top bar across the window, then the sidebar of the
   page's scope beside the main column.
 
@@ -241,6 +380,18 @@ defmodule ApiaryWeb.Layouts do
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
   `ApiaryWeb.Extension`): the page beneath says the rest. A person's own pages carry none.
+
+  **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
+  page of the level, Settings included. A page of Settings, of Your settings or of the
+  Instance opens the level's sections as a second column beside it (`sections`, `section`):
+  from 1024 px a column, below it a row of links at the top of the page, and on phones a
+  list under Settings in the drawer. A level with a single section gets none. A person's own
+  page and an Instance page keep the sidebar the person came from, the workspace the session
+  remembers; with no workspace, the person's sidebar is their sections alone, as one
+  column.
+
+  **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
+  of the sidebar carry the target to the other list; nothing else does.
 
       <Layouts.app flash={@flash} current_scope={@current_scope} nav={:keys}>
         <h1>Content</h1>
@@ -261,9 +412,9 @@ defmodule ApiaryWeb.Layouts do
 
   attr :place, :atom,
     default: nil,
-    values: [nil, :workspace, :organisation, :person],
+    values: [nil, :workspace, :organisation, :person, :instance],
     doc:
-      "the scope a page that no navigation entry names belongs to (`nav` nil): its sidebar is that scope's, with no entry current"
+      "the scope a page that no navigation entry names belongs to (`nav` nil): its sidebar is that scope's, with no entry current. A page of the Instance level passes `:instance`: its sidebar is the one the person came from, and its sections are the second column"
 
   attr :notices, :boolean,
     default: nil,
@@ -286,6 +437,21 @@ defmodule ApiaryWeb.Layouts do
     doc:
       "the id of the target the page is about: its entry under Pinned, when it is pinned, is the current one"
 
+  attr :sections, :list,
+    default: nil,
+    doc:
+      "the sections of the level's settings the page is one of, as `ApiaryWeb.Nav.Entry` values in their order (`SettingsComponents.sections/2`, read when the page mounts): with two or more they open as the second column beside the sidebar, `section` current. A person's own pages and the Instance's need not pass theirs: the frame has them"
+
+  attr :section, :atom,
+    default: nil,
+    doc:
+      "the key of the page's own section in the second column; on a person's own page `nav` serves"
+
+  attr :narrowed, :map,
+    default: nil,
+    doc:
+      "on Runs and Network access narrowed to one target, that target, `%{system, path, shared}` (`narrowed/2`): the sidebar's Runs and Network access carry it, its path and, only where the path is shared, its system. Nil everywhere else"
+
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
     attr :navigate, :string, doc: "where the segment leads; none for the page itself"
@@ -301,6 +467,10 @@ defmodule ApiaryWeb.Layouts do
     entries = if user, do: nav_entries(scope), else: []
     current = Enum.find(entries, &(&1.key == assigns.nav))
     place = place(current, assigns.place, organisation)
+    # The sidebar's level: the page's own, or, for a person's own page and an Instance
+    # page, the one the person came from.
+    level = level(place, organisation, workspace)
+    instance = if user, do: instance_list(assigns.counts), else: []
 
     assigns =
       assigns
@@ -309,13 +479,19 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:organisation, organisation)
       |> assign(:workspace, workspace)
       |> assign(:place, place)
+      |> assign(:level, level)
       |> assign(:nav_entries, entries)
-      |> assign(:groups, nav_groups(scope, place, assigns.counts, entries))
-      |> assign(:foot, foot(scope, place, entries))
+      |> assign(:instance, instance)
+      |> assign(
+        :groups,
+        nav_groups(scope, level, assigns.counts, entries, carry(assigns.narrowed, assigns.nav))
+      )
+      |> assign(:foot, foot(scope, level, entries))
       |> assign(:settings_page, settings_page?(current))
+      |> assign(:second, second_column(scope, place, level, entries, instance, assigns))
       |> assign(
         :pins,
-        if(place == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
+        if(level == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
       )
       |> assign(:show_notices, notices?(assigns.notices, current, assigns.place))
 
@@ -342,6 +518,8 @@ defmodule ApiaryWeb.Layouts do
         crumb={@crumb}
         settings={@settings_page}
         sidebar={@user != nil}
+        instance={@instance}
+        section={@section}
       />
 
       <div :if={@user} class="drawer md:drawer-open">
@@ -357,7 +535,7 @@ defmodule ApiaryWeb.Layouts do
         <div class="drawer-side z-50 md:top-12 md:z-20 md:h-[calc(100dvh-3rem)]">
           <label for="nav-drawer" class="drawer-overlay" aria-hidden="true"></label>
           <.sidebar
-            place={@place}
+            place={@level}
             nav={@nav}
             groups={@groups}
             foot={@foot}
@@ -365,14 +543,19 @@ defmodule ApiaryWeb.Layouts do
             pins={@pins}
             target={@target}
             counts={@counts}
+            second={@second}
           />
         </div>
 
         <div
           id="shell-content"
-          class="drawer-content flex min-h-[calc(100dvh-3rem)] min-w-0 flex-col"
+          class={[
+            "drawer-content flex min-h-[calc(100dvh-3rem)] min-w-0 flex-col",
+            @second && "q-has-second"
+          ]}
           phx-mounted={JS.ignore_attributes(["inert"])}
         >
+          <.second_column :if={@second} second={@second} counts={@counts} />
           <.content width={@width}>
             <.notices
               :if={@show_notices}
@@ -411,6 +594,96 @@ defmodule ApiaryWeb.Layouts do
   defp place(nil, nil, %{}), do: :organisation
   defp place(nil, nil, nil), do: :person
 
+  # The sidebar of a person's own page and of an Instance page: the workspace the session
+  # remembers, as the person came from; with no workspace, the person's own, their
+  # sections alone.
+  defp level(place, _organisation, %{}) when place in [:person, :instance], do: :workspace
+  defp level(place, _organisation, nil) when place in [:person, :instance], do: :person
+  defp level(place, _organisation, _workspace), do: place
+
+  # The Instance's sections the counts carry (`instance_sections/1`, read with them).
+  defp instance_list(%{instance: [_ | _] = sections}), do: sections
+  defp instance_list(_counts), do: []
+
+  # The second column: the sections of the level's settings the page passed, a person's
+  # own sections beside the sidebar they came from, or the Instance's; none for fewer than
+  # two. Each kind keeps the DOM ids its list had before the column: `settings-tabs` and
+  # `settings-tab-<key>`, `nav-group-account` and `nav-<key>`.
+  defp second_column(scope, place, level, entries, instance, assigns) do
+    {kind, list} =
+      cond do
+        place == :person and level != :person ->
+          {:person,
+           assigns.sections ||
+             for(
+               %Entry{place: :person, section: :account} = entry <- entries,
+               shown?(entry, scope, assigns.counts),
+               do: entry
+             )}
+
+        place == :instance ->
+          {:instance, assigns.sections || instance}
+
+        is_list(assigns.sections) ->
+          {:settings, assigns.sections}
+
+        true ->
+          {nil, []}
+      end
+
+    if match?([_, _ | _], list) do
+      organisation = scope_field(scope, :organisation)
+      workspace = scope_field(scope, :workspace)
+
+      %{
+        kind: kind,
+        label: second_label(kind),
+        id: second_id(kind),
+        current: assigns.section || assigns.nav,
+        entries: for(entry <- list, do: {entry, Entry.path(entry, organisation, workspace)})
+      }
+    end
+  end
+
+  defp second_label(:settings), do: gettext("Settings")
+  defp second_label(:person), do: gettext("Your settings")
+  defp second_label(:instance), do: gettext("Instance")
+
+  defp second_id(:settings), do: "settings-tabs"
+  defp second_id(:person), do: "nav-group-account"
+  defp second_id(:instance), do: "instance-tabs"
+
+  defp second_link_id(:settings, key), do: "settings-tab-#{key}"
+  defp second_link_id(:person, key), do: "nav-#{key}"
+  defp second_link_id(:instance, key), do: "instance-tab-#{key}"
+
+  # What the sidebar's Runs and Network access carry on a list narrowed to a target: that
+  # target, on Runs and on Network access alone; nothing anywhere else.
+  defp carry(%{path: path} = narrowed, nav) when nav in [:runs, :network] and is_binary(path),
+    do: narrowed
+
+  defp carry(_narrowed, _nav), do: nil
+
+  # The target's name as the lists write it: its path, its system before it where the path
+  # is shared.
+  defp narrowed_name(%{shared: true, system: system, path: path}) when is_binary(system),
+    do: "#{system}/#{path}"
+
+  defp narrowed_name(%{path: path}), do: path
+
+  # The list's path with the target's parameters, written as the lists write them
+  # (`Apiary.Runs.Filters.target_params/2`): the path, and the system only where the path
+  # is shared.
+  defp carried_path(path, %{system: system, path: target_path, shared: shared}) do
+    params = Apiary.Runs.Filters.target_params(if(shared, do: system), target_path)
+    path <> "?" <> Plug.Conn.Query.encode(params)
+  end
+
+  defp carried_label(:runs, name), do: gettext("Runs, narrowed to %{name}", name: name)
+
+  defp carried_label(:network, name),
+    do: gettext("Network access, narrowed to %{name}", name: name)
+
   defp notices?(notices, _current, _place) when is_boolean(notices), do: notices
   defp notices?(nil, %Entry{place: place}, _place), do: place in [:workspace, :organisation]
   defp notices?(nil, nil, given), do: given in [:workspace, :organisation]
@@ -429,9 +702,17 @@ defmodule ApiaryWeb.Layouts do
   attr :crumb, :list, required: true
   attr :settings, :boolean, required: true
   attr :sidebar, :boolean, required: true
+  attr :instance, :list, required: true
+  attr :section, :atom, required: true
 
   defp top_bar(assigns) do
-    assigns = assign(assigns, :new_entries, new_entries(assigns.scope, assigns.place))
+    # An Instance page offers what a person's own page does.
+    new_place = if assigns.place == :instance, do: :person, else: assigns.place
+
+    assigns =
+      assigns
+      |> assign(:new_entries, new_entries(assigns.scope, new_place))
+      |> assign(:account_entries, account_menu_entries(assigns.scope, assigns.instance))
 
     ~H"""
     <header
@@ -466,6 +747,8 @@ defmodule ApiaryWeb.Layouts do
         nav_entries={@nav_entries}
         crumb={@crumb}
         settings={@settings}
+        instance={@instance}
+        here={@section || @nav}
       />
 
       <div class="flex-1"></div>
@@ -487,7 +770,13 @@ defmodule ApiaryWeb.Layouts do
           <kbd class="q-jump-kbd" aria-hidden="true">⌘K</kbd>
         </button>
         <.new_menu :if={@new_entries != []} entries={@new_entries} />
-        <.account_menu :if={@user} user={@user} organisation={@organisation} scope={@scope} />
+        <.account_menu
+          :if={@user}
+          user={@user}
+          organisation={@organisation}
+          scope={@scope}
+          entries={@account_entries}
+        />
       </div>
     </header>
     """
@@ -507,6 +796,8 @@ defmodule ApiaryWeb.Layouts do
   attr :nav_entries, :list, required: true
   attr :crumb, :list, required: true
   attr :settings, :boolean, required: true
+  attr :instance, :list, default: []
+  attr :here, :atom, default: nil
 
   defp breadcrumb(%{place: :person} = assigns) do
     assigns =
@@ -527,6 +818,61 @@ defmodule ApiaryWeb.Layouts do
         <li :if={@here} class="q-trail-item">
           <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
           <span class="q-trail-link q-trail-page" aria-current="page">{@here.label}</span>
+        </li>
+      </ol>
+    </nav>
+    """
+  end
+
+  # An Instance page: Instance, leading to its first section, then the section and what
+  # the page adds.
+  defp breadcrumb(%{place: :instance} = assigns) do
+    assigns =
+      assigns
+      |> assign(:first, List.first(assigns.instance))
+      |> assign(:here, Enum.find(assigns.instance, &(&1.key == assigns.here)))
+
+    ~H"""
+    <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
+      <ol class="q-trail">
+        <li class={["q-trail-item", (@here || @crumb != []) && "q-trail-lead"]}>
+          <.link
+            :if={@first}
+            navigate={Entry.path(@first, @organisation, @workspace)}
+            class="q-trail-link"
+          >
+            {gettext("Instance")}
+          </.link>
+          <span :if={!@first} class="q-trail-link q-trail-page">{gettext("Instance")}</span>
+        </li>
+        <li :if={@here} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+          <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+          <.link
+            :if={@crumb != []}
+            navigate={Entry.path(@here, @organisation, @workspace)}
+            class="q-trail-link"
+          >
+            {@here.label}
+          </.link>
+          <span :if={@crumb == []} class="q-trail-link q-trail-page" aria-current="page">
+            {@here.label}
+          </span>
+        </li>
+        <li
+          :for={{crumb, i} <- Enum.with_index(@crumb)}
+          class={["q-trail-item", i < length(@crumb) - 1 && "q-trail-lead"]}
+        >
+          <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+          <.link :if={crumb[:navigate]} navigate={crumb.navigate} class="q-trail-link">
+            {render_slot(crumb)}
+          </.link>
+          <span
+            :if={!crumb[:navigate]}
+            class="q-trail-link q-trail-page"
+            aria-current={i == length(@crumb) - 1 && "page"}
+          >
+            {render_slot(crumb)}
+          </span>
         </li>
       </ol>
     </nav>
@@ -901,11 +1247,18 @@ defmodule ApiaryWeb.Layouts do
   attr :user, :any, required: true
   attr :organisation, :any, required: true
   attr :scope, :any, required: true
+  attr :entries, :list, required: true
 
   # The account menu at the right end of the top bar: who you are and your level where
-  # the page is; your settings and organisations; the theme, set once and kept; log out.
+  # the page is; your settings and organisations (and the edition's beside them); the
+  # theme, set once and kept; the Instance, for whoever may open a section of it; log out.
   # What is about Qory Apiary itself is the brand menu's, at the sidebar's foot.
   defp account_menu(assigns) do
+    assigns =
+      assigns
+      |> assign(:account, Enum.filter(assigns.entries, &(&1.section == :account)))
+      |> assign(:instance, Enum.filter(assigns.entries, &(&1.section == :instance)))
+
     ~H"""
     <div
       id="user-menu"
@@ -938,19 +1291,14 @@ defmodule ApiaryWeb.Layouts do
           </div>
         </li>
         <li class="menu-divider" role="separator"></li>
-        <li role="none">
-          <.link href={~p"/users/settings"} role="menuitem" tabindex="-1" id="user-menu-settings">
-            <.icon name="hero-user-circle" class="size-4" /> {gettext("Your settings")}
-          </.link>
-        </li>
-        <li role="none">
+        <li :for={entry <- @account} role="none">
           <.link
-            href={~p"/users/organisations"}
+            href={Entry.path(entry, @organisation, @scope.workspace)}
             role="menuitem"
             tabindex="-1"
-            id="user-menu-organisations"
+            id={"user-menu-#{entry.key}"}
           >
-            <.icon name="hero-building-office-2" class="size-4" /> {gettext("Your organisations")}
+            <.icon name={entry.icon} class="size-4" /> {entry.label}
           </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
@@ -981,6 +1329,16 @@ defmodule ApiaryWeb.Layouts do
               </button>
             </span>
           </div>
+        </li>
+        <li :for={entry <- @instance} role="none">
+          <.link
+            href={Entry.path(entry, @organisation, @scope.workspace)}
+            role="menuitem"
+            tabindex="-1"
+            id={"user-menu-#{entry.key}"}
+          >
+            <.icon name={entry.icon} class="size-4" /> {entry.label}
+          </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none">
@@ -1104,6 +1462,7 @@ defmodule ApiaryWeb.Layouts do
   attr :pins, :list, required: true
   attr :target, :string, required: true
   attr :counts, :any, required: true
+  attr :second, :any, required: true
 
   defp sidebar(assigns) do
     assigns = assign(assigns, :version, version())
@@ -1135,9 +1494,10 @@ defmodule ApiaryWeb.Layouts do
         >
           <p :if={heading} class="q-nav-heading" aria-hidden="true">{heading}</p>
           <.nav_item
-            :for={{entry, path} <- items}
+            :for={{entry, path, carried} <- items}
             entry={entry}
             path={path}
+            carried={carried}
             current={@nav == entry.key and not Enum.any?(@pins, &(&1.id == @target))}
             counts={@counts}
           />
@@ -1165,6 +1525,15 @@ defmodule ApiaryWeb.Layouts do
             </span>
           </.link>
         </nav>
+
+        <%!-- On phones, a person's or the Instance's sections, the second column's, in the
+             drawer after the sidebar they came from, under their heading. --%>
+        <.drawer_sections
+          :if={@second && @second.kind != :settings}
+          second={@second}
+          counts={@counts}
+          heading
+        />
       </div>
 
       <div class="q-sidebar-foot">
@@ -1173,6 +1542,12 @@ defmodule ApiaryWeb.Layouts do
           entry={elem(@foot, 0)}
           path={elem(@foot, 1)}
           current={@settings_page}
+          counts={@counts}
+        />
+        <%!-- On phones, the sections of Settings, the second column's, under Settings. --%>
+        <.drawer_sections
+          :if={@second && @second.kind == :settings}
+          second={@second}
           counts={@counts}
         />
         <div id="brand-foot" class="q-brand-row">
@@ -1197,10 +1572,84 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
+  # The second column (`second_column/6`): from 1024 px a column of the level's sections
+  # beside the sidebar, under its heading; from 768 px a row of links at the top of the
+  # page; on phones it is not here but in the drawer (`drawer_sections/1`).
+  attr :second, :map, required: true
+  attr :counts, :any, required: true
+
+  defp second_column(assigns) do
+    ~H"""
+    <nav
+      id={@second.id}
+      class="q-second"
+      aria-labelledby={"#{@second.id}-heading"}
+    >
+      <p id={"#{@second.id}-heading"} class="q-second-heading">{@second.label}</p>
+      <.link
+        :for={{entry, path} <- @second.entries}
+        id={second_link_id(@second.kind, entry.key)}
+        navigate={path}
+        aria-current={entry.key == @second.current && "page"}
+        class="q-second-link"
+      >
+        <span class="truncate">{entry.label}</span>
+        <span :if={count = second_count(@counts, entry)} class="q-second-n">
+          {Format.number(count)}
+        </span>
+      </.link>
+    </nav>
+    """
+  end
+
+  # The second column's sections in the phone drawer: under Settings at the sidebar's
+  # foot, or, for a person's and the Instance's, a group of their own under its heading.
+  attr :second, :map, required: true
+  attr :counts, :any, required: true
+  attr :heading, :boolean, default: false
+
+  defp drawer_sections(assigns) do
+    ~H"""
+    <nav
+      id="drawer-sections"
+      class={["q-drawer-sections md:hidden", @heading && "q-nav-group"]}
+      aria-label={@second.label}
+    >
+      <p :if={@heading} class="q-nav-heading" aria-hidden="true">{@second.label}</p>
+      <.link
+        :for={{entry, path} <- @second.entries}
+        id={"drawer-section-#{entry.key}"}
+        navigate={path}
+        aria-current={entry.key == @second.current && "page"}
+        class={["q-nav-item", !@heading && "q-nav-sub"]}
+      >
+        <.icon :if={@heading && entry.icon} name={entry.icon} class="q-nav-icon size-[18px]" />
+        <span class="q-nav-text">{entry.label}</span>
+        <span :if={count = second_count(@counts, entry)} class="q-nav-count">
+          {Format.number(count)}
+        </span>
+      </.link>
+    </nav>
+    """
+  end
+
+  defp second_count(%{} = counts, %Entry{count: key}) when is_atom(key) and not is_nil(key) do
+    case Map.get(counts, key) do
+      n when is_integer(n) -> n
+      _none -> nil
+    end
+  end
+
+  defp second_count(_counts, _entry), do: nil
+
   attr :entry, :any, required: true
   attr :path, :string, required: true
   attr :current, :boolean, required: true
   attr :counts, :any, required: true
+
+  attr :carried, :string,
+    default: nil,
+    doc: "the entry's name where it carries a narrowing, its tooltip and accessible name"
 
   defp nav_item(assigns) do
     ~H"""
@@ -1208,6 +1657,9 @@ defmodule ApiaryWeb.Layouts do
       id={"nav-#{@entry.key}"}
       navigate={@path}
       aria-current={@current && "page"}
+      aria-label={@carried}
+      title={@carried}
+      data-title={@carried}
       class="q-nav-item"
       phx-mounted={JS.ignore_attributes(["title"])}
     >
@@ -1375,24 +1827,32 @@ defmodule ApiaryWeb.Layouts do
   # nothing beside it either (Policy's mode word goes with Policy). A group left empty goes
   # too. Without a workspace, for a member added to none yet, a workspace's entries are not
   # there.
-  defp nav_groups(scope, place, counts, entries) do
+  # On a list narrowed to a target (`carry`), Runs and Network access lead to the lists
+  # narrowed to it, and say so in their names (`{entry, path, label}`); every other entry
+  # leads plainly, its label nil.
+  defp nav_groups(scope, place, counts, entries, carry) do
     for {section, heading} <- sections(entries),
         shown =
           for(
             %Entry{section: ^section, place: ^place} = entry <- entries,
             shown?(entry, scope, counts),
-            do: {entry, entry_path(entry, scope)}
+            do: carried(entry, entry_path(entry, scope), carry)
           ),
         shown != [],
         do: {section, heading, shown}
   end
+
+  defp carried(%Entry{key: key} = entry, path, %{} = carry) when key in [:runs, :network],
+    do: {entry, carried_path(path, carry), carried_label(key, narrowed_name(carry))}
+
+  defp carried(entry, path, _carry), do: {entry, path, nil}
 
   # A group's navigation is named by its heading; the first group, which has none, is
   # Main, and any other group without a heading takes its first entry's name, so no two
   # navigations of the sidebar share a name.
   defp group_name(_section, heading, _items) when is_binary(heading), do: heading
   defp group_name(:home, nil, _items), do: gettext("Main")
-  defp group_name(_section, nil, [{entry, _path} | _]), do: entry.label
+  defp group_name(_section, nil, [{entry, _path, _label} | _]), do: entry.label
 
   # Settings at the sidebar's foot: the scope's.
   defp foot(scope, place, entries) do

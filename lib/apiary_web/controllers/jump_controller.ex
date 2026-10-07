@@ -14,7 +14,8 @@ defmodule ApiaryWeb.JumpController do
 
   - **Go to**: the pages of the navigation the reader may open (`ApiaryWeb.Layouts.
     palette_entries/1`), every section of each Settings they open
-    (`ApiaryWeb.SettingsComponents.sections/2`) and Preferences' theme and shortcuts,
+    (`ApiaryWeb.SettingsComponents.sections/2`), Preferences' theme and shortcuts, and
+    the Instance's sections the reader may open (`ApiaryWeb.Layouts.instance_sections/1`),
     whose label or other words (members for People) hold the text; all of them for no
     text. A label says whose the page is where a workspace's and an organisation's share a
     name: Workspace overview, Organisation settings › People.
@@ -101,7 +102,13 @@ defmodule ApiaryWeb.JumpController do
 
     Enum.flat_map(entries, fn {entry, _path} = pair ->
       [pair | after_entry(entry, scope, paths)]
-    end)
+    end) ++ instance(scope)
+  end
+
+  # The Instance's sections the reader may open (`ApiaryWeb.Layouts.instance_sections/1`).
+  defp instance(scope) do
+    for %Entry{} = entry <- Layouts.instance_sections(scope),
+        do: {entry, Entry.path(entry, scope.organisation, scope.workspace)}
   end
 
   defp after_entry(%Entry{section: :foot, place: place}, scope, paths)
@@ -160,6 +167,9 @@ defmodule ApiaryWeb.JumpController do
   defp go_to_label(%Entry{section: :preferences, label: label}),
     do: gettext("Preferences › %{page}", page: label)
 
+  defp go_to_label(%Entry{place: :instance, label: label}),
+    do: gettext("Instance › %{page}", page: label)
+
   defp go_to_label(%Entry{label: label}), do: label
 
   # The other words a reader may look for a page by.
@@ -175,6 +185,7 @@ defmodule ApiaryWeb.JumpController do
 
   defp where(%Entry{place: :workspace}, scope), do: scope.workspace.name
   defp where(%Entry{place: :organisation}, scope), do: scope.organisation.name
+  defp where(%Entry{place: :instance}, _scope), do: gettext("Instance")
   defp where(%Entry{}, _scope), do: gettext("Your account")
 
   defp targets(%{workspace: %{} = workspace} = scope, text) when text != "" do
