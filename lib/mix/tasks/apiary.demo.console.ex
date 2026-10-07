@@ -15,12 +15,14 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   `mix apiary.demo.console --runs 3000 --days 28`; `--seed` (1) makes it repeatable, and
   `--concurrency` (6) is how many processes write it.
 
-  It fills only a database of its own. Outside the tests it refuses to start unless
-  `APIARY_DEV_DATABASE` names the database the app is configured with (`config/dev.exs`
-  reads it) and `DATABASE_URL`, which would replace that database, is unset; and it never
-  fills `apiary_dev` or `apiary_core_dev`, the databases people work in. It refuses an
-  instance that has any organisation other than its own, Acme, so the database you work
-  in is never filled by mistake, and an Acme whose fill did not finish (below).
+  It fills only a database of its own. Outside the test environment it refuses to start
+  unless `DATABASE_URL`, which would replace the configured database, is unset or empty,
+  and `APIARY_DEV_DATABASE` names the database the app is configured with
+  (`config/dev.exs` reads it), a name with `demo` in it; so it never fills `apiary_dev`
+  or `apiary_core_dev`, the databases people work in. In the test environment it runs
+  only under the tests, which fill their own database. It refuses an instance that has
+  any organisation other than its own, Acme, so the database you work in is never
+  filled by mistake, and an Acme whose fill did not finish (below).
 
   ## What it makes
 
@@ -50,12 +52,15 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * Where the edition allows an organisation a second workspace, **Shop ops**
       (`shop-ops`) is made too, with a smaller history of its own; the core's allows
       one.
-    * Last, Dana pins three repositories.
+    * Dana pins three repositories.
+    * Last, build-01's enrolment code is made and cancelled.
 
-  Running it again on the instance it filled adds nothing of that. Dana's pins, the
-  fill's last step, mark a fill that finished: an Acme without them the task takes for
-  one that stopped half way, and refuses rather than serve it as whole. To fill again
-  from nothing, drop the database and create it again.
+  Running it again on the instance it filled adds nothing of that. The cancelled code,
+  the fill's last step, marks a fill that finished: a code is deleted only with its
+  workspace and is never made outstanding again, so short of deleting Main, nothing done
+  in the console takes the mark away. An Acme without it the task takes for a fill that
+  stopped half way, and refuses rather than serve it as whole. To fill again from
+  nothing, drop the database and create it again.
 
   Whether it filled the instance or found it filled, it ends by bringing what lives for
   minutes up to now: it replays the running recording, a run alive for about half an
@@ -77,10 +82,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   alias Apiary.{AccessKeys, Accounts, Connections, Integrations, Nodes, Organisations}
   alias Apiary.{Repo, Secrets, Targets, Variables}
+  alias Apiary.AccessKeys.EnrolmentCode
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Run, Target}
-  alias Apiary.Targets.Pin
   alias Mix.Tasks.Apiary.Demo
   alias Mix.Tasks.Apiary.Demo.History
 
@@ -105,6 +110,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   # The databases people work in, which the task never fills.
   @working_databases ~w(apiary_dev apiary_core_dev)
 
+  # The label hint of build-01's enrolment code, made and cancelled as the fill's last
+  # step: the mark of a fill that finished.
+  @finished "build-01-next"
+
   @impl Mix.Task
   def run(args) do
     if Mix.env() == :prod,
@@ -115,7 +124,9 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     # The database is checked before the app starts, so nothing reaches one it refuses.
     Mix.Task.run("app.config")
 
-    if refusal = refusal(Mix.env(), Repo.config()[:database], System.get_env()),
+    tests? = Process.whereis(ExUnit.Server) != nil
+
+    if refusal = refusal(Mix.env(), tests?, Repo.config()[:database], System.get_env()),
       do: Mix.raise(refusal)
 
     Mix.Task.run("app.start")
@@ -133,10 +144,13 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         owner
 
       :unfinished ->
-        Mix.raise(
-          "The demo's fill did not finish: run demo-up.sh with --reset, " <>
-            "or drop the database and create it again"
-        )
+        Mix.raise("""
+        The demo's fill did not finish. Fill it again from nothing:
+
+            unset DATABASE_URL
+            export APIARY_DEV_DATABASE=#{Repo.config()[:database]}
+            mix ecto.drop && mix ecto.create && mix ecto.migrate && mix apiary.demo.console
+        """)
 
       :other ->
         Mix.raise(
@@ -148,59 +162,69 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   @doc false
   # Why the task must not fill `database`, the one the app is configured with in the Mix
-  # environment `mix_env`, given the shell's variables `env`; nil when it may. The tests
-  # fill their own partitioned database. Anywhere else only the database
-  # APIARY_DEV_DATABASE names is filled, with no DATABASE_URL to replace it, and never one
-  # people work in.
-  @spec refusal(atom, String.t() | nil, %{optional(String.t()) => String.t()}) ::
+  # environment `mix_env`, given whether the tests run (`tests?`, ExUnit's server is up)
+  # and the shell's variables `env`; nil when it may. The tests fill their own
+  # partitioned database, and the test environment is refused outside them. Anywhere else
+  # only the database APIARY_DEV_DATABASE names is filled, a name with "demo" in it, with
+  # no DATABASE_URL to replace it, and never one people work in. An empty DATABASE_URL
+  # replaces nothing (Ecto ignores it), so it counts as unset.
+  @spec refusal(atom, boolean, String.t() | nil, %{optional(String.t()) => String.t()}) ::
           String.t() | nil
-  def refusal(:test, _database, _env), do: nil
+  def refusal(:test, true, _database, _env), do: nil
 
-  def refusal(_mix_env, database, env) do
+  def refusal(:test, false, database, _env),
+    do: refused("the test environment's database, #{database}, is the tests' own")
+
+  def refusal(_mix_env, _tests?, database, env) do
     named = env["APIARY_DEV_DATABASE"]
 
-    reason =
-      cond do
-        Map.has_key?(env, "DATABASE_URL") ->
-          "DATABASE_URL is set, and it replaces the database APIARY_DEV_DATABASE names"
+    cond do
+      env["DATABASE_URL"] not in [nil, ""] ->
+        refused("DATABASE_URL is set, and it replaces the database APIARY_DEV_DATABASE names")
 
-        named in [nil, ""] ->
-          "APIARY_DEV_DATABASE names no database"
+      named in [nil, ""] ->
+        refused("APIARY_DEV_DATABASE names no database")
 
-        named in @working_databases ->
-          "#{named} is a database people work in"
+      named in @working_databases ->
+        refused("#{named} is a database people work in")
 
-        database != named ->
+      not String.contains?(named, "demo") ->
+        refused(~s(#{named} does not have "demo" in its name))
+
+      database != named ->
+        refused(
           "the app is configured with the database #{inspect(database)}, " <>
             "not #{named}, which APIARY_DEV_DATABASE names"
+        )
 
-        true ->
-          nil
-      end
+      true ->
+        nil
+    end
+  end
 
-    reason &&
-      """
-      mix apiary.demo.console fills only a database of its own: #{reason}.
-      Run it with demo-up.sh, or with DATABASE_URL unset and APIARY_DEV_DATABASE naming a
-      database other than #{Enum.join(@working_databases, " and ")}:
+  defp refused(reason) do
+    """
+    mix apiary.demo.console fills only a database of its own: #{reason}.
+    Run it in development, with DATABASE_URL unset and APIARY_DEV_DATABASE naming a
+    database with "demo" in its name:
 
-          unset DATABASE_URL
-          export APIARY_DEV_DATABASE=apiary_redesign_demo
-          mix ecto.create && mix ecto.migrate && mix apiary.demo.console
-      """
+        unset DATABASE_URL
+        export APIARY_DEV_DATABASE=apiary_redesign_demo
+        mix ecto.create && mix ecto.migrate && mix apiary.demo.console
+    """
   end
 
   # Whether the instance has no organisation in use, is the demo's, is a fill of it that
   # did not finish, or is anybody else's. The demo's has one organisation in use, Acme,
-  # owned by Dana, who has the pins the fill makes last; an instance with any other
-  # organisation in use is somebody else's.
+  # owned by Dana, with build-01's cancelled code, the fill's last step; an instance with
+  # any other organisation in use is somebody else's.
   defp instance do
     in_use = Repo.all(from o in Organisation, where: is_nil(o.deletion_marked_at))
 
     with [%Organisation{slug: "acme"} = acme] <- in_use,
          %User{} = owner <- Accounts.get_user_by_email(@owner),
          true <- Repo.exists?(owned(acme, owner)) do
-      if Repo.exists?(pinned(acme, owner)), do: owner, else: :unfinished
+      if Repo.exists?(finished(acme)), do: owner, else: :unfinished
     else
       [] -> :empty
       _ -> :other
@@ -212,8 +236,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       where: m.organisation_id == ^organisation.id and m.user_id == ^user.id and m.level == :owner
   end
 
-  defp pinned(organisation, user) do
-    from p in Pin, where: p.organisation_id == ^organisation.id and p.user_id == ^user.id
+  defp finished(organisation) do
+    from c in EnrolmentCode,
+      where: c.organisation_id == ^organisation.id and c.label_hint == @finished,
+      where: not is_nil(c.cancelled_at)
   end
 
   ## The fill
@@ -253,8 +279,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         [scope_of_second(owner, scope)]
       end
 
-    # Last, as they mark a fill that finished (instance/0).
     pins(main)
+
+    # Last, as it marks a fill that finished (instance/0).
+    finish(main)
 
     counts([main | second || []])
     owner
@@ -369,11 +397,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     key_02 = add_key!(scope, build_02, "build-02", true)
     pool_a = add_key!(scope, pool, "spot-runners-a", false)
     pool_b = add_key!(scope, pool, "spot-runners-b", false)
-
-    {:ok, code, _code} =
-      AccessKeys.create_enrolment_code(scope, build_01, %{"label_hint" => "build-01-next"})
-
-    {:ok, _cancelled} = AccessKeys.cancel_code(scope, code)
 
     # The history posts the runs of build-01 and build-02 with its key build-eu, and those
     # of the CI runners with ci-fleet (mix apiary.demo.history).
@@ -710,6 +733,20 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         target != nil do
       :ok = Targets.pin(scope, target)
     end
+  end
+
+  ## The mark of a fill that finished
+
+  # build-01's enrolment code, made and cancelled as the fill's very last step. No page
+  # deletes a code (only its workspace's purge does) or makes a cancelled one outstanding
+  # again, so instance/0 takes it for the mark of a fill that finished.
+  defp finish(scope) do
+    build_01 = Enum.find(Nodes.list_nodes(scope), &(&1.name == "build-01"))
+
+    {:ok, code, _code} =
+      AccessKeys.create_enrolment_code(scope, build_01, %{"label_hint" => @finished})
+
+    {:ok, _cancelled} = AccessKeys.cancel_code(scope, code)
   end
 
   ## What lives for minutes

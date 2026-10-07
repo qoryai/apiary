@@ -195,6 +195,16 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(AccessKey) == keys
   end
 
+  test "a demo whose pins were taken away in the console is still finished" do
+    fill()
+    Repo.delete_all(Apiary.Targets.Pin)
+    runs = count(Run)
+
+    fill()
+
+    assert count(Run) == runs + 1
+  end
+
   test "an instance with an organisation that is not the demo's is refused" do
     sign_up_fixture()
 
@@ -211,13 +221,15 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
   end
 
   test "a fill that stopped before its last step is refused, not served as whole" do
-    # Dana and Acme are the fill's first step; her pins, its last, are missing.
+    # Dana and Acme are the fill's first step; build-01's cancelled code, its last, is
+    # missing.
     sign_up_fixture(%{email: "dana@example.com", organisation_name: "Acme"})
 
-    assert_raise Mix.Error, ~r/fill did not finish: run demo-up.sh with --reset/, fn ->
-      fill()
-    end
-
+    error = assert_raise Mix.Error, fn -> fill() end
+    assert error.message =~ "The demo's fill did not finish."
+    assert error.message =~ "unset DATABASE_URL"
+    assert error.message =~ "mix ecto.drop && mix ecto.create && mix ecto.migrate"
+    refute error.message =~ "demo-up.sh"
     refute Repo.exists?(Run)
   end
 
@@ -225,33 +237,55 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     @demo %{"APIARY_DEV_DATABASE" => "apiary_redesign_demo"}
 
     test "is the one APIARY_DEV_DATABASE names, with no DATABASE_URL" do
-      assert Console.refusal(:dev, "apiary_redesign_demo", @demo) == nil
+      assert Console.refusal(:dev, false, "apiary_redesign_demo", @demo) == nil
     end
 
     test "is refused while DATABASE_URL is set, whatever it names" do
       env = Map.put(@demo, "DATABASE_URL", "ecto://postgres:postgres@localhost/apiary_dev")
+      refusal = Console.refusal(:dev, false, "apiary_redesign_demo", env)
 
-      assert Console.refusal(:dev, "apiary_redesign_demo", env) =~
-               ~r/DATABASE_URL is set.*unset DATABASE_URL/s
+      assert refusal =~ "DATABASE_URL is set, and it replaces the database"
+      assert refusal =~ "unset DATABASE_URL"
+      refute refusal =~ "demo-up.sh"
+    end
+
+    test "takes an empty DATABASE_URL for unset, as Ecto does" do
+      env = Map.put(@demo, "DATABASE_URL", "")
+      assert Console.refusal(:dev, false, "apiary_redesign_demo", env) == nil
     end
 
     test "is refused when APIARY_DEV_DATABASE names none, or another than configured" do
-      assert Console.refusal(:dev, "apiary_dev", %{}) =~ "names no database"
-      assert Console.refusal(:dev, "apiary_dev", %{"APIARY_DEV_DATABASE" => ""}) =~ "no database"
+      assert Console.refusal(:dev, false, "apiary_dev", %{}) =~ "names no database"
 
-      assert Console.refusal(:dev, "apiary_dev", @demo) =~
+      assert Console.refusal(:dev, false, "apiary_dev", %{"APIARY_DEV_DATABASE" => ""}) =~
+               "names no database"
+
+      assert Console.refusal(:dev, false, "apiary_dev", @demo) =~
                ~s(configured with the database "apiary_dev")
     end
 
     test "is never a database people work in" do
       for database <- ~w(apiary_dev apiary_core_dev) do
         env = %{"APIARY_DEV_DATABASE" => database}
-        assert Console.refusal(:dev, database, env) =~ "#{database} is a database people work in"
+
+        assert Console.refusal(:dev, false, database, env) =~
+                 "#{database} is a database people work in"
       end
     end
 
-    test "is the tests' own in the test environment" do
-      assert Console.refusal(:test, "apiary_test", %{"DATABASE_URL" => "ecto://x/y"}) == nil
+    test "has demo in its name" do
+      env = %{"APIARY_DEV_DATABASE" => "apiary_review"}
+
+      assert Console.refusal(:dev, false, "apiary_review", env) =~
+               ~s(apiary_review does not have "demo" in its name)
+    end
+
+    test "is the tests' own in the test environment, under the tests alone" do
+      env = %{"DATABASE_URL" => "ecto://x/y"}
+      assert Console.refusal(:test, true, "apiary_test", env) == nil
+
+      assert Console.refusal(:test, false, "apiary_test", env) =~
+               "the test environment's database, apiary_test, is the tests' own"
     end
   end
 
