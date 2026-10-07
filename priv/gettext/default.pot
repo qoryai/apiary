@@ -10212,7 +10212,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "To change a value, whoever runs the server changes its environment and starts it again."
+msgid "To change a value, whoever runs the server changes the setting it is set by and starts the server again."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -10648,7 +10648,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "What whoever runs this server set for the whole instance. It is read only here: each value comes from the server's environment, read when the server starts."
+msgid "What whoever runs this server set for the whole instance, as the server read it when it started. Nothing here changes it."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

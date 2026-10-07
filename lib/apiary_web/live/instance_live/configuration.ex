@@ -8,15 +8,17 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   (`ApiaryWeb.Layouts.instance_sections/1`).
 
   Each line is a value the application already reads, as it read it when the server
-  started, with the setting of the server's environment it comes from: the features
+  started, with the setting of the server's environment it comes from where it has one:
+  the features
   (`Apiary.Features`, `QORY_FEATURES`), whether an integration may come from an address
   (`Apiary.Integrations.Source.url_sources?/0`, `INTEGRATION_URL_SOURCES`), how long the
   audit trail keeps an entry and its address (`Apiary.Audit`), the grace period before a
   deleted workspace or organisation is purged (`Apiary.Deletion.grace_days/0`), the
   invitations an organisation sends a day (`Apiary.Instance.invitations_per_day/0`), and
   whether the server prunes runs by their workspace's retention
-  (`Apiary.Retention.Scheduler.enabled?/0`). Nothing here changes them: the server reads
-  them when it starts.
+  (`Apiary.Retention.Scheduler.enabled?/0`, the application's configuration, which no
+  setting of the environment changes). Nothing here changes them: the server reads them
+  when it starts.
   """
   use ApiaryWeb, :live_view
 
@@ -43,7 +45,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
       >
         <:subtitle>
           {gettext(
-            "What whoever runs this server set for the whole instance. It is read only here: each value comes from the server's environment, read when the server starts."
+            "What whoever runs this server set for the whole instance, as the server read it when it started. Nothing here changes it."
           )}
         </:subtitle>
 
@@ -149,7 +151,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
         <p id="config-note" class="q-foot-note">
           {gettext(
-            "To change a value, whoever runs the server changes its environment and starts it again."
+            "To change a value, whoever runs the server changes the setting it is set by and starts the server again."
           )}
         </p>
       </.settings_page>
