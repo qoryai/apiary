@@ -3654,16 +3654,6 @@ msgstr ""
 msgid "Choose a target of this workspace for it to apply to."
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Choose the mode for %{target}"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Choose the workspace's default mode"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose an outside API the agent may call while it works."
@@ -3672,6 +3662,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose the coding agent runs start."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the mode for %{target}"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Choose the workspace's default mode"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
