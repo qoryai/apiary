@@ -299,9 +299,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       github = target(scope, "github.example")
       view = open(conn, scope, "/network?system=github.example&target=acme/shop")
 
+      # The path is on two systems: its policy's address keeps the system.
       assert has_element?(
                view,
-               ~s(#connections-target-policy[href="#{target_path(scope, github.system, github.path, ["policy"])}"]),
+               ~s(#connections-target-policy[href="#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}"]),
                "Its policy"
              )
 
@@ -318,6 +319,19 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert [%{host: "files.cdn.example"}] = Policy.list_rules(scope, github)
       line = text(view, "##{dst("files.cdn.example")}-after")
       assert line =~ "Allowed for this repository in v1 · of github.example/acme/shop by you"
+
+      # The rule and its version are at the target's own address, its system kept.
+      policy = workspace_path(scope, "/targets/github.example/acme/shop/-/policy")
+
+      assert has_element?(
+               view,
+               ~s(a##{dst("files.cdn.example")}-act[href="#{policy}?rule=files.cdn.example"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(##{dst("files.cdn.example")}-after a[href="#{policy}/versions/1"])
+             )
     end
 
     test "a row denied before and allowed since by a rule added lately keeps its line", %{

@@ -585,6 +585,47 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a run behind a shared target's policy compares at the target's own address", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, shop(), ago: 0)
+      # Another system has the path: the target's address keeps its system.
+      started_run(scope, shop("gitlab.example"), ago: 0)
+      {:ok, target} = Policy.get_target(scope, Repo.get!(Run, run.id).target_id)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      {:ok, _} = Policy.allow(scope, target, %{host: "one.example"})
+      {:ok, old} = Policy.current_configuration(scope, target)
+      {:ok, _} = Policy.allow(scope, target, %{host: "two.example"})
+      {:ok, new} = Policy.current_configuration(scope, target)
+
+      # In force long enough for a run still on the one before to be behind.
+      Repo.update_all(
+        from(c in Apiary.Policy.RunConfiguration, where: c.id == ^new.id),
+        set: [rendered_at: DateTime.add(DateTime.utc_now(), -600, :second)]
+      )
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [reported_run_configuration_digest: old.digest]
+      )
+
+      view = open(conn, scope)
+
+      compare =
+        workspace_path(
+          scope,
+          "/targets/github.example/acme/shop/-/policy/versions/#{new.version}?compare=#{old.version}"
+        )
+
+      assert has_element?(
+               view,
+               ~s(#att-run-#{run.run_id}-act[href="#{compare}"]),
+               "What changed"
+             )
+    end
+
+    @tag needs: :security
     test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())

@@ -1010,11 +1010,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     %{current_scope: scope, policy_target: target} = socket.assigns
     holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
+    shared = Narrowing.shared?(socket.assigns.narrowing)
 
     Map.merge(rule_option, %{
       values: row_values(row),
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder, entry.host),
+      rule_path: Rules.rule_path(scope, holder, entry.host, shared),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -1022,8 +1023,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder, change.version),
-              label: Rules.version_label(holder && holder.id, target)
+              path: Rules.version_path(scope, holder, change.version, %{}, shared),
+              label: Rules.version_label(holder && holder.id, target, shared)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -1044,7 +1045,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
+          Rules.rule_path(
+            scope,
+            if(entry.source == :target and target, do: target),
+            entry.host,
+            Narrowing.shared?(socket.assigns.narrowing)
+          ),
       after: nil
     })
   end
