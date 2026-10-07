@@ -120,7 +120,9 @@ defmodule ApiaryWeb.Features do
   end
 
   # For a feature the instance has and a scope does not: `ApiaryWeb.Features.Routes` has
-  # already answered for the instance, before any pipeline. The pipeline has run by now, so
+  # already answered for the instance, before any pipeline, but for a signed request of the
+  # server contract, which it lets through to be verified; the answer to that one is signed
+  # as it is sent (`ApiaryWeb.Contract.SignedAnswer`). The pipeline has run by now, so
   # this can only come close to an unknown path: its body and type, not the rendering in
   # the format the pipeline chose, which raising would give.
   defp absent(conn) do

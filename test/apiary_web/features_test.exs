@@ -73,16 +73,11 @@ defmodule ApiaryWeb.FeaturesTest do
       end
     end
 
-    test "the run configuration endpoint answers as one that does not exist", ctx do
-      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
-
+    test "the run configuration endpoint answers an unsigned request as one that does not exist" do
       askers = [
-        {"signed", &signed_get(build_conn(), key.key_id, secret, &1)},
-        {"signed, asking for JSON",
-         &signed_get(build_conn(), key.key_id, secret, &1,
-           headers: [{"accept", "application/json"}]
-         )},
-        {"unsigned", &get(build_conn(), &1)}
+        {"unsigned", &get(build_conn(), &1)},
+        {"unsigned, asking for JSON",
+         &get(put_req_header(build_conn(), "accept", "application/json"), &1)}
       ]
 
       # Three segments: a path of two is a workspace's (`/:org/:workspace`).
@@ -91,6 +86,36 @@ defmodule ApiaryWeb.FeaturesTest do
                  answer(fn -> ask.("/v1/no-such/endpoint") end),
                who
       end
+    end
+
+    # The contract signs every answer to a verified request, its 404 among them.
+    test "the run configuration endpoint answers a verified request a signed 404", ctx do
+      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope)
+
+      for headers <- [[], [{"accept", "application/json"}]] do
+        conn =
+          signed_get(build_conn(), key.key_id, secret, "/v1/run-configuration", headers: headers)
+
+        assert conn.status == 404
+        assert signed_answer?(conn)
+        assert get_resp_header(conn, "x-qory-run-configuration") == []
+      end
+    end
+
+    test "the run configuration endpoint tells a signed request that does not verify 401",
+         ctx do
+      %{access_key: key} = contract_key_fixture(ctx.scope)
+
+      conn =
+        signed_get(
+          build_conn(),
+          key.key_id,
+          :crypto.strong_rand_bytes(32),
+          "/v1/run-configuration"
+        )
+
+      assert conn.status == 401
+      assert unsigned_answer?(conn)
     end
 
     test "a live navigation to the policy is refused the same way", %{conn: conn, scope: scope} do
