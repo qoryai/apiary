@@ -115,7 +115,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     test "lists each key with its state, fingerprint and arrival", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       %{access_key: pasted} = node_key_fixture(scope, node, %{label: "current"})
-      %{access_key: enrolled} = pending_key_fixture(scope, node, %{label: "replacement"})
+      %{access_key: enrolled} = enrolled_key_fixture(scope, node, %{label: "replacement"})
 
       {:ok, lv, html} = live(conn, tab_path(scope, node))
 
@@ -206,6 +206,18 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert Repo.get!(AccessKey, key.id).revoked_at
       assert_push_event(lv, "run:focus", %{id: "key-" <> _ = id})
       assert id == "key-#{key.key_id}-title"
+    end
+
+    test "revoke a key a code brought, as a pasted one", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      %{access_key: key} = enrolled_key_fixture(scope, node, %{label: "build-01"})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/revoke"))
+
+      assert has_element?(lv, "#key-#{key.key_id}-confirm", "Revoke build-01?")
+      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+      assert render(lv) =~ "build-01 is revoked."
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
+      assert Repo.get!(AccessKey, key.id).revoked_at
     end
 
     test "an act on a key it does not fit, or no key of the node's, is said and not taken", %{

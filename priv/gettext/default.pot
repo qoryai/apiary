@@ -2411,32 +2411,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Access key approved"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key created"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key rejected"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
 msgid "Access key revoked"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key revoked in settings"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key rotated"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -3113,11 +3088,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Approved an access key"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -3954,11 +3924,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Created a stored secret"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Created an access key"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -8783,11 +8748,6 @@ msgstr ""
 msgid "Refused before reaching the tool %{tool}."
 msgstr ""
 
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Rejected an access key"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -9076,11 +9036,6 @@ msgstr ""
 msgid "Retention saved."
 msgstr ""
 
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Retired an access key's previous secret"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Review"
@@ -9161,11 +9116,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Roles"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Rotated an access key"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

@@ -676,8 +676,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       )
 
   defp limits_words do
-    %{approved: keys} = AccessKeys.key_limits()
-    gettext("A node holds at most %{keys} keys at a time.", keys: Format.number(keys))
+    gettext("A node holds at most %{keys} keys at a time.",
+      keys: Format.number(AccessKeys.key_limit())
+    )
   end
 
   ## Render

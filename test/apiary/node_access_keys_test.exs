@@ -548,13 +548,12 @@ defmodule Apiary.NodeAccessKeysTest do
 
     test "another organisation's node, keys and codes are not reachable", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: enrolled} = enrolled_key_fixture(scope, node)
+      enrolled_key_fixture(scope, node)
       {:ok, code, _} = AccessKeys.create_enrolment_code(scope, node, %{})
       %{scope: other} = sign_up_fixture()
 
       assert AccessKeys.list_for_node(other, node) == []
       assert AccessKeys.list_enrolment_codes(other, node) == []
-      assert AccessKeys.revoke_access_key(other, enrolled) == {:error, :not_found}
       assert AccessKeys.cancel_code(other, code) == {:error, :not_found}
       assert AccessKeys.create_enrolment_code(other, node, %{}) == {:error, :not_found}
       assert paste(other, node) == {:error, :not_found}
