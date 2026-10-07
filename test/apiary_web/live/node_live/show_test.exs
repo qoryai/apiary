@@ -301,8 +301,10 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(
                lv,
                "#node-instance-claim",
-               "Once runners use a node's keys"
+               "An instance is what a runner with this node's key reports itself as"
              )
+
+      refute render(lv) =~ "Once runners use"
 
       render_async(lv)
       assert has_element?(lv, "#node-runs-table #run-#{run.run_id}", "Fix the build")

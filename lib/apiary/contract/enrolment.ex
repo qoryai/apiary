@@ -142,6 +142,15 @@ defmodule Apiary.Contract.Enrolment do
   def issued_under?(%__MODULE__{}, _fingerprint), do: false
 
   @doc """
+  issued_code/2 is the code a machine is given, the one `issued_under?/2` accepts: `code`,
+  the `qec_` and 26 characters `Apiary.AccessKeys.create_enrolment_code/3` returns, then
+  `.` and `fingerprint`, the fingerprint of the server's key.
+  """
+  @spec issued_code(String.t(), String.t()) :: String.t()
+  def issued_code("qec_" <> _ = code, fingerprint) when is_binary(fingerprint),
+    do: code <> "." <> fingerprint
+
+  @doc """
   proof_verifies?/2 says whether the request's proof is a signature of its five lines
   (`Apiary.Contract.SignedMessage.enrolment/4`) under `public_key`, the raw 32 bytes of its
   `public_key`, verified cofactorless (`Apiary.Contract.Ed25519.verify/3`). The key is not

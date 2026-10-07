@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   @moduledoc """
-  A node's Access key tab (`ApiaryWeb.NodeLive.AccessKey`): the plain line that runners
-  can't use a node's keys yet, the keys and their acts confirmed in place, adding a key by
-  its public key, an enrolment code made and shown once, the outstanding codes and their
+  A node's Access key tab (`ApiaryWeb.NodeLive.AccessKey`): its intro and the way a
+  machine gets a key, the keys and their acts confirmed in place, adding a key by its
+  public key and the runner file it leads to, an enrolment code made and shown once with
+  the command that enrols the machine (redeemed as shown), the outstanding codes and their
   revocation, and what a member, another organisation and a stale page are refused.
   """
   use ApiaryWeb.ConnCase, async: true
@@ -12,8 +13,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.AccessKeys
+  alias Apiary.{AccessKeys, SigningKey}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
+  alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Repo
   alias ApiaryWeb.{Format, NodeComponents}
 
@@ -47,13 +49,25 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   # The timer of the next expiry the page holds (`schedule_expiry/1`).
   defp expiry_timer(lv), do: :sys.get_state(lv.pid).socket.assigns.expiry_timer
 
-  # Not one line says a node enrols, posts or connects with these, nor names a command.
+  # Not one line says runners can't use a node's keys yet, nor names a workspace's keys
+  # or their secrets in the runner file.
   defp refute_untrue(html) do
-    refute html =~ "access-key enrol"
-    refute html =~ "qory access-key"
-    refute html =~ "post runs"
-    refute html =~ "can post"
-    refute html =~ "enrol with this code"
+    refute html =~ "keys yet"
+    refute html =~ "Once runners use"
+    refute html =~ "workspace access key"
+    refute html =~ "QORY_SERVER_SECRET"
+    refute html =~ ~r/^\s*(access_key|secret):/m
+  end
+
+  # The text of an element as rendered, its marks gone and its spaces kept.
+  defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text()
+
+  # The pin as the page shows it: K2's list, in YAML's flow form and as JSON.
+  defp pin_lines do
+    [%{"alg" => "ed25519", "public_key" => public_key}] = SigningKey.apiary_public_key()
+
+    {"    - {alg: ed25519, public_key: #{public_key}}",
+     ~s(QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"#{public_key}"}])}
   end
 
   describe "the tab" do
@@ -73,7 +87,19 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#not-on-runs")
       refute render(lv) =~ "workspace access key"
 
-      assert has_element?(lv, "#node-keys-none", "No key yet.")
+      assert has_element?(
+               lv,
+               "#node-keys-intro",
+               "A machine signs every request with its own key. Qory keeps only the public half."
+             )
+
+      assert has_element?(
+               lv,
+               "#node-keys-none",
+               "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key qory access-key create printed there."
+             )
+
+      assert has_element?(lv, "#node-keys-none .font-mono", "qory access-key create")
       assert has_element?(lv, "#node-codes-none", "No enrolment code is outstanding.")
       assert has_element?(lv, "#key-add-button", "Add a public key")
       assert has_element?(lv, "#code-new-button", "New enrolment code")
@@ -98,6 +124,17 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#key-#{pasted.key_id}-revoke .sr-only", "Revoke current")
       assert has_element?(lv, ~s{#key-#{pasted.key_id}-revoke [aria-hidden="true"]}, "Revoke…")
       refute has_element?(lv, "#key-#{pasted.key_id}-approve")
+      # An approved key's card leads to its runner file, named for the key.
+      assert has_element?(
+               lv,
+               ~s{#key-#{pasted.key_id}-runner-file[href="#{tab_path(scope, node, "/keys/#{pasted.key_id}/runner-file")}"]}
+             )
+
+      assert has_element?(
+               lv,
+               "#key-#{pasted.key_id}-runner-file .sr-only",
+               "Runner file lines for current"
+             )
 
       assert has_element?(lv, "#key-#{pending.key_id}-state", "Awaiting approval")
 
@@ -111,6 +148,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#key-#{pending.key_id}-approve", "Approve…")
       assert has_element?(lv, "#key-#{pending.key_id}-reject", "Reject…")
       refute has_element?(lv, "#key-#{pending.key_id}-revoke")
+      refute has_element?(lv, "#key-#{pending.key_id}-runner-file")
       refute_untrue(html)
     end
   end
@@ -276,6 +314,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert_patch(lv, tab_path(scope, node, "/add"))
       assert has_element?(lv, "#key-add-title", "Add a public key")
       assert has_element?(lv, "#key-add", "approved as you add it")
+
+      assert has_element?(
+               lv,
+               "#key_public_key-hint",
+               "without padding. qory access-key create prints it on the machine."
+             )
+
       refute has_element?(lv, "#not-on-runs")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add a public key")
       assert has_element?(lv, ~s{#key-add-save-cancel[href="#{tab_path(scope, node)}"]})
@@ -303,12 +348,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       )
       |> render_submit()
 
-      assert_patch(lv, tab_path(scope, node))
-      assert render(lv) =~ "build-01 is added, and approved."
-      assert_push_event(lv, "run:focus", %{id: "key-add-button"})
-
-      assert [%AccessKey{label: "build-01", approved_at: %DateTime{}}] =
+      assert [%AccessKey{label: "build-01", approved_at: %DateTime{}} = key] =
                AccessKeys.list_for_node(scope, node)
+
+      # On to what the machine is given: the key's runner file.
+      assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+      assert render(lv) =~ "build-01 is added, and approved."
+      assert has_element?(lv, "#key-runner-file-header-title", "Runner file for build-01")
     end
 
     test "Cancel leads back to the tab, the focus on the button that opened the page",
@@ -366,10 +412,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              )
 
       lv |> form("#key-add-form", key: params) |> render_submit()
-      assert_patch(lv, tab_path(scope, node))
 
-      assert [%AccessKey{label: "build-01", public_key: public_key}] =
+      assert [%AccessKey{label: "build-01", public_key: public_key} = key] =
                AccessKeys.list_for_node(scope, node)
+
+      assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
 
       assert public_key == pair.public_key
     end
@@ -438,6 +485,111 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     end
   end
 
+  describe "a key's runner file" do
+    test "is what the machine is given: the server section and, for CI, the variables",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "current"})
+      {yaml_pin, env_pin} = pin_lines()
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      lv |> element("#key-#{key.key_id}-runner-file") |> render_click()
+      assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+
+      assert has_element?(lv, "#key-runner-file-header-title", "Runner file for current")
+      assert page_title(lv) =~ "Runner file for current · build-01"
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "current")
+
+      assert has_element?(
+               lv,
+               "#key-runner-file",
+               "For build-01. Nothing here is secret: the key's secret stays on the machine."
+             )
+
+      assert has_element?(
+               lv,
+               "#key-runner-file",
+               "Put these lines in ~/.config/qory/runner.yaml on the machine:"
+             )
+
+      yaml = lv |> element("#key-runner-file-yaml") |> render() |> text()
+
+      assert yaml ==
+               """
+               server:
+                 url: #{ApiaryWeb.Endpoint.url()}
+                 access_key_id: #{key.key_id}
+                 apiary_public_key:
+               #{yaml_pin}\
+               """
+
+      assert has_element?(lv, "#key-runner-file-yaml-copy", "Copy lines")
+
+      assert has_element?(
+               lv,
+               "#key-runner-file",
+               "For CI, keep url in the file and set these instead of the other two lines:"
+             )
+
+      env = lv |> element("#key-runner-file-env") |> render() |> text()
+      assert env == "QORY_ACCESS_KEY_ID=#{key.key_id}\n#{env_pin}"
+      assert has_element?(lv, "#key-runner-file-env-copy", "Copy variables")
+
+      assert has_element?(
+               lv,
+               "#key-runner-file-secret",
+               "The key's secret is where qory access-key create put it: ~/.config/qory/access-key-secret, or QORY_ACCESS_KEY_SECRET in CI."
+             )
+
+      refute_untrue(render(lv))
+
+      # Done: back to the tab, the focus on the link that opened the page.
+      lv |> element("#key-runner-file-done-button", "Done") |> render_click()
+      assert_patch(lv, tab_path(scope, node))
+      assert_push_event(lv, "run:focus", %{id: id})
+      assert id == "key-#{key.key_id}-runner-file"
+    end
+
+    test "is an approved key's alone", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      %{access_key: pending} = pending_key_fixture(scope, node, %{label: "replacement"})
+      %{access_key: revoked} = node_key_fixture(scope, node, %{label: "old"})
+      {:ok, _revoked} = AccessKeys.revoke_access_key(scope, revoked)
+
+      for {rest, words} <- [
+            {"/keys/#{pending.key_id}/runner-file", "replacement is not an approved key."},
+            {"/keys/#{revoked.key_id}/runner-file", "old is not an approved key."},
+            {"/keys/ak_0000000000000000/runner-file", "This node has no such key."}
+          ] do
+        {:ok, lv, html} =
+          live(conn, tab_path(scope, node, rest)) |> follow_redirect(conn, tab_path(scope, node))
+
+        assert html =~ words
+        refute has_element?(lv, "#key-runner-file")
+      end
+
+      # From the tab, the same.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      render_patch(lv, tab_path(scope, node, "/keys/#{pending.key_id}/runner-file"))
+      assert_patch(lv, tab_path(scope, node))
+      assert render(lv) =~ "replacement is not an approved key."
+      refute has_element?(lv, "#key-runner-file")
+    end
+
+    test "a member reads it too: nothing on it is secret", %{scope: scope} do
+      node = node_fixture(scope)
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "current"})
+      conn = member_conn(scope)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      assert has_element?(lv, "#key-#{key.key_id}-runner-file")
+      refute has_element?(lv, "#key-#{key.key_id}-revoke")
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+      assert has_element?(lv, "#key-runner-file-yaml", key.key_id)
+    end
+  end
+
   describe "an enrolment code" do
     test "is made on a page of its own and shown once, never in an address or a flash", %{
       conn: conn,
@@ -461,7 +613,30 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         |> render_submit()
 
       refute_untrue(html)
-      [code] = Regex.run(~r/qec_[0-9A-Z]{26}/, lv |> element("#code-issued-value") |> render())
+      fingerprint = SigningKey.fingerprint()
+
+      # The code as the machine sends it: the server key's fingerprint after it.
+      [code] =
+        Regex.run(
+          ~r/qec_[0-9A-Z]{26}(?=\.#{Regex.escape(fingerprint)}<)/,
+          lv |> element("#code-issued-value") |> render()
+        )
+
+      # The command that enrols the machine, with the address of this server and that code.
+      assert has_element?(lv, "#code-issued", "On the machine, run:")
+
+      assert lv |> element("#code-issued-command") |> render() |> text() ==
+               "qory access-key enrol #{ApiaryWeb.Endpoint.url()} #{code}.#{fingerprint}"
+
+      assert has_element?(lv, "#code-issued-command-copy", "Copy command")
+      assert has_element?(lv, "#code-issued-works", "It works once, for 15 minutes.")
+
+      assert has_element?(
+               lv,
+               "#code-issued-approve",
+               "The key it brings arrives here awaiting approval. Compare the fingerprint qory prints with the key's before you approve it."
+             )
+
       assert has_element?(lv, "#code-issued", "This code is shown once.")
       assert has_element?(lv, "#code-issued-secrets", "Allowed")
       assert has_element?(lv, "#code-issued-expires-label", "Expires")
@@ -516,6 +691,46 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, html} = live(conn, tab_path(scope, node, "/new-code"))
       refute html =~ code
       refute has_element?(lv, "#code-issued")
+    end
+
+    test "the code shown, as the command has it, is the one an enrolment redeems", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/new-code"))
+      lv |> form("#code-new-form", code: %{allow_secrets: "false"}) |> render_submit()
+
+      server = ApiaryWeb.Endpoint.url()
+
+      ["qory", "access-key", "enrol", ^server, code] =
+        lv |> element("#code-issued-command") |> render() |> text() |> String.split(" ")
+
+      assert lv |> element("#code-issued-value") |> render() |> text() == code
+
+      # A machine posts it as `qory access-key enrol` would: its new key, and the proof.
+      pair = ed25519_key_pair()
+      now = System.os_time(:second)
+      message = SignedMessage.enrolment(code, pair.encoded, "build-01", now)
+      proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+
+      {:ok, request} =
+        Enrolment.decode(
+          Jason.encode!(%{
+            "version" => 1,
+            "code" => code,
+            "name" => "build-01",
+            "public_key" => pair.encoded,
+            "timestamp" => now,
+            "proof" => Ed25519.encode(proof)
+          })
+        )
+
+      assert Enrolment.issued_under?(request, SigningKey.fingerprint())
+      assert {:ok, %AccessKey{} = key} = AccessKeys.enrol(request)
+      assert key.node_id == node.id
+      assert key.public_key == pair.public_key
+      assert AccessKey.status(key) == :pending
     end
 
     test "an outstanding code is listed with its expiry, and revoked in place", %{

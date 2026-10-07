@@ -430,6 +430,45 @@ defmodule Apiary.AccessKeys do
   def code_ttl_minutes, do: @code_ttl_minutes
 
   @doc """
+  runner_lines/3 is what a machine holding `key` is given, nothing of it secret: `file`,
+  the runner file's `server` section, `url` (`base_url`), `access_key_id` and
+  `apiary_public_key`, the pin, in YAML's flow form, one line per key; and `env`, the same
+  id and pin as the variables CI sets instead, `QORY_ACCESS_KEY_ID` and
+  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON. `pin` is the server's `apiary_public_key`
+  list (`Apiary.SigningKey.apiary_public_key/0`). The key's secret is the machine's alone.
+  """
+  @spec runner_lines(AccessKey.t(), String.t(), [%{required(String.t()) => String.t()}, ...]) ::
+          %{file: String.t(), env: String.t()}
+  def runner_lines(
+        %AccessKey{key_id: key_id},
+        base_url,
+        pin \\ Apiary.SigningKey.apiary_public_key()
+      )
+      when is_binary(key_id) and is_binary(base_url) do
+    pins =
+      Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
+        "    - {alg: #{alg}, public_key: #{public_key}}\n"
+      end)
+
+    json =
+      Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
+        Jason.OrderedObject.new([{"alg", alg}, {"public_key", public_key}])
+      end)
+
+    %{
+      file:
+        IO.iodata_to_binary([
+          "server:\n",
+          "  url: #{base_url}\n",
+          "  access_key_id: #{key_id}\n",
+          "  apiary_public_key:\n",
+          pins
+        ]),
+      env: "QORY_ACCESS_KEY_ID=#{key_id}\nQORY_APIARY_PUBLIC_KEY=#{Jason.encode!(json)}\n"
+    }
+  end
+
+  @doc """
   key_limits/0 is how many keys a node holds at most: `approved`, approved and not
   revoked, and `pending`, awaiting approval. A paste, an approval and an enrolment
   (`enrol/2`), the one way a key comes to await approval, count them under the node's

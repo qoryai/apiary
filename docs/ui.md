@@ -827,6 +827,28 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   taking the focus.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
   record. A node the workspace does not have, or a deleted one, is not found.
+- **Access key**, a node's tab, opens on "A machine signs every request with its own
+  key. Qory keeps only the public half.", the key limits, Add a public key and New
+  enrolment code, then the keys as cards (approve, reject or revoke confirmed in place) and
+  the outstanding codes. With no key it says how a machine gets one: "No key yet. Make an
+  enrolment code and run the command it shows on the machine, or add the public key `qory
+  access-key create` printed there." An approved key's card links **Runner file lines**,
+  for everyone who reads the node.
+- **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`,
+  an approved key's alone; any other goes back to the tab with why) is a page, not a
+  dialog, and what Add key leads to, with its flash "build-01 is added, and approved.":
+  "For build-01. Nothing here is secret: the key's secret stays on the machine.", the
+  lines for `~/.config/qory/runner.yaml` (the `server` section: `url`, `access_key_id`
+  and `apiary_public_key`, the pin in YAML's flow form) with Copy lines, for CI the two
+  variables in place of the last two (`QORY_ACCESS_KEY_ID`, and `QORY_APIARY_PUBLIC_KEY`,
+  the pin as JSON) with Copy variables, where the key's secret is
+  (`~/.config/qory/access-key-secret`, or `QORY_ACCESS_KEY_SECRET` in CI), and Done back
+  to the tab, the focus on the link.
+- **New enrolment code**, once made, shows the code once, as the machine sends it (the
+  server key's fingerprint after a `.`), then "On the machine, run:" and `qory access-key
+  enrol https://apiary.example qec_…` with Copy command, "It works once, for 15 minutes.",
+  and that the key it brings arrives awaiting approval, its fingerprint to compare with the
+  one qory prints.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
   `/nodes/:node_id/instances/:instance/clear` (the instance's id) that line, or that row in
