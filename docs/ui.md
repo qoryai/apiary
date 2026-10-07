@@ -261,6 +261,11 @@ by its name or a value ID and filtered by one value or several; a variable by it
 its value, and filtered by its lock and by whether a repository sets it too; both ordered
 by name or the latest change.
 
+- **Runs don't receive these yet.** A run receives its security policy alone, so each
+  view, and each of its pages, says once near its top "Runs don't receive secrets yet."
+  or "Runs don't receive variables yet.", with "Today a run receives only its security
+  policy." (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a
+  run is given what it holds.
 - **A secret** is one row: its name in mono, its note beside it, how many values it
   holds, who changed it and when (`ApiaryWeb.People`), and what uses it, "Not used yet"
   while nothing does (`Apiary.Secrets.list_uses/2`). A secret of several values, or of one
@@ -279,11 +284,13 @@ by name or the latest change.
   a link to the page that lists them. Locked means a repository
   may not set its own value, and nothing more. A name on the runner's deny list other
   than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
-  and a word on its row. One line under the list says what a node does with them.
+  ("NAME is on the runner's deny list.", which describes the name's field while it
+  shows) and "On the runner's deny list" on its row.
 - **The forms are pages** of the section (A form is a page, above), each at a path of its
-  own: for secrets New secret (`/settings/secrets/new`), Add value (`/:id/add-value`),
-  Change value (`/:id/change-value` for a secret's one value without a value ID,
-  `/:id/values/:value_id/change` for a named one) and Rename value
+  own: for secrets New secret (`/settings/secrets/new`), Edit name and note (`/:id/edit`,
+  "Edit the name and note of FORGE_TOKEN", its values left as they are), Add value
+  (`/:id/add-value`), Change value (`/:id/change-value` for a secret's one value without
+  a value ID, `/:id/values/:value_id/change` for a named one) and Rename value
   (`…/values/:value_id/rename`); for variables New variable (`/settings/variables/new`) and
   Change value (`/:id/change`). The breadcrumb ends `Secrets and variables / New secret`,
   the section leading back to the view the page was opened from, with its query.
@@ -296,8 +303,12 @@ by name or the latest change.
   (`/:id/delete`) turn the row into "Delete FORGE_TOKEN?", what is lost, Yes, delete and
   Cancel. **Lock and Unlock act at once** from the row's menu, and the flash says what the
   lock did to the targets that set their own; their paths, `/:id/lock` and `/:id/unlock`,
-  which must not act as they open, ask on the row first. A secret is named by its public
-  id, a variable by its row's. A path the reader may not open, or of a secret or variable
+  which must not act as they open, ask on the row first. A confirmation the context
+  refuses (a lock, an unlock or a deletion that would raise a target's variables over
+  their limits, a secret something uses, a secret's last value) stays open and says why
+  under its question, as an alert, the focus left on its button; a Lock or Unlock from
+  the menu that is refused says why in the flash. A secret is named by its public id, a
+  variable by its row's. A path the reader may not open, or of a secret or variable
   the workspace does not have, sends them back to the view and says why.
 - **Who.** Every member reads both views; owners and admins change them (`secret.write`,
   `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, under the

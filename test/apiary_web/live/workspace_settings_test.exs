@@ -3,6 +3,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
   # beside the workspace's sidebar, and each section is a page of its own.
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
@@ -29,12 +30,26 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       assert has_element?(
                lv,
                "#workspace-type",
-               "Chosen when the workspace was created. It decides the words its pages use."
+               "Set when the workspace was created. It decides the words its pages use."
              )
 
       # Read only: no field for it, and the form sends none.
       refute has_element?(lv, "#workspace-type input, #workspace-type select")
       refute has_element?(lv, "#workspace-form #workspace-type")
+    end
+
+    test "names a workspace of another domain by the domain's name alone",
+         %{conn: conn, scope: scope} do
+      Apiary.Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+        set: [domain: "example"]
+      )
+
+      {:ok, lv, _html} = live(conn, settings_path(scope))
+
+      assert lv |> element("#workspace-type-value") |> render() =~ ~r{>\s*example\s*</dd>}
+      refute has_element?(lv, "#workspace-type-value", "workspace")
+      refute has_element?(lv, "#workspace-type-value", "software")
     end
 
     test "says it to a member too, who changes nothing", %{scope: scope} do

@@ -289,10 +289,12 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       # A page of its own, not a dialog over the list.
       refute has_element?(lv, "#secrets")
       assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
-      assert has_element?(lv, "#secret-page-title", "Edit FORGE_TOKEN")
+      assert has_element?(lv, "#secret-page-title", "Edit the name and note of FORGE_TOKEN")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Edit")
       assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")
-      assert page_title(lv) =~ "Edit FORGE_TOKEN · Workspace settings"
+      assert page_title(lv) =~ "Edit the name and note of FORGE_TOKEN · Workspace settings"
+      assert has_element?(lv, "#secret-save button[type=submit]", "Save")
+      refute has_element?(lv, "#secret-save button[type=submit]", "Save secret")
       refute has_element?(lv, "#secret-form textarea")
 
       assert lv |> element("#secret-form input[name='secret[name]']") |> render() =~
@@ -502,11 +504,15 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       other = sign_up_fixture()
       conn = log_in_user(build_conn(), other.user)
 
-      assert refused_at(conn, secrets_path(other.scope, "/#{secret.public_id}/delete")) ==
-               "That secret is no longer in this workspace."
+      for path <- ["/#{secret.public_id}/delete", "/#{secret.public_id}/edit"] do
+        assert refused_at(conn, secrets_path(other.scope, path)) ==
+                 "That secret is no longer in this workspace."
+      end
 
       {:ok, lv, _html} = live(conn, secrets_path(other.scope))
       render_hook(lv, "delete_secret", %{})
+      render_hook(lv, "update_secret", %{"secret" => %{"name" => "SNEAKY"}})
+      assert [%{name: "FORGE_TOKEN"}] = secrets(scope)
 
       {:ok, lv, _html} = live(conn, secrets_path(other.scope))
       refute render(lv) =~ "FORGE_TOKEN"
@@ -541,6 +547,12 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "New variable")
       assert has_element?(lv, "#variable-save-cancel[href='#{variables_path(scope)}']")
 
+      # The name's hint describes its field; the deny-list warning would too, while it
+      # shows.
+      assert has_element?(lv, "#variable_name[aria-describedby=variable_name-hint]")
+      assert has_element?(lv, "#variable_name-hint", "Letters, digits and _")
+      refute has_element?(lv, "#variable-warning")
+
       lv
       |> form("#variable-form",
         variable: %{name: "NPM_REGISTRY", value: "https://registry.example.com", locked: "true"}
@@ -567,6 +579,11 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> render_submit()
 
       assert html =~ "names beginning QORY_ are the runner&#39;s own"
+
+      # The error describes the field in place of its hint, and the hint goes.
+      assert has_element?(lv, "#variable_name[aria-describedby=variable_name-error]")
+      refute has_element?(lv, "#variable_name[aria-describedby~=variable_name-hint]")
+      refute has_element?(lv, "#variable_name-hint")
 
       html =
         lv
@@ -610,7 +627,9 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#variable-#{variable.id}-lock-item") |> render_click()
 
       assert render(lv) =~
-               "NODE_ENV is locked: 2 repositories that set their own are given the workspace&#39;s value while the lock holds."
+               "NODE_ENV is locked: 2 repositories that set their own are set aside by the lock."
+
+      refute render(lv) =~ "are given"
 
       assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
 
@@ -635,14 +654,22 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#variable-#{variable.id}-confirm button", "Unlock") |> render_click()
 
       assert render(lv) =~
-               "NODE_ENV is unlocked: 2 repositories are given their own value again."
+               "NODE_ENV is unlocked: 2 repositories that set their own are no longer set aside."
+
+      refute render(lv) =~ "are given"
 
       refute Repo.reload!(variable).locked
 
       # Its lock path asks the same way.
       {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/lock"))
       refute Repo.reload!(variable).locked
-      assert has_element?(lv, "#lock-targets", "2 repositories set their own now")
+
+      assert has_element?(
+               lv,
+               "#lock-targets",
+               "2 repositories set their own now: the lock sets them aside while it holds."
+             )
+
       lv |> element("#variable-#{variable.id}-confirm button", "Lock") |> render_click()
       assert Repo.reload!(variable).locked
 
@@ -684,6 +711,9 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       for target <- targets, do: assert(has_element?(lv, "#variable-target-#{target.id}"))
       assert has_element?(lv, "#variable-targets", "Its own value")
 
+      # The table's region is named apart from the page's.
+      assert has_element?(lv, "[role=region][aria-label=Repositories] #variable-targets")
+
       lv |> form("#variable-targets-search", q: "site-07") |> render_change()
       assert has_element?(lv, "#variable-target-#{Enum.at(targets, 6).id}")
       refute has_element?(lv, "#variable-target-#{Enum.at(targets, 0).id}")
@@ -706,7 +736,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert {:ok, []} = Variables.list_variables(scope, :workspace)
     end
 
-    test "refuses to delete a locked variable as it refuses to unlock it, and keeps the row",
+    test "refuses to delete a locked variable as it refuses to unlock it, the confirmation open",
          %{conn: conn, scope: scope} do
       site = target!(scope, "acme/site")
       for i <- 10..24, do: variable!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
@@ -715,26 +745,55 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       {:ok, variable} = Variables.lock_variable(scope, variable)
       # The repository is full while its own LOCKED is set aside, which either act gives back.
       variable!(scope, site, "OWN", String.duplicate("o", 4026))
-      reason = "would give a run more than 64 KiB of variables"
+      # The context's refusal, as a software workspace reads it.
+      reason = "would raise a repository's variables above 64 KiB"
 
+      # Unlock from the row's menu, with no confirmation open: the flash says why.
       {:ok, lv, _html} = live(conn, variables_path(scope))
       lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
-      assert render(lv) =~ "Not saved: #{reason}"
+      assert has_element?(lv, "#flash-error", "Not unlocked: #{reason}")
+      assert Repo.reload!(variable).locked
 
+      # Its unlock path asks on the row: refused, the confirmation stays open, and says why
+      # under its question, with no flash.
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/unlock"))
+      lv |> element("#variable-#{variable.id}-confirm button", "Unlock") |> render_click()
+
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id}-confirm #variable-refused[role=alert]",
+               "Not unlocked: #{reason}"
+             )
+
+      assert has_element?(lv, "#variable-#{variable.id}-confirm button", "Unlock")
+      refute has_element?(lv, "#flash-error")
+      assert Repo.reload!(variable).locked
+
+      # The deletion too.
       {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/delete"))
       assert has_element?(lv, "#variable-#{variable.id}-confirm", "Delete LOCKED?")
-      refute render(lv) =~ reason
+      refute has_element?(lv, "#variable-refused")
 
       lv
       |> element("#variable-#{variable.id}-confirm button", "Yes, delete")
       |> render_click()
 
-      assert_patch(lv, variables_path(scope))
-      assert render(lv) =~ "Not deleted: #{reason}"
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id}-confirm #variable-refused[role=alert]",
+               "Not deleted: #{reason}"
+             )
+
+      assert has_element?(lv, "#variable-#{variable.id}-confirm button", "Yes, delete")
+      refute has_element?(lv, "#flash-error")
       refute render(lv) =~ "Not saved"
-      refute has_element?(lv, "#variable-#{variable.id}-confirm")
-      assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
       assert Repo.reload!(variable).locked
+
+      # Cancel closes it, and the reason goes with it.
+      lv |> element("#variable-#{variable.id}-confirm-cancel") |> render_click()
+      assert_patch(lv, variables_path(scope))
+      refute has_element?(lv, "#variable-refused")
+      assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
     end
 
     test "finds and filters the variables in the URL", %{conn: conn, scope: scope} do

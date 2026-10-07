@@ -10,7 +10,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   and Cancel back to the view, the breadcrumb ending with the section and the page), and
   so is the list of a variable's targets; a deletion asks to confirm in place, on its row
   (`CoreComponents.inline_confirm/1`). Lock and Unlock act at once from the row's menu;
-  their paths, which must not act as they open, ask on the row first.
+  their paths, which must not act as they open, ask on the row first. A confirmation the
+  context refuses stays open and says why under its question.
 
   No run receives a secret or a variable yet: a run receives its security policy alone.
   Each view, and each of its pages, says so once, near its top
@@ -348,7 +349,11 @@ defmodule ApiaryWeb.SecretLive.Index do
         <.secret_menu :if={@may_write} row={row} scope={@current_scope} />
       </:action>
       <:confirm :let={row}>
-        <.secret_confirm row={row} cancel={list_path(@current_scope, :secrets, @query)} />
+        <.secret_confirm
+          row={row}
+          refusal={@refusal}
+          cancel={list_path(@current_scope, :secrets, @query)}
+        />
       </:confirm>
     </.table>
     """
@@ -413,21 +418,21 @@ defmodule ApiaryWeb.SecretLive.Index do
         :if={@one}
         id={"secret-#{@secret.public_id}-change"}
         patch={secret_path(@scope, @secret, :change_value)}
-        aria-label={gettext("Change the value of %{name}", name: @secret.name)}
+        aria-label={gettext("Change value of %{name}", name: @secret.name)}
       >
         {gettext("Change value…")}
       </.menu_item>
       <.menu_item
         id={"secret-#{@secret.public_id}-add"}
         patch={secret_path(@scope, @secret, :add_value)}
-        aria-label={gettext("Add a value to %{name}", name: @secret.name)}
+        aria-label={gettext("Add value to %{name}", name: @secret.name)}
       >
         {gettext("Add value…")}
       </.menu_item>
       <.menu_item
         id={"secret-#{@secret.public_id}-edit"}
         patch={secret_path(@scope, @secret, :edit)}
-        aria-label={gettext("Edit the name and note of %{name}", name: @secret.name)}
+        aria-label={gettext("Edit name and note of %{name}", name: @secret.name)}
       >
         {gettext("Edit name and note…")}
       </.menu_item>
@@ -435,7 +440,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       <.menu_item
         id={"secret-#{@secret.public_id}-delete"}
         patch={secret_path(@scope, @secret, :delete)}
-        aria-label={gettext("Delete %{name}", name: @secret.name)}
+        aria-label={gettext("Delete secret %{name}", name: @secret.name)}
       >
         {gettext("Delete secret…")}
       </.menu_item>
@@ -457,7 +462,10 @@ defmodule ApiaryWeb.SecretLive.Index do
         id={"#{@id}-change"}
         patch={value_path(@scope, @secret, @value, :change)}
         aria-label={
-          gettext("Change %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name)
+          gettext("Change value %{value_id} of %{name}",
+            value_id: @value.value_id,
+            name: @secret.name
+          )
         }
       >
         {gettext("Change value…")}
@@ -466,7 +474,10 @@ defmodule ApiaryWeb.SecretLive.Index do
         id={"#{@id}-rename"}
         patch={value_path(@scope, @secret, @value, :rename)}
         aria-label={
-          gettext("Rename %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name)
+          gettext("Rename value %{value_id} of %{name}",
+            value_id: @value.value_id,
+            name: @secret.name
+          )
         }
       >
         {gettext("Rename value…")}
@@ -477,7 +488,10 @@ defmodule ApiaryWeb.SecretLive.Index do
         id={"#{@id}-delete"}
         patch={value_path(@scope, @secret, @value, :delete)}
         aria-label={
-          gettext("Delete %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name)
+          gettext("Delete value %{value_id} of %{name}",
+            value_id: @value.value_id,
+            name: @secret.name
+          )
         }
       >
         {gettext("Delete value…")}
@@ -605,7 +619,7 @@ defmodule ApiaryWeb.SecretLive.Index do
             id={"variable-#{variable.id}-denied"}
             hot
           >
-            {gettext("Left out by the runner")}
+            {gettext("On the runner's deny list")}
           </.state_word>
         </span>
       </:col>
@@ -648,7 +662,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           <.menu_item
             id={"variable-#{variable.id}-change"}
             patch={variable_path(@current_scope, variable, :change)}
-            aria-label={gettext("Change the value of %{name}", name: variable.name)}
+            aria-label={gettext("Change value of %{name}", name: variable.name)}
           >
             {gettext("Change value…")}
           </.menu_item>
@@ -676,7 +690,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           <.menu_item
             id={"variable-#{variable.id}-delete"}
             patch={variable_path(@current_scope, variable, :delete)}
-            aria-label={gettext("Delete %{name}", name: variable.name)}
+            aria-label={gettext("Delete variable %{name}", name: variable.name)}
           >
             {gettext("Delete variable…")}
           </.menu_item>
@@ -686,6 +700,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <.variable_confirm
           act={@act}
           variable={variable}
+          refusal={@refusal}
           targets={Map.get(@targets, String.downcase(variable.name), [])}
           cancel={list_path(@current_scope, :variables, @query)}
         />
@@ -810,7 +825,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         cancel_by="patch"
       >
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
-          {gettext("Save secret")}
+          {gettext("Save")}
         </.button>
       </.page_form_foot>
     </.form>
@@ -909,16 +924,30 @@ defmodule ApiaryWeb.SecretLive.Index do
       class="grid gap-4"
       novalidate
     >
-      <.input
-        field={@form[:name]}
-        label={gettext("Name")}
-        placeholder="NPM_REGISTRY"
-        hint={gettext("Letters, digits and _, starting with a letter or _.")}
-        autocomplete="off"
-        spellcheck="false"
-        class="font-mono"
-        phx-mounted={JS.focus()}
-      />
+      <%!-- The name's hint is drawn here, as the input draws one, so that the deny-list
+           warning describes the field too while it shows: the input writes its own
+           aria-describedby from a hint it is given, before one passed to it, and a browser
+           keeps the first. While the field shows an error, the error describes it, and
+           the hint goes, as in the input. --%>
+      <div class="grid gap-1.5">
+        <.input
+          field={@form[:name]}
+          label={gettext("Name")}
+          placeholder="NPM_REGISTRY"
+          aria-describedby={name_described(@form[:name], @warning)}
+          autocomplete="off"
+          spellcheck="false"
+          class="font-mono"
+          phx-mounted={JS.focus()}
+        />
+        <p
+          :if={!errors_shown?(@form[:name])}
+          id={"#{@form[:name].id}-hint"}
+          class="text-[12.5px]/[18px] text-muted"
+        >
+          {gettext("Letters, digits and _, starting with a letter or _.")}
+        </p>
+      </div>
       <.notice :if={@warning} kind={:warning}>
         <span id="variable-warning">{@warning}</span>
       </.notice>
@@ -999,7 +1028,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     <.table
       :if={@all != []}
       id="variable-targets"
-      label={gettext("Targets that set %{name}", name: @variable.name)}
+      label={gettext("Targets")}
       rows={@listed}
       row_id={&"variable-target-#{&1.target.id}"}
     >
@@ -1031,7 +1060,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_title(%{act: :new_secret}), do: gettext("New secret")
 
   defp form_title(%{act: :edit_secret, secret: secret}),
-    do: gettext("Edit %{name}", name: secret.name)
+    do: gettext("Edit the name and note of %{name}", name: secret.name)
 
   defp form_title(%{act: :add_value, secret: secret}),
     do: gettext("Add a value to %{name}", name: secret.name)
@@ -1101,7 +1130,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
 
   defp variable_sentence,
-    do: gettext("A variable is a plain value by name, such as the address of a package registry.")
+    do: gettext("A variable is a named plain value, such as the address of a package registry.")
 
   ## The confirmations in place
 
@@ -1115,6 +1144,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp secret_confirming(_act, _secret, _value), do: nil
 
   attr :row, :any, required: true
+  attr :refusal, :string, default: nil, doc: "why the context refused it, once it did"
   attr :cancel, :string, required: true
 
   defp secret_confirm(%{row: {:secret, secret}} = assigns) do
@@ -1132,6 +1162,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         length(@secret.values),
         number: Format.number(length(@secret.values))
       )}
+      <.refusal_line id="secret-refused" refusal={@refusal} />
       <:action>
         <.button
           variant="danger"
@@ -1158,6 +1189,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       cancel={@cancel}
     >
       {gettext("The value is deleted, and the secret keeps its other values. This cannot be undone.")}
+      <.refusal_line id="secret-refused" refusal={@refusal} />
       <:action>
         <.button
           variant="danger"
@@ -1182,6 +1214,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   attr :act, :atom, required: true
   attr :variable, Variable, required: true
   attr :targets, :list, required: true, doc: "the targets that set the variable"
+  attr :refusal, :string, default: nil, doc: "why the context refused it, once it did"
   attr :cancel, :string, required: true
 
   defp variable_confirm(%{act: :delete_variable} = assigns) do
@@ -1195,6 +1228,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         "The workspace's value of %{name} is deleted. A target that sets its own keeps it. This cannot be undone.",
         name: @variable.name
       )}
+      <.refusal_line id="variable-refused" refusal={@refusal} />
       <:action>
         <.button
           variant="danger"
@@ -1225,12 +1259,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       )}
       <span :if={@own > 0} id="lock-targets">
         {ngettext(
-          "%{number} target sets its own now: while the lock holds, the lock sets it aside.",
-          "%{number} targets set their own now: while the lock holds, the lock sets them aside.",
+          "%{number} target sets its own now: the lock sets it aside while it holds.",
+          "%{number} targets set their own now: the lock sets them aside while it holds.",
           @own,
           number: Format.number(@own)
         )}
       </span>
+      <.refusal_line id="variable-refused" refusal={@refusal} />
       <:action>
         <.button
           variant="primary"
@@ -1263,6 +1298,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           number: Format.number(@ignored)
         )}
       </span>
+      <.refusal_line id="variable-refused" refusal={@refusal} />
       <:action>
         <.button
           variant="primary"
@@ -1274,6 +1310,24 @@ defmodule ApiaryWeb.SecretLive.Index do
         </.button>
       </:action>
     </.inline_confirm>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :refusal, :string, default: nil
+
+  # Why the context refused what a confirmation asked, under its question, in the open
+  # confirmation: said as it comes, and the focus left on the button that acted.
+  defp refusal_line(assigns) do
+    ~H"""
+    <span
+      :if={@refusal}
+      id={@id}
+      role="alert"
+      class="block font-medium text-error-soft-content"
+    >
+      {@refusal}
+    </span>
     """
   end
 
@@ -1325,18 +1379,25 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp token_words({:lock, :no}), do: gettext("Not locked")
   defp token_words({:targets, :own}), do: gettext("Set by a target too")
 
-  # A name the runner leaves out of what a run is given, which the context saves: warned.
+  # A name on the runner's deny list, which the context saves: warned. No run receives a
+  # variable yet, so the words say where the name is, and nothing of a run.
   defp warned?(name) when is_binary(name), do: Denied.denied?(name) and not Denied.refused?(name)
   defp warned?(_name), do: false
 
   defp warning(name) do
-    if warned?(name),
-      do:
-        gettext(
-          "%{name} is on the runner's deny list: the runner leaves the names on it out of a run's environment.",
-          name: name
-        )
+    if warned?(name), do: gettext("%{name} is on the runner's deny list.", name: name)
   end
+
+  # What describes New variable's name field: its hint, and the warning while it shows;
+  # nothing of ours while the field shows an error, which the input says is what describes
+  # it.
+  defp name_described(field, warning) do
+    unless errors_shown?(field),
+      do: Enum.join(["#{field.id}-hint" | List.wrap(warning && "variable-warning")], " ")
+  end
+
+  # Whether the input shows the field's errors (`CoreComponents.input/1`): once it is used.
+  defp errors_shown?(field), do: field.errors != [] and Phoenix.Component.used_input?(field)
 
   ## Paths
 
@@ -1406,6 +1467,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         variable: nil,
         form: nil,
         warning: nil,
+        refusal: nil,
         target_q: ""
       )
       |> mays()
@@ -1466,7 +1528,15 @@ defmodule ApiaryWeb.SecretLive.Index do
     socket =
       socket
       |> assign(view: if(action in [:secrets | @secret_acts], do: :secrets, else: :variables))
-      |> assign(act: nil, secret: nil, value: nil, variable: nil, form: nil, warning: nil)
+      |> assign(
+        act: nil,
+        secret: nil,
+        value: nil,
+        variable: nil,
+        form: nil,
+        warning: nil,
+        refusal: nil
+      )
 
     socket =
       if action in [:secrets, :variables],
@@ -1923,15 +1993,48 @@ defmodule ApiaryWeb.SecretLive.Index do
       {:ok, variable} ->
         saved(socket, variable_done(event, variable.name, targets), :variables)
 
-      {:error, %Ecto.Changeset{} = changeset} when event == "delete_variable" ->
-        not_deleted(socket, changeset)
-
       {:error, %Ecto.Changeset{} = changeset} ->
-        refusal(socket, changeset, :variables)
+        not_done(socket, event, variable, changeset)
 
       {:error, reason} ->
         refusal(socket, reason, :variables)
     end
+  end
+
+  # A lock, an unlock or a deletion refused, on what it asks of the variable or on the
+  # limits of the holders it reaches, which are checked where the change leaves them, so
+  # a holder already over them refuses it too (a deletion that shrinks a holder already
+  # over them, and grows none, is let through). The row's confirmation, when the change
+  # came from it, stays open and says why; a lock or an unlock from the row's menu says
+  # it in the flash. Either way the list is read again, and the row is as it was.
+  defp not_done(socket, event, variable, changeset) do
+    words = not_done_words(event, reasons(changeset))
+
+    if confirming?(socket, event, variable),
+      do: held(socket, words),
+      else: back(socket, :error, words, :variables)
+  end
+
+  # The context's reason names no act, so the words say which did not happen.
+  defp not_done_words("lock_variable", reason),
+    do: gettext("Not locked: %{reason}", reason: reason)
+
+  defp not_done_words("unlock_variable", reason),
+    do: gettext("Not unlocked: %{reason}", reason: reason)
+
+  defp not_done_words("delete_variable", reason),
+    do: gettext("Not deleted: %{reason}", reason: reason)
+
+  # Whether the change came from its confirmation, open on the variable's row.
+  defp confirming?(socket, event, %Variable{id: id}) do
+    %{act: act, variable: open} = socket.assigns
+
+    match?(%Variable{id: ^id}, open) and
+      {event, act} in [
+        {"lock_variable", :lock_variable},
+        {"unlock_variable", :unlock_variable},
+        {"delete_variable", :delete_variable}
+      ]
   end
 
   # What a change did, with what a lock or an unlock did to the targets that set the
@@ -1942,8 +2045,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     if own > 0,
       do:
         ngettext(
-          "%{name} is locked: %{number} target that sets its own is given the workspace's value while the lock holds.",
-          "%{name} is locked: %{number} targets that set their own are given the workspace's value while the lock holds.",
+          "%{name} is locked: %{number} target that sets its own is set aside by the lock.",
+          "%{name} is locked: %{number} targets that set their own are set aside by the lock.",
           own,
           name: name,
           number: Format.number(own)
@@ -1957,8 +2060,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     if ignored > 0,
       do:
         ngettext(
-          "%{name} is unlocked: %{number} target is given its own value again.",
-          "%{name} is unlocked: %{number} targets are given their own value again.",
+          "%{name} is unlocked: %{number} target that sets its own is no longer set aside.",
+          "%{name} is unlocked: %{number} targets that set their own are no longer set aside.",
           ignored,
           name: name,
           number: Format.number(ignored)
@@ -1988,20 +2091,19 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp refusal(socket, reason, view \\ :secrets)
 
-  defp refusal(socket, {:in_use, uses}, view),
+  # A secret's deletion or a value's, refused while what it deletes stays: its
+  # confirmation stays open and says why.
+  defp refusal(socket, {:in_use, uses}, _view),
     do:
-      back(
+      held(
         socket,
-        :error,
         gettext("%{name} is used by %{uses}: unlink it there first.",
           name: socket.assigns.secret.name,
           uses: uses |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")
-        ),
-        view
+        )
       )
 
-  defp refusal(socket, :last_value, view),
-    do: back(socket, :error, last_value(socket.assigns.secret), view)
+  defp refusal(socket, :last_value, _view), do: held(socket, last_value(socket.assigns.secret))
 
   defp refusal(socket, :too_many_values, view),
     do:
@@ -2025,12 +2127,6 @@ defmodule ApiaryWeb.SecretLive.Index do
         view
       )
 
-  # A lock or an unlock refused, on what it asks of the variable or on the limits of the
-  # holders it reaches, which are checked where the change leaves them, so a holder
-  # already over them refuses it too: said, the list read again, the row as it was.
-  defp refusal(socket, %Ecto.Changeset{} = changeset, view),
-    do: back(socket, :error, gettext("Not saved: %{reason}", reason: reasons(changeset)), view)
-
   defp refusal(socket, :not_found, view) do
     socket = reload_scope(socket)
 
@@ -2050,15 +2146,6 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp refusal(socket, :forbidden, _view), do: unauthorized(socket)
 
-  # A deletion refused on the limits: it would make a holder larger and leave it over
-  # them (one that shrinks a holder already over them, and grows none, is let through).
-  # Nothing was being saved, so its words say what did not happen: the row is still
-  # there.
-  defp not_deleted(socket, changeset) do
-    words = gettext("Not deleted: %{reason}", reason: reasons(changeset))
-    back(socket, :error, words, :variables)
-  end
-
   defp reasons(changeset),
     do: Enum.map_join(changeset.errors, " ", fn {_field, error} -> translate_error(error) end)
 
@@ -2071,6 +2158,11 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp value_gone(secret),
     do: gettext("That value is no longer in %{name}.", name: secret.name)
+
+  # A change its confirmation asked for, refused while what it acts on stays: the list read
+  # again, and the confirmation still open, saying why under its question
+  # (`refusal_line/1`). Nothing mounts again, so the focus stays on the button that acted.
+  defp held(socket, words), do: socket |> reload() |> assign(:refusal, words)
 
   # Back to the view, with a word, the list read again.
   defp back(socket, kind, words, view \\ nil) do
