@@ -26,9 +26,9 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   Under its title, once, the plain line that nodes receive no runs yet, since Qory can't
   check a node's key yet, and that machines send their runs with a workspace access key
-  until it can, with the way to them (`ApiaryWeb.NodeComponents.not_yet/1`). The sidebar's Nodes leads here: the pages pass
-  `nav: :nodes`, so Nodes is the current entry on the list and on the New node and New
-  node pool forms.
+  until it can, with the way to them (`ApiaryWeb.NodeComponents.not_yet/1`). The
+  sidebar's Nodes leads here: the pages pass `nav: :nodes`, so Nodes is the current entry
+  on the list and on the New node and New node pool forms.
 
   Live: the list reads the nodes and what they do again on `{:nodes_touched, …}`
   (`Apiary.Nodes.topic/1`), on a `{:run_changed, run}` of a run on a node, at most every

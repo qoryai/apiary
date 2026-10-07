@@ -25,6 +25,14 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     end
   end
 
+  # The section without the two lines that name Qory: the subtitle's "Not Qory's own
+  # settings." and the not-yet line's "today Qory sends a run".
+  defp without_qory_lines(section) do
+    section
+    |> String.replace("Not Qory&#39;s own settings.", "")
+    |> String.replace("today Qory sends a run", "")
+  end
+
   defp lv_section(html) do
     html
     |> LazyHTML.from_document()
@@ -54,7 +62,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#not-on-runs",
-               "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
+               "Runs don't use any of this yet: today Qory sends a run only its security policy."
              )
 
       refute html =~ "applies to runs"
@@ -473,13 +481,16 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert {:ok, []} = Connections.list_connections(scope)
     end
 
-    test "names no product of its own, only Qory Apiary, whose settings these are not",
+    test "names no product of its own, only Qory, whose settings these are not",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
       section = lv |> element("#settings-section-integrations") |> render()
 
-      assert section =~ "Not Qory Apiary&#39;s own settings."
-      refute String.replace(section, "Qory Apiary", "") =~ "Qory"
+      # Qory is named in the subtitle and the not-yet line, and nowhere else.
+      assert section =~ "Not Qory&#39;s own settings."
+      assert section =~ "today Qory sends a run only its security policy."
+      refute section =~ "Qory Apiary"
+      refute without_qory_lines(section) =~ "Qory"
     end
 
     test "has the section as its h1 and its title", %{conn: conn, scope: scope} do
@@ -490,7 +501,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#settings-section-integrations header",
-               "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
+               "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory's own settings. Each applies to every repository or to the ones you choose."
              )
 
       assert page_title(lv) =~

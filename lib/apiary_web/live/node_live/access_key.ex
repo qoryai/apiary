@@ -7,8 +7,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   **What is true today.** Qory can't check a node's key yet, so the node receives no runs:
   machines send their runs with a workspace access key, and no enrolment is built, so
   nothing takes a code. The tab says so once, plainly, above everything else, with the
-  way to the workspace's access keys (Workspace settings › Access keys), and none of its lines says a node posts, enrols or connects with what it
-  holds. The add and code pages say it too.
+  way to the workspace's access keys (Workspace settings › Access keys), and none of its
+  lines says a node posts, enrols or connects with what it holds. The add and code pages
+  say it too.
 
   - **Keys**, those in use first, then the revoked and the rejected, newest first: each its
     label, key id and state, its fingerprint, its stored-secrets flag, how and when it

@@ -9602,7 +9602,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
+msgid "Runs don't use any of this yet: today Qory sends a run only its security policy."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -12143,8 +12143,8 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
-msgstr "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
+msgid "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory's own settings. Each applies to every target or to the ones you choose."
+msgstr "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory's own settings. Each applies to every repository or to the ones you choose."
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format

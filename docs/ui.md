@@ -204,7 +204,7 @@ replaces the navigation it is in.
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
   (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the runs of the
-  workspace use, never Qory Apiary's own settings, as its subtitle says; one list, Set up in
+  workspace use, never Qory's own settings, as its subtitle says; one list, Set up in
   this workspace, in the groups' order, each row its name, its kind, Agent, API or Program
   (one added from a release), a program's version and For runs in, where it applies; then,
   for whoever may change it, Add an integration, a card for each thing to add by name, its
