@@ -13,7 +13,8 @@ defmodule ApiaryWeb.SettingsComponents do
     sidebar (`ApiaryWeb.ActivityLive`).
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
     People (who reaches it, and at what level: read here, managed in the organisation's
-    People), Access keys, Runs (how long it keeps runs, their events and their logs), and,
+    People), with the `security` feature Integrations (`ApiaryWeb.IntegrationLive.Index`),
+    Access keys, Runs (how long it keeps runs, their events and their logs), and,
     with the `security` feature, Secrets and variables (`ApiaryWeb.SecretLive.Index`).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
@@ -97,6 +98,14 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-users",
         path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
+      Access.can?(scope, :"connection.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :integrations,
+          label: gettext("Integrations"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/#{workspace}/settings/integrations"
+        },
       %Entry{
         section: :main,
         key: :keys,

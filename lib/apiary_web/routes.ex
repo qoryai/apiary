@@ -468,6 +468,43 @@ defmodule ApiaryWeb.Routes do
               live "/settings/variables/:id/unlock", SecretLive.Index, :unlock_variable
               live "/settings/variables/:id/delete", SecretLive.Index, :delete_variable
               live "/settings/variables/:id/targets", SecretLive.Index, :variable_targets
+              # The runtimes, integrations and services set up in the workspace, and its
+              # own service definitions, with the `security` feature: the list and its
+              # forms; a release asked for, by its id, before it is added; a service
+              # definition by its public id (`svc_…`); and one runtime, integration or
+              # service by its public id (`con_…`), its tabs and acts after it. The fixed
+              # paths go first, so that `:id` never takes them.
+              live "/settings/integrations", IntegrationLive.Index, :index
+              live "/settings/integrations/add", IntegrationLive.Index, :add_integration
+              live "/settings/integrations/new-runtime", IntegrationLive.Index, :new_runtime
+              live "/settings/integrations/new-service", IntegrationLive.Index, :new_service
+
+              live "/settings/integrations/releases/:release_id",
+                   IntegrationLive.Release,
+                   :show
+
+              live "/settings/integrations/definitions/new", IntegrationLive.Definition, :new
+              live "/settings/integrations/definitions/:id", IntegrationLive.Definition, :show
+
+              live "/settings/integrations/definitions/:id/edit",
+                   IntegrationLive.Definition,
+                   :edit
+
+              live "/settings/integrations/definitions/:id/delete",
+                   IntegrationLive.Definition,
+                   :delete
+
+              live "/settings/integrations/:id", IntegrationLive.Show, :overview
+              live "/settings/integrations/:id/targets", IntegrationLive.Show, :targets
+              live "/settings/integrations/:id/targets/add", IntegrationLive.Show, :add_target
+
+              live "/settings/integrations/:id/targets/:target_id/remove",
+                   IntegrationLive.Show,
+                   :remove_target
+
+              live "/settings/integrations/:id/settings", IntegrationLive.Show, :settings
+              live "/settings/integrations/:id/version", IntegrationLive.Show, :version
+              live "/settings/integrations/:id/delete", IntegrationLive.Show, :delete
               # The confirmation of deleting this workspace, in place in General's danger
               # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :workspace_danger

@@ -190,9 +190,10 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's: on a workspace's page a node, a node pool, a secret, a variable and an
-  access key, and everywhere an invitation; of them, only what the reader may do there,
-  each entry's action asked of the workspace or the organisation as its `place` says.
+  then the core's: on a workspace's page a node, a node pool, an integration, a secret, a
+  variable and an access key, and everywhere an invitation; of them, only what the reader
+  may do there, each entry's action asked of the workspace or the organisation as its
+  `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
@@ -213,6 +214,14 @@ defmodule ApiaryWeb.Layouts do
             icon: "hero-server-stack",
             path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
             action: :"node.create"
+          },
+          # Add integration, the workspace's first step towards one, asks for a release.
+          %Entry{
+            key: :integration,
+            label: gettext("Add integration"),
+            icon: "hero-puzzle-piece",
+            path: ~p"/#{organisation}/#{workspace}/settings/integrations/add",
+            action: :"connection.write"
           },
           %Entry{
             key: :secret,

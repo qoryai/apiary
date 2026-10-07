@@ -45,14 +45,17 @@ defmodule ApiaryWeb.JumpControllerTest do
     nodes = Enum.find(go_to["items"], &(&1["label"] == "Nodes"))
     assert nodes["href"] == workspace_path(scope, "/nodes")
 
-    # nothing else is listed for nothing typed but what New offers
+    # nothing else is listed for nothing typed but what New offers; Add integration,
+    # secrets and variables with the `security` feature, whose they are
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
 
-    secrets =
-      if Apiary.Features.on?(:security), do: ["New secret", "New variable"], else: []
+    security =
+      if Apiary.Features.on?(:security),
+        do: ["Add integration", "New secret", "New variable"],
+        else: []
 
     assert labels(group(answer, "Actions")) ==
-             ["New node", "New node pool"] ++ secrets ++ ["New access key", "Invite people"]
+             ["New node", "New node pool"] ++ security ++ ["New access key", "Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
