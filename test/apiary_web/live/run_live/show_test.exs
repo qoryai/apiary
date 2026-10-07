@@ -79,7 +79,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      target = ApiaryWeb.TargetComponents.target_path(scope, "git.example.com", "acme/shop")
+      target = ApiaryWeb.TargetComponents.target_path(scope, "codeberg.org", "acme/shop")
 
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
@@ -1112,7 +1112,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       if security?() do
         assert html =~ "Policy in force"
         assert html =~ run.policy_digest
-        assert html =~ "api.llm.example, git.example.com"
+        assert html =~ "api.llm.example, codeberg.org"
         assert html =~ "forge-token"
       else
         refute html =~ "Policy in force"

@@ -77,7 +77,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     },
     %{
       key: "build-eu",
-      hosts: ~w(build-eu-01 build-eu-02 build-eu-03 build-eu-04),
+      hosts: ~w(build-01 build-02),
       wall: "docker",
       weight: 18,
       laptop: false
@@ -113,14 +113,18 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ]
   @invited ~w(new-hire@example.com contractor@partner.example)
 
-  # The repositories every history has: the recorded demo's, and one path on three forges.
+  # The repositories every history has: the recorded demo's, one path on three forges and
+  # one on two, so that a path names more than one repository.
   @anchors [
-    {"git.example.com", "acme/shop"},
-    {"github.example", "acme/shop"},
-    {"gitlab.example", "acme/shop"},
-    {"github.example", "acme/api"},
-    {"github.example", "acme/web"},
-    {"github.example", "acme/tax-service"}
+    {"codeberg.org", "acme/shop"},
+    {"github.com", "acme/shop"},
+    {"gitlab.com", "acme/shop"},
+    {"github.com", "acme/billing"},
+    {"gitlab.com", "acme/billing"},
+    {"github.com", "acme/docs"},
+    {"github.com", "acme/api"},
+    {"github.com", "acme/web"},
+    {"github.com", "acme/tax-service"}
   ]
 
   @namespaces ~w(acme platform data mobile payments growth ml infra security web)
@@ -213,10 +217,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     "packages.example.com" => "packages.example.com",
     "cdn.packages.example.com" => "*.packages.example.com",
     "registry.example" => "registry.example",
-    "git.example.com" => "git.example.com",
-    "github.example" => "github.example",
-    "api.github.example" => "api.github.example",
-    "gitlab.example" => "gitlab.example",
+    "codeberg.org" => "codeberg.org",
+    "github.com" => "github.com",
+    "api.github.com" => "api.github.com",
+    "gitlab.com" => "gitlab.com",
     "proxy.golang.example" => "proxy.golang.example",
     "pypi.example" => "pypi.example",
     "files.pypi.example" => "files.pypi.example",
@@ -228,7 +232,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   }
   @locked_deny "telemetry.llm.example"
   @baseline_hosts ~w(
-    github.example api.github.example gitlab.example proxy.golang.example pypi.example
+    github.com api.github.com gitlab.com proxy.golang.example pypi.example
     files.pypi.example crates.example static.crates.example registry.terraform.example
     releases.hashicorp.example repo.packagist.example
   )
@@ -450,18 +454,22 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   ## The repositories
 
-  # `count` repositories: the anchors, then pairs of a namespace and a name. Each has a
-  # language, a weight that falls with its rank, and the days it was active: most all
-  # along, some born lately, some quiet for months.
+  # `count` repositories: the anchors, then pairs of a namespace and a name, each path
+  # once. Each has a language, a weight that falls with its rank, and the days it was
+  # active: most all along, some born lately, some quiet for months.
   defp catalogue(count, days) do
+    anchored = MapSet.new(@anchors, fn {_system, path} -> path end)
+
     generated =
-      for namespace <- @namespaces, name <- @repository_names do
-        {pick_forge(), "#{namespace}/#{name}"}
+      for namespace <- @namespaces,
+          name <- @repository_names,
+          path = "#{namespace}/#{name}",
+          path not in anchored do
+        {pick_forge(), path}
       end
       |> Enum.shuffle()
 
     (@anchors ++ generated)
-    |> Enum.uniq_by(fn {_system, path} -> path end)
     |> Enum.take(count)
     |> Enum.with_index(1)
     |> Enum.map(fn {{system, path}, rank} ->
@@ -490,7 +498,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   defp pick_forge,
-    do: weighted([{"github.example", 70}, {"gitlab.example", 20}, {"git.example.com", 10}])
+    do: weighted([{"github.com", 70}, {"gitlab.com", 20}, {"codeberg.org", 10}])
 
   defp flavour(namespace, name) do
     cond do
@@ -935,7 +943,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # The workspace observed until fifty days ago and enforces since; a few repositories
   # keep a mode of their own.
-  defp mode(%{repository: %{path: "acme/shop", system: "git.example.com"}}), do: "observe"
+  defp mode(%{repository: %{path: "acme/shop", system: "codeberg.org"}}), do: "observe"
   defp mode(%{repository: %{path: "growth/" <> _}}), do: "observe"
   defp mode(%{days_ago: days_ago}) when days_ago > 50, do: "observe"
   defp mode(_spec), do: "enforce"
@@ -1384,7 +1392,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp install_command(spec, host) do
     case flavour_of(spec) do
       "node" -> "npm install @acme/ui-steps --registry https://#{host}"
-      "go" -> "go get github.example/acme/money@v1.9.0"
+      "go" -> "go get github.com/acme/money@v1.9.0"
       "python" -> "pip install --index-url https://#{host}/simple polars==1.9"
       "rust" -> "cargo add serde_json"
       "terraform" -> "terraform init -upgrade"
@@ -1394,7 +1402,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # The fetch every run starts its work with: the forge, and the language's registries.
   defp fetch(acc, at, spec, mode) do
-    forge = (spec.repository && spec.repository.system) || "github.example"
+    forge = (spec.repository && spec.repository.system) || "github.com"
 
     acc
     |> egress(at, spec, mode, forge, 443)
@@ -1561,7 +1569,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp test_text("go", names, failing, dir) do
     Enum.map_join(names, fn name ->
-      package = "github.example/acme/#{dir}/internal/#{name |> String.split() |> hd()}"
+      package = "github.com/acme/#{dir}/internal/#{name |> String.split() |> hd()}"
 
       if name == failing,
         do:

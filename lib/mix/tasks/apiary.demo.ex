@@ -28,7 +28,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   Once the runs are in, a workspace that has no security policy yet is given one, through
   `Apiary.Policy` as a page would and in the name of the workspace's first owner: enforce,
   a baseline of hosts, one held to paths, a locked deny, and in the target
-  `git.example.com/acme/shop` an added host, a disabled one, an allow the lock
+  `codeberg.org/acme/shop` an added host, a disabled one, an allow the lock
   overrides and a mode of its own (observe, under a workspace that enforces); written rule
   by rule, so there are versions and a history to look at, and the workspace is a managed
   one, serving its run configuration. A workspace whose policy anybody has changed, even
@@ -119,7 +119,7 @@ defmodule Mix.Tasks.Apiary.Demo do
       shop =
         Repo.get_by(Target,
           workspace_id: workspace_id,
-          system: "git.example.com",
+          system: "codeberg.org",
           path: "acme/shop"
         )
 
@@ -131,7 +131,7 @@ defmodule Mix.Tasks.Apiary.Demo do
           &Policy.allow(&1, nil, %{host: "registry.example"}),
           &Policy.allow(&1, nil, %{host: "metrics.example"}),
           &Policy.allow(&1, nil, %{
-            host: "git.example.com",
+            host: "codeberg.org",
             paths: ["/acme/shop.git/info/refs", "/acme/shop.git/git-upload-pack"]
           }),
           &Policy.deny(&1, nil, %{host: "telemetry.llm.example", locked: true}),
