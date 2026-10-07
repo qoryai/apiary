@@ -562,6 +562,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       %{access_key: revoked, secret: revoked_secret} = contract_key_fixture(scope)
       {:ok, _} = AccessKeys.revoke_access_key(scope, revoked)
       {:ok, raw} = Apiary.Contract.Ed25519.decode(good, 64)
+      standard = Base.encode64(raw, padding: false)
 
       attempts = [
         # an unknown key, a key of the wrong shape, one that is not UTF-8
@@ -570,10 +571,11 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         {"ak_" <> <<255>> <> "00000000000000", secret, []},
         # a revoked key, on the ping as on anything else
         {revoked.key_id, revoked_secret, []},
-        # the signature: another key's, padded, in the standard alphabet, hex, short, empty
+        # the signature: another key's, padded, in the standard alphabet, hex, short, empty;
+        # a signature with no "-" or "_" is the same in both alphabets, so that one is skipped
         {key.key_id, "another secret", []},
         {key.key_id, secret, [signature: good <> "=="]},
-        {key.key_id, secret, [signature: Base.encode64(raw, padding: false)]},
+        if(standard != good, do: {key.key_id, secret, [signature: standard]}),
         {key.key_id, secret, [signature: Base.encode16(raw, case: :lower)]},
         {key.key_id, secret, [signature: binary_part(good, 0, 85)]},
         {key.key_id, secret, [signature: ""]},
@@ -583,7 +585,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
          [signature: sign_request(secret, key.key_id, instance_id(), "POST", "/v1/other", body)]}
       ]
 
-      for {key_id, secret, opts} <- attempts do
+      for {key_id, secret, opts} <- Enum.reject(attempts, &is_nil/1) do
         conn = signed_post(build_conn(), key_id, secret, body, opts)
         assert json_response(conn, 401) == @unauthorized
         assert unsigned_answer?(conn)
