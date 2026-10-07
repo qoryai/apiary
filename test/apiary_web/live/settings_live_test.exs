@@ -44,7 +44,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert html =~ "The name of this workspace, where its pages are, and its type."
 
       assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
-      assert has_element?(lv, "#nav-settings[aria-current='page']")
+      # Settings is the page's parent; the page is the second column's General.
+      assert has_element?(lv, "#nav-settings[aria-current='true']")
       assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
       assert html =~ scope.workspace.name
@@ -413,16 +414,18 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       sections =
         [general: base, people: base <> "/people"] ++
-          if(security?, do: [integrations: base <> "/integrations"], else: []) ++
-          [keys: base <> "/keys", runs: base <> "/runs"] ++
-          if(security?, do: [secrets: base <> "/secrets"], else: [])
+          if(security?,
+            do: [integrations: base <> "/integrations", secrets: base <> "/secrets"],
+            else: []
+          ) ++
+          [runs: base <> "/runs", keys: base <> "/keys"]
 
       for {key, path} <- sections do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      # In that order: General, People, with the `security` feature Integrations, Access
-      # keys, Runs, and, with the `security` feature, Secrets and variables.
+      # In the map's order: General, People, with the `security` feature Integrations and
+      # Secrets and variables, Runs, and Access keys last.
       assert lv
              |> element("#settings-tabs")
              |> render()

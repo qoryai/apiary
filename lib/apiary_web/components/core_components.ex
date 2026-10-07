@@ -569,8 +569,8 @@ defmodule ApiaryWeb.CoreComponents do
         class={["select", "select-#{@size}", @errors != [] && "select-error", @class]}
         multiple={@multiple}
         aria-invalid={@errors != [] && "true"}
-        aria-describedby={describedby(@id, @errors, @hint)}
-        {@rest}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        {without_describedby(@rest)}
       >
         <option :if={@prompt} value="">{@prompt}</option>
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
@@ -622,8 +622,8 @@ defmodule ApiaryWeb.CoreComponents do
         class={["textarea textarea-sm", @errors != [] && "input-error", @class]}
         phx-debounce={@debounce}
         aria-invalid={@errors != [] && "true"}
-        aria-describedby={describedby(@id, @errors, @hint)}
-        {@rest}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        {without_describedby(@rest)}
       >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
@@ -649,11 +649,11 @@ defmodule ApiaryWeb.CoreComponents do
           aria-invalid={@errors != [] && "true"}
           aria-describedby={
             Enum.join(
-              ["#{@id}-prefix", describedby(@id, @errors, @hint)] |> Enum.reject(&is_nil/1),
+              ["#{@id}-prefix", describedby(@id, @errors, @hint, @rest)] |> Enum.reject(&is_nil/1),
               " "
             )
           }
-          {@rest}
+          {without_describedby(@rest)}
         />
       </div>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
@@ -675,8 +675,8 @@ defmodule ApiaryWeb.CoreComponents do
         class={["input", "input-#{@size}", @errors != [] && "input-error", @class]}
         phx-debounce={@debounce}
         aria-invalid={@errors != [] && "true"}
-        aria-describedby={describedby(@id, @errors, @hint)}
-        {@rest}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        {without_describedby(@rest)}
       />
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
@@ -691,11 +691,26 @@ defmodule ApiaryWeb.CoreComponents do
 
   defp submitted_group?(_assigns, _field), do: false
 
+  # What describes a field: its errors, else its hint, then whatever the page describes it
+  # by too (an `aria-describedby` given to `input/1`, such as a hint the page draws
+  # itself), so that neither hides the other.
+  defp describedby(id, errors, hint, rest) do
+    case Enum.reject([describedby(id, errors, hint), rest[:"aria-describedby"]], &blank?/1) do
+      [] -> nil
+      ids -> Enum.join(ids, " ")
+    end
+  end
+
   defp describedby(id, [_ | _] = errors, _hint),
     do: errors |> Enum.with_index() |> Enum.map_join(" ", fn {_, i} -> error_id(id, i) end)
 
   defp describedby(id, [], hint) when is_binary(hint), do: "#{id}-hint"
   defp describedby(_id, _errors, _hint), do: nil
+
+  defp blank?(ids), do: ids in [nil, false, ""]
+
+  # The attributes given to `input/1` but the description, which `describedby/4` merges.
+  defp without_describedby(rest), do: Map.delete(rest, :"aria-describedby")
 
   # A field may have more than one error, each of them a line of its own with an id of its
   # own: the first is the field's `-error`, as a test or a script looks for it.
@@ -968,7 +983,12 @@ defmodule ApiaryWeb.CoreComponents do
       @class
     ]}>
       <.hex_tile :if={@icon} icon={@icon} tone={@tone} class="mb-2.5" />
-      <.dynamic_tag tag_name={@heading} class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
+      <%!-- As the page's h1 it takes the focus after a navigation, as every page's h1. --%>
+      <.dynamic_tag
+        tag_name={@heading}
+        class="text-[15px]/[22px] font-semibold tracking-[-0.006em] outline-none"
+        tabindex={@heading == "h1" && "-1"}
+      >
         {@title}
       </.dynamic_tag>
       <div class="max-w-[46ch] text-[13.5px]/5 text-muted">{render_slot(@inner_block)}</div>
@@ -1271,7 +1291,9 @@ defmodule ApiaryWeb.CoreComponents do
   It reads as one line that wraps: the question in the text colour ("Delete
   FORGE_TOKEN?"), what happens in a muted sentence, then its button, red for what cannot
   be undone ("Yes, delete"), and Cancel, which leads back (`cancel`, a patch) and takes
-  the focus as it shows, so Enter does not act by mistake; Escape cancels too.
+  the focus as it shows, so Enter does not act by mistake; Escape cancels too. The group
+  is named by its question and described by the sentence (`id`-sub), so a screen reader
+  says what happens, "This cannot be undone." included, as Cancel takes the focus.
 
       <.inline_confirm id="secret-1-confirm" question="Delete FORGE_TOKEN?" cancel={@list}>
         The secret and its value are deleted. This cannot be undone.
@@ -1306,13 +1328,16 @@ defmodule ApiaryWeb.CoreComponents do
       id={@id}
       role="group"
       aria-labelledby={"#{@id}-question"}
+      aria-describedby={@inner_block != [] && "#{@id}-sub"}
       class={["q-confirm", @class]}
       phx-window-keydown={@cancel_js}
       phx-key="Escape"
     >
       <div class="q-confirm-what">
         <p id={"#{@id}-question"} class="q-confirm-q">{@question}</p>
-        <p :if={@inner_block != []} class="q-confirm-sub">{render_slot(@inner_block)}</p>
+        <p :if={@inner_block != []} id={"#{@id}-sub"} class="q-confirm-sub">
+          {render_slot(@inner_block)}
+        </p>
       </div>
       <div class="q-confirm-act">
         {render_slot(@action)}

@@ -397,7 +397,9 @@ defmodule ApiaryWeb.Layouts do
   list under Settings in the drawer. A level with a single section gets none. A person's own
   page and an Instance page keep the sidebar the person came from, the workspace the session
   remembers; with no workspace, the person's sidebar is their sections alone, as one
-  column.
+  column. `aria-current="page"` marks the exact page's entry alone; its parents carry
+  `aria-current="true"`: Settings at the sidebar's foot while the second column lists its
+  sections, and the column's section on a page under it, one that adds `crumb` segments.
 
   **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
   of the sidebar carry the target to the other list; nothing else does.
@@ -566,12 +568,12 @@ defmodule ApiaryWeb.Layouts do
         >
           <.second_column :if={@second} second={@second} counts={@counts} />
           <.content width={@width}>
-            <.notices
-              :if={@show_notices}
-              scope={@scope}
-              organisation={@organisation}
-              counts={@counts}
-            />
+            <%!-- The notices sit above the page's title, which takes the focus on a live
+               navigation: the script describes the title by them (`#shell-notices`), so
+               a screen reader reads them. No box of its own: the page's grid is theirs. --%>
+            <div :if={@show_notices} id="shell-notices" class="contents">
+              <.notices scope={@scope} organisation={@organisation} counts={@counts} />
+            </div>
             {render_slot(@inner_block)}
           </.content>
         </div>
@@ -581,7 +583,9 @@ defmodule ApiaryWeb.Layouts do
         <.content width={@width}>{render_slot(@inner_block)}</.content>
       </div>
 
-      <.palette :if={@organisation} scope={@scope} place={@place} />
+      <%!-- The palette asks the sidebar's level: on a person's own page or an Instance
+           page shown with a workspace's sidebar, that workspace, as the frame shows. --%>
+      <.palette :if={@organisation} scope={@scope} place={@level} />
     </div>
 
     <%!-- One announcer for the copies of a page's many rows, which have none of their own. --%>
@@ -649,6 +653,9 @@ defmodule ApiaryWeb.Layouts do
         label: second_label(kind),
         id: second_id(kind),
         current: assigns.section || assigns.nav,
+        # The current section is the page, or, on a page under it that adds its own
+        # segments to the breadcrumb (Invite people, Edit secret), the page's parent.
+        aria_current: if(assigns.crumb == [], do: "page", else: "true"),
         entries: for(entry <- list, do: {entry, Entry.path(entry, organisation, workspace)})
       }
     end
@@ -819,15 +826,25 @@ defmodule ApiaryWeb.Layouts do
     ~H"""
     <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
       <ol class="q-trail">
-        <li class={["q-trail-item", @here && "q-trail-lead"]}>
+        <li class={["q-trail-item", (@here || @crumb != []) && "q-trail-lead"]}>
           <.link navigate={~p"/users/settings"} class="q-trail-link">
             {gettext("Your settings")}
           </.link>
         </li>
-        <li :if={@here} class="q-trail-item">
+        <li :if={@here} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
           <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
-          <span class="q-trail-link q-trail-page" aria-current="page">{@here.label}</span>
+          <.link
+            :if={@crumb != []}
+            navigate={Entry.path(@here, @organisation, @workspace)}
+            class="q-trail-link"
+          >
+            {@here.label}
+          </.link>
+          <span :if={@crumb == []} class="q-trail-link q-trail-page" aria-current="page">
+            {@here.label}
+          </span>
         </li>
+        <.crumbs crumb={@crumb} />
       </ol>
     </nav>
     """
@@ -867,22 +884,7 @@ defmodule ApiaryWeb.Layouts do
             {@here.label}
           </span>
         </li>
-        <li
-          :for={{crumb, i} <- Enum.with_index(@crumb)}
-          class={["q-trail-item", i < length(@crumb) - 1 && "q-trail-lead"]}
-        >
-          <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
-          <.link :if={crumb[:navigate]} navigate={crumb.navigate} class="q-trail-link">
-            {render_slot(crumb)}
-          </.link>
-          <span
-            :if={!crumb[:navigate]}
-            class="q-trail-link q-trail-page"
-            aria-current={i == length(@crumb) - 1 && "page"}
-          >
-            {render_slot(crumb)}
-          </span>
-        </li>
+        <.crumbs crumb={@crumb} />
       </ol>
     </nav>
     """
@@ -951,22 +953,7 @@ defmodule ApiaryWeb.Layouts do
               label={gettext("Switch workspace, current: %{name}", name: @workspace.name)}
             />
           </li>
-          <li
-            :for={{crumb, i} <- Enum.with_index(@crumb)}
-            class={["q-trail-item", i < length(@crumb) - 1 && "q-trail-lead"]}
-          >
-            <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
-            <.link :if={crumb[:navigate]} navigate={crumb.navigate} class="q-trail-link">
-              {render_slot(crumb)}
-            </.link>
-            <span
-              :if={!crumb[:navigate]}
-              class="q-trail-link q-trail-page"
-              aria-current={i == length(@crumb) - 1 && "page"}
-            >
-              {render_slot(crumb)}
-            </span>
-          </li>
+          <.crumbs crumb={@crumb} />
           <li :if={@settings} class="q-trail-item">
             <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
             <span id="breadcrumb-settings" class="q-trail-link q-trail-page" aria-current="page">
@@ -987,6 +974,31 @@ defmodule ApiaryWeb.Layouts do
         />
       </div>
     </nav>
+    """
+  end
+
+  # The page's own segments of the breadcrumb, after where the page is: each a link but
+  # the page itself, the last, which is current.
+  attr :crumb, :list, required: true
+
+  defp crumbs(assigns) do
+    ~H"""
+    <li
+      :for={{crumb, i} <- Enum.with_index(@crumb)}
+      class={["q-trail-item", i < length(@crumb) - 1 && "q-trail-lead"]}
+    >
+      <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+      <.link :if={crumb[:navigate]} navigate={crumb.navigate} class="q-trail-link">
+        {render_slot(crumb)}
+      </.link>
+      <span
+        :if={!crumb[:navigate]}
+        class="q-trail-link q-trail-page"
+        aria-current={i == length(@crumb) - 1 && "page"}
+      >
+        {render_slot(crumb)}
+      </span>
+    </li>
     """
   end
 
@@ -1546,11 +1558,14 @@ defmodule ApiaryWeb.Layouts do
       </div>
 
       <div class="q-sidebar-foot">
+        <%!-- Settings is current on every page of them; where its sections are the second
+             column, the page is the column's entry and Settings its parent. --%>
         <.nav_item
           :if={@foot}
           entry={elem(@foot, 0)}
           path={elem(@foot, 1)}
           current={@settings_page}
+          parent={@second != nil and @second.kind == :settings}
           counts={@counts}
         />
         <%!-- On phones, the sections of Settings, the second column's, under Settings. --%>
@@ -1599,7 +1614,7 @@ defmodule ApiaryWeb.Layouts do
         :for={{entry, path} <- @second.entries}
         id={second_link_id(@second.kind, entry.key)}
         navigate={path}
-        aria-current={entry.key == @second.current && "page"}
+        aria-current={entry.key == @second.current && @second.aria_current}
         class="q-second-link"
       >
         <span class="truncate">{entry.label}</span>
@@ -1629,7 +1644,7 @@ defmodule ApiaryWeb.Layouts do
         :for={{entry, path} <- @second.entries}
         id={"drawer-section-#{entry.key}"}
         navigate={path}
-        aria-current={entry.key == @second.current && "page"}
+        aria-current={entry.key == @second.current && @second.aria_current}
         class={["q-nav-item", !@heading && "q-nav-sub"]}
       >
         <.icon :if={@heading && entry.icon} name={entry.icon} class="q-nav-icon size-[18px]" />
@@ -1654,6 +1669,12 @@ defmodule ApiaryWeb.Layouts do
   attr :entry, :any, required: true
   attr :path, :string, required: true
   attr :current, :boolean, required: true
+
+  attr :parent, :boolean,
+    default: false,
+    doc:
+      "current as the page's parent, not the page itself: `aria-current=\"true\"`, drawn lighter in the drawer"
+
   attr :counts, :any, required: true
 
   attr :carried, :string,
@@ -1665,11 +1686,11 @@ defmodule ApiaryWeb.Layouts do
     <.link
       id={"nav-#{@entry.key}"}
       navigate={@path}
-      aria-current={@current && "page"}
+      aria-current={@current && if(@parent, do: "true", else: "page")}
       aria-label={@carried}
       title={@carried}
       data-title={@carried}
-      class="q-nav-item"
+      class={["q-nav-item", @current && @parent && "q-nav-parent"]}
       phx-mounted={JS.ignore_attributes(["title"])}
     >
       <.icon name={@entry.icon} class="q-nav-icon size-[18px]" />

@@ -59,7 +59,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       # Its title and sentence, the breadcrumb ending with the section and the page, the
       # form with its button, and Cancel back to the list.
       refute has_element?(lv, "#new-key")
-      assert has_element?(lv, "#settings-tab-keys[aria-current=page]")
+      assert has_element?(lv, "#settings-tab-keys[aria-current=true]")
       assert has_element?(lv, "#settings-section-title", "New access key")
       assert render(lv) =~ "Its secret is shown once"
       assert has_element?(lv, "#breadcrumb a[href='#{keys}']", "Access keys")

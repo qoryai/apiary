@@ -24,7 +24,7 @@ defmodule ApiaryWeb.MemberLive.WorkspaceTest do
       assert has_element?(lv, "#main h1", "Workspace settings")
       assert has_element?(lv, "#settings-tab-people[aria-current=page]", "People")
       assert has_element?(lv, "h2#settings-section-title", "People")
-      assert has_element?(lv, ".q-sidebar-foot #nav-settings[aria-current='page']")
+      assert has_element?(lv, ".q-sidebar-foot #nav-settings[aria-current='true']")
       assert page_title(lv) =~ "People · Workspace settings"
 
       assert has_element?(

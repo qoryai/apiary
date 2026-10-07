@@ -3273,11 +3273,6 @@ msgstr ""
 msgid "A−"
 msgstr ""
 
-#: lib/apiary_web/components/page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Back"
-msgstr ""
-
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgid "Back to Qory Apiary"
@@ -9575,11 +9570,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs don't receive secrets yet. Today a run receives only its security policy."
-msgstr ""
-
-#: lib/apiary_web/components/page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Runs don't receive these yet."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex

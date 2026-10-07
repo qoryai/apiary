@@ -8,22 +8,27 @@ one. The words on them are in [lingo.md](lingo.md); where the code lives is in
 
 Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes the
 page's active navigation item (`nav`), the counts the sidebar shows (`counts`), the width
-of its column (`width`) and, in `crumb` slots, the page's own segments of the breadcrumb.
-The shell is section 4 of the v2 design brief: it shows one scope at a time, the one the page
-belongs to.
+of its column (`width`), on a page of a level's settings the level's sections and its own
+(`sections`, `section`), on a list narrowed to one target that target (`narrowed`) and, in
+`crumb` slots, the page's own segments of the breadcrumb. The shell is section 4 of the v2
+design brief: it shows one scope's sidebar at a time, the one the page belongs to, or, on a
+person's own page and an Instance page, the one the person came from (Two levels, below).
 
-- **A page belongs to one scope**: a workspace, an organisation or the person. The
-  navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page passes as `nav`
-  names its scope (`place`) and so the sidebar it shows. A new item of the core goes in
-  `nav_entries/1` of `ApiaryWeb.Layouts`, an edition's in its
-  `ApiaryWeb.Edition.nav_entries/1`, and never in a page. A page that no entry names yet,
-  such as Nodes, passes its scope as `place` instead: its sidebar is that scope's, with no
-  entry current.
+- **A page belongs to one scope**: a workspace, an organisation, the person or the
+  Instance. The navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page
+  passes as `nav` names its scope (`place`) and so the sidebar it shows. A new item of the
+  core goes in `nav_entries/1` of `ApiaryWeb.Layouts`, an edition's in its
+  `ApiaryWeb.Edition.nav_entries/1`, and never in a page. A page that no entry names
+  passes its scope as `place` instead: its sidebar is that scope's, with no entry current.
+  An Instance page passes `:instance`, and keeps the sidebar the person came from.
 - **The top bar** is one `<header aria-label="Top bar">`, 48 px, across the window and
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
   then the workspace, each a link to its home, and the page's own segments, a target or a
-  record, the last one the page with `aria-current="page"`), then **Search or jump to**,
+  record, the last one the page with `aria-current="page"`; on a person's own page Your
+  settings, its section and the page's own segments, such as an edition's `Your settings /
+  Organisations / New organisation`, and on an Instance page Instance and its section the
+  same way, the section a link where segments follow it), then **Search or jump to**,
   **New** and the **account menu**. The bar has no mark: Qory Apiary is the sidebar's
   foot. A page's title stays its `<h1>`; the breadcrumb is navigation. A page without a
   person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
@@ -42,40 +47,73 @@ belongs to.
   place in. ↑ and ↓ move, Enter opens the first match, Escape
   closes and gives focus back. With one place the segments are links and nothing more.
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
-  `Palette` hook, which asks `ApiaryWeb.JumpController` (`/:org/:workspace/jump`,
-  `/:org/jump`) what matches, 150 ms after the reader stops typing: the pages of the
-  navigation, the sections of each Settings and Preferences' theme and shortcuts, each
+  `Palette` hook, which asks `ApiaryWeb.JumpController` what matches, 150 ms after the
+  reader stops typing, at the sidebar's level: `/:org/:workspace/jump` where the sidebar is
+  a workspace's, as on a person's own page or an Instance page shown with one, else
+  `/:org/jump`. It finds the pages of the navigation, the sections of each
+  Settings and of the Instance, and Preferences' theme and shortcuts, each
   named by whose it is where two scopes share a name (Workspace overview, Organisation
   settings › People; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
   runs by id or task, places, what New offers and, for what is typed, the deletions the
   reader may take. Every word of it comes from the server; a runner's words are written
   as text.
 - **New** offers only what the reader may do where the page is
-  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page a new access key and an
-  invitation, on an organisation's own the invitation, and before the core's whatever
-  the edition offers there (`ApiaryWeb.Edition.new_entries/2`), each entry asked of the
-  workspace or the organisation as its place says. **The account menu** holds who they are and their
-  level there, their settings and organisations, the theme (Auto, Light, Dark), and Log
-  out; nothing about Qory Apiary itself.
+  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New node, New node pool, Add
+  integration, New secret, New variable and New access key, then, on every page, Invite
+  people; before the core's, whatever the edition offers there
+  (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or the
+  organisation as its place says. **The account menu** holds who they are and their level
+  there, Your settings and Your organisations, the theme (Auto, Light, Dark), then
+  **Instance** (`#user-menu-instance`) where the person may open a section of the Instance
+  level (`ApiaryWeb.Layouts.instance_sections/1`), leading to the first, and Log out; an
+  edition's entries follow the core's of their group
+  (`ApiaryWeb.Edition.account_menu_entries/1`). Nothing in it is about Qory Apiary itself.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
-  its own name: a workspace's Overview, then Record (Runs, Targets) and Guard (Network
-  access, then Policy, which carries the policy's mode word alone, how many targets set
-  their own in its title; without `security` Network access alone, the record of it), then
-  the targets the person pinned (`counts.pins`, the first seven in the
+  its own name: a workspace's Overview, then Record (Runs, Targets, Nodes) and Guard
+  (Network access, then Policy, which carries the policy's mode word alone, how many
+  targets set their own in its title; without `security` Network access alone, the record
+  of it), then the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
-  Overview and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
-  person's Profile, Preferences and Organisations under Your settings, which are their
-  settings' list. It is never replaced: a page of a scope's settings keeps the scope's
-  sidebar. The active item carries `aria-current="page"`. A group whose feature is off is
-  absent, not greyed.
+  Overview and Audit log, then the edition's groups (`ApiaryWeb.Edition.nav_sections/0`);
+  the person's Profile, Preferences and Organisations under Your settings, the sidebar of
+  their own pages only where there is no workspace to show (Two levels, below). It is
+  never replaced: a page of a scope's settings keeps the scope's sidebar. A group whose
+  feature is off is absent, not greyed.
+- **The current entry.** `aria-current="page"` marks only the entry of the exact page; a
+  parent of the page carries `aria-current="true"`: the sidebar's Settings while its
+  sections are the second column, whose entry is the exact page, and a second column's
+  section on a page under it, one that passes `crumb` segments (Invite people, New
+  secret).
 - **The sidebar's foot** holds the scope's Settings, a workspace's or an organisation's,
   the current entry on every page of them (Settings itself, or an entry of the section
-  `:settings`, such as Access keys), then, under a rule, **the Qory Apiary menu**
-  (`#brand-menu`): the mark, the name and the
+  `:settings`, such as Access keys), marked as their parent (The current entry, above),
+  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
   version, opening upward to Docs, Changelog (on an instance with every feature) and
   Source on GitHub, what is about the product rather than the person; and at the right of
   it the fold.
+- **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
+  page of the level, Settings included. A page of a level's Settings, of Your settings or
+  of the Instance opens the level's sections as a **second column** beside the sidebar
+  (`Layouts.app/1`'s `sections` and `section`): from 1024 px a column under its heading
+  (Settings, Your settings, Instance), from 768 px a row of links at the top of the page,
+  as a page's tabs are, and on phones a list in the drawer (`#drawer-sections`,
+  `drawer-section-<key>`), under Settings at the sidebar's foot for a level's Settings and
+  a group under its own heading for a person's and the Instance's. Each keeps the ids its
+  list had: `#settings-tabs` and `settings-tab-<key>` for a level's Settings,
+  `#nav-group-account` and `nav-<key>` for a person's, `#instance-tabs` and
+  `instance-tab-<key>` for the Instance's. A level with fewer than two sections gets no
+  second column, and Runs, Network access and Targets never get one. A person's own page
+  and an Instance page keep the sidebar the person came from, the workspace the session
+  remembers; with no workspace, the person's sidebar is their sections alone. A thing's
+  own page, a target, a node or a run, keeps its tabs (`PageComponents.page_tabs/1`), and a
+  node's Settings tab lists its few sections in the page.
+- **Narrowing.** On Runs and on Network access narrowed to one target, the sidebar's Runs
+  and Network access carry the target (`Layouts.app/1`'s `narrowed`, built with
+  `Layouts.narrowed/2`): its path, and its system only where two systems share the path,
+  each entry's accessible name and tooltip saying so ("Runs, narrowed to acme/shop",
+  "Network access, narrowed to acme/shop"). Nothing else carries it, and the palette's Go
+  to never does.
 - **The sidebar folds to icons** from 768 px, by the fold (`#sidebar-collapse`, an icon
   button named Collapse sidebar, or Expand sidebar while folded, in its label and its
   tooltip) or the `[` key; the fold is a reading preference in `localStorage`, set before
@@ -87,12 +125,15 @@ belongs to.
   (`role="dialog"`, `aria-modal`). The `NavDrawer` hook moves focus into the drawer, makes
   the top bar, `#shell-content` and Skip to content inert and stops the page scrolling
   behind it; the scrim, Escape, the Close menu button and any navigation close
-  it, and focus returns to the menu button. The bar names the last segment of the
-  breadcrumb only.
+  it, and focus returns to the menu button. It scrolls as one piece, its Close menu button
+  kept at the top, so on a short screen the foot's Settings and its sections never squeeze
+  the main entries. It lists the second column's sections (Two levels, above), and there
+  the parent Settings is drawn lighter than the current section under it, so no two
+  entries look selected. The bar names the last segment of the breadcrumb only.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
-  the one `<main id="main">`. A page has one `<h1>`, the title of its `<.header>`, which
-  also holds a one-line description and at most one primary and one default action. Card
-  titles are `<h2>`.
+  the one `<main id="main">`. A page has one `<h1>`, the title of its header
+  (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
+  description and at most one primary and one default action. Card titles are `<h2>`.
 
 ## No modals
 
@@ -104,9 +145,11 @@ the console keeps. Every other act happens on a page, in place:
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
-  from (`SettingsComponents.save/1`, `cancel`). A save goes back with a flash; a refused
-  one stays, the error under its field. What a save shows once, such as a key's secret,
-  it shows on that page, never again once the reader leaves it. The pattern is Add
+  from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
+  breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
+  with a flash; a refused one stays, the error under its field. What a save shows once,
+  such as a key's secret, it shows on that page, never again once the reader leaves it.
+  The pattern is Add
   integration's (storybook, Screens); A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
   Revoke, Rotate, Remove, Suspend or Clear turns that row into the question, "Delete
@@ -127,20 +170,22 @@ the console keeps. Every other act happens on a page, in place:
 ## Settings
 
 Configuration is not navigation: what is set up once and changed rarely lives in the
-settings. There are four kinds, on the model of GitHub's repository, organisation and
-personal settings: a workspace's, an organisation's, a node's and a person's. Each is a
-place of its own, reached from its own scope, that lists its own sections
-and no other kind's: no "Elsewhere", no link across. A navigation item never replaces the
-navigation it is in.
+settings. There are five kinds, on the model of GitHub's repository, organisation and
+personal settings: a workspace's, an organisation's, a node's, a person's and the
+instance's. Each is a place of its own, reached from its own scope, that lists its own
+sections and no other kind's: no "Elsewhere", no link across. A navigation item never
+replaces the navigation it is in.
 
 - **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
   Settings: General (name, slug, and its danger zone), People (`/settings/people`,
   `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
   only, on the row spec of the organisation's People, the edition's `:member_access`
-  beside each name; no suspended membership, which reaches nothing), Access keys
-  (`/settings/keys`), Runs (`/settings/runs`: how long the workspace keeps runs, their
-  events and their logs; `/settings/retention`, its path before, sends on with its
-  query), and, with `security`, Secrets and variables (`/settings/secrets`, below).
+  beside each name; no suspended membership, which reaches nothing), Integrations
+  (`/settings/integrations`) and Secrets and variables (`/settings/secrets`, below), each
+  with `security` and for a reader of it (`connection.read`, `secret.read`), Runs
+  (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
+  `/settings/retention`, its path before, sends on with its query), and Access keys
+  (`/settings/keys`).
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
@@ -166,7 +211,8 @@ navigation it is in.
 - **A node's** (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's
   page (Nodes, below): General (name, kind, a pool's instance limit, and its danger zone).
   The page's header is the node's, so the section list and the section sit under the
-  tabs without a heading of their own (`SettingsComponents.layout/1`, `kind={:node}`).
+  tabs without a heading of their own (`SettingsComponents.layout/1`, `kind={:node}`,
+  given its `sections`): the list is in the page, never a second column.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
   `/users/organisations`), from the account menu's Your settings: Profile (email,
   password, and its danger zone), Preferences (language and time zone, kept with the
@@ -174,38 +220,51 @@ navigation it is in.
   of the browser), Organisations. Each is a settings page (`PageComponents.settings_page/1`)
   without a level's heading, so its `<h1>` is its section's title, its parts' headings
   `<h2>`s over a rule; the sidebar stays the one the person came from, and the sections are
-  its second column. Profile and the account's deletion ask for a recent sign-in
-  (`UserAuth`'s sudo mode); Preferences does not.
-- **The instance's** (`/instance/…`), from the account menu's Instance, for the instance's
-  admins: the edition's sections, then the core's Configuration (`/instance/configuration`,
-  `ApiaryWeb.InstanceLive.Configuration`), read only: what whoever runs the server set, as
-  the server read it when it started, each value with the setting it is set by. In the core
-  it is the one section, so it has no second column. Anyone else is answered not found.
+  its second column (`#nav-group-account`, `nav-<key>`); with no workspace to show, the
+  sidebar is the person's, and lists them itself. Profile and the account's deletion ask
+  for a recent sign-in (`UserAuth`'s sudo mode); Preferences does not.
+- **The instance's** (`/instance/…`, the routes of `ApiaryWeb.Routes.instance_routes/2`,
+  each page with `place={:instance}`), from the account menu's Instance, shown when the
+  person may open a section of it (`ApiaryWeb.Layouts.instance_sections/1`) and leading to
+  the first, as `/instance` itself does: the edition's sections
+  (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
+  Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, under
+  the `<h1>` Instance), read only: what whoever runs the server set, as the server read it
+  when it started, each value with the setting it is set by. Anyone else is answered not
+  found. The sidebar stays the one the person came from. In the core Configuration is the
+  one section, so there is no second column; an edition's sections add to it, and with two
+  or more they are the second column (`#instance-tabs`, `instance-tab-<key>`).
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Settings the
-current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/1`): the
-`<h1>` "Workspace settings" or "Organisation settings", at the page's left edge the list
-of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
-reads when it mounts), and beside it the section, its title an `<h2>` (16 px), one sentence
-of what it is for, then its content, a 720 px column for forms and 960 px for a list
-(People, a workspace's and an organisation's, Access keys). The list is labels
-without icons, 13.5 px and muted, the current one in the text colour on a light fill, with
-a count where it helps (an organisation's People, Access keys; the page passes the
-navigation's `counts`); below 1024 px it is a row of
-underlined links above the section, as a page's tabs are. A section is flat, no card: its
-fields straight under its heading (`SettingsComponents.part/1`, an `<h3>` where it has more
-than one part, such as Owners), the fields as wide as the column, and at the foot of a form
+current entry, marked as the parent, and are one section a page
+(`ApiaryWeb.SettingsComponents.layout/1`, or `ApiaryWeb.PageComponents.settings_page/1`):
+the `<h1>` "Workspace settings" or "Organisation settings", then the section, its title an
+`<h2>` (16 px, `#settings-section-title`), one sentence of what it is for, then its
+content, a 720 px column for forms and 960 px for a list (People, a workspace's and an
+organisation's, Access keys). The list of the kind's sections is not in the page but the
+frame's second column (Two levels, under The shell; `#settings-tabs`,
+`settings-tab-<key>`): the page reads them when it mounts (`sections/2`) and passes them to
+`Layouts.app/1` as `sections`, its own key as `section`. It is labels without icons,
+muted, the current one in the text colour on a light fill, with a count where it helps
+(an organisation's People, Access keys, from the navigation's `counts`); from 768 px to
+1024 px it is a row of links at the top of the page, the current one underlined, as a
+page's tabs are, and on a phone a list under Settings in the drawer. A section is flat, no
+card: its fields straight under its heading (`SettingsComponents.part/1`, an `<h3>` where
+it has more than one part, such as Owners), the fields as wide as the column, and at the
+foot of a form
 its one button, primary where it is the section's main action, beside one muted line
 (`SettingsComponents.save/1`). A section the reader may not open is not in the list, and
 its path sends them to General with its own sentence of why.
 The breadcrumb ends with Settings (`8wonders / Main / Settings`, `8wonders / Settings`); a
-person's page names itself.
+person's own page starts with Your settings and an Instance page with Instance, then the
+section (The top bar, under The shell).
 
 **A form is a page.** Creating or changing one thing is a page of its section at a path of
 its own, never a dialog over the list, on the pattern of Add integration (storybook,
-Screens): the section list stays beside it, its section the current one; the breadcrumb
-ends with the section and the page (`8wonders / Main / Settings / Secrets and variables /
-New secret`), each segment before the page a link back; the section's `<h2>` is the page's
+Screens): the second column stays beside it, its section the current one, marked as the
+parent (`aria-current="true"`); the breadcrumb ends with the section and the page
+(`8wonders / Main / Settings / Secrets and variables / New secret`), each segment before
+the page a link back; the section's `<h2>` is the page's
 title, the act and what it acts on (New secret, Change the value of FORGE_TOKEN), with one
 sentence under it of what the page does; the form fills the 720 px column, its first field
 takes the focus, and its foot is the primary button with Cancel beside it, a link back to
@@ -641,8 +700,9 @@ A workspace's nodes and node pools are where its runs run (`ApiaryWeb.NodeLive.I
 which runs one instance at a time; a **node pool** is a fleet of short-lived instances,
 which run up to its instance limit, or any number without one. The kind is chosen when one
 is made and never changes. A node is named in a path by its public id, `nd_…` for a node
-and `np_…` for a pool. The workspace's sidebar has no entry for them yet: the list is
-reached by its path, and the page passes `place={:workspace}`.
+and `np_…` for a pool. Nodes is an entry of the workspace's sidebar, in Record after
+Targets (`#nav-nodes`, for a reader of `node.read`); the list, a node's page and the New
+node forms pass `nav={:nodes}`, so it is the current entry on all of them.
 
 - **A node's state** is never Online or Offline (`ApiaryWeb.NodeComponents.node_state/1`).
   An instance is **running** while it has a run alive by the lost-run check's rule
@@ -666,25 +726,29 @@ reached by its path, and the page passes `place={:workspace}`.
 - **New node and New node pool** are pages of the Nodes section at paths of their own,
   `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
-  `Nodes / New node` (Nodes a link back to the list), the page's heading (`header/1`, as
-  the list's) and one sentence of what the kind is, with "You can't change the kind
-  later"; then the form, a name (it takes the focus), and for a pool its instance limit
-  (a whole number up to 10,000, or empty for none), and its foot, Add node or Add node
-  pool with Cancel back to the list (`SettingsComponents.save/1`). A refused save stays on
-  the page, the error under its field; adding one opens its page on Settings with a
-  flash.
+  `Nodes / New node` (Nodes a link back to the list), the page's heading
+  (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
+  "You can't change the kind later"; then the form, a name (it takes the focus), and for a
+  pool its instance limit (a whole number up to 10,000, or empty for none), and its foot,
+  Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). A refused
+  save stays on the page, the error under its field; adding one opens its page on
+  Settings with a flash.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
-  one muted line: its kind, its state and who made it when) and two tabs, patches of the
-  one LiveView, the operational side first and Settings last, set apart at the bar's
-  right end (`<.tabs>` with `end`): **Overview**, a Node's instance (running since when,
+  one muted line: its kind, its state and who made it when) and its tabs, the operational
+  side first and Settings last, set apart at the bar's right end
+  (`NodeComponents.node_tabs/1`, on `PageComponents.page_tabs/1`). Overview and Settings
+  are patches of the one LiveView; Access key, between them, is a LiveView of its own
+  (`/nodes/:node_id/access-key`, `ApiaryWeb.NodeLive.AccessKey`). **Overview**: a Node's
+  instance (running since when,
   its run and runner, or when it was last seen) or a pool's running instances on the
   list pattern with "3 of 10 running", the starts refused at the instance limit, the
   instances past the bound of 256 new ones a day, the sentence that an instance is what a
   runner using the node's key reports itself as, and its recent runs (`runs.node_id`,
   for a reader of the record) with the way to all of them on the runs list (`?node=`),
   each saying so while nothing has reported, then About (kind, id, instance limit, who
-  made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`),
-  General, whose danger zone's Delete node… (Delete node pool… for a pool) expands its
+  made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`), its few
+  sections listed in the page, never as a second column (Settings, A node's): General,
+  whose danger zone's Delete node… (Delete node pool… for a pool) expands its
   confirmation in place (Settings, The danger zone) at `/nodes/:node_id/settings/delete`:
   what is lost, then Delete build-01? with Yes, delete and Cancel, no field to type, Cancel
   taking the focus.
@@ -704,15 +768,16 @@ reached by its path, and the page passes `place={:workspace}`.
   Instance (its name and id) beside Key, and so does the runs list's preview, each only
   when the run names one; the runs list takes `node:` (a public id, or the name of a node
   in use) and has a Node column from 1300 px (`q-rl-c5`) where the workspace has nodes.
-- **Members** read the list and both tabs, without New node, New node pool, Clear
+- **Members** read the list and every tab, without New node, New node pool, Clear
   instance or the danger zone; Settings shows its fields disabled under one line that
   says only owners and admins change them, and the deletion's or the clearing's path
   sends them back with why.
 
 ## Widths
 
-Every page starts at the same left edge, 32 px from the sidebar (24 px below 1024 px, 16
-below 768); nothing is centred in the space beside it. `width` is one of three:
+Every page starts at the same left edge, 32 px from the sidebar, or from the second column
+where it stands beside the page (24 px below 1024 px, 16 below 768); nothing is centred in
+the space beside it. `width` is one of three:
 
 - `list` (the default): fluid, up to 1680 px, for the lists and the overviews. A list
   page with a rail or a preview pane beside its list takes `work` and caps itself at
@@ -724,7 +789,8 @@ A sticky tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's g
 (`--q-gutter`). The frame is set in the content's sizes, never smaller: a sidebar item and
 a tab 14 px and regular, the current one medium (and a tab's underline honey, the current
 step); a count 12 px in the sans face, a tab's in a filled pill and a tab's denials red
-words without one; a pinned target 12.5 px mono; an entry of the settings list 13.5 px.
+words without one; a pinned target 12.5 px mono; an entry of the second column 14 px, and
+13.5 px in its row of links.
 The classes of the shell are in `app.css`'s shell block, and they are
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its own parts on phones in that block.
@@ -736,10 +802,22 @@ badge. The general ones are in `ApiaryWeb.CoreComponents` (`core_components.ex`)
 ones a group of pages shares are beside them: `RunComponents` for the runs list (its
 Filter menu's sections, the rail, the pager, the runs table and the preview), the run page
 and Network access, `RunPageComponents` for the run page,
-`PolicyComponents` and `OverviewComponents` for theirs, and `ApiaryWeb.RichText` for a
-translated sentence with markup in it. A look a second page needs becomes a component,
-or an attribute of one, not a copy.
+`PolicyComponents` and `OverviewComponents` for theirs, `PageComponents` for the patterns
+every page is built from inside the frame, `SettingsComponents` for the settings', and
+`ApiaryWeb.RichText` for a translated sentence with markup in it. A look a second page
+needs becomes a component, or an attribute of one, not a copy.
 
+- **`ApiaryWeb.PageComponents`**: `page_header/1`, a page's title (its one `<h1>`,
+  `tabindex="-1"`), one line of what it is for and its actions; `page_tabs/1`, a thing's
+  tabs (a target's, a node's, a run's), links, Settings, where the thing has it, last and
+  set apart at the bar's right end; `settings_page/1`, a page of a level's settings, whose
+  sections the frame lists (Two levels, under The shell); `page_form/1` with
+  `page_form_foot/1`, a form as a page of its own, its title, one line and the form, with
+  no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
+  link at a page's foot that names where it leads, such as Back to the variables, stays
+  where a page has one); and
+  `not_on_runs/1`, the one plain line a page over data no run receives yet says, in the
+  page's own sentence (`inner_block`, required): it has no words of its own.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
   `patch` or `href`, unless it is `disabled`: a disabled one is a `<button disabled>`
@@ -749,7 +827,8 @@ or an attribute of one, not a copy.
   submits; the button keeps its width.
 - **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
   value and as one field, what the value completes: the path of the organisation before
-  a workspace's slug.
+  a workspace's slug. A caller's `aria-describedby` is merged with the field's own (its
+  hint, its errors), never replaced by it.
 - **Forms** are `novalidate`, every one, plain `<form>` and `<.form>` alike: the browser
   neither checks a field nor shows its own bubble, and the server answers a field that is
   wrong with an error under it (`<.input>`'s, tied to it by `aria-describedby`), in the
@@ -760,16 +839,22 @@ or an attribute of one, not a copy.
   `test/apiary_web/novalidate_test.exs` fails for a form without the attribute.
 - **`<.inline_confirm>`** is a confirmation in place (No modals, above): the question,
   one muted sentence of what happens, the act's button and Cancel, on one line that
-  wraps. Cancel takes the focus as it shows and Escape cancels; both lead back by
-  `cancel`, a patch or a JS command. A table shows one in place of the cells of the row
+  wraps. The group is named by its question and described by its sentence (`<id>-sub`),
+  so a screen reader reads what happens, "This cannot be undone." included. Cancel takes
+  the focus as it shows and Escape cancels; both lead back by `cancel`, a patch or a JS
+  command. A table shows one in place of the cells of the row
   named by `confirming` (`<.table>`'s `confirm` slot), tinted the error's soft colour
   when its button is red, neutral otherwise: one cell across the row, its content sticky
   and as wide as the table's box (`q-confirm-view`), so that in a table wider than its
   box the question and its buttons stay in view however far it is scrolled sideways, and
   Cancel takes the focus without scrolling the question away (`rule_list/1`'s row is the
   same). A danger zone's line wraps it with what is lost and the field to type
-  (`SettingsComponents.deletion_confirm/1`). There is no modal component.
-- **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
+  (`SettingsComponents.deletion_confirm/1`), its button Yes, delete, Deleting while it
+  acts, unless the act names its own (`confirm_label` and `busy_label`, which
+  `danger_action/1` takes too). There is no modal component.
+- **Menus** are daisyUI dropdowns under the `Menu` hook, whose trigger is the button with
+  `aria-haspopup`, or, for a disclosure, the one with `aria-controls` and `aria-expanded`
+  (the filter chips, Filter, Jump to date): a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
   the arrows wrap, Home and End go to the ends, Escape closes and returns focus. The items
   are not tab stops (`tabindex="-1"`, as `<.menu_item>` renders them): Tab closes the menu
@@ -790,7 +875,9 @@ or an attribute of one, not a copy.
 - **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>`, `<.filter_menu>`,
   `<.sort_menu>` and `<.filter_tokens>` are a list's controls; `<.state_word>` says a
   row's state in words; `<.sparkline>` draws runs a day.
-- **`<.empty_state>`** says what is missing and offers the one next step.
+- **`<.empty_state>`** says what is missing and offers the one next step. Where it titles
+  the page (`heading="h1"`), its title is the page's `<h1>` and takes the focus as a
+  header's does (`tabindex="-1"`).
 - **Icons** are Heroicons through `<.icon>`, in two styles (the v2 mocks' split). Nav and
   object icons are the 24 px outline, `hero-<name>`: the sidebar's entries and pins, the
   top bar, menu items, tabs, toolbar buttons (Filter, Sort, Export), find fields, a Filter
@@ -808,7 +895,8 @@ of pages owns are in `@layer qory` and start with `q-`, clear of daisyUI's names
 
 An edition adds to a core page only in the places the page gives it: a slot
 (`ApiaryWeb.Extension`), a section of the organisation's settings (`ApiaryWeb.SettingsComponents`)
-or a navigation entry. What it renders there links to its own pages, which handle its
+or of the Instance, or an entry of the navigation, of New or of the account menu
+(`ApiaryWeb.Edition`). What it renders there links to its own pages, which handle its
 events; a page whose behaviour differs is the edition's own at the same path.
 
 A component does not ask `Apiary.Features` what the instance serves: the page asks with
@@ -899,7 +987,9 @@ inverted.
   word on them is drawn muted.
 - **Honey is for one thing.** `primary` marks the main action of a screen, a checked box,
   the current step and the mark. It is too light to be text on the light theme: links and
-  the active navigation icon use `accent`.
+  the active navigation icon use `accent`. A radio's and a checkbox's outline is the
+  field's border colour (`--q-border-field`, 3:1 on the page, where `primary` is 2:1);
+  `primary` is their checked fill, the outline then a darker `primary`.
 - **Colour marks a state, never a mood,** and is never the only carrier: a badge has its
   word, an error its icon and sentence, a connection in the timeline its glyph and word,
   a destination's denied number the words of its split.
@@ -1018,9 +1108,17 @@ and names the product Qory Apiary.
 
 - **Focus.** One global `:focus-visible` ring in `--q-ring`; a control never loses its
   focus style without a replacement. The tab order is the visual order, with no positive
-  `tabindex`. A failed submit puts the caret in the first invalid field. A live navigation
-  gives focus to the new page's `<h1>` (`tabindex="-1"`, as `<.header>` renders it) unless
-  the page put it somewhere itself, so a screen reader says where the reader landed.
+  `tabindex`. A failed submit puts the caret in the first invalid field, or the first
+  radio of an invalid radio group. A live navigation gives focus to the settings section's
+  title (`#settings-section-title`, `tabindex="-1"`) where the page has one, else to the
+  new page's `<h1>` (`tabindex="-1"`, as `<.header>` and `page_header/1` render it),
+  unless the page put it somewhere itself, so a screen reader says where the reader
+  landed. After any LiveView update that removed the element that had the focus (Cancel,
+  Save, an inline confirmation, a × or Show all), the focus goes the same way, but only
+  when it has fallen to `<body>`: a page that moves the focus itself (the `FocusOn` hook, a
+  `phx-mounted` focus, `JS.focus`) keeps it. The focused title is described by the
+  organisation's notices (`#shell-notices`, the edition's `:notices` slot) where there are
+  any, so a screen reader reads them though they sit above it.
 - **Keys.** A shortcut of a single key (/ for search, `[` for the fold, `a` and `?` on
   the policy pages, `f` on the terminal, the timeline's letters) works only outside a
   field, and only while Preferences' **Keyboard shortcuts** is on, as it is unless the
@@ -1032,7 +1130,10 @@ and names the product Qory Apiary.
   ("Revoke build-01") while its visible text stays short. A field has a visible label, and
   its error is tied to it with `aria-invalid` and `aria-describedby`. Each `<nav>` of the
   sidebar has a name of its own: its heading, Main for the first group, else its first
-  entry's. No control sits inside another: a timeline item's number inside its
+  entry's; the second column is named by its heading (Settings, Your settings, Instance),
+  as its list in the drawer is, the two never shown at once. The current entry is marked
+  by `aria-current`, `"page"` for the exact page and `"true"` for its parent (The shell).
+  No control sits inside another: a timeline item's number inside its
   `<summary>` is text that carries its path, which `c` copies.
 - **Live regions.** A page that changes while it is read has one polite announcer
   (`#run-announcer`, `#overview-announcer`, `#policy-announce`) for the few things worth
@@ -1048,9 +1149,11 @@ and names the product Qory Apiary.
 
 ## Phones and touch
 
-The breakpoint is 768 px (Tailwind's `md`). Below it the sidebar is the drawer, the
-gutter is 16 px, controls are 40 px high and inputs take 16 px text so the browser does
-not zoom. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area
+The breakpoint is 768 px (Tailwind's `md`). Below it the sidebar is the drawer, which
+scrolls as one piece and lists the second column's sections (The shell), the gutter is
+16 px, controls are 40 px high and inputs take 16 px text so the browser does not zoom.
+The second column is a column from 1024 px and a row of links at the top of the page from
+768 px. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area
 whatever its drawn size. At 320 px wide, and at 200% zoom, the page never scrolls
 sideways: tables, code, the filter bar and the terminal scroll inside their own
 containers.

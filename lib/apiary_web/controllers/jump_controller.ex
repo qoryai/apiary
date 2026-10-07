@@ -3,8 +3,11 @@ defmodule ApiaryWeb.JumpController do
   What the palette of the top bar (Search or jump to, `ApiaryWeb.Layouts`) finds for what
   the reader typed. Not a page: JSON the `Palette` hook lists.
 
-      GET /:org/:workspace/jump?q=<text>    on a workspace's pages
-      GET /:org/jump?q=<text>               on an organisation's and a person's
+      GET /:org/:workspace/jump?q=<text>    where the sidebar is a workspace's
+      GET /:org/jump?q=<text>               where it is an organisation's or the person's
+
+  The palette asks the sidebar's level (`ApiaryWeb.Layouts.app/1`): a person's own page or
+  an Instance page shown beside the workspace the person came from asks that workspace.
 
   The answer is `{"groups": [{"label", "items": [{"label", "detail", "href", "icon"}]}],
   "status", "empty"}`, the groups in the order they are shown, none left empty, every word
@@ -14,7 +17,8 @@ defmodule ApiaryWeb.JumpController do
 
   - **Go to**: the pages of the navigation the reader may open (`ApiaryWeb.Layouts.
     palette_entries/1`), every section of each Settings they open
-    (`ApiaryWeb.SettingsComponents.sections/2`), Preferences' theme and shortcuts, and
+    (`ApiaryWeb.SettingsComponents.sections/2`, in their order, after it), Preferences'
+    theme and shortcuts, and
     the Instance's sections the reader may open (`ApiaryWeb.Layouts.instance_sections/1`),
     whose label or other words (members for People) hold the text; all of them for no
     text. A label says whose the page is where a workspace's and an organisation's share a
@@ -92,17 +96,44 @@ defmodule ApiaryWeb.JumpController do
     group(gettext("Go to"), items)
   end
 
-  # The pages of the navigation, each Settings followed by its sections the navigation
-  # does not list (a workspace's People and Runs, Workspaces) and Preferences by its own
-  # parts, each once: a section is the navigation's entry where both lead to one path. A
-  # scope's General is its Settings.
+  # The pages of the navigation, each Settings followed by its sections in the second
+  # column's order (`SettingsComponents.sections/2`), and Preferences by its own parts,
+  # each once: a section is the navigation's entry where both lead to one path (a
+  # workspace's Access keys, an organisation's People), listed in its place among the
+  # sections, not where the navigation has it. A scope's General is its Settings.
   defp destinations(scope) do
     entries = Layouts.palette_entries(scope)
-    paths = MapSet.new(entries, fn {_entry, path} -> path end)
+    navigation = Map.new(entries, fn {entry, path} -> {path, entry} end)
 
-    Enum.flat_map(entries, fn {entry, _path} = pair ->
-      [pair | after_entry(entry, scope, paths)]
+    sections =
+      for {%Entry{section: :foot, place: place}, _path} <- entries,
+          place in [:workspace, :organisation],
+          into: %{},
+          do: {place, settings_sections(scope, place, navigation)}
+
+    listed = MapSet.new(for {_place, list} <- sections, {_entry, path} <- list, do: path)
+
+    Enum.flat_map(entries, fn
+      {%Entry{section: :settings}, path} = pair ->
+        if MapSet.member?(listed, path), do: [], else: [pair]
+
+      {entry, _path} = pair ->
+        [pair | after_entry(entry, sections)]
     end) ++ instance(scope)
+  end
+
+  # A Settings' sections but General, which is the Settings itself, in their order: the
+  # navigation's entry of the Settings where it leads to the same path, else the section.
+  defp settings_sections(scope, place, navigation) do
+    for %Entry{} = section <- SettingsComponents.sections(scope, place),
+        section.key not in [:general, :organisation] do
+      path = Entry.path(section, scope.organisation, scope.workspace)
+
+      case Map.get(navigation, path) do
+        %Entry{section: :settings} = entry -> {entry, path}
+        _none -> {%{section | section: :settings, place: place}, path}
+      end
+    end
   end
 
   # The Instance's sections the reader may open (`ApiaryWeb.Layouts.instance_sections/1`).
@@ -111,16 +142,11 @@ defmodule ApiaryWeb.JumpController do
         do: {entry, Entry.path(entry, scope.organisation, scope.workspace)}
   end
 
-  defp after_entry(%Entry{section: :foot, place: place}, scope, paths)
-       when place in [:workspace, :organisation] do
-    for %Entry{} = section <- SettingsComponents.sections(scope, place),
-        section.key not in [:general, :organisation],
-        path = Entry.path(section, scope.organisation, scope.workspace),
-        not MapSet.member?(paths, path),
-        do: {%{section | section: :settings, place: place}, path}
-  end
+  defp after_entry(%Entry{section: :foot, place: place}, sections)
+       when is_map_key(sections, place),
+       do: Map.fetch!(sections, place)
 
-  defp after_entry(%Entry{key: :user_preferences}, _scope, _keys) do
+  defp after_entry(%Entry{key: :user_preferences}, _sections) do
     [
       {%Entry{
          key: :theme,
@@ -141,7 +167,7 @@ defmodule ApiaryWeb.JumpController do
     ]
   end
 
-  defp after_entry(_entry, _scope, _paths), do: []
+  defp after_entry(_entry, _sections), do: []
 
   # Entries of the same name in two scopes say whose they are: a workspace's Overview,
   # Settings and Policy, an organisation's, and an edition's entry by its `long_label`; a
