@@ -13,8 +13,10 @@ defmodule Apiary.AccessKeys do
       enrolment): the code is the approval, so the key is active as it is made, while
       the code's maker is still an owner or an admin of its workspace; the code is the
       authority, and the key itself the actor of its entry, `access_key.add`;
-    * a **pasted key** (`add_access_key/3`, `access_key.add`) is active as it is
-      entered;
+    * a **pasted key** (`add_access_key/4`, `access_key.add`) is active as it is
+      entered; a key **made in a browser** is added the same way, by its public key
+      alone, marked `arrived_by: :browser`: its secret stayed in the browser that made
+      it, and Apiary never receives it;
     * a key is **revoked** (`revoke_access_key/2`, `access_key.revoke`), and every key of
       a deleted node with it (`Apiary.Nodes.delete_node/2`).
 
@@ -153,17 +155,36 @@ defmodule Apiary.AccessKeys do
   def code_ttl_minutes, do: @code_ttl_minutes
 
   @doc """
+  variables/2 is the variables a runner is given in place of the runner file's `server`
+  lines, nothing of them secret, in their order: `QORY_ACCESS_KEY_ID`, the key's id, and
+  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON. `pin` is the server's `apiary_public_key`
+  list (`Apiary.SigningKey.apiary_public_key/0`). The key's secret, the third variable a
+  runner needs, `QORY_ACCESS_KEY_SECRET`, is not Apiary's to give.
+  """
+  @spec variables(AccessKey.t(), [%{required(String.t()) => String.t()}, ...]) ::
+          [{String.t(), String.t()}]
+  def variables(%AccessKey{key_id: key_id}, pin \\ Apiary.SigningKey.apiary_public_key())
+      when is_binary(key_id) do
+    json =
+      Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
+        Jason.OrderedObject.new([{"alg", alg}, {"public_key", public_key}])
+      end)
+
+    [{"QORY_ACCESS_KEY_ID", key_id}, {"QORY_APIARY_PUBLIC_KEY", Jason.encode!(json)}]
+  end
+
+  @doc """
   runner_lines/3 is what a machine holding `key` is given, nothing of it secret: `file`,
   the runner file's `server` section, `url` (`base_url`), `access_key_id` and
   `apiary_public_key`, the pin, in YAML's flow form, one line per key; and `env`, the same
-  id and pin as the variables CI sets instead, `QORY_ACCESS_KEY_ID` and
-  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON. `pin` is the server's `apiary_public_key`
-  list (`Apiary.SigningKey.apiary_public_key/0`). The key's secret is the machine's alone.
+  id and pin as the variables CI sets instead (`variables/2`), one `NAME=value` line each.
+  `pin` is the server's `apiary_public_key` list (`Apiary.SigningKey.apiary_public_key/0`).
+  The key's secret is the machine's alone.
   """
   @spec runner_lines(AccessKey.t(), String.t(), [%{required(String.t()) => String.t()}, ...]) ::
           %{file: String.t(), env: String.t()}
   def runner_lines(
-        %AccessKey{key_id: key_id},
+        %AccessKey{key_id: key_id} = key,
         base_url,
         pin \\ Apiary.SigningKey.apiary_public_key()
       )
@@ -171,11 +192,6 @@ defmodule Apiary.AccessKeys do
     pins =
       Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
         "    - {alg: #{alg}, public_key: #{public_key}}\n"
-      end)
-
-    json =
-      Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
-        Jason.OrderedObject.new([{"alg", alg}, {"public_key", public_key}])
       end)
 
     %{
@@ -187,7 +203,7 @@ defmodule Apiary.AccessKeys do
           "  apiary_public_key:\n",
           pins
         ]),
-      env: "QORY_ACCESS_KEY_ID=#{key_id}\nQORY_APIARY_PUBLIC_KEY=#{Jason.encode!(json)}\n"
+      env: Enum.map_join(variables(key, pin), fn {name, value} -> "#{name}=#{value}\n" end)
     }
   end
 
@@ -351,10 +367,16 @@ defmodule Apiary.AccessKeys do
   def change_new_key(attrs \\ %{}), do: AccessKey.insert_changeset(%AccessKey{}, attrs)
 
   @doc """
-  add_access_key/3 adds a key to `node` by its public key (`access_key.add`, owners and
+  add_access_key/4 adds a key to `node` by its public key (`access_key.add`, owners and
   admins), active at once. `attrs`: `public_key`, the raw 32-byte Ed25519 public key in
   base64url without padding, as `qory access-key create` prints it; `label`; and
   `allow_secrets`, the stored-secrets flag, fixed from then on.
+
+  `opts`: `arrived_by`, how the key came, fixed with it and written in its entry:
+  `:paste` (the default), its public key pasted, the secret on the machine that made it;
+  or `:browser`, made in the reader's browser (the Access key tab's Generate a key),
+  which sent the public key alone and kept the secret. Either way Apiary receives the
+  public key, and the two are checked alike.
 
   The key passes the key checks (`Apiary.Contract.Ed25519`) and is not in the ledger,
   whatever its state there, or the changeset says "this key cannot be used" of it,
@@ -362,9 +384,18 @@ defmodule Apiary.AccessKeys do
   the node holds two keys; `{:error, :forbidden}`; or `{:error, :not_found}` for a node
   deleted or not the workspace's.
   """
-  @spec add_access_key(Scope.t(), Node.t(), map) ::
+  @spec add_access_key(Scope.t(), Node.t(), map, [{:arrived_by, :paste | :browser}]) ::
           {:ok, AccessKey.t()} | {:error, Ecto.Changeset.t() | :key_limit | Access.reason()}
-  def add_access_key(%Scope{user: user} = scope, %Node{} = node, attrs) do
+  def add_access_key(%Scope{user: user} = scope, %Node{} = node, attrs, opts \\ []) do
+    arrived_by =
+      case Keyword.get(opts, :arrived_by, :paste) do
+        arrived_by when arrived_by in [:paste, :browser] ->
+          arrived_by
+
+        other ->
+          raise ArgumentError, "a key is added as :paste or :browser, not #{inspect(other)}"
+      end
+
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.add", node),
            {:ok, node} <- lock_node(scope, node.id),
@@ -378,7 +409,7 @@ defmodule Apiary.AccessKeys do
           node_id: node.id,
           key_id: AccessKey.generate_key_id(),
           created_by_id: user.id,
-          arrived_by: :paste,
+          arrived_by: arrived_by,
           received_at: now
         }
 

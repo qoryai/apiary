@@ -22,7 +22,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     Done back to the tab.
   - **Add a public key** (`…/access-key/add`), a page of its own: a label, the
     stored-secrets flag and the public key, whose fingerprint shows as soon as it reads as
-    one; the key is active as it is added (`Apiary.AccessKeys.add_access_key/3`), and
+    one; the key is active as it is added (`Apiary.AccessKeys.add_access_key/4`), and
     the page goes on to the key's runner file.
   - **Enrolment codes**: the node's outstanding codes, who made each and when, when it
     expires, and the settings of the key it would bring; owners and admins revoke one in

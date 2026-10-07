@@ -47,6 +47,18 @@ defmodule Apiary.AccessKeysFixtures do
   end
 
   @doc """
+  A key made in a browser on `node` by the scope's person, an owner or an admin, as the
+  Access key tab's Generate a key adds it (`arrived_by: :browser`): active at once.
+  Returns `%{access_key: key, pair: key pair}`.
+  """
+  def browser_key_fixture(scope, node, attrs \\ %{}) do
+    pair = ed25519_key_pair()
+    attrs = Enum.into(attrs, %{label: unique_label(), public_key: pair.encoded})
+    {:ok, key} = AccessKeys.add_access_key(scope, node, attrs, arrived_by: :browser)
+    %{access_key: key, pair: pair}
+  end
+
+  @doc """
   A key enrolled on `node` with a code of the scope's person, an owner or an admin, active
   as such a key is: the code made and used, the key inserted, with its integrity code and
   its row of the ledger, current. The rows `Apiary.AccessKeys.enrol/2` writes, written
