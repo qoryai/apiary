@@ -400,13 +400,15 @@ by name or the latest change.
   (`:filter_parameters`).
 - **A variable** is one row: its name, its value in mono (plain configuration, shown
   whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
-  the workspace says so), and the repositories that set their own value, or whose value
-  the lock sets aside, from their resolution (`Apiary.Variables.repository_overrides/1`),
-  a link to the page that lists them. Locked means a repository
-  may not set its own value, and nothing more. A name on the runner's deny list other
-  than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
-  ("NAME is on the runner's deny list.", which describes the name's field while it
-  shows) and "On the runner's deny list" on its row.
+  the workspace says so), and the repositories that have a value of their own, or whose
+  value the lock sets aside, from their resolution
+  (`Apiary.Variables.repository_overrides/1`), a link to the page that lists them. No
+  page sets a repository's own value: the context keeps one
+  (`Apiary.Variables.create_variable/3` with a target), and the demo makes a few. Locked
+  means a repository's own value of the name is set aside, and nothing more. A name on
+  the runner's deny list other than `QORY_…`, which the context refuses, is saved with a
+  warning on New variable's page ("NAME is on the runner's deny list.", which describes
+  the name's field while it shows) and "On the runner's deny list" on its row.
 - **New secret** asks for its name, then **Values**, native radios in a fieldset with that
   legend: "One value" (to start), its one Value, with no value ID; or "Several values,
   each with a value ID", a Value ID and a Value for each, two to start, each row a group
