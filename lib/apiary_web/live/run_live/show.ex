@@ -6,8 +6,9 @@ defmodule ApiaryWeb.RunLive.Show do
   that a tab is a `patch` and the header stays: Timeline, Terminal, Network access
   (`/runs/:run_id/network`, the live action `:connections`; the old `/connections` path
   sends on here), Details.
-  Details is the rail beside the tabs from 1440 px, and the tab below that shows the same
-  element in the column (`docs/ui.md`, The run page).
+  Details is the rail beside Timeline and Network access from 1440 px, and the tab below
+  that shows the same element in the column (`docs/ui.md`, The run page). The Terminal tab
+  is wide (`q-run-wide`): at every width the rail folds away there and Details is a tab.
 
   `:run_id` in the URL is the run's subject, the id the runner prints. A run that is not
   in the caller's workspace renders the not-found state, whatever else it may be.
@@ -104,9 +105,15 @@ defmodule ApiaryWeb.RunLive.Show do
         {@announcement}
       </div>
 
+      <%!-- The Terminal tab is wide (`q-run-wide`): from 1440 px too the column has the
+           width to itself, the rail folds away and Details is a tab, as below 1440 px. --%>
       <div
         id="run-page"
-        class={["q-run", @live_action == :details && "q-run-on-details"]}
+        class={[
+          "q-run",
+          @live_action == :details && "q-run-on-details",
+          @live_action == :terminal && "q-run-wide"
+        ]}
       >
         <div class="q-run-col">
           <header class="q-run-head">
@@ -765,10 +772,11 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
-  # The details of the run: a rail beside the tabs from 1440 px, and below that the
-  # Details tab, which shows this same element in the column (`q-run-on-details`), so the
-  # two never disagree and no id is rendered twice. Key and value lines under small
-  # headings; the run's labels are its own identifiers, in mono.
+  # The details of the run: a rail beside Timeline and Network access from 1440 px; below
+  # that, and on the wide Terminal tab, Details is a tab, which shows this same element in
+  # the column (`q-run-on-details`), so the two never disagree and no id is rendered
+  # twice. Key and value lines under small headings; the run's labels are its own
+  # identifiers, in mono.
   attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :policy, :any, required: true

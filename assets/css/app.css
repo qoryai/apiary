@@ -5185,7 +5185,7 @@
    the runs list and the connections pages is in the section above; the run page's own
    look of a shared piece (a connection line in the timeline) is scoped to the page here.
    A work surface: the column takes the width, the details rail sits beside it from
-   1440 px, and the terminal fills the window below the tab bar. */
+   1440 px but on the Terminal tab, and the terminal fills the window below the tab bar. */
 @layer qory {
   /* ---- The work surface: the column, and the details rail from 1440 px ---- */
   .q-run {
@@ -5344,16 +5344,17 @@
     align-items: center;
     gap: 8px;
   }
-  /* From 1440 px the rail is beside the column, and the tab bar ends at the column. */
+  /* From 1440 px the rail is beside the column, and the tab bar ends at the column; not on
+     the wide Terminal tab (`q-run-wide`), where Details stays a tab, as on Details itself. */
   @media (min-width: 1440px) {
-    .q-run {
+    .q-run:not(.q-run-wide) {
       grid-template-columns: minmax(0, 1fr) 320px;
     }
-    .q-run .q-tabs {
+    .q-run:not(.q-run-wide) .q-tabs {
       margin-right: 0;
       padding-right: 0;
     }
-    #run-tab-details {
+    .q-run:not(.q-run-wide):not(.q-run-on-details) #run-tab-details {
       display: none;
     }
   }
@@ -5373,6 +5374,9 @@
       max-height: calc(100dvh - var(--q-bar) - 2.5rem);
       overflow: auto;
       scrollbar-width: thin;
+    }
+    .q-run-wide .q-run-rail {
+      display: none;
     }
   }
   .q-rail-title {

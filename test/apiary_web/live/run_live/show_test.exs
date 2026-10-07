@@ -147,7 +147,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-labels a[href="#{target}"]), "acme/shop")
       refute has_element?(lv, ".q-label")
 
-      # tabs with their counts; Details is the rail's, a tab only below 1440 px
+      # tabs with their counts; Details is the rail's, a tab below 1440 px and on Terminal
       assert has_element?(lv, "#run-tab a#run-tab-timeline[aria-current='page']", "Timeline")
 
       assert has_element?(
@@ -181,6 +181,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-menu-download[href="#{log}?download=1"][download]))
       # an ended run is not closed again
       refute has_element?(lv, "#close-run-button")
+    end
+
+    test "the Terminal tab is wide: the rail folds away and Details is a tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
+
+      # what the page's CSS keys on from 1440 px: no rail beside the column, and the
+      # Details tab shown; the rail is still the one element, for the Details tab
+      {:ok, lv, _html} = live(conn, path <> "/terminal")
+      assert has_element?(lv, "#run-page.q-run-wide #run-tab a#run-tab-details", "Details")
+      assert has_element?(lv, "#run-page.q-run-wide #run-details")
+      refute has_element?(lv, "#run-page.q-run-on-details")
+
+      # a patch to another tab brings the rail back beside it
+      lv |> element("#run-tab-timeline") |> render_click()
+      assert has_element?(lv, "#run-tab-timeline[aria-current='page']")
+      refute has_element?(lv, "#run-page.q-run-wide")
+
+      for tab <- ["", "/network", "/details"] do
+        {:ok, lv, _html} = live(conn, path <> tab)
+        assert has_element?(lv, "#run-page #run-details")
+        refute has_element?(lv, "#run-page.q-run-wide")
+      end
     end
 
     test "the Details tab is the rail, in the column", %{conn: conn, scope: scope} do
