@@ -31,14 +31,74 @@ defmodule Apiary.SecretLogFilterTest do
     assert text == "got [FILTERED] here"
   end
 
-  test "leaves a line without a secret, and a report, as they came" do
+  test "leaves an event without a secret as it came" do
     for msg <- [
           {:string, "HANDLE EVENT \"generate_key\""},
           {~c"~p", [:ok]},
-          {:report, %{a: @secret}}
+          {:report, %{a: "spot-runners", b: [~c"build-01", {:ok, self()}]}}
         ] do
-      assert SecretLogFilter.filter(event(msg), nil) == event(msg)
+      meta = %{crash_reason: {%RuntimeError{message: "acme"}, []}, file: ~c"lib/x.ex"}
+      event = %{event(msg) | meta: meta}
+      assert SecretLogFilter.filter(event, nil) == event
     end
+  end
+
+  test "replaces a secret anywhere in a report's terms, and keeps their shapes" do
+    report = %{
+      label: {:gen_server, :terminate},
+      last_message: {:value, @secret},
+      state: %{"label" => "ci " <> String.upcase(@secret), @secret => [~c"x #{@secret}", 1]},
+      reason: {%FunctionClauseError{module: Acme, function: :f, arity: 1, args: [@secret]}, []},
+      improper: [:a | "tail #{@secret}"]
+    }
+
+    %{msg: {:report, scrubbed}} = SecretLogFilter.filter(event({:report, report}), nil)
+
+    assert scrubbed == %{
+             label: {:gen_server, :terminate},
+             last_message: {:value, "[FILTERED]"},
+             state: %{"label" => "ci [FILTERED]", "[FILTERED]" => [~c"x [FILTERED]", 1]},
+             reason:
+               {%FunctionClauseError{module: Acme, function: :f, arity: 1, args: ["[FILTERED]"]},
+                []},
+             improper: [:a | "tail [FILTERED]"]
+           }
+  end
+
+  test "replaces a secret in the metadata, the crash reason's among it" do
+    stacktrace = [{Acme, :handle_event, ["bogus", %{"value" => @secret}], []}]
+
+    meta = %{
+      crash_reason: {%FunctionClauseError{module: Acme, args: [@secret]}, stacktrace},
+      request_path: "/x/" <> @secret,
+      pid: self()
+    }
+
+    %{meta: scrubbed} = SecretLogFilter.filter(%{event({:string, "x"}) | meta: meta}, nil)
+
+    assert scrubbed == %{
+             crash_reason:
+               {%FunctionClauseError{module: Acme, args: ["[FILTERED]"]},
+                [{Acme, :handle_event, ["bogus", %{"value" => "[FILTERED]"}], []}]},
+             request_path: "/x/[FILTERED]",
+             pid: self()
+           }
+
+    refute inspect(scrubbed) =~ ~r/qak_/i
+  end
+
+  test "keeps a secret out of a GenServer's crash report" do
+    log =
+      ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        {:ok, pid} = GenServer.start(Apiary.SecretLogFilterTest.Crashing, nil)
+        ref = Process.monitor(pid)
+        send(pid, {:value, @secret})
+        assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+      end)
+
+    assert log =~ "terminating"
+    assert log =~ "Last message: {:value, \"[FILTERED]\"}"
+    refute log =~ ~r/qak_/i
   end
 
   test "keeps a secret out of a line Logger writes" do
@@ -50,5 +110,15 @@ defmodule Apiary.SecretLogFilterTest do
 
     assert log =~ "a value: [FILTERED]."
     refute log =~ ~r/qak_/i
+  end
+
+  defmodule Crashing do
+    use GenServer
+
+    @impl true
+    def init(state), do: {:ok, state}
+
+    @impl true
+    def handle_info({:value, value}, _state), do: raise(ArgumentError, "refused #{value}")
   end
 end

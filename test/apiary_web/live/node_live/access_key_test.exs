@@ -1263,6 +1263,30 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert add_entries(node) == []
     end
 
+    test "an event the page has no clause for crashes it, and its crash report holds no secret",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+      Process.flag(:trap_exit, true)
+      ref = Process.monitor(lv.pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          catch_exit(
+            render_hook(lv, "bogus", %{
+              "value" => "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+            })
+          )
+
+          assert_receive {:DOWN, ^ref, :process, _pid, _reason}
+        end)
+
+      assert log =~ "FunctionClauseError"
+      assert log =~ ~s{"value" => "[FILTERED]"}
+      refute log =~ ~r/qak_/i
+      assert AccessKeys.list_for_node(scope, node) == []
+    end
+
     # A valid public key whose base64url holds `prefix` at its start: hashes, the first
     # three bytes of each made `prefix`'s (four characters, 24 bits, so the encoding stays
     # canonical), until one decodes and passes the key checks. Deterministic.
