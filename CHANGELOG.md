@@ -244,8 +244,8 @@ instance's ledger of public keys. `20261007210000_make_an_enrolled_key_active_at
 drops the approval's columns (`approved_at`, `approved_by_id`, `last_pending_at`), their
 check and index, and the ledger's `pending` state and `rejected` reason; it deletes every
 node's key, with its deliveries, and every enrolment code, and makes every public key in
-the ledger a tombstone, so machines enrol again. `20261008090000_let_a_key_arrive_made_in_a_browser`
-lets a key arrive `browser`.
+the ledger a tombstone, so machines enrol again with a new key.
+`20261008090000_let_a_key_arrive_made_in_a_browser` lets a key arrive `browser`.
 
 ### Upgrading
 
