@@ -75,7 +75,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.exit_code == 0
       assert run.runtime == "claude"
       assert run.wall == "docker"
-      assert run.target_system == "git.example.com"
+      assert run.target_system == "codeberg.org"
       assert run.target_path == "acme/shop"
       assert run.task == "checkout-redesign"
       assert run.runner_version == "0.10.0"
@@ -92,8 +92,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert connections(run) == [
                {"api.llm.example", 443, "", 6, 6, 0, "connected"},
                {"cdn.packages.example.com", 443, "", 1, 1, 0, "dial_failed"},
-               {"git.example.com", 443, "/acme/shop.git/git-upload-pack", 1, 1, 0, "connected"},
-               {"git.example.com", 443, "/acme/shop.git/info/refs", 1, 1, 0, "connected"},
+               {"codeberg.org", 443, "/acme/shop.git/git-upload-pack", 1, 1, 0, "connected"},
+               {"codeberg.org", 443, "/acme/shop.git/info/refs", 1, 1, 0, "connected"},
                {"metrics.example", 80, "", 1, 0, 1, "refused"},
                {"packages.example.com", 443, "", 2, 2, 0, "connected"},
                {"registry.example", 443, "", 1, 0, 1, "refused"}
@@ -128,7 +128,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.exit_code == 2
 
       assert {run.target_system, run.target_path, run.task} ==
-               {"github.example", "acme/api", "checkout-redesign"}
+               {"github.com", "acme/api", "checkout-redesign"}
 
       assert lanes(events(run)) == []
 
@@ -163,7 +163,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       assert run.state == "timed_out"
       assert {run.reason, run.exit_code, run.duration_ms} == {"timeout", -1, 3_600_000}
-      assert {run.target_system, run.target_path} == {"github.example", "acme/shop"}
+      assert {run.target_system, run.target_path} == {"github.com", "acme/shop"}
       assert run.denied_count == 0
     end
 
@@ -240,12 +240,12 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert effective.allow == [
                "api.example",
                "api.llm.example",
-               "git.example.com",
+               "codeberg.org",
                "packages.example.com",
                "*.packages.example.com"
              ]
 
-      assert Map.keys(effective.paths) == ["git.example.com"]
+      assert Map.keys(effective.paths) == ["codeberg.org"]
 
       assert %{in_force: false, overridden_by: %{locked: true}} =
                Enum.find(

@@ -162,11 +162,11 @@ defmodule Apiary.Runs.RecordTest do
       git = Enum.find(connections, &(&1.path == "/acme/shop.git/git-upload-pack"))
 
       assert %{
-               host: "git.example.com",
+               host: "codeberg.org",
                method: "HTTPS",
                request_method: "POST",
                decision: "allowed",
-               rule: "git.example.com",
+               rule: "codeberg.org",
                path_rule: "/acme/shop.git/*",
                credential: "forge-token",
                mode: "enforce",

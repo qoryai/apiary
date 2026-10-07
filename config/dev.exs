@@ -1,11 +1,13 @@
 import Config
 
-# Configure your database
+# Configure your database. APIARY_DEV_DATABASE names another one, such as the database a
+# demo is filled in (`mix apiary.demo.console`); apiary_dev when unset. A DATABASE_URL
+# (config/runtime.exs) replaces either: unset it to use this one.
 config :apiary, Apiary.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "apiary_dev",
+  database: System.get_env("APIARY_DEV_DATABASE") || "apiary_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
