@@ -2,10 +2,14 @@ defmodule ApiaryWeb.NodeLive.Show do
   @moduledoc """
   A node's or a node pool's page, `/:org/:workspace/nodes/:node_id`, where `:node_id` is
   the node's public id. A node the workspace does not have, or one that is deleted, is
-  not found. Its two tabs are patches of this one LiveView, the operational side first
-  and Settings last, set apart (`docs/ui.md`, Nodes):
+  not found. Its tabs are Overview, Access key and Settings, the operational side first
+  and Settings last, set apart (`docs/ui.md`, Nodes; `ApiaryWeb.NodeComponents.node_tabs/1`).
+  Overview and Settings are patches of this LiveView; Access key is
+  `ApiaryWeb.NodeLive.AccessKey`'s, a navigation:
 
-  - **Overview** (`/nodes/:node_id`): what the node is doing (`Apiary.Nodes.activity/3`).
+  - **Overview** (`/nodes/:node_id`): first, once, the plain line that runners can't use a
+    node's keys yet, so no run is placed on a node today, with the way to the workspace's
+    access keys; then what the node is doing (`Apiary.Nodes.activity/3`).
     A Node's instance, running or when it was last seen; a pool's running instances,
     "3 of 10"; the starts refused at the instance limit; the sentence that says an
     instance is a claim; and its recent runs (`runs.node_id`, for a reader of the record,
@@ -375,6 +379,7 @@ defmodule ApiaryWeb.NodeLive.Show do
 
     %{
       overview: base,
+      access_key: base <> "/access-key",
       settings: base <> "/settings",
       delete: base <> "/settings/delete",
       runs: ~p"/#{organisation}/#{workspace}/runs?#{[node: public_id]}"
@@ -404,49 +409,13 @@ defmodule ApiaryWeb.NodeLive.Show do
         {@node.name}
       </:crumb>
 
-      <.header>
-        <span class="inline-flex min-w-0 flex-wrap items-baseline gap-x-2.5">
-          <.icon name="hero-server-stack" class="size-5 flex-none self-center text-muted" />
-          <span id="node-name" class="min-w-0 break-words">{@node.name}</span>
-          <span id="node-public-id" class="q-mono text-[13px] font-normal text-muted">
-            {@node.public_id}
-          </span>
-        </span>
-        <:subtitle>
-          <span id="node-meta" class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span id="node-kind">{kind_label(@node.kind)}</span>
-            <span class="text-faint" aria-hidden="true">·</span>
-            <NodeComponents.node_state id="node-state" node={@node} activity={@activity} />
-            <span :if={@node.created_by} class="text-faint" aria-hidden="true">·</span>
-            <span :if={@node.created_by} id="node-made">
-              {gettext("made by %{person}, %{date}",
-                person: People.email(@node.created_by),
-                date: Format.day(@node.inserted_at)
-              )}
-            </span>
-          </span>
-        </:subtitle>
-      </.header>
-
-      <.tabs id="node-tabs" label={@node.name}>
-        <:tab
-          id="node-tab-overview"
-          patch={@paths.overview}
-          current={@live_action in [:overview, :clear_instance]}
-          icon="hero-book-open"
-        >
-          {gettext("Overview")}
-        </:tab>
-        <:tab
-          id="node-tab-settings"
-          patch={@paths.settings}
-          current={@live_action in [:settings, :delete]}
-          icon="hero-cog-6-tooth"
-          end
-        >
-          {gettext("Settings")}
-        </:tab>
-      </.tabs>
+      <NodeComponents.node_header node={@node} activity={@activity} />
+      <NodeComponents.node_tabs
+        node={@node}
+        paths={@paths}
+        current={if @live_action in [:settings, :delete], do: :settings, else: :overview}
+        view={:show}
+      />
 
       <.overview
         :if={@live_action in [:overview, :clear_instance]}
@@ -503,6 +472,15 @@ defmodule ApiaryWeb.NodeLive.Show do
 
     ~H"""
     <div id="node-overview" class="grid max-w-[60rem] gap-8">
+      <NodeComponents.not_yet
+        scope={@scope}
+        text={
+          rich_gettext(
+            "Runners can't use a node's keys yet, so no run is placed on a node today. Runs still use the workspace's access keys, in %{link}.",
+            link: {:part, :link}
+          )
+        }
+      />
       <SettingsComponents.part
         id="node-instances"
         title={if @node.kind == :pool, do: gettext("Running instances"), else: gettext("Instance")}
@@ -920,7 +898,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         )}
         <:lost>
           {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
+            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
             name: @node.name
           )}
         </:lost>
@@ -928,9 +906,6 @@ defmodule ApiaryWeb.NodeLive.Show do
     </SettingsComponents.danger_zone>
     """
   end
-
-  defp kind_label(:node), do: gettext("Node")
-  defp kind_label(:pool), do: gettext("Node pool")
 
   defp kind_sentence(:node), do: gettext("Node: one permanent machine.")
 

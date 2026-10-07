@@ -768,6 +768,25 @@ defmodule Apiary.Runs.Filters do
   def target_params(nil, path) when is_binary(path), do: %{"target" => path}
   def target_params(_system, _path), do: %{"target" => "none"}
 
+  @doc """
+  The parameters of a target as the console's links write them (question 9, answer A): its
+  path, `%{"target" => "acme/shop"}`, and its system only where the path is `shared` by
+  another target of the workspace, `%{"system" => "gitlab.com", "target" => "acme/shop"}`.
+  `shared` is a boolean, or the workspace's shared paths (`Apiary.Runs.shared_paths/2`).
+  """
+  @spec target_params(String.t() | nil, String.t(), boolean | MapSet.t(String.t())) :: %{
+          String.t() => String.t()
+        }
+  def target_params(system, path, shared) when is_binary(path) do
+    shared? =
+      case shared do
+        %MapSet{} -> MapSet.member?(shared, path)
+        shared -> shared == true
+      end
+
+    target_params(if(shared?, do: system), path)
+  end
+
   defp target_params(:none), do: %{"target" => "none"}
   defp target_params({system, path}), do: target_params(system, path)
 

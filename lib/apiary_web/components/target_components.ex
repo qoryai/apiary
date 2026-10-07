@@ -6,9 +6,14 @@ defmodule ApiaryWeb.TargetComponents do
 
   **The notation.** A target is its path in mono; its system goes before it, faint, only
   where the same path is in more than one system of the workspace
-  (`Apiary.Runs.shared_paths/2`) and on the target's own header. `target_path/4` is
-  where a target's page is: `/:org/:workspace/targets/:system/*path`, its tabs after a
-  `-` segment (`…/-/runs`), GitLab's way, so no tab can be taken for a part of a path.
+  (`Apiary.Runs.shared_paths/2`) and on the target's own header.
+
+  **The address** follows the notation (question 9, answer A): `target_path/5` is where a
+  target's page is, its path alone, `/:org/:workspace/targets/acme/shop`, and its system
+  before the path only where the path is shared, `…/targets/gitlab.com/acme/shop`; its
+  tabs follow a `-` segment (`…/-/policy`), GitLab's way, so no tab can be taken for a
+  part of a path. A caller that cannot tell whether the path is shared writes the path
+  alone: the page there lists the targets that share it.
 
   **A run's state** is a dot and, when the run needs a look, a word: running, failed,
   timed out, lost and pending say so; a run that ended well, or was closed, is the dot
@@ -20,28 +25,61 @@ defmodule ApiaryWeb.TargetComponents do
 
   alias Apiary.Accounts.Scope
 
-  @doc """
-  target_path/4 is the path of a target's page in the scope's workspace, `rest` the
-  segments of a tab after `-` (`["runs"]`, `["policy", "history"]`), none for its
-  Overview. The path's segments are the target's own, each escaped, unless one of them is
-  empty, `-`, `.` or `..`: then the path is one segment, its slashes escaped, so a
-  segment of it is never read as the tab's separator or as a step up.
+  @typedoc """
+  Whether a target's path is shared by another target of the workspace: a boolean, or the
+  workspace's shared paths (`Apiary.Runs.shared_paths/2`).
   """
-  @spec target_path(Scope.t(), String.t(), String.t(), [String.t()]) :: String.t()
+  @type shared :: boolean | MapSet.t(String.t())
+
+  @doc """
+  target_path/5 is the path of a target's page in the scope's workspace: its path alone,
+  `…/targets/acme/shop`, or, where the path is `shared` by another target of the
+  workspace, its system before it, `…/targets/gitlab.com/acme/shop` (question 9, answer
+  A). `rest` is the segments of a tab after `-` (`["policy"]`, `["policy", "history"]`),
+  none for its Overview. A nil system writes the path alone, whatever `shared` says.
+
+  The path's segments are the target's own, each escaped, unless one of them is empty,
+  `-`, `.` or `..`: then the path is one segment, its slashes escaped, so a segment of it
+  is never read as the tab's separator or as a step up.
+
+  For compatibility, `target_path/5` given an organisation and a workspace in place of
+  the scope is `target_path/6` with `shared` false.
+  """
+  @spec target_path(Scope.t(), String.t() | nil, String.t(), [String.t()], shared) ::
+          String.t()
+  def target_path(scope, system, path, rest \\ [], shared \\ false)
+
   def target_path(
         %Scope{organisation: organisation, workspace: workspace},
         system,
         path,
-        rest \\ []
+        rest,
+        shared
       ),
-      do: target_path(organisation, workspace, system, path, rest)
+      do: target_path(organisation, workspace, system, path, rest, shared)
 
-  @doc "target_path/5 is `target_path/4` with the organisation and the workspace given."
-  @spec target_path(term, term, String.t(), String.t(), [String.t()]) :: String.t()
-  def target_path(organisation, workspace, system, path, rest) do
-    segments = path_segments(path) ++ if(rest == [], do: [], else: ["-" | rest])
-    ~p"/#{organisation}/#{workspace}/targets/#{system}/#{segments}"
+  def target_path(organisation, workspace, system, path, rest) when is_list(rest),
+    do: target_path(organisation, workspace, system, path, rest, false)
+
+  @doc "target_path/6 is `target_path/5` with the organisation and the workspace given."
+  @spec target_path(term, term, String.t() | nil, String.t(), [String.t()], shared) ::
+          String.t()
+  def target_path(organisation, workspace, system, path, rest, shared) do
+    segments =
+      if(is_binary(system) and shared?(shared, path), do: [system], else: []) ++
+        path_segments(path) ++ if(rest == [], do: [], else: ["-" | rest])
+
+    ~p"/#{organisation}/#{workspace}/targets/#{segments}"
   end
+
+  @doc """
+  shared?/2 says whether `path` is shared by `shared`, a boolean or the workspace's shared
+  paths (`Apiary.Runs.shared_paths/2`).
+  """
+  @spec shared?(shared | nil, String.t()) :: boolean
+  def shared?(true, _path), do: true
+  def shared?(%MapSet{} = shared, path), do: MapSet.member?(shared, path)
+  def shared?(_shared, _path), do: false
 
   @doc """
   path_segments/1 is the segments a target's path takes in its page's URL: its own, or

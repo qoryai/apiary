@@ -400,15 +400,20 @@ defmodule ApiaryWeb.Routes do
               # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
-              # The targets the workspace's runs changed, and one target's page: its path
-              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
-              # paths follow the tab (`…/-/policy/history`).
+              # The targets the workspace's runs changed, and one target's page: its
+              # address is the glob, the target's path alone, its system before the path
+              # only where two targets of the workspace share the path (question 9, answer
+              # A; `ApiaryWeb.TargetComponents.target_path/5`). Its tabs follow a `-`
+              # segment (`…/-/policy`), and a tab's own paths follow the tab
+              # (`…/-/policy/history`). An old address with the system of an unshared path
+              # is sent on to the path alone; the old Runs and Network access tabs to the
+              # lists narrowed to the target (`ApiaryWeb.TargetLive.Show`).
               live "/targets", TargetLive.Index, :index
-              live "/targets/:system/*path", TargetLive.Show, :show
-              # The workspace's nodes and node pools, the places its runs run: the list,
-              # with New node and New node pool as dialogs over it, and a node's page,
-              # Overview and Settings, its deletion a dialog over Settings, and clearing an
-              # instance a dialog over Overview. `:node_id` is the node's public id; an
+              live "/targets/*glob", TargetLive.Show, :show
+              # The workspace's nodes and node pools: the list, with New node and New node
+              # pool each a page of its own, and a node's page, Overview, Access key and
+              # Settings, its deletion confirmed in place in Settings, and clearing an
+              # instance in place in Overview. `:node_id` is the node's public id; an
               # instance is named by its instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
@@ -417,6 +422,25 @@ defmodule ApiaryWeb.Routes do
               live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
               live "/nodes/:node_id/settings", NodeLive.Show, :settings
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
+              # A node's Access key tab: its keys and its outstanding enrolment codes; adding
+              # a key by its public key and making a code, each a page of its own; and each
+              # act on a key or a code confirmed in place, at a path of its own. A key is
+              # named by its key id (`ak_…`), a code by its row's id: never by the code.
+              live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
+              live "/nodes/:node_id/access-key/add", NodeLive.AccessKey, :add_key
+              live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
+
+              live "/nodes/:node_id/access-key/keys/:key_id/approve",
+                   NodeLive.AccessKey,
+                   :approve
+
+              live "/nodes/:node_id/access-key/keys/:key_id/reject", NodeLive.AccessKey, :reject
+              live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
+
+              live "/nodes/:node_id/access-key/codes/:code_id/revoke",
+                   NodeLive.AccessKey,
+                   :revoke_code
+
               # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
               # run's subject, the id the runner prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline

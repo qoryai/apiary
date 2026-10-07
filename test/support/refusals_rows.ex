@@ -20,8 +20,9 @@ defmodule ApiaryWeb.RefusalsRows do
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
   locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, a run that has not ended, and a pending invitation; and another organisation,
-  with its owner.
+  instance, an approved key, a key awaiting approval and an outstanding enrolment code, a
+  run that has not ended, and a pending invitation; and another organisation, with its
+  owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -263,6 +264,46 @@ defmodule ApiaryWeb.RefusalsRows do
        "/:other_org/:other_ws/nodes/:node/instances/:instance/clear", "clear_instance", %{},
        answer: :not_found_at_mount},
 
+      # A node's access keys and enrolment codes, its Access key tab. Without the page or
+      # the confirmation open, from a member: refused, as the page offers them no button;
+      # a demoted admin's page or confirmation was open, and the context refuses them.
+      {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "add_key",
+       %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
+      {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key", "add_key",
+       %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
+      {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key/add",
+       "add_key", %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
+      {:"access_key.create_code", :member, "/:org/:workspace/nodes/:node/access-key",
+       "create_code", %{"code" => %{}}},
+      {:"access_key.create_code", :demoted_admin,
+       "/:org/:workspace/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}}},
+      {:"access_key.approve", :member, "/:org/:workspace/nodes/:node/access-key", "approve", %{}},
+      {:"access_key.approve", :demoted_admin,
+       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{}},
+      {:"access_key.reject", :member, "/:org/:workspace/nodes/:node/access-key", "reject", %{}},
+      {:"access_key.reject", :demoted_admin,
+       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/reject", "reject", %{}},
+      {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
+      {:"access_key.revoke", :demoted_admin,
+       "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
+      {:"access_key.cancel_code", :member, "/:org/:workspace/nodes/:node/access-key",
+       "revoke_code", %{}},
+      {:"access_key.cancel_code", :demoted_admin,
+       "/:org/:workspace/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{}},
+      # A node's page is its path: another organisation's node is a 404 as the page opens.
+      {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/add",
+       "add_key", %{"key" => %{"label" => "sneaky", "public_key" => :public_key}},
+       answer: :not_found_at_mount},
+      {:"access_key.create_code", :other_owner,
+       "/:other_org/:other_ws/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}},
+       answer: :not_found_at_mount},
+      {:"access_key.approve", :other_owner,
+       "/:other_org/:other_ws/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{},
+       answer: :not_found_at_mount},
+      {:"access_key.cancel_code", :other_owner,
+       "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
+       answer: :not_found_at_mount},
+
       # Stored secrets and variables, the workspace's settings' Secrets and variables. A
       # member's page has no dialog to open, so the event reaches the context function, or
       # the page refuses it for their role; a demoted admin's dialog was open.
@@ -320,9 +361,7 @@ defmodule ApiaryWeb.RefusalsRows do
   # the core offers it to a signed-in person. An edition's: creating a workspace, which
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one yet, and the context's tests
-  # refuse it. Nor does a page offer a node's access keys and enrolment codes yet
-  # (`test/apiary/node_access_keys_test.exs`), or the connections
-  # (`test/apiary/connections_test.exs`).
+  # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
   @impl true
   def exempt do
     %{
@@ -343,12 +382,6 @@ defmodule ApiaryWeb.RefusalsRows do
       edition: [:"workspace.create"],
       no_page_yet: [
         :"secret.use",
-        :"access_key.create_code",
-        :"access_key.cancel_code",
-        :"access_key.add",
-        :"access_key.approve",
-        :"access_key.reject",
-        :"access_key.revoke",
         :"connection.read",
         :"connection.write"
       ]
@@ -388,6 +421,9 @@ defmodule ApiaryWeb.RefusalsRows do
 
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
+    %{access_key: node_key} = node_key_fixture(owner, node)
+    %{access_key: pending_key} = pending_key_fixture(owner, node)
+    {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
     node_run_fixture(node, instance.instance_id)
     run = started_run(owner)
@@ -430,6 +466,10 @@ defmodule ApiaryWeb.RefusalsRows do
       target: target,
       key: key,
       node: node,
+      node_key: node_key,
+      pending_key: pending_key,
+      code: code,
+      public_key: ed25519_key_pair().encoded,
       instance: instance,
       run: run,
       invitation: invitation
@@ -454,10 +494,15 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:secret, world), do: world.secret.public_id
   def value(:variable, world), do: {:id, world.variable.id}
   def value(:target, world), do: {:id, world.target.id}
-  def value(:target_page, world), do: "#{world.target.system}/#{world.target.path}"
+  # A target's page is its path alone where no other target of its workspace has it.
+  def value(:target_page, world), do: world.target.path
   def value(:key, world), do: {:id, world.key.id}
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
+  def value(:node_key, world), do: {:id, world.node_key.key_id}
+  def value(:pending_key, world), do: {:id, world.pending_key.key_id}
+  def value(:code, world), do: {:id, world.code.id}
+  def value(:public_key, world), do: world.public_key
   def value(:instance, world), do: world.instance.instance_id
   def value(_name, _world), do: nil
 

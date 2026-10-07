@@ -2,7 +2,8 @@ defmodule ApiaryWeb.TargetMovedController do
   @moduledoc """
   A target's policy had a page of its own, `/:org/:workspace/policy/targets/:target_id/…`,
   by the target row's id; it is the Policy tab of the target's page now
-  (`ApiaryWeb.TargetLive.Show`, `…/targets/:system/*path/-/policy/…`). This sends such a
+  (`ApiaryWeb.TargetLive.Show`, `…/targets/acme/shop/-/policy/…`, the system before the
+  path only where the path is shared). This sends such a
   path on to the tab, with whatever followed the id (`history`, `document`,
   `versions/:n`, `versions/:n/export`) and the query, so a bookmark or a link in an old
   message still lands. A target the reader may not read, or that is not in the
@@ -24,8 +25,13 @@ defmodule ApiaryWeb.TargetMovedController do
 
       redirect(conn,
         to:
-          TargetComponents.target_path(scope, target.system, target.path, ["policy" | rest]) <>
-            query
+          TargetComponents.target_path(
+            scope,
+            target.system,
+            target.path,
+            ["policy" | rest],
+            Targets.shared?(scope, target.path)
+          ) <> query
       )
     else
       _not_found -> raise Ecto.NoResultsError, queryable: Apiary.Runs.Target

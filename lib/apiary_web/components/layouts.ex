@@ -1796,7 +1796,14 @@ defmodule ApiaryWeb.Layouts do
       Map.put(
         pin,
         :href,
-        ApiaryWeb.TargetComponents.target_path(organisation, workspace, pin.system, pin.path, [])
+        ApiaryWeb.TargetComponents.target_path(
+          organisation,
+          workspace,
+          pin.system,
+          pin.path,
+          [],
+          pin[:shared] == true
+        )
       )
     end
   end

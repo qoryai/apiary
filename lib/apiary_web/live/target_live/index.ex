@@ -201,10 +201,9 @@ defmodule ApiaryWeb.TargetLive.Index do
       nav={:targets}
       width="list"
     >
-      <.header>
-        {gettext("Targets")}
-        <:subtitle>{gettext("The targets this workspace's runs have changed.")}</:subtitle>
-      </.header>
+      <.page_header title={gettext("Targets")}>
+        <:description>{gettext("The targets this workspace's runs have changed.")}</:description>
+      </.page_header>
 
       <div class="q-tgt-list">
         <.views id="targets-views" label={gettext("Views")}>
@@ -387,7 +386,9 @@ defmodule ApiaryWeb.TargetLive.Index do
           <:col :let={row} label={gettext("Target")} kind="title" class="q-tgt-c-name">
             <.link
               id={"target-link-#{row.target.id}"}
-              navigate={target_path(@current_scope, row.target.system, row.target.path)}
+              navigate={
+                target_path(@current_scope, row.target.system, row.target.path, [], row.shared)
+              }
               class="q-tgt-name"
               title={"#{row.target.system}/#{row.target.path}"}
             >
