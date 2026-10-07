@@ -328,6 +328,23 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert Enum.at(rows, 1) =~ "gitlab.example/acme/shop"
       assert Enum.at(rows, 2) =~ "acme/t1"
       refute Enum.at(rows, 2) =~ "github.example"
+
+      # Each links to its page at its address: the system in it where the path is shared.
+      for {system, path} <- [
+            {"github.example", "/targets/github.example/acme/shop"},
+            {"gitlab.example", "/targets/gitlab.example/acme/shop"}
+          ] do
+        target = Apiary.Targets.get(scope, system, "acme/shop")
+        assert has_element?(view, "#active-#{target.id} a[href='#{workspace_path(scope, path)}']")
+      end
+
+      t1 = Apiary.Targets.get(scope, "github.example", "acme/t1")
+
+      assert has_element?(
+               view,
+               "#active-#{t1.id} a[href='#{workspace_path(scope, "/targets/acme/t1")}']"
+             )
+
       assert has_element?(view, "#overview-targets-all", "All 10 repositories")
     end
 
@@ -391,10 +408,36 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
 
       assert text(view, "#overview-own") =~ "acme/shop observes; the rest follow the workspace."
+      refute text(view, "#overview-own") =~ "github.example"
+
+      assert has_element?(
+               view,
+               "#overview-own a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']",
+               "acme/shop"
+             )
 
       assert has_element?(
                view,
                "#overview-own-review[href='#{workspace_path(scope, "/policy/targets")}']"
+             )
+    end
+
+    @tag needs: :security
+    test "policy: a target with a mode of its own whose path another system has is named with its system",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      {:ok, _} = Policy.set_mode(scope, target, "enforce")
+
+      view = open(conn, scope)
+
+      assert text(view, "#overview-own") =~
+               "github.example/acme/shop enforces; the rest follow the workspace."
+
+      assert has_element?(
+               view,
+               "#overview-own a[href='#{workspace_path(scope, "/targets/github.example/acme/shop/-/policy")}']"
              )
     end
 
@@ -491,7 +534,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#attention-list li[data-kind=denied]:first-child button[aria-label='Allow files.cdn.example for github.example/acme/shop']",
+               "#attention-list li[data-kind=denied]:first-child button[aria-label='Allow files.cdn.example for acme/shop']",
                "Allow here"
              )
 
@@ -706,6 +749,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "##{item}-act[aria-expanded=true]")
       assert has_element?(view, "#rule-panel", "files.cdn.example")
       assert has_element?(view, "#rule-panel-submit", "Allow for the repository")
+      # The target is named as it is addressed: its path, where no other system has it.
+      assert text(view, "#rule-panel-target") =~ "acme/shop · 1 run"
+      refute text(view, "#rule-panel-target") =~ "github.example"
       # The one target is chosen, so its option takes the focus.
       assert has_element?(view, "#rule-panel input[value=target][checked][data-autofocus]")
 
@@ -726,8 +772,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "##{item}.q-resolved .q-mark-ok")
       assert has_element?(view, "##{item}-done", "Allowed here")
 
-      assert text(view, "#overview-announcer") =~
-               "files.cdn.example is allowed for github.example/acme/shop."
+      assert text(view, "#overview-announcer") =~ "files.cdn.example is allowed for acme/shop."
 
       # The policy topic re-reads the list: the struck row stays where it is, and the
       # workspace is managed now, so the unmanaged item resolves in words too. A target's

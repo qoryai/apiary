@@ -351,7 +351,12 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-check-micro" class="size-3" />{@item.resolved.done}
           </span>
         <% else %>
-          <.attention_act scope={@scope} item={@item} can_set_mode?={@can_set_mode?} />
+          <.attention_act
+            scope={@scope}
+            item={@item}
+            shared={@shared}
+            can_set_mode?={@can_set_mode?}
+          />
         <% end %>
       </span>
       <div :if={@panel && !@item.resolved} id={"#{@item.id}-panel"} class="q-ar-panel">
@@ -713,6 +718,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :scope, :map, required: true
   attr :item, :map, required: true
+  attr :shared, :any, default: MapSet.new()
   attr :can_set_mode?, :boolean, required: true
 
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
@@ -801,7 +807,7 @@ defmodule ApiaryWeb.OverviewComponents do
       aria-label={
         gettext("Allow %{host} for %{target}",
           host: @item.host,
-          target: "#{@target.system}/#{@target.path}"
+          target: ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)
         )
       }
       aria-expanded={to_string(@item[:expanded] == true)}
@@ -1077,7 +1083,9 @@ defmodule ApiaryWeb.OverviewComponents do
       <ul :if={@rows not in [nil, []]} id={"#{@id}-list"} class="q-rows">
         <li :for={row <- @rows} id={"active-#{row.id}"}>
           <.link
-            navigate={ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [])}
+            navigate={
+              ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [], row.shared?)
+            }
             class="q-rr"
           >
             <span class="q-rr-p">
@@ -1599,16 +1607,16 @@ defmodule ApiaryWeb.OverviewComponents do
   # Who sets a mode of their own: none, the one by name, or how many and which modes.
   defp own_detail(_scope, %{own: []}), do: gettext("Every target follows the workspace's mode.")
 
-  defp own_detail(scope, %{own: [%{target: target, own_mode: "observe"}]}),
+  defp own_detail(scope, %{own: [%{target: target, own_mode: "observe"}]} = policy),
     do:
       rich_gettext("%{target} observes; the rest follow the workspace.",
-        target: own_link(scope, target)
+        target: own_link(scope, target, policy[:shared])
       )
 
-  defp own_detail(scope, %{own: [%{target: target}]}),
+  defp own_detail(scope, %{own: [%{target: target}]} = policy),
     do:
       rich_gettext("%{target} enforces; the rest follow the workspace.",
-        target: own_link(scope, target)
+        target: own_link(scope, target, policy[:shared])
       )
 
   defp own_detail(_scope, %{own: own}) do
@@ -1624,16 +1632,24 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  defp own_link(scope, target) do
-    assigns = %{scope: scope, target: target}
+  # The target's Policy tab, the target named as it is addressed: its system in its name
+  # and its address only where its path is `shared` (the policy's read says).
+  defp own_link(scope, target, shared) do
+    assigns = %{scope: scope, target: target, shared: shared}
 
     ~H"""
     <.link
       navigate={
-        ApiaryWeb.TargetComponents.target_path(@scope, @target.system, @target.path, ["policy"])
+        ApiaryWeb.TargetComponents.target_path(
+          @scope,
+          @target.system,
+          @target.path,
+          ["policy"],
+          @shared
+        )
       }
       class="q-mono hover:underline"
-    >{@target.path}</.link>
+    >{ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)}</.link>
     """
   end
 

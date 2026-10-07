@@ -23,10 +23,13 @@ defmodule ApiaryWeb.TargetLive.Show do
   `Apiary.Runs.Filters.target_params/3`), and the old tabs' addresses, `…/-/runs`,
   `…/-/network` and `…/-/connections`, are sent on to those lists with their query.
 
-  The header names the target in full, `system/path`, with the reader's pin, one muted
-  line (how many runs since it was first seen, its last run, and its policy mode only
-  where it sets its own) and a link to it in its system when the system is a host name.
-  The breadcrumb's third segment is the target, and the sidebar marks its pin.
+  The header names the target as it is addressed, its path, `acme/shop`, and its system
+  before it only where the path is shared, `gitlab.com/acme/shop` (the title and the
+  breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
+  pin, one muted line (how many runs since it was first seen, its last run, and its
+  policy mode only where it sets its own) and a link to it in its system when the system
+  is a host name. The breadcrumb's third segment is the target, and the sidebar marks its
+  pin.
 
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
@@ -212,16 +215,20 @@ defmodule ApiaryWeb.TargetLive.Show do
     if connected?(socket), do: Runs.subscribe(socket.assigns.current_scope)
 
     socket
-    |> assign(:page_title, name(socket.assigns.target))
+    |> assign(:page_title, name(socket.assigns.target, socket.assigns.shared))
     |> load_overview()
   end
 
+  # The tab names the target, and writes its links (`base`), as the page's address does.
   defp mount_tab(socket, {:policy, action, _params}) do
-    target = socket.assigns.target
+    %{target: target, shared: shared} = socket.assigns
 
     socket
-    |> PolicyLive.Target.mount(target)
-    |> assign(action: action, page_title: gettext("Policy · %{target}", target: name(target)))
+    |> PolicyLive.Target.mount(target, shared)
+    |> assign(
+      action: action,
+      page_title: gettext("Policy · %{target}", target: name(target, shared))
+    )
   end
 
   @impl true
@@ -421,11 +428,16 @@ defmodule ApiaryWeb.TargetLive.Show do
       width="list"
     >
       <:crumb navigate={@tab != :overview && page_path(@current_scope, @target, @shared, [])}>
-        <.target_name path={@target.path} system={@target.system} />
+        <.target_name
+          path={@target.path}
+          system={@target.system}
+          shared={shared_paths(@target, @shared)}
+        />
       </:crumb>
 
       <.target_header
         target={@target}
+        shared={@shared}
         pinned={@pinned}
         facts={@facts}
         security={@security}
@@ -465,9 +477,10 @@ defmodule ApiaryWeb.TargetLive.Show do
     """
   end
 
-  # The header: the target in full, the reader's pin, one muted line and the way to it in
-  # its system.
+  # The header: the target as it is addressed, the reader's pin, one muted line and the
+  # way to it in its system.
   attr :target, :map, required: true
+  attr :shared, :boolean, required: true
   attr :pinned, :boolean, required: true
   attr :facts, :any, required: true
   attr :security, :boolean, required: true
@@ -480,7 +493,12 @@ defmodule ApiaryWeb.TargetLive.Show do
       <div class="min-w-0 flex-1">
         <h1 class="q-tgt-h1 outline-none" tabindex="-1">
           <.icon name="hero-folder" class="size-5 flex-none text-muted" />
-          <.target_name path={@target.path} system={@target.system} class="min-w-0 truncate" />
+          <.target_name
+            path={@target.path}
+            system={@target.system}
+            shared={shared_paths(@target, @shared)}
+            class="min-w-0 truncate"
+          />
         </h1>
         <p id="target-meta" class="q-tgt-meta">
           <span :if={!@facts} class="skeleton q-skel w-72"></span>
@@ -517,7 +535,7 @@ defmodule ApiaryWeb.TargetLive.Show do
         </p>
       </div>
       <div class="q-tgt-actions">
-        <.pin_button id="target-pin" target={@target} pinned={@pinned} label />
+        <.pin_button id="target-pin" target={@target} shared={@shared} pinned={@pinned} label />
         <.button :if={@external} id="target-external" href={@external}>
           {gettext("Open on %{system}", system: @target.system)}
           <.icon name="hero-arrow-top-right-on-square-micro" class="size-3.5" />
@@ -747,7 +765,12 @@ defmodule ApiaryWeb.TargetLive.Show do
     path <> "?" <> URI.encode_query(Enum.sort(target_params) ++ params)
   end
 
-  defp name(target), do: "#{target.system}/#{target.path}"
+  # The target in words, as it is addressed: its system only where its path is shared.
+  defp name(target, shared), do: target_label(target.system, target.path, shared)
+
+  # The page's `shared` as `<.target_name>` takes it: the target's path, where it is shared.
+  defp shared_paths(target, true), do: MapSet.new([target.path])
+  defp shared_paths(_target, _shared), do: MapSet.new()
 
   # The target in its system, when the system is a host name: https, the path's segments
   # escaped.

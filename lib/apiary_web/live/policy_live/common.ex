@@ -41,18 +41,23 @@ defmodule ApiaryWeb.PolicyLive.Common do
   The assigns every policy page starts from, and the one subscription, to the policy of
   the scope's workspace where the scope has one. `opts`: `writer`, what the page writes
   rules with (`t:writer/0`), the core's policy by default; `base`, the path of the page's
-  list of rules, the holder's policy page by default.
+  list of rules, the holder's policy page by default; `shared`, whether a target holder's
+  path is shared by another target of the workspace, read once
+  (`Apiary.Targets.shared?/2`) when the page does not say. The holder is named and
+  addressed by it (`holder_name/1`, `base/3`), its system said only where it is shared.
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
     if connected?(socket) and scope.workspace, do: Policy.subscribe(scope)
+    shared = holder_shared(scope, holder, opts)
 
     socket
     |> assign(
       holder: holder,
+      holder_shared: shared,
       writer: Keyword.get(opts, :writer, policy_writer()),
       scope_kind: if(holder, do: :target, else: :workspace),
-      base: Keyword.get(opts, :base) || base(scope, holder),
+      base: Keyword.get(opts, :base) || base(scope, holder, shared),
       people: people(scope),
       fresh: %{},
       announce: nil,
@@ -98,11 +103,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
     }
   end
 
-  @doc "The path of the holder's policy page in `scope`'s workspace."
-  def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+  # Whether a target holder's path is shared: as the page says, or one read.
+  defp holder_shared(_scope, nil, _opts), do: false
 
-  def base(scope, %{system: system, path: path}),
-    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"])
+  defp holder_shared(scope, %{path: path}, opts) do
+    case Keyword.fetch(opts, :shared) do
+      {:ok, shared} when is_boolean(shared) -> shared
+      _ -> Apiary.Targets.shared?(scope, path)
+    end
+  end
+
+  @doc """
+  The path of the holder's policy page in `scope`'s workspace: a target's Policy tab at its
+  address, its system in it only where its path is `shared`
+  (`ApiaryWeb.TargetComponents.target_path/5`).
+  """
+  def base(scope, holder, shared \\ false)
+
+  def base(scope, nil, _shared), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+
+  def base(scope, %{system: system, path: path}, shared),
+    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"], shared)
 
   @doc """
   Whether the reader of a policy page may take `action` on the workspace's security
@@ -754,7 +775,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  def holder_name(%{assigns: %{holder: %{system: system, path: path}}}), do: "#{system}/#{path}"
+  @doc """
+  The target holder's name in words, as it is addressed: its path, `acme/shop`, and its
+  system before it only where the path is shared, `gitlab.com/acme/shop`
+  (`ApiaryWeb.TargetComponents.target_label/3`, the page's `holder_shared`).
+  """
+  def holder_name(%{assigns: %{holder: %{system: system, path: path}} = assigns}),
+    do: ApiaryWeb.TargetComponents.target_label(system, path, assigns[:holder_shared])
 
   @doc """
   The toast of a host rule written on the page:
@@ -1670,6 +1697,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     %{
       subject: subject,
+      # The page names a target as it is addressed; the file's head, `subject`, in full.
+      name: if(holder, do: holder_name(socket)),
       workspace: if(is_nil(holder), do: scope.workspace.name),
       version: configuration.version,
       file_name: file_name,

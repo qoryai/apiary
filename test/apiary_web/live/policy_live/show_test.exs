@@ -5,7 +5,6 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
@@ -663,11 +662,30 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#rule-#{id}.q-confirming #lock-confirm")
       refute has_element?(view, "dialog#lock-confirm")
       assert text(view, "#lock-confirm") =~ "1 repository rule stops being in force"
-      assert text(view, "#lock-confirm") =~ "github.example/acme/shop"
+      # A target is named as it is addressed: its path, where no other system has it.
+      assert text(view, "#lock-confirm") =~ ": acme/shop (github.example)"
       refute rule(scope, "github.example").locked
 
       view |> element("#lock-confirm-button") |> render_click()
       assert rule(scope, "github.example").locked
+    end
+
+    test "a lock's question names a target whose path another system has with its system",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+
+      for %{target: target} <- Policy.list_targets(scope),
+          do: {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
+
+      view = open(conn, scope)
+      id = rule(scope, "github.example").id
+      view |> element("#rule-#{id}-menu button", "Lock") |> render_click()
+
+      assert text(view, "#lock-confirm") =~ "2 repository rules stop being in force"
+
+      assert text(view, "#lock-confirm") =~
+               ": github.example/acme/shop (github.example) ; gitlab.example/acme/shop (github.example)"
     end
 
     test "removing a plain rule is immediate; a locked one asks", %{conn: conn, scope: scope} do
@@ -1075,8 +1093,29 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(
                view,
-               "#target-#{target.id} a[href='#{target_path(scope, target.system, target.path, ["policy"])}']"
+               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy")}']"
              )
+
+      assert has_element?(
+               view,
+               "#target-#{target.id} a[href='#{workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")}']"
+             )
+    end
+
+    test "a target whose path another system has is linked at its address, with its system",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+
+      target =
+        Enum.find(Policy.list_targets(scope), &(&1.target.system == "gitlab.example")).target
+
+      {:ok, _} = Policy.deny(scope, target, %{host: "registry.example"})
+
+      view = open(conn, scope, "/policy/targets")
+      base = workspace_path(scope, "/targets/gitlab.example/acme/shop/-/policy")
+      assert has_element?(view, "#target-#{target.id} a[href='#{base}']")
+      assert has_element?(view, "#target-#{target.id} a[href='#{base}/versions/1']")
     end
   end
 

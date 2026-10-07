@@ -34,7 +34,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
-  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 3]
+  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_label: 3, target_path: 5]
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
-      <:crumb :if={@run.target_id} navigate={target_link(@current_scope, @run)}>
+      <:crumb :if={@run.target_id} navigate={target_link(@current_scope, @run, @target_shared)}>
         <.target_name
           path={@run.target_path}
           system={@target_shared && @run.target_system}
@@ -135,7 +135,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   <.link
                     :if={@run.target_id}
                     id="run-target"
-                    navigate={target_link(@current_scope, @run)}
+                    navigate={target_link(@current_scope, @run, @target_shared)}
                     class="q-run-target"
                   >
                     <.target_name
@@ -264,7 +264,15 @@ defmodule ApiaryWeb.RunLive.Show do
               <div class="mt-1">
                 <.link
                   id="run-behind-diff"
-                  navigate={behind_path(@current_scope, @target, @reported_version, @in_force)}
+                  navigate={
+                    behind_path(
+                      @current_scope,
+                      @target,
+                      @target_shared,
+                      @reported_version,
+                      @in_force
+                    )
+                  }
                   class="q-link"
                 >
                   {if comparable?(@reported_version, @in_force),
@@ -357,6 +365,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <.details_rail
           scope={@current_scope}
           run={@run}
+          target_shared={@target_shared}
           policy={@policy}
           session_id={@session_id}
           quiet={@quiet_for != nil}
@@ -771,6 +780,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # headings; the run's labels are its own identifiers, in mono.
   attr :scope, :map, required: true
   attr :run, :map, required: true
+  attr :target_shared, :boolean, default: false, doc: "whether the run's target's path is shared"
   attr :policy, :any, required: true
   attr :session_id, :string, default: nil
   attr :quiet, :boolean, required: true
@@ -871,12 +881,14 @@ defmodule ApiaryWeb.RunLive.Show do
             <dt>{key}</dt>
             <dd title={to_string(value)}>
               <.link
-                :if={path = label_path(@scope, @run, to_string(key), to_string(value))}
+                :if={
+                  path = label_path(@scope, @run, @target_shared, to_string(key), to_string(value))
+                }
                 navigate={path}
               >
                 {to_string(value)}
               </.link>
-              <span :if={!label_path(@scope, @run, to_string(key), to_string(value))}>
+              <span :if={!label_path(@scope, @run, @target_shared, to_string(key), to_string(value))}>
                 {to_string(value)}
               </span>
             </dd>
@@ -1480,21 +1492,22 @@ defmodule ApiaryWeb.RunLive.Show do
   defp tab_path(scope, %Run{run_id: id}, :details, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/details?#{query}"
 
-  defp label_path(scope, _run, "task", value),
+  defp label_path(scope, _run, _shared, "task", value),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{task: value}}"
 
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
-  defp label_path(scope, %Run{target_id: id} = run, key, _value) when is_binary(id) do
-    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run)
+  defp label_path(scope, %Run{target_id: id} = run, shared, key, _value) when is_binary(id) do
+    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run, shared)
   end
 
-  defp label_path(_scope, _run, _key, _value), do: nil
+  defp label_path(_scope, _run, _shared, _key, _value), do: nil
 
   # The target's page: the run's own copy of its system and path, which the target's row
-  # holds too while the run names it.
-  defp target_link(scope, %Run{target_system: system, target_path: path}),
-    do: target_path(scope, system, path)
+  # holds too while the run names it, at its address: its system in it only where its
+  # path is `shared` (the page's `target_shared`).
+  defp target_link(scope, %Run{target_system: system, target_path: path}, shared),
+    do: target_path(scope, system, path, [], shared)
 
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do
@@ -1570,6 +1583,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp with_versions(items, socket) do
     %{current_scope: scope, target: target, versions: known} = socket.assigns
+    target = {target, socket.assigns.target_shared}
 
     {items, _known} =
       Enum.map_reduce(items, known, fn
@@ -1588,7 +1602,8 @@ defmodule ApiaryWeb.RunLive.Show do
   defp lookup_version(known, _scope, _target, digest) when not is_binary(digest),
     do: {nil, known}
 
-  defp lookup_version(known, scope, target, digest) do
+  # `target` is the run's target and whether its path is shared, which names its versions.
+  defp lookup_version(known, scope, {target, shared}, digest) do
     case known do
       %{^digest => version} ->
         {version, known}
@@ -1597,7 +1612,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {nil, known}
 
       _ ->
-        version = Rules.version(scope, target, digest)
+        version = Rules.version(scope, target, digest, shared)
         {version, Map.put(known, digest, version)}
     end
   end
@@ -1975,7 +1990,9 @@ defmodule ApiaryWeb.RunLive.Show do
         mode: Rules.mode(row),
         page: :run,
         level: if(target, do: :target, else: :workspace),
-        target: target && %{label: "#{target.system}/#{target.path}"},
+        target:
+          target &&
+            %{label: target_label(target.system, target.path, socket.assigns.target_shared)},
         targets: [],
         choice: nil,
         what: %{
@@ -2093,9 +2110,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
     where =
       cond do
-        level != :target -> :workspace
-        target -> {:target, "#{target.system}/#{target.path}"}
-        true -> :this_target
+        level != :target ->
+          :workspace
+
+        target ->
+          {:target, target_label(target.system, target.path, socket.assigns.target_shared)}
+
+        true ->
+          :this_target
       end
 
     version =
@@ -2149,15 +2171,23 @@ defmodule ApiaryWeb.RunLive.Show do
     digests = Rules.digests(scope, run)
 
     {reported, known} =
-      lookup_version(known, scope, target, digests.reported || digests.applied)
+      lookup_version(
+        known,
+        scope,
+        {target, socket.assigns.target_shared},
+        digests.reported || digests.applied
+      )
 
     behind? = alive?(run) and digests.drift
 
     in_force =
       if behind? do
         case Policy.current_configuration(scope, target) do
-          {:ok, configuration} -> Rules.version_of(scope, configuration, target)
-          _ -> nil
+          {:ok, configuration} ->
+            Rules.version_of(scope, configuration, target, socket.assigns.target_shared)
+
+          _ ->
+            nil
         end
       end
 
@@ -2225,7 +2255,7 @@ defmodule ApiaryWeb.RunLive.Show do
          changes
        )
        when not is_nil(entry) do
-    %{target: target, current_scope: scope} = socket.assigns
+    %{target: target, current_scope: scope, target_shared: shared} = socket.assigns
     holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
 
@@ -2233,7 +2263,7 @@ defmodule ApiaryWeb.RunLive.Show do
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder, entry.host),
+      rule_path: Rules.rule_path(scope, holder, entry.host, shared),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -2241,8 +2271,8 @@ defmodule ApiaryWeb.RunLive.Show do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder, change.version),
-              label: Rules.version_label(holder && holder.id, target)
+              path: Rules.version_path(scope, holder, change.version, %{}, shared),
+              label: Rules.version_label(holder && holder.id, target, shared)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -2262,7 +2292,12 @@ defmodule ApiaryWeb.RunLive.Show do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
+          Rules.rule_path(
+            scope,
+            if(entry.source == :target and target, do: target),
+            entry.host,
+            socket.assigns.target_shared
+          ),
       after: nil
     })
   end
@@ -2302,12 +2337,16 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # A target's version is on the run's target's Policy tab: the only target a run's
   # versions are of.
-  defp behind_path(scope, target, reported, in_force) do
+  defp behind_path(scope, target, shared, reported, in_force) do
     if comparable?(reported, in_force) and (is_nil(in_force.target_id) or target != nil),
       do:
-        Rules.version_path(scope, in_force.target_id && target, in_force.n, %{
-          "compare" => reported.n
-        }),
+        Rules.version_path(
+          scope,
+          in_force.target_id && target,
+          in_force.n,
+          %{"compare" => reported.n},
+          shared
+        ),
       else: in_force.path
   end
 

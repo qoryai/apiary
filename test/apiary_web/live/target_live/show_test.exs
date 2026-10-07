@@ -18,6 +18,15 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
   defp repo(system, path), do: %{"forge" => system, "repository" => path}
 
+  # A name as it reads: its parts joined, as `<.target_name>` writes them.
+  defp name(view, selector) do
+    view
+    |> element(selector)
+    |> render()
+    |> String.replace(~r/<[^>]+>/, "")
+    |> String.trim()
+  end
+
   defp open(conn, path) do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 2_000)
@@ -51,11 +60,11 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     }
   end
 
-  test "the header names the target in full, with its runs, its last run and the way to it",
+  test "the header names a shared path with its system, with its runs, its last run and the way to it",
        %{conn: conn, scope: scope, path: path} do
     view = open(conn, path)
 
-    assert has_element?(view, "#target-header h1", "github.example/acme/shop")
+    assert name(view, "#target-header h1") == "github.example/acme/shop"
 
     assert has_element?(view, "#target-meta", "2 runs since")
 
@@ -172,7 +181,13 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert ApiaryWeb.TargetComponents.target_path(scope, billing.system, billing.path) == path
 
     view = open(conn, path)
-    assert has_element?(view, "#target-header h1", "github.example/acme/billing")
+
+    # It is named as it is addressed: its path alone, its system the name's tooltip.
+    assert has_element?(view, "#target-header h1 [title='github.example/acme/billing']")
+    assert name(view, "#target-header h1") == "acme/billing"
+    assert name(view, "#breadcrumb [aria-current=page]") == "acme/billing"
+    assert page_title(view) =~ "acme/billing"
+    refute page_title(view) =~ "github.example"
     assert has_element?(view, "#target-tabs-overview[aria-current=page][href='#{path}']")
 
     assert has_element?(
@@ -200,6 +215,21 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert redirected_to(get(conn, old)) == new
     assert redirected_to(get(conn, old <> "?since=30d")) == new <> "?since=30d"
     assert {:error, {:redirect, %{to: ^new}}} = live(conn, old)
+  end
+
+  @tag needs: :security
+  test "the Policy tab names the target as it is addressed, in its title and its crumb",
+       %{conn: conn, scope: scope} do
+    started_run(scope, repo("github.example", "acme/billing"))
+    path = workspace_path(scope, "/targets/acme/billing")
+
+    view = open(conn, path <> "/-/policy")
+    assert page_title(view) =~ "Policy · acme/billing"
+    refute page_title(view) =~ "github.example"
+    assert name(view, "#breadcrumb a[href='#{path}']") == "acme/billing"
+
+    view = open(conn, workspace_path(scope, "/targets/github.example/acme/shop/-/policy"))
+    assert page_title(view) =~ "Policy · github.example/acme/shop"
   end
 
   @tag needs: :security

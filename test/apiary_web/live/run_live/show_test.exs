@@ -79,7 +79,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      target = ApiaryWeb.TargetComponents.target_path(scope, "codeberg.org", "acme/shop")
+      target = workspace_path(scope, "/targets/acme/shop")
 
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
@@ -237,6 +237,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "#run-target .q-tname-sys", "github.example")
       assert has_element?(lv, "#breadcrumb .q-tname-sys", "github.example")
+
+      # Its links land on its page at its address, which keeps the system.
+      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      assert has_element?(lv, "#run-target[href='#{page}']")
+      assert has_element?(lv, "#breadcrumb a[href='#{page}']")
     end
 
     test "a run without a task is titled by its short id, and one without a wall says None", %{
