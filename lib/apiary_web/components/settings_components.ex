@@ -105,6 +105,14 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-users",
         path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
+      Access.can?(scope, :"connection.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :integrations,
+          label: gettext("Integrations"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/#{workspace}/settings/integrations"
+        },
       %Entry{
         section: :main,
         key: :keys,
