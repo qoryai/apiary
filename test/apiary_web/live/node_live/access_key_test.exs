@@ -362,8 +362,6 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert html =~ String.replace(words, "'", "&#39;")
       end
 
-      {:ok, lv, _html} = live(conn, tab_path(scope, node))
-
       for {event, params} <- [
             {"add_key",
              %{"key" => %{"label" => "x", "public_key" => ed25519_key_pair().encoded}}},
@@ -373,8 +371,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
             {"revoke", %{}},
             {"revoke_code", %{}}
           ] do
+        # A page of its own for each, so each refusal is its own flash.
+        {:ok, lv, _html} = live(conn, tab_path(scope, node))
+        refute lv |> element("#flash-group") |> render() =~ "Only owners and admins"
         render_hook(lv, event, params)
-        assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
+
+        assert lv |> element("#flash-group") |> render() =~
+                 "Only owners and admins manage a node&#39;s keys."
       end
 
       assert is_nil(Repo.get!(AccessKey, pending.id).approved_at)

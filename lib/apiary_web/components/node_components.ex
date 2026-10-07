@@ -60,13 +60,13 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   instance_sentence/0 is what every node's page says of an instance: a claim made under
-  the node's key, never an identity.
+  the node's key, never an identity, once runners use a node's keys, which they don't yet.
   """
   @spec instance_sentence() :: String.t()
   def instance_sentence,
     do:
       gettext(
-        "An instance is what a runner using this node's key reports itself as; anyone with the key can report any instance. Cut off a machine by giving it a node of its own."
+        "Once runners use a node's keys, an instance is what a runner with this node's key reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
       )
 
   @doc """

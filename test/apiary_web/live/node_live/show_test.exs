@@ -279,7 +279,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(
                lv,
                "#node-instance-claim",
-               "anyone with the key can report any instance"
+               "Once runners use a node's keys"
              )
 
       render_async(lv)

@@ -58,7 +58,7 @@ defmodule ApiaryWeb.TargetComponents do
       ),
       do: target_path(organisation, workspace, system, path, rest, shared)
 
-  def target_path(organisation, workspace, system, path, rest),
+  def target_path(organisation, workspace, system, path, rest) when is_list(rest),
     do: target_path(organisation, workspace, system, path, rest, false)
 
   @doc "target_path/6 is `target_path/5` with the organisation and the workspace given."

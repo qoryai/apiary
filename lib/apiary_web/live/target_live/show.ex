@@ -89,6 +89,7 @@ defmodule ApiaryWeb.TargetLive.Show do
            choices: targets,
            chosen_path: path,
            rest: rest,
+           query: nil,
            page_title: path
          )}
 
@@ -123,21 +124,30 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   # The target an address names (the moduledoc's order): `{:ok, target, shared, form}`,
   # `form` `:current` for the address the page writes and `:old` for one it sends on;
-  # `{:choose, targets, path}` for a path alone that two targets or more share; `:error`.
+  # `{:choose, targets, path}` for an address two targets or more may mean; `:error`. A
+  # system and a path are a runner's labels, so an address can read both ways: a path
+  # alone, and a system with its path. Where both readings name a target, the address
+  # does not say which, and the page names each.
   defp resolve(_scope, []), do: :error
 
   defp resolve(scope, segments) do
     path = Enum.join(segments, "/")
-    by_path = with_path(scope, path)
 
     with_system =
       case segments do
-        [system, _ | _] -> Targets.get(scope, system, Enum.join(tl(segments), "/"))
+        [system, _ | _] -> get(scope, system, Enum.join(tl(segments), "/"))
         _one -> nil
       end
 
+    by_path = if Target.label(path), do: with_path(scope, path), else: []
+
     cond do
-      with_system && Targets.shared?(scope, with_system.path) ->
+      with_system && by_path != [] ->
+        {:choose, Enum.uniq_by([with_system | by_path], & &1.id), path}
+
+      # The system stays in the address where the path alone would not name this target.
+      with_system &&
+          (Targets.shared?(scope, with_system.path) or read_with_system?(scope, with_system)) ->
         {:ok, with_system, true, :current}
 
       match?([_], by_path) ->
@@ -151,6 +161,21 @@ defmodule ApiaryWeb.TargetLive.Show do
 
       true ->
         :error
+    end
+  end
+
+  # A target by its system and path, labels as a runner may send them: anything else, such
+  # as bytes that are not UTF-8, names none.
+  defp get(scope, system, path) do
+    if Target.label(system) && Target.label(path), do: Targets.get(scope, system, path)
+  end
+
+  # Whether the target's path alone, as an address, also reads as another target's system
+  # and path.
+  defp read_with_system?(scope, %Target{path: path}) do
+    case String.split(path, "/", parts: 2) do
+      [system, rest] -> get(scope, system, rest) != nil
+      _one -> false
     end
   end
 
@@ -216,8 +241,9 @@ defmodule ApiaryWeb.TargetLive.Show do
     {:noreply, redirect(socket, to: if(query in [nil, ""], do: to, else: to <> "?" <> query))}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{tab: :choose}} = socket),
-    do: {:noreply, socket}
+  # The address's query goes with each choice.
+  def handle_params(_params, uri, %{assigns: %{tab: :choose}} = socket),
+    do: {:noreply, assign(socket, :query, URI.parse(uri).query)}
 
   def handle_params(%{"glob" => glob}, uri, socket) do
     %{target: target, tab: current} = socket.assigns
@@ -369,7 +395,10 @@ defmodule ApiaryWeb.TargetLive.Show do
       <ul id="target-choices" class="q-tgt-pl">
         <li :for={target <- @choices} id={"target-choice-#{target.id}"}>
           <.link
-            navigate={target_path(@current_scope, target.system, target.path, @rest, true)}
+            navigate={
+              target_path(@current_scope, target.system, target.path, @rest, true) <>
+                if(@query in [nil, ""], do: "", else: "?" <> @query)
+            }
             class="q-tgt-pl-name"
           >
             <.target_name path={target.path} system={target.system} />

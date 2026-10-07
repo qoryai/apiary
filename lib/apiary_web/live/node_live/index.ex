@@ -26,8 +26,8 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   Under its title, once, the plain line that runners can't use a node's keys yet, so no
   run is placed on a node today, with the way to the workspace's access keys
-  (`ApiaryWeb.NodeComponents.not_yet/1`). The pages pass `nav: :nodes`, the workspace
-  sidebar's Nodes.
+  (`ApiaryWeb.NodeComponents.not_yet/1`). The pages pass `nav: :nodes`, which the sidebar
+  marks once it has a Nodes entry (the shell's).
 
   Live: the list reads the nodes and what they do again on `{:nodes_touched, …}`
   (`Apiary.Nodes.topic/1`), on a `{:run_changed, run}` of a run on a node, at most every

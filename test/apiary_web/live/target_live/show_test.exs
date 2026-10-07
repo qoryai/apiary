@@ -296,6 +296,33 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert has_element?(view, "#target-external[href='https://codeberg.org/odd/-/name']")
   end
 
+  test "an address that reads as two targets names both; a system kept where the path alone would not do",
+       %{conn: conn, scope: scope} do
+    # acme/shop is a path of github.example, and also, read as a system and a path, the
+    # path shop of the system acme.
+    started_run(scope, repo("acme", "shop"))
+    acme = Targets.get(scope, "acme", "shop")
+    github = Targets.get(scope, "github.example", "acme/shop")
+
+    view = open(conn, workspace_path(scope, "/targets/acme/shop"))
+    assert has_element?(view, "#target-choice-#{acme.id}", "acme/shop")
+    assert has_element?(view, "#target-choice-#{github.id}", "github.example/acme/shop")
+
+    # A path no other system has, whose path alone reads as another target: its address
+    # keeps the system, and is not sent on.
+    started_run(scope, repo("codeberg.org", "acme/billing"))
+    started_run(scope, repo("acme", "billing"))
+    view = open(conn, workspace_path(scope, "/targets/codeberg.org/acme/billing"))
+    assert has_element?(view, "#target-header h1", "codeberg.org/acme/billing")
+  end
+
+  test "an address that is no label, such as bytes that are not UTF-8, is not found",
+       %{conn: conn, scope: scope} do
+    for missing <- ["/targets/%FF", "/targets/a%00b/c", "/targets/github.example/%FF"] do
+      assert_raise Ecto.NoResultsError, fn -> live(conn, workspace_path(scope, missing)) end
+    end
+  end
+
   test "a run with no event does not stop the page", %{conn: conn, scope: scope, path: path} do
     _ = run_fixture(scope)
     view = open(conn, path)

@@ -2874,11 +2874,6 @@ msgstr ""
 msgid "An allow of the workspace or of a target would not be in force."
 msgstr "An allow of the workspace or of a repository would not be in force."
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "An instance is what a runner using this node's key reports itself as; anyone with the key can report any instance. Cut off a machine by giving it a node of its own."
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "An integration"
@@ -7169,6 +7164,11 @@ msgstr ""
 msgid "Nothing to filter by yet"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was changed. Try again."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
@@ -7240,6 +7240,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "On %{reported}; %{in_force} in force"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Once runners use a node's keys, an instance is what a runner with this node's key reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10142,6 +10147,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "This can't be done now: what it names is not here."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "This code is shown once."
 msgstr ""
 
@@ -10200,11 +10210,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This node has no such instance."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "This node has no such key or code any more."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

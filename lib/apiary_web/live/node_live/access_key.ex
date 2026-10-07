@@ -46,7 +46,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.Ed25519
   alias Apiary.Nodes.Node
-  alias ApiaryWeb.{NodeComponents, People, SettingsComponents}
+  alias ApiaryWeb.{NodeComponents, People, SettingsComponents, UserAuth}
 
   # The page's acts, and the action of `Apiary.Access` each one asks.
   @acts [
@@ -84,7 +84,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          |> assign(issued: nil, form: nil, preview: nil, key: nil, code: nil)
          |> assign_may()
          |> assign_activity()
-         |> load()}
+         |> load()
+         |> UserAuth.on_membership_change(&(&1 |> assign_may() |> load()))}
 
       nil ->
         raise Ecto.NoResultsError, queryable: Node
@@ -241,7 +242,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          )}
 
       {:error, :not_found} ->
-        {:noreply, gone(socket)}
+        {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins add a node's keys."))}
@@ -278,7 +279,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:noreply, assign_form(socket, changeset, :code)}
 
       {:error, :not_found} ->
-        {:noreply, gone(socket)}
+        {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins make enrolment codes."))}
@@ -314,10 +315,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:noreply, to_tab(socket, :error, integrity_words(key))}
 
       {:error, :not_found} ->
-        {:noreply, key_gone(socket)}
+        {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+
+      {:error, _not_saved} ->
+        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
     end
   end
 
@@ -336,10 +340,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          to_tab(socket, :error, gettext("%{label} no longer awaits approval.", label: key.label))}
 
       {:error, :not_found} ->
-        {:noreply, key_gone(socket)}
+        {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+
+      {:error, _not_saved} ->
+        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
     end
   end
 
@@ -362,10 +369,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          )}
 
       {:error, :not_found} ->
-        {:noreply, key_gone(socket)}
+        {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+
+      {:error, _not_saved} ->
+        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
     end
   end
 
@@ -388,10 +398,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:noreply, to_tab(socket, :error, gettext("The enrolment code was used already."))}
 
       {:error, :not_found} ->
-        {:noreply, key_gone(socket)}
+        {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
         {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+
+      {:error, _not_saved} ->
+        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
     end
   end
 
@@ -433,12 +446,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     |> push_patch(to: socket.assigns.paths.access_key)
   end
 
-  # The key or the code is not the node's any more, or the node is gone.
-  defp key_gone(socket) do
+  # What the act named is not there for it: the key or the code, or the node itself, or
+  # the workspace's, now. A node the reader still reads says so on the tab; one gone sends
+  # them to the list.
+  defp not_found(socket) do
     %{current_scope: scope, node: node} = socket.assigns
 
     if Nodes.get_node(scope, node.public_id),
-      do: to_tab(socket, :error, gettext("This node has no such key or code any more.")),
+      do: to_tab(socket, :error, gettext("This can't be done now: what it names is not here.")),
       else: gone(socket)
   end
 
