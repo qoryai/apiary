@@ -284,8 +284,8 @@ defmodule ApiaryWeb.Layouts do
   (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Configuration, for an
   instance admin (`Apiary.Access.instance_admin?/1`). It reads the database, so it is read
   once with the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`),
-  not on every render: the account menu's Instance leads to the first, and with two or
-  more the Instance's pages list them as the second column.
+  not on every render: the Qory Apiary menu's Instance settings leads to the first, and
+  with two or more the Instance's pages list them as the second column.
   """
   @spec instance_sections(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
   def instance_sections(%{user: %{}} = scope) do
@@ -307,18 +307,18 @@ defmodule ApiaryWeb.Layouts do
   def instance_sections(_scope), do: []
 
   @doc """
-  account_menu_entries/2 is what the account menu lists in `scope`, as
+  account_menu_entries/1 is what the account menu lists in `scope`, as
   `ApiaryWeb.Nav.Entry` values in their groups (`section`): `:account`, Settings (the
-  person's own, under "Your personal account") and Your organisations, then the edition's (`c:ApiaryWeb.Edition.account_menu_entries/1`,
-  `:account` where it names no group); `:instance`, after the theme, the core's Instance,
-  where the person may open a section of the Instance level (`instance`, as
-  `instance_sections/1` gives them), leading to the first, then the edition's. An entry's
-  action, where it has one, is asked of the organisation.
+  person's own, under "Your personal account") and Your organisations, then the
+  edition's (`c:ApiaryWeb.Edition.account_menu_entries/1`, `:account` where it names no
+  group); `:instance`, after the theme and before Log out, the edition's alone. The
+  Instance level is not the person's: its Instance settings is the Qory Apiary menu's
+  (`instance_sections/1`). An entry's action, where it has one, is asked of the
+  organisation.
   """
-  @spec account_menu_entries(Apiary.Accounts.Scope.t() | nil, [Entry.t()]) :: [Entry.t()]
-  def account_menu_entries(scope, instance \\ []) do
+  @spec account_menu_entries(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
+  def account_menu_entries(scope) do
     organisation = scope_field(scope, :organisation)
-    workspace = scope_field(scope, :workspace)
 
     core = [
       %Entry{
@@ -336,16 +336,7 @@ defmodule ApiaryWeb.Layouts do
         icon: "hero-building-office-2",
         path: ~p"/users/organisations",
         place: :person
-      },
-      match?([%Entry{} | _], instance) &&
-        %Entry{
-          section: :instance,
-          key: :instance,
-          label: gettext("Instance"),
-          icon: "hero-server-stack",
-          path: Entry.path(hd(instance), organisation, workspace),
-          place: :instance
-        }
+      }
     ]
 
     edition =
@@ -383,9 +374,10 @@ defmodule ApiaryWeb.Layouts do
   (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's,
   whose pages are their settings. At its foot are the scope's settings, named after the
   level (Workspace settings, Organisation settings), the current entry on every page of
-  them, then the Qory Apiary menu and the control that folds the sidebar to icons, from
-  768 px; below that it is a drawer behind the bar's menu button. A page
-  without a person has no sidebar, and the Qory Apiary menu opens from the bar.
+  them, then the Qory Apiary menu, which leads first to Instance settings for whoever may
+  open a section of the Instance level, and the control that folds the sidebar to icons,
+  from 768 px; below that it is a drawer behind the bar's menu button. A page without a
+  person has no sidebar, and the Qory Apiary menu opens from the bar.
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
@@ -499,6 +491,9 @@ defmodule ApiaryWeb.Layouts do
     # page, the one the person came from.
     level = level(place, organisation, workspace)
     instance = if user, do: instance_list(assigns.counts), else: []
+    # Where the Qory Apiary menu's Instance settings leads: the first section of the
+    # Instance level the person may open; nil, and no entry, for anyone else.
+    instance_path = instance_path(instance, organisation, workspace)
 
     assigns =
       assigns
@@ -510,6 +505,7 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:level, level)
       |> assign(:nav_entries, entries)
       |> assign(:instance, instance)
+      |> assign(:instance_path, instance_path)
       |> assign(
         :groups,
         nav_groups(scope, level, assigns.counts, entries, carry(assigns.narrowed, assigns.nav))
@@ -554,6 +550,7 @@ defmodule ApiaryWeb.Layouts do
         trail={@trail}
         sidebar={@user != nil}
         instance={@instance}
+        instance_path={@instance_path}
         section={@section}
         second={@second}
       />
@@ -580,6 +577,7 @@ defmodule ApiaryWeb.Layouts do
             target={@target}
             counts={@counts}
             second={@second}
+            instance_path={@instance_path}
           />
         </div>
 
@@ -662,6 +660,11 @@ defmodule ApiaryWeb.Layouts do
   defp instance_list(%{instance: [_ | _] = sections}), do: sections
   defp instance_list(_counts), do: []
 
+  defp instance_path([%Entry{} = first | _], organisation, workspace),
+    do: Entry.path(first, organisation, workspace)
+
+  defp instance_path([], _organisation, _workspace), do: nil
+
   # The second column: the sections of the level's settings the page passed, a person's
   # own sections beside the sidebar they came from, or the Instance's; none for fewer than
   # two. Each kind keeps the DOM ids its list had before the column: `settings-tabs` and
@@ -712,7 +715,7 @@ defmodule ApiaryWeb.Layouts do
   defp second_label(:settings, :organisation), do: gettext("Organisation settings")
   defp second_label(:settings, _workspace), do: gettext("Workspace settings")
   defp second_label(:person, _place), do: gettext("Your settings")
-  defp second_label(:instance, _place), do: gettext("Instance")
+  defp second_label(:instance, _place), do: gettext("Instance settings")
 
   # The place whose settings they are, beneath the heading: the workspace's name, or the
   # organisation's; none for a person's own and the Instance's.
@@ -774,6 +777,7 @@ defmodule ApiaryWeb.Layouts do
   attr :trail, :map, required: true
   attr :sidebar, :boolean, required: true
   attr :instance, :list, required: true
+  attr :instance_path, :string, required: true
   attr :section, :atom, required: true
   attr :second, :map, required: true
 
@@ -784,7 +788,7 @@ defmodule ApiaryWeb.Layouts do
     assigns =
       assigns
       |> assign(:new_entries, new_entries(assigns.scope, new_place))
-      |> assign(:account_entries, account_menu_entries(assigns.scope, assigns.instance))
+      |> assign(:account_entries, account_menu_entries(assigns.scope))
 
     ~H"""
     <header
@@ -806,7 +810,12 @@ defmodule ApiaryWeb.Layouts do
       >
         <.icon name="hero-bars-3" class="size-5" />
       </button>
-      <.brand_menu :if={!@sidebar} version={version()} direction="down" />
+      <.brand_menu
+        :if={!@sidebar}
+        version={version()}
+        direction="down"
+        instance_path={@instance_path}
+      />
 
       <.breadcrumb
         :if={@user}
@@ -910,9 +919,9 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  # An Instance page: Instance, leading to its first section, then the section and what
-  # the page adds. With one section, and so no second column whose disclosure names the
-  # level on a phone, a phone's bar keeps Instance before the section.
+  # An Instance page: Instance settings, leading to its first section, then the section
+  # and what the page adds. With one section, and so no second column whose disclosure
+  # names the level on a phone, a phone's bar keeps Instance settings before the section.
   defp breadcrumb(%{place: :instance} = assigns) do
     assigns =
       assigns
@@ -929,9 +938,11 @@ defmodule ApiaryWeb.Layouts do
             navigate={Entry.path(@first, @organisation, @workspace)}
             class="q-trail-link"
           >
-            {gettext("Instance")}
+            {gettext("Instance settings")}
           </.link>
-          <span :if={!@first} class="q-trail-link q-trail-page">{gettext("Instance")}</span>
+          <span :if={!@first} class="q-trail-link q-trail-page">
+            {gettext("Instance settings")}
+          </span>
         </li>
         <li :if={@here} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
           <span class={["q-trail-sep", !@keep && "max-md:hidden"]} aria-hidden="true">/</span>
@@ -1381,9 +1392,9 @@ defmodule ApiaryWeb.Layouts do
   # The account menu at the right end of the top bar: who you are, your email over "Your
   # personal account" (an account has no name, only its email), so that Settings under
   # them reads as the account's own; your organisations (and the edition's entries beside
-  # them); the theme, set once and kept; the Instance, for whoever may open a section of
-  # it; log out. What is about Qory Apiary itself is the brand menu's, at the sidebar's
-  # foot.
+  # them); the theme, set once and kept; the edition's entries of the group `:instance`, if
+  # any; log out. What is about Qory Apiary itself, the Instance settings among it, is the
+  # brand menu's, at the sidebar's foot.
   defp account_menu(assigns) do
     assigns =
       assigns
@@ -1595,6 +1606,7 @@ defmodule ApiaryWeb.Layouts do
   attr :target, :string, required: true
   attr :counts, :any, required: true
   attr :second, :any, required: true
+  attr :instance_path, :string, required: true
 
   defp sidebar(assigns) do
     assigns = assign(assigns, :version, version())
@@ -1671,7 +1683,7 @@ defmodule ApiaryWeb.Layouts do
           counts={@counts}
         />
         <div id="brand-foot" class="q-brand-row">
-          <.brand_menu version={@version} direction="up" />
+          <.brand_menu version={@version} direction="up" instance_path={@instance_path} />
           <button
             id="sidebar-collapse"
             type="button"
@@ -1824,12 +1836,15 @@ defmodule ApiaryWeb.Layouts do
 
   attr :version, :any, required: true
   attr :direction, :string, required: true, values: ~w(up down)
+  attr :instance_path, :string, default: nil
 
   # The product's menu, on the brand: the mark and "Qory Apiary" with the version at the
   # right, opening upward from the sidebar's foot and downward from the bar when there is
-  # no sidebar. It holds what is about Qory Apiary itself, not about the person: the docs
-  # this instance serves, its changelog and the source. Folded, the sidebar shows the mark
-  # alone, still the menu's button.
+  # no sidebar. It holds what is about Qory Apiary itself, not about the person: first, for
+  # whoever may open a section of the Instance level (`instance_path`, its first), the
+  # instance's own settings, Instance settings, and a rule; then the docs this instance
+  # serves, its changelog and the source. Folded, the sidebar shows the mark alone, still
+  # the menu's button.
   defp brand_menu(assigns) do
     ~H"""
     <div
@@ -1874,6 +1889,12 @@ defmodule ApiaryWeb.Layouts do
         role="menu"
         aria-label="Qory Apiary"
       >
+        <li :if={@instance_path} role="none">
+          <.link href={@instance_path} role="menuitem" tabindex="-1" id="brand-menu-instance">
+            <.icon name="hero-server-stack" class="size-4" /> {gettext("Instance settings")}
+          </.link>
+        </li>
+        <li :if={@instance_path} class="menu-divider" role="separator"></li>
         <li role="none">
           <.link href={~p"/docs"} role="menuitem" tabindex="-1" id="brand-menu-docs">
             <.icon name="hero-book-open" class="size-4" /> {gettext("Docs")}

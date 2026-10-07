@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.InstanceLive.Configuration do
   @moduledoc """
-  Instance › Configuration, `/instance/configuration`: what whoever runs the server set
-  for the whole instance, read only, for the instance's admins
-  (`Apiary.Access.instance_admin?/1`); anyone else is answered as a path that does not
-  exist (`ApiaryWeb.NotFound`). In the core edition it is the Instance level's one page,
-  so it has no second column; an edition's sections come before it
-  (`ApiaryWeb.Layouts.instance_sections/1`).
+  Instance settings › Configuration, `/instance/configuration`: what whoever runs the
+  server set for the whole instance, read only, for the instance's admins
+  (`Apiary.Access.instance_admin?/1`), who reach it from the Qory Apiary menu's Instance
+  settings; anyone else is answered as a path that does not exist (`ApiaryWeb.NotFound`).
+  In the core edition it is the Instance level's one page, so it has no second column; an
+  edition's sections come before it (`ApiaryWeb.Layouts.instance_sections/1`).
 
   Each line is a value the application already reads, as it read it when the server
   started, with where it comes from: the setting of the server's environment that set it,

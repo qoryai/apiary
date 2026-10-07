@@ -32,8 +32,8 @@ person's own page and an Instance page, the one the person came from (Two levels
   the section (`Acme / Main / Workspace settings / Secrets and variables / New secret`); on
   a person's own page Your
   settings, its section and the page's own segments, such as an edition's `Your settings /
-  Organisations / New organisation`, and on an Instance page Instance and its section the
-  same way, the section a link where segments follow it), then **Search or jump to**,
+  Organisations / New organisation`, and on an Instance page Instance settings and its
+  section the same way, the section a link where segments follow it), then **Search or jump to**,
   **New** and the **account menu**. The bar has no mark: Qory Apiary is the sidebar's
   foot. A page's title stays its `<h1>`; the breadcrumb is navigation. A page without a
   person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
@@ -58,7 +58,7 @@ person's own page and an Instance page, the one the person came from (Two levels
   `/:org/jump`. It finds the pages of the navigation, the sections of each
   Settings and of the Instance, and Preferences' theme and shortcuts, each
   named by whose it is where two scopes share a name (Workspace overview, Organisation
-  settings › People; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
+  settings › People, Instance settings › Configuration; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
   runs by id or task, places, what New offers and, for what is typed, the deletions the
   reader may take. Every word of it comes from the server; a runner's words are written
   as text.
@@ -70,11 +70,10 @@ person's own page and an Instance page, the one the person came from (Two levels
   the organisation as its place says. **The account menu** holds who they are, their email
   over "Your personal account" (`#user-menu-account`; an account has no name), then
   Settings (`#user-menu-settings`, the person's own, `/users/settings`) and Your
-  organisations, the theme (Auto, Light, Dark), then
-  **Instance** (`#user-menu-instance`) where the person may open a section of the Instance
-  level (`ApiaryWeb.Layouts.instance_sections/1`), leading to the first, and Log out; an
-  edition's entries follow the core's of their group
-  (`ApiaryWeb.Edition.account_menu_entries/1`). Nothing in it is about Qory Apiary itself.
+  organisations, the theme (Auto, Light, Dark), then Log out; an edition's entries follow
+  the core's of their group (`ApiaryWeb.Edition.account_menu_entries/1`), its group
+  `:instance` after the theme. Nothing in it is about Qory Apiary itself, and so not the
+  Instance level: Instance settings is the Qory Apiary menu's (below).
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
   its own name: a workspace's Overview, then Record (Runs, Targets, Nodes) and Guard
   (Network access, then Policy, which carries the policy's mode word alone, how many
@@ -99,15 +98,19 @@ person's own page and an Instance page, the one the person came from (Two levels
   (General, or an entry of the section `:settings`, such as Access keys), marked as their
   parent (The current entry, above),
   then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
-  version, opening upward to Docs, Changelog (on an instance with every feature) and
-  Source on GitHub, what is about the product rather than the person; and at the right of
-  it the fold.
+  version, opening upward to what is about the product rather than the person: first, only
+  for whoever may open a section of the Instance level
+  (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
+  settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
+  Changelog (on an instance with every feature), a rule and Source on GitHub; and at the
+  right of it the fold. Folded, and from the bar on a page without a sidebar, it is the
+  same menu.
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
   or of the Instance opens the level's sections as a **second column** beside the sidebar
   (`Layouts.app/1`'s `sections` and `section`): from 1024 px a column under its heading,
   which names the level (Workspace settings, Organisation settings, Your settings,
-  Instance; `#<column>-heading`) and, beneath it, the place (the workspace's or the
+  Instance settings; `#<column>-heading`) and, beneath it, the place (the workspace's or the
   organisation's name, `#<column>-place`), and names the column's navigation. Below
   1024 px, at every width, the heading is one full-width button under the top bar,
   `[ Workspace settings · Main ▾ ]` (`#settings-disclosure`, `aria-expanded`,
@@ -145,8 +148,8 @@ person's own page and an Instance page, the one the person came from (Two levels
   the sidebar alone; on a settings page the foot's Workspace settings is drawn lighter, the
   page's parent, while the disclosure under the bar (Two levels, above) names the level
   and lists its sections. The bar names the last segment of the breadcrumb only; on a core
-  Instance page, which has one section and so no disclosure, it keeps both, `Instance /
-  Configuration`.
+  Instance page, which has one section and so no disclosure, it keeps both, `Instance
+  settings / Configuration`.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
@@ -249,10 +252,11 @@ replaces the navigation it is in.
   its second column (`#nav-group-account`, `nav-<key>`); with no workspace to show, the
   sidebar is the person's, and lists them itself. Account and the account's deletion ask
   for a recent sign-in (`UserAuth`'s sudo mode); Preferences does not.
-- **The instance's** (`/instance/…`, the routes of `ApiaryWeb.Routes.instance_routes/2`,
-  each page with `place={:instance}`), from the account menu's Instance, shown when the
-  person may open a section of it (`ApiaryWeb.Layouts.instance_sections/1`) and leading to
-  the first, as `/instance` itself does: the edition's sections
+- **The instance's**, Instance settings (`/instance/…`, the routes of
+  `ApiaryWeb.Routes.instance_routes/2`, each page with `place={:instance}`), from the Qory
+  Apiary menu's Instance settings, shown only when the person may open a section of it
+  (`ApiaryWeb.Layouts.instance_sections/1`) and leading to the first, as `/instance`
+  itself does: the edition's sections
   (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
   Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, its
   `<h1>` Configuration), read only: what whoever runs the server set, as the server read it
@@ -284,12 +288,12 @@ line (`SettingsComponents.save/1`). A section the reader may not open is not in 
 and its path sends them to General with its own sentence of why.
 The breadcrumb names the level and ends with the section, both written by the frame
 (`Acme / Main / Workspace settings / Access keys`, `Acme / Organisation settings / People`);
-a person's own page starts with Your settings and an Instance page with Instance, then the
-section (The top bar, under The shell). The browser title is the most specific first, the
+a person's own page starts with Your settings and an Instance page with Instance settings,
+then the section (The top bar, under The shell). The browser title is the most specific first, the
 page's words, the level, then the workspace's name and the organisation's
 (`SettingsComponents.page_title/3`): `Access keys · Workspace settings · Main · Acme ·
 Qory Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
-settings · Qory Apiary`.
+settings · Qory Apiary`, `Configuration · Instance settings · Qory Apiary`.
 
 **A form is a page.** Creating or changing one thing is a page of its section at a path of
 its own, never a dialog over the list, on the pattern of Add integration (storybook,

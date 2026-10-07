@@ -16,6 +16,17 @@ defmodule ApiaryWeb.LayoutsTest do
     |> List.first()
   end
 
+  # The words of the first element `selector` finds, its spaces collapsed.
+  defp text(html, selector) do
+    html
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(selector)
+    |> Enum.take(1)
+    |> Enum.map_join(&LazyHTML.text/1)
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
   # The breadcrumb's segments, each as its words.
   defp trail(html) do
     html
@@ -261,6 +272,8 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       assert has_element?(view, "#brand-menu a#brand-menu-docs[role='menuitem'][href='/docs']")
+      # Instance settings is only for whoever may open a section of the Instance level.
+      refute has_element?(view, "#brand-menu-instance")
 
       # The release notes name every feature: only an instance with every one links them.
       assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']") ==
@@ -876,17 +889,34 @@ defmodule ApiaryWeb.LayoutsTest do
       %{scope: sign_up_fixture().scope}
     end
 
-    test "the core's entries, and Instance after the theme where a section of it is open",
+    test "the account menu holds the person's own; Instance settings is the Qory Apiary menu's",
          %{scope: scope} do
       html = level_shell(scope, %{place: :workspace, counts: %{}})
       assert attribute(html, "#user-menu-settings", "href") == "/users/settings"
       assert attribute(html, "#user-menu-organisations", "href") == "/users/organisations"
       refute html =~ ~s(id="user-menu-instance")
+      refute html =~ ~s(id="brand-menu-instance")
 
-      html = level_shell(scope, %{place: :workspace, counts: %{instance: instance_sections()}})
-      assert attribute(html, "#user-menu-instance", "href") == "/instance/organisations"
-      assert before?(html, ~s(id="theme-menu-dark"), ~s(id="user-menu-instance"))
-      assert before?(html, ~s(id="user-menu-instance"), ~s(id="user-menu-log-out"))
+      # Where a section of the Instance level is open: Instance settings, first in the Qory
+      # Apiary menu, leading to the first section, then a rule before Docs. The account
+      # menu has no Instance.
+      for given <- [%{place: :workspace}, %{place: :instance, section: :accounts}] do
+        html = level_shell(scope, Map.put(given, :counts, %{instance: instance_sections()}))
+        refute html =~ ~s(id="user-menu-instance")
+
+        link = "#sidebar .q-sidebar-foot #brand-menu ul[role='menu'] > li > a#brand-menu-instance"
+        assert attribute(html, link, "href") == "/instance/organisations"
+        assert attribute(html, link, "role") == "menuitem"
+        assert text(html, "#brand-menu-instance") == "Instance settings"
+
+        assert attribute(
+                 html,
+                 "#brand-menu li:has(#brand-menu-instance) + li.menu-divider",
+                 "role"
+               ) == "separator"
+
+        assert before?(html, ~s(id="brand-menu-instance"), ~s(id="brand-menu-docs"))
+      end
 
       assert [%{key: :settings}, %{key: :organisations}] =
                ApiaryWeb.Layouts.account_menu_entries(scope)
@@ -906,6 +936,8 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert attribute(html, "aside#sidebar", "aria-label") == "Workspace"
       assert attribute(html, "#instance-tabs .q-second-heading #instance-tabs-heading", "id")
+      # The level's name, as Workspace settings and Organisation settings.
+      assert text(html, "#instance-tabs-heading") == "Instance settings"
       assert attribute(html, "#instance-tabs", "aria-labelledby") == "instance-tabs-heading"
       refute html =~ ~s(id="instance-tabs-place")
       assert attribute(html, "#instance-tab-organisations", "href") == "/instance/organisations"
@@ -915,7 +947,8 @@ defmodule ApiaryWeb.LayoutsTest do
       # With a second column, a phone's bar names the section alone: the disclosure names
       # the level.
       assert attribute(html, "#breadcrumb li", "class") =~ "q-trail-lead"
-      assert html =~ ~r{id="breadcrumb".*Instance.*aria-current="page"[^>]*>\s*Accounts}s
+      assert trail(html) == ["Instance settings", "Accounts"]
+      assert html =~ ~r{id="breadcrumb".*Instance settings.*aria-current="page"[^>]*>\s*Accounts}s
 
       # One section opens no second column.
       html =
@@ -928,7 +961,8 @@ defmodule ApiaryWeb.LayoutsTest do
       refute html =~ ~s(id="instance-tabs")
       refute html =~ ~s(id="settings-disclosure")
 
-      # With no second column, a phone's bar keeps both: Instance / Organisations.
+      # With no second column, a phone's bar keeps both: Instance settings / Organisations.
+      assert trail(html) == ["Instance settings", "Organisations"]
       refute attribute(html, "#breadcrumb li", "class") =~ "q-trail-lead"
       refute attribute(html, "#breadcrumb .q-trail-sep", "class") =~ "max-md:hidden"
     end
@@ -1110,7 +1144,7 @@ defmodule ApiaryWeb.LayoutsTest do
                section: :general
              }, "Workspace settings · #{scope.workspace.name}"},
             {%{place: :instance, section: :accounts, counts: %{instance: instance_sections()}},
-             "Instance"},
+             "Instance settings"},
             {%{place: :person, nav: :user_preferences}, "Your settings"}
           ] do
         html = level_shell(scope, given)
@@ -1211,17 +1245,26 @@ defmodule ApiaryWeb.LayoutsTest do
   describe "the Instance, for an instance admin" do
     setup :register_and_log_in_user
 
-    test "the account menu's Instance leads to Configuration for an instance admin, and is absent for anyone else",
+    test "the Qory Apiary menu's Instance settings leads to the first section for an instance admin, and is absent for anyone else",
          %{conn: conn, user: user, scope: scope} do
       home = ~p"/#{scope.organisation}/#{scope.workspace}"
 
       {:ok, view, _html} = live(conn, home)
-      refute has_element?(view, "#user-menu-instance")
+      refute has_element?(view, "#brand-menu-instance")
 
       {:ok, %{granted?: true}} = Organisations.grant_instance_admin(user)
+      [first | _] = ApiaryWeb.Layouts.instance_sections(scope)
+      path = ApiaryWeb.Nav.Entry.path(first, scope.organisation, scope.workspace)
 
       {:ok, view, _html} = live(conn, home)
-      assert has_element?(view, "#user-menu-instance[href='/instance/configuration']", "Instance")
+
+      assert has_element?(
+               view,
+               "#sidebar #brand-menu a#brand-menu-instance[href='#{path}']",
+               "Instance settings"
+             )
+
+      refute has_element?(view, "#user-menu-instance")
 
       # Its one section opens no second column; the sidebar is the one they came from, and
       # the palette asks its workspace.
