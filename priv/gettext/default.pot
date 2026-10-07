@@ -3144,7 +3144,6 @@ msgid "By hand"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Calls its API"
 msgstr ""
@@ -11314,11 +11313,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Wall"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Way"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex

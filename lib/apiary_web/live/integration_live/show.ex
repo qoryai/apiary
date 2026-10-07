@@ -18,7 +18,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
   It reads and writes through `Apiary.Connections` (`get_connection/2`,
   `update_connection/3`, `put_target/4`, `remove_target/3`, `delete_connection/2`,
-  `definition/1`, `description/1`, `used_ways/2`) and asks
+  `definition/1`, `description/1`) and asks
   `Apiary.Integrations.request_release/2` for another version. No run receives any of it
   yet, and the page says so once.
   """
@@ -213,7 +213,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <:tab
             key={:targets}
             patch={Common.connection_path(@current_scope, @connection, :targets)}
-            count={length(@connection.targets)}
+            count={if @connection.applies_to == "selected", do: length(@connection.targets)}
           >
             {gettext("Targets")}
           </:tab>
@@ -469,9 +469,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           />
         </.link>
       </:col>
-      <:col :let={row} :if={@connection.kind == "integration"} label={gettext("Way")} from="sm">
-        <span :if={"credential" in row.ways}>{gettext("Calls its API")}</span>
-      </:col>
       <:action :let={row}>
         <.button
           :if={@may_write}
@@ -699,8 +696,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       for row <- connection.targets do
         %{
           id: row.target_id,
-          target: targets[row.target_id],
-          ways: Connections.used_ways(connection, row.target_id)
+          target: targets[row.target_id]
         }
       end
       |> Enum.sort_by(&((&1.target && &1.target.path) || ""))
