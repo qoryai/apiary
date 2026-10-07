@@ -283,11 +283,12 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
         assert :ok = Schema.validate(File.read!(file)), Path.basename(file)
       end
 
-      assert {:error, _} =
-               dir
-               |> Path.join("fixtures/invalid/run-configuration-no-policy.json")
-               |> File.read!()
-               |> Schema.validate()
+      invalid = dir |> Path.join("fixtures/invalid/run-configuration-*.json") |> Path.wildcard()
+      assert invalid != []
+
+      for file <- invalid do
+        assert {:error, _} = file |> File.read!() |> Schema.validate(), Path.basename(file)
+      end
 
       # The enforce fixture's policy, said as rules, is served in the fixture's shape: a
       # deny below the allowed suffix stands beside it in the deny list.

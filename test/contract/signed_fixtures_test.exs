@@ -1,10 +1,16 @@
 defmodule Apiary.Contract.SignedFixturesTest do
   @moduledoc """
-  Replays `fixtures/signed/*.json` of the server contract: one signed request per
-  file, under the published key and secret, with the status a receiver answers.
-  The fixtures are signed around the second 1700000000, where a receiver under
-  test sets its clock; the clock is in the application environment, so this
-  module is not async.
+  Replays signed requests of the server contract: one signed request per file, under
+  the published key and secret, with the status a receiver answers. The fixtures are
+  signed around the second 1700000000, where a receiver under test sets its clock; the
+  clock is in the application environment, so this module is not async.
+
+  **Temporary.** The requests replayed are `test/fixtures/contract-hmac/signed/*.json`,
+  the contract's `fixtures/signed/` at runner 531c920, signed with HMAC as the receiver
+  still verifies. The contract at `.runner-contract-ref` signs its requests with Ed25519
+  (`test/contract/ed25519_known_answers_test.exs` checks them). When the receiver
+  verifies Ed25519, this module replays the contract's own `fixtures/signed/*.json`
+  again, and `test/fixtures/contract-hmac/` and the HMAC signing below are removed.
   """
   use ApiaryWeb.ConnCase, async: false
 
@@ -22,10 +28,9 @@ defmodule Apiary.Contract.SignedFixturesTest do
   # Every file whose target is served is replayed; a file named here is not.
   @skipped []
 
-  @files (case Apiary.ContractFixtures.contract_dir() do
-            nil -> []
-            dir -> dir |> Path.join("fixtures/signed/*.json") |> Path.wildcard() |> Enum.sort()
-          end)
+  # The HMAC-signed requests, kept until the receiver verifies Ed25519 (the moduledoc).
+  @hmac_dir "test/fixtures/contract-hmac/signed"
+  @files @hmac_dir |> Path.join("*.json") |> Path.wildcard() |> Enum.sort()
 
   setup do
     Application.put_env(:apiary, :contract_now, fn -> @clock end)
@@ -95,8 +100,8 @@ defmodule Apiary.Contract.SignedFixturesTest do
   @tag needs: :security
   test "get-run-configuration-valid: the answer is a run configuration under its digest" do
     fixture =
-      contract_dir()
-      |> Path.join("fixtures/signed/get-run-configuration-valid.json")
+      @hmac_dir
+      |> Path.join("get-run-configuration-valid.json")
       |> File.read!()
       |> Jason.decode!()
 
@@ -112,7 +117,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   test "batch-valid and then batch-replayed: both 202, nothing stored twice" do
     [valid, replayed] =
       for name <- ["batch-valid.json", "batch-replayed.json"] do
-        contract_dir() |> Path.join("fixtures/signed/#{name}") |> File.read!() |> Jason.decode!()
+        @hmac_dir |> Path.join(name) |> File.read!() |> Jason.decode!()
       end
 
     assert replay(valid).status == 202

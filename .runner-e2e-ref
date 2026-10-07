@@ -1,0 +1,5 @@
+# The commit of qoryai/runner the end to end job builds qory against (.qory-e2e-ref). It
+# stays on the runner whose access keys sign with HMAC, the one qory at .qory-e2e-ref is
+# written for, until qory signs with Ed25519; the contract the tests replay is pinned apart,
+# in .runner-contract-ref.
+531c9201119f63cf6f546af12ddeb8f8442a431c
