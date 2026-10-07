@@ -179,8 +179,12 @@ defmodule Apiary.SigningKeyTest do
           capture_log(fn ->
             for fun <- [&SigningKey.boot!/0, &SigningKey.current/0, &SigningKey.public_key/0] do
               error = assert_raise ArgumentError, fun
-              assert error.message =~ "APIARY_SIGNING_SECRET"
-              assert error.message =~ "fixtures"
+
+              assert error.message ==
+                       "APIARY_SIGNING_SECRET is a value the runner contract publishes " <>
+                         "in its fixtures, so anyone could sign as this instance. " <>
+                         "Generate one with: openssl rand -base64 32"
+
               refute_seed(error.message, seed)
             end
 

@@ -193,8 +193,8 @@ defmodule Apiary.SigningKey do
   end
 
   defp message(:fixture) do
-    "#{@variable} is a value the runner contract publishes in its fixtures, and every " <>
-      "runner refuses its key. Generate one with: openssl rand -base64 32"
+    "#{@variable} is a value the runner contract publishes in its fixtures, so anyone " <>
+      "could sign as this instance. Generate one with: openssl rand -base64 32"
   end
 
   defp message(:key) do

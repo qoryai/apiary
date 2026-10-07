@@ -176,7 +176,7 @@ Generate one with: openssl rand -base64 32
 ```
 
 ```text
-APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, and every runner refuses its key. Generate one with: openssl rand -base64 32
+APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, so anyone could sign as this instance. Generate one with: openssl rand -base64 32
 ```
 
 ### Public address and port
