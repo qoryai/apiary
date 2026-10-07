@@ -5287,6 +5287,7 @@ msgid "Its pages are under %{path}. Renaming the workspace keeps it."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Its policy"
 msgstr ""
@@ -6066,6 +6067,7 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
@@ -8695,6 +8697,11 @@ msgstr ""
 msgid "Show all %{size}"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Show all runs"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Show it"
@@ -8737,6 +8744,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Showing %{target} only."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Showing the runs of %{name} only."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex

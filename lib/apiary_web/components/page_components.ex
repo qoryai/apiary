@@ -87,7 +87,7 @@ defmodule ApiaryWeb.PageComponents do
     attr :patch, :string
     attr :navigate, :string
     attr :icon, :string
-    attr :count, :integer, doc: "a number beside the words"
+    attr :count, :any, doc: "a number beside the words, or its words (\"3 denied\")"
     attr :tone, :string, doc: "error: the number in red, as denials are"
     attr :settings, :boolean, doc: "the thing's Settings, the last tab"
   end
@@ -106,7 +106,7 @@ defmodule ApiaryWeb.PageComponents do
         <.icon :if={tab[:icon]} name={tab[:icon]} class="size-4" />
         {render_slot(tab)}
         <span :if={tab[:count]} class={["q-tabs-n", tab[:tone] == "error" && "q-tabs-bad"]}>
-          {Format.number(tab[:count])}
+          {if is_integer(tab[:count]), do: Format.number(tab[:count]), else: tab[:count]}
         </span>
       </.link>
     </nav>

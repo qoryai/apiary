@@ -148,16 +148,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, ".q-label")
 
       # tabs with their counts; Details is the rail's, a tab only below 1440 px
-      assert has_element?(lv, "#run-tabs a#run-tab-timeline[aria-current='page']", "Timeline")
+      assert has_element?(lv, "#run-tab a#run-tab-timeline[aria-current='page']", "Timeline")
 
       assert has_element?(
                lv,
-               "#run-tabs a .q-tabs-n",
+               "#run-tab a .q-tabs-n",
                "#{Apiary.Runs.Record.timeline(scope, run).session_items}"
              )
 
-      assert has_element?(lv, "#run-tabs a .q-tabs-n.q-tabs-bad", "2 denied")
-      assert has_element?(lv, "#run-tabs a#run-tab-details", "Details")
+      assert has_element?(lv, "#run-tab a .q-tabs-n.q-tabs-bad", "2 denied")
+      assert has_element?(lv, "#run-tab a#run-tab-details", "Details")
     end
 
     test "the more menu copies the id and offers the log, to a reader of the log", %{
@@ -198,6 +198,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#run-id", run.run_id)
       # one element: the rail is not drawn a second time
       refute has_element?(lv, "#run-timeline")
+    end
+
+    test "a run's page ends a narrowing: the sidebar's Runs and Network access lead plainly", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+
+      for tab <- ["", "/terminal", "/network", "/details"] do
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}" <> tab)
+
+        assert has_element?(lv, ~s(#nav-runs[href="#{workspace_path(scope, "/runs")}"]))
+        assert has_element?(lv, ~s(#nav-network[href="#{workspace_path(scope, "/network")}"]))
+        refute has_element?(lv, "#nav-runs[aria-label]")
+        # the run's tabs are a thing's tabs, named for the run
+        assert has_element?(lv, "nav#run-tab.q-tabs[aria-label=Run]")
+      end
     end
 
     test "a shared path is written with its system, in the meta line and the top bar", %{
