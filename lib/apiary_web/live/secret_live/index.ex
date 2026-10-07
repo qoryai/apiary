@@ -1084,7 +1084,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The breadcrumb's last segment: the act alone.
   defp crumb_words(:new_secret), do: gettext("New secret")
-  defp crumb_words(:edit_secret), do: gettext("Edit")
+  defp crumb_words(:edit_secret), do: gettext("Edit name and note")
   defp crumb_words(:add_value), do: gettext("Add value")
   defp crumb_words(:change_value), do: gettext("Change value")
   defp crumb_words(:rename_value), do: gettext("Rename value")
@@ -2145,6 +2145,27 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp refusal(socket, :forbidden, _view), do: unauthorized(socket)
+
+  # Any other refusal: a deletion's changeset (a form's is answered under its fields), or
+  # a reason no clause above names. A deletion's confirmation stays open and says why; a
+  # form's page goes back to the view and says it in the flash.
+  defp refusal(socket, reason, view) do
+    deleting? = socket.assigns.act in [:delete_secret, :delete_value]
+
+    words =
+      case reason do
+        %Ecto.Changeset{} = changeset when deleting? ->
+          gettext("Not deleted: %{reason}", reason: reasons(changeset))
+
+        _other when deleting? ->
+          gettext("Not deleted.")
+
+        _other ->
+          gettext("Not saved.")
+      end
+
+    if deleting?, do: held(socket, words), else: back(socket, :error, words, view)
+  end
 
   defp reasons(changeset),
     do: Enum.map_join(changeset.errors, " ", fn {_field, error} -> translate_error(error) end)

@@ -428,7 +428,7 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "would raise a target's variables above %{count}"
+msgid "would raise a target's variables above %{limit}"
 msgstr ""
 
 #: lib/apiary/variables.ex
