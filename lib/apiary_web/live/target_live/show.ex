@@ -656,7 +656,7 @@ defmodule ApiaryWeb.TargetLive.Show do
               id={"target-denied-#{:erlang.phash2({row.host, row.port, row.path})}"}
               title={"#{row.host}:#{row.port}#{row.path}"}
             >
-              <.icon name="hero-no-symbol-micro" class="size-4 text-error" />
+              <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
               <span class="q-tgt-dn-dest">{row.host}<span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"

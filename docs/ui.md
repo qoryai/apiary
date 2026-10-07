@@ -731,7 +731,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   seen, its last run, and its mode only where it sets its own) and Open on the system when
   the system is a host name; the breadcrumb's third segment is the target.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
-    runs; the destinations it was denied in 14 days), beside a plain About column (the
+    runs; the destinations it was denied in 14 days, each with a faint barred circle,
+    never red), beside a plain About column (the
     system and path, when it was first seen and by which run, the same path elsewhere,
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
