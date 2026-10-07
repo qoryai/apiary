@@ -142,6 +142,23 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(from i in Instance, where: i.workspace_id == ^main.id) > 0
     assert count(from r in Run, where: r.workspace_id == ^main.id and not is_nil(r.node_id)) > 0
 
+    # The recordings' runs name CI runners too, but Dana's laptop key posted them: only
+    # the history's runs are placed on a node.
+    laptop =
+      Repo.all(
+        from k in AccessKey,
+          where: k.workspace_id == ^main.id and k.label == "dana-laptop",
+          select: k.id
+      )
+
+    assert Repo.exists?(
+             from r in Run, where: r.access_key_id in ^laptop and like(r.host, "ci-runner-%")
+           )
+
+    refute Repo.exists?(
+             from r in Run, where: r.access_key_id in ^laptop and not is_nil(r.node_id)
+           )
+
     # Secrets, variables and integrations are the security feature's.
     if Apiary.Features.on?(:security) do
       assert count(from s in Secret, where: s.workspace_id == ^main.id) == 4
@@ -178,11 +195,98 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(AccessKey) == keys
   end
 
+  test "a demo whose pins were taken away in the console is still finished" do
+    fill()
+    Repo.delete_all(Apiary.Targets.Pin)
+    runs = count(Run)
+
+    fill()
+
+    assert count(Run) == runs + 1
+  end
+
   test "an instance with an organisation that is not the demo's is refused" do
     sign_up_fixture()
 
     assert_raise Mix.Error, ~r/not the demo's/, fn -> fill() end
     refute Repo.exists?(from o in Organisation, where: o.slug == "acme")
+  end
+
+  test "an instance with the demo's organisation and another one is refused" do
+    sign_up_fixture(%{email: "dana@example.com", organisation_name: "Acme"})
+    sign_up_fixture()
+
+    assert_raise Mix.Error, ~r/not the demo's/, fn -> fill() end
+    refute Repo.exists?(Run)
+  end
+
+  test "a fill that stopped before its last step is refused, not served as whole" do
+    # Dana and Acme are the fill's first step; build-01's cancelled code, its last, is
+    # missing.
+    sign_up_fixture(%{email: "dana@example.com", organisation_name: "Acme"})
+
+    error = assert_raise Mix.Error, fn -> fill() end
+    assert error.message =~ "The demo's fill did not finish."
+    assert error.message =~ "unset DATABASE_URL"
+    assert error.message =~ "mix ecto.drop && mix ecto.create && mix ecto.migrate"
+    refute error.message =~ "demo-up.sh"
+    refute Repo.exists?(Run)
+  end
+
+  describe "the database it fills" do
+    @demo %{"APIARY_DEV_DATABASE" => "apiary_redesign_demo"}
+
+    test "is the one APIARY_DEV_DATABASE names, with no DATABASE_URL" do
+      assert Console.refusal(:dev, false, "apiary_redesign_demo", @demo) == nil
+    end
+
+    test "is refused while DATABASE_URL is set, whatever it names" do
+      env = Map.put(@demo, "DATABASE_URL", "ecto://postgres:postgres@localhost/apiary_dev")
+      refusal = Console.refusal(:dev, false, "apiary_redesign_demo", env)
+
+      assert refusal =~ "DATABASE_URL is set, and it replaces the database"
+      assert refusal =~ "unset DATABASE_URL"
+      refute refusal =~ "demo-up.sh"
+    end
+
+    test "takes an empty DATABASE_URL for unset, as Ecto does" do
+      env = Map.put(@demo, "DATABASE_URL", "")
+      assert Console.refusal(:dev, false, "apiary_redesign_demo", env) == nil
+    end
+
+    test "is refused when APIARY_DEV_DATABASE names none, or another than configured" do
+      assert Console.refusal(:dev, false, "apiary_dev", %{}) =~ "names no database"
+
+      assert Console.refusal(:dev, false, "apiary_dev", %{"APIARY_DEV_DATABASE" => ""}) =~
+               "names no database"
+
+      assert Console.refusal(:dev, false, "apiary_dev", @demo) =~
+               ~s(configured with the database "apiary_dev")
+    end
+
+    test "is never a database people work in" do
+      for database <- ~w(apiary_dev apiary_core_dev) do
+        env = %{"APIARY_DEV_DATABASE" => database}
+
+        assert Console.refusal(:dev, false, database, env) =~
+                 "#{database} is a database people work in"
+      end
+    end
+
+    test "has demo in its name" do
+      env = %{"APIARY_DEV_DATABASE" => "apiary_review"}
+
+      assert Console.refusal(:dev, false, "apiary_review", env) =~
+               ~s(apiary_review does not have "demo" in its name)
+    end
+
+    test "is the tests' own in the test environment, under the tests alone" do
+      env = %{"DATABASE_URL" => "ecto://x/y"}
+      assert Console.refusal(:test, true, "apiary_test", env) == nil
+
+      assert Console.refusal(:test, false, "apiary_test", env) =~
+               "the test environment's database, apiary_test, is the tests' own"
+    end
   end
 
   defp main_workspace do
