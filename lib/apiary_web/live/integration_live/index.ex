@@ -86,7 +86,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       >
         <:subtitle>
           {gettext(
-            "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
+            "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory's own settings. Each applies to every target or to the ones you choose."
           )}
         </:subtitle>
 

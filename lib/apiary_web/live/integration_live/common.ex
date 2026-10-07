@@ -142,9 +142,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def not_yet(assigns) do
     ~H"""
     <.not_on_runs id={@id}>
-      {gettext(
-        "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
-      )}
+      {gettext("Runs don't use any of this yet: today Qory sends a run only its security policy.")}
     </.not_on_runs>
     """
   end
