@@ -13,8 +13,10 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   """
   use ApiaryWeb, :html
 
+  alias Apiary.Connections
   alias Apiary.Connections.Connection
   alias Apiary.Integrations.{Description, Source}
+  alias Apiary.Kinds.Runtimes
   alias Apiary.Organisations
   alias ApiaryWeb.People
 
@@ -24,9 +26,17 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def index_path(scope),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations"
 
-  @doc "add_path/1 is Add integration, the form that asks for a release."
-  def add_path(scope),
+  @doc """
+  add_path/2 is Add integration, the form that asks for a release; `query`, the `source`
+  and `version` it is opened with, such as a release asked for again.
+  """
+  def add_path(scope, query \\ [])
+
+  def add_path(scope, []),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/add"
+
+  def add_path(scope, query),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/add?#{query}"
 
   @doc "new_runtime_path/1 and new_service_path/1 are the forms that set one up."
   def new_runtime_path(scope),
@@ -121,6 +131,61 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def kind_word("integration"), do: gettext("Integration")
   def kind_word("service"), do: gettext("Service")
 
+  @doc """
+  names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
+  title in the catalogue or an integration's in its description, with the name it has
+  there beside it (`claude`, `github`); a service's own name alone, `{name, nil}`. The
+  machine name is nil where it is the title.
+  """
+  def names(%Connection{kind: kind, name: name} = connection)
+      when kind in ["runtime", "integration"] do
+    title = title(connection)
+    {title, if(title != name, do: name)}
+  end
+
+  def names(%Connection{name: name}), do: {name, nil}
+
+  defp title(%Connection{kind: "runtime", name: name}) do
+    case Runtimes.fetch(name) do
+      {:ok, runtime} -> runtime.title
+      :error -> name
+    end
+  end
+
+  defp title(%Connection{kind: "integration", name: name} = connection) do
+    case Connections.description(connection) do
+      {:ok, description} -> description.title
+      {:error, _reason} -> name
+    end
+  end
+
+  @doc """
+  label/1 is a connection's title with its machine name beside it, "GitHub (github)", for
+  a sentence, a heading or a message that names it in plain text (`names/1`).
+  """
+  def label(%Connection{} = connection), do: connection |> names() |> label()
+  def label({title, nil}), do: title
+  def label({title, name}), do: gettext("%{title} (%{name})", title: title, name: name)
+
+  @doc """
+  name/1 is a connection's title and, in mono beside it, its machine name (`names/1`),
+  given the connection or its names.
+  """
+  attr :names, :any, required: true, doc: "a connection, or its `names/1`"
+  attr :class, :any, default: nil
+
+  def name(%{names: %Connection{} = connection} = assigns),
+    do: name(assign(assigns, :names, names(connection)))
+
+  def name(assigns) do
+    ~H"""
+    <span class={@class}>{elem(@names, 0)}</span><span
+      :if={elem(@names, 1)}
+      class="q-mono text-[12.5px] font-normal text-muted"
+    > ({elem(@names, 1)})</span>
+    """
+  end
+
   @doc "applies_word/2 is where a connection applies, in a few words: every target, or how many chosen."
   def applies_word(%Connection{applies_to: "all"}), do: gettext("Every target")
 
@@ -146,8 +211,16 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def may_write?(scope),
     do: Apiary.Access.can?(scope, :"connection.write", scope.workspace)
 
-  @doc "only_admins/0 is the line a reader who may not change the section reads."
-  def only_admins, do: gettext("Only owners and admins change the integrations of a workspace.")
+  @doc """
+  only_admins/1 is the line a person who may not change the section reads: a reader
+  through the edition's reach is told what they may do (`ApiaryWeb.Access.reads_only/1`),
+  a member who and what.
+  """
+  def only_admins(scope) do
+    if Apiary.Access.reader(scope),
+      do: ApiaryWeb.Access.reads_only(scope),
+      else: gettext("Only owners and admins change the integrations of a workspace.")
+  end
 
   ## A description's plain settings
 
@@ -210,10 +283,12 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   reads as one (else the text, which the description's check refuses).
   """
   def cast_settings(declared, params) when is_map(params) do
+    # The cast is a generator, not a filter: a filter would leave out a boolean set to
+    # false.
     for %{name: name, type: type} <- declared,
         value = Map.get(params, name),
         is_binary(value),
-        cast = cast(type, String.trim(value)),
+        cast <- [cast(type, String.trim(value))],
         cast != :blank,
         into: %{},
         do: {name, cast}
@@ -270,14 +345,20 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   ## Refusals
 
   @doc """
-  refusal/2 is the sentence for a refusal of `Apiary.Connections` or
-  `Apiary.Integrations`, the workspace's `connections` naming those an overlap is with.
+  refusal/3 is the sentence for a refusal of `Apiary.Connections` or
+  `Apiary.Integrations` to `scope`, the workspace's `connections` naming those an overlap
+  is with.
   """
-  def refusal(reason, connections \\ [])
+  def refusal(scope, reason, connections \\ [])
 
-  def refusal({:overlap, ids}, connections) do
+  def refusal(scope, :forbidden, _connections), do: only_admins(scope)
+  def refusal(_scope, reason, connections), do: sentence(reason, connections)
+
+  defp sentence({:overlap, ids}, connections) do
     names =
-      for %Connection{public_id: id, name: name} <- connections, id in ids, do: name
+      for %Connection{public_id: id} = connection <- connections,
+          id in ids,
+          do: label(connection)
 
     pgettext(
       "plain",
@@ -286,50 +367,55 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     )
   end
 
-  def refusal({:in_use, ids}, connections) do
+  defp sentence({:in_use, ids}, connections) do
     names =
-      for %Connection{public_id: id, name: name} <- connections, id in ids, do: name
+      for %Connection{public_id: id} = connection <- connections,
+          id in ids,
+          do: label(connection)
 
-    gettext("Services still use it: %{names}. Delete them first.",
+    gettext("Services still use it: %{names}. Remove them first.",
       names: Enum.join(if(names == [], do: ids, else: names), ", ")
     )
   end
 
-  def refusal(:runtime_unknown, _), do: gettext("That runtime is not in Qory's catalogue.")
-  def refusal(:service_unknown, _), do: gettext("That service definition is not one Qory has.")
-  def refusal(:release_not_ready, _), do: gettext("The release is not ready to add.")
+  defp sentence(:runtime_unknown, _),
+    do: gettext("That runtime is not in the runner's catalogue.")
 
-  def refusal(:integration_source_refused, _),
+  defp sentence(:service_unknown, _),
+    do: gettext("That service definition is neither built in nor this workspace's own.")
+
+  defp sentence(:release_not_ready, _), do: gettext("The release is not ready to add.")
+
+  defp sentence(:integration_source_refused, _),
     do: gettext("This instance no longer accepts integrations from this source.")
 
-  def refusal({:integration_source_mismatch, :name}, _),
+  defp sentence({:integration_source_mismatch, :name}, _),
     do: gettext("That release is of another integration.")
 
-  def refusal({:integration_source_mismatch, _}, _),
+  defp sentence({:integration_source_mismatch, _}, _),
     do: gettext("That release is from another source.")
 
-  def refusal(:target_not_found, _), do: gettext("That target is not one of this workspace's.")
-  def refusal(:ways_not_allowed, _), do: gettext("It can't be used that way.")
+  defp sentence(:target_not_found, _), do: gettext("That target is not one of this workspace's.")
+  defp sentence(:ways_not_allowed, _), do: gettext("It can't be used that way.")
 
-  def refusal({:integration_settings_not_allowed, names}, _),
+  defp sentence({:integration_settings_not_allowed, names}, _),
     do: gettext("It takes no such settings: %{names}.", names: Enum.join(List.wrap(names), ", "))
 
-  def refusal({:integration_settings_invalid, _}, _),
+  defp sentence({:integration_settings_invalid, _}, _),
     do: gettext("Its settings don't match what its description asks for.")
 
-  def refusal({:integration_settings_too_large, _}, _),
+  defp sentence({:integration_settings_too_large, _}, _),
     do: gettext("Its settings are too large.")
 
-  def refusal({:integration_argument_not_allowed, _}, _),
+  defp sentence({:integration_argument_not_allowed, _}, _),
     do: gettext("The argument doesn't match what its description allows.")
 
-  def refusal({:definition_invalid, _}, _),
+  defp sentence({:definition_invalid, _}, _),
     do: gettext("The definition is not valid.")
 
-  def refusal(:forbidden, _), do: only_admins()
-  def refusal(:not_found, _), do: gettext("It is no longer there.")
-  def refusal(%Ecto.Changeset{}, _), do: gettext("Check the fields below.")
-  def refusal(_other, _), do: gettext("That could not be saved.")
+  defp sentence(:not_found, _), do: gettext("It is no longer there.")
+  defp sentence(%Ecto.Changeset{}, _), do: gettext("Check the fields below.")
+  defp sentence(_other, _), do: gettext("That could not be saved.")
 
   @doc """
   definition_problems/1 is a sentence for each problem `Apiary.Kinds.ServiceDefinition`

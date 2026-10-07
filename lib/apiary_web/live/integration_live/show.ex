@@ -14,7 +14,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     * **Settings** (`…/settings`): where it applies, a service's name, an integration's
       plain settings and argument, its version (`…/version`, a page that asks for another
       release of the same source, `ApiaryWeb.IntegrationLive.Release`), and last its
-      danger zone, its deletion confirmed in place (`…/delete`).
+      danger zone, its removal confirmed in place (`…/delete`).
 
   It reads and writes through `Apiary.Connections` (`get_connection/2`,
   `update_connection/3`, `put_target/4`, `remove_target/3`, `delete_connection/2`,
@@ -28,8 +28,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Connections, Integrations, Repo, Targets}
+  alias Apiary.{Connections, Integrations, Repo}
   alias Apiary.Connections.Connection
+  alias Apiary.Integrations.Release
   alias Apiary.Kinds.Runtimes
   alias Apiary.Runs.Target
   alias ApiaryWeb.IntegrationLive.Common
@@ -53,13 +54,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
       <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
-        {@connection.name}
+        {elem(@names, 0)}
       </:crumb>
       <:crumb>{gettext("Add target")}</:crumb>
 
       <.page_form
         id="add-target-page"
-        title={gettext("Add a target to %{name}", name: @connection.name)}
+        title={gettext("Add a target to %{name}", name: Common.label(@names))}
         cancel={Common.connection_path(@current_scope, @connection, :targets)}
       >
         <:description>
@@ -74,36 +75,51 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             placeholder="acme/shop"
             debounce="200"
             autocomplete="off"
+            phx-hook="FocusOn"
           />
         </.form>
+        <p id="target-candidates-status" role="status" class="text-[13px]/5 text-muted">
+          <span :if={@candidates == []} id="target-candidates-empty">
+            {gettext("No target found that it doesn't apply to already.")}
+          </span>
+          <span :if={@candidates != [] and !@candidates_more} id="target-candidates-count">
+            {ngettext("%{number} target found.", "%{number} targets found.", length(@candidates),
+              number: Format.number(length(@candidates))
+            )}
+          </span>
+          <span :if={@candidates_more} id="target-candidates-more">
+            {gettext("The first %{number} by name: type to find another.",
+              number: Format.number(@candidates_limit)
+            )}
+          </span>
+        </p>
         <.table
           :if={@candidates != []}
           id="target-candidates"
           label={gettext("Targets")}
           rows={@candidates}
-          row_id={&"candidate-#{&1.target.id}"}
+          row_id={&"candidate-#{&1.id}"}
         >
-          <:col :let={row} label={gettext("Target")} kind="title">
+          <:col :let={target} label={gettext("Target")} kind="title">
             <RunComponents.target_name
-              system={row.target.system}
-              path={row.target.path}
+              system={target.system}
+              path={target.path}
               shared={@candidates_shared}
             />
           </:col>
-          <:action :let={row}>
+          <:action :let={target}>
             <.button
-              id={"add-#{row.target.id}"}
+              id={"add-#{target.id}"}
               size="xs"
               phx-click="put_target"
-              phx-value-id={row.target.id}
+              phx-value-id={target.id}
+              phx-hook="FocusOn"
+              aria-label={gettext("Add %{target}", target: shown_name(target, @candidates_shared))}
             >
               {gettext("Add")}
             </.button>
           </:action>
         </.table>
-        <p :if={@candidates == []} id="target-candidates-empty" class="text-[13px]/5 text-muted">
-          {gettext("No target found that it doesn't apply to already.")}
-        </p>
         <div>
           <.button
             id="add-target-done"
@@ -131,13 +147,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
       <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb navigate={Common.connection_path(@current_scope, @connection)}>
-        {@connection.name}
+        {elem(@names, 0)}
       </:crumb>
       <:crumb>{gettext("Change version")}</:crumb>
 
       <.page_form
         id="version-page"
-        title={gettext("Change the version of %{name}", name: @connection.name)}
+        title={gettext("Change the version of %{name}", name: Common.label(@names))}
         cancel={Common.connection_path(@current_scope, @connection, :settings)}
       >
         <:description>
@@ -147,6 +163,11 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           )}
         </:description>
         <Common.not_yet />
+        <div :if={@version_problems != []} id="version-problems">
+          <.notice kind={:error}>
+            <p :for={problem <- @version_problems}>{problem}</p>
+          </.notice>
+        </div>
         <.form for={@form} id="version-form" phx-submit="request_version" novalidate>
           <div class="grid gap-4">
             <.input
@@ -159,7 +180,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             />
             <p :if={Common.url_source?(@connection.source)} class="text-[13px]/5 text-muted">
               {gettext(
-                "An integration from an address has one release: what its address serves. Qory fetches it again, and you move to it from there."
+                "An integration from an address has one release: what its address serves. It is fetched again, and you move to it from there."
               )}
             </p>
             <.page_form_foot
@@ -190,16 +211,18 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     >
       <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
       <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
-      <:crumb>{@connection.name}</:crumb>
+      <:crumb>{elem(@names, 0)}</:crumb>
 
       <.settings_page
         heading={gettext("Workspace settings")}
         section={:integrations}
-        title={@connection.name}
+        title={elem(@names, 0)}
         measure="list"
       >
         <:subtitle>
           <span id="connection-kind">{Common.kind_word(@connection.kind)}</span>
+          <span :if={elem(@names, 1)} class="text-faint" aria-hidden="true">·</span>
+          <span :if={elem(@names, 1)} id="connection-name" class="q-mono">{elem(@names, 1)}</span>
           <span :if={@connection.source} class="text-faint" aria-hidden="true">·</span>
           <span :if={@connection.source} class="q-mono">{@connection.source}</span>
           <span :if={@connection.version} class="text-faint" aria-hidden="true">·</span>
@@ -228,8 +251,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
         <Common.not_yet />
         <.notice :if={!@connection.intact} kind={:error}>
-          {gettext("%{name} fails its integrity check: its record is not as Qory wrote it.",
-            name: @connection.name
+          {gettext("%{name} fails its integrity check: its record is not as it was saved.",
+            name: Common.label(@names)
           )}
         </.notice>
 
@@ -296,6 +319,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           </dd>
           <dt class="text-faint">{gettext("Released on")}</dt>
           <dd>{Common.released_on(@connection.forge_kind)}</dd>
+          <dt :if={@description} class="text-faint">{gettext("Roles")}</dt>
+          <dd :if={@description} id="connection-roles" class="q-mono">
+            {Enum.join(@description.roles, ", ")}
+          </dd>
           <dt class="text-faint">{gettext("Description digest")}</dt>
           <dd class="q-mono break-all">{@connection.description_sha256}</dd>
         <% end %>
@@ -334,7 +361,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <dt class="text-faint">{pgettext("plain", "Applies to")}</dt>
         <dd>
           <.link
+            id="connection-applies-link"
             patch={Common.connection_path(@current_scope, @connection, :targets)}
+            phx-click={JS.focus(to: "#connection-tabs-targets")}
             class="text-accent hover:underline"
           >
             {Common.applies_word(@connection)}
@@ -359,20 +388,20 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       title={gettext("Its ways")}
     >
       <p :if={@description && "credential" in @description.ways} class="text-[13px]/5">
-        {gettext("Calls its API: the one way Qory supports.")}
+        {gettext("Calls its API.")}
       </p>
       <p
         :if={@description && "tool" in @description.ways}
         id="connection-tool-way"
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description also offers it as a tool (MCP). Qory doesn't support that way yet.")}
+        {gettext("Its description also offers it as a tool (MCP), which no runner runs yet.")}
       </p>
       <p
         :if={!@description || "credential" not in @description.ways}
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description offers no way Qory supports yet.")}
+        {gettext("Its description offers no way a runner runs yet.")}
       </p>
     </SettingsComponents.part>
 
@@ -402,7 +431,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <p :if={@secrets != []} id="connection-secrets-unlinked" class="text-[13px]/5 text-muted">
         <.rich text={
           rich_gettext(
-            "Qory can't link a stored secret to it yet. The workspace's secrets are in %{secrets}.",
+            "A stored secret can't be linked to it yet. The workspace's secrets are in %{secrets}.",
             secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets and variables")}
           )
         } />
@@ -459,7 +488,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     </p>
 
     <.table
-      :if={@target_rows != []}
+      :if={@target_rows != [] and @connection.applies_to == "selected"}
       id="connection-targets"
       label={gettext("Targets")}
       rows={@target_rows}
@@ -482,9 +511,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <:action :let={row}>
         <.button
           :if={@may_write}
+          id={"remove-target-#{row.id}"}
           variant="link"
           patch={Common.remove_target_path(@current_scope, @connection, row.id)}
-          aria-label={gettext("Remove %{target}", target: row.target && row.target.path)}
+          phx-hook="FocusOn"
+          aria-label={
+            gettext("Remove %{target}", target: row.target && shown_name(row.target, @shared))
+          }
         >
           {gettext("Remove")}
         </.button>
@@ -494,13 +527,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           id={"target-#{row.id}-confirm"}
           question={
             gettext("Remove %{target} from %{name}?",
-              target: row.target && row.target.path,
-              name: @connection.name
+              target: row.target && shown_name(row.target, @shared),
+              name: Common.label(@names)
             )
           }
           cancel={Common.connection_path(@current_scope, @connection, :targets)}
         >
-          {target_removal_sentence(@connection)}
+          {gettext("It no longer applies to that target.")}
           <:action>
             <.button
               id={"target-#{row.id}-remove"}
@@ -527,6 +560,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <.button
         id="add-target"
         navigate={Common.connection_path(@current_scope, @connection, :add_target)}
+        phx-hook="FocusOn"
       >
         <.icon name="hero-plus-micro" class="size-4" />{gettext("Add target")}
       </.button>
@@ -534,18 +568,17 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     """
   end
 
-  defp target_removal_sentence(%Connection{applies_to: "selected"}),
-    do: gettext("It no longer applies to that target.")
-
-  defp target_removal_sentence(_connection),
-    do: gettext("It still applies there, since it applies to every target.")
+  # A target as the page names it in words: its path, with its system before it only where
+  # the path is on more than one system of the workspace (`RunComponents.target_name/1`).
+  defp shown_name(%Target{system: system, path: path}, shared),
+    do: if(MapSet.member?(shared, path), do: "#{system}/#{path}", else: path)
 
   ## Settings
 
   defp settings(assigns) do
     ~H"""
     <p :if={!@may_write} id="connection-readonly" class="text-[13px]/5 text-muted">
-      {Common.only_admins()}
+      {Common.only_admins(@current_scope)}
     </p>
 
     <.form
@@ -572,14 +605,23 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           autocomplete="off"
         />
         <%= for setting <- @plain do %>
-          <.input
-            :if={setting.type == :boolean}
-            id={"connection-setting-#{setting.name}"}
-            name={"connection[settings][#{setting.name}]"}
-            type="checkbox"
-            label={setting.title}
-            value={@form.params["settings"][setting.name]}
-          />
+          <div :if={setting.type == :boolean} class="grid gap-1.5">
+            <.input
+              id={"connection-setting-#{setting.name}"}
+              name={"connection[settings][#{setting.name}]"}
+              type="checkbox"
+              label={setting.title}
+              value={@form.params["settings"][setting.name]}
+              aria-describedby={setting.description && "connection-setting-#{setting.name}-hint"}
+            />
+            <p
+              :if={setting.description}
+              id={"connection-setting-#{setting.name}-hint"}
+              class="text-[12.5px]/[18px] text-muted"
+            >
+              {setting.description}
+            </p>
+          </div>
           <.input
             :if={setting.type != :boolean}
             id={"connection-setting-#{setting.name}"}
@@ -622,7 +664,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           source: @connection.source
         )}
       </p>
-      <div :if={@may_write}>
+      <p :if={!@accepted} id="connection-version-refused" class="text-[13px]/5 text-muted">
+        {gettext(
+          "This instance no longer accepts integrations from this source, so its version can't be changed."
+        )}
+      </p>
+      <div :if={@may_write and @accepted}>
         <.button
           id="change-version"
           navigate={Common.connection_path(@current_scope, @connection, :version)}
@@ -633,30 +680,93 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     </SettingsComponents.part>
 
     <SettingsComponents.danger_zone :if={@may_write}>
-      <SettingsComponents.danger_action
+      <.removal
         id="delete-connection"
-        title={delete_title(@connection)}
-        button={gettext("Delete…")}
+        title={removal_title(@connection)}
+        button={removal_button(@connection)}
         open={@live_action == :delete}
         open_path={Common.connection_path(@current_scope, @connection, :delete)}
         close_path={Common.connection_path(@current_scope, @connection, :settings)}
-        question={gettext("Delete %{name}?", name: @connection.name)}
-        submit="delete"
+        question={gettext("Remove %{name}?", name: Common.label(@names))}
       >
-        {pgettext(
-          "plain",
-          "It is removed from this workspace with where it applies. This cannot be undone."
-        )}
-      </SettingsComponents.danger_action>
+        {gettext("It is removed from this workspace. This cannot be undone.")}
+      </.removal>
     </SettingsComponents.danger_zone>
     """
   end
 
-  defp delete_title(%Connection{kind: "runtime"}), do: gettext("Delete this runtime")
-  defp delete_title(%Connection{kind: "integration"}), do: gettext("Delete this integration")
-  defp delete_title(%Connection{kind: "service"}), do: gettext("Delete this service")
+  defp removal_title(%Connection{kind: "runtime"}), do: gettext("Remove this runtime")
+  defp removal_title(%Connection{kind: "integration"}), do: gettext("Remove this integration")
+  defp removal_title(%Connection{kind: "service"}), do: gettext("Remove this service")
+
+  defp removal_button(%Connection{kind: "runtime"}), do: gettext("Remove runtime…")
+  defp removal_button(%Connection{kind: "integration"}), do: gettext("Remove integration…")
+  defp removal_button(%Connection{kind: "service"}), do: gettext("Remove service…")
+
+  # The danger zone's line that removes the connection: `SettingsComponents.danger_action/1`
+  # as it is drawn, with the same ids, its confirmation in place, but its red button "Yes,
+  # remove", which the shared one, a deletion's "Yes, delete", does not take.
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :button, :string, required: true
+  attr :open, :boolean, required: true
+  attr :open_path, :string, required: true
+  attr :close_path, :string, required: true
+  attr :question, :string, required: true
+  slot :inner_block, required: true
+
+  defp removal(assigns) do
+    ~H"""
+    <div id={@id} class={["q-danger-line", @open && "q-danger-line-open"]}>
+      <div class="q-danger-what">
+        <h3 id={"#{@id}-title"} class="q-danger-name">{@title}</h3>
+        <p class="q-danger-sub">{render_slot(@inner_block)}</p>
+      </div>
+      <div class="q-danger-act">
+        <.button
+          id={"#{@id}-button"}
+          patch={if @open, do: @close_path, else: @open_path}
+          aria-expanded={to_string(@open)}
+          aria-controls={@open && "#{@id}-form"}
+        >
+          {@button}
+        </.button>
+      </div>
+      <.form
+        :if={@open}
+        for={%{}}
+        as={:confirm}
+        id={"#{@id}-form"}
+        class="q-danger-confirm"
+        phx-submit="delete"
+        novalidate
+      >
+        <.inline_confirm
+          id={"#{@id}-confirming"}
+          question={@question}
+          cancel={JS.patch(@close_path) |> JS.focus(to: "##{@id}-button")}
+        >
+          <:action>
+            <.button
+              id={"#{@id}-confirm"}
+              variant="danger"
+              size="xs"
+              type="submit"
+              loading_text={gettext("Removing")}
+            >
+              {gettext("Yes, remove")}
+            </.button>
+          </:action>
+        </.inline_confirm>
+      </.form>
+    </div>
+    """
+  end
 
   ## Mount and params
+
+  # How many targets Add target lists at once, by name.
+  @candidates_limit 20
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -671,10 +781,14 @@ defmodule ApiaryWeb.IntegrationLive.Show do
        confirming: nil,
        find: to_form(%{"text" => ""}, as: :find),
        candidates: [],
+       candidates_more: false,
+       candidates_limit: @candidates_limit,
        candidates_shared: MapSet.new(),
+       version_problems: [],
        form: nil
      )
-     |> load(id)}
+     |> load(id)
+     |> assign_accepted()}
   end
 
   defp load(socket, id) do
@@ -685,6 +799,21 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       {:error, _reason} -> raise ApiaryWeb.NotFound
     end
   end
+
+  # Whether the instance still accepts the source of the integration's release, which
+  # another version must come from (`Apiary.Integrations.accepted_source/1`): read once,
+  # when the page mounts, since a refusal is logged.
+  defp assign_accepted(%{assigns: %{connection: %Connection{kind: "integration"} = c}} = socket) do
+    accepted =
+      case c.release do
+        %Release{} = release -> match?({:ok, _source}, Integrations.accepted_source(release))
+        _none -> false
+      end
+
+    assign(socket, :accepted, accepted)
+  end
+
+  defp assign_accepted(socket), do: assign(socket, :accepted, false)
 
   defp assign_connection(socket, %Connection{} = connection) do
     scope = socket.assigns.current_scope
@@ -713,6 +842,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
     assign(socket,
       connection: connection,
+      names: Common.names(connection),
       description: description,
       definition: definition,
       runtime: runtime,
@@ -792,14 +922,17 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     if action in @writes and not socket.assigns.may_write do
       {:noreply,
        socket
-       |> put_flash(:error, Common.only_admins())
+       |> put_flash(:error, Common.only_admins(scope))
        |> push_patch(to: Common.connection_path(scope, socket.assigns.connection))}
     else
+      left = socket.assigns.confirming
+
       {:noreply,
        socket
-       |> assign(tab: tab(action), confirming: nil)
-       |> assign(:page_title, socket.assigns.connection.name <> " · " <> gettext("Integrations"))
-       |> open(action, params)}
+       |> assign(tab: tab(action), confirming: nil, version_problems: [])
+       |> assign(:page_title, elem(socket.assigns.names, 0) <> " · " <> gettext("Integrations"))
+       |> open(action, params)
+       |> focus_after_confirm(left)}
     end
   end
 
@@ -813,37 +946,54 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   defp open(socket, :delete, _params), do: assign(socket, :form, edit_form(socket.assigns))
 
   defp open(socket, :remove_target, %{"target_id" => target_id}) do
-    if Enum.any?(socket.assigns.target_rows, &(&1.id == target_id)),
+    %{connection: connection, target_rows: rows} = socket.assigns
+
+    if connection.applies_to == "selected" and Enum.any?(rows, &(&1.id == target_id)),
       do: assign(socket, :confirming, target_id),
-      else:
-        push_patch(socket,
-          to:
-            Common.connection_path(
-              socket.assigns.current_scope,
-              socket.assigns.connection,
-              :targets
-            )
-        )
+      else: push_patch(socket, to: targets_path(socket))
   end
 
   defp open(socket, :add_target, _params) do
     if socket.assigns.connection.applies_to == "selected",
       do: find(socket, ""),
+      else: push_patch(socket, to: targets_path(socket))
+  end
+
+  # Another version is an integration's, from a source the instance still accepts;
+  # anything else goes back to its Settings, which say why.
+  defp open(socket, :version, _params) do
+    socket = assign(socket, :form, to_form(%{"version" => ""}, as: :version))
+
+    if socket.assigns.connection.kind == "integration" and socket.assigns.accepted,
+      do: socket,
       else:
         push_patch(socket,
           to:
             Common.connection_path(
               socket.assigns.current_scope,
               socket.assigns.connection,
-              :targets
+              :settings
             )
         )
   end
 
-  defp open(socket, :version, _params),
-    do: assign(socket, :form, to_form(%{"version" => ""}, as: :version))
-
   defp open(socket, _action, _params), do: socket
+
+  defp targets_path(socket),
+    do: Common.connection_path(socket.assigns.current_scope, socket.assigns.connection, :targets)
+
+  # Once a row's removal is no longer asked, by Cancel, Escape or its answer, the focus
+  # goes back to the row's Remove, or, where the row is gone, to Add target; never to the
+  # page's body.
+  defp focus_after_confirm(socket, nil), do: socket
+
+  defp focus_after_confirm(%{assigns: %{confirming: nil, live_action: :targets}} = socket, id) do
+    if Enum.any?(socket.assigns.target_rows, &(&1.id == id)),
+      do: push_event(socket, "run:focus", %{id: "remove-target-#{id}"}),
+      else: push_event(socket, "run:focus", %{id: "add-target"})
+  end
+
+  defp focus_after_confirm(socket, _id), do: socket
 
   defp edit_form(assigns) do
     connection = assigns.connection
@@ -865,66 +1015,107 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     )
   end
 
-  # The workspace's targets whose system/path holds `text`, by name, but those it applies
-  # to already: the first page of the Targets index (`Apiary.Targets.page/3`).
+  # The workspace's targets the connection does not apply to yet whose system/path holds
+  # `text`, by name: the first `@candidates_limit` of them, and whether there are more.
   defp find(socket, text) do
     scope = socket.assigns.current_scope
-    present = MapSet.new(socket.assigns.connection.targets, & &1.target_id)
+    present = Enum.map(socket.assigns.connection.targets, & &1.target_id)
     text = String.trim(text)
 
-    rows =
-      Targets.page(scope, %{text: if(text == "", do: nil, else: text), sort: :name}).rows
-      |> Enum.reject(&MapSet.member?(present, &1.target.id))
-      |> Enum.take(20)
+    query =
+      from t in Target,
+        where:
+          t.organisation_id == ^scope.organisation.id and
+            t.workspace_id == ^scope.workspace.id and t.id not in ^present,
+        order_by: [asc: t.path, asc: t.system],
+        limit: ^(@candidates_limit + 1)
+
+    query =
+      case Apiary.Runs.like(text) do
+        nil ->
+          query
+
+        pattern ->
+          from t in query, where: ilike(fragment("? || '/' || ?", t.system, t.path), ^pattern)
+      end
+
+    found = Repo.all(query)
+    targets = Enum.take(found, @candidates_limit)
 
     assign(socket,
       find: to_form(%{"text" => text}, as: :find),
-      candidates: rows,
-      candidates_shared: MapSet.new(for row <- rows, row.shared, do: row.target.path)
+      candidates: targets,
+      candidates_more: length(found) > @candidates_limit,
+      candidates_shared: Apiary.Runs.shared_paths(scope, Enum.map(targets, & &1.path))
     )
+  end
+
+  # Where the focus goes once a target is added from its row, which leaves the list: the
+  # next row's Add, or the one before where it was the last, or else the search field.
+  defp next_focus(before, target_id, now) do
+    present = MapSet.new(now, & &1.id)
+    {above, [_added | below]} = Enum.split_while(before, &(&1.id != target_id))
+
+    case Enum.find(below, &MapSet.member?(present, &1.id)) ||
+           Enum.find(Enum.reverse(above), &MapSet.member?(present, &1.id)) || List.first(now) do
+      nil -> "find_text"
+      target -> "add-#{target.id}"
+    end
   end
 
   ## Events
 
   @impl true
-  def handle_event("find", %{"find" => %{"text" => text}}, socket),
+  def handle_event("find", %{"find" => %{"text" => text}}, socket) when is_binary(text),
     do: {:noreply, find(socket, text)}
 
-  def handle_event("put_target", %{"id" => target_id}, socket) do
-    %{current_scope: scope, connection: connection} = socket.assigns
+  def handle_event("put_target", %{"id" => target_id}, socket) when is_binary(target_id) do
+    %{current_scope: scope, connection: connection, candidates: before} = socket.assigns
 
     case Connections.put_target(scope, connection, target_id) do
       {:ok, connection} ->
-        target = Enum.find(socket.assigns.candidates, &(&1.target.id == target_id))
+        socket =
+          socket
+          |> assign_connection(connection)
+          |> find(socket.assigns.find.params["text"] || "")
+
+        row = Enum.find(socket.assigns.target_rows, &(&1.id == target_id))
+
+        focus =
+          if Enum.any?(before, &(&1.id == target_id)),
+            do: next_focus(before, target_id, socket.assigns.candidates),
+            else: "find_text"
 
         {:noreply,
          socket
-         |> assign_connection(connection)
-         |> find(socket.assigns.find.params["text"] || "")
          |> put_flash(
            :info,
            pgettext("plain", "%{name} now applies to %{target}.",
-             name: connection.name,
-             target: target && target.target.path
+             name: Common.label(socket.assigns.names),
+             target: row && row.target && shown_name(row.target, socket.assigns.shared)
            )
-         )}
+         )
+         |> push_event("run:focus", %{id: focus})}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, refusal(socket, reason))}
     end
   end
 
-  def handle_event("remove_target", %{"id" => target_id}, socket) do
+  def handle_event("remove_target", %{"id" => target_id}, socket) when is_binary(target_id) do
     %{current_scope: scope, connection: connection} = socket.assigns
 
     case Connections.remove_target(scope, connection, target_id) do
       {:ok, connection} ->
+        socket = assign_connection(socket, connection)
+
         {:noreply,
          socket
-         |> assign_connection(connection)
          |> put_flash(
            :info,
-           gettext("The target is removed from %{name}.", name: connection.name)
+           gettext("The target is removed from %{name}.",
+             name: Common.label(socket.assigns.names)
+           )
          )
          |> push_patch(to: Common.connection_path(scope, connection, :targets))}
 
@@ -936,10 +1127,10 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     end
   end
 
-  def handle_event("validate", %{"connection" => params}, socket),
+  def handle_event("validate", %{"connection" => params}, socket) when is_map(params),
     do: {:noreply, assign(socket, :form, to_form(params, as: :connection))}
 
-  def handle_event("save", %{"connection" => params}, socket) do
+  def handle_event("save", %{"connection" => params}, socket) when is_map(params) do
     %{current_scope: scope, connection: connection} = socket.assigns
 
     attrs =
@@ -958,10 +1149,14 @@ defmodule ApiaryWeb.IntegrationLive.Show do
 
     case Connections.update_connection(scope, connection, attrs) do
       {:ok, connection} ->
+        socket = assign_connection(socket, connection)
+
         {:noreply,
          socket
-         |> assign_connection(connection)
-         |> put_flash(:info, gettext("%{name} is saved.", name: connection.name))
+         |> put_flash(
+           :info,
+           gettext("%{name} is saved.", name: Common.label(socket.assigns.names))
+         )
          |> push_patch(to: Common.connection_path(scope, connection, :settings))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -973,13 +1168,19 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     end
   end
 
-  def handle_event("request_version", params, socket) do
+  def handle_event(
+        "request_version",
+        params,
+        %{assigns: %{connection: %Connection{kind: "integration"}, accepted: true}} = socket
+      ) do
     %{current_scope: scope, connection: connection} = socket.assigns
+    fields = if is_map(params["version"]), do: params["version"], else: %{}
+    url? = Common.url_source?(connection.source)
 
     attrs =
-      if Common.url_source?(connection.source),
+      if url?,
         do: %{"source" => connection.source},
-        else: %{"source" => connection.source, "version" => params["version"]["version"]}
+        else: %{"source" => connection.source, "version" => fields["version"]}
 
     case Integrations.request_release(scope, attrs) do
       {:ok, release} ->
@@ -989,11 +1190,15 @@ defmodule ApiaryWeb.IntegrationLive.Show do
          )}
 
       {:error, %Ecto.Changeset{} = changeset} ->
+        # The form shows a version's errors under its field; any other, such as the
+        # source's, which it has no field for, above the form.
+        shown = if url?, do: [], else: [:version]
+        {on_fields, others} = Enum.split_with(changeset.errors, &(elem(&1, 0) in shown))
+
         {:noreply,
-         assign(
-           socket,
-           :form,
-           to_form(params["version"] || %{}, as: :version, errors: changeset.errors)
+         assign(socket,
+           form: to_form(fields, as: :version, errors: on_fields),
+           version_problems: for({field, error} <- others, do: version_problem(field, error))
          )}
 
       {:error, reason} ->
@@ -1002,13 +1207,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    %{current_scope: scope, connection: connection} = socket.assigns
+    %{current_scope: scope, connection: connection, names: names} = socket.assigns
 
     case Connections.delete_connection(scope, connection) do
       {:ok, _deleted} ->
         {:noreply,
          socket
-         |> put_flash(:info, gettext("%{name} is deleted.", name: connection.name))
+         |> put_flash(:info, gettext("%{name} is removed.", name: Common.label(names)))
          |> push_navigate(to: Common.index_path(scope))}
 
       {:error, reason} ->
@@ -1016,13 +1221,24 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     end
   end
 
+  # An event the page's controls do not send, or sent where they are not: nothing.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp version_problem(:source, error),
+    do: gettext("Its source %{error}.", error: translate_error(error))
+
+  defp version_problem(_field, error),
+    do: gettext("Its version %{error}.", error: translate_error(error))
+
   defp refusal(socket, reason) do
+    scope = socket.assigns.current_scope
+
     connections =
-      case Connections.list_connections(socket.assigns.current_scope) do
+      case Connections.list_connections(scope) do
         {:ok, connections} -> connections
         {:error, _} -> []
       end
 
-    Common.refusal(reason, connections)
+    Common.refusal(scope, reason, connections)
   end
 end

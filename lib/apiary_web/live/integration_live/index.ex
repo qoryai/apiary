@@ -5,7 +5,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   calls connections, in four parts, each a list whose row leads to its page
   (`ApiaryWeb.IntegrationLive.Show`, `ApiaryWeb.IntegrationLive.Definition`):
 
-    * **Runtimes**, from Qory's catalogue (`Apiary.Kinds.Runtimes`);
+    * **Runtimes**, from the runner's catalogue (`Apiary.Kinds.Runtimes`);
     * **Integrations**, each added from a release on github.com, gitlab.com or
       codeberg.org, or at an https address while the instance accepts one
       (`Apiary.Integrations.Source`);
@@ -96,7 +96,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
         <Common.not_yet />
         <p :if={!@may_write} id="integrations-readonly" class="text-[13px]/5 text-muted">
-          {Common.only_admins()}
+          {Common.only_admins(@current_scope)}
         </p>
 
         <SettingsComponents.part
@@ -105,7 +105,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           count={length(@runtimes)}
         >
           <p class="text-[13px]/5 text-muted">
-            {gettext("Agent runtimes from Qory's catalogue.")}
+            {gettext("Agent runtimes from the runner's catalogue.")}
           </p>
           <.table
             :if={@runtimes != []}
@@ -215,9 +215,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           count={length(@definitions)}
         >
           <p class="text-[13px]/5 text-muted">
-            {gettext(
-              "This workspace's own service definitions, beside the %{count} built into Qory: %{names}.",
-              count: length(Services.list()),
+            {gettext("This workspace's own service definitions, beside the built-in ones: %{names}.",
               names: Enum.map_join(Services.list(), ", ", & &1["title"])
             )}
           </p>
@@ -272,7 +270,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     ~H"""
     <span class="inline-flex flex-wrap items-baseline gap-x-2">
       <.link navigate={Common.connection_path(@scope, @connection)} class="q-title hover:underline">
-        {@connection.name}
+        <Common.name names={@connection} />
       </.link>
       <.state_word
         :if={!@connection.intact}
@@ -329,7 +327,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           label={gettext("Where it is released")}
           options={where_options(@url_sources)}
         />
-        <%= if @form[:where].value == "url" do %>
+        <%= if @form[:where].value == "url" and @url_sources do %>
           <.input
             field={@form[:url]}
             type="url"
@@ -350,14 +348,14 @@ defmodule ApiaryWeb.IntegrationLive.Index do
                 do: gettext("Project path"),
                 else: gettext("Repository")
             }
-            prefix={(@form[:where].value || "github.com") <> "/"}
+            prefix={forge(@form[:where].value) <> "/"}
             placeholder={
               if @form[:where].value == "gitlab.com", do: "group/project", else: "owner/repo"
             }
             hint={
               if @form[:where].value == "gitlab.com",
                 do: gettext("The project's full path, its groups included."),
-                else: nil
+                else: gettext("Its owner and name, such as acme/shop-integration.")
             }
             autocomplete="off"
           />
@@ -375,7 +373,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           </.button>
           <:note>
             {gettext(
-              "Qory reads the release's description.json and checksums.txt, and runs nothing of it. You add it once it is read."
+              "Only its description.json and checksums.txt are read, and nothing of it runs on the server. You add it once they are read."
             )}
           </:note>
         </.page_form_foot>
@@ -395,6 +393,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           type="select"
           label={gettext("Runtime")}
           options={for runtime <- Runtimes.list(), do: {runtime.title, runtime.name}}
+          aria-describedby="runtime-catalogue"
         />
         <div :if={@runtime} id="runtime-catalogue" class="grid gap-1 text-[13px]/5 text-muted">
           <p>
@@ -429,6 +428,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           type="select"
           label={gettext("Service definition")}
           options={definition_options(@definitions)}
+          aria-describedby="service-definition-about"
         />
         <div :if={@chosen} id="service-definition-about" class="grid gap-1 text-[13px]/5 text-muted">
           <p :if={@chosen["description"]}>{@chosen["description"]}</p>
@@ -465,6 +465,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     />
     """
   end
+
+  # The forge a path is on: the one chosen, or github.com where none of them is.
+  defp forge(where) when where in @forges, do: where
+  defp forge(_where), do: "github.com"
 
   defp where_options(url_sources?) do
     forges = for host <- @forges, do: {host, host}
@@ -516,10 +520,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   defp form_sentence(:add_integration),
     do:
       gettext(
-        "Name the release of an integration: Qory fetches its description, and you add it from there."
+        "Name the release of an integration: its description is fetched, and you add it from there."
       )
 
-  defp form_sentence(:new_runtime), do: gettext("Set up a runtime of Qory's catalogue.")
+  defp form_sentence(:new_runtime), do: gettext("Set up a runtime of the runner's catalogue.")
 
   defp form_sentence(:new_service),
     do: gettext("Set up a service from a built-in definition or one of this workspace's own.")
@@ -559,7 +563,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   end
 
   @impl true
-  def handle_params(_params, _uri, socket) do
+  def handle_params(params, _uri, socket) do
     action = socket.assigns.live_action
 
     cond do
@@ -568,28 +572,53 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
       socket.assigns.may_write ->
         {:noreply,
-         assign(socket, form: fresh_form(action), page_title: title(form_title(action)))}
+         assign(socket,
+           form: fresh_form(action, params, socket.assigns.url_sources),
+           page_title: title(form_title(action))
+         )}
 
       true ->
         {:noreply,
          socket
-         |> put_flash(:error, Common.only_admins())
+         |> put_flash(:error, Common.only_admins(socket.assigns.current_scope))
          |> push_patch(to: Common.index_path(socket.assigns.current_scope))}
     end
   end
 
   defp title(words), do: words <> " · " <> gettext("Workspace settings")
 
-  defp fresh_form(:add_integration),
-    do:
-      to_form(%{"where" => "github.com", "path" => "", "version" => "", "url" => ""},
-        as: :release
-      )
+  # Add integration, empty or with the `source` and `version` of a release asked for
+  # again: a forge path on the forge it names, an address where the instance accepts one.
+  defp fresh_form(:add_integration, params, url_sources?) do
+    empty = %{"where" => "github.com", "path" => "", "version" => "", "url" => ""}
+    source = if is_binary(params["source"]), do: String.trim(params["source"]), else: ""
+    version = if is_binary(params["version"]), do: String.trim(params["version"]), else: ""
 
-  defp fresh_form(:new_runtime),
+    fields =
+      cond do
+        Common.url_source?(source) and url_sources? ->
+          %{empty | "where" => "url", "url" => source}
+
+        Common.url_source?(source) ->
+          empty
+
+        true ->
+          case String.split(source, "/", parts: 2) do
+            [host, path] when host in @forges ->
+              %{empty | "where" => host, "path" => path, "version" => version}
+
+            _other ->
+              empty
+          end
+      end
+
+    to_form(fields, as: :release)
+  end
+
+  defp fresh_form(:new_runtime, _params, _url_sources?),
     do: to_form(%{"runtime" => hd(Runtimes.list()).name, "applies_to" => "all"}, as: :connection)
 
-  defp fresh_form(:new_service),
+  defp fresh_form(:new_service, _params, _url_sources?),
     do:
       to_form(
         %{
@@ -611,6 +640,26 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     scope = socket.assigns.current_scope
     url? = params["where"] == "url"
 
+    if params["where"] in Enum.map(where_options(socket.assigns.url_sources), &elem(&1, 1)),
+      do: request(socket, scope, params, url?),
+      else:
+        {:noreply,
+         assign(socket, :form, to_form(params, as: :release, errors: [where: {"is invalid", []}]))}
+  end
+
+  def handle_event(
+        "create",
+        %{"connection" => params},
+        %{assigns: %{live_action: action}} = socket
+      )
+      when action in [:new_runtime, :new_service] do
+    create(socket, action, params)
+  end
+
+  # An event the page's controls do not send, or sent where they are not: nothing.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp request(socket, scope, params, url?) do
     attrs =
       if url?,
         do: %{"source" => params["url"] || ""},
@@ -634,15 +683,15 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         {:noreply, assign(socket, :form, to_form(params, as: :release, errors: errors))}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, Common.refusal(reason))}
+        {:noreply, put_flash(socket, :error, Common.refusal(scope, reason))}
     end
   end
 
-  def handle_event("create", %{"connection" => params}, socket) do
+  defp create(socket, action, params) do
     scope = socket.assigns.current_scope
 
     result =
-      case socket.assigns.live_action do
+      case action do
         :new_runtime ->
           Connections.create_runtime(scope, %{
             runtime: params["runtime"],
@@ -668,7 +717,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("%{name} is set up.", name: connection.name))
+         |> put_flash(:info, gettext("%{name} is set up.", name: Common.label(connection)))
          |> push_navigate(to: to)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -676,7 +725,8 @@ defmodule ApiaryWeb.IntegrationLive.Index do
          assign(socket, :form, to_form(params, as: :connection, errors: changeset.errors))}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, Common.refusal(reason, socket.assigns.connections))}
+        {:noreply,
+         put_flash(socket, :error, Common.refusal(scope, reason, socket.assigns.connections))}
     end
   end
 
