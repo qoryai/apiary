@@ -1,7 +1,7 @@
 defmodule Apiary.Variables.Variable do
   @moduledoc """
-  A variable: a name and a value a run's process is given, at a level: the workspace's
-  (no `target_id`) or a repository's (a target's, `target_id`). A workspace's variable may
+  A variable: a name and a value for a run's process, which runs don't receive yet, at a
+  level: the workspace's (no `target_id`) or a repository's (a target's, `target_id`). A workspace's variable may
   be `locked`, and then no repository sets its own value for the name.
 
   A name keeps a variable's rule, `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, and is compared

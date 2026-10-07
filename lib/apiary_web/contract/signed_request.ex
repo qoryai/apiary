@@ -48,9 +48,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   **What a verified request leaves.** The conn's `access_key` (with its workspace and
   node), `request_signature`, `instance_id` and `contract_version`. The instance is
   recorded as seen on the key's node (`Apiary.Nodes.seen/3`) once its instance id passes
-  and, on a GET, only when its timestamp is within the window: a stale or replayed GET
-  leaves neither the instance's last sighting nor its name, and still gets its refusal in
-  the order above. On a GET the use of the key is recorded: the runner version, reduced
+  and, on a GET, only when its timestamp is within the window: a GET outside it, stale or
+  replayed after the window closes, leaves neither the instance's last sighting nor its
+  name, and still gets its refusal in the order above. On a GET the use of the key is recorded: the runner version, reduced
   to what the column holds and dropped when it does not fit, and the contract version; on
   a POST the receiver records the use with the delivery. Neither failing fails the
   request. The Logger metadata carries the key's
@@ -241,8 +241,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   defp instance_id(nil), do: {:refuse, 400, "bad_request"}
 
   # The instance is the node's, recorded once the instance id passes. A GET whose
-  # timestamp is outside the window records nothing: a stale or replayed request is an
-  # authentication failure, refused with 401 further on. `Apiary.Nodes.seen/3` never
+  # timestamp is outside the window records nothing: a stale request, or one replayed after
+  # the window closed, is an authentication failure, refused with 401 further on. `Apiary.Nodes.seen/3` never
   # fails.
   defp seen(_conn, _access_key, _instance_id, :unauthorized), do: :ok
 

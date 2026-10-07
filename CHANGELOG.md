@@ -36,8 +36,7 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
   `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
   refusals come in the contract's order, coded: a header sent twice or an instance id
-  absent or malformed is `400` `bad_request`, a key that awaits approval `409`
-  `key_pending` on every endpoint. Discovery names the key's node (`node_id`) and the
+  absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
   the contract's own fixtures at the commit `.runner-contract-ref` pins.
 - The security policy of a workspace: a baseline and rules per repository, observe or
@@ -61,20 +60,39 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
 - Access keys, one kind: a node's or a node pool's, each with one Ed25519 public key. The
-  machine makes its key and keeps its secret; the server holds the public half alone,
-  with the key's stored-secrets flag fixed when it is made. A machine gets its key in one
-  of two ways, both on the node's Access key tab: enrolment by code, where an owner or an
-  admin makes a single-use code valid for 15 minutes, the page shows the command
-  `qory access-key enrol <server> <code>`, and the machine posts the code with its new
-  key to `POST /.well-known/qory-enrolment`, which answers signed, and the key arrives
-  awaiting approval; or a pasted key, the public key `qory access-key create` printed,
-  approved at once and followed by the page Runner file for the key, which shows the
-  runner file's `server` lines (`url`, `access_key_id`, `apiary_public_key`) and the same
-  id and pin as `QORY_ACCESS_KEY_ID` and `QORY_APIARY_PUBLIC_KEY` for a CI, and which an
-  approved key's card opens again. Owners and admins make and revoke codes, add, approve,
-  reject and revoke keys, each in the audit trail; a node holds two keys at a time, at
-  most one of them awaiting approval, and deleting a node revokes its keys and codes.
-  Enrolment is limited per address, 1 a second and 10 at once. Every public key received
+  server never holds a key's secret, only its public half, with the key's stored-secrets
+  flag fixed when it is made. A key is active from the moment it arrives until it is
+  revoked. A node gets its key in one of three ways, all on its Access key tab, which
+  leads owners and admins with the way that suits its kind while it holds no active key
+  (a node, Enrol this machine with qory; a pool, Generate a key for this pool). New
+  enrolment code: an owner or an admin makes a single-use code valid for 15 minutes,
+  with the stored-secrets flag of the key it brings, and the page shows the command
+  `qory access-key enrol <server> <code>`; the machine makes its key, keeps its secret
+  and posts the code with the new public key to `POST /.well-known/qory-enrolment`,
+  which answers signed. The code is the approval: the key it brings is active at once,
+  and the code is refused unless its maker is still an owner or an admin of the
+  workspace when it is redeemed. Generate a key: the browser makes the key (WebCrypto
+  Ed25519, on a page served over HTTPS) and sends Qory its label, its flag and its
+  public half alone; the page Variables for the key then shows `QORY_ACCESS_KEY_ID`,
+  `QORY_ACCESS_KEY_SECRET` (`qak_` and the key's seed) and `QORY_APIARY_PUBLIC_KEY`,
+  the secret once, from the browser's memory, and says that only the secret belongs in
+  a CI's secret store and the runner file then needs only `url`; opened again, it says
+  the secret is gone. The key's card says "Made in a browser by …". Add a public key:
+  the public key `qory access-key create` printed, active as it is added and followed by
+  the page Runner file for the key, which shows the runner file's `server` lines (`url`,
+  `access_key_id`, `apiary_public_key`) and the same id and pin as `QORY_ACCESS_KEY_ID`
+  and `QORY_APIARY_PUBLIC_KEY` for a CI, and which an active key's card opens again.
+  Owners and admins make and revoke codes and add and revoke keys, each in the audit
+  trail; a node holds at most two keys at a time, and deleting a node revokes its keys
+  and codes. Enrolment is limited per address, 1 a second and 10 at once, and answers in
+  the runner contract's order: before the code is looked at, `413` for a body over 8 KiB,
+  `415` `unsupported_media_type` for a `Content-Type` absent or not `application/json`,
+  `400` `bad_request` for a `Content-Type` or `X-Qory-Contract-Version` sent twice, `429`
+  over the address's limit, `400` `unsupported_contract_version` and `400`
+  `invalid_request`; then `401` for a code not accepted and `409` `key_invalid` for a key
+  the key checks refuse or a proof that does not verify, all unsigned; then, signed under
+  `qory-enrol-answer-ed25519-v1`, `429` over the code's own limit, `409` `key_invalid`
+  for a public key used before, `409` `key_limit` and `201`. Every public key received
   passes the contract's key checks, and a public key serves one access key, ever, on the
   instance. Each key's row carries an integrity code, checked before the key is trusted.
 - A node's instances: what a runner using the node's access key reports itself as, a
@@ -96,7 +114,7 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   (`qory access-key enrol` with a code from the node's page, or, for a CI or a pool, a
   key generated in the browser on that page), and See runs here, with the command that
   enrols a machine beside it.
-  The first sign-in lands there. The overview's To review lists a node's approved key
+  The first sign-in lands there. The overview's To review lists a node's active key
   nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who
   reaches it and at what level under People, read there and managed in the
@@ -217,12 +235,17 @@ created concurrently.
 
 `access_keys` holds the keys of nodes: each row's node (`node_id`), Ed25519 public key
 (`public_key`), the time it was received (`received_at`) and how it arrived
-(`arrived_by`), all NOT NULL, with `approved_at`, `approved_by_id`, `allow_secrets`,
-`rate`, `burst`, `enrolment_code_id`, `revoked_by_id`, `integrity_code`,
-`integrity_key_id` and `last_pending_at`, and no secret. The trigger
-`access_keys_fixed_at_insert` refuses a change of a key's node, public key, stored-secrets
-flag or arrival. New: `access_key_enrolment_codes`, a node's enrolment codes, and
-`access_key_public_keys`, the instance's ledger of public keys.
+(`arrived_by`: `code`, with its `enrolment_code_id`, `paste` or `browser`), all NOT NULL,
+with `allow_secrets`, `rate`, `burst`, `revoked_by_id`, `integrity_code` and
+`integrity_key_id`, and no secret. The trigger `access_keys_fixed_at_insert` refuses a
+change of a key's node, public key, stored-secrets flag or arrival. New:
+`access_key_enrolment_codes`, a node's enrolment codes, and `access_key_public_keys`, the
+instance's ledger of public keys. `20261007210000_make_an_enrolled_key_active_at_once`
+drops the approval's columns (`approved_at`, `approved_by_id`, `last_pending_at`), their
+check and index, and the ledger's `pending` state and `rejected` reason; it deletes every
+node's key, with its deliveries, and every enrolment code, and makes every public key in
+the ledger a tombstone, so machines enrol again. `20261008090000_let_a_key_arrive_made_in_a_browser`
+lets a key arrive `browser`.
 
 ### Upgrading
 

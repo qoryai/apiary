@@ -116,9 +116,9 @@ from the names at sign-up: an organisation named `Acme` gives `/acme/main`, and 
 are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
 a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
 
-The people of the organisation are under **Settings › People**, `/<organisation>/settings/people`, each
+The people of the organisation are under **Organisation settings › People**, `/<organisation>/settings/people`, each
 at one of three levels, and every one of them reaches the workspace; the workspace's own
-**Settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
+**Workspace settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
 and leads owners and admins to the organisation's. An invitation is an
 email address and nothing else: the person joins as a member, and an owner changes their
 level afterwards. An **owner** and an **admin** manage the organisation's members and
@@ -150,10 +150,15 @@ domain there is, which says repository, forge and pull request.
 
 A machine posts its runs with an access key of its own, on a **node** of the workspace: a
 node is one permanent machine, a **node pool** a fleet of short-lived instances that share
-one key. The machine makes the key, and Qory Apiary keeps only its public half.
+one key. These are the overview's first two steps, **Add a node** and **Give it a key**.
+Here `qory` makes the key on the machine, and Qory keeps only its public half.
 
 1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
-   `build-01` say, and select **Add node**. The node's **Access key** tab opens.
+   `build-01` say, and select **Add node**. The node's **Access key** tab opens, led by
+   **Enrol this machine with qory**, with three buttons: **New enrolment code**,
+   **Generate a key** and **Add a public key**. (Back on the overview, step 2 now says
+   "build-01 has no key yet." with **New enrolment code** and **Generate a key**, which
+   open the same pages.)
 2. Select **New enrolment code**, leave **Stored secrets** at **Not allowed**, and select
    **Make code**. The page shows the code once, and under "On the machine, run:" the
    command with this server and the code filled in. Select **Copy command**.
@@ -170,12 +175,11 @@ one key. The machine makes the key, and Qory Apiary keeps only its public half.
    server's key, which the code named and the server's signed answer confirmed. The code
    works once, for 15 minutes.
 4. Select **Done**. Once the command has run, the node's **Access key** tab shows the key,
-   **Awaiting approval**, under the machine's name; reload the tab if it is not there yet.
-   Compare its **Fingerprint** with the one `qory` printed, then select **Approve…** and
-   **Yes, approve**.
+   **Active**, under the machine's name; reload the tab if it is not there yet. Its
+   **Fingerprint** is the one `qory` printed; if it is not, select **Revoke…**.
 
-Until the key is approved, every request of the machine is refused `key_pending`, and no
-run starts.
+The code is the approval: the key is active as soon as it arrives, and the machine can
+start runs at once.
 
 The runner file belongs to the machine and to no repository.
 [The runner file's `server` section](runner-file.md) has the rest of it.
@@ -189,13 +193,16 @@ into the node:
    `~/.config/qory/access-key-secret`, and prints the public key and its fingerprint.
 2. On the node's **Access key** tab, select **Add a public key**, give it a **Label**,
    paste the **Public key**, check that the **Fingerprint** under it is the one the
-   machine printed, and select **Add key**. A key you add here is approved as you add it.
+   machine printed, and select **Add key**. The key is active as soon as you add it.
 3. The page **Runner file for build-01** shows the lines to put in
    `~/.config/qory/runner.yaml`, with **Copy lines**, and for a CI the same id and pin as
-   variables. Nothing on it is secret, and an approved key's **Runner file lines** opens it
+   variables. Nothing on it is secret, and an active key's **Runner file lines** opens it
    again.
 
-[Nodes and their keys](nodes.md) says more about both ways, node pools and revoking a key.
+For a CI or a node pool, **Generate a key** on the same tab makes the key in your browser
+and shows its secret once, with the variables the CI sets;
+[Nodes and their keys](nodes.md) says more about all three ways, node pools and revoking
+a key.
 
 ## 7. First run
 

@@ -1,8 +1,9 @@
 defmodule Apiary.Variables do
   @moduledoc """
-  A workspace's variables: names and values a run's process is given, set for the
-  workspace or for one of its repositories (a target), resolved for each holder by
-  `Apiary.Variables.Resolution`.
+  A workspace's variables: names and values for a run's process, set for the workspace or
+  for one of its repositories (a target), resolved for each holder by
+  `Apiary.Variables.Resolution`. Runs don't receive them yet: nothing puts them in the run
+  configuration, and the pages say so.
 
   ## Levels and locks
 
@@ -109,9 +110,9 @@ defmodule Apiary.Variables do
   end
 
   @doc """
-  resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values its runs
-  are given, with which level set and which locked each, for the pages; its `values/1`
-  for the run configuration. `{:ok, resolution}`, for a reader who may `variable.read`;
+  resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values in force
+  for its runs, with which level set and which locked each, for the pages; its `values/1`
+  is the shape the run configuration will take once runs receive them. `{:ok, resolution}`, for a reader who may `variable.read`;
   else `{:error, reason}`.
   """
   @spec resolve(Scope.t(), holder) :: {:ok, Resolution.t()} | {:error, Access.reason()}
@@ -125,7 +126,7 @@ defmodule Apiary.Variables do
   @doc """
   repository_overrides/1 is, for each name the workspace's chain sets (the level above and
   the workspace), the repositories that set it too, as each repository's resolution has
-  it: `:own` for a repository whose value its runs are given in place of the workspace's,
+  it: `:own` for a repository whose own value is in force in place of the workspace's,
   `:ignored` for one whose value a lock above it sets aside. `{:ok, overrides}`, keyed by
   the name without case, each list of `%{target: target, state: state}` by the target's
   system and path, for a reader who may `variable.read`; else `{:error, reason}`.
@@ -371,7 +372,7 @@ defmodule Apiary.Variables do
   workspace's, or the workspace's that overrode the level above's, gives back the larger
   value it hid, to the repository or to the workspace and every repository that takes
   it; and a workspace's locked variable takes its lock with it, so the repositories'
-  values it set aside are given to their runs again, as after `unlock_variable/2`.
+  values it set aside are in force again, as after `unlock_variable/2`.
   """
   @spec delete_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
   def delete_variable(%Scope{} = scope, %Variable{id: id}) do

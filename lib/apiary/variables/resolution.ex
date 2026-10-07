@@ -1,6 +1,6 @@
 defmodule Apiary.Variables.Resolution do
   @moduledoc """
-  The variables a holder's runs are given, resolved down its chain of levels: the level
+  The variables in force for a holder's runs, resolved down its chain of levels: the level
   above the workspace, when the edition keeps one (`Apiary.Policy.Above`, its
   `variables`), then the workspace, then, for a repository, the repository. The holder is
   the workspace, whose chain is the first two, or a repository (a target), whose chain is
@@ -20,10 +20,11 @@ defmodule Apiary.Variables.Resolution do
   itself (`Apiary.Variables.Denied.refused?/1`) or that breaks the name rule is left out,
   from whichever level it comes, so a level above that sets one does not pass it on.
 
-  `values/1` is what goes into the run configuration, `{NAME => value}`. A holder's
-  resolved variables are at most #{128} names and #{65_536} bytes of names and values
-  (`check_limits/1`), the contract's limits; `Apiary.Variables` refuses a save that would
-  take any holder over them.
+  `values/1` is the shape the run configuration will take, `{NAME => value}`; runs don't
+  receive variables yet, and nothing puts it there. A holder's resolved variables are at
+  most #{128} names and #{65_536} bytes of names and values (`check_limits/1`), the
+  contract's limits; `Apiary.Variables` refuses a save that would take any holder over
+  them.
   """
 
   alias Apiary.Variables.{Denied, Variable}
@@ -105,7 +106,7 @@ defmodule Apiary.Variables.Resolution do
   defp valid_name?(name),
     do: Regex.match?(Variable.name_format(), name) and not Denied.refused?(name)
 
-  @doc "values/1 is the resolution as the run configuration takes it: `{NAME => value}`."
+  @doc "values/1 is the resolution as the run configuration will take it: `{NAME => value}`."
   @spec values(t) :: %{String.t() => String.t()}
   def values(%__MODULE__{entries: entries}), do: Map.new(entries, &{&1.name, &1.value})
 

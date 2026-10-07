@@ -214,7 +214,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"secret.use",
-      "link a stored secret to what uses it, so runs are given its value",
+      "link a stored secret to what uses it (runs don't receive its value yet)",
       feature: :security,
       roles: @admins,
       audited:

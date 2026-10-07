@@ -58,8 +58,8 @@ the signature: a request that does not verify is `401` whatever the header says.
 
 A request that verifies records its instance as seen on the key's node
 (`Apiary.Nodes.seen/3`), with its name, the runner version and the contract version, once
-the instance id passes and, on a GET, only when its timestamp is within the window: a stale
-or replayed GET records nothing before its `401`.
+the instance id passes and, on a GET, only when its timestamp is within the window: a GET
+outside it, stale or replayed after the window closes, records nothing before its `401`.
 
 **Signed answers.** Every answer to a request that verified is signed with the server's
 own Ed25519 key, the key every machine pins as `apiary_public_key`

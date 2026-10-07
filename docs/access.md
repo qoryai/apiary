@@ -199,7 +199,8 @@ may act.
 An access key is a node's or a node pool's, with one Ed25519 public key. The keys are
 owners' and admins' alone, and a member adds or revokes none: making and cancelling an
 enrolment code (`access_key.create_code`, `access_key.cancel_code`), adding a pasted key
-(`access_key.add`) and revoking one (`access_key.revoke`). Each is asked of the node, the
+or one made in their browser (`access_key.add`, `arrived_by` `paste` or `browser`) and
+revoking one (`access_key.revoke`). Each is asked of the node, the
 code or the key, and leaves its audit entry. A key is active from the moment it is made. A
 machine that enrols a key with a code asks no one: the code is the authority and the
 approval, as long as the person who made it may still make it, an owner or an admin of its

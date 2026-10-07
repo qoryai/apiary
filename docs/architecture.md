@@ -35,8 +35,8 @@ beside it:
   request verifies against. Each key has one Ed25519 public key, and Apiary holds no
   secret of it; it belongs to one node or node pool: enrolment codes
   (`access_key_enrolment_codes`, kept as their SHA-256), the code being the approval of
-  the key it brings while its maker is still an owner or an admin, a pasted key active at
-  once, revocation, at most two keys at a time per node, and the ledger of public keys
+  the key it brings while its maker is still an owner or an admin, a pasted key or one
+  made in a browser active at once, revocation, at most two keys at a time per node, and the ledger of public keys
   (`access_key_public_keys`), one public key for one access key, ever, whose tombstones
   outlive the purge. `Apiary.Contract.Ed25519`
   holds the checks every public key received passes, the fingerprint and cofactorless
@@ -394,8 +394,8 @@ The key that signs the instance's answers to runners, which every machine pins a
 `apiary_public_key`, is not derived from it: its Ed25519 seed is a secret of its own,
 `APIARY_SIGNING_SECRET`, 32 random bytes with no fallback in production, so that the pin
 does not change with the encryption secret (`Apiary.SigningKey`). The instance refuses at
-boot a seed equal to the encryption secret, the runner contract's published fixture seeds
-and, in production, the development and test seeds `config/` publishes, and holds the key
+boot the runner contract's published fixture seeds and, in production, a seed equal to the
+encryption secret and the development and test seeds `config/` publishes, and holds the key
 in a struct whose `inspect` shows its fingerprint alone.
 
 **Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
