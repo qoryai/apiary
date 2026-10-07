@@ -55,7 +55,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     log_in_user(build_conn(), member)
   end
 
-  # A node's key, approved as it is pasted, on a node of its own unless `node` is given.
+  # A node's key, active as it is pasted, on a node of its own unless `node` is given.
   defp node_key(scope, label, node \\ nil) do
     node = node || Apiary.NodesFixtures.node_fixture(scope)
     %{access_key: key} = node_key_fixture(scope, node, label: label)
@@ -64,10 +64,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
   defp long_ago(%AccessKey{id: id}, days) do
     at = DateTime.add(DateTime.utc_now(), -days, :day)
-    Repo.update_all(from(k in AccessKey, where: k.id == ^id), set: [inserted_at: at])
 
-    Repo.update_all(from(k in AccessKey, where: k.id == ^id and not is_nil(k.approved_at)),
-      set: [approved_at: at]
+    Repo.update_all(from(k in AccessKey, where: k.id == ^id),
+      set: [inserted_at: at, received_at: at]
     )
   end
 
@@ -122,7 +121,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "A machine posts once it is enrolled on a node, with a key of its own."
 
       assert text(view, "#onboarding") =~
-               "On the machine, run qory access-key enrol with a code from the node, then approve the key it brings. Or paste the public key qory access-key create prints."
+               "On the machine, run qory access-key enrol with a code from the node, or paste the public key qory access-key create prints."
+
+      refute text(view, "#onboarding") =~ ~r/approv/i
 
       assert has_element?(
                view,
@@ -178,6 +179,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "An owner or admin adds nodes and enrols machines."
              )
 
+      # Step 2 tells a member who enrols the machine, not to do it themselves.
+      assert text(view, "#onboarding") =~
+               "An owner or admin enrols the machine, with a code from the node or the public key qory access-key create prints."
+
+      refute text(view, "#onboarding") =~ "On the machine, run"
+
       refute has_element?(view, "#onboarding-new-node")
       refute has_element?(view, "#onboarding-new-pool")
     end
@@ -209,7 +216,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#overview-targets")
     end
 
-    test "a key awaits approval: step 2 stays, with the way to approve it", %{
+    test "a key a code brought ticks step 2: it is active as it arrives", %{
       conn: conn,
       scope: scope
     } do
@@ -217,41 +224,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       pending_key_fixture(scope, pool, %{label: "spot-a"})
       view = open(conn, scope)
 
-      assert has_element?(view, "#onboarding[data-step='2']")
-
-      assert text(view, "#onboarding-pending") ==
-               "spot-a awaits approval on spot-runners. Approve it"
-
-      assert has_element?(
-               view,
-               "#onboarding-pending a[href='#{workspace_path(scope, "/nodes/#{pool.public_id}/access-key")}']",
-               "Approve it"
-             )
+      assert has_element?(view, "#onboarding[data-step='3']")
+      assert has_element?(view, "#onboarding .q-step-done", "Enrol the machine")
+      refute has_element?(view, "#onboarding-pending")
+      refute text(view, "#onboarding") =~ ~r/approv/i
     end
 
-    test "a key awaits approval, a member: the key named, no way to approve it offered",
-         %{scope: scope} = ctx do
-      pool = pool_fixture(scope, %{name: "spot-runners"})
-      pending_key_fixture(scope, pool, %{label: "spot-a"})
-      view = open(as_member(ctx), scope)
-
-      assert has_element?(view, "#onboarding[data-step='2']")
-      assert text(view, "#onboarding-pending") == "spot-a awaits approval on spot-runners."
-      refute has_element?(view, "#onboarding-pending a")
-      refute text(view, "#onboarding") =~ "Approve it"
-
-      # An admin is offered it, as an owner is.
-      %{user: admin} = member_fixture(scope, :admin)
-      view = open(log_in_user(build_conn(), admin), scope)
-
-      assert has_element?(
-               view,
-               "#onboarding-pending a[href='#{workspace_path(scope, "/nodes/#{pool.public_id}/access-key")}']",
-               "Approve it"
-             )
-    end
-
-    test "an approved key, unused: step 2 done, step 3 current, listening for the first post",
+    test "a key, unused: step 2 done, step 3 current, listening for the first post",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, %{name: "build-01"})
       node_key_fixture(scope, node, %{label: "build-01"})
@@ -841,11 +820,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       long_ago(idle, 34)
       fresh = node_key(scope, "build-02", node)
       {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
-      # A key awaiting approval is not idle: it waits on its node's tab.
-      %{access_key: pending} =
+      # A key a code brought is weighed too, from when it arrived.
+      %{access_key: enrolled} =
         pending_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
 
-      long_ago(pending, 40)
+      long_ago(enrolled, 40)
 
       view = open(conn, scope)
       assert text(view, "#att-key-#{idle.id}") =~ "old-runner #{idle.key_id}"
@@ -862,7 +841,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
 
       refute has_element?(view, "#att-key-#{fresh.id}")
-      refute has_element?(view, "#att-key-#{pending.id}")
+      assert text(view, "#att-key-#{enrolled.id}") =~ "Never used in 40 days"
 
       # A member may not revoke a node's key: the list, which holds acts, has no item for it.
       %{user: member} = member_fixture(scope, :member)

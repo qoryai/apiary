@@ -44,7 +44,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   alias Apiary.Runs.Filters
 
-  alias Apiary.Access
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes
@@ -111,7 +110,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           nodes={@onboarding.nodes}
           keys={@onboarding.keys}
           may_add={@onboarding.may_add}
-          may_approve={@onboarding.may_approve}
           server={@onboarding.server}
           landed={@landed}
         />
@@ -721,7 +719,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     if socket.assigns.live? do
       {:noreply, read(socket, :attention)}
     else
-      # The box reads its steps from the record: a node, an approved key, a key used since.
+      # The box reads its steps from the record: a node, a key, a key used since.
       {:noreply,
        assign(socket,
          onboarding: read_onboarding(socket.assigns.current_scope),
@@ -1244,20 +1242,21 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 
-  # The node keys the idle item weighs: the approved ones, for a reader who may revoke them
-  # (`access_key.revoke`, owners and admins). A key awaiting approval is not idle: it waits
-  # on its node's Access key tab. The list holds acts, and a member has none on a key.
+  # The node keys the idle item weighs: every key not revoked (each is active), for a reader
+  # who may revoke them (`access_key.revoke`, owners and admins). The list holds acts, and
+  # a member has none on a key.
   defp idle_candidates(assigns) do
     if Common.may?(assigns.current_scope, :"access_key.revoke"),
-      do: Enum.filter(assigns.keys, & &1.approved_at),
+      do: assigns.keys,
       else: []
   end
 
-  # Idle since the key's last use, or since its approval when it has never been used.
+  # Idle since the key's last use, or since it arrived when it has never been used.
   defp idle_days(%AccessKey{last_used_at: %DateTime{} = at}, now),
     do: DateTime.diff(now, at, :day)
 
-  defp idle_days(%AccessKey{approved_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
+  defp idle_days(%AccessKey{received_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
+  defp idle_days(%AccessKey{inserted_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
   defp idle_days(_key, _now), do: nil
 
   # The list as shown: rows already there keep their place and are patched, rows whose item
@@ -1575,19 +1574,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # What the empty workspace's box reads: the nodes and pools in use, their keys not
-  # revoked, whether the reader may add a node and approve the key the box names (the
-  # newest awaiting approval, as the node's Access key tab asks), and the address the
-  # command names.
+  # revoked, whether the reader may add a node, and the address the command names.
   defp read_onboarding(scope) do
     counts = Nodes.count_nodes(scope)
-    keys = AccessKeys.list_workspace_node_keys(scope)
-    pending = Enum.find(keys, &is_nil(&1.approved_at))
 
     %{
       nodes: counts.node + counts.pool,
-      keys: keys,
+      keys: AccessKeys.list_workspace_node_keys(scope),
       may_add: Common.may?(scope, :"node.create"),
-      may_approve: pending != nil and Access.can?(scope, :"access_key.approve", pending.node),
       server: ApiaryWeb.Endpoint.url()
     }
   end
