@@ -4,6 +4,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
@@ -91,10 +92,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   end
 
   describe "the empty workspace" do
-    test "no key: the checklist is the page, step 1 current, nothing else renders", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "no node: the box is the page, step 1 current, leading to a new node, nothing else renders",
+         %{conn: conn, scope: scope} do
       {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       assert html =~ scope.workspace.name
@@ -107,8 +106,42 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
-      assert has_element?(view, "#onboarding .q-step-current", "Create an access key")
+      assert has_element?(view, "#onboarding .q-step-current", "Add a node")
+
+      assert text(view, "#onboarding") =~
+               "A machine posts once it is enrolled on a node, with a key of its own."
+
+      assert text(view, "#onboarding") =~
+               "On the machine, run qory access-key enrol with a code from the node, then approve the key it brings. Or paste the public key qory access-key create prints."
+
+      assert has_element?(
+               view,
+               "#onboarding-new-node[href='#{workspace_path(scope, "/nodes/new")}']",
+               "New node"
+             )
+
+      assert has_element?(
+               view,
+               "#onboarding-new-pool[href='#{workspace_path(scope, "/nodes/new-pool")}']",
+               "New node pool"
+             )
+
+      refute has_element?(view, "#onboarding-nodes")
+      refute has_element?(view, "#onboarding-members")
+      refute has_element?(view, "#onboarding-pending")
+      assert text(view, "#onboarding") =~ "What you run on the machine"
+
+      assert text(view, "#onboarding-command") ==
+               "qory access-key enrol #{ApiaryWeb.Endpoint.url()} qec_…"
+
+      assert text(view, "#onboarding") =~
+               "The code comes from the node's Access key tab, New enrolment code. It works once, for 15 minutes."
+
       assert has_element?(view, "#onboarding", "Listening for the first post from a machine.")
+      # Nothing in it asks for a workspace key.
+      refute text(view, "#onboarding") =~ "Create an access key"
+      refute has_element?(view, "#onboarding-create")
+      refute has_element?(view, "#onboarding a[href*='settings/keys']")
       refute has_element?(view, "#overview-strip")
       refute has_element?(view, "#days")
       refute has_element?(view, "#overview-policy")
@@ -117,35 +150,99 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       {:ok, _lv, html} =
         view
-        |> element("#onboarding-create")
+        |> element("#onboarding-new-node")
         |> render_click()
-        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+        |> follow_redirect(conn, workspace_path(scope, "/nodes/new"))
 
-      assert html =~ "New access key"
+      assert html =~ "New node"
     end
 
-    test "a key, nothing posted: step 1 done, step 2 current, the box and nothing else", %{
+    test "no node, a member: no buttons, who adds one instead", %{scope: scope} = ctx do
+      view = open(as_member(ctx), scope)
+
+      assert has_element?(view, "#onboarding[data-step='1']")
+
+      assert has_element?(
+               view,
+               "#onboarding-members",
+               "An owner or admin adds nodes and enrols machines."
+             )
+
+      refute has_element?(view, "#onboarding-new-node")
+      refute has_element?(view, "#onboarding-new-pool")
+    end
+
+    test "a node, no key: step 1 done, step 2 current, the box and nothing else", %{
       conn: conn,
       scope: scope
     } do
-      %{access_key: key} = access_key_fixture(scope, label: "build-01")
+      node_fixture(scope, %{name: "build-01"})
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='2'] h2", "Send your first run")
-      assert text(view, "#onboarding") =~ "One key can serve many hosts"
-      assert has_element?(view, "#onboarding .q-step-done", "Create an access key")
-      assert has_element?(view, "#onboarding .q-step-current", "Paste the server block")
-      assert has_element?(view, "#onboarding-keys", "Manage access keys")
-      assert text(view, "#onboarding") =~ key.key_id
+      assert has_element?(view, "#onboarding .q-step-done", "Add a node")
+      assert has_element?(view, "#onboarding .q-step-current", "Enrol the machine")
+
+      assert text(view, "#onboarding") =~
+               "The machine makes its own key, and Qory keeps only the public half."
+
+      assert has_element?(
+               view,
+               "#onboarding-nodes[href='#{workspace_path(scope, "/nodes")}']",
+               "Go to nodes"
+             )
+
+      refute has_element?(view, "#onboarding-new-node")
+      refute has_element?(view, "#onboarding-pending")
+      assert text(view, "#onboarding") =~ "What you run on the machine"
       refute has_element?(view, "#overview-strip")
       refute has_element?(view, "#overview-targets")
     end
 
-    test "a key was used, no run yet: step 2 done, step 3 current, listening for the run", %{
+    test "a key awaits approval: step 2 stays, with the way to approve it", %{
       conn: conn,
       scope: scope
     } do
-      %{access_key: key} = access_key_fixture(scope, label: "build-01")
+      pool = pool_fixture(scope, %{name: "spot-runners"})
+      pending_key_fixture(scope, pool, %{label: "spot-a"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='2']")
+
+      assert text(view, "#onboarding-pending") ==
+               "spot-a awaits approval on spot-runners. Approve it"
+
+      assert has_element?(
+               view,
+               "#onboarding-pending a[href='#{workspace_path(scope, "/nodes/#{pool.public_id}/access-key")}']",
+               "Approve it"
+             )
+    end
+
+    test "an approved key, unused: step 2 done, step 3 current, listening for the first post",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, %{name: "build-01"})
+      node_key_fixture(scope, node, %{label: "build-01"})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#onboarding[data-step='3']")
+      assert has_element?(view, "#onboarding .q-step-done", "Enrol the machine")
+      assert has_element?(view, "#onboarding .q-step-current", "See runs here")
+
+      assert text(view, "#onboarding") =~
+               "From the first post on, every run of that machine lands in this workspace."
+
+      assert text(view, "#onboarding") =~ "What you ran on the machine"
+      assert has_element?(view, "#onboarding-nodes", "Go to nodes")
+      assert has_element?(view, "#onboarding", "Listening for the first post from a machine.")
+    end
+
+    test "a key was used, no run yet: step 3 current, listening for the run", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, %{name: "build-01"})
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
       {:ok, _} = AccessKeys.touch(key, %{last_runner_version: "v0.4.2", last_contract_version: 1})
       view = open(conn, scope)
 
@@ -153,12 +250,24 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#onboarding .q-step-current", "See runs here")
       assert text(view, "#onboarding") =~ "The machine has verified with its key."
       assert text(view, "#onboarding") =~ "Listening for the first run. build-01 verified"
-      assert text(view, "#onboarding") =~ "What you pasted into ~/.config/qory/runner.yaml"
+    end
+
+    test "the box reads its steps again on the refresh", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+      assert has_element?(view, "#onboarding[data-step='1']")
+
+      node = node_fixture(scope, %{name: "build-01"})
+      send(view.pid, :refresh)
+      assert has_element?(view, "#onboarding[data-step='2']")
+
+      node_key_fixture(scope, node)
+      send(view.pid, :refresh)
+      assert has_element?(view, "#onboarding[data-step='3']")
     end
 
     test "the first run lands: step 3 ticks, the box stays with a link, and leaves on the next mount",
          %{conn: conn, scope: scope} do
-      access_key_fixture(scope, label: "build-01")
+      node_fixture(scope, %{name: "build-01"})
       view = open(conn, scope)
       assert has_element?(view, "#onboarding[data-step='2']")
 

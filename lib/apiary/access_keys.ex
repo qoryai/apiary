@@ -458,6 +458,22 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
+  list_workspace_node_keys/1 is the keys of the scope's workspace's nodes and node pools in
+  use, neither revoked nor rejected (so approved or awaiting approval), each with its
+  node, newest first.
+  """
+  @spec list_workspace_node_keys(Scope.t()) :: [AccessKey.t()]
+  def list_workspace_node_keys(%Scope{} = scope) do
+    Repo.all(
+      from k in in_workspace(AccessKey, scope),
+        join: n in assoc(k, :node),
+        where: is_nil(k.revoked_at) and is_nil(n.deleted_at),
+        order_by: [desc: k.inserted_at, desc: k.id],
+        preload: [node: n]
+    )
+  end
+
+  @doc """
   list_enrolment_codes/2 is `node`'s outstanding enrolment codes, neither used, nor
   cancelled, nor expired, newest first. A code itself is never among what they hold.
   """

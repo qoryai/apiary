@@ -46,6 +46,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Retention
   alias Apiary.Runs
@@ -106,8 +107,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         <.onboarding
           :if={@checklist?}
           scope={@current_scope}
-          keys={@keys}
-          preview={@preview}
+          nodes={@onboarding.nodes}
+          keys={@onboarding.keys}
+          may_add={@onboarding.may_add}
+          server={@onboarding.server}
           landed={@landed}
         />
 
@@ -254,7 +257,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         landed: nil,
         now: now,
         today: DateTime.to_date(now),
-        preview: preview(keys),
+        onboarding: if(posted?, do: nil, else: read_onboarding(scope)),
         table?: false,
         chart_w: 640,
         rule_panel: nil,
@@ -716,14 +719,12 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     if socket.assigns.live? do
       {:noreply, read(socket, :attention)}
     else
-      # The checklist reads its steps from the record: a key used since is step 2 done.
-      keys =
-        socket.assigns.current_scope
-        |> AccessKeys.list_access_keys()
-        |> Enum.filter(&is_nil(&1.revoked_at))
-
+      # The box reads its steps from the record: a node, an approved key, a key used since.
       {:noreply,
-       assign(socket, keys: sort_keys(keys), preview: preview(keys), now: DateTime.utc_now())}
+       assign(socket,
+         onboarding: read_onboarding(socket.assigns.current_scope),
+         now: DateTime.utc_now()
+       )}
     end
   end
 
@@ -1561,20 +1562,17 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     )
   end
 
-  # The server block the checklist previews: the real key id of the most recent key once
-  # there is one, the secret always as dots (it was shown once).
-  defp preview(keys) do
-    key_id =
-      case Enum.sort_by(keys, & &1.inserted_at, {:desc, DateTime}) do
-        [%AccessKey{key_id: key_id} | _] -> key_id
-        [] -> "ak_················"
-      end
+  # What the empty workspace's box reads: the nodes and pools in use, their keys not
+  # revoked, whether the reader may add a node, and the address the command names.
+  defp read_onboarding(scope) do
+    counts = Nodes.count_nodes(scope)
 
-    AccessKeys.server_block(
-      %AccessKey{key_id: key_id},
-      "························",
-      ApiaryWeb.Endpoint.url()
-    )
+    %{
+      nodes: counts.node + counts.pool,
+      keys: AccessKeys.list_workspace_node_keys(scope),
+      may_add: Common.may?(scope, :"node.create"),
+      server: ApiaryWeb.Endpoint.url()
+    }
   end
 
   defp not_loaded,

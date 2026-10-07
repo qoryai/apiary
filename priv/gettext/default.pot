@@ -503,6 +503,11 @@ msgid_plural "%{instance} is cleared: its %{count} open runs are marked lost."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{key} awaits approval on %{node}. %{approve}"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -2639,6 +2644,11 @@ msgstr ""
 msgid "Add a host rule"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add a node"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add a node for a machine that is always there, or a node pool for instances that come and go."
@@ -2753,6 +2763,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add value…"
+msgstr ""
+
+#: lib/apiary_web/controllers/page_html/home.html.heex
+#, elixir-autogen, elixir-format
+msgid "Add your machines as nodes, enrol each with a key of its own, and every run they make lands here."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3125,6 +3140,11 @@ msgstr ""
 msgid "An invitation expires after seven days."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "An owner or admin adds nodes and enrols machines."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An owner or admin adds nodes."
@@ -3160,6 +3180,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Approve %{label}?"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approve it"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -4005,7 +4030,6 @@ msgstr ""
 msgid "Create account"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -4849,6 +4873,11 @@ msgstr ""
 msgid "Enforces on its own"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Enrol the machine"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Enrolment code"
@@ -5495,11 +5524,6 @@ msgstr ""
 msgid "General"
 msgstr ""
 
-#: lib/apiary_web/controllers/page_html/home.html.heex
-#, elixir-autogen, elixir-format
-msgid "Give your workspace an access key, paste it into the runner file on your machines, and every run they make lands here."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Go"
@@ -5518,6 +5542,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Go to access keys"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Go to nodes"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -6374,11 +6403,6 @@ msgstr ""
 msgid "Label hint"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Label it after the machine or environment."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Labels"
@@ -6872,11 +6896,6 @@ msgstr ""
 msgid "Making"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Manage access keys"
-msgstr ""
-
 #: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Manage people"
@@ -7142,12 +7161,14 @@ msgid "New lines"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New node"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New node pool"
@@ -7931,7 +7952,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
+msgid "Nothing has posted to this workspace yet. A machine posts once it is enrolled on a node, with a key of its own."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -8073,6 +8094,11 @@ msgstr ""
 msgid "On %{reported}; %{in_force} in force"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "On the machine, run %{enrol} with a code from the node, then approve the key it brings. Or paste the public key %{create} prints."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "On the runner's deny list"
@@ -8096,6 +8122,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "One agent's events: the main session, or a subagent from its start to its finish."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "One per machine, or a node pool for a fleet of short-lived instances that share one key."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -8495,11 +8526,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Password"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Paste the server block into the runner file"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -10567,6 +10593,11 @@ msgstr ""
 msgid "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The code comes from the node's Access key tab, %{new_code}. It works once, for 15 minutes."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The coding agent a run starts in the targets it applies to."
@@ -10694,11 +10725,6 @@ msgstr ""
 msgid "The invitation is valid for seven days. If you were not expecting it, ignore this email."
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created."
-msgstr ""
-
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The key stops verifying at once. Machines still using it fail their next request and do not start new runs. This cannot be undone; create a new key to reconnect them."
@@ -10772,6 +10798,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The machine makes its own key, and Qory keeps only the public half."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -11113,11 +11144,6 @@ msgid "The secret and its value are deleted. This cannot be undone."
 msgid_plural "The secret and its %{number} values are deleted. This cannot be undone."
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The secret is shown once, on the page that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
-msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
@@ -12166,12 +12192,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "What you pasted into %{file}"
+msgid "What you ran on the machine"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "What you will paste into %{file}"
+msgid "What you run on the machine"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
