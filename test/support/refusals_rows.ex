@@ -253,12 +253,6 @@ defmodule ApiaryWeb.RefusalsRows do
        "create_code", %{"code" => %{}}},
       {:"access_key.create_code", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}}},
-      {:"access_key.approve", :member, "/:org/:workspace/nodes/:node/access-key", "approve", %{}},
-      {:"access_key.approve", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{}},
-      {:"access_key.reject", :member, "/:org/:workspace/nodes/:node/access-key", "reject", %{}},
-      {:"access_key.reject", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/reject", "reject", %{}},
       {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
       {:"access_key.revoke", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
@@ -272,9 +266,6 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :not_found_at_mount},
       {:"access_key.create_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}},
-       answer: :not_found_at_mount},
-      {:"access_key.approve", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{},
        answer: :not_found_at_mount},
       {:"access_key.cancel_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
@@ -338,6 +329,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one yet, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
+  # Approving or rejecting a node's key: no page offers either since a key is active as it
+  # arrives (73 a), and the actions leave `Apiary.Access` with the pending state.
   @impl true
   def exempt do
     %{
@@ -360,7 +353,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.use",
         :"connection.read",
         :"connection.write"
-      ]
+      ],
+      no_page: [:"access_key.approve", :"access_key.reject"]
     }
   end
 
