@@ -126,7 +126,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # and leads to the rule.
       cdn = dst("files.cdn.example")
       assert has_element?(view, "button##{cdn}-act.q-act-lock")
-      assert text(view, "##{cdn}-menu .q-mh-t") =~ "Locked by #{scope.user.email} on "
+
+      assert text(view, "##{cdn}-menu li:first-child .q-mh-t") =~
+               "Locked by #{scope.user.email} on "
 
       assert has_element?(
                view,
@@ -136,9 +138,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # The wall: a lock, and the menu says why no rule changes it.
       wall = dst("169.254.169.254", 80)
       assert has_element?(view, "span##{wall}-act.q-act-lock")
-      assert text(view, "##{wall}-menu .q-mh-t") == "No rule changes this"
+      assert text(view, "##{wall}-menu li:first-child .q-mh-t") == "No rule changes this"
 
-      assert text(view, "##{wall}-menu .q-mh-s") ==
+      assert text(view, "##{wall}-menu li:first-child .q-mh-s") ==
                "The wall refuses the machine's own address, in either mode."
 
       # A row a rule allows: Deny as text, and in the menu, where it opens the same
@@ -185,7 +187,11 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(##{registry} .q-why-l[title="Rule registry.example"]))
       refute has_element?(view, "#destinations .q-rowbtn")
 
-      # Only this host narrows the list to it; Copy the host copies it.
+      # Under This list, Show only narrows the list to the host; Copy copies it.
+      assert has_element?(view, "##{registry}-menu li:first-child .q-mh-t", "Policy")
+      assert has_element?(view, "##{registry}-menu .q-mh-t", "This list")
+      assert has_element?(view, "##{registry}-menu-host", "Show only registry.example")
+      assert has_element?(view, "##{registry}-menu-copy", "Copy registry.example")
       assert has_element?(view, "##{registry}-menu-copy[data-copy='registry.example']")
       view |> element("##{registry}-menu-host") |> render_click()
       assert_patch(view, workspace_path(scope, "/network?host=registry.example"))

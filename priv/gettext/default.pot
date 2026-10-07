@@ -3888,6 +3888,11 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy %{host}"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Copy block"
@@ -3932,11 +3937,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copy the digest"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Copy the host"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -8239,11 +8239,6 @@ msgstr ""
 msgid "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Only this host"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -8580,6 +8575,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -10025,6 +10021,11 @@ msgid "Show more"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show only %{host}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Show the locked rule"
@@ -11379,6 +11380,7 @@ msgstr ""
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "This list"

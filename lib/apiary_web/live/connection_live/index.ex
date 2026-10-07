@@ -10,9 +10,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   A row is one line on the row spec (`ApiaryWeb.RunComponents.connection_row/1`): no tint
   and no bordered button; Allow and Deny are text shown on hover, focus and while open,
-  beside the row's ⋯ menu (Allow…, Deny…, Only this host, Copy the host), and a locked
-  rule is a lock whose menu says who locked it (`ApiaryWeb.ConnectionLive.Rules.locks/2`,
-  one read for the page).
+  beside the row's ⋯ menu (Allow… and Deny… under Policy, Show only and Copy with the
+  row's host under This list), and a locked rule is a lock whose menu says who locked it
+  (`ApiaryWeb.ConnectionLive.Rules.locks/2`, one read for the page).
 
   It is narrowed as every list is (docs/ui.md, Lists): the decisions as views (every
   destination, the denied, the allowed, each counted under the other filters), one query

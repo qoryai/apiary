@@ -596,8 +596,9 @@ version. Only the version in force is exported; another version's path sends on 
   run; only the timeline's inline connections keep a glyph. A row's one text action, Allow on a destination that needs allowing and Deny on
   an allowed one, shows on hover, on focus inside the row and while the row's panel or
   menu is open (always on a touch screen, in the menu alone below 600 px of table); the ⋯
-  menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the host. A locked
-  rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
+  menu (`rule_menu/1`) holds Allow… and Deny… under Policy, then Show only and Copy with
+  the row's host under This list, a long host cut in the middle and whole in its title
+  and accessible name. A locked rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
   rule changes it, and leads to the rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
   here would not be in force and leads to that level's policy with the host, for a reader
