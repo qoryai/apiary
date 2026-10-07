@@ -5326,8 +5326,16 @@
   .q-run-meta a:hover {
     color: var(--color-base-content);
   }
+  /* A long target gives way: on a line of its own it ends in an ellipsis, whole in its
+     title. */
+  .q-run-meta > #run-target {
+    min-width: 0;
+  }
   .q-run-meta .q-tname {
+    min-width: 0;
+    overflow: hidden;
     font-size: 0.78125rem;
+    text-overflow: ellipsis;
   }
   .q-run-target:hover .q-tname {
     text-decoration: underline;
@@ -6370,6 +6378,10 @@
   @media (max-width: 767.98px) {
     .q-run-sub {
       flex-direction: column;
+    }
+    /* The meta lines take the column's width, so a long line is cut, never the page. */
+    .q-run-meta-wrap {
+      align-self: stretch;
     }
     .q-run-head h1 {
       font-size: 1.125rem;

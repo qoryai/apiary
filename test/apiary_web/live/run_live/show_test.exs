@@ -93,6 +93,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-meta a#run-target[href="#{target}"]), "acme/shop")
       # one system has acme/shop: the path is written alone
       refute has_element?(lv, "#run-target .q-tname-sys")
+      # a long name is cut on the meta line (`.q-run-meta > #run-target`), whole in its title
+      assert has_element?(lv, ~s(#run-meta > #run-target > .q-tname[title="acme/shop"]))
       assert has_element?(lv, "#run-runtime", "claude 2.1.273")
       assert has_element?(lv, "#run-host", run.host)
       assert has_element?(lv, "#run-meta time#run-started[datetime]")
@@ -1910,6 +1912,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       assert has_element?(lv, "#run-why", "I could not finish: the tests still fail.")
+      # one cut line in the meta lines' box, which takes the column's width on a phone
+      assert has_element?(lv, ".q-run-sub > .q-run-meta-wrap > #run-why > .q-run-why-t[title]")
 
       jump = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=2"
       assert has_element?(lv, ~s(#run-why-jump[href="#{jump}"]), "Jump to it")
