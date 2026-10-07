@@ -181,8 +181,8 @@ The runner file belongs to the machine and to no repository.
 
 ## 6. Or paste the key
 
-A machine that cannot reach the server while you make a code, or that you would rather
-not give one, can paste its key instead:
+Instead of a code, the machine can make its key on its own, and you paste the public key
+into the node:
 
 1. On the machine, `qory access-key create` makes the key, keeps its secret in
    `~/.config/qory/access-key-secret`, and prints the public key and its fingerprint.
