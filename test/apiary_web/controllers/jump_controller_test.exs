@@ -41,9 +41,15 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert runs["href"] == workspace_path(scope, "/runs")
     assert runs["detail"] == scope.workspace.name
 
-    # nothing else is listed for nothing typed but what New offers
+    # nothing else is listed for nothing typed but what New offers; Add integration with
+    # the `security` feature, whose integrations are
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
-    assert labels(group(answer, "Actions")) == ["New access key", "Invite people"]
+
+    assert labels(group(answer, "Actions")) ==
+             if(Apiary.Features.on?(:security),
+               do: ["New access key", "Add integration", "Invite people"],
+               else: ["New access key", "Invite people"]
+             )
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
