@@ -462,17 +462,11 @@ defmodule ApiaryWeb.Routes do
               # A node's Access key tab: its keys and its outstanding enrolment codes; adding
               # a key by its public key and making a code, each a page of its own; and each
               # act on a key or a code confirmed in place, at a path of its own; and an
-              # approved key's runner file, a page of its own. A key is named by its key id
+              # active key's runner file, a page of its own. A key is named by its key id
               # (`ak_…`), a code by its row's id: never by the code.
               live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
               live "/nodes/:node_id/access-key/add", NodeLive.AccessKey, :add_key
               live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
-
-              live "/nodes/:node_id/access-key/keys/:key_id/approve",
-                   NodeLive.AccessKey,
-                   :approve
-
-              live "/nodes/:node_id/access-key/keys/:key_id/reject", NodeLive.AccessKey, :reject
               live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
 
               live "/nodes/:node_id/access-key/keys/:key_id/runner-file",

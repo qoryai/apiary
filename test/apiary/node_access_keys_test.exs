@@ -38,7 +38,7 @@ defmodule Apiary.NodeAccessKeysTest do
     do: errors_on(changeset)[:public_key] == ["this key cannot be used"]
 
   describe "a pasted key" do
-    test "is approved at once, with its fingerprint and its row in the ledger", ctx do
+    test "is active at once, with its fingerprint and its row in the ledger", ctx do
       %{scope: scope, node: node} = ctx
       pair = ed25519_key_pair()
 
@@ -54,7 +54,7 @@ defmodule Apiary.NodeAccessKeysTest do
       assert key.node_id == node.id
       assert key.arrived_by == :paste
       assert key.allow_secrets
-      assert key.approved_by_id == scope.user.id
+      assert key.created_by_id == scope.user.id
       assert "ak_" <> _ = key.key_id
       assert String.length(AccessKey.fingerprint(key)) == 22
 
@@ -100,26 +100,25 @@ defmodule Apiary.NodeAccessKeysTest do
   end
 
   describe "a ledger changed outside the application" do
-    test "a key whose row is missing is revoked, rejected and deleted with its node all the same",
-         ctx do
+    test "a key whose row is missing is revoked and deleted with its node all the same", ctx do
       %{scope: scope, node: node} = ctx
-      {:ok, approved} = paste(scope, node)
-      %{access_key: pending} = pending_key_fixture(scope, node)
+      {:ok, pasted} = paste(scope, node)
+      %{access_key: enrolled} = enrolled_key_fixture(scope, node)
       {:ok, other} = paste(scope, node_fixture(scope))
 
       Repo.delete_all(
         from p in PublicKey,
-          where: p.public_key in ^[approved.public_key, pending.public_key, other.public_key]
+          where: p.public_key in ^[pasted.public_key, enrolled.public_key, other.public_key]
       )
 
-      assert {:ok, _} = AccessKeys.revoke_access_key(scope, approved)
-      assert {:ok, _} = AccessKeys.reject(scope, pending)
+      assert {:ok, _} = AccessKeys.revoke_access_key(scope, pasted)
+      assert {:ok, _} = AccessKeys.revoke_access_key(scope, enrolled)
 
       assert %PublicKey{state: :tombstone, retired_reason: :revoked, key_id: key_id} =
-               ledger(approved.public_key)
+               ledger(pasted.public_key)
 
-      assert key_id == approved.key_id
-      assert %PublicKey{state: :tombstone, retired_reason: :rejected} = ledger(pending.public_key)
+      assert key_id == pasted.key_id
+      assert %PublicKey{state: :tombstone, retired_reason: :revoked} = ledger(enrolled.public_key)
 
       other_node = Repo.get!(Apiary.Nodes.Node, other.node_id)
       assert {:ok, _} = Nodes.delete_node(scope, other_node)
@@ -132,13 +131,13 @@ defmodule Apiary.NodeAccessKeysTest do
          ctx do
       %{scope: scope, node: node} = ctx
       {:ok, key} = paste(scope, node)
-      %{access_key: pending} = pending_key_fixture(scope, node)
+      %{access_key: enrolled} = enrolled_key_fixture(scope, node)
 
       Repo.update_all(from(p in PublicKey, where: p.public_key == ^key.public_key),
         set: [key_id: "ak_0000000000000000"]
       )
 
-      Repo.update_all(from(p in PublicKey, where: p.public_key == ^pending.public_key),
+      Repo.update_all(from(p in PublicKey, where: p.public_key == ^enrolled.public_key),
         set: [key_id: "ak_1111111111111111"]
       )
 
@@ -155,28 +154,7 @@ defmodule Apiary.NodeAccessKeysTest do
       assert {:ok, _deleted} = Nodes.delete_node(scope, node)
 
       assert %PublicKey{state: :tombstone, retired_reason: :node_deleted} =
-               ledger(pending.public_key)
-    end
-
-    test "an approval does not trust a key whose row is missing or not its own", ctx do
-      %{scope: scope, node: node} = ctx
-      %{access_key: missing} = pending_key_fixture(scope, node)
-      Repo.delete_all(from p in PublicKey, where: p.public_key == ^missing.public_key)
-
-      {result, log} = ExUnit.CaptureLog.with_log(fn -> AccessKeys.approve(scope, missing) end)
-      assert result == {:error, :integrity}
-      assert log =~ missing.key_id
-      assert AccessKey.status(Repo.get!(AccessKey, missing.id)) == :pending
-
-      {:ok, _} = AccessKeys.reject(scope, missing)
-      %{access_key: foreign} = pending_key_fixture(scope, node)
-
-      Repo.update_all(from(p in PublicKey, where: p.public_key == ^foreign.public_key),
-        set: [key_id: "ak_0000000000000000"]
-      )
-
-      {result, _log} = ExUnit.CaptureLog.with_log(fn -> AccessKeys.approve(scope, foreign) end)
-      assert result == {:error, :integrity}
+               ledger(enrolled.public_key)
     end
   end
 
@@ -211,14 +189,10 @@ defmodule Apiary.NodeAccessKeysTest do
       assert cannot_be_used?(changeset)
     end
 
-    test "keeps a rejected key's public key as a tombstone, refused for good", ctx do
-      %{scope: scope, node: node} = ctx
-      %{access_key: key, pair: pair} = pending_key_fixture(scope, node)
-      {:ok, _} = AccessKeys.reject(scope, key)
-
-      assert %PublicKey{state: :tombstone, retired_reason: :rejected} = ledger(pair.public_key)
-      assert {:error, changeset} = paste(scope, node, %{public_key: pair.encoded})
-      assert cannot_be_used?(changeset)
+    test "holds an enrolled key's public key as current, as a pasted one's", ctx do
+      %{access_key: key, pair: pair} = enrolled_key_fixture(ctx.scope, ctx.node)
+      assert %PublicKey{state: :current, key_id: key_id} = ledger(pair.public_key)
+      assert key_id == key.key_id
     end
 
     test "outlives the purge of the workspace, as tombstones", ctx do
@@ -235,7 +209,7 @@ defmodule Apiary.NodeAccessKeysTest do
   end
 
   describe "the limits" do
-    test "a node holds two approved keys: a third paste is refused", ctx do
+    test "a node holds two keys: a third paste is refused", ctx do
       %{scope: scope, node: node} = ctx
       {:ok, _} = paste(scope, node)
       {:ok, _} = paste(scope, node)
@@ -244,25 +218,12 @@ defmodule Apiary.NodeAccessKeysTest do
       assert length(AccessKeys.list_for_node(scope, node)) == 2
     end
 
-    test "a paste counts the key awaiting approval", ctx do
+    test "a paste counts an enrolled key", ctx do
       %{scope: scope, node: node} = ctx
       {:ok, _} = paste(scope, node)
-      pending_key_fixture(scope, node)
+      enrolled_key_fixture(scope, node)
 
       assert paste(scope, node) == {:error, :key_limit}
-    end
-
-    test "an approval is refused while the node holds two approved keys", ctx do
-      %{scope: scope, node: node} = ctx
-      {:ok, first} = paste(scope, node)
-      {:ok, _second} = paste(scope, node)
-      %{access_key: pending} = pending_key_fixture(scope, node)
-
-      assert AccessKeys.approve(scope, pending) == {:error, :key_limit}
-
-      {:ok, _} = AccessKeys.revoke_access_key(scope, first)
-      assert {:ok, approved} = AccessKeys.approve(scope, pending)
-      assert AccessKey.status(approved) == :active
     end
 
     test "a revoked key makes room", ctx do
@@ -272,7 +233,7 @@ defmodule Apiary.NodeAccessKeysTest do
       {:ok, _} = AccessKeys.revoke_access_key(scope, first)
 
       assert {:ok, _third} = paste(scope, node)
-      assert AccessKeys.key_limits() == %{approved: 2, pending: 1}
+      assert AccessKeys.key_limit() == 2
     end
   end
 
@@ -330,8 +291,8 @@ defmodule Apiary.NodeAccessKeysTest do
 
     test "so are the public key, the arrival and the code it arrived by", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: key} = pending_key_fixture(scope, node)
-      %{code: other_code} = pending_key_fixture(scope, node_fixture(scope))
+      %{access_key: key} = enrolled_key_fixture(scope, node)
+      %{code: other_code} = enrolled_key_fixture(scope, node_fixture(scope))
 
       for set <- [
             [public_key: ed25519_key_pair().public_key],
@@ -345,51 +306,16 @@ defmodule Apiary.NodeAccessKeysTest do
       end
     end
 
-    test "come from the code's settings, and survive the approval", ctx do
+    test "come from the code's settings", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: key} = pending_key_fixture(scope, node, %{allow_secrets: true})
-
-      assert {:ok, approved} = AccessKeys.approve(scope, key)
-      assert approved.allow_secrets
+      %{access_key: key} = enrolled_key_fixture(scope, node, %{allow_secrets: true})
+      assert key.allow_secrets
+      assert AccessKey.status(key) == :active
     end
   end
 
-  describe "approving, rejecting and revoking" do
-    test "an approval approves a pending key once, with its entry", ctx do
-      %{scope: scope, node: node} = ctx
-      %{access_key: key, pair: pair} = pending_key_fixture(scope, node)
-      assert AccessKey.status(key) == :pending
-      assert %PublicKey{state: :pending} = ledger(pair.public_key)
-
-      assert {:ok, approved} = AccessKeys.approve(scope, key)
-      assert AccessKey.status(approved) == :active
-      assert approved.approved_by_id == scope.user.id
-      assert %PublicKey{state: :current} = ledger(pair.public_key)
-
-      assert [entry] = entries("access_key", key.id)
-      assert entry.action == "access_key.approve"
-      assert entry.details["arrived_by"] == "code"
-      assert entry.details["fingerprint"] == AccessKey.fingerprint(key)
-
-      assert AccessKeys.approve(scope, approved) == {:error, :not_pending}
-      assert AccessKeys.reject(scope, approved) == {:error, :not_pending}
-    end
-
-    test "a rejection retires a pending key, with its entry", ctx do
-      %{scope: scope, node: node} = ctx
-      %{access_key: key} = pending_key_fixture(scope, node)
-
-      assert {:ok, rejected} = AccessKeys.reject(scope, key)
-      assert AccessKey.status(rejected) == :revoked
-      assert rejected.revoked_by_id == scope.user.id
-      assert [entry] = entries("access_key", key.id)
-      assert entry.action == "access_key.reject"
-      assert entry.details["reason"] == "rejected"
-
-      assert AccessKeys.approve(scope, rejected) == {:error, :not_pending}
-    end
-
-    test "a revocation retires an approved key, once, with its entry", ctx do
+  describe "revoking" do
+    test "a revocation retires a key, once, with its entry", ctx do
       %{scope: scope, node: node} = ctx
       {:ok, key} = paste(scope, node)
 
@@ -405,37 +331,35 @@ defmodule Apiary.NodeAccessKeysTest do
       assert length(entries("access_key", key.id)) == 2
     end
 
-    test "a pending key is rejected, not revoked", ctx do
+    test "an enrolled key is revoked as a pasted one is", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: key} = pending_key_fixture(scope, node)
-      assert AccessKeys.revoke_access_key(scope, key) == {:error, :pending}
+      %{access_key: key, pair: pair} = enrolled_key_fixture(scope, node)
+
+      assert {:ok, revoked} = AccessKeys.revoke_access_key(scope, key)
+      assert AccessKey.status(revoked) == :revoked
+      assert AccessKeys.fetch_for_verification(key.key_id) == :error
+      assert %PublicKey{state: :tombstone, retired_reason: :revoked} = ledger(pair.public_key)
     end
   end
 
   describe "the integrity code" do
     test "a key changed outside the application is refused at verification", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: key} = pending_key_fixture(scope, node)
+      %{access_key: key} = enrolled_key_fixture(scope, node)
 
       assert {:ok, %AccessKey{node: %{id: node_id}}} =
                AccessKeys.fetch_for_verification(key.key_id)
 
       assert node_id == node.id
 
-      # Approved behind the application's back.
-      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
-        set: [approved_at: DateTime.utc_now()]
-      )
+      # Its rate raised behind the application's back.
+      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id), set: [rate: 1000])
 
       {result, log} =
         ExUnit.CaptureLog.with_log(fn -> AccessKeys.fetch_for_verification(key.key_id) end)
 
       assert result == {:error, :integrity}
       assert log =~ "does not match its integrity code key_id=#{key.key_id}"
-
-      # Nor does an approval trust it.
-      {result, _log} = ExUnit.CaptureLog.with_log(fn -> AccessKeys.approve(scope, key) end)
-      assert result == {:error, :integrity}
     end
 
     test "a revoked key made live again outside the application is refused", ctx do
@@ -539,7 +463,7 @@ defmodule Apiary.NodeAccessKeysTest do
     end
 
     test "a used code is not cancelled", ctx do
-      %{code: code} = pending_key_fixture(ctx.scope, ctx.node)
+      %{code: code} = enrolled_key_fixture(ctx.scope, ctx.node)
       assert AccessKeys.cancel_code(ctx.scope, code) == {:error, :used}
     end
   end
@@ -547,13 +471,13 @@ defmodule Apiary.NodeAccessKeysTest do
   describe "deleting the node" do
     test "revokes its keys and cancels its codes in the same transaction", ctx do
       %{scope: scope, node: node} = ctx
-      {:ok, approved} = paste(scope, node)
-      %{access_key: pending, pair: pending_pair} = pending_key_fixture(scope, node)
+      {:ok, pasted} = paste(scope, node)
+      %{access_key: enrolled, pair: enrolled_pair} = enrolled_key_fixture(scope, node)
       {:ok, outstanding, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
 
       assert {:ok, _deleted} = Nodes.delete_node(scope, node)
 
-      for key <- [approved, pending] do
+      for key <- [pasted, enrolled] do
         assert AccessKeys.fetch_for_verification(key.key_id) == :error
         revoked = Repo.get!(AccessKey, key.id)
         assert AccessKey.status(revoked) == :revoked
@@ -573,21 +497,21 @@ defmodule Apiary.NodeAccessKeysTest do
       assert [entry] = entries("node", node.id) |> Enum.filter(&(&1.action == "node.delete"))
 
       assert Enum.sort(entry.details["revoked_key_ids"]) ==
-               Enum.sort([approved.key_id, pending.key_id])
+               Enum.sort([pasted.key_id, enrolled.key_id])
 
       # The public keys stay refused.
       assert {:error, changeset} =
-               paste(scope, node_fixture(scope), %{public_key: pending_pair.encoded})
+               paste(scope, node_fixture(scope), %{public_key: enrolled_pair.encoded})
 
       assert cannot_be_used?(changeset)
     end
 
     test "leaves no key to change on it", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: pending} = pending_key_fixture(scope, node)
+      %{access_key: enrolled} = enrolled_key_fixture(scope, node)
       {:ok, _} = Nodes.delete_node(scope, node)
 
-      assert AccessKeys.approve(scope, pending) == {:error, :not_found}
+      assert AccessKeys.revoke_access_key(scope, enrolled) == {:error, :not_found}
 
       assert AccessKeys.add_access_key(scope, node, %{
                label: "x",
@@ -605,34 +529,31 @@ defmodule Apiary.NodeAccessKeysTest do
       %{scope: admin} = member_fixture(owner, :admin)
       %{scope: member} = member_fixture(owner, :member)
 
-      %{access_key: pending} = pending_key_fixture(owner, node)
+      %{access_key: enrolled} = enrolled_key_fixture(owner, node)
       {:ok, active} = paste(owner, node)
       {:ok, code, _} = AccessKeys.create_enrolment_code(owner, node, %{})
 
       assert AccessKeys.create_enrolment_code(member, node, %{}) == {:error, :forbidden}
       assert AccessKeys.cancel_code(member, code) == {:error, :forbidden}
       assert paste(member, node) == {:error, :forbidden}
-      assert AccessKeys.approve(member, pending) == {:error, :forbidden}
-      assert AccessKeys.reject(member, pending) == {:error, :forbidden}
+      assert AccessKeys.revoke_access_key(member, enrolled) == {:error, :forbidden}
       assert AccessKeys.revoke_access_key(member, active) == {:error, :forbidden}
 
       assert {:ok, _, _} = AccessKeys.create_enrolment_code(admin, node, %{})
       assert {:ok, _} = AccessKeys.cancel_code(admin, code)
-      assert {:ok, _} = AccessKeys.approve(admin, pending)
+      assert {:ok, _} = AccessKeys.revoke_access_key(admin, enrolled)
       assert {:ok, _} = AccessKeys.revoke_access_key(admin, active)
       assert {:ok, _} = paste(admin, node)
     end
 
     test "another organisation's node, keys and codes are not reachable", ctx do
       %{scope: scope, node: node} = ctx
-      %{access_key: pending} = pending_key_fixture(scope, node)
+      enrolled_key_fixture(scope, node)
       {:ok, code, _} = AccessKeys.create_enrolment_code(scope, node, %{})
       %{scope: other} = sign_up_fixture()
 
       assert AccessKeys.list_for_node(other, node) == []
       assert AccessKeys.list_enrolment_codes(other, node) == []
-      assert AccessKeys.approve(other, pending) == {:error, :not_found}
-      assert AccessKeys.reject(other, pending) == {:error, :not_found}
       assert AccessKeys.cancel_code(other, code) == {:error, :not_found}
       assert AccessKeys.create_enrolment_code(other, node, %{}) == {:error, :not_found}
       assert paste(other, node) == {:error, :not_found}
@@ -646,12 +567,10 @@ defmodule Apiary.NodeAccessKeysTest do
       pool = pool_fixture(scope, %{name: "spot-runners"})
       gone = node_fixture(scope, %{name: "build-02"})
 
-      {:ok, approved} = paste(scope, node, %{label: "build-01-a"})
+      {:ok, pasted} = paste(scope, node, %{label: "build-01-a"})
       {:ok, revoked} = paste(scope, node, %{label: "build-01-b"})
       {:ok, _} = AccessKeys.revoke_access_key(scope, revoked)
-      %{access_key: rejected} = pending_key_fixture(scope, node)
-      {:ok, _} = AccessKeys.reject(scope, rejected)
-      %{access_key: pending} = pending_key_fixture(scope, pool, %{label: "spot-a"})
+      %{access_key: enrolled} = enrolled_key_fixture(scope, pool, %{label: "spot-a"})
       {:ok, _} = paste(scope, gone)
       {:ok, _} = Nodes.delete_node(scope, gone)
 
@@ -659,8 +578,8 @@ defmodule Apiary.NodeAccessKeysTest do
       {:ok, _} = paste(other, node_fixture(other))
 
       assert [first, second] = AccessKeys.list_workspace_node_keys(scope)
-      assert {first.id, first.node.name} == {pending.id, "spot-runners"}
-      assert {second.id, second.node.name} == {approved.id, "build-01"}
+      assert {first.id, first.node.name} == {enrolled.id, "spot-runners"}
+      assert {second.id, second.node.name} == {pasted.id, "build-01"}
     end
   end
 
@@ -683,8 +602,9 @@ defmodule Apiary.NodeAccessKeysTest do
       for column <- ~w(public_key node_id received_at arrived_by),
           do: assert(nullable[column] == "NO", column)
 
-      # No secret column is left.
-      for gone <- ~w(secret_primary secret_secondary rotated_at),
+      # No secret column is left, nor any of an approval.
+      for gone <- ~w(secret_primary secret_secondary rotated_at approved_at approved_by_id
+                     last_pending_at),
           do: refute(Map.has_key?(nullable, gone), gone)
     end
 

@@ -355,9 +355,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ## Nodes and keys
 
   # Every machine's key, by label, on a node of the same name: the workspace's own node
-  # and key when it has them, the key neither revoked nor rejected, new ones otherwise. A
-  # machine of several hosts is a node pool. The idle node's key is made and never posted
-  # with. A key is added by its public key, as `qory access-key create` prints one; its
+  # and key when it has them, the key not revoked, new ones otherwise. A machine of
+  # several hosts is a node pool. The idle node's key is made and never posted with. A key is added by its public key, as `qory access-key create` prints one; its
   # private half is thrown away, since nothing here signs a request.
   defp keys!(scope) do
     nodes = Map.new(Nodes.list_nodes(scope), &{&1.name, &1})
@@ -1732,7 +1731,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     instances(workspace)
 
-    # A second key beside ci-fleet's, once: a pool holds two approved keys at most.
+    # A second key beside ci-fleet's, once: a pool holds two keys at most.
     fleet = Map.fetch!(ctx.keys, "ci-fleet")
 
     if length(Enum.reject(AccessKeys.list_for_node(scope, fleet.node), & &1.revoked_at)) < 2,

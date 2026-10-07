@@ -7,7 +7,7 @@ defmodule Apiary.AccessKeysFixtures do
   def unique_label, do: "runner #{System.unique_integer([:positive])}"
 
   @doc """
-  An approved key in the scope's workspace, pasted by the scope's person, who must be an
+  A key in the scope's workspace, pasted by the scope's person, who must be an
   owner or an admin, on `attrs` `:node` (else a new node, kind `node`). Returns
   `%{access_key: key, secret: seed, pair: key pair, node: node}`: the key carrying its
   workspace and node, as a verified key does (`Apiary.AccessKeys.fetch_for_verification/1`),
@@ -36,7 +36,7 @@ defmodule Apiary.AccessKeysFixtures do
   end
 
   @doc """
-  A key pasted on `node` by the scope's person, an owner or an admin: approved at once.
+  A key pasted on `node` by the scope's person, an owner or an admin: active at once.
   Returns `%{access_key: key, pair: key pair}`.
   """
   def node_key_fixture(scope, node, attrs \\ %{}) do
@@ -47,13 +47,13 @@ defmodule Apiary.AccessKeysFixtures do
   end
 
   @doc """
-  A key awaiting approval on `node`, as an enrolment with a code of the scope's person
-  leaves one: the code made and used, the key inserted pending, with its integrity code
-  and its row of the ledger. The rows `Apiary.AccessKeys.enrol/2` writes, written here
-  without a request, with a label any test may choose and no audit entry. Returns
+  A key enrolled on `node` with a code of the scope's person, an owner or an admin, active
+  as such a key is: the code made and used, the key inserted, with its integrity code and
+  its row of the ledger, current. The rows `Apiary.AccessKeys.enrol/2` writes, written
+  here without a request, with a label any test may choose and no audit entry. Returns
   `%{access_key: key, pair: key pair, code: code row}`.
   """
-  def pending_key_fixture(scope, node, attrs \\ %{}) do
+  def enrolled_key_fixture(scope, node, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{allow_secrets: false, label: unique_label()})
     {:ok, code_row, _code} = AccessKeys.create_enrolment_code(scope, node, attrs)
     pair = ed25519_key_pair()
@@ -86,7 +86,7 @@ defmodule Apiary.AccessKeysFixtures do
     Repo.insert!(%PublicKey{
       public_key: pair.public_key,
       key_id: key_id,
-      state: :pending,
+      state: :current,
       received_at: now
     })
 

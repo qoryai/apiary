@@ -253,12 +253,6 @@ defmodule ApiaryWeb.RefusalsRows do
        "create_code", %{"code" => %{}}},
       {:"access_key.create_code", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}}},
-      {:"access_key.approve", :member, "/:org/:workspace/nodes/:node/access-key", "approve", %{}},
-      {:"access_key.approve", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{}},
-      {:"access_key.reject", :member, "/:org/:workspace/nodes/:node/access-key", "reject", %{}},
-      {:"access_key.reject", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/reject", "reject", %{}},
       {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
       {:"access_key.revoke", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
@@ -272,9 +266,6 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :not_found_at_mount},
       {:"access_key.create_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}},
-       answer: :not_found_at_mount},
-      {:"access_key.approve", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{},
        answer: :not_found_at_mount},
       {:"access_key.cancel_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
@@ -398,7 +389,6 @@ defmodule ApiaryWeb.RefusalsRows do
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
     %{access_key: node_key} = node_key_fixture(owner, node)
-    %{access_key: pending_key} = pending_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
     node_run_fixture(node, instance.instance_id)
@@ -443,7 +433,6 @@ defmodule ApiaryWeb.RefusalsRows do
       key: key,
       node: node,
       node_key: node_key,
-      pending_key: pending_key,
       code: code,
       public_key: ed25519_key_pair().encoded,
       instance: instance,
@@ -475,7 +464,6 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
-  def value(:pending_key, world), do: {:id, world.pending_key.key_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
   def value(:instance, world), do: world.instance.instance_id

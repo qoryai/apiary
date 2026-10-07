@@ -62,8 +62,6 @@ defmodule Apiary.AccessRows do
       {:"access_key.create_code", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.cancel_code", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.add", yes: @owners ++ [:admin, :feature_off]},
-      {:"access_key.approve", yes: @owners ++ [:admin, :feature_off]},
-      {:"access_key.reject", yes: @owners ++ [:admin, :feature_off]},
       {:"access_key.revoke", yes: @owners ++ [:admin, :feature_off]},
       {:"node.read", yes: @owners ++ [:member, :admin, :feature_off]},
       {:"node.create", yes: @owners ++ [:admin, :feature_off]},

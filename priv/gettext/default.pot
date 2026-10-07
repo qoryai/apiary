@@ -503,16 +503,6 @@ msgid_plural "%{instance} is cleared: its %{count} open runs are marked lost."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{key} awaits approval on %{node}."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{key} awaits approval on %{node}. %{approve}"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -520,42 +510,12 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{label} awaits approval: reject it instead."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{label} can't be approved: its record was changed outside the application."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{label} is added, and approved."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{label} is approved."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{label} is not an approved key."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{label} is rejected."
+msgid "%{label} is added."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{label} is revoked."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{label} no longer awaits approval."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -599,6 +559,11 @@ msgstr ""
 msgid "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} already has that value."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} fails its integrity check: its record is not as it was saved."
@@ -611,12 +576,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} holds two approved keys already. Revoke one before you approve another."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} holds two keys already. Revoke or reject one before you add another."
+msgid "%{name} holds two keys already. Revoke one before you add another."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -1808,12 +1768,12 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} of %{name} is changed."
+msgid "%{value_id} of %{name} is now %{new}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} of %{name} is now %{new}."
+msgid "%{value_id} of %{name} is saved."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -2115,7 +2075,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "A key for %{name}. A key you add here is approved as you add it."
+msgid "A key for %{name}. It is active as soon as you add it."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -2170,7 +2130,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A machine posts once its key is approved on a node."
+msgid "A machine posts once it is enrolled on a node."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -2185,7 +2145,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "A node holds at most %{approved} keys at a time, at most %{pending} of them awaiting approval."
+msgid "A node holds at most %{keys} keys at a time."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -2345,11 +2305,6 @@ msgstr ""
 msgid "A target is listed here once a run of this workspace names it."
 msgstr ""
 
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "A target may set its own value of %{name} again."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
@@ -2370,6 +2325,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A target's own rule for this host still decides there."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A target's own value of %{name} applies again."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -2451,32 +2411,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Access key approved"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key created"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key rejected"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
 msgid "Access key revoked"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key revoked in settings"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Access key rotated"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -2559,6 +2494,7 @@ msgid "Activated a member"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Active"
 msgstr ""
@@ -3122,6 +3058,11 @@ msgstr ""
 msgid "An owner or admin adds nodes."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "An owner or admin enrols the machine, with a code from the node or the public key %{create} prints."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "An owner or an admin of the organisation added you to %{workspace}."
@@ -3147,46 +3088,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Approve %{label}?"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Approve it"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Approve it only if its fingerprint is the one on the machine that holds the key."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Approve it only if its fingerprint, %{fingerprint}, is the one on the machine that holds the key."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Approved"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Approved an access key"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Approve…"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Approving"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -3283,11 +3184,6 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Auto"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Awaiting approval"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -4028,11 +3924,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Created a stored secret"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Created an access key"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6187,11 +6078,6 @@ msgstr ""
 msgid "Its policy"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Its public key can never be used again. This cannot be undone."
-msgstr ""
-
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Its runs, policy and access keys go with it, and its keys stop working; its members stay in the organisation. After the purge, %{days} later, nothing brings it back."
@@ -8018,7 +7904,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "On the machine, run %{enrol} with a code from the node, then approve the key it brings. Or paste the public key %{create} prints."
+msgid "On the machine, run %{enrol} with a code from the node, or paste the public key %{create} prints."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8862,31 +8748,6 @@ msgstr ""
 msgid "Refused before reaching the tool %{tool}."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Reject %{label}?"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Rejected"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Rejected an access key"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Rejecting"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Reject…"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -9175,11 +9036,6 @@ msgstr ""
 msgid "Retention saved."
 msgstr ""
 
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Retired an access key's previous secret"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Review"
@@ -9260,11 +9116,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Roles"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Rotated an access key"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10588,7 +10439,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The key it brings arrives here awaiting approval. Compare the fingerprint qory prints with the key's before you approve it."
+msgid "The key it brings is active as soon as it arrives here. If its fingerprint is not the one qory prints, revoke it."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11078,7 +10929,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The value of %{name} is changed."
+msgid "The value of %{name} is saved."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -11300,7 +11151,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
+msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -12220,11 +12071,6 @@ msgstr ""
 msgid "Wrote a service definition"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, approve"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, clear"
@@ -12255,11 +12101,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, on a pseudo-terminal"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, reject"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex

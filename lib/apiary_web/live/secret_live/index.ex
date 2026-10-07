@@ -1408,7 +1408,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Unlock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("A target may set its own value of %{name} again.", name: @variable.name)}
+      {gettext("A target's own value of %{name} applies again.", name: @variable.name)}
       <span :if={@ignored > 0} id="unlock-targets">
         {ngettext(
           "%{number} target set its own: the lock no longer sets it aside.",
@@ -2087,11 +2087,11 @@ defmodule ApiaryWeb.SecretLive.Index do
            socket,
            if(value.value_id,
              do:
-               gettext("%{value_id} of %{name} is changed.",
+               gettext("%{value_id} of %{name} is saved.",
                  value_id: value.value_id,
                  name: secret.name
                ),
-             else: gettext("The value of %{name} is changed.", name: secret.name)
+             else: gettext("The value of %{name} is saved.", name: secret.name)
            )
          )}
 
@@ -2196,10 +2196,11 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
       when is_map(params) do
     %{current_scope: scope, variable: variable} = socket.assigns
+    asked_at = DateTime.utc_now()
 
     case Variables.update_variable(scope, variable, %{"value" => params["value"]}) do
       {:ok, variable} ->
-        {:noreply, saved(socket, gettext("%{name} is changed.", name: variable.name), :variables)}
+        {:noreply, saved(socket, value_saved(variable, asked_at), :variables)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, variable_form(changeset))}
@@ -2335,6 +2336,15 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp variable_done("delete_variable", name, _targets),
     do: gettext("%{name} is deleted.", name: name)
+
+  # A value equal to the one the variable has is written nowhere and leaves no entry
+  # (`Apiary.Variables.update_variable/3`): the variable comes back as it was, stamped
+  # before this change was asked, and the flash says it has that value already.
+  defp value_saved(%Variable{updated_at: updated_at, name: name}, asked_at) do
+    if DateTime.before?(updated_at, asked_at),
+      do: gettext("%{name} already has that value.", name: name),
+      else: gettext("%{name} is changed.", name: name)
+  end
 
   ## After a change, and its refusals
 

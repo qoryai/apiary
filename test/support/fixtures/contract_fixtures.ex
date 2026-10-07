@@ -28,8 +28,8 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   A node's access key that signs requests as a runner does: a node of the scope's
-  workspace (`attrs` `:node`, else a new node, kind `node`), with a key pasted on it, so
-  approved. Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
+  workspace (`attrs` `:node`, else a new node, kind `node`), with a key pasted on it.
+  Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
   request carries it (`Apiary.AccessKeys.fetch_for_verification/1`, with its workspace
   and node), and its raw 32-byte seed, which `signed_post/5` and `signed_get/5` sign with.
   """
@@ -42,17 +42,15 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`,
-  approved, or `"pending_access_key"`, awaiting approval), held under its published id on
-  `node`, as a receiver under test holds it. Written straight into the table, past the key
-  checks, which refuse every fixture key: test support only.
+  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`),
+  held under its published id on `node`, active, as a receiver under test holds it.
+  Written straight into the table, past the key checks, which refuse every fixture key:
+  test support only.
   """
-  def fixture_access_key!(%Scope{user: user}, node, name)
-      when name in ~w(access_key pending_access_key) do
+  def fixture_access_key!(%Scope{user: user}, node, "access_key" = name) do
     entry = Map.fetch!(known_answers!("keys"), name)
     %{public_key: public_key} = fixture_key!(name)
     now = DateTime.utc_now()
-    approved? = name == "access_key"
 
     %AccessKey{
       id: Ecto.UUID.generate(),
@@ -63,9 +61,7 @@ defmodule Apiary.ContractFixtures do
       public_key: public_key,
       created_by_id: user.id,
       arrived_by: :paste,
-      received_at: now,
-      approved_at: if(approved?, do: now),
-      approved_by_id: if(approved?, do: user.id)
+      received_at: now
     }
     |> AccessKey.insert_changeset(%{allow_secrets: false, label: name})
     |> AccessKey.put_integrity()

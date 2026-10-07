@@ -505,7 +505,7 @@ defmodule ApiaryWeb.RunLive.Index do
           </.empty_state>
           <.empty_state :if={@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
-            {gettext("A machine posts once its key is approved on a node.")}
+            {gettext("A machine posts once it is enrolled on a node.")}
             <:actions>
               <.button
                 id="runs-go-to-nodes"

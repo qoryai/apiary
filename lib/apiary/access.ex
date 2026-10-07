@@ -134,13 +134,7 @@ defmodule Apiary.Access do
     Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
       roles: @admins
     ),
-    Action.new(:"access_key.add", "add an access key to a node by its public key, approved",
-      roles: @admins
-    ),
-    Action.new(:"access_key.approve", "approve a node's access key that awaits approval",
-      roles: @admins
-    ),
-    Action.new(:"access_key.reject", "reject a node's access key that awaits approval",
+    Action.new(:"access_key.add", "add an access key to a node by its public key",
       roles: @admins
     ),
     Action.new(:"access_key.revoke", "revoke a node's access key", roles: @admins),

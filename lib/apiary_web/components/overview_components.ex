@@ -707,7 +707,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_when(%{item: %{kind: :idle_key, key: key}} = assigns) do
-    assigns = assign(assigns, :at, key.last_used_at || key.approved_at)
+    assigns = assign(assigns, :at, key.last_used_at || key.received_at || key.inserted_at)
 
     ~H"""
     <span class="tabular-nums">{Format.day(@at)}</span>
@@ -1716,10 +1716,10 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The empty workspace's one box, with the state of each step read from the record: step 1
-  ticks on a node or pool, step 2 on an approved key of one, step 3 on the first run; a
-  key's `last_used_at` changes step 3's words. Step 2 names the newest key awaiting
-  approval, and links to its node's Access key tab to approve it for a reader who may. `landed` is the first run while the page is
-  open; the box leaves at the next navigation.
+  ticks on a node or pool, step 2 on a key of one (every key the list holds is active),
+  step 3 on the first run; a key's `last_used_at` changes step 3's words. Step 2 tells a
+  reader who may add a node how a machine gets its key, and anyone else who gives it one.
+  `landed` is the first run while the page is open; the box leaves at the next navigation.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1735,30 +1735,24 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
 
-  attr :may_approve, :boolean,
-    default: false,
-    doc: "whether the reader may approve the key that awaits approval, on its node"
-
   attr :server, :string, required: true, doc: "this server's address, for the command"
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
   def onboarding(assigns) do
-    {approved, pending} = Enum.split_with(assigns.keys, & &1.approved_at)
-
     used =
-      approved
+      assigns.keys
       |> Enum.filter(& &1.last_used_at)
       |> Enum.max_by(& &1.last_used_at, DateTime, fn -> nil end)
 
     current =
       cond do
         assigns.landed -> 4
-        approved != [] -> 3
+        assigns.keys != [] -> 3
         assigns.nodes > 0 -> 2
         true -> 1
       end
 
-    assigns = assign(assigns, used: used, current: current, pending: List.first(pending))
+    assigns = assign(assigns, used: used, current: current)
 
     ~H"""
     <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
@@ -1779,37 +1773,25 @@ defmodule ApiaryWeb.OverviewComponents do
             )}
           </:step>
           <:step title={gettext("Enrol the machine")}>
-            <.rich text={
-              rich_gettext(
-                "On the machine, run %{enrol} with a code from the node, then approve the key it brings. Or paste the public key %{create} prints.",
-                enrol: {:m, "qory access-key enrol"},
-                create: {:m, "qory access-key create"}
-              )
-            } />
-            <span :if={@pending} id={"#{@id}-pending"} class="mt-1 block">
-              <.rich
-                :if={@may_approve}
-                text={
-                  rich_gettext("%{key} awaits approval on %{node}. %{approve}",
-                    key: {:m, @pending.label},
-                    node: @pending.node.name,
-                    approve:
-                      {:link,
-                       ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@pending.node.public_id}/access-key",
-                       gettext("Approve it")}
-                  )
-                }
-              />
-              <.rich
-                :if={!@may_approve}
-                text={
-                  rich_gettext("%{key} awaits approval on %{node}.",
-                    key: {:m, @pending.label},
-                    node: @pending.node.name
-                  )
-                }
-              />
-            </span>
+            <.rich
+              :if={@may_add}
+              text={
+                rich_gettext(
+                  "On the machine, run %{enrol} with a code from the node, or paste the public key %{create} prints.",
+                  enrol: {:m, "qory access-key enrol"},
+                  create: {:m, "qory access-key create"}
+                )
+              }
+            />
+            <.rich
+              :if={!@may_add}
+              text={
+                rich_gettext(
+                  "An owner or admin enrols the machine, with a code from the node or the public key %{create} prints.",
+                  create: {:m, "qory access-key create"}
+                )
+              }
+            />
           </:step>
           <:step title={gettext("See runs here")}>
             {if @used,

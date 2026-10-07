@@ -101,9 +101,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(lv, "#node-keys-none .font-mono", "qory access-key create")
 
-      # Two keys at a time, never two approved and a third awaiting approval.
-      assert render(lv) =~
-               "A node holds at most 2 keys at a time, at most 1 of them awaiting approval."
+      # Two keys at a time; none awaits anything.
+      assert render(lv) =~ "A node holds at most 2 keys at a time."
+      refute render(lv) =~ ~r/approv/i
 
       assert has_element?(lv, "#node-codes-none", "No enrolment code is outstanding.")
       assert has_element?(lv, "#key-add-button", "Add a public key")
@@ -115,21 +115,20 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     test "lists each key with its state, fingerprint and arrival", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       %{access_key: pasted} = node_key_fixture(scope, node, %{label: "current"})
-      %{access_key: pending} = pending_key_fixture(scope, node, %{label: "replacement"})
+      %{access_key: enrolled} = enrolled_key_fixture(scope, node, %{label: "replacement"})
 
       {:ok, lv, html} = live(conn, tab_path(scope, node))
 
       # Each card's line is its heading, which takes the focus where an act took its button.
       assert has_element?(lv, ~s{h3#key-#{pasted.key_id}-title[tabindex="-1"]}, "current")
-      assert has_element?(lv, "#key-#{pasted.key_id}-state", "Approved")
+      assert has_element?(lv, "#key-#{pasted.key_id}-state", "Active")
       assert has_element?(lv, "#key-#{pasted.key_id}-fingerprint", AccessKey.fingerprint(pasted))
       assert has_element?(lv, "#key-#{pasted.key_id}-arrived", "Pasted by #{scope.user.email}")
       assert has_element?(lv, "#key-#{pasted.key_id}-revoke", "Revoke…")
       # Each Revoke… is named for the key it revokes.
       assert has_element?(lv, "#key-#{pasted.key_id}-revoke .sr-only", "Revoke current")
       assert has_element?(lv, ~s{#key-#{pasted.key_id}-revoke [aria-hidden="true"]}, "Revoke…")
-      refute has_element?(lv, "#key-#{pasted.key_id}-approve")
-      # An approved key's card leads to its runner file, named for the key.
+      # An active key's card leads to its runner file, named for the key.
       assert has_element?(
                lv,
                ~s{#key-#{pasted.key_id}-runner-file[href="#{tab_path(scope, node, "/keys/#{pasted.key_id}/runner-file")}"]}
@@ -141,70 +140,61 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "Runner file lines for current"
              )
 
-      assert has_element?(lv, "#key-#{pending.key_id}-state", "Awaiting approval")
+      # A key a code brought is active as it arrives: the same state, and the same acts.
+      assert has_element?(lv, "#key-#{enrolled.key_id}-state", "Active")
 
       assert has_element?(
                lv,
-               "#key-#{pending.key_id}-arrived",
+               "#key-#{enrolled.key_id}-arrived",
                "With an enrolment code #{scope.user.email} made"
              )
 
-      assert has_element?(lv, "#key-#{pending.key_id}-guidance", "Approve it only if")
-      assert has_element?(lv, "#key-#{pending.key_id}-approve", "Approve…")
-      assert has_element?(lv, "#key-#{pending.key_id}-reject", "Reject…")
-      refute has_element?(lv, "#key-#{pending.key_id}-revoke")
-      refute has_element?(lv, "#key-#{pending.key_id}-runner-file")
+      assert has_element?(lv, "#key-#{enrolled.key_id}-revoke", "Revoke…")
+      assert has_element?(lv, "#key-#{enrolled.key_id}-runner-file")
+
+      # Nothing awaits approval, and no card offers one.
+      for key <- [pasted, enrolled], act <- ~w(approve reject guidance) do
+        refute has_element?(lv, "#key-#{key.key_id}-#{act}")
+      end
+
+      refute html =~ ~r/approv|reject/i
       refute_untrue(html)
+    end
+
+    test "a revoked key says so, by whom and when, and offers no act", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "old"})
+      {:ok, _revoked} = AccessKeys.revoke_access_key(scope, key)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
+      assert has_element?(lv, "#key-#{key.key_id}", "by #{scope.user.email}")
+      refute has_element?(lv, "#key-#{key.key_id}-revoke")
+      refute has_element?(lv, "#key-#{key.key_id}-runner-file")
     end
   end
 
   describe "a key's acts, each confirmed in place" do
-    test "approve a key that awaits approval", %{conn: conn, scope: scope} do
+    test "a key is never approved or rejected: those addresses are not found", %{
+      conn: conn,
+      scope: scope
+    } do
       node = node_fixture(scope)
-      %{access_key: key} = pending_key_fixture(scope, node, %{label: "build-01"})
-      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
 
-      lv |> element("#key-#{key.key_id}-approve") |> render_click()
-      assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/approve"))
-      assert has_element?(lv, "#key-#{key.key_id}-confirm", "Approve build-01?")
-      assert has_element?(lv, "#key-#{key.key_id}-confirm", AccessKey.fingerprint(key))
+      for act <- ~w(approve reject) do
+        assert conn
+               |> get(tab_path(scope, node, "/keys/#{key.key_id}/#{act}"))
+               |> html_response(404)
+      end
 
-      # Cancel folds it, changes nothing, and gives the focus back to Approve….
-      lv |> element("#key-#{key.key_id}-confirm-cancel") |> render_click()
-      assert_patch(lv, tab_path(scope, node))
-      refute has_element?(lv, "#key-#{key.key_id}-confirm")
-      assert_push_event(lv, "run:focus", %{id: id})
-      assert id == "key-#{key.key_id}-approve"
-      assert has_element?(lv, ~s{##{id}[phx-hook="FocusOn"]})
-
-      lv |> element("#key-#{key.key_id}-approve") |> render_click()
-      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-      assert_patch(lv, tab_path(scope, node))
-      assert render(lv) =~ "build-01 is approved."
-      assert has_element?(lv, "#key-#{key.key_id}-state", "Approved")
-      assert Repo.get!(AccessKey, key.id).approved_at
-
-      # Approve… is gone with the approval: the focus goes to the key's heading.
-      assert_push_event(lv, "run:focus", %{id: id})
-      assert id == "key-#{key.key_id}-title"
-      assert has_element?(lv, ~s{##{id}[phx-hook="FocusOn"]})
+      assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
     end
 
-    test "reject a key that awaits approval", %{conn: conn, scope: scope} do
-      node = node_fixture(scope)
-      %{access_key: key} = pending_key_fixture(scope, node, %{label: "build-01"})
-      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/reject"))
-
-      assert has_element?(lv, "#key-#{key.key_id}-confirm", "Reject build-01?")
-      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-      assert render(lv) =~ "build-01 is rejected."
-      assert has_element?(lv, "#key-#{key.key_id}-state", "Rejected")
-
-      rejected = Repo.get!(AccessKey, key.id)
-      assert rejected.revoked_at && is_nil(rejected.approved_at)
-    end
-
-    test "revoke an approved key", %{conn: conn, scope: scope} do
+    test "revoke an active key", %{conn: conn, scope: scope} do
       node = node_fixture(scope)
       %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
       {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/revoke"))
@@ -218,85 +208,85 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert id == "key-#{key.key_id}-title"
     end
 
+    test "revoke a key a code brought, as a pasted one", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      %{access_key: key} = enrolled_key_fixture(scope, node, %{label: "build-01"})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/revoke"))
+
+      assert has_element?(lv, "#key-#{key.key_id}-confirm", "Revoke build-01?")
+      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
+      assert render(lv) =~ "build-01 is revoked."
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
+      assert Repo.get!(AccessKey, key.id).revoked_at
+    end
+
     test "an act on a key it does not fit, or no key of the node's, is said and not taken", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope)
       other = node_fixture(scope)
-      %{access_key: approved} = node_key_fixture(scope, node, %{label: "build-01"})
-      %{access_key: elsewhere} = pending_key_fixture(scope, other)
+      %{access_key: revoked} = node_key_fixture(scope, node, %{label: "build-01"})
+      {:ok, _revoked} = AccessKeys.revoke_access_key(scope, revoked)
+      %{access_key: elsewhere} = node_key_fixture(scope, other)
 
       {:ok, lv, html} =
-        live(conn, tab_path(scope, node, "/keys/#{approved.key_id}/approve"))
+        live(conn, tab_path(scope, node, "/keys/#{revoked.key_id}/revoke"))
         |> follow_redirect(conn, tab_path(scope, node))
 
-      assert html =~ "build-01 no longer awaits approval."
-      refute has_element?(lv, "#key-#{approved.key_id}-confirm")
+      assert html =~ "build-01 is revoked."
+      refute has_element?(lv, "#key-#{revoked.key_id}-confirm")
 
       {:ok, _lv, html} =
-        live(conn, tab_path(scope, node, "/keys/#{elsewhere.key_id}/approve"))
+        live(conn, tab_path(scope, node, "/keys/#{elsewhere.key_id}/revoke"))
         |> follow_redirect(conn, tab_path(scope, node))
 
       assert html =~ "This node has no such key."
-      assert is_nil(Repo.get!(AccessKey, elsewhere.id).approved_at)
+      assert is_nil(Repo.get!(AccessKey, elsewhere.id).revoked_at)
     end
 
-    test "an approval whose confirmation is not open acts on nothing", %{conn: conn, scope: scope} do
-      node = node_fixture(scope)
-      %{access_key: key} = pending_key_fixture(scope, node)
-      {:ok, lv, _html} = live(conn, tab_path(scope, node))
-
-      render_hook(lv, "approve", %{"key_id" => key.key_id})
-      assert is_nil(Repo.get!(AccessKey, key.id).approved_at)
-    end
-  end
-
-  describe "a key whose record was changed outside the application" do
-    test "says so in its card, not as an alert, and offers no approval; its path refuses", %{
+    test "a revocation whose confirmation is not open acts on nothing", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope)
-      %{access_key: key} = pending_key_fixture(scope, node, %{label: "build-01"})
+      %{access_key: key} = node_key_fixture(scope, node)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      render_hook(lv, "revoke", %{"key_id" => key.key_id})
+      assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
+    end
+  end
+
+  describe "a key whose record was changed outside the application" do
+    test "says so in its card, not as an alert: it can't be used", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
       tamper(key)
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      assert has_element?(lv, "#key-#{key.key_id}-integrity", "doesn't match its integrity code")
+
+      assert has_element?(
+               lv,
+               "#key-#{key.key_id}-integrity",
+               "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
+             )
+
       refute has_element?(lv, "#key-#{key.key_id}-integrity[role=alert]")
       refute has_element?(lv, "#key-#{key.key_id}-integrity [role=alert]")
-      refute has_element?(lv, "#key-#{key.key_id}-approve")
-      refute has_element?(lv, "#key-#{key.key_id}-guidance")
-      assert has_element?(lv, "#key-#{key.key_id}-reject")
-
-      {:ok, lv, html} =
-        live(conn, tab_path(scope, node, "/keys/#{key.key_id}/approve"))
-        |> follow_redirect(conn, tab_path(scope, node))
-
-      assert html =~
-               "build-01 can&#39;t be approved: its record was changed outside the application."
-
-      refute has_element?(lv, "#key-#{key.key_id}-confirm-button")
-      render_hook(lv, "approve", %{})
-      assert is_nil(Repo.get!(AccessKey, key.id).approved_at)
-    end
-
-    test "one changed after its confirmation opened is not approved", %{conn: conn, scope: scope} do
-      node = node_fixture(scope)
-      %{access_key: key} = pending_key_fixture(scope, node, %{label: "build-01"})
-      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/approve"))
-      tamper(key)
-
-      lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-      assert render(lv) =~ "build-01 can&#39;t be approved: its record was changed outside"
-      assert is_nil(Repo.get!(AccessKey, key.id).approved_at)
+      refute render(lv) =~ ~r/approv/i
+      # Revoking it stays open: it ends what can't be used anyway.
+      assert has_element?(lv, "#key-#{key.key_id}-revoke")
     end
   end
 
   test "a key gone since its confirmation opened is said plainly", %{conn: conn, scope: scope} do
     node = node_fixture(scope)
-    %{access_key: key} = pending_key_fixture(scope, node)
-    {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/reject"))
+    %{access_key: key} = node_key_fixture(scope, node)
+    {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/revoke"))
     Repo.delete!(key)
 
     lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
@@ -318,7 +308,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       lv |> element("#key-add-button") |> render_click()
       assert_patch(lv, tab_path(scope, node, "/add"))
       assert has_element?(lv, "#key-add-title", "Add a public key")
-      assert has_element?(lv, "#key-add", "approved as you add it")
+
+      assert has_element?(
+               lv,
+               "#key-add",
+               "A key for build-01. It is active as soon as you add it."
+             )
 
       assert has_element?(
                lv,
@@ -353,12 +348,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       )
       |> render_submit()
 
-      assert [%AccessKey{label: "build-01", approved_at: %DateTime{}} = key] =
+      assert [%AccessKey{label: "build-01", revoked_at: nil} = key] =
                AccessKeys.list_for_node(scope, node)
 
       # On to what the machine is given: the key's runner file.
       assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
-      assert render(lv) =~ "build-01 is added, and approved."
+      assert render(lv) =~ "build-01 is added."
       assert has_element?(lv, "#key-runner-file-header-title", "Runner file for build-01")
     end
 
@@ -426,13 +421,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert public_key == pair.public_key
     end
 
-    test "a third key is refused with what to do, revoke or reject one", %{
+    test "a third key is refused with what to do, revoke one", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope, name: "build-01")
       node_key_fixture(scope, node)
-      pending_key_fixture(scope, node)
+      node_key_fixture(scope, node)
       {:ok, lv, _html} = live(conn, tab_path(scope, node, "/add"))
 
       lv
@@ -443,7 +438,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       flash = lv |> element("#flash-group") |> render()
       assert flash =~ "build-01 holds two keys already."
-      assert flash =~ "Revoke or reject one before you add another."
+      assert flash =~ "Revoke one before you add another."
 
       assert length(AccessKeys.list_for_node(scope, node)) == 2
     end
@@ -555,15 +550,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert id == "key-#{key.key_id}-runner-file"
     end
 
-    test "is an approved key's alone", %{conn: conn, scope: scope} do
+    test "is an active key's alone", %{conn: conn, scope: scope} do
       node = node_fixture(scope)
-      %{access_key: pending} = pending_key_fixture(scope, node, %{label: "replacement"})
       %{access_key: revoked} = node_key_fixture(scope, node, %{label: "old"})
       {:ok, _revoked} = AccessKeys.revoke_access_key(scope, revoked)
 
       for {rest, words} <- [
-            {"/keys/#{pending.key_id}/runner-file", "replacement is not an approved key."},
-            {"/keys/#{revoked.key_id}/runner-file", "old is not an approved key."},
+            {"/keys/#{revoked.key_id}/runner-file", "old is revoked."},
             {"/keys/ak_0000000000000000/runner-file", "This node has no such key."}
           ] do
         {:ok, lv, html} =
@@ -575,9 +568,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       # From the tab, the same.
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      render_patch(lv, tab_path(scope, node, "/keys/#{pending.key_id}/runner-file"))
+      render_patch(lv, tab_path(scope, node, "/keys/#{revoked.key_id}/runner-file"))
       assert_patch(lv, tab_path(scope, node))
-      assert render(lv) =~ "replacement is not an approved key."
+      assert render(lv) =~ "old is revoked."
       refute has_element?(lv, "#key-runner-file")
     end
 
@@ -638,9 +631,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(
                lv,
-               "#code-issued-approve",
-               "The key it brings arrives here awaiting approval. Compare the fingerprint qory prints with the key's before you approve it."
+               "#code-issued-key",
+               "The key it brings is active as soon as it arrives here. If its fingerprint is not the one qory prints, revoke it."
              )
+
+      refute render(lv) =~ ~r/approv/i
 
       assert has_element?(lv, "#code-issued", "This code is shown once.")
       assert has_element?(lv, "#code-issued-secrets", "Allowed")
@@ -735,7 +730,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert {:ok, %AccessKey{} = key} = AccessKeys.enrol(request)
       assert key.node_id == node.id
       assert key.public_key == pair.public_key
-      assert AccessKey.status(key) == :pending
+      assert is_nil(key.revoked_at)
     end
 
     test "an outstanding code is listed with its expiry, and revoked in place", %{
@@ -879,7 +874,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
     test "reads the keys and the codes, with no act", %{scope: scope} do
       node = node_fixture(scope)
-      %{access_key: key} = pending_key_fixture(scope, node)
+      %{access_key: key} = node_key_fixture(scope, node)
       {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
       conn = member_conn(scope)
 
@@ -891,26 +886,24 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "Only owners and admins manage a node's keys."
              )
 
-      assert has_element?(lv, "#key-#{key.key_id}-state", "Awaiting approval")
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
       assert has_element?(lv, "#code-#{row.id}")
       refute has_element?(lv, "#key-add-button")
       refute has_element?(lv, "#code-new-button")
-      refute has_element?(lv, "#key-#{key.key_id}-approve")
-      refute has_element?(lv, "#key-#{key.key_id}-guidance")
+      refute has_element?(lv, "#key-#{key.key_id}-revoke")
       refute has_element?(lv, "#code-#{row.id}-revoke")
     end
 
     test "is refused every act's path and event, and nothing changes", %{scope: scope} do
       node = node_fixture(scope)
-      %{access_key: pending} = pending_key_fixture(scope, node)
+      %{access_key: key} = node_key_fixture(scope, node)
       {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
       conn = member_conn(scope)
 
       for {rest, words} <- [
             {"/add", "Only owners and admins add a node's keys."},
             {"/new-code", "Only owners and admins make enrolment codes."},
-            {"/keys/#{pending.key_id}/approve", "Only owners and admins manage a node's keys."},
-            {"/keys/#{pending.key_id}/reject", "Only owners and admins manage a node's keys."},
+            {"/keys/#{key.key_id}/revoke", "Only owners and admins manage a node's keys."},
             {"/codes/#{row.id}/revoke", "Only owners and admins manage a node's keys."}
           ] do
         {:ok, _lv, html} =
@@ -923,8 +916,6 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
             {"add_key",
              %{"key" => %{"label" => "x", "public_key" => ed25519_key_pair().encoded}}},
             {"create_code", %{"code" => %{}}},
-            {"approve", %{}},
-            {"reject", %{}},
             {"revoke", %{}},
             {"revoke_code", %{}}
           ] do
@@ -937,8 +928,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                  "Only owners and admins manage a node&#39;s keys."
       end
 
-      assert is_nil(Repo.get!(AccessKey, pending.id).approved_at)
-      assert is_nil(Repo.get!(AccessKey, pending.id).revoked_at)
+      assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
       assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
       assert length(AccessKeys.list_enrolment_codes(scope, node)) == 1
       assert length(AccessKeys.list_for_node(scope, node)) == 1
@@ -947,16 +937,16 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
   test "an admin made a member since the page opened is refused by the context", %{scope: scope} do
     node = node_fixture(scope)
-    %{access_key: key} = pending_key_fixture(scope, node)
+    %{access_key: key} = node_key_fixture(scope, node)
     %{user: user, membership: membership} = member_fixture(scope, :admin)
     conn = log_in_user(build_conn(), user)
 
-    {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/approve"))
+    {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/revoke"))
     Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
     assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
-    assert is_nil(Repo.get!(AccessKey, key.id).approved_at)
+    assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
   end
 
   test "a node of another workspace or organisation is not found", %{conn: conn, scope: scope} do

@@ -174,7 +174,7 @@ the console keeps. Every other act happens on a page, in place:
   The pattern is Add
   integration's (storybook, Screens); A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
-  Revoke, Approve, Remove, Suspend or Clear turns that row into the question, "Delete
+  Revoke, Remove, Suspend or Clear turns that row into the question, "Delete
   FORGE_TOKEN?", what is lost, "Yes, delete" and Cancel; a danger zone's line expands
   under its sentence, with the field to type where one is asked; a page's own setting,
   such as the policy's mode, opens its choices in place and asks under them. Each keeps
@@ -400,13 +400,15 @@ by name or the latest change.
   (`:filter_parameters`).
 - **A variable** is one row: its name, its value in mono (plain configuration, shown
   whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
-  the workspace says so), and the repositories that set their own value, or whose value
-  the lock sets aside, from their resolution (`Apiary.Variables.repository_overrides/1`),
-  a link to the page that lists them. Locked means a repository
-  may not set its own value, and nothing more. A name on the runner's deny list other
-  than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
-  ("NAME is on the runner's deny list.", which describes the name's field while it
-  shows) and "On the runner's deny list" on its row.
+  the workspace says so), and the repositories that have a value of their own, or whose
+  value the lock sets aside, from their resolution
+  (`Apiary.Variables.repository_overrides/1`), a link to the page that lists them. No
+  page sets a repository's own value: the context keeps one
+  (`Apiary.Variables.create_variable/3` with a target), and the demo makes a few. Locked
+  means a repository's own value of the name is set aside, and nothing more. A name on
+  the runner's deny list other than `QORY_…`, which the context refuses, is saved with a
+  warning on New variable's page ("NAME is on the runner's deny list.", which describes
+  the name's field while it shows) and "On the runner's deny list" on its row.
 - **New secret** asks for its name, then **Values**, native radios in a fieldset with that
   legend: "One value" (to start), its one Value, with no value ID; or "Several values,
   each with a value ID", a Value ID and a Value for each, two to start, each row a group
@@ -468,8 +470,8 @@ look alike are one level too many, and nothing is boxed inside a row.
   secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
   (revoked, suspended) is `row-off`, its title muted.
 - **A state is said only when it is not the usual one.** An active key, a member in use,
-  a run that ended well say nothing (a screen reader hears the word); a key awaiting
-  approval, a suspended member, a revoked key say so in words (`<.state_word>`), with a dot and the
+  a run that ended well say nothing (a screen reader hears the word); a suspended
+  member, a revoked key say so in words (`<.state_word>`), with a dot and the
   text colour when the state needs someone. A pill is for a state of at most two words
   that needs someone, and never on every row.
 - **A row's acts.** The one act its state asks for is a text action (`<.button
@@ -828,16 +830,20 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
   record. A node the workspace does not have, or a deleted one, is not found.
 - **Access key**, a node's tab, opens on "A machine signs every request with its own
-  key. Qory keeps only the public half.", the key limits, Add a public key and New
-  enrolment code, then the keys as cards (approve, reject or revoke confirmed in place) and
-  the outstanding codes. With no key it tells owners and admins how a machine gets one:
+  key. Qory keeps only the public half.", the key limit ("A node holds at most 2 keys at
+  a time."), Add a public key and New enrolment code, then the keys as cards and the
+  outstanding codes. A key is Active from the moment it arrives, enrolled with a code or
+  pasted, until it is revoked: its card names it Active or Revoked, and an active key's
+  Revoke… is confirmed in place; nothing awaits approval. A key whose record doesn't match
+  its integrity code says so on its card: "… It can't be used." With no key it tells owners and admins how a machine gets one:
   "No key yet. Make an enrolment code and run the command it shows on the machine, or add
   the public key `qory access-key create` printed there."; a member reads "No key yet."
-  An approved key's card links **Runner file lines**,
+  An active key's card links **Runner file lines**,
   for everyone who reads the node.
 - **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`,
-  an approved key's alone; any other goes back to the tab with why) is a page, not a
-  dialog, and what Add key leads to, with its flash "build-01 is added, and approved.":
+  an active key's alone; a revoked one goes back to the tab with "build-01 is revoked.")
+  is a page, not a dialog, and what Add key leads to, with its flash "build-01 is
+  added.":
   "For build-01. Nothing here is secret: the key's secret stays on the machine.", the
   lines for `~/.config/qory/runner.yaml` (the `server` section: `url`, `access_key_id`
   and `apiary_public_key`, the pin in YAML's flow form) with Copy lines, for CI the two
@@ -848,8 +854,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
 - **New enrolment code**, once made, shows the code once, as the machine sends it (the
   server key's fingerprint after a `.`), then "On the machine, run:" and `qory access-key
   enrol https://apiary.example qec_…` with Copy command, "It works once, for 15 minutes.",
-  and that the key it brings arrives awaiting approval, its fingerprint to compare with the
-  one qory prints.
+  and "The key it brings is active as soon as it arrives here. If its fingerprint is not
+  the one qory prints, revoke it."
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
   `/nodes/:node_id/instances/:instance/clear` (the instance's id) that line, or that row in
@@ -1054,9 +1060,9 @@ GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json`
 publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
 ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
 seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
-key, Settings), its key approved, awaiting approval or revoked, a new one by enrolment code
-or a pasted public key, a replacement beside the current key, and a member's view without
-the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
+key, Settings), its key active or revoked, a new one by enrolment code or a pasted public
+key, active as soon as it arrives, a replacement beside the current key, a node holding at
+most two keys at a time, and a member's view without the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
 (`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
 links; inside it they use the real components (`SettingsComponents.layout/1`,
 `<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a

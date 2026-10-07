@@ -48,7 +48,7 @@ repository; the rules for people are the same, and are written out in
 - **Commits and pull requests** carry no attribution to an AI: no `Co-Authored-By` trailer
   for a model, no "generated with" line, no session link. The message says what changed
   and why, in the imperative.
-- **Toolchain.** Erlang and Elixir come from mise (`mise.toml`); run every mix command as
+- **Toolchain.** Erlang, Elixir and Node come from mise (`mise.toml`); run every mix command as
   `mise x -- mix ...` from the repository root. Postgres on `localhost:5432` as `postgres`
   without a password.
 - **Quality gate.** `mise x -- mix precommit` before a pull request: it compiles with

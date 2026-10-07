@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
   @moduledoc """
   The contract's order of refusals on discovery, the run configuration and the events
   endpoint (`ApiaryWeb.Contract.SignedRequest`), which answers are signed and which are
-  not, the instance id, a key that awaits approval, and what a verified request leaves.
+  not, the instance id, a key enrolled with a code, and what a verified request leaves.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -16,7 +16,7 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes.Instance
   alias Apiary.Repo
-  alias Apiary.Runs.{Delivery, Run}
+  alias Apiary.Runs.Run
 
   @discovery "/.well-known/qory-configuration"
   @run_configuration "/v1/run-configuration"
@@ -106,53 +106,36 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
     end
   end
 
-  describe "a key that awaits approval" do
+  describe "a key enrolled with a code" do
     setup ctx do
       node = node_fixture(ctx.scope)
-      %{access_key: pending, pair: pair} = pending_key_fixture(ctx.scope, node)
-      %{pending: pending, pending_secret: pair.secret, pending_node: node}
+      %{access_key: enrolled, pair: pair} = enrolled_key_fixture(ctx.scope, node)
+      %{enrolled: enrolled, enrolled_secret: pair.secret, enrolled_node: node}
     end
 
-    test "verifies, and every endpoint answers a signed 409 key_pending", ctx do
-      for conn <- each_endpoint(ctx.pending.key_id, ctx.pending_secret) do
-        assert json_response(conn, 409) == %{"error" => "key_pending"}
-        assert signed_answer?(conn)
-      end
+    test "is active at once: discovery and the events endpoint answer it, signed", ctx do
+      conn = signed_get(build_conn(), ctx.enrolled.key_id, ctx.enrolled_secret, @discovery)
+      assert conn.status == 200
+      assert signed_answer?(conn)
 
-      assert Repo.aggregate(Run, :count) == 0
-      assert Repo.aggregate(Delivery, :count) == 0
-      assert Repo.get!(AccessKey, ctx.pending.id).last_used_at == nil
-    end
-
-    test "its instance is seen, so an admin sees what waits", ctx do
-      assert signed_get(build_conn(), ctx.pending.key_id, ctx.pending_secret, @discovery).status ==
-               409
+      {_subject, batch} = first_events()
+      conn = signed_post(build_conn(), ctx.enrolled.key_id, ctx.enrolled_secret, batch)
+      assert conn.status == 202
+      assert signed_answer?(conn)
 
       assert [%Instance{node_id: node_id, access_key_id: key_id}] = Repo.all(Instance)
-      assert node_id == ctx.pending_node.id
-      assert key_id == ctx.pending.id
+      assert node_id == ctx.enrolled_node.id
+      assert key_id == ctx.enrolled.id
     end
 
-    test "a wrong signature is still 401, unsigned", ctx do
-      conn = signed_get(build_conn(), ctx.pending.key_id, "another key", @discovery)
-      assert json_response(conn, 401) == @unauthorized
-      assert unsigned_answer?(conn)
-    end
-
-    test "comes after the instance id, and before the contract version", ctx do
+    test "after the instance id comes the contract version", ctx do
       conn =
-        signed_get(build_conn(), ctx.pending.key_id, ctx.pending_secret, @discovery,
-          instance_id: nil
-        )
-
-      assert error(conn) == "bad_request"
-
-      conn =
-        signed_get(build_conn(), ctx.pending.key_id, ctx.pending_secret, @discovery,
+        signed_get(build_conn(), ctx.enrolled.key_id, ctx.enrolled_secret, @discovery,
           contract_version: "2"
         )
 
-      assert error(conn) == "key_pending"
+      assert error(conn) == "unsupported_contract_version"
+      assert signed_answer?(conn)
     end
   end
 
@@ -281,28 +264,25 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
       assert DateTime.after?(last_seen_at, known.last_seen_at)
     end
 
-    test "a stale GET under a key that awaits approval is still 409, and records nothing",
-         ctx do
-      %{access_key: pending, pair: pair} = pending_key_fixture(ctx.scope, ctx.node)
+    test "a stale GET under an enrolled key is 401, and records nothing", ctx do
+      %{access_key: enrolled, pair: pair} = enrolled_key_fixture(ctx.scope, ctx.node)
 
       conn =
-        signed_get(build_conn(), pending.key_id, pair.secret, @discovery,
+        signed_get(build_conn(), enrolled.key_id, pair.secret, @discovery,
           timestamp: System.os_time(:second) - 3600
         )
 
-      assert json_response(conn, 409) == %{"error" => "key_pending"}
-      assert signed_answer?(conn)
+      assert json_response(conn, 401) == @unauthorized
+      assert unsigned_answer?(conn)
       assert Repo.aggregate(Instance, :count) == 0
     end
   end
 
   describe "the key's row" do
     test "changed outside the application is 401, with a line in the log", ctx do
-      %{access_key: key, pair: pair} = pending_key_fixture(ctx.scope, node_fixture(ctx.scope))
+      %{access_key: key, pair: pair} = enrolled_key_fixture(ctx.scope, node_fixture(ctx.scope))
 
-      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
-        set: [approved_at: DateTime.utc_now()]
-      )
+      Repo.update_all(from(k in AccessKey, where: k.id == ^key.id), set: [rate: 1000])
 
       {conn, log} =
         with_log(fn -> signed_get(build_conn(), key.key_id, pair.secret, @discovery) end)
