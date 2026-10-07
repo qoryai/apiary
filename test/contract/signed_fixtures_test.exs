@@ -199,5 +199,5 @@ defmodule Apiary.Contract.SignedFixturesTest do
   end
 
   defp configuration_schema,
-    do: ContractSchema.document!(contract_dir(), "configuration.schema.json")
+    do: ContractSchema.schema!(contract_dir(), "configuration.schema.json")
 end

@@ -461,9 +461,9 @@ organisation's activity, by Qory rather than by a person.
 entry in the activity. On the organisation's **Members** page an owner suspends an admin or
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
-open pages follow. **The access keys they created keep working**: an access key belongs to
-its workspace, not to a person, so revoke them under **Access keys** if they should stop;
-anyone who reaches the workspace may.
+open pages follow. **The access keys they added keep working**: an access key belongs to
+its node, not to a person, so an owner or an admin revokes it on the node's **Access key**
+tab if it should stop.
 
 The last owner of the organisation who may act is not suspended, made an admin or a member,
 or removed. Should every instance admin be locked out, `grant_instance_admin` is the way

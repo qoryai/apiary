@@ -664,6 +664,32 @@ defmodule Apiary.NodeAccessKeysTest do
     end
   end
 
+  describe "the workspace's node keys" do
+    test "are the keys in use of its nodes and pools in use, each with its node, newest first",
+         ctx do
+      %{scope: scope, node: node} = ctx
+      pool = pool_fixture(scope, %{name: "spot-runners"})
+      gone = node_fixture(scope, %{name: "build-02"})
+
+      {:ok, approved} = paste(scope, node, %{label: "build-01-a"})
+      {:ok, revoked} = paste(scope, node, %{label: "build-01-b"})
+      {:ok, _} = AccessKeys.revoke_access_key(scope, revoked)
+      %{access_key: rejected} = pending_key_fixture(scope, node)
+      {:ok, _} = AccessKeys.reject(scope, rejected)
+      %{access_key: pending} = pending_key_fixture(scope, pool, %{label: "spot-a"})
+      {:ok, _} = paste(scope, gone)
+      {:ok, _} = Nodes.delete_node(scope, gone)
+      access_key_fixture(scope)
+
+      other = workspace_scope(scope.user, workspace_fixture(scope.organisation))
+      {:ok, _} = paste(other, node_fixture(other))
+
+      assert [first, second] = AccessKeys.list_workspace_node_keys(scope)
+      assert {first.id, first.node.name} == {pending.id, "spot-runners"}
+      assert {second.id, second.node.name} == {approved.id, "build-01"}
+    end
+  end
+
   describe "the workspace's keys of today" do
     test "are listed without a node's keys, as the settings page has them", ctx do
       %{scope: scope, node: node} = ctx

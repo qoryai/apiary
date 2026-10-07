@@ -198,7 +198,7 @@ defmodule ApiaryWeb.CoreComponentsTest do
             <CoreComponents.inline_confirm
               id={"key-#{row.id}-confirm"}
               question={"Revoke #{row.name}?"}
-              cancel="/acme/shop/settings/keys"
+              cancel="/acme/shop/settings/secrets"
             >
               Runs that use it are refused from their next request.
               <:action>

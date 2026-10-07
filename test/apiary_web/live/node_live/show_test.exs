@@ -46,21 +46,9 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-tabs-settings.q-tabs-end", "Settings")
       assert lv |> element("#node-tabs") |> render() |> String.split("<a") |> length() == 4
 
-      # Once, plainly: Qory can't check a node's key yet, and the way to the workspace's.
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Nodes receive no runs yet: Qory can't check a node's key yet."
-             )
-
-      # The link flush against the full stop: no space before it.
-      assert lv |> element("#not-on-runs") |> render() =~
-               ~r{>Workspace settings › Access keys</a>\.}
-
-      assert has_element?(
-               lv,
-               ~s{#not-on-runs-keys[href="#{~p"/#{scope.organisation}/#{scope.workspace}/settings/keys"}"]}
-             )
+      # No line sends the reader to a workspace's access keys: there are none.
+      refute has_element?(lv, "#not-on-runs")
+      refute render(lv) =~ "workspace access key"
     end
 
     test "says no instance and no run has reported yet", %{conn: conn, scope: scope} do

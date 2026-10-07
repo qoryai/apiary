@@ -92,8 +92,8 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       assert fixture_key!("pending_access_key").access_key_id =~ ~r/\Aak_[a-z0-9]{16}\z/
     end
 
-    test "the access key and the server's two keys are refused as fixtures" do
-      for name <- ~w(access_key signing_key next_signing_key) do
+    test "both access keys and the server's two keys are refused as fixtures" do
+      for name <- ~w(access_key pending_access_key signing_key next_signing_key) do
         assert Ed25519.check_public_key(fixture_key!(name).public_key) == {:error, :fixture},
                name
       end
@@ -151,7 +151,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   end
 
   describe "known-answers/signatures.json, the enrolment proofs" do
-    test "each is the body's proof of its five lines, under the body's key" do
+    test "each is the body's proof of the five lines SignedMessage builds, under the body's key" do
       %{"enrolment" => enrolments} = known_answers!("signatures")
       access_key = fixture_key!("access_key")
       assert length(enrolments) == 2
@@ -167,7 +167,15 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
                  Integer.to_string(body["timestamp"])
                ]
 
-        message = Enum.join(lines, "\n")
+        message =
+          SignedMessage.enrolment(
+            body["code"],
+            body["public_key"],
+            body["name"],
+            body["timestamp"]
+          )
+
+        assert message == Enum.join(lines, "\n")
         assert byte_size(message) == length
         assert body["public_key"] == Ed25519.encode(access_key.public_key)
         assert sign(message, access_key) == body["proof"]

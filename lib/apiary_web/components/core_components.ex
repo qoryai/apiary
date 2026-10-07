@@ -795,9 +795,9 @@ defmodule ApiaryWeb.CoreComponents do
   one primary and one default action.
 
       <.header>
-        Access keys
-        <:subtitle>Keys let machines post runs to this workspace.</:subtitle>
-        <:actions><.button variant="primary">New access key</.button></:actions>
+        Nodes
+        <:subtitle>A node is one permanent machine; a node pool is a fleet of short-lived instances.</:subtitle>
+        <:actions><.button variant="primary">New node</.button></:actions>
       </.header>
   """
   attr :class, :any, default: nil
@@ -867,7 +867,7 @@ defmodule ApiaryWeb.CoreComponents do
   Summary figures as one bordered object with internal dividers.
 
       <.stats>
-        <.stat label="Access keys" value={3} hint="active" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys"} />
+        <.stat label="Nodes" value={3} hint="running" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/nodes"} />
       </.stats>
   """
   attr :class, :any, default: nil

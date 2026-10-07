@@ -1,38 +1,58 @@
 defmodule ApiaryWeb.Contract.RawBody do
   @moduledoc """
-  Reads the body of a delivery to the events endpoint before anything parses it.
+  Reads the body of a delivery to the events endpoint, and of an enrolment, before
+  anything parses it.
 
-  The signature of a signed POST is over the raw bytes, and it is checked before
-  the body is parsed, so for `POST /v1/events`, whatever its content type, this
-  plug reads the body itself, keeps it in `conn.assigns[:raw_body]` and leaves
-  the body parameters empty; the endpoint skips `Plug.Parsers` for such a
-  request. Every other request passes untouched.
+  The signature of a signed POST is over the raw bytes, and it is checked before the body
+  is parsed; an enrolment is read strictly, a member twice refused, which a parser that
+  keeps the last of them cannot tell. So for `POST /v1/events` and
+  `POST /.well-known/qory-enrolment`, whatever the content type, this plug reads the body
+  itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
+  endpoint skips `Plug.Parsers` for such a request. Every other request passes untouched.
 
-  At most `max_bytes/0` are read, 2 MiB: what an unauthenticated sender can make
-  the server hold is small. A longer body is answered `413` here, before the
-  signature is looked at, as the contract's reference receiver does.
+  At most `max_bytes/0` of a delivery are read, 2 MiB, and `max_bytes(:enrolment)` of an
+  enrolment, 8 KiB, many times the longest the schema allows: what an unauthenticated
+  sender can make the server hold is small. A longer body is answered `413` here, before
+  the signature or the code is looked at, as the contract's reference receiver does.
   """
 
   import Plug.Conn
 
   @max_bytes 2 * 1024 * 1024
+  @enrolment_max_bytes 8 * 1024
   @events_path ["v1", "events"]
+  @enrolment_path [".well-known", "qory-enrolment"]
 
-  @doc "The largest body of a delivery that is accepted, in bytes."
+  @doc """
+  The largest body that is accepted, in bytes: of a delivery (`max_bytes/0`), or of an
+  enrolment (`max_bytes(:enrolment)`).
+  """
   def max_bytes, do: @max_bytes
+  def max_bytes(:events), do: @max_bytes
+  def max_bytes(:enrolment), do: @enrolment_max_bytes
 
   def init(opts), do: opts
 
   def call(%Plug.Conn{method: "POST", path_info: path_info} = conn, _opts) do
-    if events_path?(path_info), do: keep(conn), else: conn
+    case kept(path_info) do
+      nil -> conn
+      endpoint -> keep(conn, max_bytes(endpoint))
+    end
   end
 
   def call(conn, _opts), do: conn
 
   # The router matches the decoded path, so this does: `/v1/%65vents` is the
   # events endpoint too, and its body is no more to be parsed unverified.
-  defp events_path?([_, _] = path_info), do: Enum.map(path_info, &decode/1) == @events_path
-  defp events_path?(_path_info), do: false
+  defp kept([_, _] = path_info) do
+    case Enum.map(path_info, &decode/1) do
+      @events_path -> :events
+      @enrolment_path -> :enrolment
+      _other -> nil
+    end
+  end
+
+  defp kept(_path_info), do: nil
 
   defp decode(segment) do
     URI.decode(segment)
@@ -40,8 +60,8 @@ defmodule ApiaryWeb.Contract.RawBody do
     ArgumentError -> segment
   end
 
-  defp keep(conn) do
-    case read(conn, [], 0) do
+  defp keep(conn, max) do
+    case read(conn, [], 0, max) do
       {:ok, body, conn} ->
         %{conn | body_params: %{}}
         |> fetch_query_params()
@@ -57,17 +77,17 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   # One byte over the limit is asked for, so a body of exactly the limit is
   # told from a longer one without reading the rest.
-  defp read(conn, acc, size) do
-    case read_body(conn, length: @max_bytes + 1 - size, read_length: 64_000) do
-      {:ok, chunk, conn} -> finish(conn, [acc, chunk], size + byte_size(chunk))
-      {:more, chunk, conn} -> more(conn, [acc, chunk], size + byte_size(chunk))
+  defp read(conn, acc, size, max) do
+    case read_body(conn, length: max + 1 - size, read_length: min(64_000, max + 1)) do
+      {:ok, chunk, conn} -> finish(conn, [acc, chunk], size + byte_size(chunk), max)
+      {:more, chunk, conn} -> more(conn, [acc, chunk], size + byte_size(chunk), max)
       {:error, _reason} -> {:error, conn}
     end
   end
 
-  defp finish(conn, _acc, size) when size > @max_bytes, do: {:error, conn}
-  defp finish(conn, acc, _size), do: {:ok, IO.iodata_to_binary(acc), conn}
+  defp finish(conn, _acc, size, max) when size > max, do: {:error, conn}
+  defp finish(conn, acc, _size, _max), do: {:ok, IO.iodata_to_binary(acc), conn}
 
-  defp more(conn, _acc, size) when size > @max_bytes, do: {:error, conn}
-  defp more(conn, acc, size), do: read(conn, acc, size)
+  defp more(conn, _acc, size, max) when size > max, do: {:error, conn}
+  defp more(conn, acc, size, max), do: read(conn, acc, size, max)
 end

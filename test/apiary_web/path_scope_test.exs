@@ -17,7 +17,7 @@ defmodule ApiaryWeb.PathScopeTest do
 
   # A page of each kind: the workspace's, the organisation's, and the run log, which is
   # not a page.
-  @pages ["", "/runs", "/network", "/policy", "/settings/keys", "/settings", "/runs/r-1/log"]
+  @pages ["", "/runs", "/network", "/policy", "/settings/runs", "/settings", "/runs/r-1/log"]
   @organisation_pages ["/settings/people", "/settings", "/audit-log"]
 
   # A response, whether the pipeline sent it or the endpoint rendered an error, without
@@ -81,11 +81,11 @@ defmodule ApiaryWeb.PathScopeTest do
     scope: scope
   } do
     other = sign_up_fixture()
-    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
     # The page is not mounted: the browser is told to load it, and gets the 404 above.
     assert {%{status: 404, reason: "reload"}, _call} =
-             catch_exit(live_redirect(view, to: workspace_path(other, "/settings/keys")))
+             catch_exit(live_redirect(view, to: workspace_path(other, "/settings/runs")))
   end
 
   test "one user, two workspaces, one page each: the path decides, not the session", %{
@@ -156,11 +156,11 @@ defmodule ApiaryWeb.PathScopeTest do
     conn: conn,
     scope: scope
   } do
-    conn = get(conn, workspace_path(scope, "/settings/keys"))
+    conn = get(conn, workspace_path(scope, "/settings/runs"))
     assert get_session(conn, :last_workspace_id) == scope.workspace.id
     assert Map.has_key?(conn.resp_cookies, "_apiary_key")
 
-    for path <- [workspace_path(scope, "/settings/keys"), workspace_path(scope, "/runs/r-1/log")] do
+    for path <- [workspace_path(scope, "/settings/runs"), workspace_path(scope, "/runs/r-1/log")] do
       again = conn |> recycle() |> get(path)
       refute Map.has_key?(again.resp_cookies, "_apiary_key"), path
     end

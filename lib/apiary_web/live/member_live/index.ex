@@ -120,11 +120,11 @@ defmodule ApiaryWeb.MemberLive.Index do
           {if members_edit_rules?(@current_scope),
             do:
               gettext(
-                "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy's rules that are not locked."
+                "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy's rules that are not locked."
               ),
             else:
               gettext(
-                "The people in this organisation. Owners and admins manage members and settings; members manage access keys and see the runs."
+                "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
               )}
           <ApiaryWeb.Extension.slot name={:members_heading} scope={@current_scope} />
         </:subtitle>
@@ -411,12 +411,12 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp level_hint(:owner, _scope),
     do: gettext("Changes everything, including who owns the organisation")
 
-  defp level_hint(:admin, _scope), do: gettext("Manages members, workspaces and settings")
+  defp level_hint(:admin, _scope), do: gettext("Manages members, workspaces, nodes and settings")
 
   defp level_hint(:member, scope) do
     if members_edit_rules?(scope),
-      do: gettext("Manages access keys, sees the runs and changes the policy's unlocked rules"),
-      else: gettext("Manages access keys and sees the runs")
+      do: gettext("Sees the runs and changes the policy's unlocked rules"),
+      else: gettext("Sees the runs")
   end
 
   # Whether a member changes the policy's rules that are not locked: asked of the roles

@@ -103,11 +103,9 @@ defmodule ApiaryWeb.LayoutsTest do
     test "New offers what the reader may start here", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
-      assert has_element?(
-               view,
-               "#new-menu a#new-menu-key[role='menuitem'][href='#{workspace_path(scope, "/settings/keys/new")}']",
-               "New access key"
-             )
+      # A workspace's keys are its nodes': New offers no access key of its own.
+      refute has_element?(view, "#new-menu-key")
+      refute render(view) =~ "New access key"
 
       assert has_element?(
                view,
@@ -136,13 +134,12 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert before?(render(view), ~s(id="new-menu-node"), ~s(id="new-menu-invite"))
 
-      # a member creates keys and invites nobody
+      # a member adds no node, no key and no secret, and invites nobody
       %{user: member} = member_fixture(scope, :member)
       {:ok, view, _html} = live(log_in_user(build_conn(), member), workspace_path(scope))
-      assert has_element?(view, "#new-menu-key")
       refute has_element?(view, "#new-menu-invite")
 
-      for key <- ~w(node node_pool secret variable),
+      for key <- ~w(key node node_pool secret variable),
           do: refute(has_element?(view, "#new-menu-#{key}"), key)
 
       # an organisation's own page offers what the organisation holds: no key of a
@@ -307,7 +304,7 @@ defmodule ApiaryWeb.LayoutsTest do
          %{conn: conn, scope: scope} do
       org = scope.organisation
       ws = scope.workspace
-      {:ok, view, _html} = live(conn, ~p"/#{org}/#{ws}/settings/keys")
+      {:ok, view, _html} = live(conn, ~p"/#{org}/#{ws}/settings/runs")
 
       # The sidebar is the workspace's, its Settings the current entry, as the page's
       # parent: the page is the second column's entry; nothing replaces it.
@@ -325,7 +322,7 @@ defmodule ApiaryWeb.LayoutsTest do
       # The page: the section is its one h1; the level leaves the page. The list of its
       # sections is the frame's second column, beside the sidebar and before the page, not
       # in it.
-      assert has_element?(view, "#main h1#settings-section-title", "Access keys")
+      assert has_element?(view, "#main h1#settings-section-title", "Runs")
       refute has_element?(view, "#main h1", "Workspace settings")
 
       assert view
@@ -340,7 +337,6 @@ defmodule ApiaryWeb.LayoutsTest do
       for {key, href} <- [
             general: ~p"/#{org}/#{ws}/settings",
             people: ~p"/#{org}/#{ws}/settings/people",
-            keys: ~p"/#{org}/#{ws}/settings/keys",
             runs: ~p"/#{org}/#{ws}/settings/runs"
           ] do
         assert has_element?(
@@ -359,7 +355,8 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       assert has_element?(view, "#settings-tabs #settings-tabs-place", ws.name)
-      assert has_element?(view, "#settings-tab-keys[aria-current='page']")
+      assert has_element?(view, "#settings-tab-runs[aria-current='page']")
+      refute has_element?(view, "#settings-tab-keys")
 
       # The drawer holds the sidebar alone: no copy of the sections.
       refute has_element?(view, "#drawer-sections")
@@ -386,17 +383,17 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(
                view,
                "#breadcrumb span#breadcrumb-section[aria-current='page']",
-               "Access keys"
+               "Runs"
              )
 
-      assert tl(trail(render(view))) == [ws.name, "Workspace settings", "Access keys"]
+      assert tl(trail(render(view))) == [ws.name, "Workspace settings", "Runs"]
 
       # The sidebar's foot names its level.
       assert has_element?(view, ".q-sidebar-foot #nav-settings .q-nav-text", "Workspace settings")
 
       # The browser title, the most specific first.
       assert page_title(view) ==
-               "Access keys · Workspace settings · #{ws.name} · #{org.name} · Qory Apiary"
+               "Runs · Workspace settings · #{ws.name} · #{org.name} · Qory Apiary"
     end
 
     test "an organisation's settings keep the organisation's sidebar and list their own sections",
@@ -641,8 +638,8 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, _membership} = Organisations.accept_invitation(user, token)
       switch = "#organisation-menu a[data-place]"
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
-      assert has_element?(view, "#{switch}[href='#{workspace_path(other, "/settings/keys")}']")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      assert has_element?(view, "#{switch}[href='#{workspace_path(other, "/nodes")}']")
 
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
       assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings/people']")
@@ -651,7 +648,7 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings']")
 
       # the link opens the other workspace, and the session remembers it for `/`
-      conn = get(conn, workspace_path(other, "/settings/keys"))
+      conn = get(conn, workspace_path(other, "/nodes"))
       assert html_response(conn, 200) =~ other.organisation.name
       assert redirected_to(get(recycle(conn), ~p"/")) == workspace_path(other)
     end
@@ -1025,19 +1022,19 @@ defmodule ApiaryWeb.LayoutsTest do
           current_scope={@scope}
           nav={:settings}
           sections={@sections}
-          section={:keys}
+          section={:runs}
         >
-          <:crumb>New access key</:crumb>
+          <:crumb>Retention of events</:crumb>
           <p>page</p>
         </ApiaryWeb.Layouts.app>
         """)
 
       # The section and Workspace settings are the page's parents; the page is the
       # breadcrumb's last. The frame writes the level and the section; the page, the rest.
-      assert attribute(html, "#settings-tab-keys", "aria-current") == "true"
+      assert attribute(html, "#settings-tab-runs", "aria-current") == "true"
       assert attribute(html, "#nav-settings", "aria-current") == "true"
       refute html =~ ~r{id="(settings-tab|nav)-[a-z_]+"[^>]*aria-current="page"}
-      assert html =~ ~r{aria-current="page"[^>]*>\s*New access key}
+      assert html =~ ~r{aria-current="page"[^>]*>\s*Retention of events}
 
       org = scope.organisation.slug
       ws = scope.workspace.slug
@@ -1046,12 +1043,12 @@ defmodule ApiaryWeb.LayoutsTest do
       assert tl(trail(html)) == [
                scope.workspace.name,
                "Workspace settings",
-               "Access keys",
-               "New access key"
+               "Runs",
+               "Retention of events"
              ]
 
       assert attribute(html, "a#breadcrumb-settings", "href") == "/#{org}/#{ws}/settings"
-      assert attribute(html, "a#breadcrumb-section", "href") == "/#{org}/#{ws}/settings/keys"
+      assert attribute(html, "a#breadcrumb-section", "href") == "/#{org}/#{ws}/settings/runs"
       refute attribute(html, "#breadcrumb-section", "aria-current")
 
       # A page may lead its section's segment elsewhere, such as a tab of it or its list

@@ -98,9 +98,9 @@ defmodule ApiaryWeb.JumpController do
 
   # The pages of the navigation, each Settings followed by its sections in the second
   # column's order (`SettingsComponents.sections/2`), and Preferences by its own parts,
-  # each once: a section is the navigation's entry where both lead to one path (a
-  # workspace's Access keys, an organisation's People), listed in its place among the
-  # sections, not where the navigation has it. A scope's General is its Settings.
+  # each once: a section is the navigation's entry where both lead to one path (an
+  # organisation's People), listed in its place among the sections, not where the
+  # navigation has it. A scope's General is its Settings.
   defp destinations(scope) do
     entries = Layouts.palette_entries(scope)
     navigation = Map.new(entries, fn {entry, path} -> {path, entry} end)
@@ -203,6 +203,7 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("members users invitations")
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
+  defp also(%Entry{key: :nodes}), do: gettext("access keys machines enrolment pool")
   defp also(%Entry{key: :runs, section: :settings}), do: gettext("retention prune keep")
   defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")

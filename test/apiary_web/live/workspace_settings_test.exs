@@ -80,12 +80,11 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
   describe "the other sections" do
     setup :register_and_log_in_user
 
-    test "People, Runs and Access keys are each the current entry of the second column",
+    test "People and Runs are each the current entry of the second column",
          %{conn: conn, scope: scope} do
       for {key, rest, title} <- [
             {:people, "/people", "People"},
-            {:runs, "/runs", "Runs"},
-            {:keys, "/keys", "Access keys"}
+            {:runs, "/runs", "Runs"}
           ] do
         {:ok, lv, _html} = live(conn, settings_path(scope, rest))
 

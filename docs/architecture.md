@@ -77,7 +77,10 @@ The web side is under `lib/apiary_web/`:
   the contract's endpoints: `ConfigurationController` for the discovery document,
   `EventsController` for the events, whose body `RawBody` keeps as it was sent,
   `RunConfigurationController` for the run configuration. Each of them refuses a
-  contract revision it does not serve through `ContractVersion`.
+  contract revision it does not serve through `ContractVersion`. `EnrolmentController`
+  answers enrolment, beside them and outside `SignedRequest`: a machine with no access
+  key yet enrols one with a code (`Apiary.AccessKeys.enrol/2`), its body kept by `RawBody`
+  too, and its answers signed with the instance's key.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
   `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`,
   `access_key_live`, `invitation_live`, and `user_live`, a person's own pages, their

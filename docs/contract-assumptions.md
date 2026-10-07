@@ -224,6 +224,27 @@ render the schema refuses is not made, and neither is one whose render is over 1
 most a runner reads of a document (`MaxDocument`). A list holds at most 500 rules and a rule
 at most 100 paths.
 
+## Enrolment
+
+`POST /.well-known/qory-enrolment` (`ApiaryWeb.Contract.EnrolmentController`): a machine
+enrols a new access key with an enrolment code made on a node, by the contract's
+`enrolment.schema.json`. No access key id and no request signature: the code and the
+proof authenticate it. The answers, in order:
+
+| Status | Signed | When |
+|---|---|---|
+| `413` | no | a body over 8 KiB |
+| `429` `rate_limited` | no | over the limit of the address it came from, with `Retry-After` |
+| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault: a member unknown or twice, a code not in its normal form, a timestamp with a fraction or an exponent |
+| `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |
+| `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, or carries another fingerprint than the instance's key's |
+| `409` `key_invalid` | yes | the key checks or the ledger refuse the key, the proof does not verify, or its timestamp is more than 300 seconds from the server's clock |
+| `409` `key_limit` | yes | the node holds a key awaiting approval, or two approved keys |
+| `201` | yes | the key is made, awaiting approval |
+
+A signed answer's line 3 is the request's `proof`, and its body lists `apiary_public_key`.
+A refusal changes nothing: the code stays outstanding.
+
 ## The log and the terminal
 
 `dev.qory.run.log` is stored like any event and its bytes, decoded, are the run's
@@ -432,3 +453,16 @@ The contract has not fixed these; Apiary chose, and the runner should match:
     `allow` and refuses a configuration that selects credentials. The apiary renders what
     the rules say and selects no credential; the page and the export say that paths need
     a wall.
+- Enrolment: a proof whose timestamp is outside ±300 seconds is `409` `key_invalid`, as a
+  proof that does not verify; the contract fixes the window, not the answer.
+- Enrolment: the same code posted again with the same public key, a proof that verifies and
+  a fresh timestamp, while the code's 15 minutes last and the key is neither revoked nor
+  rejected, is the same `201` for the same key, as it is now; the contract says a used code
+  is `401`, and says nothing of a repeat. Any other key on a used code is `401`.
+- Enrolment: the instance's key does not rotate, so a code it issues carries one
+  fingerprint; a code that carries two, or another, is `401`.
+- Enrolment: the key's label is the code's label hint, else the name the machine sent,
+  with `-2`, `-3` and on when a key of the node in use has it already.
+- Enrolment: the rate limit is per address, 1 a second and 10 at once
+  (`config :apiary, ApiaryWeb.Contract.EnrolmentController, rate: 1, burst: 10`), counted
+  before the body is read.

@@ -197,14 +197,17 @@ may act.
 ## Access keys
 
 Two kinds of access key live side by side until the server contract that signs with
-Ed25519 is in. Today's keys, with a secret the server made and no node, are every
-member's to create, rotate and revoke (`access_key.create`, `access_key.rotate`,
-`access_key.revoke_secret_key`), from the workspace's settings. A node's keys are owners'
-and admins' alone: making and cancelling an enrolment code (`access_key.create_code`,
+Ed25519 is in. Today's keys, with a secret the server made and no node, have no page any
+more: their actions (`access_key.create`, `access_key.rotate`,
+`access_key.revoke_secret_key`, every member's) still stand in the table, and nothing in
+the console takes them. A node's keys are owners' and admins' alone, and a member adds,
+approves or revokes none: making and cancelling an enrolment code (`access_key.create_code`,
 `access_key.cancel_code`), adding a pasted key (`access_key.add`), approving and
 rejecting a key that awaits approval (`access_key.approve`, `access_key.reject`) and
 revoking one (`access_key.revoke`). Each is asked of the node, the code or the key, and
-leaves its audit entry. Deleting a node (`node.delete`, owners and admins) revokes its
+leaves its audit entry. A machine that enrols a key with a code asks no one: the code is
+the authority, and the key's arrival, awaiting approval, is an entry of `access_key.add`
+by the key itself, `arrived_by` `code`. Deleting a node (`node.delete`, owners and admins) revokes its
 keys in the same transaction, each with its entry of `access_key.revoke`. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
 

@@ -106,14 +106,6 @@ defmodule ApiaryWeb.Layouts do
         action: :"security_policy.read"
       },
       %Entry{
-        section: :settings,
-        key: :keys,
-        label: gettext("Access keys"),
-        icon: "hero-key",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings/keys" end,
-        count: :keys
-      },
-      %Entry{
         section: :foot,
         key: :settings,
         label: gettext("Workspace settings"),
@@ -190,8 +182,8 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's: on a workspace's page a node, a node pool, an integration, a secret, a
-  variable and an access key, and everywhere an invitation; of them, only what the reader
+  then the core's: on a workspace's page a node, a node pool, an integration, a secret and a
+  variable, and everywhere an invitation; of them, only what the reader
   may do there, each entry's action asked of the workspace or the organisation as its
   `place` says.
   """
@@ -236,13 +228,6 @@ defmodule ApiaryWeb.Layouts do
             icon: "hero-variable",
             path: ~p"/#{organisation}/#{workspace}/settings/variables/new",
             action: :"variable.edit"
-          },
-          %Entry{
-            key: :key,
-            label: gettext("New access key"),
-            icon: "hero-key",
-            path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
-            action: :"access_key.create"
           }
         ]
       else
@@ -402,7 +387,7 @@ defmodule ApiaryWeb.Layouts do
   **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
   of the sidebar carry the target to the other list; nothing else does.
 
-      <Layouts.app flash={@flash} current_scope={@current_scope} nav={:keys}>
+      <Layouts.app flash={@flash} current_scope={@current_scope} nav={:runs}>
         <h1>Content</h1>
       </Layouts.app>
   """
@@ -433,7 +418,7 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :map,
     default: nil,
     doc:
-      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
+      "%{members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
 
   attr :width, :string,
     default: "list",
@@ -618,7 +603,7 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # Whether the page is one of its scope's Settings: Settings itself, or a page of it
-  # (an entry of the section `:settings`, such as Access keys).
+  # (an entry of the section `:settings`, such as People).
   defp settings_page?(%Entry{section: section}), do: section in [:foot, :settings]
   defp settings_page?(nil), do: false
 

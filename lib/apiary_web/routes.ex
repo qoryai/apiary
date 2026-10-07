@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Routes do
     names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
     pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
-    `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+    `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.
   - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
     Storybook), where `:dev_routes` is set and the storybook's dependency, a development
     one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
@@ -155,6 +155,14 @@ defmodule ApiaryWeb.Routes do
         pipe_through :contract
 
         get "/qory-configuration", ConfigurationController, :show
+      end
+
+      # Enrolment: no access key yet, so no signed request; the code and the proof
+      # authenticate it (`ApiaryWeb.Contract.EnrolmentController`).
+      scope "/.well-known", ApiaryWeb.Contract do
+        pipe_through :api
+
+        post "/qory-enrolment", EnrolmentController, :create
       end
 
       scope "/v1", ApiaryWeb.Contract do
@@ -358,8 +366,6 @@ defmodule ApiaryWeb.Routes do
           get "/:org/settings/audit-log", MovedController, :show
           get "/:org/members", MovedController, :show
           get "/:org/members/*rest", MovedController, :show
-          get "/:org/:workspace/keys", MovedController, :show
-          get "/:org/:workspace/keys/*rest", MovedController, :show
           get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
@@ -469,10 +475,6 @@ defmodule ApiaryWeb.Routes do
               # Who reaches the workspace, read only: membership is the organisation's.
               live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
-              live "/settings/keys", AccessKeyLive.Index, :index
-              live "/settings/keys/new", AccessKeyLive.Index, :new
-              live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
-              live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
               # The stored secrets and the variables, one section of two views, with the
               # `security` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by

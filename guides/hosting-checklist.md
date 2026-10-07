@@ -60,8 +60,8 @@ being one. Every variable named here is described in [Install and configure](ins
   [Install and configure](install.md#sign-up-and-invitations) has the details.
 - **Stopping someone.** An owner suspends an admin or a member on the organisation's
   **Members** page, and an admin a member, and activates them again; nothing is removed.
-  A suspended person acts in the organisation no more, but the access keys they created
-  keep working, since they belong to the workspace: revoke those too if they should stop.
+  A suspended person acts in the organisation no more, but the access keys they added
+  keep working, since they belong to their nodes: revoke those too if they should stop.
   [Install and configure](install.md#the-instance-admins) says more.
 - **Retention.** Decide it per workspace before the database decides it for you:
   [Retention](retention.md). Log output is most of what a run stores.

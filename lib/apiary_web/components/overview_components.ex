@@ -548,7 +548,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_where(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
-    {gettext("Access keys")}
+    {@item.key.node.name}
     """
   end
 
@@ -707,7 +707,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_when(%{item: %{kind: :idle_key, key: key}} = assigns) do
-    assigns = assign(assigns, :at, key.last_used_at || key.inserted_at)
+    assigns = assign(assigns, :at, key.last_used_at || key.approved_at)
 
     ~H"""
     <span class="tabular-nums">{Format.day(@at)}</span>
@@ -949,7 +949,9 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/#{@item.key.id}/revoke"}
+      navigate={
+        ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
+      }
       class="q-act"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
@@ -1713,9 +1715,10 @@ defmodule ApiaryWeb.OverviewComponents do
   ## The empty workspace
 
   @doc """
-  The empty workspace's one box, with the state of each step read from the record: step
-  1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the first run.
-  `landed` is the first run while the page is open; the box leaves at the next navigation.
+  The empty workspace's one box, with the state of each step read from the record: step 1
+  ticks on a node or pool, step 2 on an approved key of one, step 3 on the first run; a
+  key's `last_used_at` changes step 3's words. `landed` is the first run while the page is
+  open; the box leaves at the next navigation.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1723,25 +1726,33 @@ defmodule ApiaryWeb.OverviewComponents do
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  attr :keys, :list, required: true, doc: "the active keys"
-  attr :preview, :string, required: true
+  attr :nodes, :integer, required: true, doc: "how many nodes and node pools are in use"
+
+  attr :keys, :list,
+    required: true,
+    doc: "the keys of the workspace's nodes in use, not revoked, each with its node, newest first"
+
+  attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
+  attr :server, :string, required: true, doc: "this server's address, for the command"
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
   def onboarding(assigns) do
+    {approved, pending} = Enum.split_with(assigns.keys, & &1.approved_at)
+
     used =
-      assigns.keys
+      approved
       |> Enum.filter(& &1.last_used_at)
       |> Enum.max_by(& &1.last_used_at, DateTime, fn -> nil end)
 
     current =
       cond do
         assigns.landed -> 4
-        used -> 3
-        assigns.keys != [] -> 2
+        approved != [] -> 3
+        assigns.nodes > 0 -> 2
         true -> 1
       end
 
-    assigns = assign(assigns, used: used, current: current, lines: yaml_lines(assigns.preview))
+    assigns = assign(assigns, used: used, current: current, pending: List.first(pending))
 
     ~H"""
     <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
@@ -1749,47 +1760,74 @@ defmodule ApiaryWeb.OverviewComponents do
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
           {gettext(
-            "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
+            "Nothing has posted to this workspace yet. A machine posts once it is enrolled on a node, with a key of its own."
           )}
         </p>
         <p :if={@current > 1} class="q-onb-lead">
-          {gettext(
-            "The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created."
-          )}
+          {gettext("The machine makes its own key, and Qory keeps only the public half.")}
         </p>
         <.steps current={@current} class="my-5">
-          <:step title={gettext("Create an access key")}>
-            {gettext("Label it after the machine or environment.")}
-          </:step>
-          <:step title={gettext("Paste the server block into the runner file")}>
+          <:step title={gettext("Add a node")}>
             {gettext(
-              "The secret is shown once, on the page that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
+              "One per machine, or a node pool for a fleet of short-lived instances that share one key."
             )}
           </:step>
+          <:step title={gettext("Enrol the machine")}>
+            <.rich text={
+              rich_gettext(
+                "On the machine, run %{enrol} with a code from the node, then approve the key it brings. Or paste the public key %{create} prints.",
+                enrol: {:m, "qory access-key enrol"},
+                create: {:m, "qory access-key create"}
+              )
+            } />
+            <span :if={@pending} id={"#{@id}-pending"} class="mt-1 block">
+              <.rich text={
+                rich_gettext("%{key} awaits approval on %{node}. %{approve}",
+                  key: {:m, @pending.label},
+                  node: @pending.node.name,
+                  approve:
+                    {:link,
+                     ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@pending.node.public_id}/access-key",
+                     gettext("Approve it")}
+                )
+              } />
+            </span>
+          </:step>
           <:step title={gettext("See runs here")}>
-            {if @current == 3,
+            {if @used,
               do:
                 gettext("The machine has verified with its key. The first run it starts lands here."),
               else:
                 gettext("From the first post on, every run of that machine lands in this workspace.")}
           </:step>
         </.steps>
-        <.button
-          :if={@current == 1}
-          id={"#{@id}-create"}
-          variant="primary"
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
-          class="max-[479px]:w-full"
-        >
-          <.icon name="hero-key" class="size-4" /> {gettext("Create an access key")}
-        </.button>
+        <div :if={@current == 1 and @may_add} class="flex flex-wrap gap-2">
+          <.button
+            id={"#{@id}-new-node"}
+            variant="primary"
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new"}
+            class="max-[479px]:w-full"
+          >
+            <.icon name="hero-server" class="size-4" /> {gettext("New node")}
+          </.button>
+          <.button
+            id={"#{@id}-new-pool"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new-pool"}
+            class="max-[479px]:w-full"
+          >
+            <.icon name="hero-server-stack" class="size-4" /> {gettext("New node pool")}
+          </.button>
+        </div>
+        <p :if={@current == 1 and !@may_add} id={"#{@id}-members"} class="text-[13px]/5 text-muted">
+          {gettext("An owner or admin adds nodes and enrols machines.")}
+        </p>
         <.button
           :if={@current in [2, 3]}
-          id={"#{@id}-keys"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
+          id={"#{@id}-nodes"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
           class="max-[479px]:w-full"
         >
-          {gettext("Manage access keys")}
+          {gettext("Go to nodes")}
         </.button>
         <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
@@ -1801,17 +1839,19 @@ defmodule ApiaryWeb.OverviewComponents do
       </div>
       <div class="q-onb-paste">
         <span class="q-onb-lbl">
-          <.rich text={
-            if @current >= 3,
-              do:
-                rich_gettext("What you pasted into %{file}", file: {:m, "~/.config/qory/runner.yaml"}),
-              else:
-                rich_gettext("What you will paste into %{file}",
-                  file: {:m, "~/.config/qory/runner.yaml"}
-                )
-          } />
+          {if @current >= 3,
+            do: gettext("What you ran on the machine"),
+            else: gettext("What you run on the machine")}
         </span>
-        <pre class="q-onb-pre"><code><%= for {key, value} <- @lines do %><span :if={key} class="q-onb-k">{key}</span>{value}{"\n"}<% end %></code></pre>
+        <pre id={"#{@id}-command"} class="q-onb-pre"><code>qory access-key enrol {@server} qec_…</code></pre>
+        <p class="text-[13px]/5 text-muted">
+          <.rich text={
+            rich_gettext(
+              "The code comes from the node's Access key tab, %{new_code}. It works once, for 15 minutes.",
+              new_code: {:m, "New enrolment code"}
+            )
+          } />
+        </p>
         <.listening :if={!@landed}>
           <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
           <span :if={@used}>
@@ -1831,16 +1871,6 @@ defmodule ApiaryWeb.OverviewComponents do
       )}
     </p>
     """
-  end
-
-  # The server block, a line at a time: a YAML key in muted, the rest as it is.
-  defp yaml_lines(preview) do
-    for line <- preview |> String.trim_trailing() |> String.split("\n") do
-      case Regex.run(~r/^(\s*[A-Za-z_][\w.-]*:)(.*)$/, line) do
-        [_, key, value] -> {key, value}
-        _ -> {nil, line}
-      end
-    end
   end
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)

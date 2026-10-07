@@ -4,11 +4,11 @@ defmodule Apiary.AccessKeys do
   (`Apiary.AccessKeys.AccessKey`).
 
   **Today's keys** have a key id and one or two secrets the server made, encrypted at
-  rest, and no node; the workspace's settings list them (`list_access_keys/1`). The
-  secret is returned exactly once, from `create_access_key/2` and `rotate_access_key/2`,
-  and is never read back through this module except for verification. Every member makes,
-  rotates and revokes them (`access_key.create`, `access_key.rotate`,
-  `access_key.revoke_secret_key`).
+  rest, and no node (`list_access_keys/1`); no page of the console lists or makes them
+  any more. The secret is returned exactly once, from `create_access_key/2` and
+  `rotate_access_key/2`, and is never read back through this module except for
+  verification. Their actions (`access_key.create`, `access_key.rotate`,
+  `access_key.revoke_secret_key`) are every member's.
 
   **A node's keys** each have one Ed25519 public key and belong to one node or node pool
   of the workspace (`Apiary.Nodes`); a node holds several over its life. Owners and admins
@@ -18,6 +18,9 @@ defmodule Apiary.AccessKeys do
       single use and expires after `code_ttl_minutes/0`; it carries the settings the key
       it brings gets, and is returned once, kept only as its SHA-256; an outstanding one
       is cancelled with `cancel_code/2` (`access_key.cancel_code`);
+    * a machine **enrols** a key with a code (`enrol/2`, the runner contract's
+      enrolment), and the key awaits approval; the code is the authority, and the key
+      itself the actor of its entry, `access_key.add`;
     * a **pasted key** (`add_access_key/3`, `access_key.add`) is approved as it is
       entered;
     * a key that **awaits approval** is approved (`approve/2`, `access_key.approve`) or
@@ -26,8 +29,9 @@ defmodule Apiary.AccessKeys do
       it (`Apiary.Nodes.delete_node/2`).
 
   A node holds at most two approved keys and one that awaits approval: a paste is refused
-  while it holds two keys, approved or not, and an approval while it holds two approved
-  ones, `{:error, :key_limit}`. A key's label is unique among the node's keys in use. Its
+  while it holds two keys, approved or not, an approval while it holds two approved ones,
+  and an enrolment while it holds one awaiting approval or two approved,
+  `{:error, :key_limit}`. A key's label is unique among the node's keys in use. Its
   stored-secrets flag is fixed when it is made; there is no rotation of a node's key: to
   change the flag, or replace a lost key, a new key is added for the same node, and the
   old one revoked.
@@ -59,13 +63,12 @@ defmodule Apiary.AccessKeys do
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
-  alias Apiary.Contract.Ed25519
+  alias Apiary.Contract.{Ed25519, Enrolment}
   alias Apiary.LogMetadata
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
 
-  @default_code_ttl_minutes 15
-  @max_code_ttl_minutes 15
+  @code_ttl_minutes 15
   @approved_limit 2
   @pending_limit 1
 
@@ -420,25 +423,17 @@ defmodule Apiary.AccessKeys do
   ## A node's keys
 
   @doc """
-  code_ttl_minutes/0 is how long an enrolment code may be used once made: the
-  `:code_ttl_minutes` of `Apiary.AccessKeys` in the configuration, held to 1 to
-  #{@max_code_ttl_minutes}, the most the contract allows, and #{@default_code_ttl_minutes}
-  when unset or not a whole number.
+  code_ttl_minutes/0 is how long an enrolment code may be used once made:
+  #{@code_ttl_minutes} minutes, fixed, which no configuration changes.
   """
   @spec code_ttl_minutes() :: pos_integer
-  def code_ttl_minutes do
-    case Keyword.get(Application.get_env(:apiary, __MODULE__, []), :code_ttl_minutes) do
-      minutes when is_integer(minutes) -> minutes |> max(1) |> min(@max_code_ttl_minutes)
-      _unset -> @default_code_ttl_minutes
-    end
-  end
+  def code_ttl_minutes, do: @code_ttl_minutes
 
   @doc """
   key_limits/0 is how many keys a node holds at most: `approved`, approved and not
-  revoked, and `pending`, awaiting approval. A paste and an approval count them under the
-  node's lock here; nothing here makes a pending key but the enrolment, which counts the
-  pending limit under the same lock when it is built (the enrolment endpoint and the
-  signed requests that follow).
+  revoked, and `pending`, awaiting approval. A paste, an approval and an enrolment
+  (`enrol/2`), the one way a key comes to await approval, count them under the node's
+  lock.
   """
   @spec key_limits() :: %{approved: pos_integer, pending: pos_integer}
   def key_limits, do: %{approved: @approved_limit, pending: @pending_limit}
@@ -454,6 +449,22 @@ defmodule Apiary.AccessKeys do
         where: k.node_id == ^node_id,
         order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id],
         preload: [:enrolment_code]
+    )
+  end
+
+  @doc """
+  list_workspace_node_keys/1 is the keys of the scope's workspace's nodes and node pools in
+  use, neither revoked nor rejected (so approved or awaiting approval), each with its
+  node, newest first.
+  """
+  @spec list_workspace_node_keys(Scope.t()) :: [AccessKey.t()]
+  def list_workspace_node_keys(%Scope{} = scope) do
+    Repo.all(
+      from k in in_workspace(AccessKey, scope),
+        join: n in assoc(k, :node),
+        where: is_nil(k.revoked_at) and is_nil(n.deleted_at),
+        order_by: [desc: k.inserted_at, desc: k.id],
+        preload: [node: n]
     )
   end
 
@@ -667,6 +678,264 @@ defmodule Apiary.AccessKeys do
     case Repo.insert_all(PublicKey, [entry], on_conflict: :nothing, conflict_target: :public_key) do
       {1, _} -> :ok
       {0, _} -> {:error, AccessKey.refuse_public_key(changeset)}
+    end
+  end
+
+  @doc """
+  enrol/2 redeems an enrolment code for the key a machine enrols with it, the runner
+  contract's enrolment (`Apiary.Contract.Enrolment`, `ApiaryWeb.Contract.EnrolmentController`):
+  the code is the authority, so no person's scope is asked.
+
+  **The code is accepted** when it carries exactly the fingerprint of the instance's
+  signing key (`Apiary.SigningKey.fingerprint/0`), its SHA-256 is an enrolment code's, of a
+  workspace and an organisation in use (neither marked for deletion, nor stopped by the
+  edition), its node is in use, its row matches its integrity code, and it is neither
+  cancelled nor expired, and not yet used. Anything else is `{:error, :unauthorized}`,
+  whatever the reason. The node's row is locked `FOR UPDATE`, then the code's, so two
+  machines never redeem one code, and the limits count every change before them.
+
+  **Then the key is checked**: the key checks (`Apiary.Contract.Ed25519`), the proof, under
+  the key, and the proof's timestamp, within 300 seconds of `now`; any of them refused is
+  `{:error, :key_invalid}`. A node that holds a key awaiting approval, or two approved
+  keys, is `{:error, :key_limit}`. A public key in the ledger already, in any state, is
+  `{:error, :key_invalid}`, as a paste's is. Every refusal changes nothing: the code stays
+  as it was.
+
+  **The key is made** awaiting approval on the code's node, with the code's stored-secrets
+  flag, its label the code's label hint, else the name the machine sent, with `-2`, `-3`
+  and on after it while the node holds a key in use of that label; its public key enters
+  the ledger, pending; the code is used, by the key's id and public key; and the key
+  itself, as the actor, from `origin`, leaves the entry `access_key.add`, with
+  `arrived_by` `code`. `{:ok, key}`, with its node.
+
+  **A repeat** of a used code is the same answer again: a request whose code made a key,
+  with the same public key, a proof that verifies and a fresh timestamp, while the code
+  would not have expired and the key is neither revoked nor rejected, is `{:ok, key}` for
+  that key, as it is now, and changes nothing; so a machine whose answer was lost may ask
+  again. Any other key on a used code is `{:error, :unauthorized}`. The public keys are
+  compared in constant time.
+
+  `opts`: `now`, the time it is (the current time); `fingerprint`, the signing key's
+  fingerprint (`Apiary.SigningKey.fingerprint/0`); `origin`, where the request came from,
+  for the audit entry (`ApiaryWeb.Origin`).
+  """
+  @spec enrol(Enrolment.t(), keyword) ::
+          {:ok, AccessKey.t()} | {:error, :unauthorized | :key_invalid | :key_limit}
+  def enrol(%Enrolment{} = request, opts \\ []) do
+    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    fingerprint = Keyword.get_lazy(opts, :fingerprint, &Apiary.SigningKey.fingerprint/0)
+
+    with true <- Enrolment.issued_under?(request, fingerprint) || {:error, :unauthorized},
+         %EnrolmentCode{} = found <- find_code(request.code_head) || {:error, :unauthorized} do
+      Repo.transact(fn -> redeem(found, request, now, Keyword.get(opts, :origin)) end)
+    end
+  end
+
+  # The code by its SHA-256, of a workspace and an organisation in use, read without a
+  # lock: its node is locked first, then the code again (`redeem/4`).
+  defp find_code(head) do
+    from(c in EnrolmentCode,
+      join: w in assoc(c, :workspace),
+      join: o in assoc(c, :organisation),
+      as: :organisation,
+      where: c.code_sha256 == ^EnrolmentCode.hash(head),
+      where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at)
+    )
+    |> Apiary.Edition.active_organisations(:organisation)
+    |> Repo.one()
+  end
+
+  defp redeem(%EnrolmentCode{} = found, request, now, origin) do
+    with {:ok, node} <- lock_enrolling_node(found),
+         {:ok, code} <- lock_code(found),
+         {:ok, state} <- code_state(code, request, now),
+         {:ok, public_key} <- authenticate(request, now) do
+      case state do
+        :outstanding -> enrol_new(code, node, request, public_key, now, origin)
+        :used -> enrolled_already(code, node)
+      end
+    end
+  end
+
+  defp lock_enrolling_node(%EnrolmentCode{} = code) do
+    query =
+      from n in Node,
+        where: n.id == ^code.node_id and is_nil(n.deleted_at),
+        where:
+          n.organisation_id == ^code.organisation_id and n.workspace_id == ^code.workspace_id,
+        lock: "FOR UPDATE"
+
+    case Repo.one(query) do
+      %Node{} = node -> {:ok, Repo.preload(node, :workspace)}
+      nil -> {:error, :unauthorized}
+    end
+  end
+
+  # The code again, locked after its node, and checked against its integrity code: a row
+  # changed outside the application is never redeemed.
+  defp lock_code(%EnrolmentCode{id: id, node_id: node_id}) do
+    query =
+      from c in EnrolmentCode,
+        where: c.id == ^id and c.node_id == ^node_id,
+        lock: "FOR UPDATE"
+
+    with %EnrolmentCode{} = code <- Repo.one(query) || {:error, :unauthorized},
+         :ok <- intact_code(code) do
+      {:ok, code}
+    end
+  end
+
+  defp intact_code(%EnrolmentCode{} = code) do
+    case EnrolmentCode.verify_integrity(code) do
+      :ok ->
+        :ok
+
+      {:error, _reason} ->
+        Logger.error(
+          "enrolment code row does not match its integrity code code_id=#{code.id}: " <>
+            "it was changed outside the application, or under another APIARY_ENCRYPTION_SECRET",
+          LogMetadata.metadata(code.organisation_id, code.workspace_id)
+        )
+
+        {:error, :unauthorized}
+    end
+  end
+
+  # Outstanding, or used by the very public key the request carries; anything else, a
+  # code cancelled or expired among it, is no code.
+  defp code_state(%EnrolmentCode{} = code, request, now) do
+    cond do
+      code.cancelled_at != nil or DateTime.compare(code.expires_at, now) != :gt ->
+        {:error, :unauthorized}
+
+      code.used_at == nil ->
+        {:ok, :outstanding}
+
+      same_public_key?(code.public_key, request.public_key) ->
+        {:ok, :used}
+
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  defp same_public_key?(<<_::binary-size(32)>> = stored, encoded) do
+    case Ed25519.decode(encoded, 32) do
+      {:ok, sent} -> Plug.Crypto.secure_compare(stored, sent)
+      :error -> false
+    end
+  end
+
+  defp same_public_key?(_stored, _encoded), do: false
+
+  # The key checks, then the proof under the key, then its timestamp: each refused is
+  # one answer, `key_invalid`.
+  defp authenticate(request, now) do
+    with {:ok, public_key} <- Ed25519.decode_public_key(request.public_key),
+         true <- Enrolment.proof_verifies?(request, public_key),
+         true <- Enrolment.fresh?(request, now) do
+      {:ok, public_key}
+    else
+      _refused -> {:error, :key_invalid}
+    end
+  end
+
+  defp enrol_new(code, node, request, public_key, now, origin) do
+    with :ok <- within_limit(node, :enrol) do
+      key = %AccessKey{
+        id: Ecto.UUID.generate(),
+        organisation_id: node.organisation_id,
+        workspace_id: node.workspace_id,
+        node_id: node.id,
+        key_id: AccessKey.generate_key_id(),
+        public_key: public_key,
+        arrived_by: :code,
+        enrolment_code_id: code.id,
+        received_at: now,
+        created_by_id: code.created_by_id
+      }
+
+      changeset =
+        key
+        |> AccessKey.insert_changeset(%{
+          allow_secrets: code.allow_secrets,
+          label: enrolled_label(node, code.label_hint || request.name)
+        })
+        |> AccessKey.put_integrity()
+
+      with :ok <- enrolment_in_ledger(changeset, public_key, now),
+           {:ok, added} <- Repo.insert(changeset),
+           {:ok, _used} <-
+             code
+             |> Ecto.Changeset.change(
+               used_at: now,
+               used_by_key_id: added.key_id,
+               public_key: public_key
+             )
+             |> EnrolmentCode.put_integrity()
+             |> Repo.update(),
+           added = %{added | node: node, workspace: node.workspace},
+           {:ok, _entry} <-
+             Audit.record(
+               Repo,
+               Scope.put_origin(Scope.for_access_key(added), origin),
+               :"access_key.add",
+               added,
+               %{
+                 after: %{
+                   label: added.label,
+                   key_id: added.key_id,
+                   fingerprint: AccessKey.fingerprint(added),
+                   allow_secrets: added.allow_secrets,
+                   arrived_by: added.arrived_by
+                 },
+                 details: %{node_id: node.public_id, code_id: code.id}
+               }
+             ) do
+        {:ok, added}
+      end
+    end
+  end
+
+  # A public key in the ledger already, in any state, is refused as an invalid one is.
+  defp enrolment_in_ledger(changeset, public_key, now) do
+    case enter_in_ledger(changeset, public_key, :pending, now) do
+      :ok -> :ok
+      {:error, %Ecto.Changeset{}} -> {:error, :key_invalid}
+    end
+  end
+
+  # The label a key enrolled on `node` gets: `base`, or `base-2`, `base-3` and on, the
+  # first no key of the node in use has; the node is locked, so no other key takes it.
+  defp enrolled_label(%Node{id: node_id}, base) do
+    taken =
+      Repo.all(
+        from k in AccessKey,
+          where: k.node_id == ^node_id and is_nil(k.revoked_at),
+          select: k.label
+      )
+      |> MapSet.new()
+
+    Stream.iterate(1, &(&1 + 1))
+    |> Stream.map(fn
+      1 -> base
+      n -> "#{base}-#{n}"
+    end)
+    |> Enum.find(&(not MapSet.member?(taken, &1)))
+  end
+
+  # The key the used code made, while it is in use and intact: the answer again.
+  defp enrolled_already(%EnrolmentCode{used_by_key_id: key_id} = code, node) do
+    query =
+      from k in AccessKey,
+        where: k.key_id == ^key_id and k.node_id == ^node.id,
+        where: k.enrolment_code_id == ^code.id and is_nil(k.revoked_at)
+
+    with %AccessKey{} = key <- Repo.one(query) || {:error, :unauthorized},
+         :ok <- intact(key) do
+      {:ok, %{key | node: node, workspace: node.workspace}}
+    else
+      {:error, _reason} -> {:error, :unauthorized}
     end
   end
 
@@ -940,7 +1209,8 @@ defmodule Apiary.AccessKeys do
   end
 
   # A paste is refused while the node holds two keys, approved or awaiting approval,
-  # since it is approved at once; an approval while it holds two approved ones.
+  # since it is approved at once; an approval while it holds two approved ones; an
+  # enrolment while it holds a key awaiting approval, or two approved ones.
   defp within_limit(%Node{id: node_id}, purpose) do
     counts =
       Repo.one(
@@ -956,6 +1226,7 @@ defmodule Apiary.AccessKeys do
       case purpose do
         :add -> counts.approved + counts.pending >= @approved_limit
         :approve -> counts.approved >= @approved_limit
+        :enrol -> counts.pending >= @pending_limit or counts.approved >= @approved_limit
       end
 
     if full?, do: {:error, :key_limit}, else: :ok

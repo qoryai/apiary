@@ -64,8 +64,8 @@ person's own page and an Instance page, the one the person came from (Two levels
   as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New node, New node pool, Add
-  integration (to Integrations' cards, `#add-part`), New secret, New variable and New
-  access key, then, on every page, Invite people; before the core's, whatever the edition
+  integration (to Integrations' cards, `#add-part`), New secret and New variable, then,
+  on every page, Invite people; before the core's, whatever the edition
   offers there (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or
   the organisation as its place says. **The account menu** holds who they are, their email
   over "Your personal account" (`#user-menu-account`; an account has no name), then
@@ -95,7 +95,7 @@ person's own page and an Instance page, the one the person came from (Two levels
 - **The sidebar's foot** holds the scope's settings, named after the level: **Workspace
   settings** (`#nav-settings`) or **Organisation settings** (`#nav-organisation`), never a
   bare Settings, and so its tooltip while folded; the current entry on every page of them
-  (General, or an entry of the section `:settings`, such as Access keys), marked as their
+  (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
   then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
   version, opening upward to what is about the product rather than the person: first, only
@@ -163,7 +163,7 @@ Nothing opens over a page but **Search or jump to**, the palette (above), the on
 the console keeps. Every other act happens on a page, in place:
 
 - **A form is a page** of its section at a path of its own, never a dialog over a list:
-  New secret, New variable, New access key, Invite people, New node, an export. Its
+  New secret, New variable, Invite people, New node, an export. Its
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
@@ -220,9 +220,10 @@ replaces the navigation it is in.
   kind and one line by kind under its title; each page says once that no run uses any of it
   yet) and Secrets and variables (`/settings/secrets`,
   below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
-  Runs (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
-  `/settings/retention`, its path before, sends on with its query), and Access keys
-  (`/settings/keys`).
+  and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
+  logs; `/settings/retention`, its path before, sends on with its query). A workspace's
+  keys are its nodes' (Nodes, below): `/settings/keys` and `/:org/:workspace/keys`,
+  the paths of the Access keys page that was removed, are unknown paths, 404.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Organisation
   settings): General
@@ -280,13 +281,14 @@ section a page (`ApiaryWeb.SettingsComponents.layout/1`, or
 (20 px, `#settings-section-title`; `heading`, the level's h1 before, is ignored), one
 sentence of what it is for, then its content; the frame names the level, in the second
 column's heading, the breadcrumb and the browser title. Content is a 720 px column for
-forms and 960 px for a list (People, a workspace's and an organisation's, Access keys).
+forms and 960 px for a list (People, a workspace's and an organisation's, Secrets and
+variables).
 The list of the kind's sections is not in the page but the frame's second column (Two
 levels, under The shell; `#settings-tabs`, `settings-tab-<key>`): the page reads them when
 it mounts (`sections/2`) and passes them to `Layouts.app/1` as `sections`, its own key as
 `section`. It is labels without icons, muted, the current one in the text colour on a
-light fill, with a count where it helps (an organisation's People, Access keys, from the
-navigation's `counts`); below 1024 px it is the disclosure under the top bar (Two levels,
+light fill, with a count where it helps (an organisation's People, from the navigation's
+`counts`); below 1024 px it is the disclosure under the top bar (Two levels,
 under The shell). A section is flat, no card (Integrations' Add an integration, three
 groups of a card per thing to add, aside): its fields straight under its heading
 (`SettingsComponents.part/1`, an `<h2>` where it has more than one part, such as Owners;
@@ -295,12 +297,12 @@ a form its one button, primary where it is the section's main action, beside one
 line (`SettingsComponents.save/1`). A section the reader may not open is not in the list,
 and its path sends them to General with its own sentence of why.
 The breadcrumb names the level and ends with the section, both written by the frame
-(`Acme / Main / Workspace settings / Access keys`, `Acme / Organisation settings / People`);
+(`Acme / Main / Workspace settings / Runs`, `Acme / Organisation settings / People`);
 a person's own page starts with Your settings and an Instance page with Instance settings,
 then the section (The top bar, under The shell). The browser title is the most specific first, the
 page's words, the level, then the workspace's name and the organisation's
-(`SettingsComponents.page_title/3`): `Access keys · Workspace settings · Main · Acme ·
-Qory Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
+(`SettingsComponents.page_title/3`): `Runs · Workspace settings · Main · Acme · Qory
+Apiary`, `People · Organisation settings · Acme · Qory Apiary`, `Account · Your
 settings · Qory Apiary`, `Configuration · Instance settings · Qory Apiary`.
 
 **A form is a page.** Creating or changing one thing is a page of its section at a path of
@@ -342,10 +344,10 @@ sees no danger zone, and the act's path sends them to General and says why.
 Deleting any workspace from Workspaces is confirmed the same way in its row
 (`/:org/settings/workspaces/:workspace_id/delete`): the row shows the confirmation in
 place of its cells, its slug typed to enable Yes, delete, and Cancel gives the row back.
-Every other act on a row of a list (rotate, revoke, remove, suspend, a deletion) is
+Every other act on a row of a list (revoke, remove, suspend, a deletion) is
 confirmed on its row too, each at a path of its own (No modals, above).
-The old paths, `/:org/members/…`, `/:org/:workspace/keys/…` and
-`/:org/:workspace/settings/retention`, send on to the new ones
+The old paths, `/:org/members/…` and `/:org/:workspace/settings/retention`, send on to
+the new ones
 (`ApiaryWeb.MovedController`).
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
@@ -451,37 +453,6 @@ by name or the latest change.
   `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, in the tab's
   panel, "Only owners and admins change this."; a form's page sends them back to the tab
   with the same words.
-
-### Access keys
-
-A workspace's Access keys (`ApiaryWeb.AccessKeyLive.Index`, `/settings/keys`) is a list:
-each key's label and key id, when it was last used ("Never used; created …" until it is),
-the runner version that used it, and its state when it is not the usual one (Rotated, with
-Retire previous secret beside it; Revoked, with its date). Rotate… and Revoke… are in a
-live key's ⋯ menu. A revoked key stays listed, so the runs it posted keep a name.
-
-- **New access key** (`/settings/keys/new`) is a page of the section (A form is a page,
-  above): the breadcrumb `Workspace settings / Access keys / New access key`, the title
-  New access key, one sentence, the Label field, and Create key with Cancel back to the
-  list.
-- **The secret is shown once, on the page of the act that made it**, never in a dialog:
-  once the key is created, New access key's page becomes the secret's (Your new access
-  key: the warning that it is shown once, the key id and the secret each with a copy
-  button, the `server` block to paste into the runner file), and its foot is Done back to
-  the list beside "Once you leave this page, the secret is not shown again." A rotation
-  shows its new secret the same way at its own path (New secret for build-01, the
-  breadcrumb ending Rotate key). The secret is held by the page's process alone and
-  dropped as soon as the path changes, by Done, the breadcrumb or any other way; no path
-  renders it, and opening the page again starts without it.
-- **A row's act is confirmed in place**, never in a dialog: the key's row becomes its
-  confirmation (`table/1`'s `confirming`, `inline_confirm/1`), the question, one muted
-  sentence of what the act does, its button and Cancel back to the list, which takes the
-  focus (Escape cancels too). Rotate (`/settings/keys/:id/rotate`: "Rotate build-01?",
-  Yes, rotate), Revoke (`/settings/keys/:id/revoke`: "Revoke build-01?", the red Yes,
-  revoke) and Retire previous secret (from the rotated key's row, at no path of its own:
-  Yes, retire). A path shows its row's confirmation and never acts by itself; one row
-  confirms at a time. A path the reader may not take, or of a revoked key, sends them back
-  to the list with a flash saying why; a key of another workspace is not found.
 
 ## Lists
 
@@ -596,7 +567,7 @@ version. Only the version in force is exported; another version's path sends on 
   no place otherwise, so a screen reader hears what a view, a filter or a search left; an
   empty list says its empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `started:>2026-09-01`,
+  (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`,
   `denied:yes`; `decision:`, `tools:`, `seen:` on Network access) become the URL's
   parameters and show as tokens, and the other words are the free text, `q`, matched as
   text without regard to case (a run's id, task or target; a destination's host or
@@ -732,8 +703,8 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
   says what it does: the policy's mode and version, the targets with rules of their own
   (Review), retention (Change, to Workspace settings › Runs).
-- A workspace no run has reached is one box: the steps from a key to the first run and
-  the server block to paste.
+- A workspace no run has reached is one box: the steps from a node to the first run, and
+  the command that enrols the machine.
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
