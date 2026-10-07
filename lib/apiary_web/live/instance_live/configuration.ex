@@ -245,7 +245,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
   # Where each value comes from: the setting of the server's environment, as
   # `config/runtime.exs` read it, where whoever runs the server set it; the default where
-  # it is not set or blank, which every reader of these settings takes for unset.
+  # it is not set, or set to a blank value, which every reader of these settings takes for
+  # unset.
   # Pruning is the application's configuration, which no setting of the environment changes.
   defp sources do
     %{
@@ -263,15 +264,21 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
     }
   end
 
+  # Set to a blank value is not unset: the default either way, said as it is.
   defp env_source(variable, key) do
-    if blank?(Application.get_env(:apiary, key)),
-      do:
-        rich_gettext("The default: %{variable} is not set", variable: {:code, variable, "q-mono"}),
-      else: rich_gettext("Set by %{variable}", variable: {:code, variable, "q-mono"})
-  end
+    case Application.get_env(:apiary, key) do
+      nil ->
+        rich_gettext("The default: %{variable} is not set", variable: {:code, variable, "q-mono"})
 
-  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank?(_value), do: true
+      value ->
+        if String.trim(value) == "",
+          do:
+            rich_gettext("The default: %{variable} is empty",
+              variable: {:code, variable, "q-mono"}
+            ),
+          else: rich_gettext("Set by %{variable}", variable: {:code, variable, "q-mono"})
+    end
+  end
 
   # The hour of the night the pruning starts, UTC, as `Apiary.Retention.Scheduler` reads it
   # from the application's configuration: 3 when it names none. It prunes at a moment

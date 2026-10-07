@@ -724,7 +724,7 @@ defmodule ApiaryWeb.UserAuth do
   def signed_in_path(_socket), do: ~p"/"
 
   defp signed_in_path(conn, %Apiary.Accounts.User{} = user) do
-    case Organisations.load_home_scope(Scope.for_user(user), get_session(conn, @last_workspace)) do
+    case home_scope(conn, Scope.for_user(user)) do
       %Scope{organisation: %{} = organisation, workspace: %{} = workspace} ->
         ~p"/#{organisation}/#{workspace}"
 
@@ -737,6 +737,19 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   defp signed_in_path(_conn, nil), do: ~p"/"
+
+  @doc """
+  home_scope/1 is the request's scope as a person's own pages and the Instance's have it:
+  its user with the workspace the session remembers as last opened, while they still reach
+  it, else the first workspace they reach (`Apiary.Organisations.load_home_scope/2`), as
+  `on_mount(:load_organisation, ...)` loads it for a LiveView and `signed_in_path/1` reads
+  it. The scope as it is for a user without a membership, and for a visitor.
+  """
+  @spec home_scope(Plug.Conn.t()) :: Scope.t() | nil
+  def home_scope(%Plug.Conn{} = conn), do: home_scope(conn, conn.assigns[:current_scope])
+
+  defp home_scope(conn, scope),
+    do: Organisations.load_home_scope(scope, get_session(conn, @last_workspace))
 
   @doc """
   Plug for the pages under `/:org/…` and `/:org/:workspace/…`: loads the organisation
