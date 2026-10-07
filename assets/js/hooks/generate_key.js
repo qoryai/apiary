@@ -1,6 +1,7 @@
 // Generate a key, on a node's Access key tab (`#key-generate`): the browser makes the
 // node's Ed25519 key, Qory receives only its public half, and the secret is shown once, on
-// the page that made it. The pure part, the key and the one event, is key_pair.js.
+// the page that made it. The pure part, the key, the one event and what to do with the
+// secret's slot, is key_pair.js.
 //
 // The element is the same `<section id="key-generate">` on the form (`…/generate`) and on
 // the page the server patches to once the key is added (`…/keys/:key_id/generated`), so
@@ -15,11 +16,14 @@
 //   server's render), makes the key, and pushes `generate_key` with the label, the Stored
 //   secrets choice and the public key: never the secret.
 // - It holds `{secret, publicKey}` until the secret's slot shows,
-//   `#key-generated-secret[data-public-key]` (in a `phx-update="ignore"`), and writes it
-//   there only if the slot's public key is its own: with `textContent` into
-//   `#key-generated-secret-value`, which it focuses. Then it drops its copy. A slot it
-//   holds nothing for (the page reloaded, or opened again) shows
-//   `#key-generated-secret-gone`, which the server renders hidden.
+//   `[data-secret-slot][data-public-key]` (a `phx-update="ignore"` whose ids are the
+//   key's), and writes it there only if the slot's public key is its own: with
+//   `textContent` into the slot's `[data-secret-value]`, which it focuses. Then it drops
+//   its copy and remembers the public key it wrote for. A slot it holds nothing for (the
+//   page reloaded, or opened again) shows its `[data-secret-gone]`, which the server
+//   renders hidden. A slot that shows a secret for another public key than the one it
+//   wrote for is emptied and says the secret is gone. Which of these is key_pair.js
+//   `slotStep`.
 // - A reply without a key (the form shows why) drops the secret and turns the button back
 //   on: the next Generate key makes a new pair. No reply and no slot within 15 seconds, a
 //   push that fails, or the connection dropping while the secret waits for its slot, drop
@@ -34,15 +38,15 @@
 // `this.js()`, so that a patch keeps them. Nothing here logs, stores or keeps anything
 // outside this hook.
 
-import {checkSupport, generate} from "./key_pair"
+import {checkSupport, generate, slotStep} from "./key_pair"
 
 const REPLY_TIMEOUT = 15000
 
 const FORM = "key-generate-form"
 const SUBMIT = "#key-generate-submit"
-const SLOT = "#key-generated-secret"
-const VALUE = "#key-generated-secret-value"
-const GONE = "#key-generated-secret-gone"
+const SLOT = "[data-secret-slot]"
+const VALUE = "[data-secret-value]"
+const GONE = "[data-secret-gone]"
 const NOTICES = {
   insecure: "#key-generate-insecure",
   unsupported: "#key-generate-unsupported",
@@ -52,6 +56,7 @@ const NOTICES = {
 export const GenerateKey = {
   mounted() {
     this.held = null
+    this.filled = null
     this.attempt = 0
     this.pending = false
     this.timer = null
@@ -182,20 +187,30 @@ export const GenerateKey = {
   },
 
   // Writes the held secret into its slot if the slot is there and is for the held key;
-  // a slot this hook holds nothing for says the secret is gone.
+  // a slot this hook holds nothing for, or one showing another key's secret, says the
+  // secret is gone (key_pair.js `slotStep`).
   fill() {
     const slot = this.el.querySelector(SLOT)
     if (!slot) return
     const value = slot.querySelector(VALUE)
     if (!value) return
-    const held = this.held
-    if (held && slot.getAttribute("data-public-key") === held.publicKey) {
-      value.textContent = held.secret
+    const slotKey = slot.getAttribute("data-public-key")
+    const step = slotStep({
+      held: this.held,
+      filled: this.filled,
+      slotKey,
+      shown: value.textContent !== "",
+    })
+    if (step === "fill") {
+      value.textContent = this.held.secret
+      this.filled = slotKey
       this.drop()
       this.pending = false
       value.focus()
-    } else if (value.textContent === "") {
-      if (held) this.drop()
+    } else if (step === "wipe" || step === "gone") {
+      value.textContent = ""
+      this.filled = null
+      if (this.held) this.drop()
       this.show(slot.querySelector(GONE))
     }
   },
@@ -251,6 +266,7 @@ export const GenerateKey = {
     this.attempt++
     this.drop()
     this.pending = false
+    this.filled = null
     const value = this.el.querySelector(VALUE)
     if (value && value.textContent !== "") {
       value.textContent = ""

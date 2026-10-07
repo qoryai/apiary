@@ -32,7 +32,7 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
   defp error(conn), do: Jason.decode!(conn.resp_body)["error"]
 
   # A request to each endpoint, `opts` passed to the signing helper.
-  defp each_endpoint(key_id, secret, opts \\ []) do
+  defp each_endpoint(key_id, secret, opts) do
     {_subject, batch} = first_events()
 
     [

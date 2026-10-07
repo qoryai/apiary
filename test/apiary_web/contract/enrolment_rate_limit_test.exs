@@ -272,7 +272,10 @@ defmodule ApiaryWeb.Contract.EnrolmentRateLimitTest do
       assert Repo.get_by!(AccessKey, public_key: pair.public_key)
     end
 
-    test "is not spent by a code refused or a key unproven", %{scope: scope, node: node} do
+    test "is not spent by a proof that does not verify under the key", %{
+      scope: scope,
+      node: node
+    } do
       %{code: code} = code(scope, node)
       pair = ed25519_key_pair()
 

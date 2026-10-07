@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Contract.ContractVersion do
   `ApiaryWeb.Contract.SignedRequest` calls `fetch/1` once the request has verified, so a
   request that does not is `401` whatever its header says, and answers a refusal with
   `refuse/1`, signed, where the contract's order of refusals puts it.
-  `ApiaryWeb.Contract.EnrolmentController` calls them before it reads the body, and its
+  `ApiaryWeb.Contract.EnrolmentController` calls them before it decodes the body, and its
   refusal goes out unsigned.
   """
 

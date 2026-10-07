@@ -1103,24 +1103,27 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {_yaml, env_pin} = pin_lines()
       assert "QORY_APIARY_PUBLIC_KEY=" <> pin == env_pin
 
-      # The slot: ignored by LiveView, the stored public key on it, its value empty.
+      # The slot: the key's own, ignored by LiveView, the stored public key on it, its
+      # value empty.
+      slot = "#key-generated-secret-#{added.key_id}"
+
       assert has_element?(
                lv,
-               ~s{#key-generated-secret[phx-update="ignore"][data-public-key="#{key["public_key"]}"]}
+               ~s{#{slot}[data-secret-slot][phx-update="ignore"][data-public-key="#{key["public_key"]}"]}
              )
 
-      assert lv |> element("#key-generated-secret-value") |> render() =~
-               ~r{<code[^>]*id="key-generated-secret-value"[^>]*>\s*</code>}
+      assert lv |> element("#{slot}-value") |> render() =~
+               ~r{<code[^>]*id="key-generated-secret-#{added.key_id}-value"[^>]*>\s*</code>}
 
-      assert has_element?(lv, ~s{#key-generated-secret-value[tabindex="-1"]})
-      assert has_element?(lv, "#key-generated-secret-gone.hidden")
+      assert has_element?(lv, ~s{#{slot} #{slot}-value[data-secret-value][tabindex="-1"]})
+      assert has_element?(lv, "#{slot} #{slot}-gone[data-secret-gone].hidden")
 
-      assert lv |> element("#key-generated-secret-gone") |> render() |> text() |> String.trim() ==
+      assert lv |> element("#{slot}-gone") |> render() |> text() |> String.trim() ==
                "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke spot-runners and generate another key."
 
       for {copy, target, name} <- [
             {"key-generated-id-copy", "#key-generated-id", "QORY_ACCESS_KEY_ID"},
-            {"key-generated-secret-copy", "#key-generated-secret-value",
+            {"key-generated-secret-copy", "#key-generated-secret-#{added.key_id}-value",
              "QORY_ACCESS_KEY_SECRET"},
             {"key-generated-pin-copy", "#key-generated-pin", "QORY_APIARY_PUBLIC_KEY"}
           ] do
@@ -1168,8 +1171,59 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(lv, "h1#key-generated-header-title", "Variables for ci")
       assert has_element?(lv, "#key-generated-id", key.key_id)
-      assert has_element?(lv, "#key-generated-secret-gone.hidden")
+      assert has_element?(lv, "#key-generated-secret-#{key.key_id}-gone.hidden")
       refute html =~ ~r/qak_/i
+    end
+
+    test "a patch from one key's page to another's replaces the secret's slot", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      %{access_key: a} = browser_key_fixture(scope, node, %{label: "ci"})
+      %{access_key: b} = browser_key_fixture(scope, node, %{label: "spot-runners"})
+      encoded = &Base.url_encode64(&1.public_key, padding: false)
+
+      {:ok, lv, _html} = live(conn, generated_path(scope, node, b.key_id))
+
+      assert has_element?(
+               lv,
+               ~s{#key-generated-secret-#{b.key_id}[data-public-key="#{encoded.(b)}"]}
+             )
+
+      # A history jump to A's page patches the same LiveView: B's slot, the one the hook
+      # filled with B's secret, leaves the page, and A's comes in, its value empty and
+      # its gone line naming A.
+      render_patch(lv, generated_path(scope, node, a.key_id))
+
+      assert has_element?(lv, "#key-generated-id", a.key_id)
+      refute has_element?(lv, "#key-generated-secret-#{b.key_id}")
+
+      assert [_slot] =
+               lv
+               |> render()
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query("[data-secret-slot]")
+               |> Enum.to_list()
+
+      assert has_element?(
+               lv,
+               ~s{#key-generated-secret-#{a.key_id}[phx-update="ignore"][data-public-key="#{encoded.(a)}"]}
+             )
+
+      assert lv |> element("#key-generated-secret-#{a.key_id}-value") |> render() =~
+               ~r{>\s*</code>}
+
+      assert lv
+             |> element("#key-generated-secret-#{a.key_id}-gone")
+             |> render()
+             |> text()
+             |> String.trim() =~ "revoke ci and generate another key."
+
+      assert has_element?(
+               lv,
+               ~s{#key-generated-secret-copy[data-copy-target="#key-generated-secret-#{a.key_id}-value"]}
+             )
     end
 
     test "a crafted event is refused before anything is stored", %{conn: conn, scope: scope} do
@@ -1209,6 +1263,30 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert add_entries(node) == []
     end
 
+    test "an event the page has no clause for crashes it, and its crash report holds no secret",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+      Process.flag(:trap_exit, true)
+      ref = Process.monitor(lv.pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          catch_exit(
+            render_hook(lv, "bogus", %{
+              "value" => "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
+            })
+          )
+
+          assert_receive {:DOWN, ^ref, :process, _pid, _reason}
+        end)
+
+      assert log =~ "FunctionClauseError"
+      assert log =~ ~s{"value" => "[FILTERED]"}
+      refute log =~ ~r/qak_/i
+      assert AccessKeys.list_for_node(scope, node) == []
+    end
+
     # A valid public key whose base64url holds `prefix` at its start: hashes, the first
     # three bytes of each made `prefix`'s (four characters, 24 bits, so the encoding stays
     # canonical), until one decodes and passes the key checks. Deterministic.
@@ -1241,7 +1319,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
         assert_reply(lv, %{key_id: key_id})
         assert_patch(lv, generated_path(scope, node, key_id))
-        assert has_element?(lv, ~s{#key-generated-secret[data-public-key="#{public_key}"]})
+
+        assert has_element?(
+                 lv,
+                 ~s{#key-generated-secret-#{key_id}[data-public-key="#{public_key}"]}
+               )
       end
 
       assert length(AccessKeys.list_for_node(scope, node)) == 2
@@ -1345,7 +1427,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
           |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
 
         assert has_element?(lv, "#key-runner-file")
-        refute has_element?(lv, "#key-generated-secret")
+        refute has_element?(lv, "[data-secret-slot]")
       end
 
       # A revoked one, and none of the node's: back to the tab, said.
@@ -1373,7 +1455,16 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         |> follow_redirect(conn, tab_path(scope, node))
 
       assert html =~ "Only owners and admins add a node&#39;s keys."
+
+      # The event, pushed from the tab they may read: refused, no key, nothing written.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      push_key(lv, browser_key())
+      assert_reply(lv, reply)
+      refute Map.has_key?(reply, :key_id)
+      assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
+
       assert AccessKeys.list_for_node(scope, node) == []
+      assert add_entries(node) == []
     end
 
     test "an admin's own key goes to its runner file once they are a member", %{scope: scope} do

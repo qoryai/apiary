@@ -107,6 +107,34 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     assert get_resp_header(conn, "content-security-policy") == [policy(nonce, "/no-such")]
   end
 
+  test "the markup check refuses a fetched link or an address on another origin" do
+    origin = ApiaryWeb.Endpoint.struct_url()
+    other_port = "#{origin.scheme}://#{origin.host}:#{origin.port + 1}"
+    other_scheme = "#{if origin.scheme == "https", do: "http", else: "https"}://#{origin.host}"
+
+    for markup <- [
+          ~s(<link rel="alternate icon" href="https://cdn.example.com/a.svg">),
+          ~s(<link rel="Shortcut Icon" href="https://cdn.example.com/a.ico">),
+          ~s(<link rel="modulepreload" href="https://cdn.example.com/a.js">),
+          ~s(<link rel="prefetch" href="//cdn.example.com/a.js">),
+          ~s(<link rel="manifest" href="https://cdn.example.com/m.json">),
+          ~s(<script src="#{other_port}/assets/app.js"></script>),
+          ~s(<img src="#{other_scheme}/a.png">),
+          ~s(<form action="https://shop.example.com/x"></form>)
+        ] do
+      assert [_violation] = violations(LazyHTML.from_fragment(markup), "n"), markup
+    end
+
+    for markup <- [
+          ~s(<link rel="alternate icon" href="/favicon.svg">),
+          ~s(<link rel="alternate" href="https://example.com/feed">),
+          ~s(<script src="#{origin.scheme}://#{origin.host}:#{origin.port}/assets/app.js"></script>),
+          ~s(<img src="data:image/png;base64,AA==">)
+        ] do
+      assert violations(LazyHTML.from_fragment(markup), "n") == [], markup
+    end
+  end
+
   test "the documentation's policy allows ExDoc's inline script by its hash" do
     hash =
       :sha256
@@ -224,6 +252,10 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   # Attributes that hold an address the browser follows or loads.
   @addresses ~w(href src action formaction xlink:href data poster)
 
+  # A link the browser fetches: by any of its `rel` tokens, in any case ("alternate icon",
+  # "alternate stylesheet", "shortcut icon" among them).
+  @fetched_rels ~w(stylesheet preload modulepreload prefetch icon manifest)
+
   # What in `html` the policy refuses, one line each.
   defp violations(%LazyHTML{} = html, nonce) do
     html
@@ -269,7 +301,9 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp tag_violations(tag, _attrs, _nonce) when tag in ~w(object embed applet), do: [tag]
 
   defp tag_violations("link", %{"href" => href} = attrs, _nonce) do
-    if own?(href) or attrs["rel"] not in ~w(stylesheet preload icon alternate\ icon),
+    rels = (attrs["rel"] || "") |> String.downcase() |> String.split()
+
+    if own?(href) or not Enum.any?(rels, &(&1 in @fetched_rels)),
       do: [],
       else: ["link[href=#{href}]"]
   end
@@ -286,11 +320,20 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   defp tag_violations(_tag, _attrs, _nonce), do: []
 
-  # An address on the page's own origin: a path, or a full address of the endpoint's.
+  # An address on the page's own origin: a path, or a full address of the endpoint's
+  # scheme, host and port (one without a scheme, `//host/…`, takes the page's).
   defp own?(address) do
+    origin = ApiaryWeb.Endpoint.struct_url()
+
     case URI.parse(address) do
-      %URI{scheme: nil, host: nil} -> true
-      %URI{host: host} -> host == ApiaryWeb.Endpoint.struct_url().host
+      %URI{scheme: nil, host: nil} ->
+        true
+
+      %URI{} = uri ->
+        scheme = String.downcase(uri.scheme || origin.scheme)
+        port = uri.port || URI.default_port(scheme)
+        host = uri.host && String.downcase(uri.host)
+        {scheme, host, port} == {origin.scheme, String.downcase(origin.host), origin.port}
     end
   end
 

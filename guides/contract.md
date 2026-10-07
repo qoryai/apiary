@@ -305,7 +305,7 @@ the proof verifies under it. The answers, in order:
 | Status | Signed | When |
 |---|---|---|
 | `413` | no | a body over 8 KiB |
-| `415` | no | a `Content-Type` other than `application/json` |
+| `415` `unsupported_media_type` | no | no `Content-Type`, or one other than `application/json` |
 | `400` `bad_request` | no | `Content-Type` or `X-Qory-Contract-Version` sent twice |
 | `429` `rate_limited` | no | over the limit of the address the request came from, with `Retry-After` |
 | `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |

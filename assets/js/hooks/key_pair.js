@@ -145,3 +145,21 @@ function equalBytes(a, b) {
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
   return diff === 0
 }
+
+// What the hook does with the secret's slot (generate_key.js `fill`), from what it knows:
+// `held`, the `{secret, publicKey}` it holds or null; `filled`, the public key whose secret
+// it last wrote into a slot, or null; `slotKey`, the slot's `data-public-key`; `shown`,
+// whether the slot's value holds text. One of:
+//
+// - "fill": the held secret is this slot's key's; write it.
+// - "wipe": the slot shows a secret that is not this key's (its public key changed under
+//   it); empty it, drop anything held, and say the secret is gone.
+// - "gone": the slot is empty and nothing held is for it; drop anything held, and say the
+//   secret is gone.
+// - "keep": the slot shows this key's secret; leave it.
+export function slotStep({held, filled, slotKey, shown}) {
+  if (held && typeof slotKey === "string" && held.publicKey === slotKey) return "fill"
+  if (shown && filled !== slotKey) return "wipe"
+  if (!shown) return "gone"
+  return "keep"
+}

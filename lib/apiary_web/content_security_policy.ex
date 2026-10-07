@@ -7,7 +7,12 @@ defmodule ApiaryWeb.ContentSecurityPolicy do
 
   A plug of the endpoint (`ApiaryWeb.Endpoint`), after its static files and the code
   reloader and before the documentation and the router, so the console's pages, the
-  storybook, the development tools, the error pages and an edition's pages all carry it.
+  storybook, the development tools, an edition's pages and the error pages of the router
+  and its routes all carry it, a `404` of `ApiaryWeb.Features.Routes` among them. Not so
+  an error raised inside the endpoint after this plug by an exception that holds no
+  request, a `Plug.Parsers` `400` or `413`: Phoenix renders it from the request as it
+  reached the endpoint, before this plug, so it answers without the policy, as plain text
+  ("Bad Request", "Request Entity Too Large") with no script.
   Each request gets a fresh nonce, 144 random bits in base64, assigned as `:csp_nonce`;
   a `<script>` written into a page carries it (`nonce={@csp_nonce}`), as the root layout's
   theme script does. Nothing else may be inline: no `on…=` attribute, no `javascript:`
