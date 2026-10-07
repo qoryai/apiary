@@ -186,8 +186,15 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
                "The default: the application's configuration does not set it"
     end
 
-    test "/instance sends on to the first section the person may open", %{conn: conn} do
-      assert conn |> get(~p"/instance") |> redirected_to(302) == "/instance/configuration"
+    test "/instance sends on to the first section the person may open",
+         %{conn: conn, scope: scope} do
+      # Configuration in the core, the last section, after whatever the edition puts
+      # before it.
+      [first | _] = sections = ApiaryWeb.Layouts.instance_sections(scope)
+      assert %{key: :configuration, path: "/instance/configuration"} = List.last(sections)
+      path = ApiaryWeb.Nav.Entry.path(first, scope.organisation, scope.workspace)
+
+      assert conn |> get(~p"/instance") |> redirected_to(302) == path
     end
 
     test "is the Qory Apiary menu's Instance settings, a page of its own beside the sidebar the person came from",
@@ -207,21 +214,28 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert has_element?(view, instance, "Instance settings")
       refute has_element?(view, "#user-menu-instance")
 
-      # The core's Instance has the one section: no second column.
-      refute has_element?(view, "#instance-tabs")
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
 
-      assert has_element?(
-               view,
-               "#breadcrumb a[href='/instance/configuration']",
-               "Instance settings"
-             )
-
+      # The breadcrumb's Instance settings leads to the first section, as the menu does.
+      assert has_element?(view, "#breadcrumb a[href='#{path}']", "Instance settings")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Configuration")
 
-      # With no second column and so no disclosure, a phone's bar keeps both segments.
-      refute has_element?(view, "#settings-disclosure")
-      refute has_element?(view, "#breadcrumb li.q-trail-lead")
+      case ApiaryWeb.Layouts.instance_sections(scope) do
+        [_configuration] ->
+          # The core's Instance has the one section: no second column, and so no
+          # disclosure, and a phone's bar keeps both segments.
+          refute has_element?(view, "#instance-tabs")
+          refute has_element?(view, "#settings-disclosure")
+          refute has_element?(view, "#breadcrumb li.q-trail-lead")
+
+        [_, _ | _] ->
+          # An edition's sections before it: the second column lists Configuration too,
+          # the current page.
+          assert has_element?(
+                   view,
+                   "#instance-tabs a#instance-tab-configuration[href='/instance/configuration'][aria-current='page']"
+                 )
+      end
 
       # The sidebar's lists open whole: nothing carries a target here.
       assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")

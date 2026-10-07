@@ -4,7 +4,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
+  import Ecto.Query, only: [from: 2]
+
   alias Apiary.{Repo, Secrets, Variables}
+  alias Apiary.Audit.Entry
   alias Apiary.Runs.Target
 
   @moduletag needs: :security
@@ -1117,6 +1120,40 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
       assert render(lv) =~ "NODE_ENV is unlocked"
       refute Repo.reload!(variable).locked
+    end
+
+    test "a value the variable has already is written nowhere, and the flash says so",
+         %{conn: conn, scope: scope} do
+      variable = variable!(scope, :workspace, "SHOP_URL", "https://shop.example.com")
+
+      entries = fn ->
+        Repo.aggregate(from(e in Entry, where: e.subject_kind == "variable"), :count)
+      end
+
+      before = entries.()
+
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/change"))
+
+      lv
+      |> form("#variable-form", variable: %{value: "https://shop.example.com"})
+      |> render_submit()
+
+      assert render(lv) =~ "SHOP_URL already has that value."
+      refute render(lv) =~ "SHOP_URL is changed."
+      assert entries.() == before
+      assert {:ok, %{updated_at: updated_at}} = Variables.get_variable(scope, variable.id)
+      assert updated_at == variable.updated_at
+
+      # Another value is changed, as before, with its entry.
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/change"))
+
+      lv
+      |> form("#variable-form", variable: %{value: "https://shop.example.org"})
+      |> render_submit()
+
+      assert render(lv) =~ "SHOP_URL is changed."
+      refute render(lv) =~ "already has that value"
+      assert entries.() == before + 1
     end
 
     test "lists the repositories of a variable, found by their path",
