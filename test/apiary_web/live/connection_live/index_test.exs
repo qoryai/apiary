@@ -580,6 +580,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{dst("registry.example")}")
       refute has_element?(view, "##{dst("billing.example")}")
 
+      # The token and the rail stay, in a software workspace's words.
+      assert has_element?(view, "#connections-token-target .q-tok-k", "repo:")
+      assert text(view, "#connections-token-target") =~ "acme/shop"
+      assert text(view, "#connections-rail-all") =~ "All repositories"
+
       assert attribute(view, "#connections-target-runs", "href") ==
                workspace_path(scope, "/runs?target=acme%2Fshop")
 
