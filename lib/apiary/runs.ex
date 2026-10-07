@@ -1009,7 +1009,9 @@ defmodule Apiary.Runs do
   The options of the connections page's filters, `%{target:, host:}`, each
   `%{options: [{label, value, count}], total: n}` like `run_facets/3`: a target counted in
   destinations, as the rail counts it (`destination_target_counts/3`), a host in runs;
-  `narrow:` as there.
+  `narrow:` as there. `decided: true` keeps the hosts to those of the destinations the
+  filters' `decision` lists, as the list itself does (the query field's suggestions); the
+  Filter menu's hosts do not.
   """
   def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
@@ -1026,15 +1028,23 @@ defmodule Apiary.Runs do
           destination_count()
         ),
       host:
-        destination_host_facet(scope, filters, now, narrow["host"], facet_limit(limits["host"]))
+        destination_host_facet(
+          scope,
+          filters,
+          now,
+          narrow["host"],
+          facet_limit(limits["host"]),
+          Keyword.get(opts, :decided, false)
+        )
     }
   end
 
-  defp destination_host_facet(scope, filters, now, narrow, limit) do
+  defp destination_host_facet(scope, filters, now, narrow, limit, decided) do
     base = connections_in(scope, %{filters | host: nil}, now)
     like = like(narrow)
     grouped = from c in base, group_by: c.host
     grouped = if like, do: where(grouped, [c], ilike(c.host, ^like)), else: grouped
+    grouped = if decided, do: having_decision(grouped, filters.decision), else: grouped
 
     rows =
       Repo.all(
@@ -1213,12 +1223,13 @@ defmodule Apiary.Runs do
             )
         }
 
-    case f.decision do
-      "denied" -> having(query, [c], sum(c.denied) > 0)
-      "allowed" -> having(query, [c], sum(c.allowed) > 0)
-      _all -> query
-    end
+    having_decision(query, f.decision)
   end
+
+  # Destinations, or hosts, with any attempt so decided.
+  defp having_decision(query, "denied"), do: having(query, [c], sum(c.denied) > 0)
+  defp having_decision(query, "allowed"), do: having(query, [c], sum(c.allowed) > 0)
+  defp having_decision(query, _all), do: query
 
   @doc "The last heartbeat each access key of the workspace delivered, by the key's row id; keys that never did are absent."
   def last_heartbeats_by_key(%Scope{

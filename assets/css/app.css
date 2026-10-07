@@ -3472,6 +3472,58 @@
     color: var(--q-faint);
     opacity: 1;
   }
+  /* The hosts the query field suggests: a listbox under the field, its width, over the
+     list below it; the active option takes the base-300 ground (`HostSuggest`). */
+  .q-find-suggest {
+    position: relative;
+  }
+  .q-suggest {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    display: grid;
+    gap: 1px;
+    padding: 4px;
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-pop);
+  }
+  .q-suggest[hidden] {
+    display: none;
+  }
+  .q-suggest > li {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    border-radius: var(--radius-field);
+    cursor: pointer;
+  }
+  .q-suggest > li:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-suggest > li[aria-selected="true"] {
+    background-color: var(--color-base-300);
+  }
+  .q-suggest-v {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-suggest-d {
+    flex: none;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
   .q-tok.q-tok-q {
     font-family: var(--font-mono);
     font-size: 0.75rem;
@@ -4802,25 +4854,33 @@
     color: var(--color-base-content);
   }
 
-  /* ---- A connection row's acts: text shown on hover, focus and while its panel or
-     menu is open (always where there is no hover), its ⋯ menu, and a faint lock where no
-     one here changes what happened. Never a bordered button on every row. ---- */
-  .q-act-t {
-    display: inline-flex;
+  /* ---- A connection row's acts: Allow and Deny as icons in two fixed slots (an empty
+     gap where one does not apply, so every Deny is in one column), shown on hover, focus
+     and while the row's panel is open, always where there is no hover, at every width; a
+     faint lock where no rule here changes the row. No ⋯ menu, no border. ---- */
+  .q-act-i {
+    display: inline-grid;
+    width: 24px;
     height: 24px;
-    align-items: center;
-    padding-inline: 6px;
+    place-items: center;
     border-radius: var(--radius-selector);
-    color: var(--color-accent);
-    font-size: 0.78125rem;
-    font-weight: 500;
-    white-space: nowrap;
+    color: var(--q-muted);
     cursor: pointer;
     vertical-align: middle;
   }
-  .q-act-t:hover,
-  .q-act-t[aria-expanded="true"] {
+  .q-act-i:is(:hover, :focus-visible, [aria-expanded="true"]) {
     background-color: var(--color-base-300);
+  }
+  .q-act-i[data-action="allow"]:is(:hover, :focus-visible, [aria-expanded="true"]) {
+    color: var(--color-success);
+  }
+  .q-act-i[data-action="deny"]:is(:hover, :focus-visible, [aria-expanded="true"]) {
+    color: var(--color-error);
+  }
+  .q-act-gap {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
   }
   .q-act-lock {
     display: inline-grid;
@@ -4845,30 +4905,70 @@
     gap: 2px;
     vertical-align: middle;
   }
-  .q-cx-acts .q-rowmenu {
-    vertical-align: middle;
-  }
-  /* In a narrow table the destination keeps the room: the menu holds Allow and Deny. */
-  @container (max-width: 599px) {
-    .q-cxt .q-cx-acts :is(.q-act-t, .q-acts-pair) {
-      display: none;
-    }
-  }
   @media (hover: hover) {
     .q-cxt .q-hov {
       opacity: 0;
       transition: opacity 120ms var(--q-ease-out);
     }
     .q-cxt tr:is(:hover, :focus-within) .q-hov,
-    .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) .q-hov,
+    .q-cxt tr:has(:is(.q-act-i, .q-act-lock)[aria-expanded="true"]) .q-hov,
     .q-cxt tbody tr:has(+ tr.q-rule-sub) .q-hov {
       opacity: 1;
     }
   }
-  /* The row whose panel or menu is open is the one chosen. */
-  .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) > td,
+  /* The row whose panel is open is the one chosen. */
+  .q-cxt tr:has(:is(.q-act-i, .q-act-lock)[aria-expanded="true"]) > td,
   .q-cxt tbody tr:has(+ tr.q-rule-sub) > td {
     background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
+  }
+  /* The host's copy icon, at the end of the host's line (`row-reveal` shows it); it
+     keeps the line's height. */
+  .q-cx-copy {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    margin: -2px 0 -2px 4px;
+    place-items: center;
+    border-radius: var(--radius-selector);
+    color: var(--q-faint);
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  /* A tool invocation's line: the destination cut with an ellipsis, its copy beside it. */
+  .q-cx-tl {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+  .q-cx-tl > .q-dest {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .q-cx-tl > .q-cx-copy {
+    flex: none;
+  }
+  .q-cx-copy:is(:hover, :focus-visible) {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+  /* The rule the reason names, where it is the rule in force: a link, underlined. */
+  .q-cxt tr.q-cxr a.q-rule-a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-field);
+    text-underline-offset: 3px;
+  }
+  .q-cxt tr.q-cxr a.q-rule-a:hover {
+    color: var(--color-base-content);
+    text-decoration-color: currentColor;
+  }
+  /* Underlined: a link inside a sentence is not told by its colour alone. */
+  .q-after-rule {
+    color: var(--color-accent);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
   }
   .q-dcell {
     display: flex;

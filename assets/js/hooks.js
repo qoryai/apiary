@@ -16,6 +16,7 @@ import {Terminal} from "./hooks/terminal"
 import {FocusOn} from "./hooks/focus_on"
 import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
 import {RulePanel} from "./hooks/rule_panel"
+import {HostSuggest} from "./hooks/host_suggest"
 import {DaysChart, OverviewPage} from "./hooks/overview"
 import {FamilyBoxes} from "./hooks/family_boxes"
 import {SecretValues} from "./hooks/secret_values"
@@ -36,6 +37,7 @@ export const hooks = {
   Terminal,
   FocusOn,
   RulePanel,
+  HostSuggest,
   PolicyPage,
   RuleComposer,
   ChangeRow,

@@ -9,10 +9,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   word: a row is a destination and the connections made to it.
 
   A row is one line on the row spec (`ApiaryWeb.RunComponents.connection_row/1`): no tint
-  and no bordered button; Allow and Deny are text shown on hover, focus and while open,
-  beside the row's ⋯ menu (Allow… and Deny… under Policy, Show only and Copy with the
-  row's host under This list), and a locked rule is a lock whose menu says who locked it
-  (`ApiaryWeb.ConnectionLive.Rules.locks/2`, one read for the page).
+  and no bordered button; Allow and Deny are icons with a hint, shown on hover, focus and
+  while open, with no ⋯ menu; the host has a copy icon beside it; and a locked rule is a
+  lock whose hint says who locked it (`ApiaryWeb.ConnectionLive.Rules.locks/2`, one read
+  for the page). The query field suggests the hosts in range as one types (`suggest`, a
+  combobox, from the Host filter's query); choosing one adds `host:`.
 
   It is narrowed as every list is (docs/ui.md, Lists): the decisions as views (every
   destination, the denied, the allowed, each counted under the other filters), one query
@@ -71,6 +72,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   @hits_page 10
   @coalesce_ms 250
+  # The most hosts the query field suggests.
+  @suggest_size 8
   # The contract's default heartbeat, for "about 30 s" on a page that is of no one run.
   @default_beat 30
 
@@ -159,6 +162,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           value={@filters.q}
           change="query"
           live={false}
+          suggest="suggest"
+          suggestions={@suggestions}
+          suggestions_label={gettext("Hosts")}
+          status={@suggest_status}
         />
         <.filter_menu
           id="connections-filter"
@@ -373,7 +380,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             row_id={&destination_id/1}
             open={@open}
             run_path={&run_path(@current_scope, &1)}
-            host_path={&page_path(@current_scope, Filters.put(@filters, host: &1))}
             acts={@acts}
             panel={@rule_panel}
             security={@security}
@@ -499,6 +505,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        refused: [],
        narrow: %{},
        limits: %{},
+       # The hosts the query field suggests for the word being typed, and that word.
+       suggestions: [],
+       suggest_word: nil,
+       suggest_status: nil,
        # What the filters' target names (`ApiaryWeb.Narrowing`), and the one target among
        # it, read for its policy: both read with the address.
        narrowing: nil,
@@ -525,6 +535,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        socket
        |> keep_notices()
        |> assign(filters: filters, open: open, rule_panel: nil)
+       |> clear_suggestions()
        |> narrow()
        |> load()}
     else
@@ -555,12 +566,41 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     {:noreply,
      socket
+     |> clear_suggestions()
      |> assign(:refused, refused)
      |> put_private(:notice_kept, refused != [])
      |> push_patch(to: page_path(socket.assigns.current_scope, filters))}
   end
 
   def handle_event("query", _params, socket), do: {:noreply, socket}
+
+  # The hosts for the word being typed, the last of the field: from the Host filter's
+  # query, bounded and narrowed by the page's other filters, never the whole list.
+  def handle_event("suggest", %{"q" => text}, socket) when is_binary(text) do
+    word =
+      text
+      |> String.slice(0, 256)
+      |> String.split(~r/\s/u)
+      |> List.last()
+      |> String.replace_prefix("host:", "")
+
+    cond do
+      word == "" ->
+        {:noreply, clear_suggestions(socket)}
+
+      # A word the query cannot match on (too long, a control character) matches nothing.
+      is_nil(Runs.like(word)) ->
+        {:noreply,
+         socket
+         |> clear_suggestions()
+         |> assign(:suggest_status, gettext("Nothing matches"))}
+
+      true ->
+        suggest(socket, word)
+    end
+  end
+
+  def handle_event("suggest", _params, socket), do: {:noreply, socket}
 
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
       when name in ~w(target host) and is_binary(q) do
@@ -662,8 +702,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       {%{rule_option: locked}, _} when locked in [:locked_deny, :locked_allow] ->
         {:noreply, open_refusal(socket, row, act)}
 
-      # A row the level above denies, or one only the level above allows: its menu says
-      # so and leads there; nothing opens here.
+      # A row the level above denies, or one only the level above allows for a reader
+      # who may not change it there: its lock's hint says so; nothing opens here.
       _ ->
         {:noreply, socket}
     end
@@ -791,6 +831,33 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   def handle_async(:facets, {:exit, _reason}, socket), do: {:noreply, socket}
 
+  # An answer for a word no longer being typed is dropped.
+  def handle_async(:suggest, {:ok, %{word: word, facet: facet}}, socket) do
+    if word == socket.assigns.suggest_word do
+      suggestions =
+        for {_label, host, runs} <- Enum.take(facet.options, @suggest_size),
+            do: %{
+              value: host,
+              detail:
+                ngettext("%{number} run", "%{number} runs", runs, number: Format.number(runs))
+            }
+
+      status =
+        if suggestions == [],
+          do: gettext("Nothing matches"),
+          else:
+            ngettext("%{number} host matches", "%{number} hosts match", facet.total,
+              number: Format.number(facet.total)
+            )
+
+      {:noreply, assign(socket, suggestions: suggestions, suggest_status: status)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(:suggest, {:exit, _reason}, socket), do: {:noreply, socket}
+
   def handle_async(:rail, {:ok, %{filters: filters, key: key, rail: rail}}, socket) do
     if filters == socket.assigns.filters and key == rail_key(socket),
       do: {:noreply, assign(socket, :rail, rail)},
@@ -895,6 +962,30 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end)
   end
 
+  # The hosts of the destinations the view lists (`decided`), under the other filters; not
+  # the host chosen, nor the free text the field is being typed to replace.
+  defp suggest(socket, word) do
+    %{current_scope: scope, filters: filters} = socket.assigns
+    filters = %{filters | host: nil, q: nil}
+
+    {:noreply,
+     socket
+     |> assign(:suggest_word, word)
+     |> start_async(:suggest, fn ->
+       facet =
+         Runs.destination_facets(scope, filters,
+           narrow: %{"host" => word},
+           limits: %{"host" => @suggest_size},
+           decided: true
+         ).host
+
+       %{word: word, facet: facet}
+     end)}
+  end
+
+  defp clear_suggestions(socket),
+    do: assign(socket, suggestions: [], suggest_word: nil, suggest_status: nil)
+
   defp load_facets(socket) do
     %{current_scope: scope, filters: filters, narrow: narrow, limits: limits} = socket.assigns
     key = facet_key(socket)
@@ -966,7 +1057,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     open = socket.assigns.rule_panel && socket.assigns.rule_panel.anchor
     action = socket.assigns.rule_panel && socket.assigns.rule_panel[:action]
 
-    # Who locked a locked rule, for the menu of the rows it decides: one read.
+    # Who locked a locked rule, for the lock's hint on the rows it decides: one read.
     locks =
       Rules.locks(
         scope,
@@ -989,7 +1080,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
         id = destination_id(row)
-        expanded = open == "#{id}-act"
+        expanded = row_of_anchor(open) == id
 
         {id,
          row
@@ -1114,7 +1205,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     panel =
       %{
-        anchor: "#{destination_id(row)}-act",
+        anchor: "#{destination_id(row)}-#{action}",
         any_connection_id: reached |> List.first() |> then(&(&1 && &1.connection_id)),
         action: action,
         host: act.host,
@@ -1159,7 +1250,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     assign(socket,
       rule_panel: %{
-        anchor: "#{destination_id(row)}-act",
+        anchor: "#{destination_id(row)}-lock",
         host: act.host,
         refusal: %{
           rule_option: act.rule_option,
@@ -1179,7 +1270,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp open_elsewhere(socket, row, act) do
     assign(socket,
       rule_panel: %{
-        anchor: "#{destination_id(row)}-act",
+        anchor: "#{destination_id(row)}-allow",
         host: act.host,
         action: :allow,
         refusal: :elsewhere,
@@ -1289,7 +1380,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     own = if filtered, do: [], else: Rules.own_hosts(scope)
     page = if filtered, do: :run, else: :workspace
     chosen = chosen_effective(assign(socket, effective: effective), panel.chosen)
-    row = Enum.find(rows, &("#{destination_id(&1)}-act" == panel.anchor))
+    row = Enum.find(rows, &(destination_id(&1) == row_of_anchor(panel.anchor)))
 
     if (row && Rules.rule_option(row, effective, page, own).rule_option == panel.rule_option) and
          {Rules.seen(baseline, panel.host), Rules.seen(chosen, panel.host)} == panel.seen,

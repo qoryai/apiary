@@ -368,21 +368,26 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       paste = dst("paste.example")
       assert text(view, "##{paste}-above") == "E Eight Wonders · denied"
 
+      # A lock the keyboard reaches, its hint why; no Allow and no Deny.
       assert has_element?(
                view,
-               "##{paste}-act.q-act-lock[title=\"Decided by Eight Wonders's policy\"]"
+               "span##{paste}-lock.q-act-lock[tabindex=\"0\"][data-tip=\"Eight Wonders's policy denies paste.example. No workspace or repository rule can allow it.\"]"
              )
 
-      assert text(view, "##{paste}-menu") =~ "Eight Wonders's policy denies paste.example"
-      assert text(view, "##{paste}-menu") =~ "No workspace or repository rule can allow it."
-      # The core's edition has no page of the level to lead to: the rule is shown where it
-      # is listed, on the workspace's page.
-      assert text(view, "##{paste}-menu-rule") == "Show the rule"
-      refute text(view, "##{paste}-menu-rule") =~ "Eight Wonders"
+      refute has_element?(view, "##{paste}-allow")
+      refute has_element?(view, "##{paste}-deny")
+
+      # The core's edition has no page of the level to lead to: "Eight Wonders · denied"
+      # leads to the rule where it is listed, on the workspace's page.
+      assert has_element?(
+               view,
+               ~s(##{paste}-above a##{paste}-rule[href="#{workspace_path(scope, "/policy?rule=paste.example")}"])
+             )
 
       api = dst("api.example")
       assert text(view, "##{api}-above") == "E Eight Wonders · allowed"
-      assert has_element?(view, "##{api}-act[data-action=deny]")
+      assert has_element?(view, "button##{api}-deny[data-action=deny]")
+      refute has_element?(view, "##{api}-allow")
 
       # A crafted allow of the denied row opens nothing.
       render_hook(view, "rule_open", %{
@@ -395,6 +400,23 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       refute has_element?(view, "#rule-panel")
     end
 
+    test "a row the level denies since it was allowed links its rule once and its after line once",
+         %{conn: conn, scope: scope} do
+      above!([rule("deny", "api.example")])
+      # LiveViewTest raises on a duplicate id: the page renders.
+      view = open(conn, workspace_path(scope, "/network"))
+      api = dst("api.example")
+      rule = workspace_path(scope, "/policy?rule=api.example")
+
+      assert has_element?(view, ~s(##{api}-above a##{api}-rule[href="#{rule}"]))
+
+      assert has_element?(
+               view,
+               ~s(##{api}-after a##{api}-after-rule[href="#{rule}"]),
+               "Show the rule"
+             )
+    end
+
     test "where the level allows only its own hosts, Allow is a lock without its page, and Deny stays",
          %{conn: conn, scope: scope} do
       above!([], own_allows: false)
@@ -404,14 +426,13 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
       assert has_element?(
                view,
-               "##{new}-act.q-act-lock[title=\"Only Eight Wonders's policy allows a host here\"]"
+               "span##{new}-lock.q-act-lock[tabindex=\"0\"][data-tip=\"Only Eight Wonders's policy allows a host here\"]"
              )
 
-      # The row says what holds, where it can be read, and Deny is in its menu.
+      # The row says what holds, where it can be read, and Deny stays.
       assert text(view, "##{new}-elsewhere") =~ "Eight Wonders allows only its own hosts"
-      assert text(view, "##{new}-menu") =~ "Eight Wonders allows only its own hosts"
-      refute has_element?(view, "##{new}-menu-allow")
-      assert has_element?(view, "##{new}-menu-deny")
+      refute has_element?(view, "##{new}-allow")
+      assert has_element?(view, "button##{new}-deny")
     end
 
     test "a row's rule option says what the level decides" do
@@ -500,41 +521,53 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     end
   end
 
-  test "the rule action and menu link to the level's page where the edition gives one" do
+  test "the level's rule is linked from the reason, and Allow's hint names the level's page" do
+    connection = %{
+      host: "paste.example",
+      port: 443,
+      path: "",
+      decision: "denied",
+      rule: "paste.example",
+      outcome: "refused",
+      runs: 1,
+      attempts: 1,
+      allowed: 0,
+      denied: 1
+    }
+
     act = %{
       rule_option: :above_deny,
       entry_host: "paste.example",
       above: %{name: "Eight Wonders", action: :deny},
+      above_linked: true,
       above_can_change: true,
       rule_path: "/8wonders/policy?rule=paste.example"
     }
 
     html =
-      render_component(&RunComponents.rule_menu/1,
-        id: "m",
-        act_id: "a",
-        connection: %{host: "paste.example"},
+      render_component(&RunComponents.connection_row/1,
+        id: "r",
+        connection: connection,
+        variant: "workspace",
         act: act
       )
 
-    assert html =~ "Change in Eight Wonders&#39;s policy"
+    assert html =~ ~s(id="r-rule")
     assert html =~ "/8wonders/policy?rule=paste.example"
 
     html =
-      render_component(&RunComponents.rule_menu/1,
-        id: "m",
-        act_id: "a",
+      render_component(&RunComponents.rule_actions/1,
+        id: "r",
         connection: %{host: "new.example"},
-        act: %{
-          rule_option: :can_allow,
-          deny: true,
-          allow_elsewhere: %{name: "Eight Wonders"},
-          allow_path: "/8wonders/policy?allow=new.example"
-        }
+        rule_option: :can_allow,
+        deny: true,
+        allow_elsewhere: %{name: "Eight Wonders"},
+        allow_path: "/8wonders/policy?allow=new.example"
       )
 
-    assert html =~ "Allow in Eight Wonders&#39;s policy"
-    assert html =~ "/8wonders/policy?allow=new.example"
+    # Its name holds its hint's words.
+    assert html =~ ~s(data-tip="Allow new.example in Eight Wonders&#39;s policy")
+    assert html =~ ~s(aria-label="Allow new.example in Eight Wonders&#39;s policy")
   end
 
   test "where only the level allows a host, Allow opens a panel that says so and leads there" do
@@ -545,9 +578,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       allow_path: "/8wonders/policy?allow=new.example"
     }
 
-    # The row's one text action asks; it does not navigate on its own.
+    # The row's Allow asks; it does not navigate on its own.
     html =
-      render_component(&RunComponents.rule_action/1,
+      render_component(&RunComponents.rule_actions/1,
         id: "a",
         connection: %{host: "new.example"},
         rule_option: act.rule_option,
@@ -559,12 +592,12 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     assert html =~ ~s(data-action="allow")
     assert html =~ "rule_open"
     refute html =~ "/8wonders/policy?allow=new.example"
-    refute html =~ ~s(id="a-deny")
+    assert html =~ ~s(id="a-deny")
 
     html =
       render_component(&RunComponents.rule_panel/1,
         panel: %{
-          anchor: "a-act",
+          anchor: "a-allow",
           host: "new.example",
           action: :allow,
           refusal: :elsewhere,

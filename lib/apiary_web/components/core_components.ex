@@ -1612,6 +1612,14 @@ defmodule ApiaryWeb.CoreComponents do
   and on Enter. Its value lives in the page's URL, which the page patches. `live={false}`
   sends it on Enter only, for a query whose words are read as a whole (qualifiers such as
   `state:failed`, which the page turns into filters).
+
+  `suggest` makes the field a combobox (the ARIA list autocomplete, manual selection): the
+  form sends `suggest` 150 ms after the reader stops typing, and the page answers with
+  `suggestions`, `%{value:, detail:}` each, at most a handful, listed under the field as
+  options of the listbox `<id>-hosts`, and `status`, what a screen reader is told of them.
+  The `HostSuggest` hook moves among them with ↑ and ↓; Enter or a click puts the chosen
+  one in place of the word being typed, as `host:<value>`, and sends the query; Escape,
+  Tab and leaving the field close the list.
   """
   attr :id, :string, required: true
   attr :name, :string, default: "q"
@@ -1621,15 +1629,21 @@ defmodule ApiaryWeb.CoreComponents do
   attr :change, :string, default: "search", doc: "the event the form sends"
   attr :live, :boolean, default: true
   attr :class, :any, default: nil
+  attr :suggest, :string, default: nil, doc: "the event that asks for suggestions; nil for none"
+  attr :suggestions, :list, default: [], doc: "`%{value:, detail:}` each, as the page answered"
+  attr :suggestions_label, :string, default: nil, doc: "the listbox's accessible name"
+  attr :status, :string, default: nil, doc: "what the answer is, for a screen reader"
 
   def list_search(assigns) do
     ~H"""
     <form
       id={@id}
-      class={["q-find", @class]}
+      class={["q-find", @suggest && "q-find-suggest", @class]}
       role="search"
-      phx-change={@live && @change}
+      phx-change={(@live && @change) || @suggest}
       phx-submit={@change}
+      phx-hook={@suggest && "HostSuggest"}
+      data-suggest={@suggest}
       novalidate
     >
       <label>
@@ -1643,11 +1657,35 @@ defmodule ApiaryWeb.CoreComponents do
           placeholder={@placeholder || @label}
           autocomplete="off"
           spellcheck="false"
-          phx-debounce={@live && "200"}
+          phx-debounce={(@live && "200") || (@suggest && "150")}
           enterkeyhint="search"
           class="input input-sm"
+          role={@suggest && "combobox"}
+          aria-autocomplete={@suggest && "list"}
+          aria-controls={@suggest && "#{@id}-hosts"}
+          aria-expanded={@suggest && to_string(@suggestions != [])}
         />
       </label>
+      <ul
+        :if={@suggest}
+        id={"#{@id}-hosts"}
+        class="q-suggest"
+        role="listbox"
+        aria-label={@suggestions_label}
+        hidden={@suggestions == []}
+      >
+        <li
+          :for={{suggestion, i} <- Enum.with_index(@suggestions)}
+          id={"#{@id}-host-#{i}"}
+          role="option"
+          aria-selected="false"
+          data-value={suggestion.value}
+        >
+          <span class="q-suggest-v">{suggestion.value}</span>
+          <span :if={suggestion[:detail]} class="q-suggest-d">{suggestion.detail}</span>
+        </li>
+      </ul>
+      <p :if={@suggest} id={"#{@id}-status"} class="sr-only" role="status">{@status}</p>
     </form>
     """
   end

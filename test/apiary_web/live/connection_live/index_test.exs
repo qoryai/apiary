@@ -523,6 +523,101 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       )
     end
 
+    test "the query field suggests the hosts in range as one types; a choice is the host: filter",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(),
+        egress: for(n <- 1..10, do: %{"host" => "cdn#{n}.example", "rule" => ""})
+      )
+
+      view = open(conn, scope)
+
+      # A combobox over a listbox of hosts, closed while nothing is typed.
+      assert has_element?(
+               view,
+               ~s(#connections-query-input[role=combobox][aria-autocomplete=list][aria-controls="connections-query-hosts"][aria-expanded=false])
+             )
+
+      assert has_element?(
+               view,
+               "#connections-query-hosts[role=listbox][aria-label=Hosts][hidden]"
+             )
+
+      assert has_element?(view, "#connections-query-status[role=status]")
+
+      # The hosts that hold the word, with their runs, and what a screen reader is told.
+      view |> form("#connections-query", %{"q" => "registry"}) |> render_change()
+      render_async(view, 2_000)
+      assert has_element?(view, "#connections-query-input[aria-expanded=true]")
+
+      assert has_element?(
+               view,
+               "#connections-query-hosts:not([hidden]) > li#connections-query-host-0[role=option][data-value='registry.example']"
+             )
+
+      assert text(view, "#connections-query-host-0") == "registry.example 2 runs"
+      refute has_element?(view, "#connections-query-host-1")
+      assert text(view, "#connections-query-status") == "1 host matches"
+
+      # The word is the last of the field, `host:` or not; never more than 8 hosts.
+      view
+      |> form("#connections-query", %{"q" => "decision:denied host:cdn"})
+      |> render_change()
+
+      render_async(view, 2_000)
+      assert has_element?(view, "#connections-query-host-7")
+      refute has_element?(view, "#connections-query-host-8")
+      assert text(view, "#connections-query-status") == "11 hosts match"
+
+      # Another workspace's host is not one of them.
+      view |> form("#connections-query", %{"q" => "secret"}) |> render_change()
+      render_async(view, 2_000)
+      refute has_element?(view, "#connections-query-host-0")
+      assert text(view, "#connections-query-status") == "Nothing matches"
+
+      # A word the query cannot match on matches nothing, rather than every host.
+      view |> form("#connections-query", %{"q" => "reg\u0001"}) |> render_change()
+      render_async(view, 2_000)
+      refute has_element?(view, "#connections-query-host-0")
+      assert text(view, "#connections-query-status") == "Nothing matches"
+
+      # An empty word closes the list.
+      view |> form("#connections-query", %{"q" => "registry "}) |> render_change()
+      assert has_element?(view, "#connections-query-hosts[hidden]")
+      assert has_element?(view, "#connections-query-input[aria-expanded=false]")
+
+      # The choice is sent as the query, which makes it the host filter.
+      view |> form("#connections-query", %{"q" => "registry"}) |> render_change()
+      render_async(view, 2_000)
+
+      view
+      |> form("#connections-query", %{"q" => "host:registry.example"})
+      |> render_submit()
+
+      assert_patch(
+        view,
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?host=registry.example"
+      )
+
+      assert has_element?(view, "#connections-query-hosts[hidden]")
+    end
+
+    test "the suggestions are of the destinations the view lists", %{conn: conn, scope: scope} do
+      started_run(scope, shop(), egress: [%{"host" => "cdn1.example", "rule" => "cdn1.example"}])
+
+      view = open(conn, scope)
+      view |> form("#connections-query", %{"q" => "cdn"}) |> render_change()
+      render_async(view, 2_000)
+      assert text(view, "#connections-query-status") == "2 hosts match"
+
+      # Denied: a host with only allowed attempts is not offered.
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied")
+      view |> form("#connections-query", %{"q" => "cdn"}) |> render_change()
+      render_async(view, 2_000)
+      assert text(view, "#connections-query-status") == "1 host matches"
+      assert has_element?(view, "#connections-query-host-0[data-value='files.cdn.example']")
+      refute has_element?(view, "#connections-query-host-1")
+    end
+
     test "the rail counts destinations, the pinned targets first", %{conn: conn, scope: scope} do
       :ok = Apiary.Targets.pin(scope, Apiary.Targets.get(scope, "gitlab.example", "acme/shop"))
       view = open(conn, scope)
