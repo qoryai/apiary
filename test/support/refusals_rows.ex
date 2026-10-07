@@ -329,6 +329,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one yet, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
+  # Approving or rejecting a node's key: no page offers either since a key is active as it
+  # arrives (73 a), and the actions leave `Apiary.Access` with the pending state.
   @impl true
   def exempt do
     %{
@@ -351,7 +353,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.use",
         :"connection.read",
         :"connection.write"
-      ]
+      ],
+      no_page: [:"access_key.approve", :"access_key.reject"]
     }
   end
 

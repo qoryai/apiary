@@ -81,6 +81,12 @@ jobs:
         if: matrix.features == ''
         run: mix gettext.extract --check-up-to-date
 
+      # The hooks' own tests, under Node's test runner and its WebCrypto, with no npm: the
+      # key a browser makes against the contract's known answer, and what it sends Qory.
+      - name: Test the browser scripts
+        if: matrix.features == ''
+        run: node --test 'assets/js/test/*.test.mjs'
+
       - name: Build the documentation without warnings
         if: matrix.features == ''
         run: mix docs --warnings-as-errors

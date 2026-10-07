@@ -83,7 +83,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs, a node exists: go to the nodes, and listen", %{conn: conn, scope: scope} do
       Apiary.NodesFixtures.pool_fixture(scope)
       view = open(conn, scope)
-      assert text(view, "#main") =~ "A machine posts once its key is approved on a node."
+      assert text(view, "#main") =~ "A machine posts once it is enrolled on a node."
 
       assert has_element?(
                view,

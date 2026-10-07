@@ -114,6 +114,11 @@ msgstr ""
 msgid "is %{name} elsewhere in this workspace: use the same spelling"
 msgstr ""
 
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "is %{name} in this organisation: use the same spelling"
+msgstr ""
+
 #: lib/apiary/organisations.ex
 #: lib/apiary/organisations/membership.ex
 #, elixir-autogen, elixir-format

@@ -31,7 +31,7 @@ defmodule ApiaryWeb.Storybook.Screens.Shell do
     {"nodes", :all, "Nodes",
      "Nodes and node pools, Running or last seen, a pool's instances beneath it."},
     {"node", :build_01, "A node or pool",
-     "Overview, Runs, Access key and Settings; a key awaiting approval, revoked, replaced."}
+     "Overview, Runs, Access key and Settings; a key active or revoked, a replacement."}
   ]
 
   def render(%{tab: :nodes} = assigns) do

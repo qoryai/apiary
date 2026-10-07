@@ -27,11 +27,13 @@ defmodule ApiaryWeb.LayoutsTest do
     |> String.trim()
   end
 
-  # The breadcrumb's segments, each as its words.
+  # The breadcrumb's segments, each as its words: the items of its trail alone, not those
+  # of the switcher the breadcrumb also holds, whose places and edition's entries
+  # (`ApiaryWeb.Edition.switcher_entries/1`) are no segments.
   defp trail(html) do
     html
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#breadcrumb li")
+    |> LazyHTML.query("#breadcrumb ol.q-trail > li")
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.replace(~r/[\s\/]+/, " ") |> String.trim()))
   end
 
@@ -557,6 +559,25 @@ defmodule ApiaryWeb.LayoutsTest do
             assert has_element?(view, "#organisation-menu a#organisation-menu-#{entry.key}")
           end
       end
+    end
+
+    test "the breadcrumb's segments are its trail's, whatever the switcher beside them lists",
+         %{conn: conn, user: user, scope: scope} do
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+
+      ws = scope.workspace
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{ws}/settings/runs")
+      html = render(view)
+
+      # The switcher's places are items inside the breadcrumb too, and no segment of it.
+      assert has_element?(view, "#breadcrumb #organisation-menu-panel li")
+
+      assert html |> LazyHTML.from_fragment() |> LazyHTML.query("#breadcrumb li") |> Enum.count() >
+               length(trail(html))
+
+      assert tl(trail(html)) == [ws.name, "Workspace settings", "Runs"]
     end
 
     test "with several places the chevrons open the switcher: a search, then the places", %{
@@ -1263,10 +1284,23 @@ defmodule ApiaryWeb.LayoutsTest do
 
       refute has_element?(view, "#user-menu-instance")
 
-      # Its one section opens no second column; the sidebar is the one they came from, and
-      # the palette asks its workspace.
+      # The sidebar is the one they came from, and the palette asks its workspace. The
+      # core's one section opens no second column; with an edition's sections before it,
+      # the column lists it too. The drawer never copies the sections.
       {:ok, view, _html} = live(conn, ~p"/instance/configuration")
-      refute has_element?(view, "#instance-tabs, #drawer-sections")
+      refute has_element?(view, "#drawer-sections")
+
+      case ApiaryWeb.Layouts.instance_sections(scope) do
+        [_configuration] ->
+          refute has_element?(view, "#instance-tabs")
+
+        [_, _ | _] ->
+          assert has_element?(
+                   view,
+                   "#instance-tabs a#instance-tab-configuration[href='/instance/configuration'][aria-current='page']"
+                 )
+      end
+
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
       assert has_element?(view, "dialog#palette[data-url='#{workspace_path(scope, "/jump")}']")
     end

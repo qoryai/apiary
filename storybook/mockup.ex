@@ -502,16 +502,14 @@ defmodule ApiaryWeb.Storybook.Mockup do
   defp lower_first(<<first::utf8, rest::binary>>), do: String.downcase(<<first::utf8>>) <> rest
 
   @doc """
-  key_state/1 is an access key's state in words: Approved, muted; Awaiting approval,
-  lifted, the state that needs an owner or an admin; or Revoked.
+  key_state/1 is an access key's state in words: Active, muted, or Revoked, lifted.
   """
   attr :key, :map, required: true
   attr :id, :string, default: nil
 
   def key_state(assigns) do
     ~H"""
-    <.state_word :if={@key.state == :approved} id={@id}>Approved</.state_word>
-    <.state_word :if={@key.state == :pending} id={@id} hot>Awaiting approval</.state_word>
+    <.state_word :if={@key.state == :active} id={@id}>Active</.state_word>
     <.state_word :if={@key.state == :revoked} id={@id} hot tone="error">Revoked</.state_word>
     """
   end
@@ -543,8 +541,8 @@ defmodule ApiaryWeb.Storybook.Mockup do
   node pool of the workspace with its kind, its state, its runs of 14 days, its access key
   and its Qory version, Running and Not running as views with their counts (`view`). A
   pool's running instances are rows beneath it, each by its instance id; they appear only
-  while they run. `member` draws it as a member reads it: no New, no Approve, and the line
-  that says who manages them.
+  while they run. `member` draws it as a member reads it: no New, and the line that says
+  who manages them.
   """
   attr :theme, :any, required: true
   attr :view, :atom, default: :all, values: [:all, :running, :not_running]
@@ -652,16 +650,6 @@ defmodule ApiaryWeb.Storybook.Mockup do
         <:col :let={row} label="Qory" kind="faint" from="md">
           <span :if={version(row)} class="q-mono">{version(row)}</span>
         </:col>
-        <:action :let={row}>
-          <.button
-            :if={!@member && pending?(row)}
-            variant="link"
-            href={node_path(elem(row, 1), "key", @theme)}
-            aria-label={"Review the key of #{elem(row, 1).name}"}
-          >
-            Review key
-          </.button>
-        </:action>
       </.table>
       <p class="text-[12.5px]/[18px] text-faint">
         A pool's instances are listed beneath it while they run, each by the instance id its
@@ -680,9 +668,6 @@ defmodule ApiaryWeb.Storybook.Mockup do
     do: (List.first(node.instances) || node.last).version
 
   defp version({:node, _pool}), do: nil
-
-  defp pending?({:node, node}), do: Enum.any?(node.keys, &(&1.state == :pending))
-  defp pending?(_row), do: false
 
   attr :row, :any, required: true
   attr :theme, :any, required: true
@@ -714,14 +699,14 @@ defmodule ApiaryWeb.Storybook.Mockup do
   attr :node, :map, required: true
   attr :theme, :any, required: true
 
-  # The key a node uses now: its id, or the state of one that is not approved.
+  # The key a node uses now: its id, or the state of one that is revoked.
   defp key_cell(assigns) do
     assigns = assign(assigns, :key, List.last(assigns.node.keys))
 
     ~H"""
     <a href={node_path(@node, "key", @theme)} class="hover:underline">
-      <span :if={@key.state == :approved} class="q-mono">{@key.id}</span>
-      <.key_state :if={@key.state != :approved} key={@key} />
+      <span :if={@key.state == :active} class="q-mono">{@key.id}</span>
+      <.key_state :if={@key.state != :active} key={@key} />
     </a>
     """
   end
