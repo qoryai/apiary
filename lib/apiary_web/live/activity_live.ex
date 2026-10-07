@@ -1,8 +1,10 @@
 defmodule ApiaryWeb.ActivityLive do
   @moduledoc """
-  The organisation's audit trail, the Audit log section of the organisation's settings
-  (`ApiaryWeb.SettingsComponents`): `/:org/settings/audit-log`, where `/:org/activity`, its
-  path before, sends on (`ApiaryWeb.MovedController`). Every change a
+  The organisation's audit trail, a page of the organisation's sidebar beside its
+  overview: `/:org/audit-log`, where its paths before, `/:org/settings/audit-log` (a
+  section of the settings) and `/:org/activity`, send on with their query
+  (`ApiaryWeb.MovedController`). It is a record the organisation reads, not a setting, so
+  it has no second column. Every change a
   person, an access key or the instance made to what the organisation holds, newest
   first, a page of fifty at a time (`Apiary.Audit.list_entries/3`), for a reader who may
   `audit.read`.
@@ -25,7 +27,6 @@ defmodule ApiaryWeb.ActivityLive do
 
   alias Apiary.{Access, Audit, Features, Organisations}
   alias ApiaryWeb.Activity.Describer
-  alias ApiaryWeb.SettingsComponents
 
   # A page past the last is said to be empty; one this far is not read at all.
   @page_max 10_000
@@ -39,22 +40,15 @@ defmodule ApiaryWeb.ActivityLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:audit_log}
-      sections={@sections}
-      section={:audit_log}
     >
-      <SettingsComponents.layout
-        scope={@current_scope}
-        counts={@nav_counts}
-        kind={:organisation}
-        current={:audit_log}
-        measure="list"
-        title={gettext("Audit log")}
-      >
-        <:subtitle>
-          {gettext(
-            "Every change made to this organisation and its workspaces: who made it, when, and what it changed."
-          )}
-        </:subtitle>
+      <div id="audit-log">
+        <.page_header title={gettext("Audit log")}>
+          <:description>
+            {gettext(
+              "Every change made to this organisation and its workspaces: who made it, when, and what it changed."
+            )}
+          </:description>
+        </.page_header>
         <ApiaryWeb.Extension.slot name={:activity_toolbar} scope={@current_scope} />
 
         <div class="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -200,7 +194,7 @@ defmodule ApiaryWeb.ActivityLive do
             </.button>
           </nav>
         </div>
-      </SettingsComponents.layout>
+      </div>
     </Layouts.app>
     """
   end
@@ -249,8 +243,7 @@ defmodule ApiaryWeb.ActivityLive do
 
     {:ok,
      assign(socket,
-       page_title: gettext("Audit log") <> " · " <> gettext("Organisation settings"),
-       sections: SettingsComponents.sections(scope, :organisation),
+       page_title: gettext("Audit log"),
        workspaces: Organisations.list_workspaces(scope),
        filters: %{workspace_id: nil, action: nil, page: 1},
        rows: nil,
@@ -365,8 +358,8 @@ defmodule ApiaryWeb.ActivityLive do
           do: {key, value}
 
     if query == [],
-      do: ~p"/#{scope.organisation}/settings/audit-log",
-      else: ~p"/#{scope.organisation}/settings/audit-log?#{query}"
+      do: ~p"/#{scope.organisation}/audit-log",
+      else: ~p"/#{scope.organisation}/audit-log?#{query}"
   end
 
   # The actions a reader can filter by: those that change something, of the features the

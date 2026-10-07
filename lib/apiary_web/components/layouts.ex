@@ -120,12 +120,14 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, _workspace -> ~p"/#{organisation}" end,
         place: :organisation
       },
+      # The audit log is a record the organisation reads, not a setting: an entry of its
+      # sidebar beside the overview.
       %Entry{
-        section: :settings,
+        section: :home,
         key: :audit_log,
         label: gettext("Audit log"),
         icon: "hero-clipboard-document-list",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/settings/audit-log" end,
+        path: fn organisation, _workspace -> ~p"/#{organisation}/audit-log" end,
         place: :organisation,
         action: :"audit.read"
       },
@@ -242,9 +244,7 @@ defmodule ApiaryWeb.Layouts do
           key: :configuration,
           label: gettext("Configuration"),
           icon: "hero-adjustments-vertical",
-          # Instance › Configuration's route comes into `ApiaryWeb.Routes.instance_routes/1`
-          # with its page; until then its path is written out here.
-          path: "/instance/configuration",
+          path: ~p"/instance/configuration",
           place: :instance
         }
 

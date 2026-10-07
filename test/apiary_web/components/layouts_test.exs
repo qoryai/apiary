@@ -320,12 +320,12 @@ defmodule ApiaryWeb.LayoutsTest do
 
         assert has_element?(view, "#main h1", "Organisation settings")
 
-        for key <- ~w(organisation people workspaces audit_log),
+        for key <- ~w(organisation people workspaces),
             do: assert(has_element?(view, "#settings-tabs #settings-tab-#{key}"), key)
 
         refute has_element?(
                  view,
-                 "#settings-tab-general, #settings-tab-keys, #settings-tab-danger"
+                 "#settings-tab-general, #settings-tab-keys, #settings-tab-danger, #settings-tab-audit_log"
                )
 
         # the breadcrumb names the organisation, no workspace, and Settings
@@ -338,14 +338,19 @@ defmodule ApiaryWeb.LayoutsTest do
     test "an organisation's page shows the organisation's sidebar", %{conn: conn, scope: scope} do
       for {path, current} <- [
             {~p"/#{scope.organisation}", "nav-organisation_overview"},
-            {~p"/#{scope.organisation}/settings/audit-log", "nav-organisation"}
+            {~p"/#{scope.organisation}/audit-log", "nav-audit_log"}
           ] do
         {:ok, view, _html} = live(conn, path)
 
         assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
         assert has_element?(view, "##{current}[aria-current='page']")
 
-        # The audit log is a section of the settings, not an entry of the sidebar.
+        # The audit log is an entry of the sidebar, beside the overview.
+        assert has_element?(
+                 view,
+                 "#nav-group-home #nav-audit_log[href='/#{scope.organisation.slug}/audit-log']"
+               )
+
         refute has_element?(view, "#sidebar #nav-activity")
 
         assert has_element?(
@@ -532,7 +537,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(view, "#palette #palette-results[role='listbox']")
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/audit-log")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/audit-log")
       assert has_element?(view, "dialog#palette[data-url='/#{scope.organisation.slug}/jump']")
     end
 

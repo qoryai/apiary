@@ -7,9 +7,10 @@ defmodule ApiaryWeb.SettingsComponents do
   holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
-    it), People (its members, invitations and suspended memberships), Workspaces, Audit log
-    (`ApiaryWeb.ActivityLive`), then the edition's sections
-    (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
+    it), People (its members, invitations and suspended memberships), Workspaces, then the
+    edition's sections (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the
+    edition's own. Its audit log is a record, not a setting: a page of the organisation's
+    sidebar (`ApiaryWeb.ActivityLive`).
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
     People (who reaches it, and at what level: read here, managed in the organisation's
     People), Access keys, Runs (how long it keeps runs, their events and their logs), and,
@@ -70,15 +71,6 @@ defmodule ApiaryWeb.SettingsComponents do
           label: gettext("Workspaces"),
           icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
-          place: :organisation
-        },
-      can?(scope, :"audit.read") &&
-        %Entry{
-          section: :main,
-          key: :audit_log,
-          label: gettext("Audit log"),
-          icon: "hero-clipboard-document-list",
-          path: ~p"/#{organisation}/settings/audit-log",
           place: :organisation
         }
     ]
@@ -145,7 +137,7 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   # The settings' actions are asked of the organisation: listing its workspaces, whose
-  # deletion is its, and reading the audit trail.
+  # deletion is its.
   defp can?(%Scope{organisation: organisation} = scope, action),
     do: Access.can?(scope, action, organisation)
 

@@ -155,9 +155,11 @@ navigation it is in.
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
-  `:workspaces_heading` slot), Audit log (`/settings/audit-log`, `ApiaryWeb.ActivityLive`;
-  `/:org/activity`, its path before, sends on with its query), and the edition's sections
-  (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to, New ›
+  `:workspaces_heading` slot), and the edition's sections
+  (`ApiaryWeb.Edition.settings_tabs/1`). The audit log is not a section of them: it is a
+  page of the organisation's sidebar, beside its overview (`/:org/audit-log`,
+  `ApiaryWeb.ActivityLive`; `/:org/settings/audit-log` and `/:org/activity`, its paths
+  before, send on with their query). From a workspace the palette's Go to, New ›
   Invite people and, for whoever manages members, the workspace People's Manage people
   lead there too, since membership is the organisation's; nothing else in a workspace
   does.

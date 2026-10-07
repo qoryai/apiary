@@ -305,11 +305,15 @@ defmodule ApiaryWeb.SettingsLiveTest do
       for {key, path} <- [
             organisation: ~p"/#{org}/settings",
             people: ~p"/#{org}/settings/people",
-            workspaces: ~p"/#{org}/settings/workspaces",
-            audit_log: ~p"/#{org}/settings/audit-log"
+            workspaces: ~p"/#{org}/settings/workspaces"
           ] do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
+
+      # The audit log is a page of the organisation's sidebar, not a section of its
+      # settings.
+      refute has_element?(lv, "#settings-tab-audit_log")
+      assert has_element?(lv, ~s(#sidebar #nav-audit_log[href="#{~p"/#{org}/audit-log"}"]))
 
       # Its own sections only: no other kind's, no cross-link, no Elsewhere.
       refute has_element?(

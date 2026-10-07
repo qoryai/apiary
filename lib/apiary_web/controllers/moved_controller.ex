@@ -4,9 +4,10 @@ defmodule ApiaryWeb.MovedController do
   the moved part and the query. Pages that moved under the settings
   (`ApiaryWeb.SettingsComponents`): an organisation's members, `/:org/members/…`, are its
   people, `/:org/settings/people/…`, and a workspace's access keys,
-  `/:org/:workspace/keys/…`, are `/:org/:workspace/settings/keys/…`, and its Activity,
-  `/:org/activity`, is the Audit log of its settings, `/:org/settings/audit-log`. A section
-  of the settings that took a new name: a workspace's Retention,
+  `/:org/:workspace/keys/…`, are `/:org/:workspace/settings/keys/…`. A page that moved out
+  of the settings: the organisation's Audit log, `/:org/settings/audit-log`, is a page of
+  its sidebar, `/:org/audit-log`, and so is its Activity before it, `/:org/activity`. A
+  section of the settings that took a new name: a workspace's Retention,
   `/:org/:workspace/settings/retention`, is its Runs, `/:org/:workspace/settings/runs`.
   Those answer 302, found. A page that took a new name, for good: the workspace's
   connections, `/:org/:workspace/connections`, are its Network access,
@@ -21,7 +22,10 @@ defmodule ApiaryWeb.MovedController do
     {status, segments} =
       case conn.path_info do
         [organisation, "activity"] ->
-          {:found, [organisation, "settings", "audit-log"]}
+          {:found, [organisation, "audit-log"]}
+
+        [organisation, "settings", "audit-log"] ->
+          {:found, [organisation, "audit-log"]}
 
         [organisation, "members" | rest] ->
           {:found, [organisation, "settings", "people" | rest]}

@@ -84,7 +84,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert found.("retention") == ["Workspace settings › Runs"]
     assert found.("prune") == ["Workspace settings › Runs"]
     assert found.("runs") == ["Runs", "Workspace settings › Runs"]
-    assert found.("audit") == ["Organisation settings › Audit log"]
+    assert found.("audit") == ["Audit log"]
     assert found.("members") == ["Workspace settings › People", "Organisation settings › People"]
     assert found.("workspaces") == ["Organisation settings › Workspaces"]
     assert "Organisation settings" in found.("organisation settings")

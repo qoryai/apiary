@@ -11,7 +11,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
   alias Apiary.Organisations.Workspace
 
   defp open(conn, scope, query \\ "") do
-    {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/settings/audit-log#{query}")
+    {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log#{query}")
     render_async(view)
     view
   end
@@ -77,19 +77,24 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert text(view, "#entry-#{renamed.id}-change") =~ "Main → Production"
       assert text(view, "#entry-#{renamed.id}-actor") =~ scope.user.email
       assert has_element?(view, "#entry-#{renamed.id}-time[datetime][title]")
-      # A section of the organisation's settings: its list, Audit log current, and the
-      # sidebar's Settings the current entry.
-      assert has_element?(view, "#settings-tab-audit_log[aria-current='page']")
-      assert has_element?(view, "h2#settings-section-title", "Audit log")
-      assert has_element?(view, "#nav-organisation[aria-current='page']")
+      # A page of the organisation's sidebar, its entry current, not a section of the
+      # settings: no second column, and the sidebar's Settings is not current.
+      assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
+      assert has_element?(view, "#nav-audit_log[aria-current='page']")
+      assert has_element?(view, "#nav-audit_log[href='/#{scope.organisation.slug}/audit-log']")
+      assert has_element?(view, "h1#page-header-title", "Audit log")
+      refute has_element?(view, "#settings-tabs")
+      refute has_element?(view, "#nav-organisation[aria-current='page']")
       refute has_element?(view, "#nav-activity")
     end
 
-    test "its old path sends on to the settings, with the query", %{conn: conn, scope: scope} do
-      conn = get(conn, "/#{scope.organisation.slug}/activity?action=access_key.create")
+    test "its old paths send on to it, with the query", %{conn: conn, scope: scope} do
+      for old <- ["activity", "settings/audit-log"] do
+        conn = get(conn, "/#{scope.organisation.slug}/#{old}?action=access_key.create")
 
-      assert redirected_to(conn, 302) ==
-               "/#{scope.organisation.slug}/settings/audit-log?action=access_key.create"
+        assert redirected_to(conn, 302) ==
+                 "/#{scope.organisation.slug}/audit-log?action=access_key.create"
+      end
     end
 
     test "shows no other organisation's entries", %{conn: conn, scope: scope} do
@@ -116,7 +121,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       assert_patch(
         view,
-        "/#{scope.organisation.slug}/settings/audit-log?action=access_key.create"
+        "/#{scope.organisation.slug}/audit-log?action=access_key.create"
       )
 
       render_async(view)
@@ -170,7 +175,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       assert_patch(
         view,
-        "/#{scope.organisation.slug}/settings/audit-log?workspace_id=#{scope.workspace.id}"
+        "/#{scope.organisation.slug}/audit-log?workspace_id=#{scope.workspace.id}"
       )
 
       render_async(view)
@@ -192,7 +197,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       refute has_element?(view, "#activity-newer")
 
       view |> element("#activity-older") |> render_click()
-      assert_patch(view, "/#{scope.organisation.slug}/settings/audit-log?page=2")
+      assert_patch(view, "/#{scope.organisation.slug}/audit-log?page=2")
       render_async(view)
 
       # The 55 renames and the sign-up.
@@ -211,7 +216,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
         refute has_element?(view, "#activity-empty")
 
         view |> element("#activity-first-page") |> render_click()
-        assert_patch(view, "/#{scope.organisation.slug}/settings/audit-log")
+        assert_patch(view, "/#{scope.organisation.slug}/audit-log")
         render_async(view)
         assert length(row_ids(view)) == 1
       end
@@ -368,10 +373,11 @@ defmodule ApiaryWeb.ActivityLiveTest do
       owner: owner
     } do
       assert_error_sent(:not_found, fn ->
-        get(conn, "/#{owner.organisation.slug}/settings/audit-log")
+        get(conn, "/#{owner.organisation.slug}/audit-log")
       end)
 
       {:ok, view, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
+      refute has_element?(view, "#nav-audit_log")
       refute has_element?(view, "#settings-tab-audit_log")
     end
   end
