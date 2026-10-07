@@ -649,7 +649,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> render_submit()
 
       refute_value(html)
-      assert render(lv) =~ "The value of FORGE_TOKEN is changed."
+      assert render(lv) =~ "The value of FORGE_TOKEN is saved."
       assert reveal(scope, one) == {:ok, "changed-#{@value}"}
 
       lv |> element("#secret-#{several.public_id}-main-app-change") |> render_click()
@@ -666,7 +666,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute_value(html)
 
       lv |> form("#secret-form", secret_value: %{value: "next"}) |> render_submit()
-      assert render(lv) =~ "main-app of GITHUB_APP_PRIVATE_KEY is changed."
+      assert render(lv) =~ "main-app of GITHUB_APP_PRIVATE_KEY is saved."
       assert reveal(scope, several, "main-app") == {:ok, "next"}
     end
 
@@ -1086,6 +1086,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert Repo.reload!(variable).locked
       refute has_element?(lv, "#variable-dialog")
       assert has_element?(lv, "#variable-#{variable.id}.q-confirming")
+
+      assert has_element?(
+               lv,
+               "#variable-#{variable.id}-confirm",
+               "A repository's own value of NODE_ENV applies again."
+             )
+
       assert has_element?(lv, "#unlock-targets", "2 repositories set their own")
       lv |> element("#variable-#{variable.id}-confirm button", "Unlock") |> render_click()
 
