@@ -416,9 +416,10 @@ route no stored value, and the runner bounds what a variable can do.
 What a workspace sets up for its runs is a **connection** in the contract's words and an
 integration on its pages (`Apiary.Connections`): a runtime, an integration or a service,
 which the pages call a Runtime, a Program and an API (a workspace's own service definition
-is a Custom API there), in `workspace_connections` (the record's `connections` are the hosts a run reached), with
-a public id, `con_` and 16 characters, that the run configuration names. Each applies to
-every repository of the workspace or to the ones `connection_targets` names; a target of an
+is a Custom API there), in `workspace_connections` (the record's `connections` are the
+hosts a run reached), with a public id, `con_` and 16 characters, that the run
+configuration names. Each applies to every repository of the workspace or to the ones
+`connection_targets` names; a target of an
 integration may also carry its **ways** there, of which there is one, `credential` ("Calls
 its API"), when its description offers it; none is the same. The `tool` way ("Uses it as a
 tool (MCP)"), which a description may offer, is refused on a connection. Two connections

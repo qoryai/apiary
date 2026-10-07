@@ -64,10 +64,10 @@ person's own page and an Instance page, the one the person came from (Two levels
   as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New node, New node pool, Add
-  integration (to Integrations' cards, `#add-part`), New secret, New variable and New access key, then, on every page, Invite
-  people; before the core's, whatever the edition offers there
-  (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or the
-  organisation as its place says. **The account menu** holds who they are, their email
+  integration (to Integrations' cards, `#add-part`), New secret, New variable and New
+  access key, then, on every page, Invite people; before the core's, whatever the edition
+  offers there (`ApiaryWeb.Edition.new_entries/2`); each entry asked of the workspace or
+  the organisation as its place says. **The account menu** holds who they are, their email
   over "Your personal account" (`#user-menu-account`; an account has no name), then
   Settings (`#user-menu-settings`, the person's own, `/users/settings`) and Your
   organisations, the theme (Auto, Light, Dark), then
@@ -200,16 +200,16 @@ replaces the navigation it is in.
   beside each name; no suspended membership, which reaches nothing), Integrations
   (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: one list, Set up in this
   workspace, each row its name, its kind, Runtime, API or Program (one added from a
-  release), a program's version and where it applies; then, for whoever may change it,
-  Add an integration, a card for each thing to add by name, its kind a small muted word:
-  the runtimes of the runner's catalogue, the built-in APIs, the named releases
+  release), a program's version and where it applies; then, for whoever may change it, Add
+  an integration, a card for each thing to add by name, its kind a small muted word: the
+  runtimes of the runner's catalogue, the built-in APIs, the named releases
   (`ApiaryWeb.IntegrationLive.Named`, none yet) and the workspace's own custom APIs, then
   From a release… and Custom API…; a card's act opens its form with its item chosen,
-  `?runtime=` or `?definition=`, an unknown one opening the form as it starts; the page
-  says once that no run receives any of it yet) and Secrets and variables
-  (`/settings/secrets`, below), each
-  with `security` and for a reader of it (`connection.read`, `secret.read`), Runs
-  (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
+  `?runtime=` or `?definition=` (a named release's opens Add from a release, its source
+  filled in, `?source=`), an unknown one opening the form as it starts; the page says once
+  that no run receives any of it yet) and Secrets and variables (`/settings/secrets`,
+  below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
+  Runs (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
   `/settings/retention`, its path before, sends on with its query), and Access keys
   (`/settings/keys`).
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
@@ -267,20 +267,21 @@ section a page (`ApiaryWeb.SettingsComponents.layout/1`, or
 `ApiaryWeb.PageComponents.settings_page/1`): the section's title is the page's one `<h1>`
 (20 px, `#settings-section-title`; `heading`, the level's h1 before, is ignored), one
 sentence of what it is for, then its content; the frame names the level, in the second
-column's heading, the breadcrumb and the browser title. Content is a 720 px column for forms and 960 px for a list (People, a workspace's and an
-organisation's, Access keys). The list of the kind's sections is not in the page but the
-frame's second column (Two levels, under The shell; `#settings-tabs`,
-`settings-tab-<key>`): the page reads them when it mounts (`sections/2`) and passes them to
-`Layouts.app/1` as `sections`, its own key as `section`. It is labels without icons,
-muted, the current one in the text colour on a light fill, with a count where it helps
-(an organisation's People, Access keys, from the navigation's `counts`); below 1024 px it
-is the disclosure under the top bar (Two levels, under The shell). A section is flat, no
-card (Integrations' Add an integration, a grid of a card per thing to add, aside): its fields straight under its heading (`SettingsComponents.part/1`, an `<h2>` where
-it has more than one part, such as Owners; the danger zone's lines are `<h3>`s), the fields as wide as the column, and at the
-foot of a form
-its one button, primary where it is the section's main action, beside one muted line
-(`SettingsComponents.save/1`). A section the reader may not open is not in the list, and
-its path sends them to General with its own sentence of why.
+column's heading, the breadcrumb and the browser title. Content is a 720 px column for
+forms and 960 px for a list (People, a workspace's and an organisation's, Access keys).
+The list of the kind's sections is not in the page but the frame's second column (Two
+levels, under The shell; `#settings-tabs`, `settings-tab-<key>`): the page reads them when
+it mounts (`sections/2`) and passes them to `Layouts.app/1` as `sections`, its own key as
+`section`. It is labels without icons, muted, the current one in the text colour on a
+light fill, with a count where it helps (an organisation's People, Access keys, from the
+navigation's `counts`); below 1024 px it is the disclosure under the top bar (Two levels,
+under The shell). A section is flat, no card (Integrations' Add an integration, a grid of
+a card per thing to add, aside): its fields straight under its heading
+(`SettingsComponents.part/1`, an `<h2>` where it has more than one part, such as Owners;
+the danger zone's lines are `<h3>`s), the fields as wide as the column, and at the foot of
+a form its one button, primary where it is the section's main action, beside one muted
+line (`SettingsComponents.save/1`). A section the reader may not open is not in the list,
+and its path sends them to General with its own sentence of why.
 The breadcrumb names the level and ends with the section, both written by the frame
 (`Acme / Main / Workspace settings / Access keys`, `Acme / Organisation settings / People`);
 a person's own page starts with Your settings and an Instance page with Instance, then the
