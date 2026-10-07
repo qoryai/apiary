@@ -73,6 +73,18 @@ defmodule ApiaryWeb.TargetComponents do
   end
 
   @doc """
+  target_label/3 is a target's name in words, as titles, headings, breadcrumbs, labels and
+  toasts write it: named as it is addressed, its path alone, `acme/shop`, and its system
+  before the path only where the path is `shared` by another target of the workspace,
+  `gitlab.com/acme/shop`. A nil system writes the path alone. The exported policy file
+  keeps the full name.
+  """
+  @spec target_label(String.t() | nil, String.t(), shared | nil) :: String.t()
+  def target_label(system, path, shared) when is_binary(path) do
+    if is_binary(system) and shared?(shared, path), do: "#{system}/#{path}", else: path
+  end
+
+  @doc """
   shared?/2 says whether `path` is shared by `shared`, a boolean or the workspace's shared
   paths (`Apiary.Runs.shared_paths/2`).
   """
