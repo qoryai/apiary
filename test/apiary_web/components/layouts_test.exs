@@ -96,17 +96,42 @@ defmodule ApiaryWeb.LayoutsTest do
                "Invite people"
              )
 
+      # A workspace's things, for an owner: a node, a node pool, a secret and a variable
+      # (with the security feature), each its own form page.
+      assert has_element?(view, "#new-menu-node[href='#{workspace_path(scope, "/nodes/new")}']")
+
+      assert has_element?(
+               view,
+               "#new-menu-node_pool[href='#{workspace_path(scope, "/nodes/new-pool")}']"
+             )
+
+      assert has_element?(
+               view,
+               "#new-menu-secret[href='#{workspace_path(scope, "/settings/secrets/new")}']"
+             ) == Apiary.Features.on?(:security)
+
+      assert has_element?(
+               view,
+               "#new-menu-variable[href='#{workspace_path(scope, "/settings/variables/new")}']"
+             ) == Apiary.Features.on?(:security)
+
+      assert before?(render(view), ~s(id="new-menu-node"), ~s(id="new-menu-invite"))
+
       # a member creates keys and invites nobody
       %{user: member} = member_fixture(scope, :member)
       {:ok, view, _html} = live(log_in_user(build_conn(), member), workspace_path(scope))
       assert has_element?(view, "#new-menu-key")
       refute has_element?(view, "#new-menu-invite")
 
+      for key <- ~w(node node_pool secret variable),
+          do: refute(has_element?(view, "#new-menu-#{key}"), key)
+
       # an organisation's own page offers what the organisation holds: no key of a
       # workspace the page is not on
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings")
       assert has_element?(view, "#new-menu-invite")
       refute has_element?(view, "#new-menu-key")
+      refute has_element?(view, "#new-menu-node")
     end
 
     test "the account menu: who you are, your settings and organisations, the theme, log out",
@@ -172,6 +197,8 @@ defmodule ApiaryWeb.LayoutsTest do
             [
               overview: workspace_path(scope),
               runs: workspace_path(scope, "/runs"),
+              targets: workspace_path(scope, "/targets"),
+              nodes: workspace_path(scope, "/nodes"),
               network: workspace_path(scope, "/network")
             ] ++ List.wrap(policy) ++ [settings: workspace_path(scope, "/settings")] do
         assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
@@ -180,6 +207,11 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#nav-overview[aria-current='page']")
       assert before?(html, ~s(id="nav-group-home"), ~s(id="nav-group-record"))
       assert has_element?(view, "#nav-group-record #nav-runs")
+
+      # Record: Runs, Targets, then the nodes they run on.
+      assert has_element?(view, "#nav-group-record #nav-nodes")
+      assert before?(html, ~s(id="nav-targets"), ~s(id="nav-nodes"))
+      assert before?(html, ~s(id="nav-nodes"), ~s(id="nav-group-guard"))
 
       # Guard: Network access, then the rules that decide it.
       assert has_element?(view, "#nav-group-guard #nav-network")

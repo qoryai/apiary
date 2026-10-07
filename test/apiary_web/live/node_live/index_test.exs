@@ -40,12 +40,11 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
              )
     end
 
-    test "has no entry in the sidebar, and the workspace's sidebar", %{conn: conn, scope: scope} do
+    test "is the workspace sidebar's Nodes, the current entry", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
-      refute has_element?(lv, "#nav-nodes")
-      refute has_element?(lv, ~s{nav a[aria-current="page"][href$="/nodes"]})
-      assert has_element?(lv, "#nav-runs")
+      assert has_element?(lv, ~s{#nav-nodes[aria-current="page"][href$="/nodes"]})
+      assert has_element?(lv, "#nav-runs:not([aria-current])")
       assert has_element?(lv, "#breadcrumb", "Nodes")
     end
 

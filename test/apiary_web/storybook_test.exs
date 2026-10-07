@@ -29,7 +29,9 @@ if Mix.Project.config()[:app] == :apiary do
       for path <- ~w(foundations/icons core/button lists/list_pattern lists/row_confirm
                      policy/rule_mark policy/rule_line policy/rule_list screens/shell
                      screens/settings screens/integrations screens/integration
-                     screens/add_integration screens/run_setup screens/nodes screens/node),
+                     screens/add_integration screens/run_setup screens/nodes screens/node
+                     page/page_header page/page_tabs page/settings_page page/page_form
+                     page/not_on_runs),
           do: assert(path in paths, "#{path} is not in the storybook")
     end
 

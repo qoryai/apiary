@@ -400,7 +400,7 @@ defmodule ApiaryWeb.Routes do
               # with New node and New node pool as dialogs over it, and a node's page,
               # Overview and Settings, its deletion a dialog over Settings, and clearing an
               # instance a dialog over Overview. `:node_id` is the node's public id; an
-              # instance is named by its instance id. No navigation entry leads here yet.
+              # instance is named by its instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool

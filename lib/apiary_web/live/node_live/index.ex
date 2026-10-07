@@ -318,7 +318,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      place={:workspace}
+      nav={:nodes}
       width="read"
     >
       <:crumb navigate={list_path(@current_scope, @filters)}>{gettext("Nodes")}</:crumb>
@@ -390,7 +390,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      place={:workspace}
+      nav={:nodes}
     >
       <:crumb>{gettext("Nodes")}</:crumb>
 

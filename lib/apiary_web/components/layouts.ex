@@ -77,6 +77,15 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
         action: :"run.read"
       },
+      # The machines and pools the runs run on, each with its page.
+      %Entry{
+        section: :record,
+        key: :nodes,
+        label: gettext("Nodes"),
+        icon: "hero-server",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/nodes" end,
+        action: :"node.read"
+      },
       # Guard: what the runs reached and what decided it, then the rules that decide. On an
       # instance without the security policy Network access is the group's one entry, the
       # record of it.
@@ -179,22 +188,55 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's, a new access key on a workspace's page and an invitation on an
-  organisation's too; of them, only what the reader may do there, each entry's action
-  asked of the workspace or the organisation as its `place` says.
+  then the core's: on a workspace's page a node, a node pool, a secret, a variable and an
+  access key, and everywhere an invitation; of them, only what the reader may do there,
+  each entry's action asked of the workspace or the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
   def new_entries(%{organisation: %{} = organisation, workspace: workspace} = scope, place) do
-    key =
-      place == :workspace && workspace &&
-        %Entry{
-          key: :key,
-          label: gettext("New access key"),
-          icon: "hero-key",
-          path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
-          action: :"access_key.create"
-        }
+    workspace_entries =
+      if place == :workspace && workspace do
+        [
+          %Entry{
+            key: :node,
+            label: gettext("New node"),
+            icon: "hero-server",
+            path: ~p"/#{organisation}/#{workspace}/nodes/new",
+            action: :"node.create"
+          },
+          %Entry{
+            key: :node_pool,
+            label: gettext("New node pool"),
+            icon: "hero-server-stack",
+            path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
+            action: :"node.create"
+          },
+          %Entry{
+            key: :secret,
+            label: gettext("New secret"),
+            icon: "hero-lock-closed",
+            path: ~p"/#{organisation}/#{workspace}/settings/secrets/new",
+            action: :"secret.write"
+          },
+          %Entry{
+            key: :variable,
+            label: gettext("New variable"),
+            icon: "hero-variable",
+            path: ~p"/#{organisation}/#{workspace}/settings/variables/new",
+            action: :"variable.edit"
+          },
+          %Entry{
+            key: :key,
+            label: gettext("New access key"),
+            icon: "hero-key",
+            path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
+            action: :"access_key.create"
+          }
+        ]
+      else
+        []
+      end
 
     invite = %Entry{
       key: :invite,
@@ -205,7 +247,8 @@ defmodule ApiaryWeb.Layouts do
       action: :"member.invite"
     }
 
-    for %Entry{} = entry <- ApiaryWeb.Edition.new_entries(scope, place) ++ [key, invite],
+    for %Entry{} = entry <-
+          ApiaryWeb.Edition.new_entries(scope, place) ++ workspace_entries ++ [invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end

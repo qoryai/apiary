@@ -5027,6 +5027,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5043,6 +5044,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance limit"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Instance › %{page}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6158,11 +6164,13 @@ msgstr ""
 msgid "New lines"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New node"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New node pool"
@@ -6173,6 +6181,7 @@ msgstr ""
 msgid "New password"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New secret"
@@ -6193,6 +6202,7 @@ msgstr ""
 msgid "New value"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New variable"
@@ -6732,6 +6742,7 @@ msgstr ""
 msgid "Node: one permanent machine."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
