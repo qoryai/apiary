@@ -820,6 +820,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       id="secret-form"
       phx-submit="create_secret"
       phx-hook="SecretValues"
+      data-refused-saves={@refused_saves}
       class="grid gap-4"
       novalidate
     >
@@ -833,19 +834,39 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
         phx-mounted={JS.focus()}
       />
-      <.input
+      <%!-- The choice, as `input/1` draws a radio group, described by the error on the
+      values as a whole, which shows under their rows. --%>
+      <fieldset
         id="secret_values_kind"
-        name="secret[values_kind]"
-        type="radio"
-        value={@values_kind}
-        label={gettext("Values")}
-        options={[
-          {gettext("One value"), "one"},
-          {gettext("Several values, each with a value ID"), "several"}
-        ]}
-      />
+        class="fieldset"
+        aria-invalid={@values_errors != [] && "true"}
+        aria-describedby={values_error_ids(@values_errors)}
+      >
+        <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Values")}</legend>
+        <label
+          :for={
+            {{words, kind}, index} <-
+              Enum.with_index([
+                {gettext("One value"), "one"},
+                {gettext("Several values, each with a value ID"), "several"}
+              ])
+          }
+          for={"secret_values_kind-#{index}"}
+          class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+        >
+          <input
+            type="radio"
+            id={"secret_values_kind-#{index}"}
+            name="secret[values_kind]"
+            value={kind}
+            checked={@values_kind == kind}
+            class="radio radio-sm radio-primary"
+          />
+          {words}
+        </label>
+      </fieldset>
       <div id="secret-one-value" class="grid gap-4" hidden={@several}>
-        <.value_field form={@form} />
+        <.value_field form={@form} disabled={@several} />
       </div>
       <div
         id="secret-several-values"
@@ -853,16 +874,17 @@ defmodule ApiaryWeb.SecretLive.Index do
         hidden={!@several}
         data-max={Secrets.max_values()}
         data-legend={gettext("Value %{number}", number: "__NUMBER__")}
+        data-remove={gettext("Remove value %{number}", number: "__NUMBER__")}
       >
         <ol id="secret-values" class="grid gap-4">
-          <.value_row :for={row <- @value_rows} {row} />
+          <.value_row :for={row <- @value_rows} {row} disabled={!@several} />
         </ol>
         <template id="secret-value-template">
           <.value_row index="__INDEX__" number="__NUMBER__" removable template />
         </template>
         <p
-          :for={{message, i} <- Enum.with_index(@values_errors)}
-          id={if i == 0, do: "secret-values-error", else: "secret-values-error-#{i + 1}"}
+          :for={{message, id} <- Enum.zip(@values_errors, values_error_id_list(@values_errors))}
+          id={id}
           class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
         >
           <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />{message}
@@ -871,7 +893,11 @@ defmodule ApiaryWeb.SecretLive.Index do
           <.button id="secret-add-value" type="button" data-add-value disabled={@full}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("Add another value")}
           </.button>
-          <p id="secret-values-full" class="text-[12.5px]/[18px] text-muted" hidden={!@full}>
+          <p
+            id="secret-values-full"
+            class="text-[12.5px]/[18px] text-muted"
+            hidden={!@full or @values_errors != []}
+          >
             {gettext("A secret holds at most %{number} values.",
               number: Format.number(Secrets.max_values())
             )}
@@ -1427,6 +1453,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   attr :form, Phoenix.HTML.Form, required: true
   attr :label, :string, default: nil
   attr :focus, :boolean, default: false, doc: "whether the field takes the focus as it mounts"
+  attr :disabled, :boolean, default: false, doc: "off while its choice is not taken"
 
   # The value of a secret: written, sent once, and never rendered back. The field's
   # value is always empty, whatever the form holds.
@@ -1443,6 +1470,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       spellcheck="false"
       class="font-mono"
       phx-mounted={@focus && JS.focus()}
+      disabled={@disabled}
     />
     """
   end
@@ -1454,6 +1482,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   attr :value_errors, :list, default: []
   attr :removable, :boolean, default: false
   attr :template, :boolean, default: false, doc: "the row the hook copies, its fields off"
+  attr :disabled, :boolean, default: false, doc: "off while Several values is not chosen"
 
   # One value of a new secret of several: its value ID and its value, a group named by
   # its place ("Value 3", for whoever hears it), and Remove past the first two. The value
@@ -1475,7 +1504,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           autocomplete="off"
           spellcheck="false"
           class="font-mono"
-          disabled={@template}
+          disabled={@template or @disabled}
         />
         <.input
           id={"secret_values_#{@index}_value"}
@@ -1488,7 +1517,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           autocomplete="off"
           spellcheck="false"
           class="font-mono"
-          disabled={@template}
+          disabled={@template or @disabled}
         />
         <.button
           :if={@removable}
@@ -1496,6 +1525,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           type="button"
           size="xs"
           class="sm:mt-6"
+          aria-label={gettext("Remove value %{number}", number: @number)}
           data-remove-value
         >
           {gettext("Remove")}
@@ -1520,7 +1550,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       %{
         index: index,
         number: index + 1,
-        value_id: to_string((value.params || %{})["value_id"] || ""),
+        value_id: text((value.params || %{})["value_id"]),
         value_id_errors: translate_errors(value.errors, :value_id),
         value_errors: translate_errors(value.errors, :value),
         removable: index >= 2
@@ -1530,6 +1560,24 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp value_rows(_changeset), do: blank_rows(0)
+
+  # A value ID shown again as it was sent, when it was text; anything else a request
+  # could carry is not.
+  defp text(value) when is_binary(value), do: value
+  defp text(_value), do: ""
+
+  # The ids of the errors on the values as a whole, which describe the Values choice.
+  defp values_error_id_list(errors) do
+    errors
+    |> Enum.with_index()
+    |> Enum.map(fn
+      {_error, 0} -> "secret-values-error"
+      {_error, i} -> "secret-values-error-#{i + 1}"
+    end)
+  end
+
+  defp values_error_ids([]), do: nil
+  defp values_error_ids(errors), do: Enum.join(values_error_id_list(errors), " ")
 
   # Blank rows after `count`, up to two.
   defp blank_rows(count) when count >= 2, do: []
@@ -1769,7 +1817,8 @@ defmodule ApiaryWeb.SecretLive.Index do
           form: secret_form(fresh(Secrets.change_secret(%Secret{}))),
           values_kind: "one",
           value_rows: value_rows(),
-          values_errors: []
+          values_errors: [],
+          refused_saves: 0
         ),
       else: refused(socket)
   end
@@ -1966,7 +2015,8 @@ defmodule ApiaryWeb.SecretLive.Index do
            form: secret_form(changeset),
            values_kind: kind,
            value_rows: if(kind == "several", do: value_rows(changeset), else: value_rows()),
-           values_errors: translate_errors(changeset.errors, :values)
+           values_errors: translate_errors(changeset.errors, :values),
+           refused_saves: (socket.assigns[:refused_saves] || 0) + 1
          )}
 
       {:error, reason} ->

@@ -178,10 +178,13 @@ defmodule Apiary.Secrets do
 
   `{:ok, secret}`, its values loaded without their ciphertext; or `{:error, refusal}`, a
   changeset whose errors are on `name`, `note`, `value` or `value_id`, or, for several
-  values, on `values` (none, or more than `max_values/0`) and on each value's own
-  changeset under `values`, in the order they came, on its `value_id` and its `value`;
-  for several values the changeset always has theirs under it. The changeset holds no
-  value, nor do the changesets of the values under it.
+  values, on `values` and on each value's own changeset. More than `max_values/0` values
+  are refused with an error on `values` before any of them is looked at, and none is
+  under it. Otherwise, several values refused by their checks or by the secret's name
+  have their changesets under `values`, in the order they came, each with its errors on
+  its `value_id` and its `value`; no value at all is an error on `values`. A
+  value ID or a value that is not text is invalid. The changeset holds no value, nor do
+  the changesets of the values under it.
   """
   @spec create_secret(Scope.t(), map) :: {:ok, Secret.t()} | {:error, refusal}
   def create_secret(%Scope{} = scope, attrs) do
@@ -219,19 +222,27 @@ defmodule Apiary.Secrets do
   # A new secret's values: its one value, its value id optional; or several, each with a
   # value id, unique among them.
   defp new_values(%{"values" => values}) do
-    changesets =
-      values
-      |> in_order()
-      |> Enum.map(fn value ->
-        value = Map.new(value, fn {key, field} -> {to_string(key), field} end)
-        Value.changeset(%Value{}, value, value_id: :required)
-      end)
-      |> unique_value_ids()
-
-    {:several, changesets}
+    if entries(values) > @max_values,
+      do: {:several, :too_many},
+      else: {:several, value_changesets(values)}
   end
 
   defp new_values(attrs), do: {:one, [Value.changeset(%Value{}, attrs)]}
+
+  # How many values were sent, counted before any is looked at.
+  defp entries(values) when is_map(values), do: map_size(values)
+  defp entries(values) when is_list(values), do: length(values)
+  defp entries(_values), do: 0
+
+  defp value_changesets(values) do
+    values
+    |> in_order()
+    |> Enum.map(fn value ->
+      value = Map.new(value, fn {key, field} -> {to_string(key), field} end)
+      Value.changeset(%Value{}, value, value_id: :required)
+    end)
+    |> unique_value_ids()
+  end
 
   # A form's values by index ("0", "1", …), in the order of the index; a list as it is.
   defp in_order(values) when is_list(values), do: Enum.filter(values, &is_map/1)
@@ -279,29 +290,28 @@ defmodule Apiary.Secrets do
   # on `values`.
   defp valid_new(:one, secret, [value]), do: valid(secret, value)
 
+  defp valid_new(:several, secret, :too_many) do
+    {:error,
+     Ecto.Changeset.add_error(
+       secret,
+       :values,
+       dgettext_noop("errors", "A secret holds at most %{count} values."),
+       count: @max_values,
+       validation: :length,
+       kind: :max
+     )}
+  end
+
   defp valid_new(:several, secret, values) do
     count = length(values)
 
     secret =
-      cond do
-        count == 0 ->
+      if count == 0,
+        do:
           Ecto.Changeset.add_error(secret, :values, dgettext_noop("errors", "can't be blank"),
             validation: :required
-          )
-
-        count > @max_values ->
-          Ecto.Changeset.add_error(
-            secret,
-            :values,
-            dgettext_noop("errors", "A secret holds at most %{count} values."),
-            count: @max_values,
-            validation: :length,
-            kind: :max
-          )
-
-        true ->
-          secret
-      end
+          ),
+        else: secret
 
     if secret.valid? and Enum.all?(values, & &1.valid?) do
       :ok

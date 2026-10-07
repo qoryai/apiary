@@ -427,6 +427,32 @@ defmodule Apiary.SecretsTest do
       assert {:error, changeset} = Secrets.create_secret(scope, %{name: "MANY", values: many})
       assert {"A secret holds at most %{count} values.", opts} = changeset.errors[:values]
       assert opts[:count] == 32
+      # Refused on their count, before any of them is looked at: none is under it.
+      refute Map.has_key?(changeset.changes, :values)
+      refute Map.has_key?(changeset.params, "values")
+
+      # Counted as they were sent, whatever they hold.
+      junk = Map.new(0..32, &{"key-#{&1}", "not a value"})
+      assert {:error, changeset} = Secrets.create_secret(scope, %{name: "MANY", values: junk})
+      assert {"A secret holds at most %{count} values.", _} = changeset.errors[:values]
+
+      # A value ID or a value that is not text is an error on its own row.
+      assert {:error, changeset} =
+               Secrets.create_secret(scope, %{
+                 name: "SHAPES",
+                 values: %{
+                   "0" => %{"value_id" => %{"a" => "b"}, "value" => "x"},
+                   "1" => %{"value_id" => "docs", "value" => %{"a" => "b"}},
+                   "2" => %{"value_id" => ["shop"], "value" => 7}
+                 }
+               })
+
+      assert [map_id, map_value, other] = changeset.changes.values
+      assert {"is invalid", _} = map_id.errors[:value_id]
+      refute map_id.errors[:value]
+      assert map_value.errors[:value]
+      refute map_value.errors[:value_id]
+      assert other.errors[:value_id] && other.errors[:value]
 
       assert Secrets.list_secrets(scope) == {:ok, []}
 
@@ -692,6 +718,13 @@ defmodule Apiary.SecretsTest do
 
       assert {:ok, [%Secret{name: "API_KEY"}]} = Secrets.list_secrets(member)
       assert Secrets.create_secret(member, %{name: "MINE", value: "x"}) == {:error, :forbidden}
+
+      assert Secrets.create_secret(member, %{
+               name: "MINE",
+               values: [%{value_id: "shop", value: "x"}, %{value_id: "docs", value: "y"}]
+             }) == {:error, :forbidden}
+
+      assert {:ok, [%Secret{name: "API_KEY"}]} = Secrets.list_secrets(member)
       assert Secrets.update_secret(member, secret, %{name: "RENAMED"}) == {:error, :forbidden}
       assert Secrets.set_value(member, secret, nil, "x") == {:error, :forbidden}
 

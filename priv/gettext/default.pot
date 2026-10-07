@@ -9020,6 +9020,11 @@ msgstr ""
 msgid "Remove this runtime"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove value %{number}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Removed %{subject}"
