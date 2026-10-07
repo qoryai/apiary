@@ -17,7 +17,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   def page_skeleton(assigns) do
     ~H"""
     <div id="policy-loading" class="grid grid-cols-[minmax(0,1fr)] gap-6" aria-busy="true">
-      <.header>{@title}</.header>
+      <.page_header title={@title} />
       <div class="q-sect">
         <div
           :for={_row <- 1..5}
