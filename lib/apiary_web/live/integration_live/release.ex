@@ -2,7 +2,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   @moduledoc """
   A release of an integration the workspace asked for, before it is added
   (`/:org/:workspace/settings/integrations/releases/:release_id`), with the `security`
-  feature: the second step of Add integration, after `ApiaryWeb.IntegrationLive.Index`
+  feature: the second step of Add from a release, after `ApiaryWeb.IntegrationLive.Index`
   asked for it (`Apiary.Integrations.request_release/2`).
 
   While the release is pending, the page reads it again every few seconds
@@ -47,7 +47,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       <:crumb :if={@moving} navigate={Common.connection_path(@current_scope, @moving)}>
         {elem(Common.names(@moving), 0)}
       </:crumb>
-      <:crumb>{if @moving, do: gettext("Change version"), else: gettext("Add integration")}</:crumb>
+      <:crumb>{act(@moving)}</:crumb>
 
       <.settings_page
         section={:integrations}
@@ -333,7 +333,8 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   defp fetching, do: gettext("Fetching the release's description.json and checksums.txt…")
 
-  # The source and version a release was asked for with, for Add integration to ask again.
+  # The source and version a release was asked for with, for Add from a release to ask
+  # again.
   defp ask_again(release) do
     for {key, value} <- [source: release.source, version: release.requested_version],
         is_binary(value),
@@ -377,8 +378,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
            sections: SettingsComponents.sections(scope, :workspace),
            may_write: Common.may_write?(scope),
            people: Common.people(scope),
-           moving: nil,
-           page_title: gettext("Add integration") <> " · " <> gettext("Workspace settings")
+           moving: nil
          )
          |> assign_release(release)}
 
@@ -402,8 +402,18 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         _ -> nil
       end
 
-    {:noreply, assign(socket, :moving, moving)}
+    {:noreply,
+     assign(socket,
+       moving: moving,
+       page_title:
+         SettingsComponents.page_title(socket.assigns.current_scope, :workspace, [act(moving)])
+     )}
   end
+
+  # The page's act, the breadcrumb's last segment and its title: another version of a
+  # program, or one added from a release.
+  defp act(nil), do: gettext("Add from a release")
+  defp act(_moving), do: gettext("Change version")
 
   defp assign_release(socket, release) do
     description =

@@ -7,9 +7,12 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   declares and the form values cast to them, and the sentence for each refusal of
   `Apiary.Connections` and `Apiary.Integrations`.
 
-  The pages call a connection of `Apiary.Connections` what the console calls it: a
-  runtime, an integration or a service. No run receives any of them yet: each page says
-  so once, near its top (`not_yet/1`), and nothing on them says otherwise.
+  The pages call a connection of `Apiary.Connections` by its kind's word: a Runtime, a
+  Program (an integration added from a release) or an API (a service); a service
+  definition of the workspace's own is a Custom API. "Integrations" is the section's name
+  alone, and "service definition" is not a word of the pages. No run receives any of them
+  yet: each page says so once, near its top (`not_yet/1`), and nothing on them says
+  otherwise.
   """
   use ApiaryWeb, :html
 
@@ -27,8 +30,9 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations"
 
   @doc """
-  add_path/2 is Add integration, the form that asks for a release; `query`, the `source`
-  and `version` it is opened with, such as a release asked for again.
+  add_path/2 is Add from a release, the form that asks for a release; `query`, the
+  `source` and `version` it is opened with, such as a release asked for again or a named
+  release's card (`ApiaryWeb.IntegrationLive.Named`).
   """
   def add_path(scope, query \\ [])
 
@@ -38,12 +42,28 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def add_path(scope, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/add?#{query}"
 
-  @doc "new_runtime_path/1 and new_service_path/1 are the forms that set one up."
-  def new_runtime_path(scope),
+  @doc """
+  new_runtime_path/2 and new_service_path/2 are the forms that set one up, Set up a
+  runtime and Set up an API; `chosen`, the item a card opens them with: a runtime's name,
+  or an API as `builtin:<key>` or `own:<public id>`.
+  """
+  def new_runtime_path(scope, chosen \\ nil)
+
+  def new_runtime_path(scope, nil),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/new-runtime"
 
-  def new_service_path(scope),
+  def new_runtime_path(scope, runtime),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/new-runtime?#{[runtime: runtime]}"
+
+  def new_service_path(scope, chosen \\ nil)
+
+  def new_service_path(scope, nil),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/new-service"
+
+  def new_service_path(scope, definition),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/new-service?#{[definition: definition]}"
 
   @doc "release_path/3 is a release asked for, before it is added; `for`, a connection moved to it."
   def release_path(scope, release_id, for \\ nil)
@@ -84,7 +104,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do:
       ~p"/#{scope.organisation}/#{scope.workspace}/settings/integrations/#{connection.public_id}/targets/#{target_id}/remove"
 
-  @doc "definition_path/3 is the workspace's own service definitions: new, one, its edit or its deletion."
+  @doc "definition_path/3 is the workspace's own custom APIs (service definitions): new, one, its edit or its deletion."
   def definition_path(scope, definition, rest \\ nil)
 
   def definition_path(scope, :new, nil),
@@ -126,10 +146,13 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   ## Words
 
-  @doc "kind_word/1 is a kind's name, capitalised: Runtime, Integration, Service."
+  @doc """
+  kind_word/1 is a kind's name, capitalised: Runtime, Program (an integration added from a
+  release), API (a service).
+  """
   def kind_word("runtime"), do: gettext("Runtime")
-  def kind_word("integration"), do: gettext("Integration")
-  def kind_word("service"), do: gettext("Service")
+  def kind_word("integration"), do: gettext("Program")
+  def kind_word("service"), do: gettext("API")
 
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's
@@ -362,7 +385,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
     pgettext(
       "plain",
-      "It would overlap with %{names} where both apply: the same runtime, the same integration, or a host in common.",
+      "It would overlap with %{names} where both apply: the same runtime, the same program, or a host in common.",
       names: Enum.join(if(names == [], do: ids, else: names), ", ")
     )
   end
@@ -373,7 +396,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
           id in ids,
           do: label(connection)
 
-    gettext("Services still use it: %{names}. Remove them first.",
+    gettext("APIs are set up from it: %{names}. Remove them first.",
       names: Enum.join(if(names == [], do: ids, else: names), ", ")
     )
   end
@@ -382,7 +405,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("That runtime is not in the runner's catalogue.")
 
   defp sentence(:service_unknown, _),
-    do: gettext("That service definition is neither built in nor this workspace's own.")
+    do: gettext("That API is neither built in nor a custom API of this workspace.")
 
   defp sentence(:release_not_ready, _), do: gettext("The release is not ready to add.")
 
@@ -390,7 +413,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("This instance no longer accepts integrations from this source.")
 
   defp sentence({:integration_source_mismatch, :name}, _),
-    do: gettext("That release is of another integration.")
+    do: gettext("That release is of another program.")
 
   defp sentence({:integration_source_mismatch, _}, _),
     do: gettext("That release is from another source.")
@@ -419,14 +442,14 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc """
   definition_problems/1 is a sentence for each problem `Apiary.Kinds.ServiceDefinition`
-  found in a definition.
+  found in a custom API's definition.
   """
   def definition_problems(problems) do
     for problem <- problems, do: definition_problem(problem)
   end
 
   defp definition_problem({:definition_invalid, _}),
-    do: gettext("It is not a service definition: check its JSON and its fields.")
+    do: gettext("It is not a custom API's definition: check its JSON and its fields.")
 
   defp definition_problem({:declaration_unknown, where}),
     do:
@@ -441,5 +464,5 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   defp definition_problem({:placeholder_conflict, name}),
     do: gettext("%{name} is a variable a placeholder may not take.", name: name)
 
-  defp definition_problem(_other), do: gettext("It is not a valid service definition.")
+  defp definition_problem(_other), do: gettext("It is not a valid definition of a custom API.")
 end

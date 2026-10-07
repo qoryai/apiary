@@ -45,8 +45,11 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, html} = live(conn, ipath(scope, runtime))
 
-      assert has_element?(lv, "#settings-section-title", "Claude Code")
+      assert has_element?(lv, "h1#settings-section-title", "Claude Code")
       assert has_element?(lv, "#connection-name.q-mono", "claude")
+      assert has_element?(lv, "#connection-kind", "Runtime")
+      assert has_element?(lv, "#breadcrumb-section", "Integrations")
+      assert page_title(lv) =~ "Claude Code · Integrations · Workspace settings"
       assert has_element?(lv, "#connection-tabs-overview[aria-current=page]")
       assert has_element?(lv, "#connection-id", runtime.public_id)
       assert has_element?(lv, "#connection-facts", "Every repository")
@@ -77,6 +80,19 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-plain-settings", "https://tracker.example.com")
       assert has_element?(lv, "#settings-section-title", "Acme tracker")
       assert has_element?(lv, "#connection-name", "acme-tracker")
+      assert has_element?(lv, "#connection-kind", "Program")
+    end
+
+    test "says an API's kind, and the API it is set up from", %{conn: conn, scope: scope} do
+      {:ok, service} = Connections.create_service(scope, %{service: "sentry"})
+      {:ok, lv, _html} = live(conn, ipath(scope, service))
+
+      assert has_element?(lv, "h1#settings-section-title", "Sentry")
+      assert has_element?(lv, "#connection-kind", "API")
+      assert has_element?(lv, "#connection-facts dd", "API")
+      assert has_element?(lv, "#connection-facts dt", "Set up from")
+      assert has_element?(lv, "#connection-definition", "Sentry")
+      refute lv |> element("#settings-section-integrations") |> render() =~ "ervice"
     end
 
     test "Applies to leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
@@ -326,10 +342,10 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       {:ok, service} = Connections.create_service(scope, %{service: "npm"})
 
       {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
-      assert has_element?(lv, "#delete-connection-button", "Remove integration…")
+      assert has_element?(lv, "#delete-connection-button", "Remove program…")
 
       {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
-      assert has_element?(lv, "#delete-connection-button", "Remove service…")
+      assert has_element?(lv, "#delete-connection-button", "Remove API…")
     end
 
     test "a yes/no setting says what it is, and is saved as no", %{conn: conn, scope: scope} do

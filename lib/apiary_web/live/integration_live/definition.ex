@@ -1,16 +1,17 @@
 defmodule ApiaryWeb.IntegrationLive.Definition do
   @moduledoc """
-  The workspace's own service definitions, under Workspace settings › Integrations, with
-  the `security` feature: New service definition (`…/definitions/new`), one definition
-  (`…/definitions/:id`, its public id `svc_…`) with the services that name it, its edit
-  (`…/edit`), a page, and its deletion (`…/delete`), confirmed in place in its danger
-  zone and refused while a service names it.
+  The workspace's own custom APIs, its service definitions in `Apiary.Connections`' words,
+  under Workspace settings › Integrations, with the `security` feature: New custom API
+  (`…/definitions/new`), one custom API (`…/definitions/:id`, its public id `svc_…`) with
+  where it is set up, the APIs set up from it, its edit (`…/edit`), a page, and its
+  deletion (`…/delete`), confirmed in place in its danger zone and refused while an API is
+  set up from it. "Service definition" is not a word of the page.
 
-  A definition is written as JSON, the shape `Apiary.Kinds.ServiceDefinition` checks: its
+  A custom API is written as JSON, the shape `Apiary.Kinds.ServiceDefinition` checks: its
   key, title, description, hosts, paths, auth and declared secrets. The page calls
   `Apiary.Connections.get_service_definition/2`, `create_service_definition/2`,
   `update_service_definition/3`, `delete_service_definition/2` and `list_connections/1`.
-  No run receives a service yet, and the page says so once.
+  No run receives an API yet, and the page says so once.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -59,7 +60,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       >
         <:description>
           {gettext(
-            "A service definition says which hosts a service is, how its secret is sent and which secrets it needs."
+            "A custom API says which hosts it is, how its secret is sent and which secrets it needs."
           )}
         </:description>
         <Common.not_yet />
@@ -87,11 +88,11 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             <.page_form_foot id="definition-save" cancel={cancel_path(@current_scope, @definition)}>
               <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
                 {if @live_action == :new,
-                  do: gettext("Create definition"),
-                  else: gettext("Save definition")}
+                  do: gettext("Create custom API"),
+                  else: gettext("Save custom API")}
               </.button>
               <:note :if={@live_action == :edit and @users != []}>
-                {gettext("Every service that names it takes the new definition.")}
+                {gettext("Every API set up from it takes the new definition.")}
               </:note>
             </.page_form_foot>
           </div>
@@ -120,7 +121,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
         measure="list"
       >
         <:subtitle>
-          {gettext("A service definition of this workspace's own")}
+          {gettext("A custom API of this workspace's own")}
           <span class="text-faint" aria-hidden="true">·</span>
           <span class="q-mono">{@definition.key}</span>
         </:subtitle>
@@ -180,7 +181,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
 
         <SettingsComponents.part
           id="definition-users"
-          title={gettext("Services that name it")}
+          title={gettext("Where it is set up")}
           count={length(@users)}
         >
           <ul :if={@users != []} class="q-plain-list">
@@ -194,7 +195,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             </li>
           </ul>
           <p :if={@users == []} class="text-[13px]/5 text-muted">
-            {gettext("No service names it yet.")}
+            {gettext("It isn't set up yet.")}
           </p>
         </SettingsComponents.part>
 
@@ -203,8 +204,8 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
         <SettingsComponents.danger_zone :if={@may_write}>
           <SettingsComponents.danger_action
             id="delete-definition"
-            title={gettext("Delete this service definition")}
-            button={gettext("Delete definition…")}
+            title={gettext("Delete this custom API")}
+            button={gettext("Delete custom API…")}
             disabled={@users != []}
             open={@live_action == :delete}
             open_path={Common.definition_path(@current_scope, @definition, :delete)}
@@ -215,7 +216,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             <%= if @users == [] do %>
               {gettext("It is removed from this workspace. This cannot be undone.")}
             <% else %>
-              {gettext("Services name it: remove them first.")}
+              {gettext("APIs are set up from it: remove them first.")}
             <% end %>
           </SettingsComponents.danger_action>
         </SettingsComponents.danger_zone>
@@ -224,8 +225,8 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
     """
   end
 
-  defp form_title(:new), do: gettext("New service definition")
-  defp form_title(:edit), do: gettext("Edit service definition")
+  defp form_title(:new), do: gettext("New custom API")
+  defp form_title(:edit), do: gettext("Edit custom API")
 
   defp cancel_path(scope, nil), do: Common.index_path(scope)
   defp cancel_path(scope, definition), do: Common.definition_path(scope, definition)
@@ -278,7 +279,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
 
     cond do
       action == :show ->
-        {:noreply, assign(socket, page_title: title(socket.assigns.definition.title))}
+        {:noreply, assign(socket, page_title: title(scope, socket.assigns.definition.title))}
 
       not socket.assigns.may_write ->
         {:noreply,
@@ -291,7 +292,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
          assign(socket,
            form: to_form(%{"json" => @example}, as: :definition),
            problems: [],
-           page_title: title(form_title(:new))
+           page_title: title(scope, form_title(:new))
          )}
 
       action == :edit ->
@@ -299,15 +300,16 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
          assign(socket,
            form: to_form(%{"json" => pretty(socket.assigns.definition)}, as: :definition),
            problems: [],
-           page_title: title(form_title(:edit))
+           page_title: title(scope, form_title(:edit))
          )}
 
       action == :delete ->
-        {:noreply, assign(socket, page_title: title(socket.assigns.definition.title))}
+        {:noreply, assign(socket, page_title: title(scope, socket.assigns.definition.title))}
     end
   end
 
-  defp title(words), do: words <> " · " <> gettext("Integrations")
+  defp title(scope, words),
+    do: SettingsComponents.page_title(scope, :workspace, [words, gettext("Integrations")])
 
   ## Events
 

@@ -117,7 +117,11 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     release = ready_release!(scope, github_description())
     {:ok, lv, _html} = live(conn, ipath(scope, release))
 
-    assert has_element?(lv, "#settings-section-title", "GitHub")
+    assert has_element?(lv, "h1#settings-section-title", "GitHub")
+    assert has_element?(lv, "#settings-section-integrations", "github.com/qoryai/qory-github")
+    assert has_element?(lv, "#breadcrumb-section", "Integrations")
+    assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add from a release")
+    assert page_title(lv) =~ "Add from a release · Workspace settings"
     assert has_element?(lv, "#release-publisher", "Qory")
     assert has_element?(lv, "#release-publisher", "github.com/qoryai")
     assert has_element?(lv, "#release-ways", "Calls its API")

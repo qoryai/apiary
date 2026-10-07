@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.IntegrationLive.Show do
   @moduledoc """
-  One runtime, integration or service of the workspace, under Workspace settings ›
-  Integrations (`/:org/:workspace/settings/integrations/:id`, `:id` its public id,
-  `con_…`), with the `security` feature. Three tabs, each an address:
+  One runtime, program (an integration added from a release) or API (a service) of the
+  workspace, under Workspace settings › Integrations
+  (`/:org/:workspace/settings/integrations/:id`, `:id` its public id, `con_…`), with the
+  `security` feature. Three tabs, each an address:
 
     * **Overview** (`:overview`): what it is, its id, its source, version and publisher
-      (an integration's), its definition (a service's) or its catalogue entry (a
-      runtime's), where it applies, who added and changed it, the way it is used, the
-      secrets it declares and an integration's plain settings;
+      (a program's), the API it is set up from, built in or a custom API (an API's), or
+      its catalogue entry (a runtime's), where it applies, who added and changed it, the
+      way it is used, the secrets it declares and a program's plain settings;
     * **Targets** (`…/targets`): where it applies, every target or the chosen ones, with
       Add target (`…/targets/add`, a page) and the removal of one, confirmed on its row
       (`…/targets/:target_id/remove`);
@@ -176,7 +177,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             />
             <p :if={Common.url_source?(@connection.source)} class="text-[13px]/5 text-muted">
               {gettext(
-                "An integration from an address has one release: what its address serves. It is fetched again, and you move to it from there."
+                "A program from an address has one release: what its address serves. It is fetched again, and you move to it from there."
               )}
             </p>
             <.page_form_foot
@@ -320,7 +321,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <dd class="q-mono break-all">{@connection.description_sha256}</dd>
         <% end %>
         <%= if @connection.kind == "service" do %>
-          <dt class="text-faint">{gettext("Definition")}</dt>
+          <dt class="text-faint">{gettext("Set up from")}</dt>
           <dd id="connection-definition">
             <span :if={@connection.service_builtin}>
               {(@definition && @definition["title"]) || @connection.service_builtin}
@@ -697,12 +698,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   end
 
   defp removal_title(%Connection{kind: "runtime"}), do: gettext("Remove this runtime")
-  defp removal_title(%Connection{kind: "integration"}), do: gettext("Remove this integration")
-  defp removal_title(%Connection{kind: "service"}), do: gettext("Remove this service")
+  defp removal_title(%Connection{kind: "integration"}), do: gettext("Remove this program")
+  defp removal_title(%Connection{kind: "service"}), do: gettext("Remove this API")
 
   defp removal_button(%Connection{kind: "runtime"}), do: gettext("Remove runtime…")
-  defp removal_button(%Connection{kind: "integration"}), do: gettext("Remove integration…")
-  defp removal_button(%Connection{kind: "service"}), do: gettext("Remove service…")
+  defp removal_button(%Connection{kind: "integration"}), do: gettext("Remove program…")
+  defp removal_button(%Connection{kind: "service"}), do: gettext("Remove API…")
 
   # The danger zone's line that removes the connection: `SettingsComponents.danger_action/1`
   # as it is drawn, with the same ids, its confirmation in place, but its red button "Yes,
@@ -931,7 +932,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       {:noreply,
        socket
        |> assign(tab: tab(action), confirming: nil, version_problems: [])
-       |> assign(:page_title, elem(socket.assigns.names, 0) <> " · " <> gettext("Integrations"))
+       |> assign(
+         :page_title,
+         SettingsComponents.page_title(scope, :workspace, [
+           elem(socket.assigns.names, 0),
+           gettext("Integrations")
+         ])
+       )
        |> open(action, params)
        |> focus_after_confirm(left)}
     end

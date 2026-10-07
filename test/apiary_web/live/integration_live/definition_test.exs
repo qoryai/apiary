@@ -30,8 +30,18 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
 
   test "a new definition is written as JSON, from an example", %{conn: conn, scope: scope} do
     {:ok, lv, _html} = live(conn, ipath(scope, "/new"))
-    assert has_element?(lv, "#definition-page-title", "New service definition")
+    assert has_element?(lv, "#definition-page-title", "New custom API")
     assert has_element?(lv, "#not-on-runs")
+
+    assert has_element?(
+             lv,
+             "#definition-page",
+             "A custom API says which hosts it is, how its secret is sent and which secrets it needs."
+           )
+
+    assert has_element?(lv, "#definition-save button[type=submit]", "Create custom API")
+    assert has_element?(lv, "#breadcrumb-section", "Integrations")
+    assert page_title(lv) =~ "New custom API · Integrations · Workspace settings"
 
     {:error, {:live_redirect, %{to: to}}} =
       lv |> form("#definition-form") |> render_submit()
@@ -54,7 +64,7 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
              "#definition_json[aria-invalid=true][aria-describedby=definition_json-error]"
            )
 
-    assert has_element?(lv, "#definition_json-error", "It is not a service definition")
+    assert has_element?(lv, "#definition_json-error", "It is not a custom API's definition")
     assert_push_event(lv, "run:focus", %{id: "definition_json"})
     assert {:ok, []} = Connections.list_service_definitions(scope)
   end
@@ -81,8 +91,22 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
     assert has_element?(lv, "#definition-facts", "status.example.com")
     assert has_element?(lv, "#definition-facts", "STATUS_API_KEY")
     assert has_element?(lv, "#definition-json", "status-api")
+    assert has_element?(lv, "h1#settings-section-title", "Status API")
+
+    assert has_element?(
+             lv,
+             "#settings-section-integrations",
+             "A custom API of this workspace's own"
+           )
+
+    assert has_element?(lv, "#definition-users h2", "Where it is set up")
+    assert has_element?(lv, "#definition-users", "It isn't set up yet.")
+    assert has_element?(lv, "#delete-definition-title", "Delete this custom API")
+    refute lv |> element("#settings-section-integrations") |> render() =~ "ervice definition"
 
     {:ok, lv, _html} = live(conn, ipath(scope, "/#{definition.public_id}/edit"))
+    assert has_element?(lv, "#definition-page-title", "Edit custom API")
+    assert has_element?(lv, "#definition-save button[type=submit]", "Save custom API")
 
     json =
       ~s({"version": 1, "key": "status-api", "title": "Status page", "hosts": ["status.example.com"], "auth": {"scheme": "bearer", "secret": "key"}, "declares": [{"id": "key", "title": "API key"}]})
@@ -103,8 +127,8 @@ defmodule ApiaryWeb.IntegrationLive.DefinitionTest do
 
     {:ok, lv, _html} = live(conn, ipath(scope, "/#{definition.public_id}"))
     assert has_element?(lv, "#definition-user-#{service.public_id}")
-    assert has_element?(lv, "#delete-definition-button[disabled]", "Delete definition…")
-    assert has_element?(lv, "#delete-definition", "Services name it: remove them first.")
+    assert has_element?(lv, "#delete-definition-button[disabled]", "Delete custom API…")
+    assert has_element?(lv, "#delete-definition", "APIs are set up from it: remove them first.")
 
     {:ok, _} = Connections.delete_connection(scope, service)
     {:ok, lv, _html} = live(conn, ipath(scope, "/#{definition.public_id}/delete"))

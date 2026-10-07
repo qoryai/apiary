@@ -1,27 +1,29 @@
 defmodule ApiaryWeb.IntegrationLive.Index do
   @moduledoc """
   Workspace settings › Integrations (`/:org/:workspace/settings/integrations`), with the
-  `security` feature: what the workspace sets up for its runs, which `Apiary.Connections`
-  calls connections, in four parts, each a list whose row leads to its page
-  (`ApiaryWeb.IntegrationLive.Show`, `ApiaryWeb.IntegrationLive.Definition`):
+  `security` feature, in two parts:
 
-    * **Runtimes**, from the runner's catalogue (`Apiary.Kinds.Runtimes`);
-    * **Integrations**, each added from a release on github.com, gitlab.com or
-      codeberg.org, or at an https address while the instance accepts one
-      (`Apiary.Integrations.Source`);
-    * **Services**, each naming a service definition, built in (`Apiary.Kinds.Services`)
-      or the workspace's own;
-    * **Service definitions**, the workspace's own.
+    * **Set up in this workspace**: one list of what the workspace sets up for its runs,
+      which `Apiary.Connections` calls connections, each row its name, its kind (Runtime,
+      API, or Program, one added from a release), a program's version and where it
+      applies, every target or the chosen ones, leading to its page
+      (`ApiaryWeb.IntegrationLive.Show`);
+    * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name:
+      the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`), the built-in APIs
+      (`Apiary.Kinds.Services`), the named releases (`ApiaryWeb.IntegrationLive.Named`),
+      the workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`), then From
+      a release… and Custom API….
 
-  Each says where it applies: every target, or the chosen ones. No run receives any of
-  this yet, and the page says so once, at its top.
+  No run receives any of this yet, and the page says so once, at its top.
 
-  The forms are pages of the section, at paths of their own, never a dialog: Add
-  integration (`…/add`), which asks for a release and leads to it
-  (`ApiaryWeb.IntegrationLive.Release`), New runtime (`…/new-runtime`) and New service
-  (`…/new-service`). Every member reads the section; owners and admins change it
-  (`connection.write`), and a reader who may not sees no control and one line saying who
-  does. The context functions ask again.
+  The forms are pages of the section, at paths of their own, never a dialog: Add from a
+  release (`…/add`), which asks for a release and leads to it
+  (`ApiaryWeb.IntegrationLive.Release`), Set up a runtime (`…/new-runtime`) and Set up an
+  API (`…/new-service`), each opened by a card with its item chosen (`?runtime=`,
+  `?definition=builtin:…` or `own:…`; one that is not there opens the form as it starts).
+  Every member reads the section; owners and admins change it (`connection.write`), and
+  a reader who may not sees the list, no card, and one line saying who does. The context
+  functions ask again.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -30,7 +32,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   alias Apiary.{Connections, Integrations}
   alias Apiary.Integrations.Source
   alias Apiary.Kinds.{Runtimes, Services}
-  alias ApiaryWeb.IntegrationLive.Common
+  alias ApiaryWeb.IntegrationLive.{Common, Named}
   alias ApiaryWeb.SettingsComponents
 
   @forms [:add_integration, :new_runtime, :new_service]
@@ -80,16 +82,8 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         measure="list"
       >
         <:subtitle>
-          {pgettext(
-            "plain",
-            "The runtimes, integrations and services set up in this workspace, and where each applies."
-          )}
+          {pgettext("plain", "What this workspace sets up for its runs, and where each applies.")}
         </:subtitle>
-        <:actions :if={@may_write}>
-          <.button id="add-integration" variant="primary" navigate={Common.add_path(@current_scope)}>
-            <.icon name="hero-plus-micro" class="size-4" />{gettext("Add integration")}
-          </.button>
-        </:actions>
 
         <Common.not_yet />
         <p :if={!@may_write} id="integrations-readonly" class="text-[13px]/5 text-muted">
@@ -97,168 +91,205 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         </p>
 
         <SettingsComponents.part
-          id="runtimes-part"
-          title={gettext("Runtimes")}
-          count={length(@runtimes)}
+          id="set-up-part"
+          title={gettext("Set up in this workspace")}
+          count={length(@connections)}
         >
-          <p class="text-[13px]/5 text-muted">
-            {gettext("Agent runtimes from the runner's catalogue.")}
-          </p>
           <.table
-            :if={@runtimes != []}
-            id="runtimes"
-            label={gettext("Runtimes")}
-            rows={@runtimes}
+            :if={@connections != []}
+            id="connections"
+            label={gettext("Set up in this workspace")}
+            rows={@connections}
             row_id={&"connection-#{&1.public_id}"}
           >
-            <:col :let={connection} label={gettext("Runtime")} kind="title">
-              <.name_cell connection={connection} scope={@current_scope} />
-            </:col>
-            <:col :let={connection} label={pgettext("plain", "Applies to")}>
-              {Common.applies_word(connection)}
-            </:col>
-          </.table>
-          <p :if={@runtimes == []} id="runtimes-empty" class="text-[13px]/5 text-faint">
-            {gettext("No runtime is set up.")}
-          </p>
-          <div :if={@may_write}>
-            <.button id="new-runtime" size="xs" navigate={Common.new_runtime_path(@current_scope)}>
-              {gettext("New runtime")}
-            </.button>
-          </div>
-        </SettingsComponents.part>
-
-        <SettingsComponents.part
-          id="integrations-part"
-          title={gettext("Integrations")}
-          count={length(@integrations)}
-        >
-          <p class="text-[13px]/5 text-muted">
-            {if @url_sources,
-              do:
-                gettext(
-                  "Programs their publishers release on github.com, gitlab.com or codeberg.org, or at an https address."
-                ),
-              else:
-                gettext(
-                  "Programs their publishers release on github.com, gitlab.com or codeberg.org."
-                )}
-          </p>
-          <.table
-            :if={@integrations != []}
-            id="integrations"
-            label={gettext("Integrations")}
-            rows={@integrations}
-            row_id={&"connection-#{&1.public_id}"}
-          >
-            <:col :let={connection} label={gettext("Integration")} kind="title">
+            <:col :let={connection} label={gettext("Name")} kind="title">
               <span class="grid">
                 <.name_cell connection={connection} scope={@current_scope} />
-                <span class="q-mono text-[12.5px]/[18px] font-normal text-muted">
+                <span
+                  :if={connection.source}
+                  class="q-mono text-[12.5px]/[18px] font-normal text-muted"
+                >
                   {connection.source}
                 </span>
               </span>
             </:col>
+            <:col :let={connection} label={gettext("Kind")}>
+              {Common.kind_word(connection.kind)}
+            </:col>
             <:col :let={connection} label={gettext("Version")} from="sm">
-              <span class="q-mono">{connection.version}</span>
+              <span :if={connection.version} class="q-mono">{connection.version}</span>
             </:col>
             <:col :let={connection} label={pgettext("plain", "Applies to")}>
               {Common.applies_word(connection)}
             </:col>
           </.table>
-          <p :if={@integrations == []} id="integrations-empty" class="text-[13px]/5 text-faint">
-            {gettext("No integration is added.")}
+          <p :if={@connections == []} id="connections-empty" class="text-[13px]/5 text-faint">
+            {gettext("Nothing is set up in this workspace yet.")}
           </p>
         </SettingsComponents.part>
 
-        <SettingsComponents.part
-          id="services-part"
-          title={gettext("Services")}
-          count={length(@services)}
-        >
-          <p class="text-[13px]/5 text-muted">
-            {gettext("APIs that take a secret, each set up from a service definition.")}
-          </p>
-          <.table
-            :if={@services != []}
-            id="services"
-            label={gettext("Services")}
-            rows={@services}
-            row_id={&"connection-#{&1.public_id}"}
-          >
-            <:col :let={connection} label={gettext("Service")} kind="title">
-              <.name_cell connection={connection} scope={@current_scope} />
-            </:col>
-            <:col :let={connection} label={gettext("Definition")} from="sm">
-              <.definition_word connection={connection} definitions={@definitions} />
-            </:col>
-            <:col :let={connection} label={pgettext("plain", "Applies to")}>
-              {Common.applies_word(connection)}
-            </:col>
-          </.table>
-          <p :if={@services == []} id="services-empty" class="text-[13px]/5 text-faint">
-            {gettext("No service is set up.")}
-          </p>
-          <div :if={@may_write}>
-            <.button id="new-service" size="xs" navigate={Common.new_service_path(@current_scope)}>
-              {gettext("New service")}
-            </.button>
-          </div>
-        </SettingsComponents.part>
-
-        <SettingsComponents.part
-          id="definitions-part"
-          title={gettext("Service definitions")}
-          count={length(@definitions)}
-        >
-          <p class="text-[13px]/5 text-muted">
-            {gettext("This workspace's own service definitions, beside the built-in ones: %{names}.",
-              names: Enum.map_join(Services.list(), ", ", & &1["title"])
-            )}
-          </p>
-          <.table
-            :if={@definitions != []}
-            id="definitions"
-            label={gettext("Service definitions")}
-            rows={@definitions}
-            row_id={&"definition-#{&1.public_id}"}
-          >
-            <:col :let={definition} label={gettext("Definition")} kind="title">
-              <span class="grid">
-                <.link
-                  navigate={Common.definition_path(@current_scope, definition)}
-                  class="q-title hover:underline"
-                >
-                  {definition.title}
-                </.link>
-                <span class="q-mono text-[12.5px]/[18px] font-normal text-muted">
-                  {definition.key}
-                </span>
-              </span>
-            </:col>
-            <:col :let={definition} label={gettext("Hosts")} from="sm">
-              <span class="q-mono">
-                {Enum.join(Apiary.Connections.ServiceDefinition.decoded(definition)["hosts"], ", ")}
-              </span>
-            </:col>
-          </.table>
-          <p :if={@definitions == []} id="definitions-empty" class="text-[13px]/5 text-faint">
-            {gettext("This workspace has no service definition of its own.")}
-          </p>
-          <div :if={@may_write}>
-            <.button
-              id="new-definition"
-              size="xs"
-              navigate={Common.definition_path(@current_scope, :new)}
-            >
-              {gettext("New service definition")}
-            </.button>
-          </div>
-        </SettingsComponents.part>
+        <.add_cards
+          :if={@may_write}
+          scope={@current_scope}
+          definitions={@definitions}
+          url_sources={@url_sources}
+        />
       </.settings_page>
     </Layouts.app>
     """
   end
+
+  @doc """
+  add_cards/1 is the part "Add an integration": a card for each thing the workspace can
+  add, by name, each its kind as a small word, one line about it and the act that adds
+  it. First the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`), the built-in
+  APIs (`Apiary.Kinds.Services`) and the named releases
+  (`ApiaryWeb.IntegrationLive.Named`), then the workspace's own custom APIs, each its name
+  leading to its page, then From a release… and Custom API…. A card's act opens the form
+  with its item chosen; a runtime or an API may be set up more than once, so a card stays
+  as it is once it is set up.
+  """
+  attr :scope, :any, required: true
+  attr :definitions, :list, required: true, doc: "the workspace's own service definitions"
+  attr :url_sources, :boolean, required: true
+
+  attr :named, :list,
+    default: nil,
+    doc: "the named releases; `ApiaryWeb.IntegrationLive.Named.list/0` where none is given"
+
+  def add_cards(assigns) do
+    assigns = assign(assigns, :named, assigns.named || Named.list())
+
+    ~H"""
+    <SettingsComponents.part id="add-part" title={gettext("Add an integration")}>
+      <ul id="add-cards" class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-3">
+        <.add_card
+          :for={runtime <- Runtimes.list()}
+          id={"add-card-runtime-#{runtime.name}"}
+          title={runtime.title}
+          kind={gettext("Runtime")}
+          about={runtime_line(runtime)}
+          act={gettext("Set up")}
+          navigate={Common.new_runtime_path(@scope, runtime.name)}
+        />
+        <.add_card
+          :for={definition <- Services.list()}
+          id={"add-card-api-#{definition["key"]}"}
+          title={definition["title"]}
+          kind={gettext("API")}
+          about={definition["description"]}
+          act={gettext("Set up")}
+          navigate={Common.new_service_path(@scope, "builtin:" <> definition["key"])}
+        />
+        <.add_card
+          :for={named <- @named}
+          id={"add-card-named-#{slug(named.source)}"}
+          title={named.name}
+          source={named.source}
+          kind={gettext("Program")}
+          about={named.about}
+          act={gettext("Set up")}
+          navigate={Common.add_path(@scope, source: named.source)}
+        />
+        <.add_card
+          :for={definition <- @definitions}
+          id={"add-card-own-#{definition.public_id}"}
+          title={definition.title}
+          title_navigate={Common.definition_path(@scope, definition)}
+          kind={gettext("Custom API")}
+          about={own_line(definition)}
+          act={gettext("Set up")}
+          navigate={Common.new_service_path(@scope, "own:" <> definition.public_id)}
+        />
+        <.add_card
+          id="add-card-release"
+          title={gettext("From a release…")}
+          about={
+            if @url_sources,
+              do:
+                gettext(
+                  "Add a program its publisher releases on github.com, gitlab.com or codeberg.org, or at an https address."
+                ),
+              else:
+                gettext(
+                  "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
+                )
+          }
+          act={gettext("Add from a release")}
+          act_id="add-integration"
+          navigate={Common.add_path(@scope)}
+        />
+        <.add_card
+          id="add-card-custom-api"
+          title={gettext("Custom API…")}
+          about={
+            gettext("Describe an API that takes a secret: its hosts and how the secret is sent.")
+          }
+          act={gettext("New custom API")}
+          act_id="new-definition"
+          navigate={Common.definition_path(@scope, :new)}
+        />
+      </ul>
+    </SettingsComponents.part>
+    """
+  end
+
+  # One card: its name (a link to its page where it has one), its source in mono beneath
+  # where it has one, its kind, one line about it and its act. An act named for every card
+  # alike, Set up, says the card's name to a screen reader.
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :title_navigate, :string, default: nil
+  attr :source, :string, default: nil
+  attr :kind, :string, default: nil
+  attr :about, :string, default: nil
+  attr :act, :string, required: true
+  attr :act_id, :string, default: nil
+  attr :navigate, :string, required: true
+
+  defp add_card(assigns) do
+    ~H"""
+    <li id={@id} class="card card-border min-w-0 gap-2 bg-base-100 p-4 shadow-xs">
+      <div class="grid gap-0.5">
+        <h3 id={"#{@id}-title"} class="text-[14px]/5 font-semibold break-words">
+          <.link :if={@title_navigate} navigate={@title_navigate} class="hover:underline">
+            {@title}
+          </.link>
+          <span :if={!@title_navigate}>{@title}</span>
+        </h3>
+        <span :if={@source} class="q-mono text-[12.5px]/[18px] break-all text-muted">
+          {@source}
+        </span>
+        <span :if={@kind} id={"#{@id}-kind"} class="text-[12px]/4 text-muted">{@kind}</span>
+      </div>
+      <p :if={@about} class="text-[13px]/5 text-muted">{@about}</p>
+      <div class="mt-auto pt-1">
+        <.button id={@act_id || "#{@id}-act"} size="xs" navigate={@navigate}>
+          {@act}<span :if={@kind} class="sr-only">{" " <> @title}</span>
+        </.button>
+      </div>
+    </li>
+    """
+  end
+
+  # The line under a runtime's name: the catalogue has no description, so the console
+  # says what each of its runtimes is; one it doesn't know yet, where it comes from.
+  defp runtime_line(%{name: "claude"}),
+    do: gettext("Anthropic's coding agent, with an API key or an OAuth credential.")
+
+  defp runtime_line(_runtime), do: gettext("A runtime of the runner's catalogue.")
+
+  # The line under a custom API's name: its description, else its hosts.
+  defp own_line(definition) do
+    decoded = Apiary.Connections.ServiceDefinition.decoded(definition)
+
+    decoded["description"] ||
+      gettext("Its hosts: %{hosts}.", hosts: Enum.join(decoded["hosts"], ", "))
+  end
+
+  # A named release's source as part of an id: `github.com/acme/tracker` is
+  # `github-com-acme-tracker`.
+  defp slug(source), do: source |> String.replace(~r/[^A-Za-z0-9]+/, "-") |> String.trim("-")
 
   attr :connection, :any, required: true
   attr :scope, :any, required: true
@@ -278,37 +309,6 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         {gettext("Fails its integrity check")}
       </.state_word>
     </span>
-    """
-  end
-
-  attr :connection, :any, required: true
-  attr :definitions, :list, required: true
-
-  defp definition_word(%{connection: %{service_builtin: key}} = assigns) when is_binary(key) do
-    assigns =
-      assign(assigns,
-        title:
-          case Services.fetch(key) do
-            {:ok, definition} -> definition["title"]
-            :error -> key
-          end
-      )
-
-    ~H"""
-    {@title} <span class="text-faint">· {gettext("built in")}</span>
-    """
-  end
-
-  defp definition_word(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :definition,
-        Enum.find(assigns.definitions, &(&1.id == assigns.connection.service_definition_id))
-      )
-
-    ~H"""
-    <span :if={@definition}>{@definition.title}</span>
     """
   end
 
@@ -423,7 +423,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         <.input
           field={@form[:definition]}
           type="select"
-          label={gettext("Service definition")}
+          label={gettext("API")}
           options={definition_options(@definitions)}
           aria-describedby="service-definition-about"
         />
@@ -435,13 +435,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           field={@form[:name]}
           label={gettext("Name")}
           optional
-          hint={gettext("The definition's title, unless you give it another.")}
+          hint={gettext("The API's title, unless you give it another.")}
           autocomplete="off"
         />
         <.applies_input form={@form} />
         <.page_form_foot id="new-service-save" cancel={Common.index_path(@current_scope)}>
           <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
-            {gettext("Set up service")}
+            {gettext("Set up API")}
           </.button>
         </.page_form_foot>
       </div>
@@ -510,20 +510,20 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   defp form_id(:new_runtime), do: "new-runtime-page"
   defp form_id(:new_service), do: "new-service-page"
 
-  defp form_title(:add_integration), do: gettext("Add integration")
-  defp form_title(:new_runtime), do: gettext("New runtime")
-  defp form_title(:new_service), do: gettext("New service")
+  defp form_title(:add_integration), do: gettext("Add from a release")
+  defp form_title(:new_runtime), do: gettext("Set up a runtime")
+  defp form_title(:new_service), do: gettext("Set up an API")
 
   defp form_sentence(:add_integration),
     do:
       gettext(
-        "Name the release of an integration: its description is fetched, and you add it from there."
+        "Name the release of a program: its description is fetched, and you add it from there."
       )
 
   defp form_sentence(:new_runtime), do: gettext("Set up a runtime of the runner's catalogue.")
 
   defp form_sentence(:new_service),
-    do: gettext("Set up a service from a built-in definition or one of this workspace's own.")
+    do: gettext("Set up a built-in API or one of this workspace's own.")
 
   ## Mount, the list and the forms
 
@@ -549,9 +549,6 @@ defmodule ApiaryWeb.IntegrationLive.Index do
          {:ok, definitions} <- Connections.list_service_definitions(scope) do
       assign(socket,
         connections: connections,
-        runtimes: Enum.filter(connections, &(&1.kind == "runtime")),
-        integrations: Enum.filter(connections, &(&1.kind == "integration")),
-        services: Enum.filter(connections, &(&1.kind == "service")),
         definitions: definitions
       )
     else
@@ -565,13 +562,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
     cond do
       action == :index ->
-        {:noreply, assign(socket, form: nil, page_title: title(gettext("Integrations")))}
+        {:noreply, assign(socket, form: nil, page_title: title(socket, gettext("Integrations")))}
 
       socket.assigns.may_write ->
         {:noreply,
          assign(socket,
-           form: fresh_form(action, params, socket.assigns.url_sources),
-           page_title: title(form_title(action))
+           form: fresh_form(action, params, socket.assigns),
+           page_title: title(socket, form_title(action))
          )}
 
       true ->
@@ -582,11 +579,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     end
   end
 
-  defp title(words), do: words <> " · " <> gettext("Workspace settings")
+  defp title(socket, words),
+    do: SettingsComponents.page_title(socket.assigns.current_scope, :workspace, [words])
 
-  # Add integration, empty or with the `source` and `version` of a release asked for
-  # again: a forge path on the forge it names, an address where the instance accepts one.
-  defp fresh_form(:add_integration, params, url_sources?) do
+  # Add from a release, empty or with the `source` and `version` of a release asked for
+  # again or a named release's card: a forge path on the forge it names, an address where
+  # the instance accepts one.
+  defp fresh_form(:add_integration, params, %{url_sources: url_sources?}) do
     empty = %{"where" => "github.com", "path" => "", "version" => "", "url" => ""}
     source = if is_binary(params["source"]), do: String.trim(params["source"]), else: ""
     version = if is_binary(params["version"]), do: String.trim(params["version"]), else: ""
@@ -612,19 +611,28 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     to_form(fields, as: :release)
   end
 
-  defp fresh_form(:new_runtime, _params, _url_sources?),
-    do: to_form(%{"runtime" => hd(Runtimes.list()).name, "applies_to" => "all"}, as: :connection)
+  # Set up a runtime, its runtime the one a card chose (`?runtime=`) where the catalogue
+  # has it, else the catalogue's first.
+  defp fresh_form(:new_runtime, params, _assigns) do
+    runtime =
+      if chosen_runtime(params["runtime"]),
+        do: params["runtime"],
+        else: hd(Runtimes.list()).name
 
-  defp fresh_form(:new_service, _params, _url_sources?),
-    do:
-      to_form(
-        %{
-          "definition" => "builtin:" <> hd(Services.list())["key"],
-          "name" => "",
-          "applies_to" => "all"
-        },
-        as: :connection
-      )
+    to_form(%{"runtime" => runtime, "applies_to" => "all"}, as: :connection)
+  end
+
+  # Set up an API, its API the one a card chose (`?definition=builtin:<key>` or
+  # `own:<public id>`) where it is built in or the workspace's own, else the first built-in
+  # one.
+  defp fresh_form(:new_service, params, assigns) do
+    definition =
+      if chosen_definition(params["definition"], assigns),
+        do: params["definition"],
+        else: "builtin:" <> hd(Services.list())["key"]
+
+    to_form(%{"definition" => definition, "name" => "", "applies_to" => "all"}, as: :connection)
+  end
 
   @impl true
   def handle_event("validate", %{"release" => params}, socket),

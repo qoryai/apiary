@@ -215,12 +215,12 @@ defmodule ApiaryWeb.Layouts do
             path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
             action: :"node.create"
           },
-          # Add integration, the workspace's first step towards one, asks for a release.
+          # Add integration leads to the cards of Integrations that add one.
           %Entry{
             key: :integration,
             label: gettext("Add integration"),
             icon: "hero-puzzle-piece",
-            path: ~p"/#{organisation}/#{workspace}/settings/integrations/add",
+            path: ~p"/#{organisation}/#{workspace}/settings/integrations" <> "#add-part",
             action: :"connection.write"
           },
           %Entry{

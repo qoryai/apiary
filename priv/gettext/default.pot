@@ -2038,6 +2038,16 @@ msgstr ""
 msgid "A connection no rule allows is denied."
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "A custom API of this workspace's own"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "A custom API says which hosts it is, how its secret is sent and which secrets it needs."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "A declaration allows nothing by itself."
@@ -2205,6 +2215,11 @@ msgstr ""
 msgid "A policy rule"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A program from an address has one release: what its address serves. It is fetched again, and you move to it from there."
+msgstr ""
+
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
@@ -2282,6 +2297,11 @@ msgctxt "plain"
 msgid "A runner holds a host to one list of paths and cannot tell which of the two applies."
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A runtime of the runner's catalogue."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A secret holds a value such as a token for a system. Once it is saved, nobody sees it again."
@@ -2300,16 +2320,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "A service definition of this workspace's own"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "A service definition says which hosts a service is, how its secret is sent and which secrets it needs."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -2394,9 +2404,20 @@ msgstr ""
 msgid "A+"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/common.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "APIs that take a secret, each set up from a service definition."
+msgid "API"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "APIs are set up from it: %{names}. Remove them first."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "APIs are set up from it: remove them first."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -2617,6 +2638,16 @@ msgstr ""
 msgid "Add a node for a machine that is always there, or a node pool for instances that come and go."
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add a program its publisher releases on github.com, gitlab.com or codeberg.org, or at an https address."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Add a public key"
@@ -2642,14 +2673,23 @@ msgstr ""
 msgid "Add a value to %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add an integration"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add for this target"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
+#, elixir-autogen, elixir-format
+msgid "Add from a release"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Add integration"
 msgstr ""
@@ -2760,11 +2800,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Admin"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Agent runtimes from the runner's catalogue."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -3063,11 +3098,6 @@ msgstr ""
 msgid "An integration"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "An integration from an address has one release: what its address serves. It is fetched again, and you move to it from there."
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "An integration is added only from a release on github.com, gitlab.com or codeberg.org."
@@ -3101,6 +3131,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answered %{status}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Anthropic's coding agent, with an API key or an OAuth credential."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -3982,7 +4017,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
-msgid "Create definition"
+msgid "Create custom API"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -4062,6 +4097,16 @@ msgstr ""
 msgid "Credentials"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Custom API"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Custom API…"
+msgstr ""
+
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Danger zone"
@@ -4106,8 +4151,6 @@ msgid "Declared by the harness"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Definition"
 msgstr ""
@@ -4147,7 +4190,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
-msgid "Delete definition…"
+msgid "Delete custom API…"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -4185,6 +4228,11 @@ msgstr ""
 msgid "Delete the workspace %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "Delete this custom API"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Delete this node"
@@ -4198,11 +4246,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete this organisation"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "Delete this service definition"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -4503,6 +4546,11 @@ msgstr ""
 msgid "Deny…"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Describe an API that takes a secret: its hosts and how the secret is sent."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4638,6 +4686,11 @@ msgstr ""
 msgid "Edit"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "Edit custom API"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Edit name and note"
@@ -4656,11 +4709,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Edit paths"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "Edit service definition"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -4851,6 +4899,11 @@ msgstr ""
 msgid "Events pruned"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "Every API set up from it takes the new definition."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every alive state"
@@ -4901,11 +4954,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every run the machines of this workspace have posted, as their events tell it."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "Every service that names it takes the new definition."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -5340,6 +5388,11 @@ msgstr ""
 msgid "From"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "From a release…"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "From an https address"
@@ -5559,7 +5612,6 @@ msgid "Host allowed, no path rule matches."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Hosts"
@@ -5734,12 +5786,6 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Instance › %{page}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Integration"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -5927,12 +5973,12 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "It is not a service definition: check its JSON and its fields."
+msgid "It is not a custom API's definition: check its JSON and its fields."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "It is not a valid service definition."
+msgid "It is not a valid definition of a custom API."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -5954,6 +6000,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "It is served %{workspace}'s policy, version %{version}."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "It isn't set up yet."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -6004,7 +6055,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "It would overlap with %{names} where both apply: the same runtime, the same integration, or a host in common."
+msgid "It would overlap with %{names} where both apply: the same runtime, the same program, or a host in common."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -6277,6 +6328,7 @@ msgstr ""
 msgid "Keys"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -6965,7 +7017,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Name the release of an integration: its description is fetched, and you add it from there."
+msgid "Name the release of a program: its description is fetched, and you add it from there."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -7051,6 +7103,12 @@ msgstr ""
 msgid "New activity"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/definition.ex
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New custom API"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "New enrolment code"
@@ -7083,11 +7141,6 @@ msgstr ""
 msgid "New password"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "New runtime"
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -7097,17 +7150,6 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New secret for %{label}"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "New service"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "New service definition"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
@@ -7291,11 +7333,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No instance of this pool has reported yet. An instance shows here while it runs."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No integration is added."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -7499,11 +7536,6 @@ msgstr ""
 msgid "No runs yet"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No runtime is set up."
-msgstr ""
-
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No secret matches"
@@ -7512,16 +7544,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No secrets yet"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No service is set up."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "No service names it yet."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -7892,6 +7914,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing is pruned: this workspace keeps everything."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing is set up in this workspace yet."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -8635,19 +8662,15 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/common.ex
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Program"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Programs their publishers release on github.com, gitlab.com or codeberg.org, or at an https address."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Programs their publishers release on github.com, gitlab.com or codeberg.org."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -8942,6 +8965,11 @@ msgstr ""
 msgid "Remove %{token}"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Remove API…"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Remove filter: %{filter} %{value}"
@@ -8949,17 +8977,12 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Remove integration…"
+msgid "Remove program…"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove runtime…"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove service…"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -8979,17 +9002,17 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Remove this integration"
+msgid "Remove this API"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Remove this program"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove this runtime"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove this service"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -9613,7 +9636,6 @@ msgstr ""
 msgid "Runtime"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runtimes"
@@ -9634,7 +9656,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
-msgid "Save definition"
+msgid "Save custom API"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -9776,42 +9798,6 @@ msgstr ""
 msgid "Sent"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Service"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Service definition"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Service definitions"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Services"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "Services name it: remove them first."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Services still use it: %{names}. Remove them first."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/definition.ex
-#, elixir-autogen, elixir-format
-msgid "Services that name it"
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Session"
@@ -9909,22 +9895,47 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Set up"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set up API"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set up a built-in API or one of this workspace's own."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set up a runtime"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Set up a runtime of the runner's catalogue."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Set up a service from a built-in definition or one of this workspace's own."
+msgid "Set up an API"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Set up from"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set up in this workspace"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set up runtime"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Set up service"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -10387,6 +10398,11 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
+msgid "That API is neither built in nor a custom API of this workspace."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/common.ex
+#, elixir-autogen, elixir-format
 msgid "That could not be saved."
 msgstr ""
 
@@ -10428,7 +10444,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "That release is of another integration."
+msgid "That release is of another program."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -10439,11 +10455,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "That secret is no longer in this workspace."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "That service definition is neither built in nor this workspace's own."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -10464,6 +10475,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "That workspace cannot be deleted here."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The API's title, unless you give it another."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -10539,11 +10555,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "The definition is too long: it takes at most 64 KiB of JSON."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The definition's title, unless you give it another."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -11046,12 +11057,6 @@ msgctxt "plain"
 msgid "The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "The runtimes, integrations and services set up in this workspace, and where each applies."
-msgstr ""
-
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The same path elsewhere"
@@ -11549,11 +11554,6 @@ msgstr ""
 msgid "This target's own rule still decides here."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "This workspace has no service definition of its own."
-msgstr ""
-
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace has no such change."
@@ -11592,11 +11592,6 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace served no run configuration with that digest."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "This workspace's own service definitions, beside the built-in ones: %{names}."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -12104,6 +12099,12 @@ msgstr ""
 msgid "What the workspaces are doing could not be read. Reload the page to try again."
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "What this workspace sets up for its runs, and where each applies."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "What whoever runs this server set for the whole instance, or the default, as the server read it when it started. Nothing here changes it."
@@ -12132,6 +12133,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Where it is released"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/definition.ex
+#, elixir-autogen, elixir-format
+msgid "Where it is set up"
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -12241,8 +12247,6 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
-#: lib/apiary_web/live/integration_live/index.ex
-#: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
 msgstr ""
@@ -12756,7 +12760,6 @@ msgstr ""
 msgid "build-01"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "built in"
