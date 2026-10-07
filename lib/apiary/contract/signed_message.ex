@@ -1,9 +1,9 @@
 defmodule Apiary.Contract.SignedMessage do
   @moduledoc ~S"""
-  SignedMessage builds the three messages the server contract signs with Ed25519
+  SignedMessage builds the messages the server contract signs with Ed25519
   (`Apiary.Contract.Ed25519`): a request's, which a runner signs under its access key; an
   enrolment's proof, which a machine signs under the new key it enrols; and an answer's,
-  which the server signs under its own key. Each is lines joined by `\n`, with no newline
+  to a signed request or to an enrolment, which the server signs under its own key. Each is lines joined by `\n`, with no newline
   after the last. Pure functions; nothing here touches the database, a connection or a
   log, and nothing here holds a key.
 
@@ -18,12 +18,20 @@ defmodule Apiary.Contract.SignedMessage do
   public key as the body carries it; the name; and the timestamp in decimal.
 
   **The answer string** (`answer/5`): `qory-answer-ed25519-v1`; the status, three decimal
-  digits; the request's `X-Qory-Signature-Ed25519` exactly as sent, or an enrolment's
-  `proof`; the lower-case hex SHA-256 of the body as sent, before any content coding, the
-  SHA-256 of the empty string for no body; the answer's `X-Qory-Configuration`, and its
-  `X-Qory-Run-Configuration`, each empty when the answer has none.
+  digits; the request's `X-Qory-Signature-Ed25519` exactly as sent; the lower-case hex
+  SHA-256 of the body as sent, before any content coding, the SHA-256 of the empty string
+  for no body; the answer's `X-Qory-Configuration`, and its `X-Qory-Run-Configuration`,
+  each empty when the answer has none.
 
-  The contract's known answers for all three are in `fixtures/known-answers/signatures.json`
+  **The answer string of an enrolment** (`enrolment_answer/3`) has its own first line,
+  `qory-enrol-answer-ed25519-v1`, and the request's `proof` as line 3; the rest is as
+  `answer/5`'s, lines 5 and 6 empty, since an enrolment answer carries neither digest
+  header. Its line 3 is a proof, which anyone holding a live code chooses, so the domain
+  line keeps an enrolment answer's signature from ever verifying as the answer to a signed
+  request, and the reverse. It is a function of its own, not an option of `answer/5`, so
+  no caller can sign an enrolment answer under the other line by leaving one out.
+
+  The contract's known answers for each are in `fixtures/known-answers/signatures.json`
   of the runner's contract directory, and `test/contract/ed25519_known_answers_test.exs`
   replays them.
   """
@@ -31,6 +39,7 @@ defmodule Apiary.Contract.SignedMessage do
   @request_tag "qory-request-ed25519-v1"
   @enrolment_tag "qory-enrol-ed25519-v1"
   @answer_tag "qory-answer-ed25519-v1"
+  @enrolment_answer_tag "qory-enrol-answer-ed25519-v1"
 
   @doc ~S"""
   request/5 is the request string of a request under `access_key_id` from `instance_id`
@@ -86,10 +95,10 @@ defmodule Apiary.Contract.SignedMessage do
   end
 
   @doc ~S"""
-  answer/5 is the answer string of an answer with `status` and `body` to the request
-  whose signature, or enrolment proof, is `request_signature`, with the answer's
+  answer/5 is the answer string of an answer with `status` and `body` to the signed
+  request whose signature is `request_signature`, with the answer's
   `X-Qory-Configuration` and `X-Qory-Run-Configuration` values, nil for a header the
-  answer does not carry.
+  answer does not carry. An answer to an enrolment is `enrolment_answer/3`'s.
 
       iex> Apiary.Contract.SignedMessage.answer(404, "c2ln", "", nil, nil)
       "qory-answer-ed25519-v1\n404\nc2ln\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"
@@ -99,12 +108,28 @@ defmodule Apiary.Contract.SignedMessage do
       when status in 100..599 and is_binary(request_signature) and
              (is_binary(configuration) or is_nil(configuration)) and
              (is_binary(run_configuration) or is_nil(run_configuration)) do
+    lines(@answer_tag, status, request_signature, body, configuration, run_configuration)
+  end
+
+  @doc ~S"""
+  enrolment_answer/3 is the answer string of an answer with `status` and `body` to the
+  enrolment whose `proof` is `proof`, exactly as the request carried it: under the
+  enrolment answers' own first line, with lines 5 and 6 empty.
+
+      iex> Apiary.Contract.SignedMessage.enrolment_answer(409, "cHJm", "")
+      "qory-enrol-answer-ed25519-v1\n409\ncHJm\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"
+  """
+  @spec enrolment_answer(100..599, String.t(), iodata) :: binary
+  def enrolment_answer(status, proof, body) when status in 100..599 and is_binary(proof),
+    do: lines(@enrolment_answer_tag, status, proof, body, nil, nil)
+
+  defp lines(tag, status, bound_to, body, configuration, run_configuration) do
     IO.iodata_to_binary([
-      @answer_tag,
+      tag,
       ?\n,
       Integer.to_string(status),
       ?\n,
-      request_signature,
+      bound_to,
       ?\n,
       Base.encode16(:crypto.hash(:sha256, body), case: :lower),
       ?\n,

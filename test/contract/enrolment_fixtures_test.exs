@@ -9,12 +9,13 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       `enrolment.schema.json`, and its proof verifies over the five lines
       `Apiary.Contract.SignedMessage.enrolment/4` builds;
     * each answer and refusal is the body `Apiary.Contract.Enrolment` builds, byte for
-      byte, and its signature under the fixture signing key, line 3 being the request's
-      proof, is the known answer's;
+      byte, and its signature under the fixture signing key, under the enrolment answers'
+      own domain line with the request's proof as line 3, is the known answer's;
     * the fixture request, redeemed at its second against a code of its value under the
-      fixture signing key's fingerprint, is refused `key_invalid`, as the contract says a
-      server refuses the fixture access key; the answer to that is
-      `refusal-key-invalid.json`.
+      fixture signing key's fingerprint, is refused, as the contract says a server refuses
+      the fixture access key: by Apiary's key checks, which hold the published fixture
+      keys, so before anything is signed (`:key_unproven`, an unsigned `409`
+      `key_invalid`).
 
   The instance never signs under the fixture signing key, so an answer's signature is
   replayed here, through `Apiary.SigningKey.sign/2`, not through the endpoint;
@@ -51,7 +52,6 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       access_key_id: "ak_f1xt0re000000000",
       node_id: "nd_f1xt0re000000000",
       node_kind: :node,
-      approved: false,
       stored_secrets: false,
       apiary_public_key: server_keys(:one)
     })
@@ -123,7 +123,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
         assert Ed25519.encode(access_key.public_key) == request.public_key
         assert Enrolment.proof_verifies?(request, access_key.public_key), name
 
-        refute Enrolment.proof_verifies?(request, fixture_key!("pending_access_key").public_key)
+        refute Enrolment.proof_verifies?(request, second_fixture_access_key().public_key)
         refute Enrolment.proof_verifies?(%{request | name: "build-02"}, access_key.public_key)
 
         refute Enrolment.proof_verifies?(
@@ -181,7 +181,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       end
     end
 
-    test "each signature, under the fixture signing key with the request's proof as line 3, is the known answer's" do
+    test "each signature, under the fixture signing key and the enrolment answers' domain line with the request's proof as line 3, is the known answer's" do
       %{"answers" => answers} = known_answers!("signatures")
       key = signing_key("signing_key")
 
@@ -192,14 +192,20 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
 
       for {name, %{"lines" => lines, "signature" => signature, "length" => length}} <-
             enrolment_answers do
-        ["qory-answer-ed25519-v1", status, proof, _hash, "", ""] = lines
+        ["qory-enrol-answer-ed25519-v1", status, proof, _hash, "", ""] = lines
         request = if name =~ "rotation", do: "request-two-fingerprints.json", else: "request.json"
         assert proof == contract_json!("enrolment/" <> request)["proof"], name
 
-        message = SignedMessage.answer(String.to_integer(status), proof, built(name), nil, nil)
+        message = SignedMessage.enrolment_answer(String.to_integer(status), proof, built(name))
         assert message == Enum.join(lines, "\n"), name
         assert byte_size(message) == length, name
         assert key |> SigningKey.sign(message) |> Ed25519.encode() == signature, name
+
+        # Never the signature of the same lines as the answer to a signed request.
+        request_answer =
+          SignedMessage.answer(String.to_integer(status), proof, built(name), nil, nil)
+
+        refute key |> SigningKey.sign(request_answer) |> Ed25519.encode() == signature, name
       end
     end
   end
@@ -224,19 +230,25 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       %{row: row}
     end
 
-    test "under the fixture signing key's fingerprint, is refused key_invalid: the server refuses the fixture access key",
+    test "under the fixture signing key's fingerprint, is refused by the key checks, before anything is signed: the server refuses the fixture access key",
          %{row: row} do
       {:ok, request} = Enrolment.decode(contract_file!("enrolment/request.json"))
 
       assert AccessKeys.enrol(request,
                now: at(@clock),
                fingerprint: fixture_key!("signing_key").fingerprint
-             ) == {:error, :key_invalid}
+             ) == {:error, :key_unproven}
 
       assert Repo.reload!(row).used_at == nil
+    end
 
-      assert built("refusal-key-invalid.json") ==
-               contract_file!("enrolment/refusal-key-invalid.json")
+    test "a second past the window is no code, before the key is looked at" do
+      {:ok, request} = Enrolment.decode(contract_file!("enrolment/request.json"))
+
+      assert AccessKeys.enrol(request,
+               now: at(@clock + 301),
+               fingerprint: fixture_key!("signing_key").fingerprint
+             ) == {:error, :unauthorized}
     end
 
     test "under the instance's own key's fingerprint, or carrying two, is no code" do
@@ -252,8 +264,8 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
                {:error, :unauthorized}
     end
 
-    test "with a proof made by the second fixture access key, is refused key_invalid too" do
-      key = fixture_key!("pending_access_key")
+    test "with a proof made by the second fixture access key, is refused by the key checks too" do
+      key = second_fixture_access_key()
       code = "qec_F1XT0RE0000000000000000000." <> fixture_key!("signing_key").fingerprint
       encoded = Ed25519.encode(key.public_key)
       message = SignedMessage.enrolment(code, encoded, "build-01", @clock)
@@ -275,7 +287,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       assert AccessKeys.enrol(request,
                now: at(@clock),
                fingerprint: fixture_key!("signing_key").fingerprint
-             ) == {:error, :key_invalid}
+             ) == {:error, :key_unproven}
     end
   end
 

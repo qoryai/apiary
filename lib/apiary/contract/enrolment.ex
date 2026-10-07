@@ -31,6 +31,10 @@ defmodule Apiary.Contract.Enrolment do
   the key has passed the key checks; **its timestamp** (`fresh?/2`) is accepted within 300
   seconds of the server's clock, in either direction.
 
+  **The answers** (`answer_body/1`, `refusal_body/2`) are signed under the enrolment
+  answers' own domain line (`Apiary.Contract.SignedMessage.enrolment_answer/3`), and only
+  once the key has passed the checks and the proof verified under it.
+
   A request holds the code and the proof, so its `inspect` shows neither.
   """
 
@@ -178,14 +182,13 @@ defmodule Apiary.Contract.Enrolment do
   @doc """
   answer_body/1 is the body of the `201` answer, its members in the contract's order:
   `version`, `access_key_id`, `node_id`, `node_kind` (`node` for an `nd_` id, `pool` for
-  an `np_` one), `approved`, `stored_secrets` and `apiary_public_key`, the server's keys
-  as `Apiary.SigningKey.apiary_public_key/1` lists them.
+  an `np_` one), `stored_secrets` and `apiary_public_key`, the server's keys as
+  `Apiary.SigningKey.apiary_public_key/1` lists them. A `201` means the key is active.
   """
   @spec answer_body(%{
           access_key_id: String.t(),
           node_id: String.t(),
           node_kind: :node | :pool,
-          approved: boolean,
           stored_secrets: boolean,
           apiary_public_key: [map, ...]
         }) :: binary
@@ -196,7 +199,6 @@ defmodule Apiary.Contract.Enrolment do
         {"access_key_id", answer.access_key_id},
         {"node_id", answer.node_id},
         {"node_kind", Atom.to_string(kind)},
-        {"approved", answer.approved},
         {"stored_secrets", answer.stored_secrets},
         {"apiary_public_key", keys(answer.apiary_public_key)}
       ])
@@ -204,11 +206,13 @@ defmodule Apiary.Contract.Enrolment do
   end
 
   @doc """
-  refusal_body/2 is the body of a signed `409` at enrolment, `key_invalid` or `key_limit`,
-  listing the server's keys as the `201` does.
+  refusal_body/2 is the body of a signed refusal at enrolment, listing the server's keys
+  as the `201` does: a `409`, `key_invalid` or `key_limit`, or a `429`, `rate_limited`,
+  for a code past its limit.
   """
-  @spec refusal_body(:key_invalid | :key_limit, [map, ...]) :: binary
-  def refusal_body(error, [_ | _] = apiary_public_key) when error in [:key_invalid, :key_limit] do
+  @spec refusal_body(:key_invalid | :key_limit | :rate_limited, [map, ...]) :: binary
+  def refusal_body(error, [_ | _] = apiary_public_key)
+      when error in [:key_invalid, :key_limit, :rate_limited] do
     Jason.encode!(
       Jason.OrderedObject.new([
         {"error", Atom.to_string(error)},

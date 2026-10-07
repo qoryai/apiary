@@ -66,8 +66,12 @@ config :apiary, Apiary.KeyDerivation,
 # fixture seeds, which the instance refuses. Not a secret.
 config :apiary, Apiary.SigningKey, seed: "qory apiary test signing seed 01"
 
-# Every enrolment test posts from the same address; the limit's own test sets its own.
-config :apiary, ApiaryWeb.Contract.EnrolmentController, rate: 1000, burst: 100_000
+# Every enrolment test posts from the same address; the limits' own tests set their own.
+config :apiary, ApiaryWeb.Contract.EnrolmentController,
+  rate: 1000,
+  burst: 100_000,
+  code_rate: 1000,
+  code_burst: 100_000
 
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.
