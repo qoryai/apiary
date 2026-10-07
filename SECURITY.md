@@ -19,12 +19,15 @@ earlier one.
 
 ## What is a vulnerability here
 
-- A request without a valid signature, or with a revoked access key or one that awaits
-  approval, is answered as if it were signed: the discovery document, the events endpoint
-  and the run configuration serve only a request an approved node key signed.
-- An enrolment code enrols a key more than once, after it expired or was cancelled, or for
-  another node than its own; or a key arrives approved without an owner or an admin
-  approving it.
+- A request without a valid signature, or signed by a revoked access key, is answered as
+  if it were signed: the discovery document, the events endpoint and the run
+  configuration serve only a request signed by an active node key, one not revoked.
+- An enrolment code works when it should not. A key enrolled with a valid code is active
+  at once: the code is the approval, given by the owner or admin who made it. So it is a
+  vulnerability if a code enrols a key after its maker stopped being an owner or an admin
+  of its workspace; if it enrols a second key once used (the same machine asking again
+  with the same public key gets that same key back, and nothing changes); if it works
+  after it expired or was cancelled; or if it puts a key on another node than its own.
 - A row of one organisation is readable or writable from another: a page, a query or an
   endpoint that does not scope by the organisation and the workspace of the caller.
 - The server's signing key, `APIARY_SIGNING_SECRET`, leaves the application in any form,

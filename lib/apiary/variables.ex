@@ -112,7 +112,8 @@ defmodule Apiary.Variables do
   @doc """
   resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values in force
   for its runs, with which level set and which locked each, for the pages; its `values/1`
-  is the shape the run configuration will take once runs receive them. `{:ok, resolution}`, for a reader who may `variable.read`;
+  maps each name to its value, from which the run configuration's `variables` will be
+  built once runs receive them. `{:ok, resolution}`, for a reader who may `variable.read`;
   else `{:error, reason}`.
   """
   @spec resolve(Scope.t(), holder) :: {:ok, Resolution.t()} | {:error, Access.reason()}
