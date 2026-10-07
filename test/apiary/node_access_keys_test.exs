@@ -750,4 +750,36 @@ defmodule Apiary.NodeAccessKeysTest do
       end
     end
   end
+
+  describe "runner_lines/3" do
+    test "is the runner file's server section and the CI variables, the pin in each", ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, key} = paste(scope, node)
+
+      pin = [
+        %{"alg" => "ed25519", "public_key" => "current-key"},
+        %{"alg" => "ed25519", "public_key" => "next-key"}
+      ]
+
+      assert AccessKeys.runner_lines(key, "https://apiary.example", pin) == %{
+               file: """
+               server:
+                 url: https://apiary.example
+                 access_key_id: #{key.key_id}
+                 apiary_public_key:
+                   - {alg: ed25519, public_key: current-key}
+                   - {alg: ed25519, public_key: next-key}
+               """,
+               env: """
+               QORY_ACCESS_KEY_ID=#{key.key_id}
+               QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"current-key"},{"alg":"ed25519","public_key":"next-key"}]
+               """
+             }
+
+      # The pin is the server's own by default, and the JSON line reads back as it.
+      %{env: env} = AccessKeys.runner_lines(key, "https://apiary.example")
+      [_id, "QORY_APIARY_PUBLIC_KEY=" <> json] = String.split(env, "\n", trim: true)
+      assert Jason.decode!(json) == Apiary.SigningKey.apiary_public_key()
+    end
+  end
 end

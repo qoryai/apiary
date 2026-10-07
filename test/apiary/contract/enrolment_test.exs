@@ -110,4 +110,13 @@ defmodule Apiary.Contract.EnrolmentTest do
     assert Enrolment.refusal_body(:key_limit, keys) ==
              ~s({"error":"key_limit","apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
   end
+
+  test "issued_code/2 is the code issued_under?/2 accepts" do
+    {body, _public_key} = request()
+    [head, @fingerprint] = String.split(@code, ".")
+    assert Enrolment.issued_code(head, @fingerprint) == @code
+
+    {:ok, request} = Enrolment.decode(Jason.encode!(body))
+    assert Enrolment.issued_under?(request, @fingerprint)
+  end
 end
