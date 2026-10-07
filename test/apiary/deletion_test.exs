@@ -36,7 +36,7 @@ defmodule Apiary.DeletionTest do
       workspace = workspace_fixture(scope.organisation, "Staging")
       there = workspace_scope(scope.user, workspace)
       member = member_fixture(there, :member)
-      %{access_key: key} = access_key_fixture(workspace_scope(member.user, workspace))
+      %{access_key: key} = access_key_fixture(there)
       %{token: token} = invitation_fixture(there)
       run = run_fixture(there)
 
@@ -91,7 +91,7 @@ defmodule Apiary.DeletionTest do
     test "restoring brings it back as it was, keys and access included", %{scope: scope} do
       workspace = workspace_fixture(scope.organisation)
       member = member_fixture(workspace_scope(scope.user, workspace), :member)
-      %{access_key: key} = access_key_fixture(workspace_scope(member.user, workspace))
+      %{access_key: key} = access_key_fixture(workspace_scope(scope.user, workspace))
       {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
 
       assert {:error, :forbidden} = Deletion.restore_workspace(member.scope, workspace.id)
@@ -236,9 +236,10 @@ defmodule Apiary.DeletionTest do
       {:ok, _} = Deletion.delete_workspace(scope, workspace.id, workspace.slug)
 
       # The scopes still say the workspace is in use; asked, the database says otherwise.
-      assert Apiary.Access.can?(member, :"access_key.create", member.workspace)
-      assert {:error, :not_found} = AccessKeys.create_access_key(member, %{label: "late"})
-      assert {:error, :not_found} = AccessKeys.create_access_key(there, %{label: "late"})
+      assert Apiary.Access.can?(member, :"node.read", member.workspace)
+      assert Apiary.Access.can?(there, :"node.create", there.workspace)
+      late = %{"kind" => "node", "name" => "late"}
+      assert {:error, :not_found} = Apiary.Nodes.create_node(there, late)
 
       {:ok, _} = Deletion.delete_organisation(scope, scope.organisation.slug)
       assert {:error, :not_found} = Organisations.update_organisation(scope, %{name: "Late"})

@@ -27,15 +27,19 @@ Sign up at `http://localhost:4100/users/register`; the trial writes the log-in l
 `docker compose logs apiary`. The first person to sign up creates the organisation and runs
 the instance, and everyone else joins by invitation.
 
-Then create an access key under **Access keys**, put it in the runner file of a machine
-with the [`qory`](https://github.com/qoryai/qory) command, and start a run. It shows up
-under **Runs** while it runs. [The quickstart](guides/quickstart.md) walks through each step.
+Then add a node under **Nodes**, make an enrolment code on it, run
+`qory access-key enrol <server> <code>` on the machine with the
+[`qory`](https://github.com/qoryai/qory) command, approve the key it brings, and start a
+run. It shows up under **Runs** while it runs. [The quickstart](guides/quickstart.md) walks
+through each step.
 
 ## Guides
 
 - [Quickstart](guides/quickstart.md): the trial, step by step.
 - [Install](guides/install.md) and the [hosting checklist](guides/hosting-checklist.md): an
   instance other people sign in to, and every setting.
+- [Nodes and their keys](guides/nodes.md): how a machine gets its access key, and what a
+  node pool is.
 - [Security policy](guides/security-policy.md): read it before your first change.
 - [Upgrading](guides/upgrading.md) and [backup](guides/backup.md).
 

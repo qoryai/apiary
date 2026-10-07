@@ -4,6 +4,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures, only: [node_fixture: 1]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Audit, Organisations, Repo}
@@ -74,15 +75,16 @@ defmodule ApiaryWeb.ActivityLiveTest do
     end
 
     test "lists the organisation's changes, newest first", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
       {:ok, _workspace} = Organisations.update_workspace(scope, %{name: "Production"})
-      %{access_key: key} = access_key_fixture(scope, %{label: "build-01"})
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
 
       view = open(conn, scope)
       [created, renamed | _older] = entries(scope)
 
       assert row_ids(view) |> Enum.take(2) == ["entry-#{created.id}", "entry-#{renamed.id}"]
 
-      assert text(view, "#entry-#{created.id}-action") =~ "Created an access key"
+      assert text(view, "#entry-#{created.id}-action") =~ "Added an access key to a node"
       assert text(view, "#entry-#{created.id}-subject") =~ "build-01"
       assert text(view, "#entry-#{created.id}-change") =~ key.key_id
       assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed the workspace"
@@ -118,7 +120,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       narrowed = action_options(view)
       assert length(narrowed) < length(every)
-      assert {"access_key.create", "Access key created"} in narrowed
+      assert {"access_key.add", "Access key added"} in narrowed
       # The chosen action stays, so its chip still names it.
       assert List.keymember?(narrowed, "workspace.rename", 0)
       assert has_element?(view, "#filter-action-button", "Workspace renamed")
@@ -156,18 +158,18 @@ defmodule ApiaryWeb.ActivityLiveTest do
     test "filters by action", %{conn: conn, scope: scope} do
       {:ok, _workspace} = Organisations.update_workspace(scope, %{name: "Production"})
       access_key_fixture(scope)
-      [created] = entries(scope, %{action: "access_key.create"})
+      [created] = entries(scope, %{action: "access_key.add"})
       [renamed] = entries(scope, %{action: "workspace.rename"})
 
       view = open(conn, scope)
 
       view
       |> form("#filter-action-form")
-      |> render_change(%{"_filter" => "action", "action" => "access_key.create"})
+      |> render_change(%{"_filter" => "action", "action" => "access_key.add"})
 
       assert_patch(
         view,
-        "/#{scope.organisation.slug}/audit-log?action=access_key.create"
+        "/#{scope.organisation.slug}/audit-log?action=access_key.add"
       )
 
       render_async(view)
@@ -306,10 +308,10 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
     test "a person who deleted their account reads as a former member, as actor and subject",
          %{conn: conn, scope: scope} do
-      %{scope: member, user: user} = member_fixture(scope, :member)
-      {:ok, key, _secret} = Apiary.AccessKeys.create_access_key(member, %{label: "theirs"})
+      %{scope: member, user: user} = member_fixture(scope, :admin)
+      %{access_key: key} = access_key_fixture(member, %{label: "theirs"})
       {:ok, _} = Apiary.Accounts.delete_user(member)
-      [created] = entries(scope, %{action: "access_key.create"})
+      [created] = entries(scope, %{action: "access_key.add"})
       [left] = entries(scope, %{action: "member.remove"})
 
       view = open(conn, scope)

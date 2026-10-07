@@ -2,16 +2,16 @@
 
 Postgres is the only state of Qory Apiary. The container holds nothing that a restart does
 not rebuild, and nothing is written to a disk outside the database. A backup is therefore
-three things:
+four things:
 
 1. a dump of the database;
 2. `APIARY_ENCRYPTION_SECRET`;
-3. `SECRET_KEY_BASE`.
+3. `APIARY_SIGNING_SECRET`;
+4. `SECRET_KEY_BASE`.
 
-Keep the two values beside the dumps and not inside them, in a password manager or a secret
-store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the access key
-secrets and the stored secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET`
-protects nothing of them.
+Keep the three values beside the dumps and not inside them, in a password manager or a
+secret store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the stored
+secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET` protects nothing of them.
 
 ## Back up
 
@@ -61,7 +61,7 @@ a dump restores under the release it was taken under or under a later one.
 ### The compose installation
 
 On a new machine, with the repository checked out and `.env` holding the same
-`APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`:
+`APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE`:
 
 ```sh
 docker compose up -d postgres
@@ -99,8 +99,9 @@ curl http://localhost:4100/health
 ```
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
-that has one of the workspace's access keys: if it appears, the access key secrets were
-restored readable, which means `APIARY_ENCRYPTION_SECRET` is the right one.
+enrolled on one of the workspace's nodes: if it appears, the keys' integrity codes
+verified, which means `APIARY_ENCRYPTION_SECRET` is the right one, and the machine took
+the server's signed answers, which means `APIARY_SIGNING_SECRET` is.
 
 ## What each key is for
 
@@ -108,8 +109,6 @@ restored readable, which means `APIARY_ENCRYPTION_SECRET` is the right one.
 
 It encrypts what the database holds secret:
 
-- the secrets of access keys, the columns `secret_primary` and `secret_secondary` of the
-  table `access_keys`;
 - the values of the workspaces' stored secrets, the table `secret_values`, each encrypted
   under its workspace's data key, which is kept in `workspace_data_keys` encrypted under a
   key derived from `APIARY_ENCRYPTION_SECRET`.
@@ -121,25 +120,11 @@ are keyed by it too: a row changed outside the application no longer matches its
 copy and no way to recover them: each value has to be entered again, in the workspace's
 secrets, from wherever it came from.
 
-Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, the access key secrets
-cannot be read either. What that looks like, so it is recognised:
-
-- Every signed request of a runner holding such a key, the configuration document and every
-  batch of events among them, is answered `503` with
-  `{"error":"unavailable"}`, never `401`: the instance is at fault, not the machine. The
-  runner fails closed, so no machine starts a run against this server and no events
-  arrive. For each request the log has `access key secret cannot be decrypted
-  key_id=ak_…: APIARY_ENCRYPTION_SECRET is not the key the secret was encrypted with`.
-- The console still shows every key on **Access keys** with its label, key id and last
-  use, since the page never reads a secret. It cannot show a secret again, by design.
-- **Rotate** on such a key issues a new secret, shown once, in place of the ones nobody can
-  read, which are dropped; **Revoke** revokes as ever.
-
-The way out is therefore a new secret for every machine: rotate each key under the new
-`APIARY_ENCRYPTION_SECRET`, or create a new key, and paste the `server` block into each
-machine's runner file ([The runner file's `server` section](runner-file.md)). When the right
-`APIARY_ENCRYPTION_SECRET` turns up, put it back before rotating and every existing secret
-reads again.
+Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity
+code verifies either, so the instance trusts none of them: every signed request of a runner
+is answered `401`, no machine starts a run against this server and no events arrive. For each
+request the log has `access key row does not match its integrity code key_id=ak_…`. Put the
+right `APIARY_ENCRYPTION_SECRET` back and every key verifies again.
 
 Everything else survives: accounts, organisations, workspaces and memberships, runs,
 events, logs, connections, and the access keys' own rows with their labels and key ids.
@@ -149,6 +134,16 @@ So does the security policy, with its versions and history.
 
 For the same reason `APIARY_ENCRYPTION_SECRET` must never change on a running installation
 once an access key or a stored secret exists.
+
+### `APIARY_SIGNING_SECRET`
+
+It is the seed of the key the instance signs its answers to runners with, and every machine
+pins that key's public half. It encrypts nothing and keys nothing in the database, and it is
+not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, on its own.
+
+**Losing or changing `APIARY_SIGNING_SECRET` means pinning every machine again.** The
+instance then signs under another key, and each machine refuses its answers until it pins
+the new public key. Nothing in the database is lost.
 
 ### `SECRET_KEY_BASE`
 
@@ -165,7 +160,8 @@ A backup that has never been restored is a hope. Once, and after any change to h
 are taken, restore the newest dump on another machine:
 
 1. Check the repository out at the tag the installation runs.
-2. Write a `.env` with the installation's `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`, a
+2. Write a `.env` with the installation's `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET`
+   and `SECRET_KEY_BASE`, a
    new database password in `POSTGRES_PASSWORD` and `DATABASE_URL`, `PUBLIC_URL=http://localhost:4100`
    and `MAIL_TO_LOG=true`. The drill sends no mail, and nobody else signs in to it.
 3. Restore as under "The compose installation" above.
@@ -175,11 +171,13 @@ are taken, restore the newest dump on another machine:
    <!-- feature: security -->
    So are the policy and its history.
    <!-- /feature -->
-6. Prove the access key secrets are readable. On the same machine, with the `qory` command,
-   point a runner file's `server` section at `http://localhost:4100` with the access key and
-   secret of a key that existed when the dump was taken, and start a run. A run that starts
-   and appears under **Runs** proves the dump and `APIARY_ENCRYPTION_SECRET` belong together. A
-   run that does not start because the server refuses its requests means they do not.
+6. Prove the access keys verify. On the same machine, with the `qory` command and the
+   secret of an access key that existed when the dump was taken, point a runner file's
+   `server` section at `http://localhost:4100`, keeping the key's `access_key_id` and the
+   pin, and start a run. A run that starts and appears under **Runs** proves the dump,
+   `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` belong together. A run that
+   does not start because the server refuses its requests (`401`), or because its answers
+   do not verify under the pin (`answer_unsigned`), means they do not.
 7. Delete the drill: `docker compose down --volumes`, then the `.env` and the dump's copy.
 
 Write down how long the restore took. It is how long an outage with a lost database lasts.

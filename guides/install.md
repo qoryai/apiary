@@ -45,10 +45,10 @@ terminated by a reverse proxy in front of it.
 The console's pages are live over a WebSocket: let the proxy pass WebSocket upgrades
 through. Without them the pages fall back to long polling.
 
-Links in emails, the `server` block the console shows for a new access key and the URLs in
-the discovery document are all built from `PUBLIC_URL`, never from the request's `Host`
-header. A `PUBLIC_URL` that is not the address runners and people use gives them links that
-do not work.
+Links in emails, the runner file lines and the enrolment command the console shows for a
+node's key, and the URLs in the discovery document are all built from `PUBLIC_URL`, never
+from the request's `Host` header. A `PUBLIC_URL` that is not the address runners and
+people use gives them links that do not work.
 
 The audit trail records the address each change came from. Behind a proxy that is the
 proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
@@ -136,7 +136,8 @@ For example: ecto://USER:PASS@HOST/DATABASE
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `APIARY_ENCRYPTION_SECRET` | required | Encrypts what the database holds secret: the access key secrets, and the values of the workspaces' stored secrets, under keys derived from it. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key or a stored secret exists, or every one of them becomes unreadable: losing it loses every stored value, for good. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_ENCRYPTION_SECRET` | required | Encrypts what the database holds secret: the values of the workspaces' stored secrets, under keys derived from it, and keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key or a stored secret exists, or no access key verifies and every stored value becomes unreadable: losing it loses every stored value, for good. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to runners with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the runner contract's published fixture seeds are refused at boot. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
 
 ```text
 environment variable SECRET_KEY_BASE is missing.
@@ -151,6 +152,21 @@ It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
 ```text
 environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
 Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is missing.
+It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
+Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+Generate one with: openssl rand -base64 32
+```
+
+```text
+APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, and every runner refuses its key. Generate one with: openssl rand -base64 32
 ```
 
 ### Public address and port
@@ -445,9 +461,9 @@ organisation's activity, by Qory rather than by a person.
 entry in the activity. On the organisation's **Members** page an owner suspends an admin or
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
-open pages follow. **The access keys they created keep working**: an access key belongs to
-its workspace, not to a person, so revoke them under **Access keys** if they should stop;
-anyone who reaches the workspace may.
+open pages follow. **The access keys they added keep working**: an access key belongs to
+its node, not to a person, so an owner or an admin revokes it on the node's **Access key**
+tab if it should stop.
 
 The last owner of the organisation who may act is not suspended, made an admin or a member,
 or removed. Should every instance admin be locked out, `grant_instance_admin` is the way
@@ -465,7 +481,8 @@ boot with an error that does not name the variable.
 ## Backups
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
-two values to keep beside it are `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`.
+three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
+`SECRET_KEY_BASE`.
 [Backup and restore](backup.md) has the commands for the compose installation and for an
 external Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so

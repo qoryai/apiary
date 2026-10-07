@@ -1,7 +1,9 @@
 #!/bin/sh
 # One session on the node: qory run, behind the wall the runner file names, reporting to
-# the server the runner file names. The status is the session's.
+# the server the runner file names, signed with the access key whose secret is beside it,
+# in the node's own copy of the configuration that prepare.sh made. The status is the
+# session's.
 set -eu
-export XDG_CONFIG_HOME=/config
+export XDG_CONFIG_HOME=/node-config
 cd /work/checkout
 exec qory run --headless

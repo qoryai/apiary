@@ -24,10 +24,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   Everyone in the workspace reads the list (`node.read`); a member sees it without the
   buttons, and a form's path refuses them.
 
-  Under its title, once, the plain line that nodes receive no runs yet, since Qory can't
-  check a node's key yet, and that machines send their runs with a workspace access key
-  until it can, with the way to them (`ApiaryWeb.NodeComponents.not_yet/1`). The
-  sidebar's Nodes leads here: the pages pass `nav: :nodes`, so Nodes is the current entry
+  The sidebar's Nodes leads here: the pages pass `nav: :nodes`, so Nodes is the current entry
   on the list and on the New node and New node pool forms.
 
   Live: the list reads the nodes and what they do again on `{:nodes_touched, …}`
@@ -420,15 +417,6 @@ defmodule ApiaryWeb.NodeLive.Index do
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New node pool")}
           </.button>
         </:actions>
-        <NodeComponents.not_yet
-          scope={@current_scope}
-          text={
-            rich_gettext(
-              "Nodes receive no runs yet: Qory can't check a node's key yet. Until it can, machines send their runs with a workspace access key, from %{link}.",
-              link: {:part, :link}
-            )
-          }
-        />
       </.page_header>
 
       <div :if={@counts.node + @counts.pool == 0} id="nodes-empty">

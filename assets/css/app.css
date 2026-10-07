@@ -9164,9 +9164,6 @@
     font: 12.5px/20px var(--font-mono);
     tab-size: 2;
   }
-  .q-onb-k {
-    color: var(--q-muted);
-  }
   .q-onb-after {
     max-width: 1040px;
     margin-top: -8px;

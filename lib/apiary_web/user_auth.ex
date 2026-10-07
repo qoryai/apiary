@@ -5,7 +5,6 @@ defmodule ApiaryWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Apiary.AccessKeys
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
   alias Apiary.LogMetadata
@@ -340,8 +339,8 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
-  Members, with the policy's mode beside Policy, the targets the person pinned in the
+  The counts the sidebar shows beside Runs (alive now) and Members, with the policy's
+  mode beside Policy, the targets the person pinned in the
   workspace (`pins`, `Apiary.Targets.list_pins/2`), the sections of the Instance level the
   person may open (`instance`, `ApiaryWeb.Layouts.instance_sections/1`), for the Qory
   Apiary menu's Instance settings and the Instance's second column, and the edition's
@@ -361,7 +360,6 @@ defmodule ApiaryWeb.UserAuth do
 
   def nav_counts(%Scope{} = scope) do
     %{
-      keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
       alive: Apiary.Runs.count_alive(scope),
       pins: pins(scope),

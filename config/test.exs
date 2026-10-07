@@ -51,10 +51,18 @@ config :phoenix,
   sort_verified_routes_query_params: true
 
 # APIARY_ENCRYPTION_SECRET in test: every key the instance uses is derived from it
-# (Apiary.KeyDerivation), the access key secrets' (Apiary.Vault) among them. Not a
-# secret: local databases only.
+# (Apiary.KeyDerivation). Not a secret: local databases only.
 config :apiary, Apiary.KeyDerivation,
   secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+
+# APIARY_SIGNING_SECRET in test: the seed of the instance's own signing key
+# (Apiary.SigningKey), which the tests verify answers under. A fixed 32 bytes of its own,
+# never derived from the encryption secret above, and none of the runner contract's
+# fixture seeds, which the instance refuses. Not a secret.
+config :apiary, Apiary.SigningKey, seed: "qory apiary test signing seed 01"
+
+# Every enrolment test posts from the same address; the limit's own test sets its own.
+config :apiary, ApiaryWeb.Contract.EnrolmentController, rate: 1000, burst: 100_000
 
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.

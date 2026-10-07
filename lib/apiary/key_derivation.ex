@@ -8,8 +8,6 @@ defmodule Apiary.KeyDerivation do
   |---|---|---|
   | `:values` | `"apiary values v1"` | wraps each workspace's data key, which encrypts the workspace's stored secret values (`Apiary.Secrets`) |
   | `:integrity` | `"apiary integrity v1"` | keys the integrity codes of stored rows (`Apiary.Integrity`) |
-  | `:envelope_signing` | `"apiary envelope signing v1"` | the seed of the instance's signing key for answers to runners, where nothing overrides it |
-  | `:access_keys` | `"apiary access keys v1"` | encrypts the access key secrets at rest (`Apiary.Vault`) |
 
   Each derived key has a **key id**: the first 8 bytes of SHA-256 over
   `"apiary key id v1"` and the key, as 16 lowercase hexadecimal characters. It names the
@@ -26,20 +24,22 @@ defmodule Apiary.KeyDerivation do
 
   Losing `APIARY_ENCRYPTION_SECRET` loses every key derived from it, and with them every
   stored secret value: there is no other copy.
+
+  The instance's signing key, which machines pin, is not derived here: its seed is a
+  secret of its own, `APIARY_SIGNING_SECRET` (`Apiary.SigningKey`), so it does not change
+  with this one.
   """
 
   @salt "apiary/kdf/v1"
   @infos %{
     values: "apiary values v1",
-    integrity: "apiary integrity v1",
-    envelope_signing: "apiary envelope signing v1",
-    access_keys: "apiary access keys v1"
+    integrity: "apiary integrity v1"
   }
   @key_id_label "apiary key id v1"
   @hash_len 32
 
   @typedoc "A purpose a key is derived for."
-  @type purpose :: :values | :integrity | :envelope_signing | :access_keys
+  @type purpose :: :values | :integrity
 
   @typedoc "A key id: 16 lowercase hexadecimal characters."
   @type key_id :: String.t()

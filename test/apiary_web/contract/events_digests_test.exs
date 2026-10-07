@@ -8,7 +8,6 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   # The security policy: left out of a run without the security feature.
   @moduletag needs: :security
 
-  import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
   import Ecto.Query
@@ -21,7 +20,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{access_key: key, secret: secret} = access_key_fixture(scope)
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
 
     # The target of `first_events/1`'s labels, with a rule of its own.
     target =
@@ -66,7 +65,10 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     assert response(conn, 202) == ""
     assert in_force(conn) == [ctx.baseline]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+
+    assert get_resp_header(conn, "x-qory-configuration") == [
+             Configuration.digest(ctx.key.node, true)
+           ]
   end
 
   test "the ping of a run that holds a digest in force is answered that digest, no other", ctx do
@@ -175,7 +177,10 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     assert response(conn, 410) == ""
     assert in_force(conn) == [ctx.own]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+
+    assert get_resp_header(conn, "x-qory-configuration") == [
+             Configuration.digest(ctx.key.node, true)
+           ]
 
     assert Repo.one!(
              from d in Delivery, where: d.status == 410, select: d.run_configuration_digest
@@ -185,7 +190,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   test "a workspace nobody has given a policy names no run configuration, and renders none",
        _ctx do
     %{scope: scope} = sign_up_fixture()
-    %{access_key: key, secret: secret} = access_key_fixture(scope)
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
     {subject, [ping, started]} = first_events()
     reported = "sha256=" <> String.duplicate("a", 64)
 
@@ -193,7 +198,10 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
       conn = signed_post(build_conn(), key.key_id, secret, events, run_configuration: reported)
       assert response(conn, 202) == ""
       assert in_force(conn) == []
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(false)]
+
+      assert get_resp_header(conn, "x-qory-configuration") == [
+               Configuration.digest(key.node, false)
+             ]
     end
 
     assert Repo.aggregate(
@@ -210,10 +218,10 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     conn =
       signed_post(build_conn(), key.key_id, secret, [wire_event(subject, 3, "run.heartbeat", %{})])
 
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node, true)]
     {:ok, %{digest: digest}} = Policy.current_configuration(scope, nil)
     assert in_force(conn) == [digest]
-    assert Configuration.digest(true) != Configuration.digest(false)
+    assert Configuration.digest(key.node, true) != Configuration.digest(key.node, false)
   end
 
   test "a refusal carries no digest of a run configuration", ctx do

@@ -425,7 +425,7 @@ defmodule Apiary.Runs do
   The options of each section of the runs list's Filter menu, counted from the data: every
   facet is counted under the other filters and the range, not under itself, so a section
   shows what choosing another value would give. `%{state:, target:, task:, runtime:, host:,
-  key:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
+  node:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
   #{@facet_size} of them unless `limits:` maps the facet's name to more, and the chosen one,
   with how many values there are. `narrow:` maps a facet's name to what the reader typed in
   its section, matched anywhere in the value, case-insensitively, as text and never as a
@@ -451,7 +451,7 @@ defmodule Apiary.Runs do
       runtime:
         text_facet(scope, filters, now, :runtime, nil, narrow["runtime"], limit.("runtime")),
       host: text_facet(scope, filters, now, :host, nil, narrow["host"], limit.("host")),
-      key: key_facet(scope, filters, now, narrow["key"], limit.("key"))
+      node: node_facet(scope, filters, now, narrow["node"], limit.("node"))
     }
   end
 
@@ -555,44 +555,60 @@ defmodule Apiary.Runs do
     %{options: options, total: total + if(none > 0, do: 1, else: 0)}
   end
 
-  # The access keys the runs came in with, by the key's label, and a revoked key keeps its
-  # runs. A label is unique among the workspace's keys of today, but a node's key's only
-  # among that node's keys, so keys of two nodes may share one, and count under it
-  # together.
-  defp key_facet(scope, filters, now, narrow, limit) do
-    base = filtered(scope, %{filters | key: nil}, now)
+  # The nodes the runs ran on, a pool for its instances' runs, deleted ones included. A node
+  # in use is offered by its name, as one types it; a deleted one by its public id, since its
+  # name may be another's now (`where_node/3` reads both). The chosen node keeps the value it
+  # was chosen by, so a node page's link, by the node's id, shows its option checked.
+  defp node_facet(scope, filters, now, narrow, limit) do
+    base = filtered(scope, %{filters | node: nil}, now)
     pattern = like(narrow)
 
     grouped =
       from [run: r] in base,
-        join: k in AccessKey,
-        on: k.id == r.access_key_id and k.workspace_id == r.workspace_id,
-        group_by: k.label
+        join: n in Node,
+        on:
+          n.id == r.node_id and n.organisation_id == r.organisation_id and
+            n.workspace_id == r.workspace_id,
+        group_by: [n.id, n.public_id, n.name, n.deleted_at]
 
-    grouped = if pattern, do: where(grouped, [_r, k], ilike(k.label, ^pattern)), else: grouped
+    grouped = if pattern, do: where(grouped, [_r, n], ilike(n.name, ^pattern)), else: grouped
 
     rows =
       Repo.all(
-        from [r, k] in grouped,
-          order_by: [desc: count(r.id), asc: k.label],
+        from [r, n] in grouped,
+          order_by: [desc: count(r.id), asc: n.name, asc: n.public_id],
           limit: ^(limit + 1),
-          select: {k.label, count(r.id)}
+          select: {n.public_id, n.name, n.deleted_at, count(r.id)}
       )
 
     total =
       if length(rows) > limit,
-        do: Repo.one(from g in subquery(select(grouped, [_r, k], k.label)), select: count()),
+        do: Repo.one(from g in subquery(select(grouped, [_r, n], n.id)), select: count()),
         else: length(rows)
 
-    options = for {label, n} <- Enum.take(rows, limit), do: {label, label, n}
+    options =
+      for {public_id, name, deleted_at, n} <- Enum.take(rows, limit),
+          do:
+            {node_label(name, deleted_at), node_value(public_id, name, deleted_at, filters.node),
+             n}
 
     options =
-      if is_binary(filters.key) and not Enum.any?(options, &(elem(&1, 1) == filters.key)),
-        do: [{filters.key, filters.key, 0} | options],
-        else: options
+      if is_binary(filters.node) and not Enum.any?(options, &(elem(&1, 1) == filters.node)) do
+        n = Repo.aggregate(where_node(base, scope, filters.node), :count)
+        [{filters.node, filters.node, n} | options]
+      else
+        options
+      end
 
     %{options: options, total: total}
   end
+
+  defp node_label(name, nil), do: name
+  defp node_label(name, _deleted_at), do: gettext("%{name} (deleted)", name: name)
+
+  defp node_value(public_id, _name, _deleted_at, public_id), do: public_id
+  defp node_value(_public_id, name, nil, _chosen), do: name
+  defp node_value(public_id, _name, _deleted_at, _chosen), do: public_id
 
   # What the reader typed, as the operand of ILIKE that matches it anywhere and as text:
   # the pattern's own characters are escaped, so "%" finds a per cent sign and nothing else.
@@ -634,7 +650,6 @@ defmodule Apiary.Runs do
     |> where_text(:task, f.task)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
-    |> where_key(scope, f.key)
     |> where_node(scope, f.node)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
@@ -658,19 +673,6 @@ defmodule Apiary.Runs do
   defp where_text(query, _field, nil), do: query
   defp where_text(query, field, :none), do: where(query, [r], is_nil(field(r, ^field)))
   defp where_text(query, field, value), do: where(query, [r], field(r, ^field) == ^value)
-
-  defp where_key(query, _scope, nil), do: query
-
-  defp where_key(query, scope, label) do
-    keys =
-      from k in AccessKey,
-        where:
-          k.organisation_id == ^scope.organisation.id and k.workspace_id == ^scope.workspace.id,
-        where: k.label == ^label,
-        select: k.id
-
-    where(query, [r], r.access_key_id in subquery(keys))
-  end
 
   # A node by its public id, or by the name of a node in use: a deleted node's runs are
   # found by its id, since its name may be another's now.

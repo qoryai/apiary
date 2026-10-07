@@ -6,8 +6,8 @@ and emails are written to the log instead of being sent. For an installation oth
 sign in to, read [Install and configure](install.md) and the
 [hosting checklist](hosting-checklist.md).
 
-You need Docker with the `docker compose` command, `git` and `openssl`. For the last two
-steps you need the `qory` command, version 0.10.0 or later, on the same machine.
+You need Docker with the `docker compose` command, `git` and `openssl`. From step 5 on you
+need the `qory` command, one that has `qory access-key`, on the same machine.
 
 ## 1. Get the source
 
@@ -24,12 +24,13 @@ cd qory-server
 cp .env.example .env
 ```
 
-Generate three values:
+Generate four values:
 
 ```sh
 openssl rand -hex 24       # the database password
 openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least the server accepts
 openssl rand -base64 32    # APIARY_ENCRYPTION_SECRET: 32 bytes in base64, 44 characters
+openssl rand -base64 32    # APIARY_SIGNING_SECRET: another 32 bytes, never the same value
 ```
 
 Open `.env` and set these lines. The database password appears twice, and the two must
@@ -40,6 +41,7 @@ POSTGRES_PASSWORD=<the database password>
 DATABASE_URL=ecto://apiary:<the database password>@postgres/apiary
 SECRET_KEY_BASE=<the second value>
 APIARY_ENCRYPTION_SECRET=<the third value>
+APIARY_SIGNING_SECRET=<the fourth value>
 PUBLIC_URL=http://localhost:4100
 MAIL_TO_LOG=true
 ```
@@ -52,8 +54,9 @@ Leave `SMTP_RELAY` empty and every other line as it is.
 > invitation links are credentials, and with this setting they reach the log and everyone
 > and everything that reads it. Never set it on an installation other people sign in to.
 
-Keep `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE` somewhere safe if you mean to keep this
-installation; [Backup and restore](backup.md) says what is lost without them.
+Keep `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE` somewhere safe
+if you mean to keep this installation; [Backup and restore](backup.md) says what is lost
+without them.
 
 ## 3. Start it
 
@@ -94,7 +97,9 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 ```
 
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
-account**. You land on the overview of your workspace.
+account**. You land on the overview of your workspace. Until a run reaches it, the
+overview is one box, **Send your first run**: Add a node, Enrol the machine, See runs here.
+Steps 5 to 8 below are those steps.
 
 Signing up created an organisation with the name you gave, one workspace in it named
 *Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
@@ -140,62 +145,61 @@ organisation's. Mail to you, such as a log-in link, is written in your language.
 of the workspace's pages are its domain's, chosen when it was created: software, the one
 domain there is, which says repository, forge and pull request.
 
-## 5. Create an access key
+## 5. Add a node, then enrol the machine
 
-An access key lets the machines of a workspace post their runs.
+A machine posts its runs with an access key of its own, on a **node** of the workspace: a
+node is one permanent machine, a **node pool** a fleet of short-lived instances that share
+one key. The machine makes the key, and Qory Apiary keeps only its public half.
 
-1. Select **Settings** at the foot of the sidebar, then **Access keys**,
-   `/:org/:workspace/settings/keys`.
-2. Select **New access key**.
-3. Give it a **Label**, the machine or environment it is for, `build-01` say, and select
-   **Create key**.
-4. The dialog **Your new access key** shows the **Key id**, the **Secret**, and the block
-   for the runner file with both filled in. The secret is shown once: Qory Apiary keeps only an
-   encrypted copy and cannot show it again. Copy the block, then select **I have copied the
-   secret**.
+1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
+   `build-01` say, and select **Add node**. The node's **Access key** tab opens.
+2. Select **New enrolment code**, leave **Stored secrets** at **Not allowed**, and select
+   **Make code**. The page shows the code once, and under "On the machine, run:" the
+   command with this server and the code filled in. Select **Copy command**.
+3. On the machine, run the command:
 
-## 6. Put the `server` section in the runner file
+   ```sh
+   qory access-key enrol http://localhost:4100 qec_…
+   ```
 
-The runner file is `~/.config/qory/runner.yaml`, or `$XDG_CONFIG_HOME/qory/runner.yaml`
-when that variable is set. It belongs to the machine and to no repository.
+   `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable
+   by you alone, and prints the key's fingerprint. It writes the `server` section into
+   `~/.config/qory/runner.yaml`, `$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is
+   set: the server's `url`, the key's `access_key_id`, and `apiary_public_key`, the
+   server's key, which the code named and the server's signed answer confirmed. The code
+   works once, for 15 minutes.
+4. Select **Done**. Once the command has run, the node's **Access key** tab shows the key,
+   **Awaiting approval**, under the machine's name; reload the tab if it is not there yet.
+   Compare its **Fingerprint** with the one `qory` printed, then select **Approve…** and
+   **Yes, approve**.
 
-```sh
-mkdir -p ~/.config/qory
-```
+Until the key is approved, every request of the machine is refused `key_pending`, and no
+run starts.
 
-Paste the block from the console into `~/.config/qory/runner.yaml`. It begins with an
-`apiVersion` line and holds this section:
+The runner file belongs to the machine and to no repository.
+[The runner file's `server` section](runner-file.md) has the rest of it.
 
-```yaml
-server:
-  url: http://localhost:4100
-  access_key: ak_0123456789abcdef
-  secret: <the secret from the console>
-```
+## 6. Or paste the key
 
-When the file exists already, keep its own `apiVersion` line and add the `server` section
-alone: the file is read strictly, and a key written twice is refused. The file now holds a
-secret, so make it readable by you alone:
+Instead of a code, the machine can make its key on its own, and you paste the public key
+into the node:
 
-```sh
-chmod 600 ~/.config/qory/runner.yaml
-```
+1. On the machine, `qory access-key create` makes the key, keeps its secret in
+   `~/.config/qory/access-key-secret`, and prints the public key and its fingerprint.
+2. On the node's **Access key** tab, select **Add a public key**, give it a **Label**,
+   paste the **Public key**, check that the **Fingerprint** under it is the one the
+   machine printed, and select **Add key**. A key you add here is approved as you add it.
+3. The page **Runner file for build-01** shows the lines to put in
+   `~/.config/qory/runner.yaml`, with **Copy lines**, and for a CI the same id and pin as
+   variables. Nothing on it is secret, and an approved key's **Runner file lines** opens it
+   again.
 
-A `server.url` over plain `http` is accepted only for an address of this machine, such as
-`localhost`. A server elsewhere is reached over `https`.
-[The runner file's `server` section](runner-file.md) has the rest.
+[Nodes and their keys](nodes.md) says more about both ways, node pools and revoking a key.
 
 ## 7. First run
 
-Check the command's version; the `server` section needs 0.10.0 or later, and an earlier
-`qory` refuses a runner file that has one:
-
-```sh
-qory version
-```
-
-Then write the command's hello example into an empty directory, compose its harness and
-start one headless turn:
+Write the command's hello example into an empty directory, compose its harness and start
+one headless turn:
 
 ```sh
 mkdir hello && cd hello
@@ -209,21 +213,24 @@ installed on this machine and able to start a session. Arguments after `--` go t
 runtime.
 
 Before the runtime starts, the runner fetches the server's configuration, signed with the
-access key and the secret, and sends a ping. If the server does not answer, or refuses the
-key, there is no run, and the error names the URL and the status. The record of the run is
-also written to `.qory/runs/<id>/` in the directory, whatever the server does.
+machine's access key, checks the answer under the server's key it pinned, and sends a
+ping. If the server does not answer, or refuses the key, there is no run, and the error
+names the URL and the status. The record of the run is also written to `.qory/runs/<id>/`
+in the directory, whatever the server does.
 
 ## 8. See it
 
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,
-terminal, network access and details. The `hello` directory has no origin remote, so the run
-names no repository: the repositories beside the list count it under **Unassigned**. A
-run started in a checkout with an origin remote names that repository, and choosing the
-repository there, or typing `repo:` and its path in the filter, lists its runs alone.
+terminal, network access and details, among them its node and its instance. The `hello`
+directory has no origin remote, so the run names no repository: the repositories beside
+the list count it under **Unassigned**. A run started in a checkout with an origin remote
+names that repository, and choosing the repository there, or typing `repo:` and its path
+in the filter, lists its runs alone.
 
-On **Access keys**, the key's row now shows when it was last used, its last heartbeat and
-the runner's version.
+On the node's **Overview**, the machine is now its instance, with its run. On its **Access
+key** tab, the key's card shows when it was last used, its last heartbeat and the runner's
+version.
 
 ## Next
 

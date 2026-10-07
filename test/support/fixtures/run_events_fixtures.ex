@@ -66,7 +66,13 @@ defmodule Apiary.RunEventsFixtures do
   """
   def record do
     [
-      {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1, "events" => []}},
+      {1, "ping",
+       %{
+         "runner_version" => "v0.4.0",
+         "contract_version" => 1,
+         "events" => [],
+         "interval_seconds" => 30
+       }},
       {2, "run.started", started_data()},
       {3, "run.policy_applied",
        %{

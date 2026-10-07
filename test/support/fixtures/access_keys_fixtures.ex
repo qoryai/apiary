@@ -7,13 +7,23 @@ defmodule Apiary.AccessKeysFixtures do
   def unique_label, do: "runner #{System.unique_integer([:positive])}"
 
   @doc """
-  A key in the scope's workspace, and the secret it was created with. The key carries its
-  workspace, as a verified key does (`Apiary.AccessKeys.fetch_for_verification/1`).
+  An approved key in the scope's workspace, pasted by the scope's person, who must be an
+  owner or an admin, on `attrs` `:node` (else a new node, kind `node`). Returns
+  `%{access_key: key, secret: seed, pair: key pair, node: node}`: the key carrying its
+  workspace and node, as a verified key does (`Apiary.AccessKeys.fetch_for_verification/1`),
+  and the raw 32-byte seed that signs as it.
   """
   def access_key_fixture(scope, attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{label: unique_label()})
-    {:ok, access_key, secret} = AccessKeys.create_access_key(scope, attrs)
-    %{access_key: %{access_key | workspace: scope.workspace}, secret: secret}
+    attrs = Map.new(attrs)
+    {node, attrs} = Map.pop_lazy(attrs, :node, fn -> Apiary.NodesFixtures.node_fixture(scope) end)
+    %{access_key: key, pair: pair} = node_key_fixture(scope, node, attrs)
+
+    %{
+      access_key: %{key | workspace: scope.workspace, node: node},
+      secret: pair.secret,
+      pair: pair,
+      node: node
+    }
   end
 
   @doc """
@@ -39,8 +49,9 @@ defmodule Apiary.AccessKeysFixtures do
   @doc """
   A key awaiting approval on `node`, as an enrolment with a code of the scope's person
   leaves one: the code made and used, the key inserted pending, with its integrity code
-  and its row of the ledger. A stand-in for the enrolment endpoint, which is not built
-  yet. Returns `%{access_key: key, pair: key pair, code: code row}`.
+  and its row of the ledger. The rows `Apiary.AccessKeys.enrol/2` writes, written here
+  without a request, with a label any test may choose and no audit entry. Returns
+  `%{access_key: key, pair: key pair, code: code row}`.
   """
   def pending_key_fixture(scope, node, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{allow_secrets: false, label: unique_label()})

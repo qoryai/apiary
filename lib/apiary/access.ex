@@ -125,15 +125,6 @@ defmodule Apiary.Access do
       "purge a workspace marked for deletion once its grace period is over: every row it holds",
       roles: [:instance]
     ),
-    Action.new(:"access_key.create", "create an access key", roles: @members),
-    Action.new(:"access_key.rotate", "rotate an access key, and retire its previous secret",
-      roles: @members
-    ),
-    Action.new(
-      :"access_key.revoke_secret_key",
-      "revoke an access key with a secret the server made, from the workspace's settings",
-      roles: @members
-    ),
     # The access keys of nodes and node pools: one Ed25519 public key each.
     Action.new(
       :"access_key.create_code",

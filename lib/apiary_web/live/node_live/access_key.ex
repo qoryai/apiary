@@ -4,23 +4,26 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   keys and its outstanding enrolment codes, over `Apiary.AccessKeys` as it is. Its header
   and tabs are the node's page's (`ApiaryWeb.NodeComponents`).
 
-  **What is true today.** Qory can't check a node's key yet, so the node receives no runs:
-  machines send their runs with a workspace access key, and no enrolment is built, so
-  nothing takes a code. The tab says so once, plainly, above everything else, with the
-  way to the workspace's access keys (Workspace settings › Access keys), and none of its
-  lines says a node posts, enrols or connects with what it holds. The add and code pages
-  say it too.
-
-  - **Keys**, those in use first, then the revoked and the rejected, newest first: each its
-    label, key id and state, its fingerprint, its stored-secrets flag, how and when it
-    arrived, who approved, revoked or rejected it and when, and its use where the record
-    holds any. A key whose row does not match its integrity code says so, and offers no
-    approval. Owners and admins approve or reject a key that awaits approval and revoke
-    an approved one, each confirmed in place, at a path of its own
+  - **Keys**, under the line that a machine signs with its own key and Qory keeps only
+    the public half, those in use first, then the revoked and the rejected, newest first:
+    each its label, key id and state, its fingerprint, its stored-secrets flag, how and
+    when it arrived, who approved, revoked or rejected it and when, and its use where the
+    record holds any. A key whose row does not match its integrity code says so, and
+    offers no approval. Owners and admins approve or reject a key that awaits approval and
+    revoke an approved one, each confirmed in place, at a path of its own
     (`…/access-key/keys/:key_id/approve`, `reject`, `revoke`), a key named by its key id.
+    With no key, the tab tells a reader who may make an enrolment code how a machine
+    gets one, and anyone else only that there is none.
+  - **Runner file for a key** (`…/access-key/keys/:key_id/runner-file`), a page of its
+    own for an approved key, linked from its card for everyone who reads the node, since
+    nothing on it is secret: the runner file's `server` section (`url`, `access_key_id`,
+    `apiary_public_key`) and, for CI, the two variables in place of the last two
+    (`Apiary.AccessKeys.runner_lines/3`), each with Copy, where the key's secret is, and
+    Done back to the tab.
   - **Add a public key** (`…/access-key/add`), a page of its own: a label, the
     stored-secrets flag and the public key, whose fingerprint shows as soon as it reads as
-    one; the key is approved as it is added (`Apiary.AccessKeys.add_access_key/3`).
+    one; the key is approved as it is added (`Apiary.AccessKeys.add_access_key/3`), and
+    the page goes on to the key's runner file.
   - **Enrolment codes**: the node's outstanding codes, who made each and when, when it
     expires, and the settings of the key it would bring; owners and admins revoke one in
     place (`…/access-key/codes/:code_id/revoke`, the code's row id, never the code). The
@@ -28,7 +31,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     leaves the list, and its confirmation, at once.
   - **New enrolment code** (`…/access-key/new-code`), a page of its own: the stored-secrets
     flag and a label hint. Once made, the page is the code, shown once and given the
-    focus, with its expiry ("Expired" once past) and Done back to the tab.
+    focus, as the machine sends it, with the server key's fingerprint after it
+    (`Apiary.Contract.Enrolment.issued_code/2`); the command that enrols the machine with
+    it, `qory access-key enrol <server> <code>`, with Copy; its expiry ("Expired" once
+    past); and Done back to the tab.
 
   Leaving a form or a confirmation gives the focus back to the button that opened it, or,
   where the act took that button away, to the key's heading or to New enrolment code.
@@ -50,7 +56,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   alias Apiary.{Access, AccessKeys, Nodes, Repo, Runs}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
-  alias Apiary.Contract.Ed25519
+  alias Apiary.Contract.{Ed25519, Enrolment}
   alias Apiary.Nodes.Node
   alias ApiaryWeb.{NodeComponents, People, SettingsComponents, UserAuth}
 
@@ -201,6 +207,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
        do: {:key, key_id, act}
 
   defp opener(%{shown: :revoke_code, code: %EnrolmentCode{id: id}}), do: {:code, id}
+
+  defp opener(%{shown: :runner_file, key: %AccessKey{key_id: key_id}}),
+    do: {:key, key_id, :runner_file}
+
   defp opener(_assigns), do: nil
 
   # Back on the tab, the focus goes to the opener where it is still there; where the act
@@ -223,9 +233,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         nil
 
       key ->
-        if act in key_acts(key, assigns.may, assigns.intact[key.id]),
-          do: "key-#{key_id}-#{act}",
-          else: "key-#{key_id}-title"
+        if act in key_acts(key, assigns.may, assigns.intact[key.id]) or
+             (act == :runner_file and state(key) == :approved),
+           do: "key-#{key_id}-#{String.replace(to_string(act), "_", "-")}",
+           else: "key-#{key_id}-title"
     end
   end
 
@@ -278,6 +289,20 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     end
   end
 
+  # A key's runner file, for anyone who reads the node: nothing on it is secret.
+  defp apply_action(socket, :runner_file, %{"key_id" => key_id}) do
+    case Enum.find(socket.assigns.keys, &(&1.key_id == key_id)) do
+      nil ->
+        to_tab(socket, :error, gettext("This node has no such key."))
+
+      key ->
+        if state(key) == :approved,
+          do: assign(socket, :key, key),
+          else:
+            to_tab(socket, :error, gettext("%{label} is not an approved key.", label: key.label))
+    end
+  end
+
   defp apply_action(socket, :revoke_code, %{"code_id" => code_id}) do
     code = Enum.find(socket.assigns.codes, &(&1.id == code_id))
 
@@ -323,9 +348,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       end
 
     case AccessKeys.add_access_key(scope, node, params) do
+      # On to what the machine is given, the key's runner file.
       {:ok, key} ->
         {:noreply,
-         to_tab(socket, :info, gettext("%{label} is added, and approved.", label: key.label))}
+         socket
+         |> put_flash(:info, gettext("%{label} is added, and approved.", label: key.label))
+         |> load()
+         |> push_patch(to: key_path(socket.assigns.paths, key, "runner-file"))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, socket |> assign_form(changeset, :key) |> assign(:preview, preview(params))}
@@ -368,7 +397,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     case AccessKeys.create_enrolment_code(scope, node, form_params(params)) do
       {:ok, row, code} ->
-        # The code, in a function: shown by this page once, and printed by nothing else.
+        # The code as the machine sends it, in a function: shown by this page once, and
+        # printed by nothing else.
+        code = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+
         {:noreply,
          socket
          |> assign(form: nil, issued: %{row: row, code: fn -> code end})
@@ -677,6 +709,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         %{issued: %{}} -> gettext("New enrolment code")
         %{live_action: :add_key, form: %{}} -> gettext("Add a public key")
         %{live_action: :new_code, form: %{}} -> gettext("New enrolment code")
+        %{live_action: :runner_file, key: %AccessKey{} = key} -> runner_file_title(key)
         _tab -> gettext("Access key")
       end
 
@@ -689,6 +722,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         "%{label} can't be approved: its record was changed outside the application.",
         label: key.label
       )
+
+  defp runner_file_title(key), do: gettext("Runner file for %{label}", label: key.label)
 
   defp outstanding_no_more, do: gettext("This enrolment code is no longer outstanding.")
 
@@ -751,18 +786,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     %{approved: approved, pending: pending} = AccessKeys.key_limits()
 
     gettext(
-      "A node holds at most %{approved} approved keys, and %{pending} more awaiting approval.",
+      "A node holds at most %{approved} keys at a time, at most %{pending} of them awaiting approval.",
       approved: Format.number(approved),
       pending: Format.number(pending)
     )
   end
-
-  defp not_yet_text,
-    do:
-      rich_gettext(
-        "Qory can't check these keys yet, so this node receives no runs. Until it can, machines send their runs with a workspace access key, from %{link}.",
-        link: {:part, :link}
-      )
 
   ## Render
 
@@ -790,8 +818,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </.page_header>
 
         <div class="grid gap-4">
-          <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} />
-
           <div id="code-issued-once">
             <.notice kind={:warning}>
               <strong>{gettext("This code is shown once.")}</strong>
@@ -826,6 +852,25 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 icon_only
               />
             </div>
+          </div>
+
+          <div class="grid gap-1.5">
+            <p class="text-[13px]/5">{gettext("On the machine, run:")}</p>
+            <.code_block
+              id="code-issued-command"
+              code={"qory access-key enrol #{ApiaryWeb.Endpoint.url()} #{@issued.code.()}"}
+              copy_label={gettext("Copy command")}
+            />
+            <p id="code-issued-works" class="text-[13px]/5 text-muted">
+              {gettext("It works once, for %{minutes} minutes.",
+                minutes: Format.number(AccessKeys.code_ttl_minutes())
+              )}
+            </p>
+            <p id="code-issued-approve" class="text-[13px]/5 text-muted">
+              {gettext(
+                "The key it brings arrives here awaiting approval. Compare the fingerprint qory prints with the key's before you approve it."
+              )}
+            </p>
           </div>
 
           <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-[13px]/5">
@@ -886,7 +931,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             name: @node.name
           )}
         </:description>
-        <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} class="mb-4" />
         <.form
           for={@form}
           id="key-add-form"
@@ -917,7 +961,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             field={@form[:public_key]}
             type="textarea"
             label={gettext("Public key")}
-            hint={gettext("An Ed25519 public key: its 32 bytes in base64url, without padding.")}
+            hint={
+              gettext(
+                "An Ed25519 public key: its 32 bytes in base64url, without padding. qory access-key create prints it on the machine."
+              )
+            }
             autocomplete="off"
             spellcheck="false"
             rows="2"
@@ -983,7 +1031,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             minutes: Format.number(AccessKeys.code_ttl_minutes())
           )}
         </:description>
-        <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} class="mb-4" />
         <.form
           for={@form}
           id="code-new-form"
@@ -1030,6 +1077,94 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     """
   end
 
+  # A key's runner file: what the machine holding it is given, nothing of it secret.
+  def render(%{live_action: :runner_file, key: %AccessKey{}} = assigns) do
+    assigns =
+      assign(assigns, :lines, AccessKeys.runner_lines(assigns.key, ApiaryWeb.Endpoint.url()))
+
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:nodes}
+      place={:workspace}
+      width="read"
+    >
+      <:crumb navigate={nodes_path(@paths)}>{gettext("Nodes")}</:crumb>
+      <:crumb navigate={@paths.overview}>{@node.name}</:crumb>
+      <:crumb navigate={@paths.access_key}>{gettext("Access key")}</:crumb>
+      <:crumb>{@key.label}</:crumb>
+
+      <section
+        id="key-runner-file"
+        class="q-form-page"
+        aria-labelledby="key-runner-file-header-title"
+        phx-mounted={JS.focus(to: "#key-runner-file-header-title")}
+      >
+        <.page_header id="key-runner-file-header" title={runner_file_title(@key)}>
+          <:description>
+            {gettext("For %{name}. Nothing here is secret: the key's secret stays on the machine.",
+              name: @node.name
+            )}
+          </:description>
+        </.page_header>
+
+        <div class="grid gap-4 text-[13px]/5">
+          <div class="grid gap-1.5">
+            <p>
+              <.rich text={
+                rich_gettext("Put these lines in %{file} on the machine:",
+                  file: {:m, "~/.config/qory/runner.yaml"}
+                )
+              } />
+            </p>
+            <.code_block
+              id="key-runner-file-yaml"
+              label="runner.yaml"
+              code={@lines.file}
+              copy_label={gettext("Copy lines")}
+            />
+          </div>
+
+          <div class="grid gap-1.5">
+            <p>
+              <.rich text={
+                rich_gettext(
+                  "For CI, keep %{url} in the file and set these instead of the other two lines:",
+                  url: {:m, "url"}
+                )
+              } />
+            </p>
+            <.code_block
+              id="key-runner-file-env"
+              code={@lines.env}
+              copy_label={gettext("Copy variables")}
+            />
+          </div>
+
+          <p id="key-runner-file-secret" class="text-muted">
+            <.rich text={
+              rich_gettext(
+                "The key's secret is where %{create} put it: %{file}, or QORY_ACCESS_KEY_SECRET in CI.",
+                create: {:m, "qory access-key create"},
+                file: {:m, "~/.config/qory/access-key-secret"}
+              )
+            } />
+          </p>
+
+          <SettingsComponents.save id="key-runner-file-done">
+            <.button id="key-runner-file-done-button" variant="primary" patch={@paths.access_key}>
+              {gettext("Done")}
+            </.button>
+          </SettingsComponents.save>
+        </div>
+      </section>
+    </Layouts.app>
+    """
+  end
+
   # The tab.
   def render(assigns) do
     ~H"""
@@ -1048,9 +1183,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <NodeComponents.node_tabs node={@node} paths={@paths} current={:access_key} view={:access_key} />
 
       <div id="node-access-key" class="grid max-w-[60rem] gap-8">
-        <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} />
-
         <SettingsComponents.part id="node-keys" title={gettext("Keys")} level={:h2}>
+          <p id="node-keys-intro" class="text-[13px]/5 text-muted">
+            {gettext(
+              "A machine signs every request with its own key. Qory keeps only the public half."
+            )}
+          </p>
           <p class="text-[13px]/5 text-muted">{limits_words()}</p>
           <p :if={!@manages} id="node-keys-members" class="text-[13px]/5 text-muted">
             {gettext("Only owners and admins manage a node's keys.")}
@@ -1075,7 +1213,16 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           </div>
 
           <p :if={@keys == []} id="node-keys-none" class="text-[13px]/5 text-muted">
-            {gettext("No key yet.")}
+            <.rich
+              :if={@may.new_code}
+              text={
+                rich_gettext(
+                  "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key %{create} printed there.",
+                  create: {:m, "qory access-key create"}
+                )
+              }
+            />
+            <span :if={!@may.new_code}>{gettext("No key yet.")}</span>
           </p>
 
           <ul :if={@keys != []} id="node-keys-list" class="grid gap-3">
@@ -1340,7 +1487,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               "Approve it only if its fingerprint is the one on the machine that holds the key."
             )}
           </p>
-          <p :if={@acts != []} class="flex flex-wrap gap-3">
+          <p :if={@acts != [] or @state == :approved} class="flex flex-wrap gap-3">
+            <.button
+              :if={@state == :approved}
+              id={"#{@dom}-runner-file"}
+              variant="link"
+              patch={key_path(@paths, @key, "runner-file")}
+              phx-hook="FocusOn"
+            >
+              <span aria-hidden="true">{gettext("Runner file lines")}</span>
+              <span class="sr-only">
+                {gettext("Runner file lines for %{label}", label: @key.label)}
+              </span>
+            </.button>
             <.button
               :if={:approve in @acts}
               id={"#{@dom}-approve"}

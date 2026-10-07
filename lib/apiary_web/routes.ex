@@ -15,11 +15,12 @@ defmodule ApiaryWeb.Routes do
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
-    `:contract` (a signed request of the server contract) and `:path_scope` (the reserved
-    names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
+    `:contract` (a signed request of the server contract), `:contract_limited` (the same,
+    held to the key's rate limit) and `:path_scope` (the reserved names,
+    `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
     pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
-    `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+    `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.
   - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
     Storybook), where `:dev_routes` is set and the storybook's dependency, a development
     one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
@@ -106,10 +107,17 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Lingo
       end
 
-      # A request of the server contract, signed with an access key.
+      # A request of the server contract, signed with a node's access key: discovery.
       pipeline :contract do
         plug :accepts, ["json"]
         plug ApiaryWeb.Contract.SignedRequest
+      end
+
+      # The same, for the events endpoint and the run configuration, which a key's rate
+      # limit holds.
+      pipeline :contract_limited do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest, rate_limit: true
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -150,8 +158,16 @@ defmodule ApiaryWeb.Routes do
         get "/qory-configuration", ConfigurationController, :show
       end
 
+      # Enrolment: no access key yet, so no signed request; the code and the proof
+      # authenticate it (`ApiaryWeb.Contract.EnrolmentController`).
+      scope "/.well-known", ApiaryWeb.Contract do
+        pipe_through :api
+
+        post "/qory-enrolment", EnrolmentController, :create
+      end
+
       scope "/v1", ApiaryWeb.Contract do
-        pipe_through :contract
+        pipe_through :contract_limited
 
         post "/events", EventsController, :create
         get "/run-configuration", RunConfigurationController, :show
@@ -351,8 +367,6 @@ defmodule ApiaryWeb.Routes do
           get "/:org/settings/audit-log", MovedController, :show
           get "/:org/members", MovedController, :show
           get "/:org/members/*rest", MovedController, :show
-          get "/:org/:workspace/keys", MovedController, :show
-          get "/:org/:workspace/keys/*rest", MovedController, :show
           get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
@@ -425,8 +439,9 @@ defmodule ApiaryWeb.Routes do
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
               # A node's Access key tab: its keys and its outstanding enrolment codes; adding
               # a key by its public key and making a code, each a page of its own; and each
-              # act on a key or a code confirmed in place, at a path of its own. A key is
-              # named by its key id (`ak_…`), a code by its row's id: never by the code.
+              # act on a key or a code confirmed in place, at a path of its own; and an
+              # approved key's runner file, a page of its own. A key is named by its key id
+              # (`ak_…`), a code by its row's id: never by the code.
               live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
               live "/nodes/:node_id/access-key/add", NodeLive.AccessKey, :add_key
               live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
@@ -437,6 +452,10 @@ defmodule ApiaryWeb.Routes do
 
               live "/nodes/:node_id/access-key/keys/:key_id/reject", NodeLive.AccessKey, :reject
               live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
+
+              live "/nodes/:node_id/access-key/keys/:key_id/runner-file",
+                   NodeLive.AccessKey,
+                   :runner_file
 
               live "/nodes/:node_id/access-key/codes/:code_id/revoke",
                    NodeLive.AccessKey,
@@ -462,10 +481,6 @@ defmodule ApiaryWeb.Routes do
               # Who reaches the workspace, read only: membership is the organisation's.
               live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
-              live "/settings/keys", AccessKeyLive.Index, :index
-              live "/settings/keys/new", AccessKeyLive.Index, :new
-              live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
-              live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
               # The stored secrets and the variables, one section of two views, with the
               # `security` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by

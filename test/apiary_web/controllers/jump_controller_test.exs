@@ -25,7 +25,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     go_to = group(answer, "Go to")
 
     assert "Runs" in labels(go_to)
-    assert "Workspace settings › Access keys" in labels(go_to)
+    refute "Workspace settings › Access keys" in labels(go_to)
+    assert "Nodes" in labels(go_to)
     assert "Workspace settings › Runs" in labels(go_to)
     assert "Workspace settings › People" in labels(go_to)
     assert "Organisation settings › People" in labels(go_to)
@@ -56,12 +57,13 @@ defmodule ApiaryWeb.JumpControllerTest do
         else: []
 
     assert labels(group(answer, "Actions")) ==
-             ["New node", "New node pool"] ++ security ++ ["New access key", "Invite people"]
+             ["New node", "New node pool"] ++ security ++ ["Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
-    answer = jump(conn, workspace_path(scope, "/jump"), "keys")
-    assert labels(group(answer, "Go to")) == ["Workspace settings › Access keys"]
+    # A workspace's keys are its nodes': the old words find Nodes.
+    answer = jump(conn, workspace_path(scope, "/jump"), "access keys")
+    assert labels(group(answer, "Go to")) == ["Nodes"]
     assert answer["status"] == "1 result"
 
     answer = jump(conn, workspace_path(scope, "/jump"), "no such page")
@@ -239,12 +241,11 @@ defmodule ApiaryWeb.JumpControllerTest do
           label != "General",
           do: "Workspace settings › #{label}"
 
-    # Right after Workspace settings, in order, each once: Access keys last, as the
-    # column has it, not first where the navigation has its entry.
+    # Right after Workspace settings, in order, each once: Runs last, as the column has it.
     at = Enum.find_index(labels, &(&1 == "Workspace settings"))
     assert Enum.slice(labels, at + 1, length(workspace)) == workspace
-    assert List.last(workspace) == "Workspace settings › Access keys"
-    assert Enum.count(labels, &(&1 == "Workspace settings › Access keys")) == 1
+    assert List.last(workspace) == "Workspace settings › Runs"
+    assert Enum.count(labels, &(&1 == "Workspace settings › Runs")) == 1
 
     organisation =
       for %{label: label} <- ApiaryWeb.SettingsComponents.sections(scope, :organisation),

@@ -330,8 +330,8 @@ defmodule Apiary.Nodes do
   pattern of a name is dropped. It never fails the request it is called from: whatever
   goes wrong is logged, by the exception's module alone, and it answers `:ok`.
 
-  The receiving side calls it after a request is verified, once access keys name their
-  node; nothing calls it yet.
+  The receiving side calls it once a request has verified and its instance id has passed
+  (`ApiaryWeb.Contract.SignedRequest`).
   """
   @spec seen(Node.t(), claim, DateTime.t()) :: :ok
   def seen(node, claim, now \\ DateTime.utc_now())
@@ -429,10 +429,9 @@ defmodule Apiary.Nodes do
   @doc """
   placement/2 is what a run records of where it runs, `%{node_id:, instance_id:}`: the
   node of the access key its ping came with, and the instance id that ping claimed, nil
-  when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`); both nil for a key that
-  names no node. The receiving side merges it into the run's row when it creates the run,
-  and the instance id into the delivery's row, once access keys name their node and
-  requests carry the instance id; until then every run's and every delivery's are nil.
+  when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`). The receiving side
+  merges it into the run's row when it creates the run, and the instance id into the
+  delivery's row (`Apiary.Runs.Ingest`).
   """
   @spec placement(Node.t() | nil, String.t() | nil) ::
           %{node_id: Ecto.UUID.t() | nil, instance_id: String.t() | nil}
@@ -509,7 +508,7 @@ defmodule Apiary.Nodes do
   statement of its own. Raises inside a transaction: it is the batch's transaction.
 
   The receiving side calls it for a batch that holds the ping of a run the workspace has
-  not seen, once requests carry the instance id; nothing calls it yet.
+  not seen (`Apiary.Runs.Ingest`).
   """
   @spec admit(Node.t(), String.t(), (-> {:ok, value} | {:error, reason}), DateTime.t()) ::
           {:ok, value} | {:error, :instance_limit | reason}

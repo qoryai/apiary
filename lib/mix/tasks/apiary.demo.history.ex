@@ -3,8 +3,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   @moduledoc """
   Fills a workspace with a history to review the console against at scale: months of
-  synthetic runs across many repositories, the access keys the machines post with, and
-  people at every level. A development tool: it refuses to run in production.
+  synthetic runs across many repositories, the nodes the machines run on with the access
+  keys they post with, and people at every level. A development tool: it refuses to run in production.
 
       mix apiary.demo.history
       mix apiary.demo.history --workspace acme/main --runs 50000 --repositories 300
@@ -27,9 +27,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   and received a moment later, as the receiver would have stored them, and every run is
   projected by `Apiary.Runs.Projector`, as the receiver's runs are.
 
-  Keys and people go through the contexts, as the console's pages would, in the name of
-  the workspace's first owner, so the audit trail has them: a key per machine group, one
-  rotated, one revoked and one never used; a dozen people who joined by invitation,
+  Nodes, keys and people go through the contexts, as the console's pages would, in the
+  name of the workspace's first owner, so the audit trail has them: a node per machine
+  group (a node pool for a fleet of several machines), each with a key added by its
+  Ed25519 public key; a second key added to one pool, as when its key is replaced, one key
+  revoked, and one node whose key is never used. Each run is placed on its machine's node,
+  as the instance of its host, and each host is recorded as an instance of the node it
+  last ran on. A dozen people who joined by invitation,
   owners, admins and members, one suspended, and two invitations pending
   (`--skip-members` leaves the people alone). Last, when the instance serves the security
   feature, the workspace is given `mix apiary.demo`'s policy if nobody has made one, the
@@ -42,7 +46,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   import Ecto.Query
 
-  alias Apiary.{AccessKeys, Accounts, Organisations, Policy, Repo, Runs}
+  alias Apiary.{AccessKeys, Accounts, Nodes, Organisations, Policy, Repo, Runs}
+  alias Apiary.Nodes.Instance
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.{Event, Liveness, Projector, Run, Target}
@@ -64,9 +69,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   @minute 60_000
   @day 86_400_000
 
-  # The machines that post, by the key they post with. `weight` is their share of the
-  # daytime runs; the nightly key posts only the nightly batch, and the legacy one only
-  # until it was replaced.
+  # The machines that post, by the node they run on and the label of its key, both named
+  # `key`; several hosts make a node pool. `weight` is their share of the daytime runs; the
+  # nightly machine posts only the nightly batch, and the legacy one only until it was
+  # replaced.
   @machines [
     %{
       key: "ci-fleet",
@@ -77,7 +83,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     },
     %{
       key: "build-eu",
-      hosts: ~w(build-01 build-02),
+      hosts: ~w(build-eu-01 build-eu-02),
       wall: "docker",
       weight: 18,
       laptop: false
@@ -346,34 +352,63 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     end
   end
 
-  ## Keys
+  ## Nodes and keys
 
-  # Every machine's key, by label: the workspace's own when it has one of that label that
-  # is not revoked, a new one otherwise. The idle key is made and never posted with.
+  # Every machine's key, by label, on a node of the same name: the workspace's own node
+  # and key when it has them, the key neither revoked nor rejected, new ones otherwise. A
+  # machine of several hosts is a node pool. The idle node's key is made and never posted
+  # with. A key is added by its public key, as `qory access-key create` prints one; its
+  # private half is thrown away, since nothing here signs a request.
   defp keys!(scope) do
+    nodes = Map.new(Nodes.list_nodes(scope), &{&1.name, &1})
+
     held =
       scope
-      |> AccessKeys.list_access_keys()
-      |> Enum.filter(&is_nil(&1.revoked_at))
-      |> Map.new(&{&1.label, &1})
+      |> AccessKeys.list_workspace_node_keys()
+      |> Map.new(&{{&1.node.name, &1.label}, &1})
 
-    labels = Enum.map([@nightly_machine | @machines], & &1.key) ++ [@idle_key]
+    machines = [@nightly_machine | @machines] ++ [%{key: @idle_key, hosts: ["staging-01"]}]
 
-    Map.new(labels, fn label ->
+    Map.new(machines, fn %{key: label, hosts: hosts} ->
+      node = Map.get_lazy(nodes, label, fn -> node!(scope, label, hosts) end)
+
       key =
         case held do
-          %{^label => key} ->
-            key
-
-          _ ->
-            case AccessKeys.create_access_key(scope, %{label: label}) do
-              {:ok, key, _secret} -> key
-              {:error, reason} -> Mix.raise("the key #{label} was not made: #{inspect(reason)}")
-            end
+          %{{^label, ^label} => key} -> key
+          _ -> add_key!(scope, node, label)
         end
 
-      {label, key}
+      {label, %{key | node: node}}
     end)
+  end
+
+  defp node!(scope, name, hosts) do
+    kind = if length(hosts) > 1, do: "pool", else: "node"
+
+    case Nodes.create_node(scope, %{"kind" => kind, "name" => name}) do
+      {:ok, node} -> node
+      {:error, reason} -> Mix.raise("the node #{name} was not made: #{inspect(reason)}")
+    end
+  end
+
+  defp add_key!(scope, node, label) do
+    {public_key, _private} = :crypto.generate_key(:eddsa, :ed25519)
+
+    case AccessKeys.add_access_key(scope, node, %{
+           "label" => label,
+           "public_key" => Base.url_encode64(public_key, padding: false),
+           "allow_secrets" => false
+         }) do
+      {:ok, key} -> key
+      {:error, reason} -> Mix.raise("the key #{label} was not made: #{inspect(reason)}")
+    end
+  end
+
+  # The instance a host runs as on a node: the same id for the same host and node, in
+  # every history, as a runner keeps its instance id.
+  defp instance_id(node_id, host) do
+    digest = :crypto.hash(:sha256, [node_id, ?/, host])
+    "i_" <> Base.url_encode64(binary_part(digest, 0, 16), padding: false)
   end
 
   ## People
@@ -767,6 +802,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       workspace_id: workspace.id,
       run_id: uuid7(spec.at),
       access_key_id: key.id,
+      node_id: key.node_id,
+      instance_id: instance_id(key.node_id, spec.host),
       state: "pending",
       runner_version: runner_version(spec),
       contract_version: 1,
@@ -833,8 +870,14 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp ends(%{duration: duration}), do: duration
 
-  defp ping(spec),
-    do: %{"runner_version" => runner_version(spec), "events" => ["*"], "contract_version" => 1}
+  defp ping(spec) do
+    %{
+      "runner_version" => runner_version(spec),
+      "events" => ["*"],
+      "contract_version" => 1,
+      "interval_seconds" => 30
+    }
+  end
 
   defp started(spec) do
     {command, args} = command(spec)
@@ -1624,8 +1667,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ## After the writing
 
   # What the record implies beyond the runs: the lost ones found, some closed by a member,
-  # the repositories dated by their first run, the keys by their last delivery; one key
-  # rotated and the legacy one revoked.
+  # the repositories dated by their first run, the keys by their last delivery, the hosts
+  # recorded as instances of their nodes; a second key added to ci-fleet, as when a key is
+  # replaced, and the legacy machine's key revoked.
   defp settle(ctx, plan) do
     %Scope{workspace: workspace} = scope = ctx.scope
     Liveness.check(DateTime.utc_now())
@@ -1686,10 +1730,64 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end
     end
 
-    {:ok, _key, _secret} = AccessKeys.rotate_access_key(scope, Map.fetch!(ctx.keys, "ci-fleet"))
+    instances(workspace)
+
+    # A second key beside ci-fleet's, once: a pool holds two approved keys at most.
+    fleet = Map.fetch!(ctx.keys, "ci-fleet")
+
+    if length(Enum.reject(AccessKeys.list_for_node(scope, fleet.node), & &1.revoked_at)) < 2,
+      do: add_key!(scope, fleet.node, "ci-fleet-next")
+
     {:ok, _key} = AccessKeys.revoke_access_key(scope, Map.fetch!(ctx.keys, "legacy-ci"))
 
-    Mix.shell().info("#{closed} silent runs closed; ci-fleet rotated, legacy-ci revoked")
+    Mix.shell().info(
+      "#{closed} silent runs closed; ci-fleet has a second key, legacy-ci's is revoked"
+    )
+  end
+
+  # Each host a run named, an instance of the run's node: first and last seen at the
+  # node's first and last run from it, as the receiver records the instances it hears
+  # from. A host seen again in a later history keeps its first sighting.
+  defp instances(workspace) do
+    rows =
+      Repo.all(
+        from r in Run,
+          where: r.workspace_id == ^workspace.id and not is_nil(r.node_id),
+          where: not is_nil(r.instance_id) and not is_nil(r.host),
+          group_by: [r.node_id, r.instance_id, r.host],
+          select: %{
+            node_id: r.node_id,
+            instance_id: r.instance_id,
+            name: r.host,
+            first_seen_at: min(r.inserted_at),
+            last_seen_at: max(r.last_event_at),
+            access_key_id:
+              type(
+                fragment("(array_agg(? ORDER BY ? DESC))[1]", r.access_key_id, r.inserted_at),
+                Ecto.UUID
+              ),
+            last_runner_version:
+              fragment("(array_agg(? ORDER BY ? DESC))[1]", r.runner_version, r.inserted_at)
+          }
+      )
+
+    now = DateTime.utc_now()
+
+    entries =
+      for row <- rows do
+        Map.merge(row, %{
+          id: Ecto.UUID.generate(),
+          organisation_id: workspace.organisation_id,
+          workspace_id: workspace.id,
+          last_seen_at: row.last_seen_at || now,
+          last_contract_version: 1
+        })
+      end
+
+    Repo.insert_all(Instance, entries,
+      on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_runner_version]},
+      conflict_target: [:node_id, :instance_id]
+    )
   end
 
   # The owner, and the people who joined, as they would close a run from its page.

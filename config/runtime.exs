@@ -189,8 +189,7 @@ if config_env() == :prod do
       """
 
   # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
-  # (Apiary.KeyDerivation): the access key secrets' (Apiary.Vault), the stored values'
-  # and the integrity codes'. Changing it makes every stored secret unreadable, so keep
+  # (Apiary.KeyDerivation): the stored values' and the integrity codes'. Changing it makes every stored secret unreadable, so keep
   # it with the database backups.
   encryption_secret =
     case System.get_env("APIARY_ENCRYPTION_SECRET") do
@@ -214,6 +213,36 @@ if config_env() == :prod do
     end
 
   config :apiary, Apiary.KeyDerivation, secret: encryption_secret
+
+  # APIARY_SIGNING_SECRET is the seed of the instance's own Ed25519 signing key
+  # (Apiary.SigningKey): it signs every answer to a runner, and every machine pins its
+  # public key as apiary_public_key. It is a secret of its own, never derived from
+  # APIARY_ENCRYPTION_SECRET, and has no fallback. Changing it means pinning every machine
+  # again, so keep it with APIARY_ENCRYPTION_SECRET. `Apiary.SigningKey.boot!/0` refuses
+  # the runner contract's fixture seeds at boot. No message here carries the value.
+  signing_seed =
+    case System.get_env("APIARY_SIGNING_SECRET") do
+      blank when blank in [nil, ""] ->
+        raise """
+        environment variable APIARY_SIGNING_SECRET is missing.
+        It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
+        Generate one with: openssl rand -base64 32
+        """
+
+      value ->
+        case Base.decode64(value) do
+          {:ok, seed} when byte_size(seed) == 32 ->
+            seed
+
+          _ ->
+            raise """
+            environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+            Generate one with: openssl rand -base64 32
+            """
+        end
+    end
+
+  config :apiary, Apiary.SigningKey, seed: signing_seed
 
   # ## Public address and HTTP
 

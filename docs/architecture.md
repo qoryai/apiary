@@ -31,13 +31,12 @@ beside it:
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
-- `Apiary.AccessKeys`: a workspace's access keys, and the lookup a signed request verifies
-  against. Today's keys have secrets the server made, encrypted at rest through
-  `Apiary.Vault`, rotation and revocation, and no node. A node's keys each have one
-  Ed25519 public key and belong to one node or node pool: enrolment codes
+- `Apiary.AccessKeys`: the access keys of a workspace's nodes, and the lookup a signed
+  request verifies against. Each key has one Ed25519 public key, and Apiary holds no secret of it; it
+  belongs to one node or node pool: enrolment codes
   (`access_key_enrolment_codes`, kept as their SHA-256), a pasted key approved at once,
-  approval, rejection and revocation, at most two approved keys and one awaiting approval
-  per node, and the ledger of public keys (`access_key_public_keys`), one public key for
+  approval, rejection and revocation, at most two keys at a time per node, at most one
+  of them awaiting approval, and the ledger of public keys (`access_key_public_keys`), one public key for
   one access key, ever, whose tombstones outlive the purge. `Apiary.Contract.Ed25519`
   holds the checks every public key received passes, the fingerprint and cofactorless
   verification.
@@ -77,10 +76,13 @@ The web side is under `lib/apiary_web/`:
   the contract's endpoints: `ConfigurationController` for the discovery document,
   `EventsController` for the events, whose body `RawBody` keeps as it was sent,
   `RunConfigurationController` for the run configuration. Each of them refuses a
-  contract revision it does not serve through `ContractVersion`.
+  contract revision it does not serve through `ContractVersion`. `EnrolmentController`
+  answers enrolment, beside them and outside `SignedRequest`: a machine with no access
+  key yet enrols one with a code (`Apiary.AccessKeys.enrol/2`), its body kept by `RawBody`
+  too, and its answers signed with the instance's key.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
-  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`,
-  `access_key_live`, `invitation_live`, and `user_live`, a person's own pages, their
+  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`, `node_live`,
+  `invitation_live`, and `user_live`, a person's own pages, their
   account and their organisations), `settings_live.ex`, the organisation's settings,
   `activity_live.ex`, the organisation's audit trail, whose words for each action are
   `ApiaryWeb.Activity.Describer`'s, the edition's first, then the core's, and
@@ -373,15 +375,20 @@ features are listed after the core's (`c:Apiary.Edition.features/0`), and
 
 ## Secrets at rest and integrity codes
 
-`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the one key the instance holds, and
-nothing is encrypted or keyed under its own bytes: every key is derived from it with
-HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per purpose:
-`apiary values v1` for stored values, `apiary integrity v1` for integrity codes,
-`apiary envelope signing v1` for the key that signs answers to runners, and
-`apiary access keys v1` for the access key secrets, which `Apiary.Vault` (Cloak) takes
-when it starts, until access keys stop holding secrets. Each derived key
+`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the key the instance encrypts and codes
+with, and nothing is encrypted or keyed under its own bytes: every key is derived from it
+with HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per
+purpose: `apiary values v1` for stored values and `apiary integrity v1` for integrity
+codes. Each derived key
 has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
 rotation of the secret can keep the previous one to read with and tell the two apart.
+
+The key that signs the instance's answers to runners, which every machine pins as
+`apiary_public_key`, is not derived from it: its Ed25519 seed is a secret of its own,
+`APIARY_SIGNING_SECRET`, 32 random bytes with no fallback in production, so that the pin
+does not change with the encryption secret (`Apiary.SigningKey`). The instance refuses the
+runner contract's published fixture seeds as its own at boot, and holds the key in a
+struct whose `inspect` shows its fingerprint alone.
 
 **Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
 made with its first secret, kept only wrapped (`workspace_data_keys`): AES-256-GCM under
@@ -510,7 +517,8 @@ events a runner posts are the record and leave no entry.
   workspace; inviting, changing the level of and removing a member; revoking and
   accepting an invitation; suspending and activating a member (`member.suspend`,
   `member.activate`); granting and revoking an instance admin, by a release command;
-  creating, rotating (and retiring the previous secret of) and revoking an access key;
+  an access key's arrival on a node, its approval, rejection and revocation, and making
+  and cancelling an enrolment code;
   closing a run; the retention settings; every write of the security policy, whose
   history is the trail's entries of the policy's actions; and the trail's own retention.
   What the application removes of its own accord is recorded as the action that removes

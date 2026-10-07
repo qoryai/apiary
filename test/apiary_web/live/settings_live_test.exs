@@ -336,7 +336,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       # Its own sections only: no other kind's, no cross-link, no Elsewhere.
       refute has_element?(
                lv,
-               "#settings-tab-general, #settings-tab-keys, #settings-tab-runs"
+               "#settings-tab-general, #settings-tab-runs"
              )
 
       refute has_element?(lv, "#settings-tab-workspace_settings, #settings-tab-your_settings")
@@ -420,14 +420,14 @@ defmodule ApiaryWeb.SettingsLiveTest do
             do: [integrations: base <> "/integrations", secrets: base <> "/secrets"],
             else: []
           ) ++
-          [runs: base <> "/runs", keys: base <> "/keys"]
+          [runs: base <> "/runs"]
 
       for {key, path} <- sections do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
       # In the map's order: General, People, with the `security` feature Integrations and
-      # Secrets and variables, Runs, and Access keys last.
+      # Secrets and variables, and Runs last. The access keys are their nodes', not here.
       assert lv
              |> element("#settings-tabs")
              |> render()
@@ -537,14 +537,18 @@ defmodule ApiaryWeb.SettingsLiveTest do
       for {old, new} <- [
             {~p"/#{org}/members", ~p"/#{org}/settings/people"},
             {~p"/#{org}/members/invite", ~p"/#{org}/settings/people/invite"},
-            {~p"/#{org}/#{ws}/keys", ~p"/#{org}/#{ws}/settings/keys"},
-            {~p"/#{org}/#{ws}/keys/new", ~p"/#{org}/#{ws}/settings/keys/new"},
-            {~p"/#{org}/#{ws}/keys?open=1", ~p"/#{org}/#{ws}/settings/keys?open=1"},
             {~p"/#{org}/#{ws}/settings/retention", ~p"/#{org}/#{ws}/settings/runs"},
             {~p"/#{org}/#{ws}/settings/retention?from=mail",
              ~p"/#{org}/#{ws}/settings/runs?from=mail"}
           ] do
         assert redirected_to(get(conn, old)) == new
+      end
+    end
+
+    test "the Access keys page was removed, not moved: its addresses answer 404",
+         %{conn: conn, scope: scope} do
+      for rest <- ~w(/settings/keys /settings/keys/new /keys /keys/new) do
+        assert conn |> get(workspace_path(scope, rest)) |> response(404) == "Not Found", rest
       end
     end
 

@@ -1,23 +1,17 @@
 defmodule Apiary.AccessKeys do
   @moduledoc """
-  Access keys: a workspace's credentials for the server contract, of two kinds
-  (`Apiary.AccessKeys.AccessKey`).
-
-  **Today's keys** have a key id and one or two secrets the server made, encrypted at
-  rest, and no node; the workspace's settings list them (`list_access_keys/1`). The
-  secret is returned exactly once, from `create_access_key/2` and `rotate_access_key/2`,
-  and is never read back through this module except for verification. Every member makes,
-  rotates and revokes them (`access_key.create`, `access_key.rotate`,
-  `access_key.revoke_secret_key`).
-
-  **A node's keys** each have one Ed25519 public key and belong to one node or node pool
-  of the workspace (`Apiary.Nodes`); a node holds several over its life. Owners and admins
-  alone manage them:
+  Access keys: a workspace's credentials for the server contract
+  (`Apiary.AccessKeys.AccessKey`). Each has one Ed25519 public key and belongs to one node
+  or node pool of the workspace (`Apiary.Nodes`); a node holds several over its life.
+  Owners and admins alone manage them:
 
     * an **enrolment code** (`create_enrolment_code/3`, `access_key.create_code`) is
       single use and expires after `code_ttl_minutes/0`; it carries the settings the key
       it brings gets, and is returned once, kept only as its SHA-256; an outstanding one
       is cancelled with `cancel_code/2` (`access_key.cancel_code`);
+    * a machine **enrols** a key with a code (`enrol/2`, the runner contract's
+      enrolment), and the key awaits approval; the code is the authority, and the key
+      itself the actor of its entry, `access_key.add`;
     * a **pasted key** (`add_access_key/3`, `access_key.add`) is approved as it is
       entered;
     * a key that **awaits approval** is approved (`approve/2`, `access_key.approve`) or
@@ -25,31 +19,30 @@ defmodule Apiary.AccessKeys do
       (`revoke_access_key/2`, `access_key.revoke`), and every key of a deleted node with
       it (`Apiary.Nodes.delete_node/2`).
 
-  A node holds at most two approved keys and one that awaits approval: a paste is refused
-  while it holds two keys, approved or not, and an approval while it holds two approved
-  ones, `{:error, :key_limit}`. A key's label is unique among the node's keys in use. Its
-  stored-secrets flag is fixed when it is made; there is no rotation of a node's key: to
-  change the flag, or replace a lost key, a new key is added for the same node, and the
-  old one revoked.
+  A node holds at most two keys at a time, at most one of them awaiting approval: a paste
+  is refused while it holds two keys, approved or not, an approval while it holds two
+  approved ones, and an enrolment while it holds one awaiting approval or two approved,
+  `{:error, :key_limit}`. A key's label is unique among the node's keys in use. Its
+  stored-secrets flag is fixed when it is made; there is no rotation of a key: to change
+  the flag, or replace a lost key, a new key is added for the same node, and the old one
+  revoked.
 
   **The checks.** Every public key received passes the key checks of
   `Apiary.Contract.Ed25519` and is not in the ledger (`Apiary.AccessKeys.PublicKey`),
-  where every node's key's public key is written in the transaction that makes the key
-  and stays, a tombstone once the key is retired: one public key, one access key, ever. A
-  key refused by either gets one answer, "this key cannot be used", so a refusal reveals
-  nothing about other keys. A node's key's row and an enrolment code's carry an integrity
-  code (`Apiary.Integrity`), written with every change and checked before the row is
-  trusted: `fetch_for_verification/1` refuses a key whose row does not match it, and an
-  approval refuses one too.
+  where every key's public key is written in the transaction that makes the key and
+  stays, a tombstone once the key is retired: one public key, one access key, ever. A key
+  refused by either gets one answer, "this key cannot be used", so a refusal reveals
+  nothing about other keys. A key's row and an enrolment code's carry an integrity code
+  (`Apiary.Integrity`), written with every change and checked before the row is trusted:
+  `fetch_for_verification/1` refuses a key whose row does not match it, and an approval
+  refuses one too.
 
   **Locks.** A change of a node's keys locks the node's row `FOR UPDATE`, then the key's
   or the code's, so the limits count every change before them.
 
   Every change of a key leaves an audit entry (`Apiary.Audit`) in its transaction: its
-  label and key id when it is created, the rotation or the retirement of the previous
-  secret as `access_key.rotate`, the revocation; a node's key's arrival, approval,
-  rejection and revocation, with its fingerprint; a code's making and cancelling, on its
-  node. Never a secret, nor a code.
+  arrival, approval, rejection and revocation, with its fingerprint; a code's making and
+  cancelling, on its node. Never a secret, nor a code.
   """
 
   import Ecto.Query, warn: false
@@ -59,13 +52,12 @@ defmodule Apiary.AccessKeys do
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
-  alias Apiary.Contract.Ed25519
+  alias Apiary.Contract.{Ed25519, Enrolment}
   alias Apiary.LogMetadata
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
 
-  @default_code_ttl_minutes 15
-  @max_code_ttl_minutes 15
+  @code_ttl_minutes 15
   @approved_limit 2
   @pending_limit 1
 
@@ -73,168 +65,20 @@ defmodule Apiary.AccessKeys do
             when access_key.organisation_id == scope.organisation.id and
                    access_key.workspace_id == scope.workspace.id
 
-  @doc """
-  The workspace's keys of today, those with a secret and no node: active first, then
-  revoked; newest first within each. The secret columns are not loaded; `rotating` says
-  whether a previous secret exists. A node's keys are `list_for_node/2`'s.
-  """
-  def list_access_keys(%Scope{
-        organisation: %Organisation{id: organisation_id},
-        workspace: %Workspace{id: workspace_id}
-      }) do
-    Repo.all(
-      from k in without_secrets_query(),
-        where: k.organisation_id == ^organisation_id and k.workspace_id == ^workspace_id,
-        where: is_nil(k.node_id),
-        order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id]
-    )
-  end
-
-  @doc """
-  One key of today of the scope's workspace, without its secrets (see
-  `list_access_keys/1`).
-  """
-  def get_access_key!(
-        %Scope{
-          organisation: %Organisation{id: organisation_id},
-          workspace: %Workspace{id: workspace_id}
-        },
-        id
-      ) do
-    Repo.one!(
-      from k in without_secrets_query(),
-        where:
-          k.id == ^id and k.organisation_id == ^organisation_id and
-            k.workspace_id == ^workspace_id and is_nil(k.node_id)
-    )
-  end
-
-  # Decrypted secrets have no business in a LiveView's state: the web layer gets
-  # rows selected without the secret columns.
-  defp without_secrets_query do
-    from k in AccessKey,
-      select: struct(k, ^AccessKey.public_fields()),
-      select_merge: %{rotating: not is_nil(k.secret_secondary)}
-  end
-
   def change_access_key(%AccessKey{} = access_key, attrs \\ %{}) do
     AccessKey.changeset(access_key, attrs)
   end
 
   @doc """
-  Creates a key for the scope's workspace (`access_key.create`, which every member may): a
-  caller whose membership is gone gets `{:error, :forbidden}`. Returns the key (without
-  secrets) and its secret, the only time the secret is available in clear.
-  """
-  def create_access_key(
-        %Scope{
-          user: user,
-          organisation: %Organisation{id: organisation_id},
-          workspace: %Workspace{id: workspace_id} = workspace
-        } = scope,
-        attrs
-      ) do
-    with :ok <- Access.authorize(scope, :"access_key.create", workspace) do
-      secret = AccessKey.generate_secret()
-
-      changeset =
-        %AccessKey{
-          organisation_id: organisation_id,
-          workspace_id: workspace_id,
-          created_by_id: user.id,
-          key_id: AccessKey.generate_key_id(),
-          # A closure, so the query log sees a function and never the secret
-          # (Ecto logs the cast parameters; Cloak unwraps the closure on dump).
-          secret_primary: fn -> secret end
-        }
-        |> AccessKey.changeset(attrs)
-
-      Repo.transact(fn ->
-        with {:ok, access_key} <- Repo.insert(changeset),
-             {:ok, _entry} <-
-               Audit.record(Repo, scope, :"access_key.create", access_key, %{
-                 after: %{label: access_key.label, key_id: access_key.key_id}
-               }) do
-          {:ok, access_key}
-        end
-      end)
-      |> case do
-        {:ok, access_key} ->
-          {:ok, AccessKey.without_secrets(%{access_key | secret_primary: nil}), secret}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
-  end
-
-  @doc """
-  Rotates the key (`access_key.rotate`): a new primary secret, the old primary kept as
-  the secondary so a node still on it keeps verifying; a previous secondary is dropped.
-
-  The row is read again and locked, so the secret kept as the secondary is the
-  one in the database now, whatever the struct passed in remembers.
-  """
-  def rotate_access_key(%Scope{} = scope, %AccessKey{} = access_key)
-      when key_in_scope(scope, access_key) do
-    mutate(scope, :"access_key.rotate", access_key, fn
-      %AccessKey{revoked_at: revoked_at} when not is_nil(revoked_at) ->
-        {:error, :revoked}
-
-      %AccessKey{secret_primary: previous} = current ->
-        secret = AccessKey.generate_secret()
-
-        with {:ok, updated} <-
-               current
-               |> Ecto.Changeset.change(
-                 secret_primary: fn -> secret end,
-                 secret_secondary: previous && fn -> previous end,
-                 rotated_at: DateTime.utc_now()
-               )
-               |> Repo.update(),
-             {:ok, _entry} <-
-               Audit.record(Repo, scope, :"access_key.rotate", updated, %{
-                 before: %{rotated_at: current.rotated_at},
-                 after: %{rotated_at: updated.rotated_at},
-                 details: %{change: "rotated"}
-               }) do
-          {:ok, {updated, secret}}
-        end
-    end)
-  end
-
-  @doc "Drops the secondary secret: the rotation is complete (`access_key.rotate`)."
-  def retire_previous_secret(%Scope{} = scope, %AccessKey{} = access_key)
-      when key_in_scope(scope, access_key) do
-    mutate(scope, :"access_key.rotate", access_key, fn
-      %AccessKey{secret_secondary: nil} = current ->
-        {:ok, current}
-
-      current ->
-        with {:ok, updated} <-
-               current |> Ecto.Changeset.change(secret_secondary: nil) |> Repo.update(),
-             {:ok, _entry} <-
-               Audit.record(Repo, scope, :"access_key.rotate", updated, %{
-                 before: %{previous_secret: true},
-                 after: %{previous_secret: false},
-                 details: %{change: "previous_retired"}
-               }) do
-          {:ok, updated}
-        end
-    end)
-  end
-
-  @doc """
-  Revokes the key: verification fails from now on. Today's key is revoked by any member
-  (`access_key.revoke_secret_key`); a node's key by an owner or an admin
-  (`access_key.revoke`), once approved: its public key becomes a tombstone in the ledger,
-  and a key that awaits approval is rejected instead (`reject/2`), `{:error, :pending}`.
-  Revoking a revoked key changes nothing.
+  Revokes an approved key (`access_key.revoke`, owners and admins): verification fails
+  from now on, and its public key becomes a tombstone in the ledger. A key that awaits
+  approval is rejected instead (`reject/2`), `{:error, :pending}`. Revoking a revoked key
+  changes nothing.
   """
   @spec revoke_access_key(Scope.t(), AccessKey.t()) ::
           {:ok, AccessKey.t()} | {:error, :pending | Access.reason()}
-  def revoke_access_key(%Scope{} = scope, %AccessKey{node_id: node_id} = access_key)
-      when key_in_scope(scope, access_key) and is_binary(node_id) do
+  def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key)
+      when key_in_scope(scope, access_key) do
     change_node_key(scope, :"access_key.revoke", access_key, fn node, current ->
       case AccessKey.status(current) do
         :revoked ->
@@ -249,147 +93,55 @@ defmodule Apiary.AccessKeys do
     end)
   end
 
-  def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key)
-      when key_in_scope(scope, access_key) do
-    mutate(scope, :"access_key.revoke_secret_key", access_key, fn
-      %AccessKey{revoked_at: %DateTime{}} = current ->
-        {:ok, current}
-
-      current ->
-        with {:ok, updated} <-
-               current |> Ecto.Changeset.change(revoked_at: DateTime.utc_now()) |> Repo.update(),
-             {:ok, _entry} <-
-               Audit.record(Repo, scope, :"access_key.revoke_secret_key", updated, %{
-                 before: %{revoked_at: nil},
-                 after: %{revoked_at: updated.revoked_at}
-               }) do
-          {:ok, updated}
-        end
-    end)
-  end
-
-  # Authorizes `action` on the caller's membership as it is now, then hands `fun` the
-  # key as it is now, locked for the rest of the transaction. The result leaves
-  # without secrets.
-  defp mutate(%Scope{} = scope, action, %AccessKey{id: id} = access_key, fun) do
-    fn ->
-      with :ok <- Access.authorize(scope, action, access_key),
-           {:ok, current} <- lock_access_key(scope, id) do
-        fun.(current)
-      end
-    end
-    |> Repo.transact()
-    |> case do
-      {:ok, %AccessKey{} = access_key} ->
-        {:ok, AccessKey.without_secrets(access_key)}
-
-      {:ok, {%AccessKey{} = access_key, secret}} ->
-        {:ok, AccessKey.without_secrets(access_key), secret}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # Today's keys only: a node's key has no secret to rotate, and is revoked under its
-  # node's lock (`change_node_key/4`).
-  defp lock_access_key(%Scope{organisation: organisation, workspace: workspace}, id) do
-    query =
-      from k in AccessKey,
-        where:
-          k.id == ^id and k.organisation_id == ^organisation.id and
-            k.workspace_id == ^workspace.id and is_nil(k.node_id),
-        lock: "FOR UPDATE"
-
-    # A secret that cannot be decrypted with the key the instance holds (see
-    # `readable?/1`) is dropped here, never carried over: a rotation issues a new secret
-    # in its place, and a revocation still revokes.
-    case Repo.one(query) do
-      %AccessKey{} = access_key -> {:ok, drop_unreadable(access_key)}
-      nil -> {:error, :not_found}
-    end
-  end
-
-  defp drop_unreadable(%AccessKey{} = access_key) do
-    %{
-      access_key
-      | secret_primary: if(is_binary(access_key.secret_primary), do: access_key.secret_primary),
-        secret_secondary:
-          if(is_binary(access_key.secret_secondary), do: access_key.secret_secondary)
-    }
-  end
-
   @doc """
-  The key behind a key id, secrets decrypted, for request verification: `:error`
-  for a key id the workspace does not hold or has revoked, for a key of a workspace or
-  an organisation marked for deletion (`Apiary.Deletion`), which answers as a revoked key
-  does until its deletion is cancelled, and for a key of an organisation the edition
-  stopped (`c:Apiary.Edition.active_organisations/2`), which answers so until it is in use
-  again: a key is a workspace's, not a person's, so a suspended membership or an account
-  out of use leaves the keys working; `{:error, :unreadable}`,
-  with a line in the log, when the secrets cannot be decrypted with the key the instance
-  holds (`APIARY_ENCRYPTION_SECRET` is not the one they were encrypted with). The key comes
-  with its workspace, read in the same query: its domain names a run's target
-  (`Apiary.Policy.Serving`).
+  The key behind a key id, for request verification, with its workspace, read in the same
+  query (its domain names a run's target, `Apiary.Policy.Serving`), and its node; whether
+  it is approved or awaits approval (`AccessKey.status/1`) the caller asks. `:error` for a
+  key id the workspace does not hold or has revoked, for a key of a deleted node, for a key
+  of a workspace or an organisation marked for deletion (`Apiary.Deletion`), which answers
+  as a revoked key does until its deletion is cancelled, and for a key of an organisation
+  the edition stopped (`c:Apiary.Edition.active_organisations/2`), which answers so until it
+  is in use again: a key is a workspace's, not a person's, so a suspended membership or an
+  account out of use leaves the keys working.
 
-  A node's key comes with its node too, whether it is approved or awaits approval
-  (`AccessKey.status/1`), which the caller asks; it has no secret, so no secret verifies
-  a request under it. Its integrity code is checked first: a row that does not match it,
-  changed outside the application, is `{:error, :integrity}`, with a line in the log.
+  Its integrity code is checked first: a row that does not match it, changed outside the
+  application, is `{:error, :integrity}`, with a line in the log.
   """
-  @spec fetch_for_verification(term) ::
-          {:ok, AccessKey.t()} | :error | {:error, :unreadable | :integrity}
+  @spec fetch_for_verification(term) :: {:ok, AccessKey.t()} | :error | {:error, :integrity}
   def fetch_for_verification(key_id) when is_binary(key_id) do
     query =
       from(k in AccessKey,
         join: w in assoc(k, :workspace),
         join: o in assoc(k, :organisation),
         as: :organisation,
-        left_join: n in assoc(k, :node),
+        join: n in assoc(k, :node),
         where: k.key_id == ^key_id and is_nil(k.revoked_at),
         where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
-        where: is_nil(k.node_id) or is_nil(n.deleted_at),
+        where: is_nil(n.deleted_at),
         preload: [workspace: w, node: n]
       )
       |> Apiary.Edition.active_organisations(:organisation)
 
     case Repo.one(query) do
       %AccessKey{} = access_key ->
-        ids = LogMetadata.metadata(access_key.organisation_id, access_key.workspace_id)
+        case AccessKey.verify_integrity(access_key) do
+          :ok ->
+            {:ok, access_key}
 
-        cond do
-          not readable?(access_key) -> unreadable(key_id, ids)
-          AccessKey.verify_integrity(access_key) != :ok -> tampered(key_id, ids)
-          true -> {:ok, access_key}
+          {:error, _reason} ->
+            ids = LogMetadata.metadata(access_key.organisation_id, access_key.workspace_id)
+            tampered(key_id, ids)
         end
 
       nil ->
         :error
     end
-  rescue
-    ArgumentError -> unreadable(key_id, owner_ids(key_id))
   end
 
   def fetch_for_verification(_key_id), do: :error
 
-  # A secret encrypted under another key does not raise when it is loaded: the cipher's
-  # failure comes through as the atom `:error` in the field. A secret is a binary or nil.
-  defp readable?(%AccessKey{secret_primary: primary, secret_secondary: secondary}) do
-    (is_binary(primary) or is_nil(primary)) and (is_binary(secondary) or is_nil(secondary))
-  end
-
   # The key id is public; nothing of the row is in the line but the organisation and
   # workspace ids, as metadata.
-  defp unreadable(key_id, metadata) do
-    Logger.error(
-      "access key secret cannot be decrypted key_id=#{key_id}: " <>
-        "APIARY_ENCRYPTION_SECRET is not the key the secret was encrypted with",
-      metadata
-    )
-
-    {:error, :unreadable}
-  end
-
   defp tampered(key_id, metadata) do
     Logger.error(
       "access key row does not match its integrity code key_id=#{key_id}: " <>
@@ -400,45 +152,59 @@ defmodule Apiary.AccessKeys do
     {:error, :integrity}
   end
 
-  # When loading the row raised, its ids are read again without the secrets, which are
-  # what could not be read.
-
-  defp owner_ids(key_id) do
-    query =
-      from k in AccessKey,
-        where: k.key_id == ^key_id,
-        select: {k.organisation_id, k.workspace_id}
-
-    case Repo.one(query) do
-      {organisation_id, workspace_id} -> LogMetadata.metadata(organisation_id, workspace_id)
-      nil -> []
-    end
-  rescue
-    _exception -> []
-  end
-
-  ## A node's keys
+  ## Codes, keys and their limits
 
   @doc """
-  code_ttl_minutes/0 is how long an enrolment code may be used once made: the
-  `:code_ttl_minutes` of `Apiary.AccessKeys` in the configuration, held to 1 to
-  #{@max_code_ttl_minutes}, the most the contract allows, and #{@default_code_ttl_minutes}
-  when unset or not a whole number.
+  code_ttl_minutes/0 is how long an enrolment code may be used once made:
+  #{@code_ttl_minutes} minutes, fixed, which no configuration changes.
   """
   @spec code_ttl_minutes() :: pos_integer
-  def code_ttl_minutes do
-    case Keyword.get(Application.get_env(:apiary, __MODULE__, []), :code_ttl_minutes) do
-      minutes when is_integer(minutes) -> minutes |> max(1) |> min(@max_code_ttl_minutes)
-      _unset -> @default_code_ttl_minutes
-    end
+  def code_ttl_minutes, do: @code_ttl_minutes
+
+  @doc """
+  runner_lines/3 is what a machine holding `key` is given, nothing of it secret: `file`,
+  the runner file's `server` section, `url` (`base_url`), `access_key_id` and
+  `apiary_public_key`, the pin, in YAML's flow form, one line per key; and `env`, the same
+  id and pin as the variables CI sets instead, `QORY_ACCESS_KEY_ID` and
+  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON. `pin` is the server's `apiary_public_key`
+  list (`Apiary.SigningKey.apiary_public_key/0`). The key's secret is the machine's alone.
+  """
+  @spec runner_lines(AccessKey.t(), String.t(), [%{required(String.t()) => String.t()}, ...]) ::
+          %{file: String.t(), env: String.t()}
+  def runner_lines(
+        %AccessKey{key_id: key_id},
+        base_url,
+        pin \\ Apiary.SigningKey.apiary_public_key()
+      )
+      when is_binary(key_id) and is_binary(base_url) do
+    pins =
+      Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
+        "    - {alg: #{alg}, public_key: #{public_key}}\n"
+      end)
+
+    json =
+      Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
+        Jason.OrderedObject.new([{"alg", alg}, {"public_key", public_key}])
+      end)
+
+    %{
+      file:
+        IO.iodata_to_binary([
+          "server:\n",
+          "  url: #{base_url}\n",
+          "  access_key_id: #{key_id}\n",
+          "  apiary_public_key:\n",
+          pins
+        ]),
+      env: "QORY_ACCESS_KEY_ID=#{key_id}\nQORY_APIARY_PUBLIC_KEY=#{Jason.encode!(json)}\n"
+    }
   end
 
   @doc """
-  key_limits/0 is how many keys a node holds at most: `approved`, approved and not
-  revoked, and `pending`, awaiting approval. A paste and an approval count them under the
-  node's lock here; nothing here makes a pending key but the enrolment, which counts the
-  pending limit under the same lock when it is built (the enrolment endpoint and the
-  signed requests that follow).
+  key_limits/0 is how many keys a node holds at most: `approved` at a time, approved (and
+  not revoked) or awaiting approval, and `pending` of those awaiting approval. A paste, an
+  approval and an enrolment (`enrol/2`), the one way a key comes to await approval, count
+  them under the node's lock.
   """
   @spec key_limits() :: %{approved: pos_integer, pending: pos_integer}
   def key_limits, do: %{approved: @approved_limit, pending: @pending_limit}
@@ -454,6 +220,22 @@ defmodule Apiary.AccessKeys do
         where: k.node_id == ^node_id,
         order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id],
         preload: [:enrolment_code]
+    )
+  end
+
+  @doc """
+  list_workspace_node_keys/1 is the keys of the scope's workspace's nodes and node pools in
+  use, neither revoked nor rejected (so approved or awaiting approval), each with its
+  node, newest first.
+  """
+  @spec list_workspace_node_keys(Scope.t()) :: [AccessKey.t()]
+  def list_workspace_node_keys(%Scope{} = scope) do
+    Repo.all(
+      from k in in_workspace(AccessKey, scope),
+        join: n in assoc(k, :node),
+        where: is_nil(k.revoked_at) and is_nil(n.deleted_at),
+        order_by: [desc: k.inserted_at, desc: k.id],
+        preload: [node: n]
     )
   end
 
@@ -671,6 +453,264 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
+  enrol/2 redeems an enrolment code for the key a machine enrols with it, the runner
+  contract's enrolment (`Apiary.Contract.Enrolment`, `ApiaryWeb.Contract.EnrolmentController`):
+  the code is the authority, so no person's scope is asked.
+
+  **The code is accepted** when it carries exactly the fingerprint of the instance's
+  signing key (`Apiary.SigningKey.fingerprint/0`), its SHA-256 is an enrolment code's, of a
+  workspace and an organisation in use (neither marked for deletion, nor stopped by the
+  edition), its node is in use, its row matches its integrity code, and it is neither
+  cancelled nor expired, and not yet used. Anything else is `{:error, :unauthorized}`,
+  whatever the reason. The node's row is locked `FOR UPDATE`, then the code's, so two
+  machines never redeem one code, and the limits count every change before them.
+
+  **Then the key is checked**: the key checks (`Apiary.Contract.Ed25519`), the proof, under
+  the key, and the proof's timestamp, within 300 seconds of `now`; any of them refused is
+  `{:error, :key_invalid}`. A node that holds a key awaiting approval, or two approved
+  keys, is `{:error, :key_limit}`. A public key in the ledger already, in any state, is
+  `{:error, :key_invalid}`, as a paste's is. Every refusal changes nothing: the code stays
+  as it was.
+
+  **The key is made** awaiting approval on the code's node, with the code's stored-secrets
+  flag, its label the code's label hint, else the name the machine sent, with `-2`, `-3`
+  and on after it while the node holds a key in use of that label; its public key enters
+  the ledger, pending; the code is used, by the key's id and public key; and the key
+  itself, as the actor, from `origin`, leaves the entry `access_key.add`, with
+  `arrived_by` `code`. `{:ok, key}`, with its node.
+
+  **A repeat** of a used code is the same answer again: a request whose code made a key,
+  with the same public key, a proof that verifies and a fresh timestamp, while the code
+  would not have expired and the key is neither revoked nor rejected, is `{:ok, key}` for
+  that key, as it is now, and changes nothing; so a machine whose answer was lost may ask
+  again. Any other key on a used code is `{:error, :unauthorized}`. The public keys are
+  compared in constant time.
+
+  `opts`: `now`, the time it is (the current time); `fingerprint`, the signing key's
+  fingerprint (`Apiary.SigningKey.fingerprint/0`); `origin`, where the request came from,
+  for the audit entry (`ApiaryWeb.Origin`).
+  """
+  @spec enrol(Enrolment.t(), keyword) ::
+          {:ok, AccessKey.t()} | {:error, :unauthorized | :key_invalid | :key_limit}
+  def enrol(%Enrolment{} = request, opts \\ []) do
+    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    fingerprint = Keyword.get_lazy(opts, :fingerprint, &Apiary.SigningKey.fingerprint/0)
+
+    with true <- Enrolment.issued_under?(request, fingerprint) || {:error, :unauthorized},
+         %EnrolmentCode{} = found <- find_code(request.code_head) || {:error, :unauthorized} do
+      Repo.transact(fn -> redeem(found, request, now, Keyword.get(opts, :origin)) end)
+    end
+  end
+
+  # The code by its SHA-256, of a workspace and an organisation in use, read without a
+  # lock: its node is locked first, then the code again (`redeem/4`).
+  defp find_code(head) do
+    from(c in EnrolmentCode,
+      join: w in assoc(c, :workspace),
+      join: o in assoc(c, :organisation),
+      as: :organisation,
+      where: c.code_sha256 == ^EnrolmentCode.hash(head),
+      where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at)
+    )
+    |> Apiary.Edition.active_organisations(:organisation)
+    |> Repo.one()
+  end
+
+  defp redeem(%EnrolmentCode{} = found, request, now, origin) do
+    with {:ok, node} <- lock_enrolling_node(found),
+         {:ok, code} <- lock_code(found),
+         {:ok, state} <- code_state(code, request, now),
+         {:ok, public_key} <- authenticate(request, now) do
+      case state do
+        :outstanding -> enrol_new(code, node, request, public_key, now, origin)
+        :used -> enrolled_already(code, node)
+      end
+    end
+  end
+
+  defp lock_enrolling_node(%EnrolmentCode{} = code) do
+    query =
+      from n in Node,
+        where: n.id == ^code.node_id and is_nil(n.deleted_at),
+        where:
+          n.organisation_id == ^code.organisation_id and n.workspace_id == ^code.workspace_id,
+        lock: "FOR UPDATE"
+
+    case Repo.one(query) do
+      %Node{} = node -> {:ok, Repo.preload(node, :workspace)}
+      nil -> {:error, :unauthorized}
+    end
+  end
+
+  # The code again, locked after its node, and checked against its integrity code: a row
+  # changed outside the application is never redeemed.
+  defp lock_code(%EnrolmentCode{id: id, node_id: node_id}) do
+    query =
+      from c in EnrolmentCode,
+        where: c.id == ^id and c.node_id == ^node_id,
+        lock: "FOR UPDATE"
+
+    with %EnrolmentCode{} = code <- Repo.one(query) || {:error, :unauthorized},
+         :ok <- intact_code(code) do
+      {:ok, code}
+    end
+  end
+
+  defp intact_code(%EnrolmentCode{} = code) do
+    case EnrolmentCode.verify_integrity(code) do
+      :ok ->
+        :ok
+
+      {:error, _reason} ->
+        Logger.error(
+          "enrolment code row does not match its integrity code code_id=#{code.id}: " <>
+            "it was changed outside the application, or under another APIARY_ENCRYPTION_SECRET",
+          LogMetadata.metadata(code.organisation_id, code.workspace_id)
+        )
+
+        {:error, :unauthorized}
+    end
+  end
+
+  # Outstanding, or used by the very public key the request carries; anything else, a
+  # code cancelled or expired among it, is no code.
+  defp code_state(%EnrolmentCode{} = code, request, now) do
+    cond do
+      code.cancelled_at != nil or DateTime.compare(code.expires_at, now) != :gt ->
+        {:error, :unauthorized}
+
+      code.used_at == nil ->
+        {:ok, :outstanding}
+
+      same_public_key?(code.public_key, request.public_key) ->
+        {:ok, :used}
+
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  defp same_public_key?(<<_::binary-size(32)>> = stored, encoded) do
+    case Ed25519.decode(encoded, 32) do
+      {:ok, sent} -> Plug.Crypto.secure_compare(stored, sent)
+      :error -> false
+    end
+  end
+
+  defp same_public_key?(_stored, _encoded), do: false
+
+  # The key checks, then the proof under the key, then its timestamp: each refused is
+  # one answer, `key_invalid`.
+  defp authenticate(request, now) do
+    with {:ok, public_key} <- Ed25519.decode_public_key(request.public_key),
+         true <- Enrolment.proof_verifies?(request, public_key),
+         true <- Enrolment.fresh?(request, now) do
+      {:ok, public_key}
+    else
+      _refused -> {:error, :key_invalid}
+    end
+  end
+
+  defp enrol_new(code, node, request, public_key, now, origin) do
+    with :ok <- within_limit(node, :enrol) do
+      key = %AccessKey{
+        id: Ecto.UUID.generate(),
+        organisation_id: node.organisation_id,
+        workspace_id: node.workspace_id,
+        node_id: node.id,
+        key_id: AccessKey.generate_key_id(),
+        public_key: public_key,
+        arrived_by: :code,
+        enrolment_code_id: code.id,
+        received_at: now,
+        created_by_id: code.created_by_id
+      }
+
+      changeset =
+        key
+        |> AccessKey.insert_changeset(%{
+          allow_secrets: code.allow_secrets,
+          label: enrolled_label(node, code.label_hint || request.name)
+        })
+        |> AccessKey.put_integrity()
+
+      with :ok <- enrolment_in_ledger(changeset, public_key, now),
+           {:ok, added} <- Repo.insert(changeset),
+           {:ok, _used} <-
+             code
+             |> Ecto.Changeset.change(
+               used_at: now,
+               used_by_key_id: added.key_id,
+               public_key: public_key
+             )
+             |> EnrolmentCode.put_integrity()
+             |> Repo.update(),
+           added = %{added | node: node, workspace: node.workspace},
+           {:ok, _entry} <-
+             Audit.record(
+               Repo,
+               Scope.put_origin(Scope.for_access_key(added), origin),
+               :"access_key.add",
+               added,
+               %{
+                 after: %{
+                   label: added.label,
+                   key_id: added.key_id,
+                   fingerprint: AccessKey.fingerprint(added),
+                   allow_secrets: added.allow_secrets,
+                   arrived_by: added.arrived_by
+                 },
+                 details: %{node_id: node.public_id, code_id: code.id}
+               }
+             ) do
+        {:ok, added}
+      end
+    end
+  end
+
+  # A public key in the ledger already, in any state, is refused as an invalid one is.
+  defp enrolment_in_ledger(changeset, public_key, now) do
+    case enter_in_ledger(changeset, public_key, :pending, now) do
+      :ok -> :ok
+      {:error, %Ecto.Changeset{}} -> {:error, :key_invalid}
+    end
+  end
+
+  # The label a key enrolled on `node` gets: `base`, or `base-2`, `base-3` and on, the
+  # first no key of the node in use has; the node is locked, so no other key takes it.
+  defp enrolled_label(%Node{id: node_id}, base) do
+    taken =
+      Repo.all(
+        from k in AccessKey,
+          where: k.node_id == ^node_id and is_nil(k.revoked_at),
+          select: k.label
+      )
+      |> MapSet.new()
+
+    Stream.iterate(1, &(&1 + 1))
+    |> Stream.map(fn
+      1 -> base
+      n -> "#{base}-#{n}"
+    end)
+    |> Enum.find(&(not MapSet.member?(taken, &1)))
+  end
+
+  # The key the used code made, while it is in use and intact: the answer again.
+  defp enrolled_already(%EnrolmentCode{used_by_key_id: key_id} = code, node) do
+    query =
+      from k in AccessKey,
+        where: k.key_id == ^key_id and k.node_id == ^node.id,
+        where: k.enrolment_code_id == ^code.id and is_nil(k.revoked_at)
+
+    with %AccessKey{} = key <- Repo.one(query) || {:error, :unauthorized},
+         :ok <- intact(key) do
+      {:ok, %{key | node: node, workspace: node.workspace}}
+    else
+      {:error, _reason} -> {:error, :unauthorized}
+    end
+  end
+
+  @doc """
   approve/2 approves a node's key that awaits approval (`access_key.approve`, owners and
   admins): it verifies requests from then on, with the stored-secrets flag it was made
   with. `{:ok, key}`; `{:error, :key_limit}` while the node holds two approved keys;
@@ -707,7 +747,7 @@ defmodule Apiary.AccessKeys do
           {:ok, approved}
         end
       else
-        status when is_atom(status) and status in [:active, :revoked, :rotating] ->
+        status when is_atom(status) and status in [:active, :revoked] ->
           {:error, :not_pending}
 
         {:error, reason} ->
@@ -940,7 +980,8 @@ defmodule Apiary.AccessKeys do
   end
 
   # A paste is refused while the node holds two keys, approved or awaiting approval,
-  # since it is approved at once; an approval while it holds two approved ones.
+  # since it is approved at once; an approval while it holds two approved ones; an
+  # enrolment while it holds a key awaiting approval, or two approved ones.
   defp within_limit(%Node{id: node_id}, purpose) do
     counts =
       Repo.one(
@@ -956,6 +997,7 @@ defmodule Apiary.AccessKeys do
       case purpose do
         :add -> counts.approved + counts.pending >= @approved_limit
         :approve -> counts.approved >= @approved_limit
+        :enrol -> counts.pending >= @pending_limit or counts.approved >= @approved_limit
       end
 
     if full?, do: {:error, :key_limit}, else: :ok
@@ -1012,16 +1054,5 @@ defmodule Apiary.AccessKeys do
 
     Repo.update_all(query, set: set)
     :ok
-  end
-
-  @doc "The `server` block of the runner file for this key."
-  def server_block(%AccessKey{key_id: key_id}, secret, base_url) when is_binary(secret) do
-    """
-    apiVersion: qory.dev/v1alpha1
-    server:
-      url: #{base_url}
-      access_key: #{key_id}
-      secret: #{secret}
-    """
   end
 end
