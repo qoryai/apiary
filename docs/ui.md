@@ -778,8 +778,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   and the kind; one search, `?q=`, words of a name or an id, and the Filter menu's Kind
   (`?kind=node`, `?kind=pool`), each a token under the bar; Sort by Name or Last seen
   (`?sort=seen`: running first, never seen last). Owners and admins have **New node**
-  (primary) and **New node pool** in the header; with no node yet, the empty state
-  offers both, and tells a member that an owner or admin adds nodes.
+  and **New node pool**, side by side and alike, in the header; with no node yet, the
+  empty state offers both, and tells a member that an owner or admin adds nodes.
 - **New node and New node pool** are pages of the Nodes section at paths of their own,
   `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
   page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending

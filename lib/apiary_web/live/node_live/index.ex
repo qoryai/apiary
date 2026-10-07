@@ -413,11 +413,11 @@ defmodule ApiaryWeb.NodeLive.Index do
           )}
         </:description>
         <:actions :if={@may_create}>
+          <.button id="new-node" patch={new_path(@current_scope, :node)}>
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("New node")}
+          </.button>
           <.button id="new-node-pool" patch={new_path(@current_scope, :pool)}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New node pool")}
-          </.button>
-          <.button id="new-node" variant="primary" patch={new_path(@current_scope, :node)}>
-            <.icon name="hero-plus-micro" class="size-4" />{gettext("New node")}
           </.button>
         </:actions>
         <NodeComponents.not_yet

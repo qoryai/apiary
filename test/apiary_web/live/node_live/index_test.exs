@@ -87,6 +87,19 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   describe "New node and New node pool" do
     setup :register_and_log_in_user
 
+    test "the header has New node, then New node pool, alike", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      ids =
+        render(lv)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#page-header-actions a")
+        |> LazyHTML.attribute("id")
+
+      assert ids == ["new-node", "new-node-pool"]
+      refute has_element?(lv, "#page-header-actions .btn-primary")
+    end
+
     test "New node is a page of the Nodes section", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
