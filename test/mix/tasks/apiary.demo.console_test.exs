@@ -1,0 +1,201 @@
+defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
+  # The history writes from processes of its own: the sandbox is shared. One writer at a
+  # time, so none waits on the shared connection long enough to time out on a slow machine.
+  use Apiary.DataCase, async: false
+
+  # The release whose fetch fails says so in the log.
+  @moduletag :capture_log
+
+  import Apiary.OrganisationsFixtures
+  import Ecto.Query
+
+  alias Apiary.{Accounts, Repo}
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
+  alias Apiary.Connections.Connection
+  alias Apiary.Integrations.Release
+  alias Apiary.Nodes.{Instance, Node}
+  alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
+  alias Apiary.Runs.{Run, Target}
+  alias Apiary.Secrets.Secret
+  alias Apiary.Variables.Variable
+  alias Mix.Tasks.Apiary.Demo.Console
+
+  setup do
+    shell = Mix.shell()
+    Mix.shell(Mix.Shell.Process)
+    on_exit(fn -> Mix.shell(shell) end)
+
+    # The suite's instance organisation is committed before any test: marked for deletion
+    # in this test's sandbox, the instance has none in use, as a new database has not.
+    now = DateTime.utc_now()
+
+    Repo.update_all(Organisation,
+      set: [
+        deletion_marked_at: now,
+        purge_after: DateTime.add(now, 30, :day),
+        purge_trigger: "grace_period"
+      ]
+    )
+
+    :ok
+  end
+
+  defp fill, do: Console.run(~w(--runs 140 --days 12 --concurrency 1))
+
+  defp count(query), do: Repo.aggregate(query, :count)
+
+  test "fills an empty instance: the organisation, its workspaces, people and their runs" do
+    fill()
+
+    organisation = Repo.get_by!(Organisation, slug: "acme")
+
+    # A second workspace where the edition allows one; the core's does not.
+    expected =
+      if Apiary.Edition.limits().workspaces == 1, do: ["main"], else: ["main", "shop-ops"]
+
+    assert organisation.id |> workspaces() |> Enum.sort() == expected
+
+    dana = Accounts.get_user_by_email("dana@example.com")
+    assert dana.confirmed_at
+
+    assert Repo.exists?(
+             from m in Membership,
+               where:
+                 m.organisation_id == ^organisation.id and m.user_id == ^dana.id and
+                   m.level == :owner
+           )
+
+    # The password the moduledoc gives signs her in.
+    [_, password] = Regex.run(~r/the password\s+`([^`]+)`/, moduledoc())
+    assert %{id: id} = Accounts.get_user_by_email_and_password("dana@example.com", password)
+    assert id == dana.id
+
+    levels =
+      Repo.all(
+        from m in Membership, where: m.organisation_id == ^organisation.id, select: m.level
+      )
+
+    assert :admin in levels and :member in levels
+
+    assert Repo.exists?(
+             from m in Membership,
+               where: m.organisation_id == ^organisation.id and not is_nil(m.suspended_at)
+           )
+
+    assert Repo.exists?(from i in Invitation, where: i.organisation_id == ^organisation.id)
+
+    main = Repo.get_by!(Workspace, organisation_id: organisation.id, slug: "main")
+
+    # Repositories on the three forges, a path on more than one of them, and runs that
+    # ended every way, one alive now.
+    systems =
+      Repo.all(
+        from t in Target, where: t.workspace_id == ^main.id, distinct: true, select: t.system
+      )
+
+    assert Enum.sort(systems) == ["codeberg.org", "github.com", "gitlab.com"]
+    refute Repo.exists?(from t in Target, where: t.system not in ^systems)
+
+    shop =
+      Repo.all(
+        from t in Target,
+          where: t.workspace_id == ^main.id and t.path == "acme/shop",
+          select: t.system
+      )
+
+    assert length(shop) > 1
+
+    states =
+      Repo.all(from r in Run, where: r.workspace_id == ^main.id, distinct: true, select: r.state)
+
+    assert "succeeded" in states and "failed" in states and "running" in states
+
+    assert count(from r in Run, where: r.workspace_id == ^main.id and is_nil(r.target_id)) > 0
+
+    # Dana pins three repositories.
+    assert count(from p in Apiary.Targets.Pin, where: p.user_id == ^dana.id) == 3
+  end
+
+  test "gives Main nodes with keys and instances, secrets, variables and integrations" do
+    fill()
+
+    main = main_workspace()
+
+    nodes = Repo.all(from n in Node, where: n.workspace_id == ^main.id, select: {n.name, n.kind})
+    assert Enum.sort(nodes) == [{"build-01", :node}, {"build-02", :node}, {"spot-runners", :pool}]
+
+    node_keys =
+      Repo.all(from k in AccessKey, where: k.workspace_id == ^main.id and not is_nil(k.node_id))
+
+    assert Enum.any?(node_keys, & &1.revoked_at)
+    assert Enum.count(node_keys, &is_nil(&1.revoked_at)) == 4
+
+    assert count(
+             from c in EnrolmentCode,
+               where: c.workspace_id == ^main.id and not is_nil(c.cancelled_at)
+           ) == 1
+
+    assert count(
+             from c in EnrolmentCode, where: c.workspace_id == ^main.id and is_nil(c.cancelled_at)
+           ) == 1
+
+    assert count(from i in Instance, where: i.workspace_id == ^main.id) > 0
+    assert count(from r in Run, where: r.workspace_id == ^main.id and not is_nil(r.node_id)) > 0
+
+    # Secrets, variables and integrations are the security feature's.
+    if Apiary.Features.on?(:security) do
+      assert count(from s in Secret, where: s.workspace_id == ^main.id) == 4
+      assert count(from v in Variable, where: v.workspace_id == ^main.id and v.locked) == 2
+
+      assert count(
+               from v in Variable, where: v.workspace_id == ^main.id and not is_nil(v.target_id)
+             ) > 0
+
+      kinds =
+        Repo.all(from c in Connection, where: c.workspace_id == ^main.id, select: c.kind)
+
+      assert Enum.frequencies(kinds) == %{"runtime" => 1, "service" => 2, "integration" => 2}
+
+      assert Repo.all(from r in Release, where: r.workspace_id == ^main.id, select: r.state)
+             |> Enum.sort() == ["failed", "ready", "ready"]
+    else
+      refute Repo.exists?(from s in Secret, where: s.workspace_id == ^main.id)
+      refute Repo.exists?(from v in Variable, where: v.workspace_id == ^main.id)
+      refute Repo.exists?(from c in Connection, where: c.workspace_id == ^main.id)
+    end
+  end
+
+  test "a second run makes nothing more of the fill, and brings a live run" do
+    fill()
+    targets = count(Target)
+    runs = count(Run)
+    keys = count(AccessKey)
+
+    fill()
+
+    assert count(Target) == targets
+    assert count(Run) == runs + 1
+    assert count(AccessKey) == keys
+  end
+
+  test "an instance with an organisation that is not the demo's is refused" do
+    sign_up_fixture()
+
+    assert_raise Mix.Error, ~r/not the demo's/, fn -> fill() end
+    refute Repo.exists?(from o in Organisation, where: o.slug == "acme")
+  end
+
+  defp main_workspace do
+    organisation = Repo.get_by!(Organisation, slug: "acme")
+    Repo.get_by!(Workspace, organisation_id: organisation.id, slug: "main")
+  end
+
+  defp workspaces(organisation_id),
+    do:
+      Repo.all(from w in Workspace, where: w.organisation_id == ^organisation_id, select: w.slug)
+
+  defp moduledoc do
+    {:docs_v1, _, _, _, %{"en" => doc}, _, _} = Code.fetch_docs(Console)
+    doc
+  end
+end
