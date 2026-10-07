@@ -109,9 +109,9 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       # the breadcrumb ending with the section and the page, Cancel back to the list.
       refute has_element?(lv, "#secret-dialog")
       refute has_element?(lv, "#secrets")
-      assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
       assert has_element?(lv, "#secret-page-title", "New secret")
-      assert has_element?(lv, "#secret-page-back[href='#{secrets_path(scope)}']")
+      refute has_element?(lv, "#secret-page-back")
       assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")
       refute render(lv) =~ "runs are given"
       assert has_element?(lv, "#breadcrumb a", "Secrets and variables")
@@ -288,7 +288,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       # A page of its own, not a dialog over the list.
       refute has_element?(lv, "#secrets")
-      assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
       assert has_element?(lv, "#secret-page-title", "Edit the name and note of FORGE_TOKEN")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Edit")
       assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")

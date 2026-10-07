@@ -17,9 +17,9 @@ defmodule ApiaryWeb.Storybook.Page.PageForm do
       %Variation{
         id: :new_node,
         description:
-          "A create form as a page of its own, never a dialog: Back and Cancel lead to " <>
-            "where it was opened from.",
-        attributes: %{id: "new-node", title: "New node", cancel: "#"},
+          "A create form as a page of its own, never a dialog: Cancel, at its foot, and " <>
+            "the breadcrumb lead to where it was opened from.",
+        attributes: %{id: "new-node", title: "New node"},
         slots: [
           ~s|<:description>A machine that runs runs, one at a time.</:description>|,
           ~s|<form class="grid gap-4" novalidate><.input name="name" value="build-01" label="Name" /><.page_form_foot id="new-node-save" cancel="#" cancel_by="href"><.button variant="primary" type="button">Create node</.button><:note>Owners and admins make nodes.</:note></.page_form_foot></form>|

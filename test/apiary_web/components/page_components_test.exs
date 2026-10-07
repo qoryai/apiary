@@ -80,6 +80,10 @@ defmodule ApiaryWeb.PageComponentsTest do
     assert text(html, "#settings-section-runs.q-settings-main-list h2#settings-section-title") =~
              "Runs"
 
+    # The section's title takes the focus after a move between sections, the level's h1
+    # being the same on each.
+    assert attribute(html, "h2#settings-section-title", "tabindex") == "-1"
+
     refute html =~ "settings-tabs"
 
     html =
@@ -93,12 +97,12 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "<h2"
   end
 
-  test "a form page: its title, Back and Cancel to where it was opened from" do
+  test "a form page: its title, and Cancel at its foot to where it was opened from" do
     assigns = %{}
 
     html =
       rendered_to_string(~H"""
-      <.page_form id="new-node" title="New node" cancel="/acme/shop/nodes">
+      <.page_form id="new-node" title="New node">
         <:description>A machine that runs runs.</:description>
         <form id="new-node-form">
           <.page_form_foot id="new-node-save" cancel="/acme/shop/nodes">
@@ -109,22 +113,44 @@ defmodule ApiaryWeb.PageComponentsTest do
       """)
 
     assert text(html, "#new-node h1#new-node-title") =~ "New node"
-    assert attribute(html, "#new-node-back", "href") == "/acme/shop/nodes"
     assert attribute(html, "#new-node-form #new-node-save-cancel", "href") == "/acme/shop/nodes"
     refute html =~ "<dialog"
-  end
 
-  test "the line of what runs don't receive yet" do
-    assigns = %{}
-
-    assert text(rendered_to_string(~H|<.not_on_runs />|), "#not-on-runs") =~
-             "Runs don't receive these yet."
+    # No bare Back in the header: Cancel and the breadcrumb lead back, and a caller that
+    # still passes where the form came from draws none either.
+    refute html =~ "new-node-back"
+    refute text(html, "#new-node header") =~ "Back"
 
     html =
       rendered_to_string(~H"""
-      <.not_on_runs id="links-not-yet">Runs don't receive these links yet.</.not_on_runs>
+      <.page_form id="new-node" title="New node" cancel="/acme/shop/nodes" cancel_by="patch">
+        <form id="new-node-form"></form>
+      </.page_form>
       """)
 
-    assert text(html, "#links-not-yet") =~ "Runs don't receive these links yet."
+    refute html =~ "new-node-back"
+    refute html =~ "/acme/shop/nodes"
+  end
+
+  test "the line of what runs don't receive yet, in the page's own words" do
+    assigns = %{}
+
+    html = rendered_to_string(~H|<.not_on_runs>Runs don't receive secrets yet.</.not_on_runs>|)
+    assert text(html, "p#not-on-runs.q-not-yet") =~ "Runs don't receive secrets yet."
+
+    html =
+      rendered_to_string(~H"""
+      <.not_on_runs id="links-not-yet">Runs don't receive a secret's links yet.</.not_on_runs>
+      """)
+
+    assert text(html, "#links-not-yet") =~ "Runs don't receive a secret's links yet."
+    refute html =~ "these yet"
+
+    # The page's sentence is required: no vague default.
+    assert %{required: true} =
+             Enum.find(
+               ApiaryWeb.PageComponents.__components__().not_on_runs.slots,
+               &(&1.name == :inner_block)
+             )
   end
 end

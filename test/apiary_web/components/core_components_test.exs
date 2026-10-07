@@ -233,4 +233,199 @@ defmodule ApiaryWeb.CoreComponentsTest do
       assert doc |> LazyHTML.query("tr#key-1 .q-confirm-view") |> Enum.to_list() == []
     end
   end
+
+  describe "a menu's trigger, as the Menu hook finds it" do
+    # The selector the hook (assets/js/hooks/menu.js) finds a menu's trigger by.
+    defp menu_trigger do
+      js = File.read!(Path.expand("../../../assets/js/hooks/menu.js", __DIR__))
+      [_, selector] = Regex.run(~r/export const TRIGGER = "([^"]+)"/, js)
+      selector
+    end
+
+    # Each Menu of the markup, and the id of the first element in it the hook takes for
+    # its trigger.
+    defp menu_triggers(html) do
+      doc = LazyHTML.from_fragment(html)
+
+      for menu <- LazyHTML.query(doc, "[phx-hook=Menu]") do
+        trigger = menu |> LazyHTML.query(menu_trigger()) |> Enum.take(1)
+
+        {menu |> LazyHTML.attribute("id") |> hd(),
+         Enum.flat_map(trigger, &LazyHTML.attribute(&1, "id"))}
+      end
+    end
+
+    test "is a menu button, or a disclosure's button: a filter chip, Filter, Sort, a row's ⋯" do
+      assert menu_trigger() == "[aria-haspopup], [aria-controls][aria-expanded]"
+
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <ApiaryWeb.RunComponents.filter
+          id="filter-action"
+          name="action"
+          label="Action"
+          value="workspace.rename"
+          options={[{"Workspace renamed", "workspace.rename", nil}]}
+          remove="/acme/audit-log"
+        />
+        <CoreComponents.filter_menu id="runs-filter" count={1}>
+          <:section key="state" label="State" icon="hero-check-circle" value="Failed">
+            <p>options</p>
+          </:section>
+        </CoreComponents.filter_menu>
+        <CoreComponents.filter_menu id="network-filter">
+          <CoreComponents.menu_item checked={false}>Denied</CoreComponents.menu_item>
+        </CoreComponents.filter_menu>
+        <CoreComponents.sort_menu id="sort" current="Newest first">
+          <CoreComponents.menu_item checked={true}>Newest first</CoreComponents.menu_item>
+        </CoreComponents.sort_menu>
+        <CoreComponents.row_menu id="row-1-menu" label="Actions for build-01">
+          <CoreComponents.menu_item>Rename</CoreComponents.menu_item>
+        </CoreComponents.row_menu>
+        """)
+
+      assert menu_triggers(html) == [
+               {"filter-action", ["filter-action-button"]},
+               {"runs-filter", ["runs-filter-button"]},
+               {"network-filter", ["network-filter-button"]},
+               {"sort", ["sort-button"]},
+               {"row-1-menu", ["row-1-menu-button"]}
+             ]
+
+      # The chip and the sections' Filter are disclosures: no aria-haspopup, which
+      # the hook found them by alone before.
+      doc = LazyHTML.from_fragment(html)
+
+      for id <- ~w(filter-action-button runs-filter-button) do
+        assert [_] =
+                 doc
+                 |> LazyHTML.query("##{id}[aria-controls][aria-expanded=false]")
+                 |> Enum.to_list()
+
+        assert [] = doc |> LazyHTML.query("##{id}[aria-haspopup]") |> Enum.to_list()
+      end
+    end
+  end
+
+  describe "an inline confirmation" do
+    test "is named by its question and described by what happens" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.inline_confirm
+          id="secret-1-confirm"
+          question="Delete FORGE_TOKEN?"
+          cancel="/acme/shop/settings/secrets"
+        >
+          The secret and its value are deleted. This cannot be undone.
+          <:action>
+            <CoreComponents.button variant="danger" size="xs">Yes, delete</CoreComponents.button>
+          </:action>
+        </CoreComponents.inline_confirm>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      [group] = doc |> LazyHTML.query("#secret-1-confirm[role=group]") |> Enum.to_list()
+      assert LazyHTML.attribute(group, "aria-labelledby") == ["secret-1-confirm-question"]
+      assert LazyHTML.attribute(group, "aria-describedby") == ["secret-1-confirm-sub"]
+
+      assert doc |> LazyHTML.query("#secret-1-confirm-sub") |> LazyHTML.text() =~
+               "This cannot be undone."
+    end
+  end
+
+  describe "an empty state" do
+    test "as the page's h1 it takes the focus after a navigation; as an h2 it does not" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.empty_state title="No nodes yet" heading="h1">
+          A node runs runs.
+        </CoreComponents.empty_state>
+        <CoreComponents.empty_state title="No runs match">Clear the filters.</CoreComponents.empty_state>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      assert doc |> LazyHTML.query("h1[tabindex='-1']") |> LazyHTML.text() =~ "No nodes yet"
+      assert [_] = doc |> LazyHTML.query("h2:not([tabindex])") |> Enum.to_list()
+    end
+  end
+
+  describe "an input described by the page too" do
+    test "keeps its own description, its hint or its errors, and adds the page's" do
+      form = Phoenix.Component.to_form(%{"name" => ""}, as: :variable)
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:name],
+          label: "Name",
+          hint: "Letters, digits and underscores.",
+          "aria-describedby": "variable_name-rules"
+        )
+
+      doc = LazyHTML.from_fragment(html)
+      [input] = doc |> LazyHTML.query("input#variable_name") |> Enum.to_list()
+
+      assert LazyHTML.attribute(input, "aria-describedby") == [
+               "variable_name-hint variable_name-rules"
+             ]
+
+      # Once, not twice: the page's is merged, not written again after the input's own.
+      refute html =~ ~r/aria-describedby="[^"]*"[^>]*aria-describedby=/
+
+      form =
+        Phoenix.Component.to_form(%{"name" => ""},
+          as: :variable,
+          errors: [name: {"can't be blank", []}],
+          action: :insert
+        )
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:name],
+          label: "Name",
+          "aria-describedby": "variable_name-rules"
+        )
+
+      [input] =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("input#variable_name")
+        |> Enum.to_list()
+
+      assert LazyHTML.attribute(input, "aria-describedby") == [
+               "variable_name-error variable_name-rules"
+             ]
+
+      # A select, a text area and a field with a prefix merge it the same way.
+      for type <- ~w(select textarea) do
+        html =
+          render_component(&CoreComponents.input/1,
+            name: "kind",
+            id: "kind",
+            type: type,
+            value: "a",
+            options: [{"A", "a"}],
+            "aria-describedby": "kind-rules"
+          )
+
+        assert html =~ ~s(aria-describedby="kind-rules"), type
+      end
+
+      html =
+        render_component(&CoreComponents.input/1,
+          name: "slug",
+          id: "slug",
+          value: "shop",
+          prefix: "qory.example/acme/",
+          "aria-describedby": "slug-rules"
+        )
+
+      assert html =~ ~s(aria-describedby="slug-prefix slug-rules")
+    end
+  end
 end

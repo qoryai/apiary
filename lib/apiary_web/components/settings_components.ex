@@ -11,17 +11,20 @@ defmodule ApiaryWeb.SettingsComponents do
     edition's sections (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the
     edition's own. Its audit log is a record, not a setting: a page of the organisation's
     sidebar (`ApiaryWeb.ActivityLive`).
-  - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
-    People (who reaches it, and at what level: read here, managed in the organisation's
-    People), with the `security` feature Integrations (`ApiaryWeb.IntegrationLive.Index`),
-    Access keys, Runs (how long it keeps runs, their events and their logs), and,
-    with the `security` feature, Secrets and variables (`ApiaryWeb.SecretLive.Index`).
+  - A workspace's (`/:org/:workspace/settings/…`), in the map's order: General (its name,
+    and deleting it), People (who reaches it, and at what level: read here, managed in the
+    organisation's People), with the `security` feature Integrations
+    (`ApiaryWeb.IntegrationLive.Index`) and Secrets and variables
+    (`ApiaryWeb.SecretLive.Index`), Runs (how long it keeps runs, their events and their
+    logs), and Access keys last.
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
 
-  A person's own settings are the person's pages, and their sidebar is their list
-  (`ApiaryWeb.Layouts`). A list holds its kind's sections only: no other kind's, no link
+  A person's own settings are the person's pages: the frame lists them as the second
+  column beside the sidebar the person came from, or alone in the person's own sidebar
+  where they have no workspace (`ApiaryWeb.Layouts`). A list holds its kind's sections
+  only: no other kind's, no link
   across. A section the reader may not open is absent from it, as a navigation entry is;
   its page still refuses them. What cannot be undone is never an entry: it is the danger
   zone at the end of its scope's General page, or of Profile (`danger_zone/1`), and its
@@ -29,8 +32,9 @@ defmodule ApiaryWeb.SettingsComponents do
 
   A page of the settings reads its sections when it mounts, and again when the reader's
   membership changes (`sections/2`), since an edition's section may ask the database
-  whether it has anything for the reader; it renders them with `layout/1`, its own marked
-  current.
+  whether it has anything for the reader, and passes them to the frame, which lists them
+  as its second column, its own marked current (`ApiaryWeb.Layouts.app/1`'s `sections`
+  and `section`); a node's settings list theirs in the page (`layout/1`).
   """
   use ApiaryWeb, :html
 
@@ -106,21 +110,6 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-puzzle-piece",
           path: ~p"/#{organisation}/#{workspace}/settings/integrations"
         },
-      %Entry{
-        section: :main,
-        key: :keys,
-        label: gettext("Access keys"),
-        icon: "hero-key",
-        path: ~p"/#{organisation}/#{workspace}/settings/keys",
-        count: :keys
-      },
-      %Entry{
-        section: :main,
-        key: :runs,
-        label: gettext("Runs"),
-        icon: "hero-archive-box",
-        path: ~p"/#{organisation}/#{workspace}/settings/runs"
-      },
       Access.can?(scope, :"secret.read", workspace) &&
         %Entry{
           section: :main,
@@ -128,7 +117,23 @@ defmodule ApiaryWeb.SettingsComponents do
           label: gettext("Secrets and variables"),
           icon: "hero-lock-closed",
           path: ~p"/#{organisation}/#{workspace}/settings/secrets"
-        }
+        },
+      %Entry{
+        section: :main,
+        key: :runs,
+        label: gettext("Runs"),
+        icon: "hero-archive-box",
+        path: ~p"/#{organisation}/#{workspace}/settings/runs"
+      },
+      # Last, as the map has it.
+      %Entry{
+        section: :main,
+        key: :keys,
+        label: gettext("Access keys"),
+        icon: "hero-key",
+        path: ~p"/#{organisation}/#{workspace}/settings/keys",
+        count: :keys
+      }
     ]
     |> Enum.filter(& &1)
   end
@@ -221,7 +226,11 @@ defmodule ApiaryWeb.SettingsComponents do
       >
         <header class="q-settings-head">
           <div class="min-w-0">
-            <h2 id="settings-section-title" class="q-settings-head-title">{@title}</h2>
+            <%!-- Focus goes here after a move between sections: the level's h1 never
+                 changes. --%>
+            <h2 id="settings-section-title" class="q-settings-head-title outline-none" tabindex="-1">
+              {@title}
+            </h2>
             <p :if={@subtitle != []} class="q-settings-head-sub">{render_slot(@subtitle)}</p>
           </div>
           <div :if={@actions != []} class="q-settings-actions">{render_slot(@actions)}</div>
@@ -558,6 +567,15 @@ defmodule ApiaryWeb.SettingsComponents do
   attr :change, :string, default: nil, doc: "the event of a change of the field"
   attr :submit, :string, default: nil, doc: "the event of the red button"
   attr :ready, :boolean, default: true, doc: "whether the red button is enabled"
+
+  attr :confirm_label, :string,
+    default: nil,
+    doc: "the red button's words, Yes, delete unless given (`deletion_confirm/1`)"
+
+  attr :busy_label, :string,
+    default: nil,
+    doc: "the red button's words while it acts, Deleting unless given"
+
   slot :inner_block, required: true, doc: "the sentence"
 
   slot :lost, doc: "what is lost, at more length than the sentence, a paragraph each" do
@@ -600,6 +618,8 @@ defmodule ApiaryWeb.SettingsComponents do
         change={@change}
         submit={@submit}
         ready={@ready}
+        confirm_label={@confirm_label}
+        busy_label={@busy_label}
         cancel={JS.patch(@close_path) |> JS.focus(to: "##{@id}-button")}
       >
         <:lost :for={lost <- @lost} id={lost[:id]}>{render_slot(lost)}</:lost>
@@ -615,8 +635,10 @@ defmodule ApiaryWeb.SettingsComponents do
   `confirm` slot), never a dialog: a form, `id`-form, of what is lost (`:lost`), the field
   asked to confirm (`:field`), such as the slug typed, which takes the focus, then the
   `CoreComponents.inline_confirm/1` (`id`-confirming), its question and its red button,
-  Yes, delete (`id`-confirm), enabled once `ready`, beside Cancel, which takes the focus
-  where there is no field to type. Cancel and Escape run `cancel`.
+  Yes, delete (`id`-confirm; other words in `confirm_label`, and in `busy_label` for
+  Deleting while it acts, as a removal's Yes, remove and Removing), enabled once `ready`,
+  beside Cancel, which takes the focus where there is no field to type. Cancel and
+  Escape run `cancel`.
   """
   attr :id, :string, required: true, doc: "the act's id, which its parts' ids begin with"
   attr :question, :string, required: true
@@ -625,6 +647,14 @@ defmodule ApiaryWeb.SettingsComponents do
   attr :submit, :string, required: true
   attr :ready, :boolean, default: true
   attr :cancel, :any, required: true, doc: "a path to patch to, or a JS command"
+
+  attr :confirm_label, :string,
+    default: nil,
+    doc: "the red button's words; nil for Yes, delete"
+
+  attr :busy_label, :string,
+    default: nil,
+    doc: "the red button's words while it acts; nil for Deleting"
 
   slot :lost, doc: "what is lost, a paragraph each" do
     attr :id, :string
@@ -658,9 +688,9 @@ defmodule ApiaryWeb.SettingsComponents do
             size="xs"
             type="submit"
             disabled={!@ready}
-            loading_text={gettext("Deleting")}
+            loading_text={@busy_label || gettext("Deleting")}
           >
-            {gettext("Yes, delete")}
+            {@confirm_label || gettext("Yes, delete")}
           </.button>
         </:action>
       </.inline_confirm>

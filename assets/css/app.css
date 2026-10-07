@@ -594,6 +594,19 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+  /* A radio as a checkbox: its ring the field's border (3:1 on the page, where honey is
+     2:1), honey only once it is chosen, the ring then darker, as a checked box's. */
+  :where(.radio):not(:checked) {
+    border-color: var(--q-border-field);
+    background-color: var(--color-base-100);
+  }
+  :where(.radio):checked {
+    border-color: color-mix(in oklab, var(--color-primary) 78%, black);
+  }
+  :where(.radio):focus-visible {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 2px;
+  }
 
   /* 40 px controls and 16 px text below 768 px, and everywhere on touch. */
   @media (max-width: 767.98px) {
@@ -1598,7 +1611,9 @@
     background-color: var(--color-base-300);
     color: var(--color-base-content);
   }
-  .q-nav-item[aria-current="page"] {
+  /* The current entry: the page's ("page"), or the page's parent ("true"), the
+     sidebar's Settings on a page of its sections. */
+  .q-nav-item[aria-current] {
     background-color: var(--color-base-100);
     color: var(--color-base-content);
     font-weight: 500;
@@ -1608,7 +1623,7 @@
     flex: none;
     color: var(--q-faint);
   }
-  .q-nav-item[aria-current="page"] .q-nav-icon {
+  .q-nav-item[aria-current] .q-nav-icon {
     color: var(--color-accent);
   }
   .q-nav-text {
@@ -1637,10 +1652,39 @@
   .q-nav-pin-sys {
     color: var(--q-faint);
   }
+  /* The drawer, below 768 px: one piece that scrolls, its close button kept at the top,
+     so on a short screen Settings and its sections at the foot never squeeze the
+     scope's pages; the foot still sits at the bottom of a tall one. The parent Settings
+     is drawn lighter than its current section listed under it: one selected card. */
+  @media (max-width: 767px) {
+    .q-sidebar {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .q-sidebar-body {
+      flex: 1 0 auto;
+      overflow-y: visible;
+    }
+    .q-drawer-head {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background-color: var(--color-base-200);
+    }
+    .q-nav-item.q-nav-parent {
+      background-color: transparent;
+      box-shadow: none;
+    }
+  }
   @media (min-width: 768px) {
     /* The organisation's tile over the sidebar's icons. */
     .q-topbar {
       padding-left: 0.625rem;
+    }
+    /* The drawer's copy of the second column: from here the column itself shows them,
+       once. In this layer, which a utility's `md:hidden` does not beat. */
+    .q-drawer-sections {
+      display: none;
     }
     /* A menu or a tooltip of the sidebar may reach past its edge, over the page. */
     #shell .drawer-side {
@@ -1782,7 +1826,7 @@
     .q-second-link:hover {
       color: var(--color-base-content);
     }
-    .q-second-link[aria-current="page"] {
+    .q-second-link[aria-current] {
       border-bottom-color: var(--color-primary);
       color: var(--color-base-content);
       font-weight: 500;
@@ -1834,7 +1878,7 @@
       font-size: 0.875rem;
     }
     .q-second-link:hover,
-    .q-second-link[aria-current="page"] {
+    .q-second-link[aria-current] {
       background-color: var(--color-base-200);
     }
     .q-second-n {
@@ -1908,19 +1952,6 @@
     display: grid;
     min-width: 0;
     gap: 16px;
-  }
-  .q-form-back {
-    display: inline-flex;
-    width: fit-content;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 6px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    line-height: 1.125rem;
-  }
-  .q-form-back:hover {
-    color: var(--color-base-content);
   }
 
   /* ---- What runs don't receive yet (PageComponents.not_on_runs) ---- */

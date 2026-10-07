@@ -206,4 +206,43 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     assert conn.status == 404
   end
+
+  test "Go to lists a Settings' sections after it, in the second column's order",
+       %{conn: conn, scope: scope} do
+    labels = labels(group(jump(conn, workspace_path(scope, "/jump")), "Go to"))
+
+    workspace =
+      for %{label: label} <- ApiaryWeb.SettingsComponents.sections(scope, :workspace),
+          label != "General",
+          do: "Workspace settings › #{label}"
+
+    # Right after Workspace settings, in order, each once: Access keys last, as the
+    # column has it, not first where the navigation has its entry.
+    at = Enum.find_index(labels, &(&1 == "Workspace settings"))
+    assert Enum.slice(labels, at + 1, length(workspace)) == workspace
+    assert List.last(workspace) == "Workspace settings › Access keys"
+    assert Enum.count(labels, &(&1 == "Workspace settings › Access keys")) == 1
+
+    organisation =
+      for %{label: label} <- ApiaryWeb.SettingsComponents.sections(scope, :organisation),
+          label != "General",
+          do: "Organisation settings › #{label}"
+
+    at = Enum.find_index(labels, &(&1 == "Organisation settings"))
+    assert Enum.slice(labels, at + 1, length(organisation)) == organisation
+    assert Enum.count(labels, &(&1 == "Organisation settings › People")) == 1
+  end
+
+  test "an instance admin goes to Instance › Configuration; nobody else does",
+       %{conn: conn, user: user, scope: scope} do
+    go_to = fn -> group(jump(conn, workspace_path(scope, "/jump"), "configuration"), "Go to") end
+
+    refute "Instance › Configuration" in labels(go_to.())
+
+    {:ok, %{granted?: true}} = Organisations.grant_instance_admin(user)
+
+    item = Enum.find(go_to.()["items"], &(&1["label"] == "Instance › Configuration"))
+    assert item["href"] == "/instance/configuration"
+    assert item["detail"] == "Instance"
+  end
 end

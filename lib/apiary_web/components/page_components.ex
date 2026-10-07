@@ -154,7 +154,14 @@ defmodule ApiaryWeb.PageComponents do
       >
         <header class="q-settings-head">
           <div class="min-w-0">
-            <h2 :if={@heading} id="settings-section-title" class="q-settings-head-title">
+            <%!-- Focus goes here after a move between sections: the level's h1 never
+                 changes. --%>
+            <h2
+              :if={@heading}
+              id="settings-section-title"
+              class="q-settings-head-title outline-none"
+              tabindex="-1"
+            >
               {@title}
             </h2>
             <h1
@@ -179,9 +186,11 @@ defmodule ApiaryWeb.PageComponents do
   page_form/1 is a form that creates or changes one thing, as a page of its own: never a
   dialog over a list. Its title, one line of what it does, then the form in a 720 px
   column. The page's form holds its fields and ends with `page_form_foot/1`, its button
-  and Cancel, which leads back to where the form was opened from (`cancel`): the list, or
-  the thing's page. The breadcrumb adds the form's name as the page's last segment
-  (`ApiaryWeb.Layouts.app/1`'s `crumb`).
+  and Cancel, which leads back to where the form was opened from: the list, or the
+  thing's page. The breadcrumb adds the form's name as the page's last segment
+  (`ApiaryWeb.Layouts.app/1`'s `crumb`), after the segments that lead back. There is no
+  other way back in the header: a link the page adds names where it goes ("Back to the
+  variables"), never a bare Back.
 
       <.page_form id="new-node" title={gettext("New node")} cancel={nodes}>
         <:description>{gettext("A machine that runs runs.")}</:description>
@@ -197,10 +206,15 @@ defmodule ApiaryWeb.PageComponents do
   attr :title, :string, required: true
 
   attr :cancel, :string,
-    required: true,
-    doc: "where the form was opened from, where Cancel and the header's back link lead"
+    default: nil,
+    doc:
+      "where the form was opened from; the header no longer leads there (the foot's Cancel, `page_form_foot/1`, and the breadcrumb do), kept so a caller that passes it still compiles"
 
-  attr :cancel_by, :string, default: "navigate", values: ~w(navigate patch)
+  attr :cancel_by, :string,
+    default: "navigate",
+    values: ~w(navigate patch),
+    doc: "kept with `cancel`"
+
   slot :description, doc: "one line: what the form does"
   slot :inner_block, required: true, doc: "the form"
 
@@ -209,17 +223,6 @@ defmodule ApiaryWeb.PageComponents do
     <section id={@id} class="q-form-page" aria-labelledby={"#{@id}-title"}>
       <header class="q-page-head">
         <div class="q-page-head-main">
-          <.link
-            :if={@cancel_by == "navigate"}
-            id={"#{@id}-back"}
-            navigate={@cancel}
-            class="q-form-back"
-          >
-            <.icon name="hero-arrow-left-micro" class="size-4" />{gettext("Back")}
-          </.link>
-          <.link :if={@cancel_by == "patch"} id={"#{@id}-back"} patch={@cancel} class="q-form-back">
-            <.icon name="hero-arrow-left-micro" class="size-4" />{gettext("Back")}
-          </.link>
           <h1 id={"#{@id}-title"} class="q-page-h1 outline-none" tabindex="-1">{@title}</h1>
           <p :if={@description != []} class="q-page-desc">{render_slot(@description)}</p>
         </div>
@@ -255,19 +258,22 @@ defmodule ApiaryWeb.PageComponents do
   @doc """
   not_on_runs/1 is the one plain line a page over data no run receives yet says, once, near
   its top: a workspace's integrations, a target's own integrations and variables, a
-  secret's links. Its words are "Runs don't receive these yet.", or the page's own
-  (`inner_block`), as plain: such a page never says that runs receive what it holds.
+  secret's links. Its words are the page's own (`inner_block`), naming what runs don't
+  receive ("Runs don't receive secrets yet."), never a vague "these": such a page never
+  says that runs receive what it holds.
   """
   attr :id, :string, default: "not-on-runs"
   attr :class, :any, default: nil
-  slot :inner_block, doc: "the page's own words, where the default does not fit"
+
+  slot :inner_block,
+    required: true,
+    doc: "the page's sentence, naming what runs don't receive yet"
 
   def not_on_runs(assigns) do
     ~H"""
     <p id={@id} class={["q-not-yet", @class]}>
       <.icon name="hero-information-circle-micro" class="q-not-yet-i size-4" />
-      <span :if={@inner_block == []}>{gettext("Runs don't receive these yet.")}</span>
-      <span :if={@inner_block != []}>{render_slot(@inner_block)}</span>
+      <span>{render_slot(@inner_block)}</span>
     </p>
     """
   end

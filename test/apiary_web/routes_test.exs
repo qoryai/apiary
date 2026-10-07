@@ -18,7 +18,9 @@ defmodule ApiaryWeb.RoutesTest.Router do
     live "/users/register", ApiaryWeb.UserLive.Login, :new
   end
 
-  instance_routes()
+  instance_routes do
+    live "/instance/extra", ApiaryWeb.ActivityLive, :index
+  end
 
   organisation_routes do
     live "/:org/extra", ApiaryWeb.ActivityLive, :index
@@ -31,6 +33,9 @@ defmodule ApiaryWeb.RoutesTest do
   alias ApiaryWeb.RoutesTest.Router
 
   defp route(router, path), do: Phoenix.Router.route_info(router, "GET", path, "localhost")
+
+  # The on_mount hooks of a live_session, each `{module, argument}`.
+  defp on_mount(%{extra: %{on_mount: hooks}}), do: Enum.map(hooks, & &1.id)
 
   defp live_session(router, path) do
     %{phoenix_live_view: {live_view, _action, _opts, extra}} = route(router, path)
@@ -68,6 +73,25 @@ defmodule ApiaryWeb.RoutesTest do
 
     assert live_session(ApiaryWeb.Router, "/acme/extra") ==
              {ApiaryWeb.WorkspaceLive.Overview, :workspace}
+  end
+
+  test "an Instance page of the block is in the Instance's live_session, behind sign-in" do
+    assert live_session(Router, "/instance/extra") == {ApiaryWeb.ActivityLive, :instance}
+
+    assert live_session(Router, "/instance/configuration") ==
+             {ApiaryWeb.InstanceLive.Configuration, :instance}
+
+    %{pipe_through: pipelines, phoenix_live_view: {_live_view, _action, _opts, session}} =
+      route(Router, "/instance/extra")
+
+    assert :require_authenticated_user in pipelines
+    assert {ApiaryWeb.UserAuth, :require_authenticated} in on_mount(session)
+
+    # The core's router has no such page: the block is the edition's alone.
+    refute match?(
+             %{phoenix_live_view: {ApiaryWeb.ActivityLive, _, _, _}},
+             route(ApiaryWeb.Router, "/instance/extra")
+           )
   end
 
   test "except: naming no route of the macro's is refused" do

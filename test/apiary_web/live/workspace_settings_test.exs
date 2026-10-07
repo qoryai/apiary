@@ -93,7 +93,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
         refute has_element?(lv, "#main #settings-tabs")
         assert has_element?(lv, "#main h1", "Workspace settings")
         assert has_element?(lv, "h2#settings-section-title", title)
-        assert has_element?(lv, "aside#sidebar #nav-settings[aria-current=page]")
+        assert has_element?(lv, "aside#sidebar #nav-settings[aria-current=true]")
       end
     end
 
@@ -109,9 +109,21 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
     @tag needs: :security
     test "Secrets and variables, and each of its pages, are the section's",
          %{conn: conn, scope: scope} do
-      for rest <- ["/secrets", "/variables", "/secrets/new", "/variables/new"] do
+      # The section is the page on its lists, and the parent of a page under them.
+      for {rest, current} <- [
+            {"/secrets", "page"},
+            {"/variables", "page"},
+            {"/secrets/new", "true"},
+            {"/variables/new", "true"}
+          ] do
         {:ok, lv, _html} = live(conn, settings_path(scope, rest))
-        assert has_element?(lv, "#settings-tabs #settings-tab-secrets[aria-current=page]")
+
+        assert has_element?(
+                 lv,
+                 "#settings-tabs #settings-tab-secrets[aria-current=#{current}]"
+               ),
+               rest
+
         assert has_element?(lv, "#not-on-runs", "Today a run receives only its security policy.")
       end
     end
