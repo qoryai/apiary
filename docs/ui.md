@@ -862,8 +862,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   a current Chrome, Edge, Firefox or Safari, or enrol the machine with qory."; a key lost
   on its way says "The connection to Qory dropped before the key was confirmed, and its
   secret is gone. If a new key shows on the Access key tab, revoke it, then generate
-  another." Anything sent beyond those three values, or a value holding a secret, goes
-  back to the tab with "The key wasn't added. Try again.", and nothing is added.
+  another." Anything sent beyond those three values, a label or choice holding a secret,
+  or a public key that does not decode as one, goes back to the tab with "The key wasn't
+  added. Try again.", and nothing is added.
 - **Variables for build-01** (`/nodes/:node_id/access-key/keys/:key_id/generated`) is
   what Generate key leads to, with its flash "build-01 is added.": "For build-01. Set
   these three variables where the runner starts.", the notice "**The secret is shown

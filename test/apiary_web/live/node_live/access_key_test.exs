@@ -1209,6 +1209,69 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert add_entries(node) == []
     end
 
+    # A valid public key whose base64url holds `prefix` at its start: hashes, the first
+    # three bytes of each made `prefix`'s (four characters, 24 bits, so the encoding stays
+    # canonical), until one decodes and passes the key checks. Deterministic.
+    defp public_key_holding(prefix) do
+      Stream.iterate(0, &(&1 + 1))
+      |> Stream.map(fn i ->
+        <<_::binary-size(3), rest::binary>> = :crypto.hash(:sha256, "spot-runners #{i}")
+        Base.url_encode64(Base.url_decode64!(prefix) <> rest, padding: false)
+      end)
+      |> Enum.find(&match?({:ok, _}, Ed25519.decode_public_key(&1)))
+    end
+
+    test "a public key that happens to hold qak_ is added like any other", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+
+      for prefix <- ["qak_", "QAK_"] do
+        public_key = public_key_holding(prefix)
+        assert String.starts_with?(public_key, prefix)
+        assert String.length(public_key) == 43
+
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+
+        push_key(
+          lv,
+          browser_key(%{"label" => "ci #{:erlang.phash2(prefix)}", "public_key" => public_key})
+        )
+
+        assert_reply(lv, %{key_id: key_id})
+        assert_patch(lv, generated_path(scope, node, key_id))
+        assert has_element?(lv, ~s{#key-generated-secret[data-public-key="#{public_key}"]})
+      end
+
+      assert length(AccessKeys.list_for_node(scope, node)) == 2
+    end
+
+    test "a secret sent as the public key is refused by its decoding", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+
+      for secret <- [
+            "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+            "qak_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+          ] do
+        assert String.length(secret) == 47
+        assert {:error, :length} = Ed25519.decode_public_key(secret)
+
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+        push_key(lv, browser_key(%{"public_key" => secret}))
+        assert_reply(lv, reply)
+        refute Map.has_key?(reply, :key_id)
+        assert_patch(lv, tab_path(scope, node))
+        assert lv |> element("#flash-group") |> render() =~ "The key wasn&#39;t added."
+      end
+
+      assert AccessKeys.list_for_node(scope, node) == []
+      assert add_entries(node) == []
+    end
+
     test "the event acts only on its page, with the form open", %{conn: conn, scope: scope} do
       node = node_fixture(scope)
       %{access_key: key} = browser_key_fixture(scope, node)

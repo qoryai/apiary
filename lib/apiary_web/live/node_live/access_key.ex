@@ -30,8 +30,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     event `generate_key` (`{"key" => %{"label", "allow_secrets", "public_key"}}`); the
     form has no field for anything else, and no `phx-submit`. The event is taken only on
     that page, with its form open, from one who may add keys, and only as exactly those
-    three strings: any other field, or any value holding `qak_` (an access key's secret,
-    in any case), is refused before anything is stored. The key is added as a paste is
+    three strings: any other field, or a label or flag holding `qak_` (an access key's
+    secret, in any case), is refused before anything is stored, and the public key passes
+    the strict decoding a paste's does, which no secret passes. The key is added as a paste is
     (`Apiary.AccessKeys.add_access_key/4`, `arrived_by: :browser`), and the page patches
     to **Variables for a key** (`…/access-key/keys/:key_id/generated`), rendered by the
     same clause so that the hook's `<section id="key-generate">` lives through the patch:
@@ -613,13 +614,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   ## A key made in a browser
 
   # The event's parameters as the hook sends them, and nothing else: one key, `key`, a map
-  # of exactly `label`, `allow_secrets` and `public_key`, each a string, none holding
-  # `qak_` in any case (the runner's rule for a value that holds a secret).
+  # of exactly `label`, `allow_secrets` and `public_key`, each a string. The label and the
+  # flag hold no `qak_` in any case (the runner's rule for a value that holds a secret).
+  # The public key is not read for it: a random one holds `qak_` now and then, and its
+  # decoding (`Apiary.Contract.Ed25519.decode_public_key/1`, in the paste's checks) takes
+  # 43 characters of base64url alone, which a secret, `qak_` and 43 more, never is.
   defp generated_key_params(%{"key" => %{} = key} = params) when map_size(params) == 1 do
     fields = ~w(allow_secrets label public_key)
 
     if key |> Map.keys() |> Enum.sort() == fields and
-         Enum.all?(key, fn {_name, value} -> is_binary(value) and not holds_secret?(value) end),
+         Enum.all?(key, fn {_name, value} -> is_binary(value) end) and
+         not holds_secret?(key["label"]) and not holds_secret?(key["allow_secrets"]),
        do: {:ok, Map.take(key, fields)},
        else: :error
   end
