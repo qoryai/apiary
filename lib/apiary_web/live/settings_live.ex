@@ -9,7 +9,8 @@ defmodule ApiaryWeb.SettingsLive do
     `/:org/settings/workspaces` (`:workspaces`), for an owner or an admin, with the
     deletion of one and the cancelling of a deletion.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
-    slug and, last, its danger zone, its deletion while it is one of several; Runs,
+    slug, its type (its domain, read only: "A software workspace") and, last, its danger
+    zone, its deletion while it is one of several; Runs,
     `/:org/:workspace/settings/runs` (`:runs`), how long the workspace keeps runs, their
     events and their logs, and what the nightly job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
@@ -310,6 +311,16 @@ defmodule ApiaryWeb.SettingsLive do
           <:note>{gettext("Owners and admins can change these.")}</:note>
         </SettingsComponents.save>
       </.form>
+
+      <%!-- The workspace's type, its domain, read only: chosen when it was created, and
+           nothing changes it after. --%>
+      <dl id="workspace-type" class="grid gap-1.5">
+        <dt class="text-[13px]/[18px] font-medium">{gettext("Type")}</dt>
+        <dd id="workspace-type-value" class="m-0">{workspace_type(@current_scope.workspace)}</dd>
+        <dd class="m-0 text-[12.5px]/[18px] text-muted">
+          {gettext("Chosen when the workspace was created. It decides the words its pages use.")}
+        </dd>
+      </dl>
     </SettingsComponents.part>
 
     <SettingsComponents.danger_zone :if={may?(@current_scope, :"workspace.delete")}>
@@ -441,6 +452,15 @@ defmodule ApiaryWeb.SettingsLive do
     """
   end
 
+  # A workspace's domain, read as its type (`Apiary.Lingo.Domain`): the software domain,
+  # the only one there is, is "A software workspace".
+  defp workspace_type(workspace) do
+    case Apiary.Lingo.Domain.for_workspace(workspace).name() do
+      "software" -> gettext("A software workspace")
+      name -> gettext("A %{type} workspace", type: name)
+    end
+  end
+
   defp section_title(:organisation), do: gettext("General")
   defp section_title(:general), do: gettext("General")
   defp section_title(:workspaces), do: gettext("Workspaces")
@@ -453,7 +473,7 @@ defmodule ApiaryWeb.SettingsLive do
     do: gettext("The workspaces of this organisation, and the ones waiting to be purged.")
 
   defp section_subtitle(:workspace, :general),
-    do: gettext("The name of this workspace, and where its pages are.")
+    do: gettext("The name of this workspace, where its pages are, and its type.")
 
   defp section_subtitle(:workspace, :runs),
     do: gettext("How long this workspace keeps runs, their events and their logs.")
