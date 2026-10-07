@@ -22,7 +22,9 @@ defmodule Apiary.SigningKey do
   the application starts, and checks the public key it makes against the contract's key
   checks too (`Apiary.Contract.Ed25519.check_public_key/1`), so the instance does not
   start with a key a machine would refuse. Every refusal names the variable, never its
-  value. Seeds are compared in constant time.
+  value. Seeds are compared in constant time. In production `config/runtime.exs` refuses
+  besides, before this module runs, a seed equal to `APIARY_ENCRYPTION_SECRET` and the
+  development and test seeds `config/dev.exs` and `config/test.exs` publish.
 
   **What it gives.**
 
