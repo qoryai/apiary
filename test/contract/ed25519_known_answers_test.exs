@@ -32,9 +32,8 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
-  # The key each access key id is signed under: an unknown id is signed under the
-  # fixture access key, its note says.
-  defp signer("ak_pend1ng000000000"), do: fixture_key!("pending_access_key")
+  # Every signed fixture is signed under the fixture access key, an unknown id's too, its
+  # note says.
   defp signer(_key_id), do: fixture_key!("access_key")
 
   # A header the fixture sends twice is a list; both values are the same.
@@ -66,8 +65,13 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   end
 
   describe "known-answers/keys.json" do
+    test "lists the fixture access key and the server's two keys, and no longer the second access key" do
+      assert known_answers!("keys") |> Map.keys() |> Enum.sort() ==
+               ~w(access_key next_signing_key signing_key)
+    end
+
     test "each key's seed gives its public key and its fingerprint" do
-      for name <- ~w(access_key pending_access_key signing_key next_signing_key) do
+      for name <- ~w(access_key signing_key next_signing_key) do
         key = fixture_key!(name)
         assert Ed25519.fingerprint(key.public_key) == key.fingerprint, name
       end
@@ -77,8 +81,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       for {name, range} <- [
             {"access_key", 1..32},
             {"signing_key", 65..96},
-            {"next_signing_key", 161..192},
-            {"pending_access_key", 193..224}
+            {"next_signing_key", 161..192}
           ] do
         assert fixture_key!(name).seed == :binary.list_to_bin(Enum.to_list(range)), name
       end
@@ -88,15 +91,19 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
 
       assert access_key.instance_id ==
                "i_" <> Ed25519.encode(:binary.list_to_bin(Enum.to_list(129..144)))
-
-      assert fixture_key!("pending_access_key").access_key_id =~ ~r/\Aak_[a-z0-9]{16}\z/
     end
 
-    test "both access keys and the server's two keys are refused as fixtures" do
-      for name <- ~w(access_key pending_access_key signing_key next_signing_key) do
+    test "the access key and the server's two keys are refused as fixtures, and the second access key the README names" do
+      for name <- ~w(access_key signing_key next_signing_key) do
         assert Ed25519.check_public_key(fixture_key!(name).public_key) == {:error, :fixture},
                name
       end
+
+      assert Ed25519.check_public_key(second_fixture_access_key().public_key) ==
+               {:error, :fixture}
+
+      assert File.read!(Path.join(contract_dir(), "README.md")) =~
+               Ed25519.encode(second_fixture_access_key().public_key)
     end
   end
 
@@ -198,21 +205,33 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       assert length(answers) == 7
 
       for %{"lines" => lines, "length" => length, "signature" => signature} = answer <- answers do
-        ["qory-answer-ed25519-v1", status, request_signature, hash, configuration, run] = lines
+        [domain, status, request_signature, hash, configuration, run] = lines
         body = body(answer["body"])
 
         assert byte_size(body) == answer["body_length"]
         assert hash == Base.encode16(:crypto.hash(:sha256, body), case: :lower)
         assert request_signature in bound
 
+        # An answer to an enrolment, bound to its proof, is under the enrolment answers'
+        # own domain line; every other answer under the request answers'.
         message =
-          SignedMessage.answer(
-            String.to_integer(status),
-            request_signature,
-            body,
-            blank_to_nil(configuration),
-            blank_to_nil(run)
-          )
+          case answer["body"] do
+            "fixtures/enrolment/" <> _ ->
+              assert domain == "qory-enrol-answer-ed25519-v1"
+              assert {configuration, run} == {"", ""}
+              SignedMessage.enrolment_answer(String.to_integer(status), request_signature, body)
+
+            _other ->
+              assert domain == "qory-answer-ed25519-v1"
+
+              SignedMessage.answer(
+                String.to_integer(status),
+                request_signature,
+                body,
+                blank_to_nil(configuration),
+                blank_to_nil(run)
+              )
+          end
 
         assert message == Enum.join(lines, "\n")
         assert byte_size(message) == length
@@ -273,8 +292,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       for name <- ~w(batch-valid.json batch-tampered.json batch-unknown-key.json
                      get-configuration-valid.json get-configuration-bad-signature.json
                      get-configuration-stale.json get-configuration-no-instance-id.json
-                     get-configuration-pending-key.json get-configuration-header-twice.json
-                     get-run-configuration-valid.json),
+                     get-configuration-header-twice.json get-run-configuration-valid.json),
           do: assert(name in names)
     end
 

@@ -311,14 +311,14 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   fixture_key!/1 is one of the contract's fixture keys of `known-answers/keys.json`
-  (`"access_key"`, `"pending_access_key"`, `"signing_key"`, `"next_signing_key"`), with
+  (`"access_key"`, `"signing_key"`, `"next_signing_key"`), with
   its raw `:seed`, its raw `:public_key` derived from the seed and checked against the
   published one, and the published `:fingerprint`, plus `:access_key_id` and
   `:instance_id` where the file gives them. Test support only: every instance refuses
   these keys.
   """
   def fixture_key!(name)
-      when name in ~w(access_key pending_access_key signing_key next_signing_key) do
+      when name in ~w(access_key signing_key next_signing_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
 
     encoded_seed =
@@ -338,6 +338,22 @@ defmodule Apiary.ContractFixtures do
       access_key_id: entry["access_key_id"],
       instance_id: entry["instance_id"]
     }
+  end
+
+  # The second fixture access key's public key, as the contract's README publishes it.
+  @second_fixture_access_key "dSnEVtk40rj-kPpsz5FtNGdwpkvLt7UyO2h6zeIM0Aw"
+
+  @doc """
+  second_fixture_access_key/0 is the contract's second fixture access key, by value: the
+  seed of bytes 193 to 224 and its public key, which the README publishes and every side
+  refuses. The contract's `keys.json` no longer lists it, since no fixture signs with it.
+  Test support only.
+  """
+  def second_fixture_access_key do
+    seed = :binary.list_to_bin(Enum.to_list(193..224))
+    {public_key, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+    {:ok, ^public_key} = Apiary.Contract.Ed25519.decode(@second_fixture_access_key, 32)
+    %{seed: seed, public_key: public_key}
   end
 
   @doc """

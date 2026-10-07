@@ -27,12 +27,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   @served ["/.well-known/qory-configuration", "/v1/events", "/v1/run-configuration"]
 
   # Every file whose target is served is replayed; a file named here is not.
-  #
-  # No key awaits approval since decision 73: a key is active from the moment it is made,
-  # and no answer is `409` `key_pending`. The runner's next contract commit removes this
-  # fixture; until the contract is pinned to it (piece P2, which empties this list again),
-  # it is skipped.
-  @skipped ["get-configuration-pending-key.json"]
+  @skipped []
 
   @fixtures signed_fixtures()
 
@@ -79,14 +74,14 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
   test "the fixtures are there, and the ones expected" do
     names = Enum.map(@fixtures, &elem(&1, 0))
-    assert length(names) == 12
+    assert length(names) == 11
 
     for name <-
           ~w(batch-valid.json batch-replayed.json batch-tampered.json batch-unknown-key.json
              get-configuration-valid.json get-configuration-stale.json
              get-configuration-bad-signature.json get-configuration-header-twice.json
-             get-configuration-no-instance-id.json get-configuration-pending-key.json
-             get-run-configuration-valid.json get-run-configuration-labels-valid.json),
+             get-configuration-no-instance-id.json get-run-configuration-valid.json
+             get-run-configuration-labels-valid.json),
         do: assert(name in names, name)
 
     for name <- @skipped, do: assert(name in names)
