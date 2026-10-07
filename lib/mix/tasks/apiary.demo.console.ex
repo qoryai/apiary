@@ -40,11 +40,10 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * The six recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
       the last day.
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
-      keys added by their public keys (build-01's first key replaced and revoked), an
-      enrolment code cancelled and one outstanding, and instances: the history's runs on
-      the machines of those names are placed on them. The recordings' runs name some of
-      those machines too, but they were posted with Dana's laptop key and are placed on
-      no node.
+      keys added by their public keys; build-01's first key was replaced and revoked.
+      No run is placed on a node and no instance is recorded, as the app does neither
+      yet, though the history's runs name machines called build-01 and build-02.
+      build-02 has an outstanding enrolment code (below).
     * Secrets, one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
@@ -104,8 +103,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     {"failed-run", 400},
     {"timed-out", 1_300}
   ]
-
-  @runner_version "0.10.0"
 
   # The databases people work in, which the task never fills.
   @working_databases ~w(apiary_dev apiary_core_dev)
@@ -391,24 +388,17 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
     # build-01's first key was replaced: added, then a new one, then the old one revoked.
     old = add_key!(scope, build_01, "build-01-2026-08", false)
-    key_01 = add_key!(scope, build_01, "build-01", false)
+    add_key!(scope, build_01, "build-01", false)
     {:ok, _revoked} = AccessKeys.revoke_access_key(scope, old)
 
-    key_02 = add_key!(scope, build_02, "build-02", true)
-    pool_a = add_key!(scope, pool, "spot-runners-a", false)
-    pool_b = add_key!(scope, pool, "spot-runners-b", false)
+    add_key!(scope, build_02, "build-02", true)
+    add_key!(scope, pool, "spot-runners-a", false)
+    add_key!(scope, pool, "spot-runners-b", false)
 
-    # The history posts the runs of build-01 and build-02 with its key build-eu, and those
-    # of the CI runners with ci-fleet (mix apiary.demo.history).
-    placed =
-      place(scope, build_01, {"build-eu", ["build-01"]}, [key_01]) +
-        place(scope, build_02, {"build-eu", ["build-02"]}, [key_02]) +
-        place(scope, pool, {"ci-fleet", ci_runners()}, [pool_a, pool_b])
-
-    Mix.shell().info("Nodes build-01, build-02 and spot-runners: #{placed} runs placed on them")
+    # No run is placed on a node, and no instance recorded: nothing in the app does either
+    # yet, so the demo does not.
+    Mix.shell().info("Nodes build-01, build-02 and spot-runners, with their keys")
   end
-
-  defp ci_runners, do: for(n <- 1..12, do: "ci-runner-#{String.pad_leading("#{n}", 2, "0")}")
 
   # A key added by its public key, as an owner pastes one: a fresh Ed25519 key pair whose
   # private half is dropped.
@@ -423,47 +413,6 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       })
 
     key
-  end
-
-  # The history's runs on the machines of `hosts`, which it posted with its key `label`,
-  # ran on `node`, each machine one of its instances: the runs say so, and each instance
-  # was last seen with its last run. The recordings' runs name some of the same machines
-  # but were posted with Dana's laptop key, so they stay on no node.
-  defp place(%Scope{workspace: workspace} = scope, node, {label, hosts}, keys) do
-    posted_with = for key <- AccessKeys.list_access_keys(scope), key.label == label, do: key.id
-
-    {placed, _} =
-      Repo.update_all(
-        from(r in Run,
-          where: r.workspace_id == ^workspace.id and r.host in ^hosts,
-          where: r.access_key_id in ^posted_with,
-          update: [set: [node_id: ^node.id, instance_id: r.host]]
-        ),
-        []
-      )
-
-    last_runs =
-      Repo.all(
-        from r in Run,
-          where: r.workspace_id == ^workspace.id and r.node_id == ^node.id,
-          group_by: r.host,
-          select: {r.host, min(r.inserted_at), max(r.last_event_at)}
-      )
-
-    for {{host, first, last}, i} <- Enum.with_index(last_runs) do
-      claim = %{
-        instance_id: host,
-        name: host,
-        access_key_id: Enum.at(keys, rem(i, length(keys))).id,
-        runner_version: @runner_version,
-        contract_version: 1
-      }
-
-      :ok = Nodes.seen(node, claim, first)
-      :ok = Nodes.seen(node, claim, last)
-    end
-
-    placed
   end
 
   ## Secrets and variables

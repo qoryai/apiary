@@ -116,7 +116,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert count(from p in Apiary.Targets.Pin, where: p.user_id == ^dana.id) == 3
   end
 
-  test "gives Main nodes with keys and instances, secrets, variables and integrations" do
+  test "gives Main nodes with keys and no runs on them, secrets, variables and integrations" do
     fill()
 
     main = main_workspace()
@@ -139,25 +139,15 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
              from c in EnrolmentCode, where: c.workspace_id == ^main.id and is_nil(c.cancelled_at)
            ) == 1
 
-    assert count(from i in Instance, where: i.workspace_id == ^main.id) > 0
-    assert count(from r in Run, where: r.workspace_id == ^main.id and not is_nil(r.node_id)) > 0
-
-    # The recordings' runs name CI runners too, but Dana's laptop key posted them: only
-    # the history's runs are placed on a node.
-    laptop =
-      Repo.all(
-        from k in AccessKey,
-          where: k.workspace_id == ^main.id and k.label == "dana-laptop",
-          select: k.id
-      )
-
+    # Nothing in the app places a run on a node or records an instance yet, so neither
+    # does the demo, though the history's runs name machines called build-01 and build-02.
     assert Repo.exists?(
-             from r in Run, where: r.access_key_id in ^laptop and like(r.host, "ci-runner-%")
+             from r in Run,
+               where: r.workspace_id == ^main.id and r.host in ["build-01", "build-02"]
            )
 
-    refute Repo.exists?(
-             from r in Run, where: r.access_key_id in ^laptop and not is_nil(r.node_id)
-           )
+    refute Repo.exists?(from r in Run, where: not is_nil(r.node_id) or not is_nil(r.instance_id))
+    refute Repo.exists?(Instance)
 
     # Secrets, variables and integrations are the security feature's.
     if Apiary.Features.on?(:security) do
