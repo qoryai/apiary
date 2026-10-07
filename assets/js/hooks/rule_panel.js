@@ -4,8 +4,8 @@
 // marked `data-autofocus`: the option chosen, Close, or the way to the level above's
 // policy). As it goes while it held the focus (Cancel, Escape, a rule saved, the policy
 // moved under it), the focus goes back to the icon that opened it (`data-anchor`), or,
-// where it is gone, to the row's Show the rule or its copy icon (`data-back`), so it never
-// falls to the page's body.
+// where it is gone, to the row's rule link, its after line's Show the rule, or its copy
+// icon (`data-back`), so it never falls to the page's body.
 //
 // The panel keeps its id from row to row, so a panel opened over another one is this same
 // element patched and moved, not a new one: it opens anew when its anchor or its kind
@@ -26,7 +26,7 @@ export const RulePanel = {
   destroyed() {
     const active = document.activeElement
     if (active && active !== document.body) return
-    // The icon may be gone (a rule was added): the row's Show the rule, else its copy.
+    // The icon may be gone (a rule was added): the row's rule links, else its copy.
     for (const id of this.back) {
       const el = id && document.getElementById(id)
       if (el && el.getClientRects().length > 0) {

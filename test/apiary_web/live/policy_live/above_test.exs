@@ -400,6 +400,23 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       refute has_element?(view, "#rule-panel")
     end
 
+    test "a row the level denies since it was allowed links its rule once and its after line once",
+         %{conn: conn, scope: scope} do
+      above!([rule("deny", "api.example")])
+      # LiveViewTest raises on a duplicate id: the page renders.
+      view = open(conn, workspace_path(scope, "/network"))
+      api = dst("api.example")
+      rule = workspace_path(scope, "/policy?rule=api.example")
+
+      assert has_element?(view, ~s(##{api}-above a##{api}-rule[href="#{rule}"]))
+
+      assert has_element?(
+               view,
+               ~s(##{api}-after a##{api}-after-rule[href="#{rule}"]),
+               "Show the rule"
+             )
+    end
+
     test "where the level allows only its own hosts, Allow is a lock without its page, and Deny stays",
          %{conn: conn, scope: scope} do
       above!([], own_allows: false)
@@ -548,8 +565,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
         allow_path: "/8wonders/policy?allow=new.example"
       )
 
-    assert html =~ ~s(data-tip="Allow in Eight Wonders&#39;s policy")
-    assert html =~ ~s(aria-label="Allow new.example")
+    # Its name holds its hint's words.
+    assert html =~ ~s(data-tip="Allow new.example in Eight Wonders&#39;s policy")
+    assert html =~ ~s(aria-label="Allow new.example in Eight Wonders&#39;s policy")
   end
 
   test "where only the level allows a host, Allow opens a panel that says so and leads there" do

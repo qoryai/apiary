@@ -4934,6 +4934,19 @@
     cursor: pointer;
     vertical-align: middle;
   }
+  /* A tool invocation's line: the destination cut with an ellipsis, its copy beside it. */
+  .q-cx-tl {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+  .q-cx-tl > .q-dest {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .q-cx-tl > .q-cx-copy {
+    flex: none;
+  }
   .q-cx-copy:is(:hover, :focus-visible) {
     background-color: var(--color-base-300);
     color: var(--color-base-content);
@@ -4949,14 +4962,13 @@
     color: var(--color-base-content);
     text-decoration-color: currentColor;
   }
+  /* Underlined: a link inside a sentence is not told by its colour alone. */
   .q-after-rule {
     color: var(--color-accent);
     font-weight: 500;
-    white-space: nowrap;
-  }
-  .q-after-rule:hover {
     text-decoration: underline;
     text-underline-offset: 2px;
+    white-space: nowrap;
   }
   .q-dcell {
     display: flex;

@@ -808,8 +808,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert attr_of(doc, "span#r-lock.q-act-lock.tooltip", "tabindex") == ["0"]
       assert attr_of(doc, "#r-lock", "data-tip") == ["No rule changes this"]
 
-      assert doc |> LazyHTML.query("#r-lock .sr-only") |> LazyHTML.text() ==
-               "No rule changes this"
+      assert attr_of(doc, "span#r-lock[role=img]", "aria-label") == ["No rule changes this"]
 
       doc =
         acts(%{
@@ -833,8 +832,8 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       doc = acts(Map.put(elsewhere, :allow_path, "/main/policy?allow=api.example.com"))
       assert slots(doc) == ["r-allow", "r-deny"]
-      assert attr_of(doc, "#r-allow", "data-tip") == ["Allow in Main's policy"]
-      assert attr_of(doc, "#r-allow", "aria-label") == ["Allow api.example.com"]
+      assert attr_of(doc, "#r-allow", "data-tip") == ["Allow api.example.com in Main's policy"]
+      assert attr_of(doc, "#r-allow", "aria-label") == ["Allow api.example.com in Main's policy"]
 
       doc = acts(elsewhere)
       assert slots(doc) == ["r-lock", "r-deny"]
@@ -907,6 +906,16 @@ defmodule ApiaryWeb.RunComponentsTest do
       </table>
       """)
       |> LazyHTML.from_fragment()
+    end
+
+    test "on a tool invocation it is beside the destination, outside its cut box" do
+      doc = copy_row(%{last_tool: "files", path: "/media/a.png"})
+
+      assert doc
+             |> LazyHTML.query(".q-cx-d .q-cx-tl > .q-dest-tool + button#cx-1-copy")
+             |> Enum.any?()
+
+      refute doc |> LazyHTML.query(".q-dest #cx-1-copy") |> Enum.any?()
     end
 
     test "beside the host it copies the host alone, and says Copied in the shell's announcer" do

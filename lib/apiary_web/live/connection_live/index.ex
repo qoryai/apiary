@@ -584,24 +584,19 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       |> List.last()
       |> String.replace_prefix("host:", "")
 
-    if word == "" do
-      {:noreply, clear_suggestions(socket)}
-    else
-      %{current_scope: scope, filters: filters} = socket.assigns
-      filters = %{filters | host: nil, q: nil}
+    cond do
+      word == "" ->
+        {:noreply, clear_suggestions(socket)}
 
-      {:noreply,
-       socket
-       |> assign(:suggest_word, word)
-       |> start_async(:suggest, fn ->
-         facet =
-           Runs.destination_facets(scope, filters,
-             narrow: %{"host" => word},
-             limits: %{"host" => @suggest_size}
-           ).host
+      # A word the query cannot match on (too long, a control character) matches nothing.
+      is_nil(Runs.like(word)) ->
+        {:noreply,
+         socket
+         |> clear_suggestions()
+         |> assign(:suggest_status, gettext("Nothing matches"))}
 
-         %{word: word, facet: facet}
-       end)}
+      true ->
+        suggest(socket, word)
     end
   end
 
@@ -965,6 +960,27 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         do: update(socket, :shared, &MapSet.put(&1, elem(target, 1))),
         else: socket
     end)
+  end
+
+  # The hosts of the destinations the view lists (`decided`), under the other filters; not
+  # the host chosen, nor the free text the field is being typed to replace.
+  defp suggest(socket, word) do
+    %{current_scope: scope, filters: filters} = socket.assigns
+    filters = %{filters | host: nil, q: nil}
+
+    {:noreply,
+     socket
+     |> assign(:suggest_word, word)
+     |> start_async(:suggest, fn ->
+       facet =
+         Runs.destination_facets(scope, filters,
+           narrow: %{"host" => word},
+           limits: %{"host" => @suggest_size},
+           decided: true
+         ).host
+
+       %{word: word, facet: facet}
+     end)}
   end
 
   defp clear_suggestions(socket),

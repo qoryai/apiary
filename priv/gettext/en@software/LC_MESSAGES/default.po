@@ -2910,6 +2910,7 @@ msgid "Allow %{host} for the workspace"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Allow %{host} in %{name}'s policy"
 msgstr ""
@@ -2971,7 +2972,6 @@ msgid "Allow here"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Allow in %{name}'s policy"
 msgstr ""

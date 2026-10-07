@@ -96,8 +96,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - Network access, in the sidebar's Guard beside the Policy (`/:org/:workspace/network`,
   and a tab of each run and each repository): every destination the runs reached, what
   decided it, and Allow or Deny from its row, narrowed the same way as the runs. Its
-  rows are one line each, the denied number the one red, with the actions on hover and
-  in a ⋯ menu. The policy's host rules are its Network access section, which links back
+  rows are one line each, the denied number the one red, with Allow and Deny as icons on
+  hover, a copy icon by the host, and host suggestions in its query field. The policy's host rules are its Network access section, which links back
   to it. The page was called Connections; its old paths send on to the new ones.
 - The policy's rules on the same list pattern, however long the list grows: views (All,
   Allowed, Denied, Locked) with their counts, "Find a host" with `seen:`, `paths:` and

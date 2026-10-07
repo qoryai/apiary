@@ -574,6 +574,12 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "#connections-query-host-0")
       assert text(view, "#connections-query-status") == "Nothing matches"
 
+      # A word the query cannot match on matches nothing, rather than every host.
+      view |> form("#connections-query", %{"q" => "reg\u0001"}) |> render_change()
+      render_async(view, 2_000)
+      refute has_element?(view, "#connections-query-host-0")
+      assert text(view, "#connections-query-status") == "Nothing matches"
+
       # An empty word closes the list.
       view |> form("#connections-query", %{"q" => "registry "}) |> render_change()
       assert has_element?(view, "#connections-query-hosts[hidden]")
@@ -593,6 +599,23 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       )
 
       assert has_element?(view, "#connections-query-hosts[hidden]")
+    end
+
+    test "the suggestions are of the destinations the view lists", %{conn: conn, scope: scope} do
+      started_run(scope, shop(), egress: [%{"host" => "cdn1.example", "rule" => "cdn1.example"}])
+
+      view = open(conn, scope)
+      view |> form("#connections-query", %{"q" => "cdn"}) |> render_change()
+      render_async(view, 2_000)
+      assert text(view, "#connections-query-status") == "2 hosts match"
+
+      # Denied: a host with only allowed attempts is not offered.
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied")
+      view |> form("#connections-query", %{"q" => "cdn"}) |> render_change()
+      render_async(view, 2_000)
+      assert text(view, "#connections-query-status") == "1 host matches"
+      assert has_element?(view, "#connections-query-host-0[data-value='files.cdn.example']")
+      refute has_element?(view, "#connections-query-host-1")
     end
 
     test "the rail counts destinations, the pinned targets first", %{conn: conn, scope: scope} do

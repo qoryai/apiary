@@ -602,7 +602,7 @@ version. Only the version in force is exported; another version's path sends on 
   text without regard to case (a run's id, task or target; a destination's host or
   path). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
-  from the host filter's query); choosing one adds `host:`.
+  from the host filter's query, narrowed as the list is); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
   a menu, each section searches its values on the server over every value there is,
   fifty shown and more on asking, each counted under the other filters
@@ -634,11 +634,15 @@ version. Only the version in force is exported; another version's path sends on 
   its name, in two fixed slots so they line up: only the one that would change something
   shows, both where no rule decides the host. They show on hover, on focus inside the row
   and while the row's panel is open, always on a touch screen, and at every width. There
-  is no ⋯ menu. The host has a copy icon beside it (it copies the host), shown the same
-  way. Where the rule in force is the one the reason names, its name links to it. A
-  locked rule, the wall and a deny of the level above are a faint lock whose hint says
-  why (who locked it and when, where known); a locked rule's lock opens its refusal in
-  place, with the way to the rule. Where only the level above the workspace allows
+  is no ⋯ menu. The host has a copy icon beside it (it copies the host), shown on row
+  hover, on its own focus and while it says Copied, always on a touch screen. Where the
+  rule in force is the one the reason names, its name links to it; where the level above
+  decides the row, its "Main · denied" (or allowed) links to that rule; a row a rule was
+  just added for ends its after line with Show the rule. A locked rule, the wall, a deny
+  of the level above, and an allow only the level above can grant for a reader who may
+  not change it there are a faint lock whose hint says why (who locked it and when,
+  where known); a locked rule's lock opens its refusal in place, with the way to the
+  rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a panel that says an allow
   here would not be in force and leads to that level's policy with the host, for a reader
   who may change it there, and with the way back to this page (`back`,
@@ -658,8 +662,9 @@ version. Only the version in force is exported; another version's path sends on 
   or the way to the level above's policy with Cancel. The trigger says it is open
   (`aria-expanded`, `aria-controls`), never that it opens a dialog. The focus goes into it
   as it opens, on the option chosen (else the first), Close, or the way to the level
-  above, and back to the icon that opened it as it goes, or, where it is gone, to Show
-  the rule or the row's copy icon (the `RulePanel` hook); Enter sends the form once its button can,
+  above, and back to the icon that opened it as it goes, or, where it is gone, to the
+  row's rule link, its after line's Show the rule, or its copy icon (the `RulePanel`
+  hook); Enter sends the form once its button can,
   Escape cancels it wherever the focus is. One panel is open at a time.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.

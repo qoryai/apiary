@@ -188,7 +188,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # focus goes back to the icon, else to Show the rule or the copy icon.
       assert has_element?(
                view,
-               ~s(tr##{registry} + tr##{registry}-panel > td > #rule-panel[role=group][data-anchor="#{registry}-deny"][data-kind=deny][data-back="#{registry}-rule #{registry}-copy"])
+               ~s(tr##{registry} + tr##{registry}-panel > td > #rule-panel[role=group][data-anchor="#{registry}-deny"][data-kind=deny][data-back="#{registry}-rule #{registry}-after-rule #{registry}-copy"])
              )
 
       refute has_element?(view, "#rule-panel[popover], #rule-panel[role=dialog]")
@@ -274,7 +274,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert has_element?(
                view,
-               ~s(##{cdn}-after a##{cdn}-rule[href="#{workspace_path(scope, "/policy?rule=files.cdn.example")}"])
+               ~s(##{cdn}-after a##{cdn}-after-rule[href="#{workspace_path(scope, "/policy?rule=files.cdn.example")}"])
              )
     end
 
@@ -353,7 +353,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert has_element?(
                view,
-               ~s(##{dst("files.cdn.example")}-after a##{dst("files.cdn.example")}-rule[href="#{policy}?rule=files.cdn.example"])
+               ~s(##{dst("files.cdn.example")}-after a##{dst("files.cdn.example")}-after-rule[href="#{policy}?rule=files.cdn.example"])
              )
 
       assert has_element?(
@@ -382,7 +382,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "##{cdn}-after") =~
                "Allowed for the workspace in v2 · of the workspace's policy"
 
-      assert text(view, "##{cdn}-after a##{cdn}-rule") == "Show the rule"
+      assert text(view, "##{cdn}-after a##{cdn}-after-rule") == "Show the rule"
     end
 
     test "a rule someone else adds reaches the rows over the policy's topic", %{
@@ -396,7 +396,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
       heard_policy_change(view, scope)
 
-      assert text(view, "##{cdn}-after a##{cdn}-rule") == "Show the rule"
+      assert text(view, "##{cdn}-after a##{cdn}-after-rule") == "Show the rule"
       assert text(view, "##{cdn}-after") =~ "Allowed for the workspace"
     end
   end
@@ -591,7 +591,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert has_element?(
                view,
-               ~s(##{id}-after a##{id}-rule[href="#{workspace_path(scope, "/policy?rule=flags.example")}"]),
+               ~s(##{id}-after a##{id}-after-rule[href="#{workspace_path(scope, "/policy?rule=flags.example")}"]),
                "Show the rule"
              )
 

@@ -569,7 +569,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       # In place, right under the row, in the table: no overlay.
       assert has_element?(
                view,
-               ~s(tr#cx-#{id} + tr#cx-#{id}-panel #rule-panel[role=group][data-anchor="cx-#{id}-allow"][data-back="cx-#{id}-rule cx-#{id}-copy"])
+               ~s(tr#cx-#{id} + tr#cx-#{id}-panel #rule-panel[role=group][data-anchor="cx-#{id}-allow"][data-back="cx-#{id}-rule cx-#{id}-after-rule cx-#{id}-copy"])
              )
 
       refute has_element?(view, "#rule-panel[popover], #rule-panel[role=dialog]")
@@ -642,7 +642,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a#cx-#{id}-rule[href="#{rule}"]),
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{rule}"]),
                "Show the rule"
              )
 
@@ -699,7 +699,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a#cx-#{id}-rule[href="#{page}/-/policy?rule=files.cdn.example"]),
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{page}/-/policy?rule=files.cdn.example"]),
                "Show the rule"
              )
 
@@ -741,7 +741,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert line =~ "Allowed for this repository in v#{new.version} · of acme/shop"
       assert line =~ "The run reloaded at #0030."
-      assert text(view, "#cx-#{id}-after a#cx-#{id}-rule") == "Show the rule"
+      assert text(view, "#cx-#{id}-after a#cx-#{id}-after-rule") == "Show the rule"
 
       # a row that was never denied is not one a rule answered: it can be denied
       registry = connection_id(run, "registry.example")
@@ -839,7 +839,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(#cx-#{id}-after a#cx-#{id}-rule[href="#{workspace_path(scope)}/policy?rule=registry.example"])
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{workspace_path(scope)}/policy?rule=registry.example"])
              )
     end
 

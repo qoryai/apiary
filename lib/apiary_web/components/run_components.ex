@@ -2037,7 +2037,7 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-after"}
           line={@act.after}
           rule_path={@act[:rule_path]}
-          rule_id={"#{@id}-rule"}
+          rule_id={"#{@id}-after-rule"}
         />
       </td>
       <td class="q-cx-nw q-from-lg">
@@ -2154,7 +2154,7 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-after"}
           line={@act.after}
           rule_path={@act[:rule_path]}
-          rule_id={"#{@id}-rule"}
+          rule_id={"#{@id}-after-rule"}
         />
       </td>
       <td class="q-cx-nw q-from-lg">
@@ -2333,7 +2333,15 @@ defmodule ApiaryWeb.RunComponents do
 
   # The destination as a row's title: the host in mono, the port faint, the path muted and
   # cut in the middle. A tool invocation leads with its tool, as everywhere.
-  defp destination_title(%{c: %{invocation: true}} = assigns), do: destination(assigns)
+  # A tool invocation's line is cut with an ellipsis; its copy icon is beside it, never
+  # inside the cut box.
+  defp destination_title(%{c: %{invocation: true}} = assigns) do
+    ~H"""
+    <span class="q-cx-tl">
+      <.destination c={@c} /><.host_copy :if={@copy_id} id={@copy_id} host={@c.host} />
+    </span>
+    """
+  end
 
   # `line`: a run's row, one request, says its request line (the method and the path)
   # where the workspace's says the path.
@@ -2383,7 +2391,7 @@ defmodule ApiaryWeb.RunComponents do
       aria-label={gettext("Copy %{host}", host: @host)}
       title=""
     >
-      <span class="copy-idle"><.icon name="hero-clipboard-document" class="size-3.5" /></span>
+      <span class="copy-idle"><.icon name="hero-clipboard-document-micro" class="size-3.5" /></span>
       <span class="copy-done"><.icon name="hero-check-micro" class="size-3.5" /></span>
     </button>
     """
@@ -2471,7 +2479,6 @@ defmodule ApiaryWeb.RunComponents do
   defp request_line(c), do: c.method
 
   attr :c, :map, required: true
-  attr :copy_id, :string, default: nil, doc: "a row's: the id of the host's copy icon"
 
   # A tool invocation is named by its tool: the request line follows, and the host, which
   # may be a name that exists only on the runner's machine, comes last and faint. A
@@ -2488,7 +2495,6 @@ defmodule ApiaryWeb.RunComponents do
       <.tool_mark name={@c.tool} />
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
       <span class="q-on">{@c.host}:{@c.port}</span>
-      <.host_copy :if={@copy_id} id={@copy_id} host={@c.host} />
     </span>
     """
   end
@@ -2989,7 +2995,7 @@ defmodule ApiaryWeb.RunComponents do
         deny_open: assigns.expanded and assigns.expanded_action == :deny,
         allow_tip:
           if(elsewhere,
-            do: gettext("Allow in %{name}'s policy", name: elsewhere.name),
+            do: gettext("Allow %{host} in %{name}'s policy", host: host, name: elsewhere.name),
             else: gettext("Allow %{host}", host: host)
           ),
         elsewhere_lock:
@@ -3004,7 +3010,7 @@ defmodule ApiaryWeb.RunComponents do
         id={"#{@id}-allow"}
         action="allow"
         tip={@allow_tip}
-        label={gettext("Allow %{host}", host: @connection.host)}
+        label={@allow_tip}
         open={@allow_open}
         controls={@controls}
         values={@values}
@@ -3131,8 +3137,15 @@ defmodule ApiaryWeb.RunComponents do
   # Why no rule here changes the row: a faint lock, its hint reachable by the keyboard.
   defp act_lock(assigns) do
     ~H"""
-    <span id={@id} class="q-act-lock tooltip tooltip-left" tabindex="0" data-tip={@tip}>
-      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+    <span
+      id={@id}
+      class="q-act-lock tooltip tooltip-left"
+      tabindex="0"
+      role="img"
+      aria-label={@tip}
+      data-tip={@tip}
+    >
+      <.icon name="hero-lock-closed-micro" class="size-3.5" />
     </span>
     """
   end
@@ -3521,8 +3534,8 @@ defmodule ApiaryWeb.RunComponents do
 
   # The panel's own element: a group named by its title, in the page's flow. Escape
   # cancels it wherever the focus is, as an inline confirmation does. The focus goes back
-  # to the control that opened it (`anchor`), or where that is gone, to the row's Show the
-  # rule or its copy icon (`data-back`). One panel keeps its id from row to row, so the hook tells a new one by its anchor and
+  # to the control that opened it (`anchor`), or where that is gone, to the row's rule
+  # link, its after line's Show the rule or its copy icon (`data-back`). One panel keeps its id from row to row, so the hook tells a new one by its anchor and
   # its kind (`data-kind`: allow, deny, refusal or elsewhere).
   attr :id, :string, required: true
   attr :anchor, :string, required: true
@@ -3551,7 +3564,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp back_of(anchor) do
-    if row = row_of_anchor(anchor), do: "#{row}-rule #{row}-copy"
+    if row = row_of_anchor(anchor), do: "#{row}-rule #{row}-after-rule #{row}-copy"
   end
 
   # What the domain will do is said for the level chosen, and for no other.
