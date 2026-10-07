@@ -56,6 +56,12 @@ config :phoenix,
 config :apiary, Apiary.KeyDerivation,
   secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
 
+# APIARY_SIGNING_SECRET in test: the seed of the instance's own signing key
+# (Apiary.SigningKey), which the tests verify answers under. A fixed 32 bytes of its own,
+# never derived from the encryption secret above, and none of the runner contract's
+# fixture seeds, which the instance refuses. Not a secret.
+config :apiary, Apiary.SigningKey, seed: "qory apiary test signing seed 01"
+
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.
 config :apiary, Apiary.Runs.Projector, async: false
