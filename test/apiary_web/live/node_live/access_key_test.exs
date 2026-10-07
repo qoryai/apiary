@@ -1431,7 +1431,16 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         |> follow_redirect(conn, tab_path(scope, node))
 
       assert html =~ "Only owners and admins add a node&#39;s keys."
+
+      # The event, pushed from the tab they may read: refused, no key, nothing written.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      push_key(lv, browser_key())
+      assert_reply(lv, reply)
+      refute Map.has_key?(reply, :key_id)
+      assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
+
       assert AccessKeys.list_for_node(scope, node) == []
+      assert add_entries(node) == []
     end
 
     test "an admin's own key goes to its runner file once they are a member", %{scope: scope} do
