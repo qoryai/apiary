@@ -633,7 +633,18 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                workspace_path(scope, "/network?decision=denied&since=7d")
 
       started_run(scope, shop("gitlab.com"), egress: [@registry])
-      view = open(conn, workspace_path(scope, "/network?system=gitlab.com&target=acme/shop"))
+      shared = workspace_path(scope, "/network?system=gitlab.com&target=acme/shop")
+
+      # Named rightly from the first render, before the listing lands.
+      {:ok, _view, html} = live(conn, shared)
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#nav-runs")
+             |> LazyHTML.attribute("href") ==
+               [workspace_path(scope, "/runs?system=gitlab.com&target=acme%2Fshop")]
+
+      view = open(conn, shared)
 
       assert text(view, "#connections-target-note") == target_note("gitlab.com/acme/shop")
 

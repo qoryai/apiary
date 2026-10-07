@@ -568,6 +568,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        socket
        |> keep_notices()
        |> assign(filters: filters, open: open, rule_panel: nil)
+       |> target_shared()
        |> load()}
     else
       {:noreply,
@@ -917,6 +918,20 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       socket
     end
   end
+
+  # Whether the narrowed target's path is on two systems, known before the listing lands,
+  # so that the narrowed line and the sidebar name the target rightly from the first render.
+  defp target_shared(%{assigns: %{filters: %{target: {_system, path}}}} = socket)
+       when is_binary(path) do
+    if MapSet.member?(socket.assigns.shared, path),
+      do: socket,
+      else:
+        update(socket, :shared, fn shared ->
+          MapSet.union(shared, Runs.shared_paths(socket.assigns.current_scope, [path]))
+        end)
+  end
+
+  defp target_shared(socket), do: socket
 
   defp load_facets(socket) do
     %{current_scope: scope, filters: filters, narrow: narrow, limits: limits} = socket.assigns
