@@ -11,6 +11,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
+  alias ApiaryWeb.PolicyLive.Common
 
   setup :register_and_log_in_user
 
@@ -119,7 +120,18 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       refute has_element?(view, "#policy-version-pill-copy")
       assert text(view, "#policy-version-pill") == "No version yet"
-      assert has_element?(view, "#policy-export-button[disabled]")
+      # Export is off but focusable, described by why, and does nothing.
+      assert has_element?(
+               view,
+               "button#policy-export-button[aria-disabled=true][aria-describedby=policy-export-why]"
+             )
+
+      refute has_element?(view, "#policy-export-button[disabled]")
+      refute has_element?(view, "#policy-export-button[phx-click]")
+
+      assert text(view, "#policy-export-why") ==
+               "Nothing to export yet: the first change here renders version 1."
+
       assert text(view, "#policy-first-version") =~ "Version 1 is rendered by the first change"
       refute has_element?(view, "#policy-tabs a", "Document")
       assert has_element?(view, "#policy-mode-observe[aria-checked=true]")
@@ -131,6 +143,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-mode-line.q-modeline #policy-mode[role=radiogroup]")
       refute has_element?(view, "#policy-mode a")
       assert has_element?(view, "#policy-mode-under #policy-mode-fact")
+    end
+
+    test "removing the last rule gives the focus to adding the first", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+      view = open(conn, scope)
+
+      view
+      |> element("#rule-#{rule(scope, "api.example").id}-menu button", "Remove")
+      |> render_click()
+
+      assert has_element?(view, "#policy-first-rule")
+      assert_push_event(view, "policy:focus", %{id: "policy-first-rule"})
     end
 
     test "the first rule starts the policy: a version, the pill, the mode word", %{
@@ -147,7 +174,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-rules tr.q-fresh", "api.example")
       assert text(view, "#policy-rules tr.q-fresh") =~ "New in v1"
       assert has_element?(view, "#policy-version-pill-copy[data-copy^='sha256=']")
-      refute has_element?(view, "#policy-export-button[disabled]")
+      assert has_element?(view, "a#policy-export-button")
+      refute has_element?(view, "#policy-export-button[aria-disabled]")
+      refute has_element?(view, "#policy-export-why")
       refute has_element?(view, "#policy-first-version")
       assert has_element?(view, "#policy-tabs a", "Document")
       assert text(view, "#flash-info") =~ "api.example is allowed for the workspace. Version 1."
@@ -592,6 +621,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#rule-#{id}-lock") == "Locked"
       assert has_element?(view, "#rule-#{id}-menu button", "Unlock")
+      lock = "rule-#{id}-lock"
+      assert_push_event(view, "policy:focus", %{id: ^lock})
 
       assert text(view, "#flash-info") =~
                "github.example is locked. No repository can override it."
@@ -602,6 +633,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view |> element("#rule-#{id}-menu button", "Unlock") |> render_click()
       refute rule(scope, "github.example").locked
       refute has_element?(view, "#rule-#{id}-lock")
+
+      # Its lock is gone: the focus goes to the row's menu.
+      menu_button = "rule-#{id}-menu-button"
+      assert_push_event(view, "policy:focus", %{id: ^menu_button})
+    end
+
+    test "a row that leaves the list as it is acted on gives the focus to Add rule",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope, "/policy?view=locked")
+      id = rule(scope, "*.paste.example").id
+
+      view |> element("#rule-#{id}-menu button", "Unlock") |> render_click()
+      refute rule(scope, "*.paste.example").locked
+      refute has_element?(view, "#rule-#{id}")
+      assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
     end
 
     test "a lock that puts a target's rule out of force asks first",
@@ -633,6 +679,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       refute rule(scope, "api.example")
       assert text(view, "#flash-info") =~ "The rule api.example is removed."
+
+      # The focus goes to the next row's menu.
+      next = "rule-#{rule(scope, "github.example").id}-menu-button"
+      assert_push_event(view, "policy:focus", %{id: ^next})
 
       locked = rule(scope, "*.paste.example")
       view |> element("#rule-#{locked.id}-menu button", "Remove") |> render_click()
@@ -676,6 +726,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view |> element("#rule-#{id}-menu button", "Change to deny") |> render_click()
 
       assert rule(scope, "api.example").action == "deny"
+
+      # The rule is written anew: the focus goes to its row's menu, found by its host.
+      menu_button = "rule-#{rule(scope, "api.example").id}-menu-button"
+      assert_push_event(view, "policy:focus", %{id: ^menu_button})
       assert text(view, "#flash-info") =~ "api.example is denied for the workspace. Version"
 
       id = rule(scope, "api.example").id
@@ -795,9 +849,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#mode-would") =~ "files.cdn.example"
       assert text(view, "#mode-would-n") == "1 destination"
 
-      view |> element("#mode-would button", "Allow for the workspace") |> render_click()
+      view
+      |> element("#mode-would button", "Allow files.cdn.example for the workspace")
+      |> render_click()
+
       assert rule(scope, "files.cdn.example")
       assert text(view, "#mode-would-n") == "none left"
+      assert_push_event(view, "policy:focus", %{id: "mode-confirm"})
 
       view |> element("#mode-confirm") |> render_click()
       assert Policy.get_mode(scope) == "enforce"
@@ -807,6 +865,47 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "The workspace's default is enforce. 1 repository follows it. Version"
 
       assert text(view, "#nav-policy-mode") == "enforce"
+    end
+
+    test "each Allow names its destination, and the focus goes on to the next one open",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "mirror.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "mirror.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "assets.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "assets.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "assets.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, scope)
+      view |> element("#policy-mode-enforce") |> render_click()
+
+      # Most attempts first: assets.example, mirror.example, files.cdn.example.
+      allow = fn host ->
+        "would-#{Common.would_key(%{host: host, path: nil})}-allow"
+      end
+
+      for host <- ~w(assets.example mirror.example files.cdn.example) do
+        assert has_element?(view, "button##{allow.(host)}", "Allow #{host} for the workspace")
+      end
+
+      # The one acted on goes; the focus goes to the next Allow still open, then from the
+      # top, and with none left to the act.
+      view |> element("##{allow.("mirror.example")}") |> render_click()
+      next = allow.("files.cdn.example")
+      assert_push_event(view, "policy:focus", %{id: ^next})
+      refute has_element?(view, "##{allow.("mirror.example")}")
+
+      view |> element("##{next}") |> render_click()
+      first = allow.("assets.example")
+      assert_push_event(view, "policy:focus", %{id: ^first})
+
+      view |> element("##{first}") |> render_click()
+      assert_push_event(view, "policy:focus", %{id: "mode-confirm"})
+      assert text(view, "#mode-would-n") == "none left"
     end
 
     test "with nothing to deny the list gives way to a sentence; cancel changes nothing",
@@ -819,6 +918,11 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-mode-line + section#mode-enforce")
       refute has_element?(view, "dialog#mode-enforce")
       assert has_element?(view, "#mode-enforce-cancel[phx-mounted]")
+
+      # What it does is read with the confirm and with Cancel, which has the focus.
+      assert has_element?(view, "section#mode-enforce[aria-describedby=mode-enforce-effect]")
+      assert has_element?(view, "#mode-enforce-cancel[aria-describedby=mode-enforce-effect]")
+      assert text(view, "#mode-enforce-effect") =~ "a connection no rule allows is denied"
 
       view |> element("#mode-enforce button", "Cancel") |> render_click()
       refute has_element?(view, "#mode-enforce")
@@ -855,6 +959,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#mode-observe") =~
                "The rules stay as they are, locked ones too: a deny holds in either mode."
+
+      assert has_element?(view, "section#mode-observe[aria-describedby=mode-observe-effect]")
+      assert has_element?(view, "#mode-observe-cancel[aria-describedby=mode-observe-effect]")
+
+      assert text(view, "#mode-observe-effect") =~
+               "only what a deny rule names is denied in the runs that name no repository"
 
       view |> element("#mode-confirm") |> render_click()
       assert Policy.get_mode(scope) == "observe"
@@ -1180,13 +1290,20 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#policy-export") =~ "Deny rules and locks are already applied"
 
+      # The page's h1 takes the focus it is sent, as the page header's does.
+      assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")
+      refute_push_event(view, "policy:focus", %{id: "policy-export-h"})
+
       view |> element("#policy-export a", "Done") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/3"))
+      assert has_element?(view, "h1#policy-version-h.outline-none[tabindex='-1']", "Version 3")
+      assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
       # From the version, its Export opens the page again, named in the browser's title.
       view |> element("#version-export") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/3/export"))
       assert page_title(view) =~ "Export · Version 3 · Policy"
+      assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
     end
 
     test "only the version in force is exported", %{conn: conn, scope: scope} do

@@ -374,7 +374,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
   The export of the version in force as a page of its own, at `…/versions/:n/export`: its
   breadcrumb back to the policy and the version (the frame's, where `crumbs` is false), the title and what is exported, the texts
   to copy, and Done back to the version. Nothing here is a form. `heading` is h2 under a
-  page's own title, as a target's Policy tab has.
+  page's own title, as a target's Policy tab has. The heading takes the focus a page sends
+  it (`policy-export-h`) when the page is reached by a patch, as Export is.
   """
   attr :export, :map, required: true
   attr :policy, :string, required: true, doc: "the policy's path, the breadcrumb's first step"
@@ -401,7 +402,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <.dynamic_tag
             tag_name={@heading}
             id="policy-export-h"
-            class="text-xl/7 font-semibold tracking-[-0.017em]"
+            class="text-xl/7 font-semibold tracking-[-0.017em] outline-none"
+            tabindex="-1"
           >
             {gettext("Export for a node without a server")}
           </.dynamic_tag>
@@ -465,14 +467,17 @@ defmodule ApiaryWeb.PolicyLive.Views do
   @doc """
   A confirmation in place under the control whose act it confirms (a policy's mode), in
   the look of `inline_confirm/1`, for a confirm that also shows a list (what enforce would
-  deny): the question, what happens, then the act's button and Cancel. Never an overlay.
-  Cancel takes the focus as it shows; Cancel and Escape send `dialog_cancel` with `return`,
-  the control the focus goes back to.
+  deny): the question, what happens (`effect`, a paragraph of its own, `<id>-effect`), the
+  rest (`inner_block`), then the act's button and Cancel. Never an overlay. Cancel takes
+  the focus as it shows; the section and Cancel are described by the effect, so it is read
+  with them. Cancel and Escape send `dialog_cancel` with `return`, the control the focus
+  goes back to.
   """
   attr :id, :string, required: true
   attr :question, :string, required: true
   attr :return, :string, required: true, doc: "the id of the control the focus goes back to"
-  slot :inner_block, required: true
+  slot :effect, required: true, doc: "what the act does, the sentence the confirm is read with"
+  slot :inner_block, doc: "what follows the effect: the list, the notes"
   slot :action, required: true, doc: "the act's button"
 
   def confirm_panel(assigns) do
@@ -483,17 +488,22 @@ defmodule ApiaryWeb.PolicyLive.Views do
       id={@id}
       class="grid max-w-[80ch] gap-3 rounded-box border border-line bg-base-100 p-4"
       aria-labelledby={"#{@id}-question"}
+      aria-describedby={"#{@id}-effect"}
       phx-window-keydown={@cancel}
       phx-key="Escape"
     >
       <h3 id={"#{@id}-question"} class="q-confirm-q">{@question}</h3>
-      <div class="q-confirm-sub grid gap-3">{render_slot(@inner_block)}</div>
+      <div class="q-confirm-sub grid gap-3">
+        <p id={"#{@id}-effect"} class="text-muted">{render_slot(@effect)}</p>
+        {render_slot(@inner_block)}
+      </div>
       <div class="q-confirm-act">
         {render_slot(@action)}
         <button
           id={"#{@id}-cancel"}
           type="button"
           class="btn btn-xs"
+          aria-describedby={"#{@id}-effect"}
           phx-click={@cancel}
           phx-mounted={JS.focus()}
         >

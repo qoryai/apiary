@@ -418,6 +418,21 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       # of the mode as it is.
       assert has_element?(view, "#policy-target-mode + section#target-mode-enforce")
       refute has_element?(view, "dialog#target-mode-enforce")
+
+      # What it does is read with the confirm and with Cancel, which has the focus.
+      assert has_element?(
+               view,
+               "section#target-mode-enforce[aria-describedby=target-mode-enforce-effect]"
+             )
+
+      assert has_element?(
+               view,
+               "#target-mode-enforce-cancel[aria-describedby=target-mode-enforce-effect]"
+             )
+
+      assert text(view, "#target-mode-enforce-effect") =~
+               "a connection no rule allows is denied in this repository's runs"
+
       assert has_element?(view, "#policy-page section#policy-keys[hidden]")
       view |> element("#target-mode-enforce-cancel") |> render_click()
       refute has_element?(view, "#target-mode-enforce")
@@ -433,8 +448,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       refute text(view, "#mode-would") =~ "bin.paste.example"
       assert text(view, "#mode-would") =~ "1 destination"
 
-      view |> element("#mode-would button", "Allow here") |> render_click()
+      view |> element("#mode-would button", "Allow files.cdn.example here") |> render_click()
       assert own(scope, target, "files.cdn.example")
+      # None left open: the focus goes to the act.
+      assert_push_event(view, "policy:focus", %{id: "target-mode-confirm"})
 
       view |> element("#target-mode-confirm", "Enforce this repository") |> render_click()
 
@@ -464,6 +481,14 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert text(view, "#target-mode-observe") =~
                "A deny holds in either mode: *.paste.example stays denied in this repository"
 
+      assert has_element?(
+               view,
+               "section#target-mode-observe[aria-describedby=target-mode-observe-effect]"
+             )
+
+      assert text(view, "#target-mode-observe-effect") =~
+               "only what a deny rule names is denied in this repository's runs"
+
       view |> element("#target-mode-confirm", "Observe this repository") |> render_click()
       assert Policy.get_mode(scope, target).own == "observe"
 
@@ -480,6 +505,39 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       assert text(view, "#flash-info") =~
                "github.example/acme/shop follows the workspace: enforce."
+    end
+
+    test "each Allow here names its destination, and the focus goes on to the next one open",
+         %{conn: conn, scope: scope, path: path} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "mirror.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "mirror.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, path)
+      view |> element("#policy-target-mode-enforce") |> render_click()
+
+      allow = fn host ->
+        "would-#{ApiaryWeb.PolicyLive.Common.would_key(%{host: host, path: nil})}-allow"
+      end
+
+      assert has_element?(view, "button##{allow.("mirror.example")}", "Allow mirror.example here")
+
+      assert has_element?(
+               view,
+               "button##{allow.("files.cdn.example")}",
+               "Allow files.cdn.example here"
+             )
+
+      view |> element("##{allow.("mirror.example")}") |> render_click()
+      next = allow.("files.cdn.example")
+      assert_push_event(view, "policy:focus", %{id: ^next})
+
+      view |> element("##{next}") |> render_click()
+      assert_push_event(view, "policy:focus", %{id: "target-mode-confirm"})
     end
 
     test "a setting that changes nothing today is immediate, and says so",
@@ -625,6 +683,17 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "#export-crumbs a[href='#{path}/versions/1']", "Version 1")
     assert has_element?(view, "#export-done[href='#{path}/versions/1']", "Done")
     refute has_element?(view, "#policy-tabs")
+
+    # Done and Export are patches: the heading of what is shown takes the focus.
+    view |> element("#export-done") |> render_click()
+    assert_patch(view, path <> "/versions/1")
+    assert has_element?(view, "h2#policy-version-h[tabindex='-1']", "Version 1")
+    assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
+
+    view |> element("#version-export") |> render_click()
+    assert_patch(view, path <> "/versions/1/export")
+    assert has_element?(view, "h2#policy-export-h[tabindex='-1']")
+    assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
 
     # The workspace's change is not this target's.
     [workspace_change | _] = Policy.list_changes(scope, nil, 1).items
