@@ -3,22 +3,25 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   Workspace settings › Integrations (`/:org/:workspace/settings/integrations`), with the
   `security` feature, in two parts:
 
-    * **Set up in this workspace**: one list of what the workspace sets up for its runs,
-      which `Apiary.Connections` calls connections, each row its name, its kind (Runtime,
-      API, or Program, one added from a release), a program's version and where it
-      applies, every target or the chosen ones, leading to its page
-      (`ApiaryWeb.IntegrationLive.Show`);
-    * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name:
-      the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`), the built-in APIs
-      (`Apiary.Kinds.Services`), the named releases (`ApiaryWeb.IntegrationLive.Named`),
-      the workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`), then From
-      a release… and Custom API….
+    * **Set up in this workspace**: one list of what the runs of the workspace use,
+      which `Apiary.Connections` calls connections, in the order of the groups below,
+      each row its name, its kind (Agent, API, or Program, one added from a release), a
+      program's version and where it applies (For runs in), every target or the chosen
+      ones, leading to its page (`ApiaryWeb.IntegrationLive.Show`);
+    * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name,
+      in three groups, each a heading, one sentence of what a run gets from it and its
+      own list: Agent, the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`);
+      APIs the agent may call, the built-in APIs (`Apiary.Kinds.Services`), the
+      workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`) and Custom
+      API…; Programs, the named releases (`ApiaryWeb.IntegrationLive.Named`) and From a
+      release….
 
-  No run receives any of this yet, and the page says so once, at its top.
+  It is all for the runs, none of it for Qory Apiary itself, and the page says so in its
+  subtitle. No run uses any of it yet, and the page says so once, at its top.
 
   The forms are pages of the section, at paths of their own, never a dialog: Add from a
   release (`…/add`), which asks for a release and leads to it
-  (`ApiaryWeb.IntegrationLive.Release`), Set up a runtime (`…/new-runtime`) and Set up an
+  (`ApiaryWeb.IntegrationLive.Release`), Set up an agent (`…/new-runtime`) and Set up an
   API (`…/new-service`), each opened by a card with its item chosen (`?runtime=`,
   `?definition=builtin:…` or `own:…`; one that is not there opens the form as it starts).
   Every member reads the section; owners and admins change it (`connection.write`), and
@@ -82,7 +85,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         measure="list"
       >
         <:subtitle>
-          {pgettext("plain", "What this workspace sets up for its runs, and where each applies.")}
+          {gettext(
+            "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
+          )}
         </:subtitle>
 
         <Common.not_yet />
@@ -119,7 +124,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             <:col :let={connection} label={gettext("Version")} from="sm">
               <span :if={connection.version} class="q-mono">{connection.version}</span>
             </:col>
-            <:col :let={connection} label={pgettext("plain", "Applies to")}>
+            <:col :let={connection} label={Common.applies_label()}>
               {Common.applies_word(connection)}
             </:col>
           </.table>
@@ -141,13 +146,22 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
   @doc """
   add_cards/1 is the part "Add an integration": a card for each thing the workspace can
-  add, by name, each its kind as a small word, one line about it and the act that adds
-  it. First the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`), the built-in
-  APIs (`Apiary.Kinds.Services`) and the named releases
-  (`ApiaryWeb.IntegrationLive.Named`), then the workspace's own custom APIs, each its name
-  leading to its page, then From a release… and Custom API…. A card's act opens the form
-  with its item chosen; a runtime or an API may be set up more than once, so a card stays
-  as it is once it is set up.
+  add, by name, each its kind as a small word, one line about what a run gets from it and
+  the act that adds it. The cards are in three groups, each an `<h3>`, one sentence and a
+  list of its own, labelled by its heading:
+
+    * **Agent** (`#add-group-agent`): the runtimes of the runner's catalogue
+      (`Apiary.Kinds.Runtimes`);
+    * **APIs the agent may call** (`#add-group-apis`): the built-in APIs
+      (`Apiary.Kinds.Services`), the workspace's own custom APIs, each its name leading to
+      its page, then Custom API…;
+    * **Programs** (`#add-group-programs`): the named releases
+      (`ApiaryWeb.IntegrationLive.Named`), then From a release….
+
+  A card's act opens the form with its item chosen; an agent or an API may be set up more
+  than once, so a card stays as it is once it is set up. The runner's design that the
+  agent never holds a token is said for APIs and programs, never for the agent, whose
+  model credential the runner may give it.
   """
   attr :scope, :any, required: true
   attr :definitions, :list, required: true, doc: "the workspace's own service definitions"
@@ -162,79 +176,127 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
     ~H"""
     <SettingsComponents.part id="add-part" title={gettext("Add an integration")}>
+      <div id="add-cards" class="grid gap-6">
+        <.add_group
+          id="add-group-agent"
+          title={gettext("Agent")}
+          about={gettext("The coding agent a run starts in the targets it applies to.")}
+        >
+          <.add_card
+            :for={runtime <- Runtimes.list()}
+            id={"add-card-runtime-#{runtime.name}"}
+            title={runtime.title}
+            kind={gettext("Agent")}
+            about={runtime_line(runtime)}
+            act={gettext("Set up")}
+            navigate={Common.new_runtime_path(@scope, runtime.name)}
+          />
+        </.add_group>
+        <.add_group
+          id="add-group-apis"
+          title={gettext("APIs the agent may call")}
+          about={
+            gettext(
+              "Outside APIs the agent reaches while it works. The runner adds the API's token to the agent's requests, so the agent never holds it."
+            )
+          }
+        >
+          <.add_card
+            :for={definition <- Services.list()}
+            id={"add-card-api-#{definition["key"]}"}
+            title={definition["title"]}
+            kind={gettext("API")}
+            about={api_line(definition)}
+            act={gettext("Set up")}
+            navigate={Common.new_service_path(@scope, "builtin:" <> definition["key"])}
+          />
+          <.add_card
+            :for={definition <- @definitions}
+            id={"add-card-own-#{definition.public_id}"}
+            title={definition.title}
+            title_navigate={Common.definition_path(@scope, definition)}
+            kind={gettext("Custom API")}
+            about={own_line(definition)}
+            act={gettext("Set up")}
+            navigate={Common.new_service_path(@scope, "own:" <> definition.public_id)}
+          />
+          <.add_card
+            id="add-card-custom-api"
+            title={gettext("Custom API…")}
+            about={
+              gettext("Describe another API the agent may call: its hosts and how its token is sent.")
+            }
+            act={gettext("New custom API")}
+            act_id="new-definition"
+            navigate={Common.definition_path(@scope, :new)}
+          />
+        </.add_group>
+        <.add_group
+          id="add-group-programs"
+          title={gettext("Programs")}
+          about={
+            gettext(
+              "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's targets."
+            )
+          }
+        >
+          <.add_card
+            :for={named <- @named}
+            id={"add-card-named-#{slug(named.source)}"}
+            title={named.name}
+            source={named.source}
+            kind={gettext("Program")}
+            about={named.about}
+            act={gettext("Set up")}
+            navigate={Common.add_path(@scope, source: named.source)}
+          />
+          <.add_card
+            id="add-card-release"
+            title={gettext("From a release…")}
+            about={
+              if @url_sources,
+                do:
+                  gettext(
+                    "Add a program its publisher releases on github.com, gitlab.com or codeberg.org, or at an https address."
+                  ),
+                else:
+                  gettext(
+                    "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
+                  )
+            }
+            act={gettext("Add from a release")}
+            act_id="add-integration"
+            navigate={Common.add_path(@scope)}
+          />
+        </.add_group>
+      </div>
+    </SettingsComponents.part>
+    """
+  end
+
+  # One group of cards: its heading, one sentence of what a run gets from it, and its
+  # cards as a list of their own, which its heading names.
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :about, :string, required: true
+  slot :inner_block, required: true
+
+  defp add_group(assigns) do
+    ~H"""
+    <div id={@id} class="grid min-w-0 gap-2">
+      <div class="grid gap-0.5">
+        <h3 id={"#{@id}-title"} class="text-[13px]/5 font-semibold">{@title}</h3>
+        <p id={"#{@id}-about"} class="max-w-[72ch] text-[13px]/5 text-muted">{@about}</p>
+      </div>
       <ul
-        id="add-cards"
+        id={"#{@id}-cards"}
         role="list"
+        aria-labelledby={"#{@id}-title"}
         class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,14rem),1fr))] gap-3"
       >
-        <.add_card
-          :for={runtime <- Runtimes.list()}
-          id={"add-card-runtime-#{runtime.name}"}
-          title={runtime.title}
-          kind={gettext("Runtime")}
-          about={runtime_line(runtime)}
-          act={gettext("Set up")}
-          navigate={Common.new_runtime_path(@scope, runtime.name)}
-        />
-        <.add_card
-          :for={definition <- Services.list()}
-          id={"add-card-api-#{definition["key"]}"}
-          title={definition["title"]}
-          kind={gettext("API")}
-          about={definition["description"]}
-          act={gettext("Set up")}
-          navigate={Common.new_service_path(@scope, "builtin:" <> definition["key"])}
-        />
-        <.add_card
-          :for={named <- @named}
-          id={"add-card-named-#{slug(named.source)}"}
-          title={named.name}
-          source={named.source}
-          kind={gettext("Program")}
-          about={named.about}
-          act={gettext("Set up")}
-          navigate={Common.add_path(@scope, source: named.source)}
-        />
-        <.add_card
-          :for={definition <- @definitions}
-          id={"add-card-own-#{definition.public_id}"}
-          title={definition.title}
-          title_navigate={Common.definition_path(@scope, definition)}
-          kind={gettext("Custom API")}
-          about={own_line(definition)}
-          act={gettext("Set up")}
-          navigate={Common.new_service_path(@scope, "own:" <> definition.public_id)}
-        />
-        <.add_card
-          id="add-card-release"
-          title={gettext("From a release…")}
-          about={
-            if @url_sources,
-              do:
-                gettext(
-                  "Add a program its publisher releases on github.com, gitlab.com or codeberg.org, or at an https address."
-                ),
-              else:
-                gettext(
-                  "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
-                )
-          }
-          act={gettext("Add from a release")}
-          act_id="add-integration"
-          navigate={Common.add_path(@scope)}
-        />
-        <.add_card
-          id="add-card-custom-api"
-          title={gettext("Custom API…")}
-          about={
-            gettext("Describe an API that takes a secret: its hosts and how the secret is sent.")
-          }
-          act={gettext("New custom API")}
-          act_id="new-definition"
-          navigate={Common.definition_path(@scope, :new)}
-        />
+        {render_slot(@inner_block)}
       </ul>
-    </SettingsComponents.part>
+    </div>
     """
   end
 
@@ -255,12 +317,12 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     ~H"""
     <li id={@id} class="card card-border min-w-0 gap-2 bg-base-100 p-4 shadow-xs">
       <div class="grid gap-0.5">
-        <h3 id={"#{@id}-title"} class="text-[14px]/5 font-semibold break-words">
+        <h4 id={"#{@id}-title"} class="text-[14px]/5 font-semibold break-words">
           <.link :if={@title_navigate} navigate={@title_navigate} class="hover:underline">
             {@title}
           </.link>
           <span :if={!@title_navigate}>{@title}</span>
-        </h3>
+        </h4>
         <span :if={@source} class="q-mono text-[12.5px]/[18px] break-all text-muted">
           {@source}
         </span>
@@ -276,12 +338,26 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     """
   end
 
-  # The line under a runtime's name: the catalogue has no description, so the console
-  # says what each of its runtimes is; one it doesn't know yet, where it comes from.
+  # The line under an agent's name: the catalogue has no description, so the console
+  # says what a run gets from each of its runtimes; one it doesn't know yet, what it is.
   defp runtime_line(%{name: "claude"}),
-    do: gettext("Anthropic's coding agent, with an API key or an OAuth credential.")
+    do:
+      gettext(
+        "Runs start Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
+      )
 
-  defp runtime_line(_runtime), do: gettext("A runtime of the runner's catalogue.")
+  defp runtime_line(_runtime), do: gettext("A coding agent the runner can start.")
+
+  # The line under a built-in API's name: what the agent may do with it, said by the
+  # console; one it doesn't know yet, its definition's description, which its page keeps
+  # as its About.
+  defp api_line(%{"key" => "sentry"}),
+    do: gettext("The agent may call Sentry's API on sentry.io, such as to read issues.")
+
+  defp api_line(%{"key" => "npm"}),
+    do: gettext("The agent may install and publish packages on registry.npmjs.org.")
+
+  defp api_line(definition), do: definition["description"]
 
   # The line under a custom API's name: its description, else its hosts.
   defp own_line(definition) do
@@ -392,7 +468,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         <.input
           field={@form[:runtime]}
           type="select"
-          label={gettext("Runtime")}
+          label={gettext("Agent")}
           options={for runtime <- Runtimes.list(), do: {runtime.title, runtime.name}}
           aria-describedby="runtime-catalogue"
         />
@@ -409,7 +485,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         <.applies_input form={@form} />
         <.page_form_foot id="new-runtime-save" cancel={Common.index_path(@current_scope)}>
           <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
-            {gettext("Set up runtime")}
+            {gettext("Set up agent")}
           </.button>
         </.page_form_foot>
       </div>
@@ -460,7 +536,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     <.input
       field={@form[:applies_to]}
       type="radio"
-      label={pgettext("plain", "Applies to")}
+      label={Common.applies_label()}
       options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
       hint={gettext("You choose the targets on its page, once it is set up.")}
     />
@@ -515,7 +591,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   defp form_id(:new_service), do: "new-service-page"
 
   defp form_title(:add_integration), do: gettext("Add from a release")
-  defp form_title(:new_runtime), do: gettext("Set up a runtime")
+  defp form_title(:new_runtime), do: gettext("Set up an agent")
   defp form_title(:new_service), do: gettext("Set up an API")
 
   defp form_sentence(:add_integration),
@@ -524,10 +600,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         "Name the release of a program: its description is fetched, and you add it from there."
       )
 
-  defp form_sentence(:new_runtime), do: gettext("Set up a runtime of the runner's catalogue.")
+  defp form_sentence(:new_runtime), do: gettext("Choose the coding agent runs start.")
 
   defp form_sentence(:new_service),
-    do: gettext("Set up a built-in API or one of this workspace's own.")
+    do: gettext("Choose an outside API the agent may call while it works.")
 
   ## Mount, the list and the forms
 
@@ -552,7 +628,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     with {:ok, connections} <- Connections.list_connections(scope),
          {:ok, definitions} <- Connections.list_service_definitions(scope) do
       assign(socket,
-        connections: connections,
+        connections: Enum.sort_by(connections, &Common.kind_order(&1.kind)),
         definitions: definitions
       )
     else
@@ -615,7 +691,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     to_form(fields, as: :release)
   end
 
-  # Set up a runtime, its runtime the one a card chose (`?runtime=`) where the catalogue
+  # Set up an agent, its runtime the one a card chose (`?runtime=`) where the catalogue
   # has it, else the catalogue's first.
   defp fresh_form(:new_runtime, params, _assigns) do
     runtime =

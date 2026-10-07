@@ -7,8 +7,11 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   declares and the form values cast to them, and the sentence for each refusal of
   `Apiary.Connections` and `Apiary.Integrations`.
 
-  The pages call a connection of `Apiary.Connections` by its kind's word: a Runtime, a
-  Program (an integration added from a release) or an API (a service); a service
+  Everything the section holds is for the runs of the workspace, never for Qory Apiary
+  itself, and the pages say it from the run's side. They call a connection of
+  `Apiary.Connections` by its kind's word: an Agent (a runtime, the coding agent a run
+  starts), an API (a service, an outside API the agent may call) or a Program (an
+  integration added from a release, which the runner starts outside the agent); a service
   definition of the workspace's own is a Custom API. "Integrations" is the section's name
   alone, and "service definition" is not a word of the pages. No run receives any of them
   yet: each page says so once, near its top (`not_yet/1`), and nothing on them says
@@ -131,15 +134,17 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   ## The line every page says once
 
   @doc """
-  not_yet/1 is the one line each page of the section says near its top: no run
-  receives a runtime, an integration or a service yet (`not_on_runs/1`).
+  not_yet/1 is the one line each page of the section says near its top: no run uses an
+  agent, an API or a program set up here yet (`not_on_runs/1`).
   """
   attr :id, :string, default: "not-on-runs"
 
   def not_yet(assigns) do
     ~H"""
     <.not_on_runs id={@id}>
-      {gettext("Runs don't receive integrations yet. Today a run receives only its security policy.")}
+      {gettext(
+        "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
+      )}
     </.not_on_runs>
     """
   end
@@ -147,12 +152,43 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   ## Words
 
   @doc """
-  kind_word/1 is a kind's name, capitalised: Runtime, Program (an integration added from a
-  release), API (a service).
+  kind_word/1 is a kind's name, capitalised: Agent (a runtime), API (a service), Program
+  (an integration added from a release).
   """
-  def kind_word("runtime"), do: gettext("Runtime")
+  def kind_word("runtime"), do: gettext("Agent")
   def kind_word("integration"), do: gettext("Program")
   def kind_word("service"), do: gettext("API")
+
+  @doc """
+  kind_order/1 is a kind's place among the section's groups, the order its list and its
+  cards follow: the agent (a runtime), then the APIs the agent may call (services), then
+  programs (integrations).
+  """
+  def kind_order("runtime"), do: 0
+  def kind_order("service"), do: 1
+  def kind_order("integration"), do: 2
+
+  @doc """
+  role_line/1 is the one line under a set-up item's title, by its kind: what a run gets
+  from it. The runner's design that the agent never holds a token is said for an API and a
+  program, never for an agent, whose model credential the runner may give the agent.
+  """
+  def role_line("runtime"), do: gettext("Runs in the targets it applies to start this agent.")
+
+  def role_line("service"),
+    do:
+      gettext(
+        "The agent in a run may call this API. The runner adds its token to the agent's requests."
+      )
+
+  def role_line("integration"),
+    do:
+      gettext(
+        "The runner starts this program outside the agent, to get the run a token for its API."
+      )
+
+  @doc "applies_label/0 is the label of where a connection applies, in a list, a form or its facts."
+  def applies_label, do: gettext("For runs in")
 
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's

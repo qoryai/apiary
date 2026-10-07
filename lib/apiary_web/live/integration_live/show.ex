@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.IntegrationLive.Show do
   @moduledoc """
-  One runtime, program (an integration added from a release) or API (a service) of the
-  workspace, under Workspace settings › Integrations
+  One agent (a runtime), API (a service) or program (an integration added from a release)
+  of the workspace, under Workspace settings › Integrations
   (`/:org/:workspace/settings/integrations/:id`, `:id` its public id, `con_…`), with the
-  `security` feature. Three tabs, each an address:
+  `security` feature. Under its title, its kind and one line of what a run gets from it
+  (`ApiaryWeb.IntegrationLive.Common.role_line/1`). Three tabs, each an address:
 
     * **Overview** (`:overview`): what it is, its id, its source, version and publisher
       (a program's), the API it is set up from, built in or a custom API (an API's), or
-      its catalogue entry (a runtime's), where it applies, who added and changed it, the
+      its catalogue entry (an agent's), where it applies, who added and changed it, the
       way it is used, the secrets it declares and a program's plain settings;
     * **Targets** (`…/targets`): where it applies, every target or the chosen ones, with
       Add target (`…/targets/add`, a page) and the removal of one, confirmed on its row
@@ -221,6 +222,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <span :if={@connection.source} class="q-mono">{@connection.source}</span>
           <span :if={@connection.version} class="text-faint" aria-hidden="true">·</span>
           <span :if={@connection.version} class="q-mono">{@connection.version}</span>
+          <span id="connection-role" class="block">{Common.role_line(@connection.kind)}</span>
         </:subtitle>
 
         <.page_tabs id="connection-tabs" label={Common.kind_word(@connection.kind)} current={@tab}>
@@ -271,7 +273,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <dt class="text-faint">{gettext("Id")}</dt>
         <dd class="q-mono" id="connection-id">{@connection.public_id}</dd>
         <%= if @connection.kind == "runtime" do %>
-          <dt class="text-faint">{gettext("Runtime")}</dt>
+          <dt class="text-faint">{gettext("Agent")}</dt>
           <dd>
             {(@runtime && @runtime.title) || @connection.name}
             <span class="q-mono text-muted">({@connection.name})</span>
@@ -352,7 +354,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             {Apiary.Kinds.ServiceDefinition.digest(@definition)}
           </dd>
         <% end %>
-        <dt class="text-faint">{pgettext("plain", "Applies to")}</dt>
+        <dt class="text-faint">{Common.applies_label()}</dt>
         <dd>
           <.link
             id="connection-applies-link"
@@ -596,7 +598,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <.input
           field={@form[:applies_to]}
           type="radio"
-          label={pgettext("plain", "Applies to")}
+          label={Common.applies_label()}
           options={[{gettext("Every target"), "all"}, {gettext("Chosen targets"), "selected"}]}
           hint={gettext("Chosen targets are listed under Targets.")}
         />

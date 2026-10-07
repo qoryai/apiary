@@ -40,14 +40,27 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   end
 
   describe "Overview" do
-    test "says what a runtime is, its id, where it applies and the secrets it declares",
+    test "says what an agent is, its id, the runs it is for and the secrets it declares",
          %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, html} = live(conn, ipath(scope, runtime))
 
       assert has_element?(lv, "h1#settings-section-title", "Claude Code")
       assert has_element?(lv, "#connection-name.q-mono", "claude")
-      assert has_element?(lv, "#connection-kind", "Runtime")
+      assert has_element?(lv, "#connection-kind", "Agent")
+
+      assert has_element?(
+               lv,
+               "header #connection-role",
+               "Runs in the repositories it applies to start this agent."
+             )
+
+      refute has_element?(lv, "#connection-role", "never holds")
+      assert has_element?(lv, "#connection-facts dt", "Agent")
+      assert has_element?(lv, "#connection-facts dt", "For runs in")
+      refute has_element?(lv, "#connection-facts dt", "Runtime")
+      refute has_element?(lv, "#connection-facts dt", "Applies to")
+      assert has_element?(lv, "#connection-tabs[aria-label=Agent]")
       assert has_element?(lv, "#breadcrumb-section", "Integrations")
       assert page_title(lv) =~ "Claude Code · Integrations · Workspace settings"
       assert has_element?(lv, "#connection-tabs-overview[aria-current=page]")
@@ -56,8 +69,15 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
       assert has_element?(lv, "#connection-secrets-unlinked", "can't be linked to it yet")
-      refute lv |> element("#settings-section-integrations") |> render() =~ "Qory"
-      assert has_element?(lv, "#not-on-runs", "Runs don't receive integrations yet.")
+      section = lv |> element("#settings-section-integrations") |> render()
+      refute String.replace(section, "Qory Apiary", "") =~ "Qory"
+
+      assert has_element?(
+               lv,
+               "#not-on-runs",
+               "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
+             )
+
       refute html =~ "runs receive"
     end
 
@@ -81,6 +101,12 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#settings-section-title", "Acme tracker")
       assert has_element?(lv, "#connection-name", "acme-tracker")
       assert has_element?(lv, "#connection-kind", "Program")
+
+      assert has_element?(
+               lv,
+               "header #connection-role",
+               "The runner starts this program outside the agent, to get the run a token for its API."
+             )
     end
 
     test "says an API's kind, and the API it is set up from", %{conn: conn, scope: scope} do
@@ -89,13 +115,20 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
       assert has_element?(lv, "h1#settings-section-title", "Sentry")
       assert has_element?(lv, "#connection-kind", "API")
+
+      assert has_element?(
+               lv,
+               "header #connection-role",
+               "The agent in a run may call this API. The runner adds its token to the agent's requests."
+             )
+
       assert has_element?(lv, "#connection-facts dd", "API")
       assert has_element?(lv, "#connection-facts dt", "Set up from")
       assert has_element?(lv, "#connection-definition", "Sentry")
       refute lv |> element("#settings-section-integrations") |> render() =~ "ervice"
     end
 
-    test "Applies to leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
+    test "For runs in leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime))
 
@@ -275,6 +308,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     test "where it applies and a service's name are saved", %{conn: conn, scope: scope} do
       {:ok, service} = Connections.create_service(scope, %{service: "npm"})
       {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
+      assert has_element?(lv, "#connection-form fieldset legend", "For runs in")
 
       lv
       |> form("#connection-form", connection: %{applies_to: "selected", name: "Packages"})
