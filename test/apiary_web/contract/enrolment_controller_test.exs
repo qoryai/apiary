@@ -73,7 +73,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
   defp apiary_public_key, do: SigningKey.apiary_public_key()
 
   describe "a code accepted" do
-    test "makes the key awaiting approval and answers 201, signed, with its id and node", %{
+    test "makes the key, active, and answers 201, signed, with its id and node", %{
       scope: scope,
       node: node
     } do
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
                "access_key_id" => key.key_id,
                "node_id" => node.public_id,
                "node_kind" => "node",
-               "approved" => false,
+               "approved" => true,
                "stored_secrets" => false,
                "apiary_public_key" => apiary_public_key()
              }
@@ -100,7 +100,8 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       # The members in the contract's order.
       assert conn.resp_body =~ ~r/\A\{"version":1,"access_key_id":"ak_[a-z0-9]{16}","node_id":/
 
-      assert AccessKey.status(key) == :pending
+      assert AccessKey.status(key) == :active
+      assert {:ok, _verified} = AccessKeys.fetch_for_verification(key.key_id)
       assert key.node_id == node.id
       assert key.arrived_by == :code
       assert key.enrolment_code_id == row.id
@@ -114,7 +115,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert %DateTime{} = used.used_at
       assert EnrolmentCode.verify_integrity(used) == :ok
 
-      assert %PublicKey{state: :pending, key_id: key_id} = Repo.get(PublicKey, pair.public_key)
+      assert %PublicKey{state: :current, key_id: key_id} = Repo.get(PublicKey, pair.public_key)
       assert key_id == key.key_id
     end
 
@@ -331,8 +332,9 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
   end
 
   describe "the node full, 409 key_limit signed" do
-    test "while it holds a key awaiting approval", %{scope: scope, node: node} do
-      pending_key_fixture(scope, node)
+    test "while it holds two keys", %{scope: scope, node: node} do
+      node_key_fixture(scope, node)
+      enrolled_key_fixture(scope, node)
       %{row: row, code: code} = code(scope, node)
       body = body(code, ed25519_key_pair())
 
@@ -347,7 +349,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert Repo.get!(EnrolmentCode, row.id).used_at == nil
     end
 
-    test "while it holds two approved keys", %{scope: scope, node: node} do
+    test "while it holds two pasted keys", %{scope: scope, node: node} do
       node_key_fixture(scope, node)
       node_key_fixture(scope, node)
       %{code: code} = code(scope, node)
@@ -358,7 +360,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert assert_signed(conn, body)["error"] == "key_limit"
     end
 
-    test "but not while it holds one approved key", %{scope: scope, node: node} do
+    test "but not while it holds one key", %{scope: scope, node: node} do
       node_key_fixture(scope, node)
       %{code: code} = code(scope, node)
       assert enrol(body(code, ed25519_key_pair())).status == 201
@@ -383,26 +385,11 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert conn.status == 201
       answer = assert_signed(conn, again)
       assert answer["access_key_id"] == key.key_id
-      assert answer["approved"] == false
+      assert answer["approved"] == true
 
       assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^key.node_id), :count) == 1
       assert Repo.get!(EnrolmentCode, row.id) == used
       assert Repo.aggregate(Entry, :count) == entries
-    end
-
-    test "answers the key as it is now: approved once approved", %{
-      scope: scope,
-      code: code,
-      pair: pair
-    } do
-      assert enrol(body(code, pair)).status == 201
-      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
-      {:ok, _} = AccessKeys.approve(scope, key)
-
-      again = body(code, pair)
-      conn = enrol(again)
-      assert conn.status == 201
-      assert assert_signed(conn, again)["approved"] == true
     end
 
     test "still needs a proof that verifies, and a fresh timestamp", %{code: code, pair: pair} do
@@ -415,7 +402,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert enrol(forged).status == 409
     end
 
-    test "is 401 once the key is rejected, or the code's lifetime is over", %{
+    test "is 401 once the key is revoked, or the code's lifetime is over", %{
       scope: scope,
       row: row,
       code: code,
@@ -423,7 +410,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     } do
       assert enrol(body(code, pair)).status == 201
       key = Repo.get_by!(AccessKey, public_key: pair.public_key)
-      {:ok, _} = AccessKeys.reject(scope, key)
+      {:ok, _} = AccessKeys.revoke_access_key(scope, key)
       assert enrol(body(code, pair)).status == 401
 
       %{row: row2, code: code2} = code(scope, node_fixture(scope))

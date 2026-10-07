@@ -3,9 +3,9 @@ defmodule Apiary.AccessKeys.AccessKey do
   A workspace's credential for the server contract, named by its key id, `ak_` and
   sixteen characters (`Apiary.PublicId`): one Ed25519 public key (`public_key`, 32 bytes)
   on a node or a node pool of the workspace (`node_id`). Apiary holds no secret of it. It
-  arrived by an enrolment code or by a paste (`arrived_by`), awaits approval until an
-  owner or an admin approves it (a pasted key is approved as it is entered), and carries
-  the stored-secrets flag (`allow_secrets`) it was made with.
+  arrived by an enrolment code or by a paste (`arrived_by`), is active from the moment it
+  is made until it is revoked, and carries the stored-secrets flag (`allow_secrets`) it
+  was made with.
 
   A key's node, public key, stored-secrets flag and arrival are fixed when it is made
   (`insert_changeset/2`): no changeset casts them after, and the database refuses an
@@ -32,20 +32,17 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :last_heartbeat_at, :utc_datetime_usec
     field :public_key, :binary
     field :received_at, :utc_datetime_usec
-    field :approved_at, :utc_datetime_usec
     field :allow_secrets, :boolean, default: false
     field :rate, :integer
     field :burst, :integer
     field :arrived_by, Ecto.Enum, values: [:code, :paste]
     field :integrity_code, :binary, redact: true
     field :integrity_key_id, :string
-    field :last_pending_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :created_by, Apiary.Accounts.User
     belongs_to :node, Apiary.Nodes.Node
-    belongs_to :approved_by, Apiary.Accounts.User
     belongs_to :revoked_by, Apiary.Accounts.User
     belongs_to :enrolment_code, Apiary.AccessKeys.EnrolmentCode
 
@@ -53,7 +50,8 @@ defmodule Apiary.AccessKeys.AccessKey do
   end
 
   @integrity_kind "access_key"
-  @integrity_version 1
+  # Version 2: the code no longer covers an approval, which keys no longer have.
+  @integrity_version 2
 
   @doc """
   changeset/2 is the changeset of a key's label: 1 to 80 characters without control
@@ -109,13 +107,11 @@ defmodule Apiary.AccessKeys.AccessKey do
   end
 
   @doc """
-  status/1 is `:revoked` once revoked or rejected, `:pending` while it awaits approval,
-  else `:active`.
+  status/1 is `:revoked` once revoked, else `:active`: a key is active from the moment it
+  is made.
   """
-  @spec status(t) :: :revoked | :pending | :active
+  @spec status(t) :: :revoked | :active
   def status(%__MODULE__{revoked_at: revoked_at}) when not is_nil(revoked_at), do: :revoked
-
-  def status(%__MODULE__{approved_at: nil}), do: :pending
   def status(%__MODULE__{}), do: :active
 
   def never_used?(%__MODULE__{last_used_at: last_used_at}), do: is_nil(last_used_at)
@@ -137,7 +133,7 @@ defmodule Apiary.AccessKeys.AccessKey do
   @doc """
   integrity_fields/1 is what a key's integrity code covers, in its fixed order:
   what names it and binds it to its workspace and node, its public key, its stored-secrets
-  flag and rate, how and when it arrived, and its approval and revocation. Its label and
+  flag and rate, how and when it arrived, and its revocation. Its label and
   its last use are outside the code.
   """
   @spec integrity_fields(t) :: Apiary.Integrity.fields()
@@ -155,8 +151,6 @@ defmodule Apiary.AccessKeys.AccessKey do
       arrived_by: key.arrived_by,
       enrolment_code_id: key.enrolment_code_id,
       received_at: key.received_at,
-      approved_at: key.approved_at,
-      approved_by_id: key.approved_by_id,
       revoked_at: key.revoked_at,
       revoked_by_id: key.revoked_by_id
     ]

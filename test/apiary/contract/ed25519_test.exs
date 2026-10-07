@@ -180,7 +180,7 @@ defmodule Apiary.Contract.Ed25519Test do
       assert Ed25519.decode_public_key(@fixture_next_signing_key) == {:error, :fixture}
     end
 
-    test "the fixture access key that awaits approval matches its published key, and is refused" do
+    test "the second fixture access key matches its published key, and is refused" do
       seed = :binary.list_to_bin(Enum.to_list(193..224))
       {public, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
 

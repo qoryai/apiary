@@ -12,8 +12,8 @@ defmodule Mix.Tasks.Apiary.Demo do
   Every `priv/demo/*/events.jsonl` is one run, one CloudEvent of the server contract per
   line, all of it synthetic. `--file` replays one file instead. The run lands in the
   workspace of the access key named by `--key`, a node's key id, on that key's node;
-  without it, in the first workspace that has an approved key that is not revoked, under
-  its newest such key: on a new instance, the Main workspace of the organisation the first
+  without it, in the first workspace that has a key that is not revoked, under its newest
+  such key: on a new instance, the Main workspace of the organisation the first
   user signed up with, once they have added a key to a node there. Signing up needs no
   setting: the instance's first sign-up is always open.
 
@@ -309,7 +309,7 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   @doc false
   # The key a replay posts under, as a verified request carries it, with its workspace and
-  # node: `--key`'s, or the newest approved key, neither revoked nor of a deleted node, of
+  # node: `--key`'s, or the newest key, neither revoked nor of a deleted node, of
   # the first workspace that has one. Public for the tests.
   def access_key!(nil) do
     if not Repo.exists?(Workspace), do: Mix.raise("there is no workspace yet: sign up first")
@@ -319,19 +319,19 @@ defmodule Mix.Tasks.Apiary.Demo do
         from k in AccessKey,
           join: w in assoc(k, :workspace),
           join: n in assoc(k, :node),
-          where: not is_nil(k.approved_at) and is_nil(k.revoked_at) and is_nil(n.deleted_at),
+          where: is_nil(k.revoked_at) and is_nil(n.deleted_at),
           order_by: [asc: w.inserted_at, asc: w.id, desc: k.inserted_at, desc: k.id],
           limit: 1,
           select: k.key_id
-      ) || Mix.raise("no workspace has an approved access key: add one to a node")
+      ) || Mix.raise("no workspace has an access key: add one to a node")
 
     access_key!(key_id)
   end
 
   def access_key!(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
-      {:ok, %AccessKey{approved_at: %DateTime{}} = access_key} -> access_key
-      _ -> Mix.raise("no approved access key #{key_id} that is not revoked")
+      {:ok, %AccessKey{} = access_key} -> access_key
+      _ -> Mix.raise("no access key #{key_id} that is not revoked")
     end
   end
 end

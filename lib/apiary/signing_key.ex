@@ -62,7 +62,7 @@ defmodule Apiary.SigningKey do
   # The 32-byte values the runner contract publishes in its fixtures, each refused as a
   # seed: the fixture access key's (bytes 1 to 32), the sealed fixture's ephemeral key's
   # (33 to 64), the fixture signing keys', current and next (65 to 96, 161 to 192), and
-  # the fixture access key that awaits approval (193 to 224).
+  # the second fixture access key the contract published (193 to 224).
   @fixture_seeds Enum.map(
                    [1..32, 33..64, 65..96, 161..192, 193..224],
                    &:binary.list_to_bin(Enum.to_list(&1))

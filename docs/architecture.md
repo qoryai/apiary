@@ -32,12 +32,12 @@ beside it:
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
 - `Apiary.AccessKeys`: the access keys of a workspace's nodes, and the lookup a signed
-  request verifies against. Each key has one Ed25519 public key, and Apiary holds no secret of it; it
-  belongs to one node or node pool: enrolment codes
-  (`access_key_enrolment_codes`, kept as their SHA-256), a pasted key approved at once,
-  approval, rejection and revocation, at most two keys at a time per node, at most one
-  of them awaiting approval, and the ledger of public keys (`access_key_public_keys`), one public key for
-  one access key, ever, whose tombstones outlive the purge. `Apiary.Contract.Ed25519`
+  request verifies against. Each key has one Ed25519 public key, and Apiary holds no
+  secret of it; it belongs to one node or node pool: enrolment codes
+  (`access_key_enrolment_codes`, kept as their SHA-256), the code being the approval of
+  the key it brings, a pasted key active at once, revocation, at most two keys at a time per node, and the ledger of public keys
+  (`access_key_public_keys`), one public key for one access key, ever, whose tombstones
+  outlive the purge. `Apiary.Contract.Ed25519`
   holds the checks every public key received passes, the fingerprint and cofactorless
   verification.
 - `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
@@ -412,7 +412,7 @@ someone who can write to the database but does not hold the secret: an HMAC-SHA2
 the integrity key over a canonical encoding of a kind, a version and the fields the caller
 chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
 constant time. A caller codes what routes a secret or grants access, a node's access key
-rows (their node, public key, stored-secrets flag, arrival, approval and revocation), what
+rows (their node, public key, stored-secrets flag, arrival and revocation), what
 links a stored secret to the runs, and the enrolment codes, and checks the code where it
 trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
 does not match, before any signature is checked;
@@ -518,7 +518,7 @@ events a runner posts are the record and leave no entry.
   workspace; inviting, changing the level of and removing a member; revoking and
   accepting an invitation; suspending and activating a member (`member.suspend`,
   `member.activate`); granting and revoking an instance admin, by a release command;
-  an access key's arrival on a node, its approval, rejection and revocation, and making
+  an access key's arrival on a node and its revocation, and making
   and cancelling an enrolment code;
   closing a run; the retention settings; every write of the security policy, whose
   history is the trail's entries of the policy's actions; and the trail's own retention.
