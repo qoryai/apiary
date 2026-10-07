@@ -9,9 +9,8 @@ defmodule ApiaryWeb.Contract.EventsController do
   `application/cloudevents-batch+json` is `415`, a header the signature depends on sent
   twice is `400`, a request that does not verify is `401` (over the raw bytes, before
   anything is parsed), a key over its rate is `429` with `Retry-After`, an instance id
-  absent or malformed is `400`, a key awaiting approval is `409` `key_pending`, and a
-  request whose `X-Qory-Contract-Version` names no revision served is `400`. Here, in
-  order: a body the contract refuses (not a batch, or a ping whose `interval_seconds` is
+  absent or malformed is `400`, and a request whose `X-Qory-Contract-Version` names no
+  revision served is `400`. Here, in order: a body the contract refuses (not a batch, or a ping whose `interval_seconds` is
   absent or outside 1 to 300, `Apiary.Runs.Batch`) is `400` `invalid_request`; a key
   `Apiary.Access` does not let post (`run.post_events`) is `404`, as a path that does not
   exist; then `Apiary.Runs.Ingest`: a delivery already recorded is `202` again, a run the

@@ -252,7 +252,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
                {:error, :unauthorized}
     end
 
-    test "with a proof made by the fixture access key that awaits approval, is refused key_invalid too" do
+    test "with a proof made by the second fixture access key, is refused key_invalid too" do
       key = fixture_key!("pending_access_key")
       code = "qec_F1XT0RE0000000000000000000." <> fixture_key!("signing_key").fingerprint
       encoded = Ed25519.encode(key.public_key)

@@ -51,8 +51,8 @@ defmodule Apiary.Contract.Ed25519 do
 
   # The contract's published fixture keys, which every instance refuses: the access key's,
   # from the seed of bytes 1 to 32, the server's signing keys, current and next, from the
-  # seeds of bytes 65 to 96 and 161 to 192, and the access key that awaits approval, from
-  # the seed of bytes 193 to 224.
+  # seeds of bytes 65 to 96 and 161 to 192, and the second fixture access key the contract
+  # published, from the seed of bytes 193 to 224.
   @fixture_seeds [1..32, 65..96, 161..192, 193..224]
 
   @typedoc "A raw Ed25519 public key: 32 bytes."

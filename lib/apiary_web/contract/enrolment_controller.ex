@@ -20,13 +20,14 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
        `X-Qory-Contract-Version` that names no revision served
        (`ApiaryWeb.Contract.ContractVersion`);
     4. `401` `{"error":"unauthorized"}`, unsigned, when the code is not accepted: used,
-       expired, cancelled, never made, or carrying another fingerprint than the
-       instance's key's;
+       expired, cancelled, never made, carrying another fingerprint than the instance's
+       key's, or made by someone who is no longer an owner or an admin of its workspace;
     5. once the code is accepted, every answer is signed: `409` `key_invalid` for a key
        the key checks or the ledger refuse, a proof that does not verify, or a timestamp
        more than 300 seconds from the server's clock; `409` `key_limit` for a node that
-       holds a key awaiting approval, or two approved keys; and `201` with the access key
-       id, its node, `approved`, `stored_secrets` and the instance's keys.
+       holds two keys; and `201` with the access key id, its node, `approved`, always
+       true, since a key a code brings is active from the moment it is made,
+       `stored_secrets` and the instance's keys.
 
   A signed answer is signed by `ApiaryWeb.Contract.SignedAnswer.put/3`, as every answer to
   a signed request is: `X-Qory-Signature-Ed25519`, the instance's signature of the answer
@@ -103,7 +104,7 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
       access_key_id: key.key_id,
       node_id: node.public_id,
       node_kind: node.kind,
-      approved: key.approved_at != nil,
+      approved: true,
       stored_secrets: key.allow_secrets,
       apiary_public_key: SigningKey.apiary_public_key()
     })

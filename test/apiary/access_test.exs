@@ -155,7 +155,7 @@ defmodule Apiary.AccessTest do
       {:run, [:"run.read", :"run.read_log", :"run.close"]},
       {:rule, [:"security_policy.edit", :"security_policy.lock"]},
       {:node, [:"access_key.create_code", :"access_key.add"]},
-      {:node_key, [:"access_key.approve", :"access_key.reject", :"access_key.revoke"]},
+      {:node_key, [:"access_key.revoke"]},
       {:code, [:"access_key.cancel_code"]},
       {:membership, [:"member.change_level", :"member.remove"]},
       {:invitation, [:"invitation.revoke"]}
@@ -175,7 +175,7 @@ defmodule Apiary.AccessTest do
           run: run_fixture(other),
           rule: rule,
           node: node,
-          node_key: pending_key_fixture(other, node).access_key,
+          node_key: enrolled_key_fixture(other, node).access_key,
           code: code,
           membership: member_fixture(other).membership,
           invitation: invitation_fixture(other).invitation

@@ -4,7 +4,7 @@
 #
 # It makes a workspace with an owner, a node and the node's access key: a fresh Ed25519
 # key, generated here, whose public key is pasted into the node the way the node's page
-# adds one, approved as it is added. It puts the workspace in enforce with nothing
+# adds one, active as it is added. It puts the workspace in enforce with nothing
 # allowed, writes the node's runner file, with the server lines the key's page shows, and
 # the key's secret in access-key-secret beside it, starts the session on the node, waits
 # for the denied connection to arrive, allows its host the way the connection's row does,
@@ -76,7 +76,7 @@ defmodule E2E do
     )
 
     say(
-      "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, approved; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"
+      "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, active; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"
     )
 
     step("the node")

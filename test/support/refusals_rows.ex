@@ -329,8 +329,6 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one yet, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
-  # Approving or rejecting a node's key: no page offers either since a key is active as it
-  # arrives (73 a), and the actions leave `Apiary.Access` with the pending state.
   @impl true
   def exempt do
     %{
@@ -353,8 +351,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.use",
         :"connection.read",
         :"connection.write"
-      ],
-      no_page: [:"access_key.approve", :"access_key.reject"]
+      ]
     }
   end
 
@@ -392,7 +389,6 @@ defmodule ApiaryWeb.RefusalsRows do
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
     %{access_key: node_key} = node_key_fixture(owner, node)
-    %{access_key: pending_key} = pending_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
     node_run_fixture(node, instance.instance_id)
@@ -437,7 +433,6 @@ defmodule ApiaryWeb.RefusalsRows do
       key: key,
       node: node,
       node_key: node_key,
-      pending_key: pending_key,
       code: code,
       public_key: ed25519_key_pair().encoded,
       instance: instance,
@@ -469,7 +464,6 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
-  def value(:pending_key, world), do: {:id, world.pending_key.key_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
   def value(:instance, world), do: world.instance.instance_id

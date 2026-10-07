@@ -77,7 +77,7 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
     assert by_label["ci-fleet"].last_used_at
     assert by_label["ci-fleet"].node.kind == :pool
     assert by_label["dana-laptop"].node.kind == :node
-    assert Enum.all?(keys, &(&1.public_key && &1.approved_at))
+    assert Enum.all?(keys, &(&1.public_key && &1.received_at))
 
     # ci-fleet holds a second key, as when its key is replaced.
     assert by_label["ci-fleet-next"].node_id == by_label["ci-fleet"].node_id

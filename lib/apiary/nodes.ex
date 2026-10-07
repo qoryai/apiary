@@ -199,8 +199,7 @@ defmodule Apiary.Nodes do
   @doc """
   delete_node/2 deletes `node` (`node.delete`, owners and admins): it leaves every page,
   its name is free again, and its row stays for what names it until its workspace is
-  purged. In the same transaction it revokes every key of the node in use, a key awaiting
-  approval among them, each with its entry of `access_key.revoke` and its public key a
+  purged. In the same transaction it revokes every key of the node in use, each with its entry of `access_key.revoke` and its public key a
   tombstone for `node_deleted`, and cancels its outstanding enrolment codes
   (`Apiary.AccessKeys.revoke_node_keys/3`). `{:ok, node}`, `{:error, :forbidden}`, or
   `{:error, :not_found}` for a node that is deleted already or not the workspace's.
@@ -319,7 +318,7 @@ defmodule Apiary.Nodes do
   seen/3 records that an instance of `node` was seen at `now`, from what a verified
   request said of it (`t:claim/0`): the instance's row is made, or its last time, name,
   key and versions are brought up to date, and `{:nodes_touched, workspace_id}` is
-  broadcast (`topic/1`). A key awaiting approval is seen too, so an admin sees what waits.
+  broadcast (`topic/1`).
 
   It writes at most once per node and instance id in each fifteen seconds
   (`Apiary.Nodes.Throttle`), and records at most #{@bound} new instances of a node in a

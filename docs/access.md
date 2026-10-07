@@ -197,13 +197,15 @@ may act.
 ## Access keys
 
 An access key is a node's or a node pool's, with one Ed25519 public key. The keys are
-owners' and admins' alone, and a member adds, approves or revokes none: making and
-cancelling an enrolment code (`access_key.create_code`, `access_key.cancel_code`), adding a
-pasted key (`access_key.add`), approving and rejecting a key that awaits approval
-(`access_key.approve`, `access_key.reject`) and revoking one (`access_key.revoke`). Each is
-asked of the node, the code or the key, and leaves its audit entry. A machine that enrols a
-key with a code asks no one: the code is the authority, and the key's arrival, awaiting
-approval, is an entry of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
+owners' and admins' alone, and a member adds or revokes none: making and cancelling an
+enrolment code (`access_key.create_code`, `access_key.cancel_code`), adding a pasted key
+(`access_key.add`) and revoking one (`access_key.revoke`). Each is asked of the node, the
+code or the key, and leaves its audit entry. A key is active from the moment it is made. A
+machine that enrols a key with a code asks no one: the code is the authority and the
+approval, as long as the person who made it may still make it, an owner or an admin of its
+workspace, neither suspended nor removed, their account in use (`access_key.create_code`,
+asked again of their membership as it is at the enrolment); the key's arrival is an entry
+of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
 node (`node.delete`, owners and admins) revokes its keys in the same transaction, each with
 its entry of `access_key.revoke`. Everyone in the workspace reads the nodes (`node.read`),
 and a page shows a node's keys under it.
@@ -330,9 +332,12 @@ The modes keep a row that only names another out of it:
   (`Apiary.Organisations.lock_owners/1`).
 - A change of a node's access keys or enrolment codes (`Apiary.AccessKeys`) locks the
   node's row `FOR UPDATE`, then the key's or the code's: the keys of one node take turns,
-  so the limit of two keys at a time, at most one of them awaiting approval, counts every
-  change before it. Deleting a node (`Apiary.Nodes.delete_node/2`) holds the same row, and revokes its
-  keys under it.
+  so the limit of two keys at a time counts every change before it. An enrolment
+  (`Apiary.AccessKeys.enrol/2`) first reads the membership of the code's maker again with
+  `reload/2` and `lock: :share`, the organisation, workspace, membership and account rows
+  before the node's, so a change of the maker's level, a suspension or a removal waits for
+  it, or came first and refuses the code. Deleting a node (`Apiary.Nodes.delete_node/2`)
+  holds the same row, and revokes its keys under it.
 - A write of the security policy, of a stored secret (`Apiary.Secrets`), of a variable
   (`Apiary.Variables`) or of a connection (`Apiary.Connections`) holds the organisation
   `FOR SHARE` (`Apiary.Access.lock_places/1`),

@@ -221,7 +221,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       scope: scope
     } do
       pool = pool_fixture(scope, %{name: "spot-runners"})
-      pending_key_fixture(scope, pool, %{label: "spot-a"})
+      enrolled_key_fixture(scope, pool, %{label: "spot-a"})
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='3']")
@@ -822,7 +822,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
       # A key a code brought is weighed too, from when it arrived.
       %{access_key: enrolled} =
-        pending_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
+        enrolled_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
 
       long_ago(enrolled, 40)
 
