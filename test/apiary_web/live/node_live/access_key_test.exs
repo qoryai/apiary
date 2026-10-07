@@ -100,6 +100,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              )
 
       assert has_element?(lv, "#node-keys-none .font-mono", "qory access-key create")
+
+      # Two keys at a time, never two approved and a third awaiting approval.
+      assert render(lv) =~
+               "A node holds at most 2 keys at a time, at most 1 of them awaiting approval."
+
       assert has_element?(lv, "#node-codes-none", "No enrolment code is outstanding.")
       assert has_element?(lv, "#key-add-button", "Add a public key")
       assert has_element?(lv, "#code-new-button", "New enrolment code")
@@ -851,6 +856,27 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   end
 
   describe "a member" do
+    test "with no key, reads that there is none, not how to make one; an admin reads how",
+         %{scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+
+      {:ok, lv, _html} = live(member_conn(scope), tab_path(scope, node))
+
+      assert lv |> element("#node-keys-none") |> render() |> text() |> String.trim() ==
+               "No key yet."
+
+      refute has_element?(lv, "#node-keys-none", "enrolment code")
+      refute has_element?(lv, "#node-keys-none .font-mono")
+
+      {:ok, lv, _html} = live(member_conn(scope, :admin), tab_path(scope, node))
+
+      assert has_element?(
+               lv,
+               "#node-keys-none",
+               "No key yet. Make an enrolment code and run the command it shows on the machine, or add the public key qory access-key create printed there."
+             )
+    end
+
     test "reads the keys and the codes, with no act", %{scope: scope} do
       node = node_fixture(scope)
       %{access_key: key} = pending_key_fixture(scope, node)

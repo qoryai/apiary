@@ -1717,7 +1717,8 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   The empty workspace's one box, with the state of each step read from the record: step 1
   ticks on a node or pool, step 2 on an approved key of one, step 3 on the first run; a
-  key's `last_used_at` changes step 3's words. `landed` is the first run while the page is
+  key's `last_used_at` changes step 3's words. Step 2 names the newest key awaiting
+  approval, and links to its node's Access key tab to approve it for a reader who may. `landed` is the first run while the page is
   open; the box leaves at the next navigation.
   """
   attr :id, :string, default: "onboarding"
@@ -1733,6 +1734,11 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the keys of the workspace's nodes in use, not revoked, each with its node, newest first"
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
+
+  attr :may_approve, :boolean,
+    default: false,
+    doc: "whether the reader may approve the key that awaits approval, on its node"
+
   attr :server, :string, required: true, doc: "this server's address, for the command"
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
@@ -1781,16 +1787,28 @@ defmodule ApiaryWeb.OverviewComponents do
               )
             } />
             <span :if={@pending} id={"#{@id}-pending"} class="mt-1 block">
-              <.rich text={
-                rich_gettext("%{key} awaits approval on %{node}. %{approve}",
-                  key: {:m, @pending.label},
-                  node: @pending.node.name,
-                  approve:
-                    {:link,
-                     ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@pending.node.public_id}/access-key",
-                     gettext("Approve it")}
-                )
-              } />
+              <.rich
+                :if={@may_approve}
+                text={
+                  rich_gettext("%{key} awaits approval on %{node}. %{approve}",
+                    key: {:m, @pending.label},
+                    node: @pending.node.name,
+                    approve:
+                      {:link,
+                       ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@pending.node.public_id}/access-key",
+                       gettext("Approve it")}
+                  )
+                }
+              />
+              <.rich
+                :if={!@may_approve}
+                text={
+                  rich_gettext("%{key} awaits approval on %{node}.",
+                    key: {:m, @pending.label},
+                    node: @pending.node.name
+                  )
+                }
+              />
             </span>
           </:step>
           <:step title={gettext("See runs here")}>

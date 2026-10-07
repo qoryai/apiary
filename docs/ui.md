@@ -830,9 +830,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
 - **Access key**, a node's tab, opens on "A machine signs every request with its own
   key. Qory keeps only the public half.", the key limits, Add a public key and New
   enrolment code, then the keys as cards (approve, reject or revoke confirmed in place) and
-  the outstanding codes. With no key it says how a machine gets one: "No key yet. Make an
-  enrolment code and run the command it shows on the machine, or add the public key `qory
-  access-key create` printed there." An approved key's card links **Runner file lines**,
+  the outstanding codes. With no key it tells owners and admins how a machine gets one:
+  "No key yet. Make an enrolment code and run the command it shows on the machine, or add
+  the public key `qory access-key create` printed there."; a member reads "No key yet."
+  An approved key's card links **Runner file lines**,
   for everyone who reads the node.
 - **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`,
   an approved key's alone; any other goes back to the tab with why) is a page, not a

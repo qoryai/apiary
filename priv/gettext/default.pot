@@ -505,6 +505,11 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{key} awaits approval on %{node}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{key} awaits approval on %{node}. %{approve}"
 msgstr ""
 
@@ -2180,7 +2185,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "A node holds at most %{approved} approved keys, and %{pending} more awaiting approval."
+msgid "A node holds at most %{approved} keys at a time, at most %{pending} of them awaiting approval."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -7288,6 +7293,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No instance of this pool has reported yet. An instance shows here while it runs."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "No key yet."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
