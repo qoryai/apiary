@@ -58,8 +58,9 @@ the signature: a request that does not verify is `401` whatever the header says.
 
 A request that verifies records its instance as seen on the key's node
 (`Apiary.Nodes.seen/3`), with its name, the runner version and the contract version, for
-a key that awaits approval too, once the instance id passes; a key that awaits approval
-is then answered `409` `key_pending` on every endpoint.
+a key that awaits approval too, once the instance id passes and, on a GET, only when its
+timestamp is within the window: a stale or replayed GET records nothing before its `401`.
+A key that awaits approval is then answered `409` `key_pending` on every endpoint.
 
 **Signed answers.** Every answer to a request that verified is signed with the server's
 own Ed25519 key, the key every machine pins as `apiary_public_key`

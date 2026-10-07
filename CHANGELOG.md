@@ -163,8 +163,9 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   rows are keyed from it as well.
 - `APIARY_SIGNING_SECRET`, required, 32 bytes of its own, never derived from
   `APIARY_ENCRYPTION_SECRET`: the seed of the Ed25519 key the server signs its answers
-  to runners with. The boot refuses it when it is missing, of another length, or one of
-  the contract's published fixture seeds. Every machine pins its public key, so changing
+  to runners with. The boot refuses it when it is missing, of another length, the same
+  as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
+  development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.
 - Runtimes, integrations and services for the runs, without a page yet
   (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's

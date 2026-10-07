@@ -127,6 +127,48 @@ defmodule Apiary.RuntimeConfigTest do
         refute error.message =~ String.trim(value)
       end
     end
+
+    test "the same value as APIARY_ENCRYPTION_SECRET stops the boot, naming both, never the value" do
+      value = Base.encode64(String.duplicate("k", 32))
+      System.put_env("APIARY_SIGNING_SECRET", value)
+
+      error = assert_raise RuntimeError, fn -> prod_config() end
+
+      assert error.message =~
+               "APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET"
+
+      assert error.message =~ "openssl rand -base64 32"
+      refute error.message =~ value
+      refute error.message =~ String.duplicate("k", 32)
+    end
+
+    test "the dev and test seeds this repository publishes stop the boot, never named by value" do
+      for config_file <- ["config/dev.exs", "config/test.exs"] do
+        seed =
+          config_file
+          |> Config.Reader.read!(env: :test, target: :host, imports: :disabled)
+          |> get_in([:apiary, Apiary.SigningKey, :seed])
+
+        assert byte_size(seed) == 32
+        value = Base.encode64(seed)
+        System.put_env("APIARY_SIGNING_SECRET", value)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "APIARY_SIGNING_SECRET is the development or test seed this repository publishes"
+
+        assert error.message =~ "openssl rand -base64 32"
+        refute error.message =~ value
+        refute error.message =~ seed
+      end
+    end
+
+    test "a value of its own, apart from the encryption secret and the published seeds, boots" do
+      seed = :crypto.strong_rand_bytes(32)
+      System.put_env("APIARY_SIGNING_SECRET", Base.encode64(seed))
+      assert get_in(prod_config(), [:apiary, Apiary.SigningKey, :seed]) == seed
+    end
   end
 
   describe "PUBLIC_URL" do

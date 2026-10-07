@@ -218,8 +218,11 @@ if config_env() == :prod do
   # (Apiary.SigningKey): it signs every answer to a runner, and every machine pins its
   # public key as apiary_public_key. It is a secret of its own, never derived from
   # APIARY_ENCRYPTION_SECRET, and has no fallback. Changing it means pinning every machine
-  # again, so keep it with APIARY_ENCRYPTION_SECRET. `Apiary.SigningKey.boot!/0` refuses
-  # the runner contract's fixture seeds at boot. No message here carries the value.
+  # again, so keep it with APIARY_ENCRYPTION_SECRET. Refused here: the same bytes as
+  # APIARY_ENCRYPTION_SECRET, and the dev and test seeds config/dev.exs and
+  # config/test.exs publish; `Apiary.SigningKey.boot!/0` refuses the runner contract's
+  # fixture seeds. Every comparison is in constant time, and no message here carries a
+  # value.
   signing_seed =
     case System.get_env("APIARY_SIGNING_SECRET") do
       blank when blank in [nil, ""] ->
@@ -241,6 +244,29 @@ if config_env() == :prod do
             """
         end
     end
+
+  if :crypto.hash_equals(signing_seed, encryption_secret) do
+    raise """
+    environment variable APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET.
+    It is a secret of its own, generated apart. Generate one with: openssl rand -base64 32
+    """
+  end
+
+  # The seeds config/dev.exs and config/test.exs set, public in this repository. Every
+  # comparison runs, so the time taken says nothing about which one matched.
+  published_seed? =
+    Enum.reduce(
+      ["qory apiary dev signing seed 001", "qory apiary test signing seed 01"],
+      false,
+      fn published, matched -> :crypto.hash_equals(signing_seed, published) or matched end
+    )
+
+  if published_seed? do
+    raise """
+    environment variable APIARY_SIGNING_SECRET is the development or test seed this repository publishes.
+    Generate one with: openssl rand -base64 32
+    """
+  end
 
   config :apiary, Apiary.SigningKey, seed: signing_seed
 

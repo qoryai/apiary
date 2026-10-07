@@ -386,9 +386,10 @@ rotation of the secret can keep the previous one to read with and tell the two a
 The key that signs the instance's answers to runners, which every machine pins as
 `apiary_public_key`, is not derived from it: its Ed25519 seed is a secret of its own,
 `APIARY_SIGNING_SECRET`, 32 random bytes with no fallback in production, so that the pin
-does not change with the encryption secret (`Apiary.SigningKey`). The instance refuses the
-runner contract's published fixture seeds as its own at boot, and holds the key in a
-struct whose `inspect` shows its fingerprint alone.
+does not change with the encryption secret (`Apiary.SigningKey`). The instance refuses at
+boot a seed equal to the encryption secret, the runner contract's published fixture seeds
+and, in production, the development and test seeds `config/` publishes, and holds the key
+in a struct whose `inspect` shows its fingerprint alone.
 
 **Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
 made with its first secret, kept only wrapped (`workspace_data_keys`): AES-256-GCM under
