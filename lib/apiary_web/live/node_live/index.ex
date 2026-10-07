@@ -18,12 +18,16 @@ defmodule ApiaryWeb.NodeLive.Index do
   Owners and admins make a node or a node pool here (`node.create`), each a page of its
   own, `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (`docs/ui.md`, A
   form is a page): the breadcrumb `Nodes / New node`, the page's heading and one sentence,
-  the form in the 720 px column, its button and Cancel back to the list. The kind is the
-  page's and never changes after. Making one leads to its Settings, with a flash.
+  the form in the 720 px column, its button and Cancel back to the list
+  (`ApiaryWeb.PageComponents.page_form/1`). The kind is the page's and never changes
+  after. Making one leads to its Access key tab, with a flash.
   Everyone in the workspace reads the list (`node.read`); a member sees it without the
   buttons, and a form's path refuses them.
 
-  The workspace's sidebar has no entry for it yet: the page is reached by its path.
+  Under its title, once, the plain line that runners can't use a node's keys yet, so no
+  run is placed on a node today, with the way to the workspace's access keys
+  (`ApiaryWeb.NodeComponents.not_yet/1`). The pages pass `nav: :nodes`, the workspace
+  sidebar's Nodes.
 
   Live: the list reads the nodes and what they do again on `{:nodes_touched, …}`
   (`Apiary.Nodes.topic/1`), on a `{:run_changed, run}` of a run on a node, at most every
@@ -36,7 +40,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   alias Apiary.{Access, Nodes, Runs}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
-  alias ApiaryWeb.{NodeComponents, SettingsComponents}
+  alias ApiaryWeb.NodeComponents
 
   @tick :timer.seconds(15)
   @coalesce_ms 250
@@ -226,7 +230,7 @@ defmodule ApiaryWeb.NodeLive.Index do
          socket
          |> put_flash(:info, gettext("%{name} is added.", name: node.name))
          |> push_navigate(
-           to: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/settings"
+           to: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key"
          )}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -318,67 +322,75 @@ defmodule ApiaryWeb.NodeLive.Index do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
+      nav={:nodes}
       place={:workspace}
       width="read"
     >
       <:crumb navigate={list_path(@current_scope, @filters)}>{gettext("Nodes")}</:crumb>
       <:crumb>{form_title(@kind)}</:crumb>
 
-      <.header>
-        {form_title(@kind)}
-        <:subtitle>
+      <.page_form
+        id="new-node"
+        title={form_title(@kind)}
+        cancel={list_path(@current_scope, @filters)}
+        cancel_by="patch"
+      >
+        <:description>
           {if @kind == :node,
             do: gettext("One permanent machine. It runs one instance at a time."),
             else: gettext("Short-lived instances that share one access key.")}
           {gettext("You can't change the kind later.")}
-        </:subtitle>
-      </.header>
-
-      <.form
-        for={@form}
-        id="new-node-form"
-        phx-change="validate"
-        phx-submit="create"
-        class="grid gap-4"
-        novalidate
-      >
-        <.input
-          field={@form[:name]}
-          type="text"
-          label={gettext("Name")}
-          placeholder={if @kind == :node, do: "build-01", else: "spot-runners"}
-          autocomplete="off"
-          spellcheck="false"
-          required
-          phx-mounted={JS.focus()}
-        />
-        <.input
-          :if={@kind == :pool}
-          field={@form[:instance_limit]}
-          type="text"
-          inputmode="numeric"
-          label={gettext("Instance limit")}
-          hint={
-            gettext("How many instances may run at once, up to %{max}. Empty means no limit.",
-              max: Format.number(Node.max_limit())
-            )
-          }
-          autocomplete="off"
-          optional
-        />
-        <SettingsComponents.save id="new-node-save" cancel={list_path(@current_scope, @filters)}>
-          <.button
-            id="new-node-submit"
-            variant="primary"
-            type="submit"
-            loading_text={gettext("Adding")}
+        </:description>
+        <.form
+          for={@form}
+          id="new-node-form"
+          phx-change="validate"
+          phx-submit="create"
+          class="grid gap-4"
+          novalidate
+        >
+          <.input
+            field={@form[:name]}
+            type="text"
+            label={gettext("Name")}
+            placeholder={if @kind == :node, do: "build-01", else: "spot-runners"}
+            autocomplete="off"
+            spellcheck="false"
+            required
+            phx-mounted={JS.focus()}
+          />
+          <.input
+            :if={@kind == :pool}
+            field={@form[:instance_limit]}
+            type="text"
+            inputmode="numeric"
+            label={gettext("Instance limit")}
+            hint={
+              gettext("How many instances may run at once, up to %{max}. Empty means no limit.",
+                max: Format.number(Node.max_limit())
+              )
+            }
+            autocomplete="off"
+            optional
+          />
+          <.page_form_foot
+            id="new-node-save"
+            cancel={list_path(@current_scope, @filters)}
+            cancel_by="patch"
           >
-            {if @kind == :node,
-              do: gettext("Add node"),
-              else: gettext("Add node pool")}
-          </.button>
-        </SettingsComponents.save>
-      </.form>
+            <.button
+              id="new-node-submit"
+              variant="primary"
+              type="submit"
+              loading_text={gettext("Adding")}
+            >
+              {if @kind == :node,
+                do: gettext("Add node"),
+                else: gettext("Add node pool")}
+            </.button>
+          </.page_form_foot>
+        </.form>
+      </.page_form>
     </Layouts.app>
     """
   end
@@ -390,17 +402,17 @@ defmodule ApiaryWeb.NodeLive.Index do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
+      nav={:nodes}
       place={:workspace}
     >
       <:crumb>{gettext("Nodes")}</:crumb>
 
-      <.header>
-        {gettext("Nodes")}
-        <:subtitle>
+      <.page_header title={gettext("Nodes")}>
+        <:description>
           {gettext(
-            "Where the runs of this workspace run. A node is one permanent machine; a node pool is a fleet of short-lived instances that share one access key."
+            "A node is one permanent machine; a node pool is a fleet of short-lived instances that share one access key."
           )}
-        </:subtitle>
+        </:description>
         <:actions :if={@may_create}>
           <.button id="new-node-pool" patch={new_path(@current_scope, :pool)}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New node pool")}
@@ -409,7 +421,16 @@ defmodule ApiaryWeb.NodeLive.Index do
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New node")}
           </.button>
         </:actions>
-      </.header>
+        <NodeComponents.not_yet
+          scope={@current_scope}
+          text={
+            rich_gettext(
+              "Runners can't use a node's keys yet, so no run is placed on a node today. Runs still use the workspace's access keys, in %{link}.",
+              link: {:part, :link}
+            )
+          }
+        />
+      </.page_header>
 
       <div :if={@counts.node + @counts.pool == 0} id="nodes-empty">
         <.empty_state icon="hero-server-stack" tone="neutral" title={gettext("No nodes yet")}>
@@ -624,6 +645,5 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp form_title(:node), do: gettext("New node")
   defp form_title(:pool), do: gettext("New node pool")
 
-  defp kind_label(:node), do: gettext("Node")
-  defp kind_label(:pool), do: gettext("Node pool")
+  defp kind_label(kind), do: NodeComponents.kind_label(kind)
 end

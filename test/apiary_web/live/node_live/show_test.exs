@@ -22,21 +22,37 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
   setup :register_and_log_in_user
 
   describe "Overview" do
-    test "names the node, its kind and its maker, under two tabs", %{conn: conn, scope: scope} do
+    test "names the node, its kind and its maker, under three tabs", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
 
       {:ok, lv, _html} = live(conn, node_path(scope, node))
 
-      assert has_element?(lv, "h1 #node-name", "build-01")
+      assert has_element?(lv, "h1#node-header-title", "build-01")
       assert has_element?(lv, "#node-public-id", node.public_id)
       assert has_element?(lv, "#node-kind", "Node")
       assert has_element?(lv, "#node-state", "Never seen")
       assert has_element?(lv, "#node-made", scope.user.email)
       assert has_element?(lv, "#breadcrumb", "Nodes")
 
-      assert has_element?(lv, ~s{#node-tab-overview[aria-current="page"]}, "Overview")
-      assert has_element?(lv, "#node-tab-settings.q-tabs-end", "Settings")
-      assert lv |> element("#node-tabs") |> render() |> String.split("<a") |> length() == 3
+      assert has_element?(lv, ~s{nav#node-tabs[aria-label="Node"]})
+      assert has_element?(lv, ~s{#node-tabs-overview[aria-current="page"]}, "Overview")
+
+      assert has_element?(
+               lv,
+               ~s{#node-tabs-access_key[href="#{node_path(scope, node, "/access-key")}"]},
+               "Access key"
+             )
+
+      assert has_element?(lv, "#node-tabs-settings.q-tabs-end", "Settings")
+      assert lv |> element("#node-tabs") |> render() |> String.split("<a") |> length() == 4
+
+      # Once, plainly: runners can't use a node's keys yet, and the way to the workspace's.
+      assert has_element?(lv, "#not-on-runs", "Runners can't use a node's keys yet")
+
+      assert has_element?(
+               lv,
+               ~s{#not-on-runs-keys[href="#{~p"/#{scope.organisation}/#{scope.workspace}/settings/keys"}"]}
+             )
     end
 
     test "says no instance and no run has reported yet", %{conn: conn, scope: scope} do
@@ -77,11 +93,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       node = node_fixture(scope)
       {:ok, lv, _html} = live(conn, node_path(scope, node))
 
-      lv |> element("#node-tab-settings") |> render_click()
+      lv |> element("#node-tabs-settings") |> render_click()
       assert_patch(lv, node_path(scope, node, "/settings"))
       assert has_element?(lv, "#node-form")
 
-      lv |> element("#node-tab-overview") |> render_click()
+      lv |> element("#node-tabs-overview") |> render_click()
       assert_patch(lv, node_path(scope, node))
       assert has_element?(lv, "#node-overview")
     end
@@ -116,7 +132,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       html = lv |> form("#node-form", node: %{name: "build-02"}) |> render_submit()
       assert html =~ "build-02 is saved."
-      assert has_element?(lv, "h1 #node-name", "build-02")
+      assert has_element?(lv, "h1#node-header-title", "build-02")
       assert %Node{name: "build-02", kind: :node} = Repo.get!(Node, node.id)
     end
 

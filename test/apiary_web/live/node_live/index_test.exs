@@ -127,7 +127,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert page_title(lv) =~ "New node pool"
     end
 
-    test "a node is named, and its page opens on Settings", %{conn: conn, scope: scope} do
+    test "a node is named, and its page opens on its Access key tab", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new"))
 
       refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
@@ -145,7 +145,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
                Nodes.list_nodes(scope)
 
       assert html =~ "build-01 is added."
-      assert html =~ ~s{id="node-form"}
+      assert html =~ ~s{id="node-access-key"}
       assert html =~ node.public_id
     end
 
