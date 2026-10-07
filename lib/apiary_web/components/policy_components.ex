@@ -432,6 +432,7 @@ defmodule ApiaryWeb.PolicyComponents do
         phx-submit="mode_set"
         phx-window-keydown="mode_cancel"
         phx-key="Escape"
+        novalidate
       >
         <fieldset>
           <legend id={"#{@id}-legend"} class="q-modecard-legend">
