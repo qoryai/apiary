@@ -105,16 +105,7 @@ defmodule ApiaryWeb.PageComponents do
 
   def page_tabs(assigns) do
     ~H"""
-    <%!-- `.q-tabs` is `@layer qory`, which a utility loses to: a section's tabs undo its
-         stickiness, its bleed to the gutter and its sideways scroll as important. --%>
-    <nav
-      id={@id}
-      class={[
-        "q-tabs",
-        @place == "section" && "!static !mx-0 !flex-wrap !overflow-visible !px-0"
-      ]}
-      aria-label={@label}
-    >
+    <nav id={@id} class={["q-tabs", @place == "section" && "q-tabs-section"]} aria-label={@label}>
       <.link
         :for={tab <- @tab}
         id={"#{@id}-#{tab.key}"}

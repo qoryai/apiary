@@ -4367,9 +4367,19 @@
   .q-tabs::-webkit-scrollbar {
     display: none;
   }
+  /* A settings section's tabs (`page_tabs place="section"`) stay in the page's flow under
+     its h1: not sticky, no bleed to the gutter, no side padding, and they wrap instead of
+     scrolling sideways. */
+  .q-tabs.q-tabs-section {
+    position: static;
+    flex-wrap: wrap;
+    margin-inline: 0;
+    padding-inline: 0;
+    overflow: visible;
+  }
   /* The document scrolls, so the room for the top bar and the sticky tab bar is the
-     root's. */
-  :root:has(.q-tabs) {
+     root's; a section's tabs do not stick, and ask for none. */
+  :root:has(.q-tabs:not(.q-tabs-section)) {
     scroll-padding-top: calc(var(--q-bar) + 3rem);
   }
   .q-tabs > a {
@@ -5002,7 +5012,7 @@
 
   /* ---- Phone (ri) ---- */
   @media (max-width: 767.98px) {
-    :root:has(.q-tabs) {
+    :root:has(.q-tabs:not(.q-tabs-section)) {
       scroll-padding-top: calc(var(--q-bar) + 4rem);
     }
     .q-chip {

@@ -82,7 +82,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   # A form is a page of its own (`ApiaryWeb.PageComponents.page_form/1`): the section's
   # list beside it as the frame's second column, the breadcrumb ending with the section and
   # the page, its title, one sentence, the line that runs don't receive these yet, the form,
-  # its button and Cancel back to the view.
+  # its button and Cancel back to the tab.
   def render(%{act: act} = assigns) when act in @pages do
     assigns = assign(assigns, :sentence, form_sentence(assigns))
 
