@@ -156,7 +156,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     answer = jump(conn, ~p"/#{scope.organisation}/jump")
 
     refute "Runs" in labels(group(answer, "Go to"))
-    assert "Organisation settings › Audit log" in labels(group(answer, "Go to"))
+    assert "Audit log" in labels(group(answer, "Go to"))
+    refute "Organisation settings › Audit log" in labels(group(answer, "Go to"))
     # the organisation's own actions, and an edition's; no key of a workspace
     assert "Invite people" in labels(group(answer, "Actions"))
     refute "New access key" in labels(group(answer, "Actions"))

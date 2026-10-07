@@ -62,13 +62,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       lv |> element("#invite-people") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/people/invite")
 
-      # A page of the section, not a dialog over the list: the section's list beside it,
-      # the breadcrumb ending with People and the page, Cancel back to People.
+      # A form page of the section, not a dialog over the list: the section's list beside
+      # it, the breadcrumb ending with People and the page, Back and Cancel to People.
       people = ~p"/#{scope.organisation}/settings/people"
       refute has_element?(lv, "#invite-member")
       refute has_element?(lv, "#members")
       assert has_element?(lv, "#settings-tab-people[aria-current=page]")
-      assert has_element?(lv, "#settings-section-title", "Invite people")
+      assert has_element?(lv, "h1#invite-title", "Invite people")
+      assert has_element?(lv, "#invite-back[href='#{people}']", "Back")
       assert has_element?(lv, "#breadcrumb a[href='#{people}']", "People")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Invite people")
       assert has_element?(lv, "#invitation-form input[type=email][phx-mounted]")
@@ -115,7 +116,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       # A refused invitation stays on the page, the error under its field.
       assert html =~ "already a member"
       assert has_element?(lv, "#invitation-form")
-      assert has_element?(lv, "#settings-section-title", "Invite people")
+      assert has_element?(lv, "#invite-title", "Invite people")
       assert Organisations.list_invitations(scope) == []
     end
 

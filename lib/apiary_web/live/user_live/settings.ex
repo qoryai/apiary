@@ -31,252 +31,252 @@ defmodule ApiaryWeb.UserLive.Settings do
       memberships={@memberships}
       counts={assigns[:nav_counts]}
       nav={if @live_action == :preferences, do: :user_preferences, else: :user_settings}
-      width="read"
     >
-      <.header :if={@live_action != :preferences}>
-        {gettext("Profile")}
-        <:subtitle>{gettext("Your email address and password, and your account itself.")}</:subtitle>
-      </.header>
-      <.header :if={@live_action == :preferences}>
-        {gettext("Preferences")}
-        <:subtitle>
+      <.settings_page
+        section={if @live_action == :preferences, do: :user_preferences, else: :user_settings}
+        title={if @live_action == :preferences, do: gettext("Preferences"), else: gettext("Profile")}
+      >
+        <:subtitle :if={@live_action != :preferences}>
+          {gettext("Your email address and password, and your account itself.")}
+        </:subtitle>
+        <:subtitle :if={@live_action == :preferences}>
           {gettext("How the console shows things to you, in every organisation you belong to.")}
         </:subtitle>
-      </.header>
 
-      <SettingsComponents.part :if={@live_action != :preferences} id="email">
-        <.form
-          for={@email_form}
-          id="email_form"
-          phx-submit="update_email"
-          phx-change="validate_email"
-          class="q-form"
-          aria-label={gettext("Email")}
-          novalidate
-        >
-          <.input
-            field={@email_form[:email]}
-            type="email"
-            label={gettext("Email")}
-            autocomplete="username"
-            spellcheck="false"
-            required
-          />
-          <SettingsComponents.save>
-            <.button type="submit" loading_text={gettext("Sending")}>
-              {gettext("Change email")}
-            </.button>
-            <:note>{gettext("We send a confirmation link to the new address.")}</:note>
-          </SettingsComponents.save>
-        </.form>
-      </SettingsComponents.part>
-
-      <SettingsComponents.part :if={@live_action != :preferences} id="password">
-        <.form
-          for={@password_form}
-          id="password_form"
-          action={~p"/users/update-password"}
-          method="post"
-          phx-change="validate_password"
-          phx-submit="update_password"
-          phx-trigger-action={@trigger_submit}
-          class="q-form"
-          aria-label={gettext("Password")}
-          novalidate
-        >
-          <input
-            name={@password_form[:email].name}
-            type="hidden"
-            id="hidden_user_email"
-            autocomplete="username"
-            value={@current_email}
-          />
-          <div class="q-form-two">
+        <SettingsComponents.part :if={@live_action != :preferences} id="email">
+          <.form
+            for={@email_form}
+            id="email_form"
+            phx-submit="update_email"
+            phx-change="validate_email"
+            class="q-form"
+            aria-label={gettext("Email")}
+            novalidate
+          >
             <.input
-              field={@password_form[:password]}
-              type="password"
-              label={gettext("New password")}
-              hint={gettext("At least 12 characters.")}
-              autocomplete="new-password"
+              field={@email_form[:email]}
+              type="email"
+              label={gettext("Email")}
+              autocomplete="username"
               spellcheck="false"
               required
             />
-            <.input
-              field={@password_form[:password_confirmation]}
-              type="password"
-              label={gettext("Confirm new password")}
-              autocomplete="new-password"
-              spellcheck="false"
-            />
-          </div>
-          <SettingsComponents.save>
-            <.button type="submit" loading_text={gettext("Saving")}>
-              {gettext("Save password")}
-            </.button>
-            <:note>{gettext("Optional. Log-in links keep working either way.")}</:note>
-          </SettingsComponents.save>
-        </.form>
-      </SettingsComponents.part>
+            <SettingsComponents.save>
+              <.button type="submit" loading_text={gettext("Sending")}>
+                {gettext("Change email")}
+              </.button>
+              <:note>{gettext("We send a confirmation link to the new address.")}</:note>
+            </SettingsComponents.save>
+          </.form>
+        </SettingsComponents.part>
 
-      <SettingsComponents.part
-        :if={@live_action == :preferences}
-        id="preferences"
-        level={:h2}
-        title={gettext("Language and time")}
-      >
-        <.form
-          for={@preferences_form}
-          id="preferences_form"
-          phx-submit="update_preferences"
-          class="q-form"
-          novalidate
-        >
-          <div class="q-form-two">
-            <.input
-              :if={length(@languages) > 1}
-              field={@preferences_form[:language]}
-              type="select"
-              label={gettext("Language")}
-              options={Enum.map(@languages, &{language_name(&1), &1})}
-            />
-            <.input
-              field={@preferences_form[:time_zone]}
-              type="select"
-              label={gettext("Time zone")}
-              hint={gettext("Times are shown in this zone. They are kept in UTC.")}
-              options={time_zone_options(@preferences_form[:time_zone].value)}
-            />
-          </div>
-          <p
-            :if={length(@languages) <= 1}
-            id="preferences_language"
-            class="text-[13px] text-muted"
+        <SettingsComponents.part :if={@live_action != :preferences} id="password">
+          <.form
+            for={@password_form}
+            id="password_form"
+            action={~p"/users/update-password"}
+            method="post"
+            phx-change="validate_password"
+            phx-submit="update_password"
+            phx-trigger-action={@trigger_submit}
+            class="q-form"
+            aria-label={gettext("Password")}
+            novalidate
           >
-            {gettext("Pages are in English, the one language this instance has.")}
-          </p>
-          <SettingsComponents.save>
-            <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
-              {gettext("Save")}
-            </.button>
-            <:note>{gettext("Yours in every organisation you belong to.")}</:note>
-          </SettingsComponents.save>
-        </.form>
-      </SettingsComponents.part>
-
-      <SettingsComponents.part
-        :if={@live_action == :preferences}
-        id="theme"
-        level={:h2}
-        title={gettext("Theme")}
-      >
-        <.theme_picker />
-        <p class="q-foot-note">
-          {pgettext(
-            "plain",
-            "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
-          )}
-        </p>
-      </SettingsComponents.part>
-
-      <SettingsComponents.part
-        :if={@live_action == :preferences}
-        id="keyboard"
-        level={:h2}
-        title={gettext("Keyboard")}
-      >
-        <.switch
-          id="shortcuts-switch"
-          label={gettext("Keyboard shortcuts")}
-          checked
-          data-pref="shortcuts"
-          phx-click={JS.dispatch("phx:set-shortcuts")}
-          phx-mounted={JS.ignore_attributes(["aria-checked"])}
-        >
-          {gettext(
-            "Single keys such as / to search, [ to fold the sidebar and the run timeline's letters. Off, only shortcuts with ⌘ or Ctrl work, such as ⌘K and Ctrl+K to search. Kept on this browser."
-          )}
-        </.switch>
-      </SettingsComponents.part>
-
-      <SettingsComponents.danger_zone :if={@live_action != :preferences}>
-        <SettingsComponents.danger_action
-          id="delete-account"
-          title={gettext("Delete account")}
-          button={gettext("Delete account…")}
-          disabled={@sole_owned != []}
-          open={@live_action == :delete}
-          open_path={~p"/users/settings/delete"}
-          close_path={~p"/users/settings"}
-          question={gettext("Delete your account?")}
-          form={@confirm_form}
-          change="confirm"
-          submit="delete_account"
-          ready={email_typed?(@confirm_form[:email].value, @current_email)}
-        >
-          {gettext(
-            "Your email address, password and preferences are erased and you leave every organisation you belong to, which cannot be undone; what you made in a workspace stays there and names you as a former member."
-          )}
-          <:lost>
-            {gettext(
-              "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
-            )}
-          </:lost>
-          <:lost :if={@marked_alone != []} id="delete-account-lost-orphans">
-            {ngettext(
-              "Nobody will be left who can cancel the deletion of the organisation you are the only owner of: it is purged when its grace period is over.",
-              "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over.",
-              length(@marked_alone)
-            )}
-          </:lost>
-          <:field>
-            <.input
-              field={@confirm_form[:email]}
-              type="text"
-              label={gettext("Type your email, %{email}, to confirm", email: @current_email)}
-              autocomplete="off"
-              spellcheck="false"
-              debounce="0"
+            <input
+              name={@password_form[:email].name}
+              type="hidden"
+              id="hidden_user_email"
+              autocomplete="username"
+              value={@current_email}
             />
-          </:field>
-        </SettingsComponents.danger_action>
-        <div :if={is_nil(@sole_owned)} id="delete-account-loading" aria-busy="true">
-          <span class="sr-only">{gettext("Checking the organisations you own")}</span>
-          <span class="skeleton q-skel w-64"></span>
-        </div>
-        <.notice :if={@sole_owned not in [nil, []]} kind={:warning}>
-          <p id="delete-account-blocked">
-            {ngettext(
-              "You are the only owner of this organisation. Make another member an owner, or delete the organisation, before you delete your account.",
-              "You are the only owner of these organisations. Make another member an owner of each, or delete it, before you delete your account.",
-              length(@sole_owned)
+            <div class="q-form-two">
+              <.input
+                field={@password_form[:password]}
+                type="password"
+                label={gettext("New password")}
+                hint={gettext("At least 12 characters.")}
+                autocomplete="new-password"
+                spellcheck="false"
+                required
+              />
+              <.input
+                field={@password_form[:password_confirmation]}
+                type="password"
+                label={gettext("Confirm new password")}
+                autocomplete="new-password"
+                spellcheck="false"
+              />
+            </div>
+            <SettingsComponents.save>
+              <.button type="submit" loading_text={gettext("Saving")}>
+                {gettext("Save password")}
+              </.button>
+              <:note>{gettext("Optional. Log-in links keep working either way.")}</:note>
+            </SettingsComponents.save>
+          </.form>
+        </SettingsComponents.part>
+
+        <SettingsComponents.part
+          :if={@live_action == :preferences}
+          id="preferences"
+          level={:h2}
+          title={gettext("Language and time")}
+        >
+          <.form
+            for={@preferences_form}
+            id="preferences_form"
+            phx-submit="update_preferences"
+            class="q-form"
+            novalidate
+          >
+            <div class="q-form-two">
+              <.input
+                :if={length(@languages) > 1}
+                field={@preferences_form[:language]}
+                type="select"
+                label={gettext("Language")}
+                options={Enum.map(@languages, &{language_name(&1), &1})}
+              />
+              <.input
+                field={@preferences_form[:time_zone]}
+                type="select"
+                label={gettext("Time zone")}
+                hint={gettext("Times are shown in this zone. They are kept in UTC.")}
+                options={time_zone_options(@preferences_form[:time_zone].value)}
+              />
+            </div>
+            <p
+              :if={length(@languages) <= 1}
+              id="preferences_language"
+              class="text-[13px] text-muted"
+            >
+              {gettext("Pages are in English, the one language this instance has.")}
+            </p>
+            <SettingsComponents.save>
+              <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
+                {gettext("Save")}
+              </.button>
+              <:note>{gettext("Yours in every organisation you belong to.")}</:note>
+            </SettingsComponents.save>
+          </.form>
+        </SettingsComponents.part>
+
+        <SettingsComponents.part
+          :if={@live_action == :preferences}
+          id="theme"
+          level={:h2}
+          title={gettext("Theme")}
+        >
+          <.theme_picker />
+          <p class="q-foot-note">
+            {pgettext(
+              "plain",
+              "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
             )}
           </p>
-          <ul id="sole-owned" class="mt-1.5 grid gap-1">
-            <li :for={organisation <- @sole_owned} id={"sole-owned-#{organisation.id}"}>
-              <.link
-                navigate={~p"/#{organisation}/settings"}
-                class="link inline-flex min-h-6 items-center font-medium"
-              >
-                {organisation.name}
-              </.link>
-            </li>
-          </ul>
-        </.notice>
-        <.notice :if={@sole_owned == [] and @marked_alone != []} kind={:warning}>
-          <p id="delete-account-orphans">
-            {ngettext(
-              "You are the only owner of an organisation that is deleted and waits to be purged. Once your account is deleted, nobody is left who can cancel its deletion.",
-              "You are the only owner of organisations that are deleted and wait to be purged. Once your account is deleted, nobody is left who can cancel their deletion.",
-              length(@marked_alone)
+        </SettingsComponents.part>
+
+        <SettingsComponents.part
+          :if={@live_action == :preferences}
+          id="keyboard"
+          level={:h2}
+          title={gettext("Keyboard")}
+        >
+          <.switch
+            id="shortcuts-switch"
+            label={gettext("Keyboard shortcuts")}
+            checked
+            data-pref="shortcuts"
+            phx-click={JS.dispatch("phx:set-shortcuts")}
+            phx-mounted={JS.ignore_attributes(["aria-checked"])}
+          >
+            {gettext(
+              "Single keys such as / to search, [ to fold the sidebar and the run timeline's letters. Off, only shortcuts with ⌘ or Ctrl work, such as ⌘K and Ctrl+K to search. Kept on this browser."
             )}
-          </p>
-          <ul id="marked-alone" class="mt-1.5 grid gap-0.5">
-            <li :for={organisation <- @marked_alone} id={"marked-alone-#{organisation.id}"}>
-              <span class="font-medium">{organisation.name}</span>
-            </li>
-          </ul>
-        </.notice>
-      </SettingsComponents.danger_zone>
+          </.switch>
+        </SettingsComponents.part>
+
+        <SettingsComponents.danger_zone :if={@live_action != :preferences}>
+          <SettingsComponents.danger_action
+            id="delete-account"
+            title={gettext("Delete account")}
+            button={gettext("Delete account…")}
+            disabled={@sole_owned != []}
+            open={@live_action == :delete}
+            open_path={~p"/users/settings/delete"}
+            close_path={~p"/users/settings"}
+            question={gettext("Delete your account?")}
+            form={@confirm_form}
+            change="confirm"
+            submit="delete_account"
+            ready={email_typed?(@confirm_form[:email].value, @current_email)}
+          >
+            {gettext(
+              "Your email address, password and preferences are erased and you leave every organisation you belong to, which cannot be undone; what you made in a workspace stays there and names you as a former member."
+            )}
+            <:lost>
+              {gettext(
+                "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
+              )}
+            </:lost>
+            <:lost :if={@marked_alone != []} id="delete-account-lost-orphans">
+              {ngettext(
+                "Nobody will be left who can cancel the deletion of the organisation you are the only owner of: it is purged when its grace period is over.",
+                "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over.",
+                length(@marked_alone)
+              )}
+            </:lost>
+            <:field>
+              <.input
+                field={@confirm_form[:email]}
+                type="text"
+                label={gettext("Type your email, %{email}, to confirm", email: @current_email)}
+                autocomplete="off"
+                spellcheck="false"
+                debounce="0"
+              />
+            </:field>
+          </SettingsComponents.danger_action>
+          <div :if={is_nil(@sole_owned)} id="delete-account-loading" aria-busy="true">
+            <span class="sr-only">{gettext("Checking the organisations you own")}</span>
+            <span class="skeleton q-skel w-64"></span>
+          </div>
+          <.notice :if={@sole_owned not in [nil, []]} kind={:warning}>
+            <p id="delete-account-blocked">
+              {ngettext(
+                "You are the only owner of this organisation. Make another member an owner, or delete the organisation, before you delete your account.",
+                "You are the only owner of these organisations. Make another member an owner of each, or delete it, before you delete your account.",
+                length(@sole_owned)
+              )}
+            </p>
+            <ul id="sole-owned" class="mt-1.5 grid gap-1">
+              <li :for={organisation <- @sole_owned} id={"sole-owned-#{organisation.id}"}>
+                <.link
+                  navigate={~p"/#{organisation}/settings"}
+                  class="link inline-flex min-h-6 items-center font-medium"
+                >
+                  {organisation.name}
+                </.link>
+              </li>
+            </ul>
+          </.notice>
+          <.notice :if={@sole_owned == [] and @marked_alone != []} kind={:warning}>
+            <p id="delete-account-orphans">
+              {ngettext(
+                "You are the only owner of an organisation that is deleted and waits to be purged. Once your account is deleted, nobody is left who can cancel its deletion.",
+                "You are the only owner of organisations that are deleted and wait to be purged. Once your account is deleted, nobody is left who can cancel their deletion.",
+                length(@marked_alone)
+              )}
+            </p>
+            <ul id="marked-alone" class="mt-1.5 grid gap-0.5">
+              <li :for={organisation <- @marked_alone} id={"marked-alone-#{organisation.id}"}>
+                <span class="font-medium">{organisation.name}</span>
+              </li>
+            </ul>
+          </.notice>
+        </SettingsComponents.danger_zone>
+      </.settings_page>
     </Layouts.app>
     """
   end
