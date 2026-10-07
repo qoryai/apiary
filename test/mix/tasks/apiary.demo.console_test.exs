@@ -185,6 +185,40 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     refute Repo.exists?(from o in Organisation, where: o.slug == "acme")
   end
 
+  describe "the database it fills" do
+    @demo %{"APIARY_DEV_DATABASE" => "apiary_redesign_demo"}
+
+    test "is the one APIARY_DEV_DATABASE names, with no DATABASE_URL" do
+      assert Console.refusal(:dev, "apiary_redesign_demo", @demo) == nil
+    end
+
+    test "is refused while DATABASE_URL is set, whatever it names" do
+      env = Map.put(@demo, "DATABASE_URL", "ecto://postgres:postgres@localhost/apiary_dev")
+
+      assert Console.refusal(:dev, "apiary_redesign_demo", env) =~
+               ~r/DATABASE_URL is set.*unset DATABASE_URL/s
+    end
+
+    test "is refused when APIARY_DEV_DATABASE names none, or another than configured" do
+      assert Console.refusal(:dev, "apiary_dev", %{}) =~ "names no database"
+      assert Console.refusal(:dev, "apiary_dev", %{"APIARY_DEV_DATABASE" => ""}) =~ "no database"
+
+      assert Console.refusal(:dev, "apiary_dev", @demo) =~
+               ~s(configured with the database "apiary_dev")
+    end
+
+    test "is never a database people work in" do
+      for database <- ~w(apiary_dev apiary_core_dev) do
+        env = %{"APIARY_DEV_DATABASE" => database}
+        assert Console.refusal(:dev, database, env) =~ "#{database} is a database people work in"
+      end
+    end
+
+    test "is the tests' own in the test environment" do
+      assert Console.refusal(:test, "apiary_test", %{"DATABASE_URL" => "ecto://x/y"}) == nil
+    end
+  end
+
   defp main_workspace do
     organisation = Repo.get_by!(Organisation, slug: "acme")
     Repo.get_by!(Workspace, organisation_id: organisation.id, slug: "main")

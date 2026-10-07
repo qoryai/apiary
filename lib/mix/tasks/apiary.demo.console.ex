@@ -7,16 +7,20 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   repositories, nodes, keys, a security policy, secrets, variables and integrations. All
   of it synthetic and neutral. A development tool: it refuses to run in production.
 
-      APIARY_DEV_DATABASE=apiary_redesign_demo mix apiary.demo.console
-      mix apiary.demo.console --runs 3000 --days 28
+      unset DATABASE_URL
+      export APIARY_DEV_DATABASE=apiary_redesign_demo
+      mix ecto.create && mix ecto.migrate && mix apiary.demo.console
 
-  `--runs` and `--days` size Main's history (below); `--seed` (1) makes it repeatable, and
+  `--runs` and `--days` size Main's history (below), as in
+  `mix apiary.demo.console --runs 3000 --days 28`; `--seed` (1) makes it repeatable, and
   `--concurrency` (6) is how many processes write it.
 
-  Point it at a database of its own: `config/dev.exs` reads the database's name from
-  `APIARY_DEV_DATABASE`, and a `DATABASE_URL` in the shell replaces it, so unset that
-  first. It refuses an instance that has an organisation other than its own, so the
-  database you work in is never filled by mistake.
+  It fills only a database of its own. Outside the tests it refuses to start unless
+  `APIARY_DEV_DATABASE` names the database the app is configured with (`config/dev.exs`
+  reads it) and `DATABASE_URL`, which would replace that database, is unset; and it never
+  fills `apiary_dev` or `apiary_core_dev`, the databases people work in. It refuses an
+  instance that has an organisation other than its own, so the database you work in is
+  never filled by mistake.
 
   ## What it makes
 
@@ -91,12 +95,21 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   @runner_version "0.10.0"
 
+  # The databases people work in, which the task never fills.
+  @working_databases ~w(apiary_dev apiary_core_dev)
+
   @impl Mix.Task
   def run(args) do
     if Mix.env() == :prod,
       do: Mix.raise("mix apiary.demo.console is a development tool: not in prod")
 
     {opts, _rest} = OptionParser.parse!(args, strict: @switches)
+
+    # The database is checked before the app starts, so nothing reaches one it refuses.
+    Mix.Task.run("app.config")
+
+    if refusal = refusal(Mix.env(), Repo.config()[:database], System.get_env()),
+      do: Mix.raise(refusal)
 
     Mix.Task.run("app.start")
     # The query log of a fill is millions of lines nobody asked for.
@@ -118,6 +131,50 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
         )
     end
     |> live()
+  end
+
+  @doc false
+  # Why the task must not fill `database`, the one the app is configured with in the Mix
+  # environment `mix_env`, given the shell's variables `env`; nil when it may. The tests
+  # fill their own partitioned database. Anywhere else only the database
+  # APIARY_DEV_DATABASE names is filled, with no DATABASE_URL to replace it, and never one
+  # people work in.
+  @spec refusal(atom, String.t() | nil, %{optional(String.t()) => String.t()}) ::
+          String.t() | nil
+  def refusal(:test, _database, _env), do: nil
+
+  def refusal(_mix_env, database, env) do
+    named = env["APIARY_DEV_DATABASE"]
+
+    reason =
+      cond do
+        Map.has_key?(env, "DATABASE_URL") ->
+          "DATABASE_URL is set, and it replaces the database APIARY_DEV_DATABASE names"
+
+        named in [nil, ""] ->
+          "APIARY_DEV_DATABASE names no database"
+
+        named in @working_databases ->
+          "#{named} is a database people work in"
+
+        database != named ->
+          "the app is configured with the database #{inspect(database)}, " <>
+            "not #{named}, which APIARY_DEV_DATABASE names"
+
+        true ->
+          nil
+      end
+
+    reason &&
+      """
+      mix apiary.demo.console fills only a database of its own: #{reason}.
+      Run it with demo-up.sh, or with DATABASE_URL unset and APIARY_DEV_DATABASE naming a
+      database other than #{Enum.join(@working_databases, " and ")}:
+
+          unset DATABASE_URL
+          export APIARY_DEV_DATABASE=apiary_redesign_demo
+          mix ecto.create && mix ecto.migrate && mix apiary.demo.console
+      """
   end
 
   # Whether the instance has no organisation in use, is the demo's (its first organisation
