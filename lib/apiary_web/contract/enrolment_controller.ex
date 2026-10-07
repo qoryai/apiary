@@ -28,10 +28,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
        holds a key awaiting approval, or two approved keys; and `201` with the access key
        id, its node, `approved`, `stored_secrets` and the instance's keys.
 
-  A signed answer carries `X-Qory-Signature-Ed25519`, the instance's signature
-  (`Apiary.SigningKey.sign/1`) of the answer string (`Apiary.Contract.SignedMessage.answer/5`)
-  whose line 3 is the request's `proof` exactly as sent, and
-  `Cache-Control: no-store, no-transform`. Each signed body lists `apiary_public_key`,
+  A signed answer is signed by `ApiaryWeb.Contract.SignedAnswer.put/3`, as every answer to
+  a signed request is: `X-Qory-Signature-Ed25519`, the instance's signature of the answer
+  string (`Apiary.Contract.SignedMessage.answer/5`) whose line 3 is the request's `proof`
+  exactly as sent, and `Cache-Control: no-store, no-transform`. Each signed body lists `apiary_public_key`,
   the instance's keys (`Apiary.SigningKey.apiary_public_key/0`).
 
   Nothing here logs the code, the proof or a key; the body is never in the parameters the
@@ -41,9 +41,9 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
 
   alias Apiary.{AccessKeys, SigningKey}
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
+  alias Apiary.Contract.Enrolment
   alias Apiary.Runs.RateLimit
-  alias ApiaryWeb.Contract.ContractVersion
+  alias ApiaryWeb.Contract.{ContractVersion, SignedAnswer}
 
   def create(conn, _params) do
     origin = ApiaryWeb.Origin.from_conn(conn)
@@ -113,16 +113,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
 
   # Line 3 of the answer string is the request's proof, exactly as sent.
   defp signed(conn, %Enrolment{proof: proof}, status, body) do
-    signature =
-      status
-      |> SignedMessage.answer(proof, body, nil, nil)
-      |> SigningKey.sign()
-      |> Ed25519.encode()
-
     conn
     |> put_resp_content_type("application/json")
-    |> put_resp_header("cache-control", "no-store, no-transform")
-    |> put_resp_header("x-qory-signature-ed25519", signature)
-    |> send_resp(status, body)
+    |> resp(status, body)
+    |> SignedAnswer.put(proof)
+    |> send_resp()
   end
 end

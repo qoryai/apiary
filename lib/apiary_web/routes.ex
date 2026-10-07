@@ -15,8 +15,9 @@ defmodule ApiaryWeb.Routes do
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
-    `:contract` (a signed request of the server contract) and `:path_scope` (the reserved
-    names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
+    `:contract` (a signed request of the server contract), `:contract_limited` (the same,
+    held to the key's rate limit) and `:path_scope` (the reserved names,
+    `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
     pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
     `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.

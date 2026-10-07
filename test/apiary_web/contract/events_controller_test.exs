@@ -4,7 +4,6 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
-  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Ecto.Query
 
@@ -88,7 +87,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     end
 
     test "a heartbeat is recorded on the key by the server's clock, not the runner's",
-         %{scope: scope, key: key, secret: secret} do
+         %{key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
       # A runner whose clock is a century ahead does not pin the key's heartbeat.
@@ -114,7 +113,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     end
 
     test "a delivery whose User-Agent names no runner version leaves the one the key has recorded",
-         %{scope: scope, key: key, secret: secret} do
+         %{key: key, secret: secret} do
       {subject, [ping, _]} = first_events()
       assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
 
@@ -129,7 +128,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert key.last_contract_version == 1
     end
 
-    test "a repeated delivery does not touch the key", %{scope: scope, key: key, secret: secret} do
+    test "a repeated delivery does not touch the key", %{key: key, secret: secret} do
       {_subject, batch} = first_events()
       delivery = Ecto.UUID.generate()
 
