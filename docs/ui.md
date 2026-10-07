@@ -611,7 +611,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
   would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
   the workspace does not have, and a tab the page does not know, are not found. The header
-  is the target in full with the reader's pin, one muted line (its runs since it was first
+  names the target as it is addressed (its path, its system before it only where two
+  targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
   the system is a host name; the breadcrumb's third segment is the target.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
@@ -619,10 +620,9 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     system and path, when it was first seen and by which run, the same path elsewhere,
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
-  - **Runs**: its latest runs, one line each, and all of them in the runs list.
-  - **Network access**: the Network access page's content with the target fixed
-    (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target section,
-    token or rail, and "New activity" leading the tab.
+  - Its runs and its Network access are the workspace's lists narrowed to it
+    (`/runs?target=acme/shop`, `/network?target=acme/shop`); the old `…/-/runs`,
+    `…/-/network` and `…/-/connections` send on there with their query.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode on one line (Follow the workspace, by its name, Observe or Enforce, and whose
     the mode is), the rules in force for it on the list pattern with their Source, and
