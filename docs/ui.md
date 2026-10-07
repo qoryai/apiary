@@ -539,11 +539,12 @@ The policy pages confirm in place, never over the page:
   option card per mode (Follow the workspace first on a target), each a native radio with
   what it does, the mode now marked Current. A pick only selects. A pick that is not the
   mode now asks under the options: the question, what it does and in whose runs (or that
-  nothing changes today, and what changes from now on), for enforce what the last 14 days
-  let through with no rule, each with its Allow; then one primary button that names the
-  pick and Cancel. Escape cancels; saving or cancelling gives the focus back to Change
-  mode, and the save is said in the page's status region. The choices stay open on
-  another tab.
+  nothing changes today, and what changes from now on; on a workspace nobody has changed
+  yet, that it is the workspace's first change), for enforce what the last 14 days let
+  through with no rule, each with its Allow; then one primary button that names the pick
+  and Cancel. Escape, with the focus in the choices, cancels (the `PolicyPage` hook);
+  saving or cancelling gives the focus back to Change mode, and the save is said in the
+  page's status region. The choices stay open on another tab.
 - **A rule's row** asks for its own acts where they cost something: a Lock that would put
   a target's own rule out of force, and the Remove of a locked rule or of one a target
   overrides. The row becomes its `inline_confirm/1` (`rule_list/1`'s `confirming`): the

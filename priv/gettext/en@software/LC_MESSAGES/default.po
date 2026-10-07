@@ -11419,6 +11419,7 @@ msgid "This is the instance's organisation, whose owners run the instance, so it
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
 msgstr ""

@@ -729,10 +729,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
             name={@target_name}
             workspace={@current_scope.workspace.name}
             default={@mode.workspace}
+            managed={@managed?}
           />
         </:effect>
         <.target_mode_more
           :if={@mode_pick}
+          managed={@managed?}
           becomes={becomes(@mode_pick, @mode)}
           now={@mode.mode}
           would={@would}
@@ -847,10 +849,16 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :workspace, :string, required: true, doc: "the workspace's name"
   attr :default, :string, required: true, doc: "the workspace's default"
 
+  attr :managed, :boolean,
+    required: true,
+    doc: "whether the workspace's policy is served: false until its first change"
+
   # What the picked setting does, the question's sentence (`PolicyComponents.mode_card/1`):
   # from when, and what is denied; or, where the mode in force stays the same, that nothing
-  # changes today and what changes from now on.
-  defp target_mode_effect(%{becomes: same, now: same} = assigns) do
+  # changes today and what changes from now on. On a workspace nobody has changed yet the
+  # setting is its first change, which starts serving every machine of it a policy:
+  # something changes today, and the other targets change too.
+  defp target_mode_effect(%{becomes: same, now: same, managed: true} = assigns) do
     ~H"""
     {if @default == "enforce",
       do: gettext("Nothing changes today: %{workspace} enforces too.", workspace: @workspace),
@@ -869,7 +877,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp target_mode_effect(%{becomes: "enforce"} = assigns) do
     ~H"""
     <.rich text={mode_lead("enforce")} />
-    {whose_words(@setting, "enforce")} {gettext("Other targets do not change.")}
+    {whose_words(@setting, "enforce")}
+    <span :if={@managed}>{gettext("Other targets do not change.")}</span>
+    <span :if={!@managed}>{first_change()}</span>
     """
   end
 
@@ -877,23 +887,25 @@ defmodule ApiaryWeb.PolicyLive.Target do
     ~H"""
     <.rich text={mode_lead("observe")} />
     {whose_words(@setting, "observe")}
-    <span :if={@setting != "follow"}>
+    <span :if={@managed && @setting != "follow"}>
       {gettext("The workspace's default stays %{mode} and other targets do not change.",
         mode: @default
       )}
     </span>
+    <span :if={!@managed}>{first_change()}</span>
     """
   end
 
   attr :becomes, :string, required: true, doc: "the mode the pick puts in force"
   attr :now, :string, required: true, doc: "the mode in force now"
+  attr :managed, :boolean, required: true, doc: "whether the workspace's policy is served"
   attr :would, :any, required: true
   attr :locked_denies, :list, required: true
 
   # What follows the question's sentence: for enforce, what this target's runs were let
   # through in the last 14 days with no rule, each with its Allow here; for observe, the
   # denies that still hold. Nothing where the mode in force stays the same.
-  defp target_mode_more(%{becomes: same, now: same} = assigns), do: ~H""
+  defp target_mode_more(%{becomes: same, now: same, managed: true} = assigns), do: ~H""
 
   defp target_mode_more(%{becomes: "enforce"} = assigns) do
     shown = if assigns.would, do: Common.would_shown(assigns.would), else: []
@@ -996,6 +1008,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
     </p>
     """
   end
+
+  defp first_change,
+    do:
+      gettext(
+        "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
+      )
 
   defp whose_words("follow", _mode),
     do: gettext("The mode follows the workspace's default from now on, and changes when it does.")

@@ -253,7 +253,8 @@ defmodule ApiaryWeb.PolicyComponents do
   Current. Picking only selects (`mode_pick`); a pick that is not the mode now shows its
   question under the options, what it does (`effect`) and what follows (the inner block,
   such as what enforce would deny), and one button that names the pick and saves it
-  (`mode_set`). Cancel and Escape send `mode_cancel`. Nothing saves on a click.
+  (`mode_set`). Cancel, and Escape while the focus is in the choices (the `PolicyPage`
+  hook), send `mode_cancel`. Nothing saves on a click.
 
   A reader who may not set a mode sees the card with no Change mode and the line that says
   who may; where the level above requires enforce (`floor`), the card says so and offers
@@ -430,8 +431,6 @@ defmodule ApiaryWeb.PolicyComponents do
         class="q-modecard-form"
         phx-change="mode_pick"
         phx-submit="mode_set"
-        phx-window-keydown="mode_cancel"
-        phx-key="Escape"
         novalidate
       >
         <fieldset>

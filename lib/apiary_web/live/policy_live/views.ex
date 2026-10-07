@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
   The views the workspace's policy and a target's policy share: the history with its
-  diffs, one version with its document, the export page, the confirm of a mode in place
-  and the list of keys. Function components; the two
+  diffs, one version with its document, the export page, a confirm in place with a list
+  (`confirm_panel/1`, an edition's pages use it) and the list of keys. Function
+  components; the two
   LiveViews load what they show through `ApiaryWeb.PolicyLive.Common`.
   """
   use ApiaryWeb, :html

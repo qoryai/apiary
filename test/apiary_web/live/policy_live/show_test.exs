@@ -1068,12 +1068,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(view, "#policy-mode-set[aria-describedby=policy-mode-q-effect]")
 
-      assert has_element?(
-               view,
-               "#policy-mode-form[phx-window-keydown=mode_cancel][phx-key=Escape]"
-             )
-
-      render_keydown(view, "mode_cancel", %{"key" => "Escape"})
+      # Escape is the PolicyPage hook's, with the focus in the choices: an Escape for the
+      # palette or a search leaves them open. The hook sends mode_cancel.
+      refute has_element?(view, "#policy-mode-form[phx-window-keydown]")
+      render_hook(view, "mode_cancel", %{})
       refute has_element?(view, "#policy-mode-form")
       assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
       assert Policy.get_mode(scope) == "observe"

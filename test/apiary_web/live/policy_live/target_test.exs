@@ -41,7 +41,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   end
 
   # An element's text as it is read: unlike text/2, its tags add no space.
-  defp name(view, selector) do
+  defp read_name(view, selector) do
     view
     |> element(selector)
     |> render()
@@ -490,7 +490,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view = open(conn, path)
 
       assert text(view, "#policy-mode-value") == "Observe"
-      assert name(view, "#policy-mode-h") == "Mode: Observe"
+      assert read_name(view, "#policy-mode-h") == "Mode: Observe"
       assert text(view, "#policy-mode-source") == "Follows #{scope.workspace.name}"
       assert has_element?(view, "#policy-mode-source .hero-link-micro")
       assert has_element?(view, "#policy-mode .q-modecard-tile .hero-eye")
@@ -654,7 +654,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       # Each reads "Allow here"; its name goes on with the destination.
       for host <- ~w(mirror.example files.cdn.example) do
-        assert name(view, "button##{allow.(host)}") == "Allow here: #{host}"
+        assert read_name(view, "button##{allow.(host)}") == "Allow here: #{host}"
         assert text(view, "button##{allow.(host)} .sr-only") == ": #{host}"
       end
 
@@ -698,6 +698,38 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
                "Nothing changes today: #{scope.workspace.name} enforces too. The mode follows the workspace's default from now on, and changes when it does."
 
       assert Policy.get_mode(scope, target).own == "enforce"
+    end
+
+    test "on a workspace nobody has changed, a mode of its own is its first change, and says so",
+         %{conn: _conn} do
+      other = scope_fixture()
+      started_run(other, shop())
+      [%{target: target}] = Policy.list_targets(other)
+      refute Policy.managed?(other)
+
+      view =
+        open(
+          log_in_user(build_conn(), other.user),
+          target_path(other, target.system, target.path, ["policy"])
+        )
+
+      # It follows the workspace, which observes: picking observe changes the mode of
+      # none of its runs, but it starts serving every machine of the workspace a policy.
+      pick_mode(view, "observe")
+      effect = text(view, "#policy-mode-q-effect")
+      refute effect =~ "Nothing changes today"
+      assert effect =~ "only what a deny rule names is denied in this repository's runs"
+
+      assert effect =~
+               "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
+
+      refute effect =~ "other repositories do not change"
+
+      pick_mode(view, "enforce")
+      effect = text(view, "#policy-mode-q-effect")
+      assert effect =~ "This is the workspace's first change"
+      refute effect =~ "Other repositories do not change."
+      refute Policy.managed?(other)
     end
 
     test "picks never save, and only the last pick's question shows; Cancel keeps the mode",

@@ -8266,7 +8266,8 @@
     padding: 14px 16px;
     border: 1px solid var(--q-border-subtle);
     border-radius: var(--radius-box);
-    background-color: var(--color-base-200);
+    /* base-100, not base-200: the radio's ring (border-field) keeps 3:1 against it. */
+    background-color: var(--color-base-100);
     cursor: pointer;
     transition:
       border-color 120ms var(--q-ease-out),
@@ -8277,7 +8278,6 @@
   }
   .q-modeopt:has(:checked) {
     border-color: var(--q-border-field);
-    background-color: var(--color-base-100);
     box-shadow: var(--q-shadow-xs);
   }
   .q-modeopt .radio {

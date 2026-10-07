@@ -9,6 +9,8 @@
 //                                    ?  shows or hides the list of keys, a panel in the
 //                                       page (#policy-keys), never an overlay; Escape and
 //                                       its Close hide it
+//   Escape, with the focus in the mode's choices (#policy-mode-form), closes them
+//   (`mode_cancel`): an Escape elsewhere, the palette's or a search's, leaves them open
 //
 // RuleComposer, on the composer's form: a pasted list of hosts, one per line, goes to the
 // server as a list, which fills the composer with the first and queues the rest.
@@ -82,6 +84,11 @@ export const PolicyPage = {
   },
 
   key(e) {
+    if (e.key === "Escape" && e.target.closest?.("#policy-mode-form")) {
+      e.preventDefault()
+      this.pushEvent("mode_cancel", {})
+      return
+    }
     if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
       const panel = document.getElementById("policy-keys")
       if (panel && !panel.hidden) this.keys(false)

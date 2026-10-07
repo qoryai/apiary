@@ -545,8 +545,8 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert [form] = all(doc, "form#policy-mode-form")
       assert LazyHTML.attribute(form, "phx-change") == ["mode_pick"]
       assert LazyHTML.attribute(form, "phx-submit") == ["mode_set"]
-      assert LazyHTML.attribute(form, "phx-window-keydown") == ["mode_cancel"]
-      assert LazyHTML.attribute(form, "phx-key") == ["Escape"]
+      # Escape is the PolicyPage hook's, with the focus in the form: never the window's.
+      assert LazyHTML.attribute(form, "phx-window-keydown") == []
 
       assert text_of(doc, "fieldset legend#policy-mode-legend") ==
                "Choose the workspace's default mode"
