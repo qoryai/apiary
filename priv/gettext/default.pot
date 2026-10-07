@@ -4646,9 +4646,13 @@ msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not st
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Edit"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Edit name and note"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -7752,6 +7756,11 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Not deleted."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Not deleted: %{reason}"
 msgstr ""
 
@@ -7834,6 +7843,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not running"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Not saved."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/rule_list.ex

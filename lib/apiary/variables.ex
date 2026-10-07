@@ -606,12 +606,15 @@ defmodule Apiary.Variables do
 
   defp limits_refusal(:ok, _changeset), do: :ok
 
+  # The limit is bound as `limit`, not `count`: a `count` makes the form's translation look
+  # the message up as a plural (`ApiaryWeb.CoreComponents.translate_error/1`), and this
+  # one's entry is singular.
   defp limits_refusal({:error, :too_many_names}, changeset) do
     refuse(
       changeset,
       :name,
-      dgettext_noop("errors", "would raise a target's variables above %{count}"),
-      count: Resolution.max_names()
+      dgettext_noop("errors", "would raise a target's variables above %{limit}"),
+      limit: Resolution.max_names()
     )
   end
 

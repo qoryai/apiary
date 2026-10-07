@@ -290,7 +290,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute has_element?(lv, "#secrets")
       assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
       assert has_element?(lv, "#secret-page-title", "Edit the name and note of FORGE_TOKEN")
-      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Edit")
+
+      assert lv |> element("#breadcrumb [aria-current=page]") |> render() =~
+               ~r{>\s*Edit name and note\s*<}
+
       assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")
       assert page_title(lv) =~ "Edit the name and note of FORGE_TOKEN · Workspace settings"
       assert has_element?(lv, "#secret-save button[type=submit]", "Save")
@@ -599,6 +602,29 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       assert html =~ "is NPM_REGISTRY elsewhere in this workspace: use the same spelling"
       assert {:ok, [_one]} = Variables.list_variables(scope, :workspace)
+    end
+
+    test "a new variable over a repository's limit of names is refused in its own words",
+         %{conn: conn, scope: scope} do
+      site = target!(scope, "acme/site")
+      for i <- 1..120, do: variable!(scope, :workspace, "W#{i}", "")
+      for i <- 1..8, do: variable!(scope, site, "T#{i}", "")
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/new"))
+
+      lv
+      |> form("#variable-form", variable: %{name: "W121", value: "x"})
+      |> render_submit()
+
+      # The context's refusal, as a software workspace reads it, under the name.
+      assert has_element?(
+               lv,
+               "#variable_name-error",
+               "would raise a repository's variables above 128"
+             )
+
+      refute render(lv) =~ "a target&#39;s variables"
+      assert {:ok, variables} = Variables.list_variables(scope, :workspace)
+      assert length(variables) == 120
     end
 
     test "changes a value, locks and unlocks, saying what the lock does to the repositories",
