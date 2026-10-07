@@ -105,11 +105,11 @@ Every context, schema and plug carries a `@moduledoc`, and every public context 
 One vocabulary, no synonyms: **organisation** is the thing that signs up and holds
 everything else; **workspace** is the unit of use inside it; **membership** is a user's
 place in an organisation, at the level owner, admin or member; **access key** is a
-workspace's credential for the server contract; **key id** is its public part, `ak_` and
-sixteen characters; **secret** is the part that signs, shown once; **run** is one
-execution of one session on a machine of the workspace; **event** is one thing a run
-reports, delivered to the events URL; **receiver** is what answers the events URL; **run
-configuration** is what the runner fetches before a run; **security policy** is
+node's credential for the server contract, an Ed25519 key; **key id** is its id, `ak_`
+and sixteen characters; **secret** is the part that signs, which stays on the machine;
+**run** is one execution of one session on a machine of the workspace; **event** is one
+thing a run reports, delivered to the events URL; **receiver** is what answers the events
+URL; **run configuration** is what the runner fetches before a run; **security policy** is
 `SECURITY.md`. An organisation is never a team, a tenant or an account; a
 workspace is never a team, a project or a hive; an access key is never an API key or a
 token; a secret is never a password. The product surface is the one place with other

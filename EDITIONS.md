@@ -20,8 +20,10 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
 - **The wall and the policy.** Every connection a session makes goes through the runner's
   proxy, and the security policy of the workspace says what it may reach: observe or
   enforce, rules per repository, locked rules, a history with a diff.
-- **Access keys.** A machine's credential for the server contract, created, rotated and
-  revoked in the console.
+- **Nodes and their access keys.** A node is one machine, a node pool a fleet of
+  short-lived instances. A machine makes its own Ed25519 key and enrols it with a code
+  from its node, or an owner or admin pastes its public key; keys are approved and revoked
+  in the console.
 - **Members and their levels.** Owners, admins and members, invited by email address.
 - **Suspension of a member.** An owner or an admin stops a person acting in the
   organisation, and activates them again; nothing is removed.

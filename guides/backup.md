@@ -99,8 +99,9 @@ curl http://localhost:4100/health
 ```
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
-that has one of the workspace's access keys: if it appears, the keys' integrity codes
-verified, which means `APIARY_ENCRYPTION_SECRET` is the right one.
+enrolled on one of the workspace's nodes: if it appears, the keys' integrity codes
+verified, which means `APIARY_ENCRYPTION_SECRET` is the right one, and the machine took
+the server's signed answers, which means `APIARY_SIGNING_SECRET` is.
 
 ## What each key is for
 
@@ -170,11 +171,13 @@ are taken, restore the newest dump on another machine:
    <!-- feature: security -->
    So are the policy and its history.
    <!-- /feature -->
-6. Prove the access keys verify. On the same machine, with the `qory` command, point a
-   runner file's `server` section at `http://localhost:4100` with an access key that existed
-   when the dump was taken, and start a run. A run that starts
-   and appears under **Runs** proves the dump and `APIARY_ENCRYPTION_SECRET` belong together. A
-   run that does not start because the server refuses its requests means they do not.
+6. Prove the access keys verify. On the same machine, with the `qory` command and the
+   secret of an access key that existed when the dump was taken, point a runner file's
+   `server` section at `http://localhost:4100`, keeping the key's `access_key_id` and the
+   pin, and start a run. A run that starts and appears under **Runs** proves the dump,
+   `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` belong together. A run that
+   does not start because the server refuses its requests (`401`), or because its answers
+   do not verify under the pin (`answer_unsigned`), means they do not.
 7. Delete the drill: `docker compose down --volumes`, then the `.env` and the dump's copy.
 
 Write down how long the restore took. It is how long an outage with a lost database lasts.

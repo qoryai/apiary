@@ -170,11 +170,11 @@ the console keeps. Every other act happens on a page, in place:
   from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
   breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
   with a flash; a refused one stays, the error under its field. What a save shows once,
-  such as a key's secret, it shows on that page, never again once the reader leaves it.
+  such as an enrolment code, it shows on that page, never again once the reader leaves it.
   The pattern is Add
   integration's (storybook, Screens); A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
-  Revoke, Rotate, Remove, Suspend or Clear turns that row into the question, "Delete
+  Revoke, Approve, Remove, Suspend or Clear turns that row into the question, "Delete
   FORGE_TOKEN?", what is lost, "Yes, delete" and Cancel; a danger zone's line expands
   under its sentence, with the field to type where one is asked; a page's own setting,
   such as the policy's mode, opens its choices in place and asks under them. Each keeps
@@ -468,12 +468,12 @@ look alike are one level too many, and nothing is boxed inside a row.
   secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
   (revoked, suspended) is `row-off`, its title muted.
 - **A state is said only when it is not the usual one.** An active key, a member in use,
-  a run that ended well say nothing (a screen reader hears the word); a rotated key, a
-  suspended member, a revoked key say so in words (`<.state_word>`), with a dot and the
+  a run that ended well say nothing (a screen reader hears the word); a key awaiting
+  approval, a suspended member, a revoked key say so in words (`<.state_word>`), with a dot and the
   text colour when the state needs someone. A pill is for a state of at most two words
   that needs someone, and never on every row.
 - **A row's acts.** The one act its state asks for is a text action (`<.button
-  variant="link">`, "Retire previous secret"); the rest are in its ⋯ menu
+  variant="link">`); the rest are in its ⋯ menu
   (`<.row_menu>` with `<.menu_item>`s, a heading and dividers between groups), which
   floats in the top layer so the table's scroll region never clips it. A choice of one,
   such as a person's level, is a set of `menuitemradio` items with what each means. A
@@ -805,7 +805,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   pool its instance limit (a whole number up to 10,000, or empty for none), and its foot,
   Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). A refused
   save stays on the page, the error under its field; adding one opens its page on
-  Settings with a flash.
+  Access key with a flash, where its machine gets its key.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and its tabs, the operational
   side first and Settings last, set apart at the bar's right end

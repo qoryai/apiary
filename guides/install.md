@@ -45,10 +45,10 @@ terminated by a reverse proxy in front of it.
 The console's pages are live over a WebSocket: let the proxy pass WebSocket upgrades
 through. Without them the pages fall back to long polling.
 
-Links in emails, the `server` block the console shows for a new access key and the URLs in
-the discovery document are all built from `PUBLIC_URL`, never from the request's `Host`
-header. A `PUBLIC_URL` that is not the address runners and people use gives them links that
-do not work.
+Links in emails, the runner file lines and the enrolment command the console shows for a
+node's key, and the URLs in the discovery document are all built from `PUBLIC_URL`, never
+from the request's `Host` header. A `PUBLIC_URL` that is not the address runners and
+people use gives them links that do not work.
 
 The audit trail records the address each change came from. Behind a proxy that is the
 proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in

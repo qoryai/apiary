@@ -1,8 +1,8 @@
 # The server contract
 
 The server contract is what a runner and a server say to each other: how a runner finds the
-server's endpoints, how it proves which access key it holds, and how it delivers a run's
-events.
+server's endpoints, how a machine enrols its access key, how a request proves which key
+it holds, and how a runner delivers a run's events.
 <!-- feature: security -->
 It is also how a run is given its security policy.
 <!-- /feature -->
@@ -287,6 +287,37 @@ The `security_policy` is the policy: the runner does not merge it with the machi
 When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
 runner denies first and in either mode; without any, the section is as above.
 <!-- /feature -->
+
+### Enrolment: `POST /.well-known/qory-enrolment`
+
+How a machine enrols a new access key with an enrolment code made on a node
+([Nodes and their keys](nodes.md)). `qory access-key enrol <server> <code>` sends it. The
+request carries no access key id and no request signature: the code and the proof
+authenticate it. Its body, by the contract's `enrolment.schema.json`, holds the code, a
+name for the key, the new public key, a timestamp and `proof`, the new key's signature over
+the code, the public key, the name and the timestamp.
+
+The code is `qec_`, 26 characters, then `.` and the fingerprint of the server's key, so
+the machine knows which key's answer to trust before it has pinned any. It works once, for
+15 minutes. The answers, in order:
+
+| Status | Signed | When |
+|---|---|---|
+| `413` | no | a body over 8 KiB |
+| `429` `rate_limited` | no | over the limit of the address the request came from, with `Retry-After` |
+| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault |
+| `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |
+| `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, or carries another fingerprint than the server's key's |
+| `409` `key_invalid` | yes | the key fails the key checks, or has served another access key, the proof does not verify, or its timestamp is more than 300 seconds from the server's clock |
+| `409` `key_limit` | yes | the node holds a key awaiting approval, or two approved keys |
+| `201` | yes | the key is made, awaiting approval |
+
+The `201` carries the access key id, the node's id and kind, `approved`,
+`stored_secrets` and `apiary_public_key`; each signed refusal lists `apiary_public_key`
+too. A signed answer's line 3 is the request's `proof`. A refusal changes nothing, and the
+code stays outstanding. The same code, posted again with the same public key while its 15
+minutes last and the key is neither revoked nor rejected, is the same `201` for the same
+key; any other key on a used code is `401`.
 
 ## A receiver of your own
 

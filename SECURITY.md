@@ -19,14 +19,18 @@ earlier one.
 
 ## What is a vulnerability here
 
-- A request without a valid signature, or with a revoked access key, is answered as if it
-  were signed: the discovery document, and later the receiver and the run configuration,
-  are served only to a request the workspace's secret signed.
+- A request without a valid signature, or with a revoked access key or one that awaits
+  approval, is answered as if it were signed: the discovery document, the events endpoint
+  and the run configuration serve only a request an approved node key signed.
+- An enrolment code enrols a key more than once, after it expired or was cancelled, or for
+  another node than its own; or a key arrives approved without an owner or an admin
+  approving it.
 - A row of one organisation is readable or writable from another: a page, a query or an
   endpoint that does not scope by the organisation and the workspace of the caller.
-- An access key's secret leaves the application other than in the one reveal after it is
-  created or rotated: in a log line, an event, an email, a page, or in clear in the
-  database.
+- The server's signing key, `APIARY_SIGNING_SECRET`, leaves the application in any form,
+  or an enrolment code leaves it other than on the one page that made it: in a log line,
+  an event, an email, another page, or in clear in the database.
+- An answer carries a valid signature for a request it does not answer.
 - A member does what only an owner may, or the last owner of an organisation can be
   removed.
 - Sign-in, confirmation, password reset or an invitation link can be used by someone the

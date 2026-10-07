@@ -26,8 +26,20 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
 - The record of every run, reported by the runner over the server contract (version 1,
-  revision 1: discovery, events and the run configuration): the session as a timeline,
-  the terminal, every connection with its decision and rule, and how the run ended.
+  revision 1: discovery, events, the run configuration and enrolment): the session as a
+  timeline, the terminal, every connection with its decision and rule, and how the run
+  ended.
+- Signed requests and signed answers. Every request a runner makes names a node's access
+  key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
+  `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
+  clock for a GET; every answer to a verified request is signed with the server's own
+  Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
+  `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
+  refusals come in the contract's order, coded: a header sent twice or an instance id
+  absent or malformed is `400` `bad_request`, a key that awaits approval `409`
+  `key_pending` on every endpoint. Discovery names the key's node (`node_id`) and the
+  server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
+  the contract's own fixtures at the commit `.runner-contract-ref` pins.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
@@ -46,15 +58,25 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   made. Owners and admins add them, rename them, change a pool's limit and delete them
   (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
-  node and New node pool, and each node has a page with Overview and Settings.
-- Access keys of nodes: each holds one Ed25519 public key and belongs
-  to one node or node pool, with its stored-secrets flag fixed when it is made. Owners and
-  admins make single-use enrolment codes, valid for 15 minutes, add a pasted key, approved
-  at once, approve or reject a key that awaits approval, and revoke one, each in the audit
-  trail; a node holds at most two approved keys and one awaiting approval, and deleting a
-  node revokes its keys. Every public key received passes the contract's key checks, and
-  a public key serves one access key, ever, on the instance. Each key's row carries an
-  integrity code, checked before the key is trusted.
+  node and New node pool, and each node has a page with Overview, Access key and
+  Settings; a new node opens on its Access key tab.
+- Access keys, one kind: a node's or a node pool's, each with one Ed25519 public key. The
+  machine makes its key and keeps its secret; the server holds the public half alone,
+  with the key's stored-secrets flag fixed when it is made. A machine gets its key in one
+  of two ways, both on the node's Access key tab: enrolment by code, where an owner or an
+  admin makes a single-use code valid for 15 minutes, the page shows the command
+  `qory access-key enrol <server> <code>`, and the machine posts the code with its new
+  key to `POST /.well-known/qory-enrolment`, which answers signed, and the key arrives
+  awaiting approval; or a pasted key, the public key `qory access-key create` printed,
+  approved at once and followed by the page Runner file for the key, which shows the
+  runner file's `server` lines (`url`, `access_key_id`, `apiary_public_key`) and the same
+  id and pin as `QORY_ACCESS_KEY_ID` and `QORY_APIARY_PUBLIC_KEY` for a CI, and which an
+  approved key's card opens again. Owners and admins make and revoke codes, add, approve,
+  reject and revoke keys, each in the audit trail; a node holds at most two approved keys
+  and one awaiting approval, and deleting a node revokes its keys and codes. Enrolment is
+  limited per address, 1 a second and 10 at once. Every public key received passes the
+  contract's key checks, and a public key serves one access key, ever, on the instance.
+  Each key's row carries an integrity code, checked before the key is trusted.
 - A node's instances: what a runner using the node's access key reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation. An
   instance runs while it has a run the lost-run check holds alive. The Nodes list says
@@ -64,10 +86,18 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   instances, the starts refused at the limit, and its recent runs. Owners and admins
   clear an instance that stopped without saying so (`node.clear_instance`, audited): its
   open runs are marked lost and another instance can start at once. The runs list takes
-  `node:` and has a Node column from 1300 px; the run page says a run's node and
-  instance. The receiving side records none yet: runs and deliveries name a node and an
-  instance once access keys name their node and requests carry the instance id, and the
-  instance limit is enforced at the ping from then.
+  `node:` and has a Node column from 1300 px, and its Filter menu has Node; the run page
+  says a run's node and instance. Every run records its node and the instance that
+  started it, and every delivery its instance. A pool's instance limit is enforced: the
+  ping of a new run from an instance beyond it is a signed `409` `instance_limit`, the run
+  does not start and nothing is stored, and the node counts the starts refused.
+- A workspace no run has reached opens on one box, Send your first run: Add a node (a
+  node, or a node pool for a fleet that shares one key), Enrol the machine
+  (`qory access-key enrol` with a code from the node, or the public key
+  `qory access-key create` printed, pasted), and See runs here, with the command that
+  enrols a machine beside it.
+  The first sign-in lands there. The overview's To review lists a node's approved key
+  nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who
   reaches it and at what level under People, read there and managed in the
   organisation's People.
@@ -128,8 +158,14 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   Delete variable. Members read them; owners and admins change them. A parameter named
   `value` is filtered out of the logs, a LiveView event's included.
 - `APIARY_ENCRYPTION_SECRET`, 32 bytes, encrypts what the database holds secret: each
-  workspace's stored values under a data key of its own, with AES-256-GCM, wrapped by a key derived from it. Losing it loses every stored
-  value. Integrity codes for stored rows are keyed from it as well.
+  workspace's stored values under a data key of its own, with AES-256-GCM, wrapped by a
+  key derived from it. Losing it loses every stored value. Integrity codes for stored
+  rows are keyed from it as well.
+- `APIARY_SIGNING_SECRET`, required, 32 bytes of its own, never derived from
+  `APIARY_ENCRYPTION_SECRET`: the seed of the Ed25519 key the server signs its answers
+  to runners with. The boot refuses it when it is missing, of another length, or one of
+  the contract's published fixture seeds. Every machine pins its public key, so changing
+  or losing it means pinning every machine again.
 - Runtimes, integrations and services for the runs, without a page yet
   (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
   catalogue, its `runtimes.json` as the runner ships it; an integration added from a
@@ -174,10 +210,11 @@ refuses a change of a node's kind; `nodes.instance_ids_over_bound` and its time.
 `runs_node_id_instance_id_alive_index` and `runs_workspace_id_node_id_started_index`,
 created concurrently.
 
-`access_keys` gains a node's key's columns (`node_id`, `public_key`, `received_at`,
-`approved_at`, `approved_by_id`, `allow_secrets`, `rate`, `burst`, `arrived_by`,
-`enrolment_code_id`, `revoked_by_id`, `integrity_code`, `integrity_key_id`,
-`last_pending_at`), its secret becomes nullable for a node's key, and the trigger
+`access_keys` holds the keys of nodes: each row's node (`node_id`), Ed25519 public key
+(`public_key`), the time it was received (`received_at`) and how it arrived
+(`arrived_by`), all NOT NULL, with `approved_at`, `approved_by_id`, `allow_secrets`,
+`rate`, `burst`, `enrolment_code_id`, `revoked_by_id`, `integrity_code`,
+`integrity_key_id` and `last_pending_at`, and no secret. The trigger
 `access_keys_fixed_at_insert` refuses a change of a key's node, public key, stored-secrets
 flag or arrival. New: `access_key_enrolment_codes`, a node's enrolment codes, and
 `access_key_public_keys`, the instance's ledger of public keys.

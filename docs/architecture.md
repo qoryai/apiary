@@ -31,8 +31,8 @@ beside it:
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
-- `Apiary.AccessKeys`: a workspace's access keys, and the lookup a signed request verifies
-  against. Each key has one Ed25519 public key, and Apiary holds no secret of it; it
+- `Apiary.AccessKeys`: the access keys of a workspace's nodes, and the lookup a signed
+  request verifies against. Each key has one Ed25519 public key, and Apiary holds no secret of it; it
   belongs to one node or node pool: enrolment codes
   (`access_key_enrolment_codes`, kept as their SHA-256), a pasted key approved at once,
   approval, rejection and revocation, at most two approved keys and one awaiting approval

@@ -5,58 +5,76 @@ command's configuration directory: `~/.config/qory/runner.yaml`, or
 `$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is set. It lives there and nowhere
 else, so a repository cannot set the policy a run is under or where its events go.
 
-Its `server` section names the Qory Apiary every run on the machine reports to. The section
-is read by the `qory` command from version 0.10.0. An earlier command reads the file
-strictly and refuses a file that has the section, so install 0.10.0 or later before adding
-it; `qory version` prints the version.
+Its `server` section names the Qory Apiary every run on the machine reports to, and the
+access key the machine signs with. The section needs a `qory` command that has
+`qory access-key`, the command that makes the machine's key.
 
 ## The section
 
 ```yaml
 server:
-  url: https://qory.example
-  access_key: ak_0123456789abcdef
-  secret: <the secret the console showed once>
+  url: https://apiary.example
+  access_key_id: ak_0123456789abcdef
+  apiary_public_key:
+    - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
 ```
 
-The console writes this block for you, with the values filled in, when an access key is
-created or rotated under **Settings › Access keys**, `/:org/:workspace/settings/keys`. The block begins with
-an `apiVersion` line; a runner file has one such line, so when the file exists already,
-add the `server` section alone. The file is read strictly: a key it does not know, or a
-key written twice, is refused with a message that names the file.
+You rarely write it by hand. `qory access-key enrol <server> <code>` writes it when a
+machine enrols with a code, and a key pasted into a node leads to the page **Runner file
+for build-01**, which shows these lines with the values filled in
+([Nodes and their keys](nodes.md)). When the file exists already, add the `server`
+section to it. The file is read strictly: a key it does not know, or a key written twice,
+is refused with a message that names the file.
 
 | Key | Holds |
 |---|---|
 | `url` | The server's scheme and host, with a port when it has one, and nothing after: no path, no query. It is the server's `PUBLIC_URL`. `https`, or `http` to an address of this machine, `localhost` or a loopback address; `http` to any other host is refused. The runner finds every endpoint through the configuration document under this URL. |
-| `access_key` | The key id the console shows: `ak_` and 16 characters. It names the machine's key to the server and travels in clear with every request. |
-| `secret` | The secret of that key, at least 16 characters. It signs every request and never travels. |
+| `access_key_id` | The id the server gave the machine's access key: `ak_` and 16 characters. It names the key to the server and travels in clear with every request. |
+| `apiary_public_key` | The pin: the server's public keys, a list of `alg` and `public_key`. Every answer of the server is signed, and the runner verifies it under these keys before it reads it. A runner with a server and no pin does not start, `apiary_public_key_missing`. |
 
-### The secret in the environment
+Nothing in the section is secret. The access key's secret is never in `runner.yaml`:
+`qory access-key` keeps it in the file `access-key-secret` beside it,
+`~/.config/qory/access-key-secret`, readable by its owner alone. The server holds only the
+key's public half, so nothing the server stores, shows or logs can sign for the machine.
 
-`secret` may be left out of the file. The command then takes it from the environment
-variable `QORY_SERVER_SECRET`, in the environment `qory run` starts in. The file's value
-wins when both are there, and with neither the file is refused:
+### The id and the pin in the environment
+
+`access_key_id` and `apiary_public_key` may be left out of the file. The command then
+takes them from `QORY_ACCESS_KEY_ID` and `QORY_APIARY_PUBLIC_KEY`, in the environment
+`qory run` starts in; a value set in both places is refused. `QORY_APIARY_PUBLIC_KEY` is
+the same list written as JSON, on one line:
 
 ```text
-server.secret is missing; set it there or in QORY_SERVER_SECRET
+QORY_ACCESS_KEY_ID=ak_0123456789abcdef
+QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q"}]
 ```
 
-The secret stays the runner's. `QORY_SERVER_SECRET` is taken out of the session's
-environment, and naming it in `wall.env` or with `--env` is refused. `qory config` lists
-`runner.server.url` and `runner.server.access_key`, and never the secret.
-
-When the secret is in the file, make the file readable by its owner alone:
+Those are the lines **Runner file for build-01** shows under "For CI", for a CI's
+variables or an env file, where a value is taken as written. In a shell the JSON has
+brackets and double quotes the shell would read, so put the value in single quotes:
 
 ```sh
-chmod 600 ~/.config/qory/runner.yaml
+export QORY_ACCESS_KEY_ID=ak_0123456789abcdef
+export QORY_APIARY_PUBLIC_KEY='[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q"}]'
 ```
 
-### Rotating
+The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs in a CI's
+secret store; `qory access-key enrol --print` and `qory access-key create --print` print it
+instead of keeping it on the machine. With the three variables set, the CI's `runner.yaml`
+needs `server.url` alone.
 
-**Rotate** on the key's row issues a new secret and shows it once, with the block to paste.
-The previous secret keeps working until **Retire previous secret**, so machines move over
-one at a time without a gap. **Revoke** stops the key verifying at once: machines still
-using it fail their next request and start no new runs.
+The three stay the runner's. `qory` reads them when it starts and takes them out of its
+environment before it starts anything, so no session inherits them, and naming one in
+`wall.env` or with `--env` is refused. `qory config` lists `runner.server.url`,
+`runner.server.access_key_id` and the pin by its fingerprint, and never the secret.
+
+### A new key, and revoking one
+
+A key is never rotated. To change a machine's key, enrol or paste a new one on the same
+node, approve it, and once the machine uses it, **Revoke…** the old one on the node's
+**Access key** tab. A node holds two approved keys at a time for this. A revoked key stops
+verifying at once: a machine still using it fails its next request, `401`, and starts no
+new run.
 
 ## What the runner does with it
 
@@ -73,8 +91,14 @@ With a `server` section, every `qory run` on the machine:
    <!-- /feature -->
 4. starts the runtime, and posts the run's events in signed batches while it runs.
 
-The run fails closed. A configuration fetch that fails or is refused, or a ping the server
-does not accept: no run, and the error names the URL and the status.
+Each request names the machine's instance, its id kept in the file `instance-id` beside
+`runner.yaml`, and is signed with the access key. Each answer is signed with the server's
+key, and the runner verifies it under the pin before it reads anything of it.
+
+The run fails closed. A configuration fetch that fails or is refused, an answer that does
+not verify under the pin, or a ping the server does not accept: no run, and the error
+names the URL and the status. A key that awaits approval is refused `key_pending`, and an
+instance beyond its node pool's instance limit `instance_limit`.
 <!-- feature: security -->
 A named run configuration that does not answer `200` is no run either.
 <!-- /feature -->
@@ -114,13 +138,13 @@ It applies:
 
 - on a machine with no `server` section;
 - with `qory run --local`, which records to files only and does not contact the server;
-- while the workspace the access key belongs to has no policy yet. The server then names
+- while the workspace of the access key's node has no policy yet. The server then names
   no run configuration, and the machine's own policy stands, enforcement included.
 
 From the first change of the workspace's policy in the console, the server's run
-configuration is the policy of every run under the workspace's keys, and the file's
-`egress` section is not merged with it. [The security policy](security-policy.md) says
-what to do before that first change.
+configuration is the policy of every run under the keys of the workspace's nodes, and the
+file's `egress` section is not merged with it. [The security policy](security-policy.md)
+says what to do before that first change.
 
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
 too: the server's run configuration is the policy.
