@@ -4,13 +4,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   keys and its outstanding enrolment codes, over `Apiary.AccessKeys` as it is. Its header
   and tabs are the node's page's (`ApiaryWeb.NodeComponents`).
 
-  **What is true today.** Qory can't check a node's key yet, so the node receives no runs:
-  machines send their runs with a workspace access key, and no enrolment is built, so
-  nothing takes a code. The tab says so once, plainly, above everything else, with the
-  way to the workspace's access keys (Workspace settings › Access keys), and none of its
-  lines says a node posts, enrols or connects with what it holds. The add and code pages
-  say it too.
-
   - **Keys**, those in use first, then the revoked and the rejected, newest first: each its
     label, key id and state, its fingerprint, its stored-secrets flag, how and when it
     arrived, who approved, revoked or rejected it and when, and its use where the record
@@ -757,13 +750,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     )
   end
 
-  defp not_yet_text,
-    do:
-      rich_gettext(
-        "Qory can't check these keys yet, so this node receives no runs. Until it can, machines send their runs with a workspace access key, from %{link}.",
-        link: {:part, :link}
-      )
-
   ## Render
 
   @impl true
@@ -790,8 +776,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </.page_header>
 
         <div class="grid gap-4">
-          <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} />
-
           <div id="code-issued-once">
             <.notice kind={:warning}>
               <strong>{gettext("This code is shown once.")}</strong>
@@ -886,7 +870,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             name: @node.name
           )}
         </:description>
-        <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} class="mb-4" />
         <.form
           for={@form}
           id="key-add-form"
@@ -983,7 +966,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             minutes: Format.number(AccessKeys.code_ttl_minutes())
           )}
         </:description>
-        <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} class="mb-4" />
         <.form
           for={@form}
           id="code-new-form"
@@ -1048,8 +1030,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <NodeComponents.node_tabs node={@node} paths={@paths} current={:access_key} view={:access_key} />
 
       <div id="node-access-key" class="grid max-w-[60rem] gap-8">
-        <NodeComponents.not_yet scope={@current_scope} text={not_yet_text()} />
-
         <SettingsComponents.part id="node-keys" title={gettext("Keys")} level={:h2}>
           <p class="text-[13px]/5 text-muted">{limits_words()}</p>
           <p :if={!@manages} id="node-keys-members" class="text-[13px]/5 text-muted">

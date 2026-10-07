@@ -548,7 +548,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_where(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
-    {gettext("Access keys")}
+    {@item.key.node.name}
     """
   end
 
@@ -707,7 +707,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_when(%{item: %{kind: :idle_key, key: key}} = assigns) do
-    assigns = assign(assigns, :at, key.last_used_at || key.inserted_at)
+    assigns = assign(assigns, :at, key.last_used_at || key.approved_at)
 
     ~H"""
     <span class="tabular-nums">{Format.day(@at)}</span>
@@ -949,7 +949,9 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/#{@item.key.id}/revoke"}
+      navigate={
+        ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
+      }
       class="q-act"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
@@ -1778,7 +1780,7 @@ defmodule ApiaryWeb.OverviewComponents do
           :if={@current == 1}
           id={"#{@id}-create"}
           variant="primary"
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new"}
           class="max-[479px]:w-full"
         >
           <.icon name="hero-key" class="size-4" /> {gettext("Create an access key")}
@@ -1786,7 +1788,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <.button
           :if={@current in [2, 3]}
           id={"#{@id}-keys"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
           class="max-[479px]:w-full"
         >
           {gettext("Manage access keys")}

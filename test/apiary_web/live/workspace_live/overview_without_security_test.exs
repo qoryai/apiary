@@ -109,7 +109,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       scope: scope
     } do
       counts = UserAuth.nav_counts(scope)
-      assert Map.has_key?(counts, :keys)
+      assert Map.has_key?(counts, :alive)
+      refute Map.has_key?(counts, :keys)
       refute Map.has_key?(counts, :mode)
       refute Map.has_key?(counts, :own_modes)
 
@@ -117,8 +118,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
-      refute subscribed_to_policy?(keys, scope)
+      {:ok, nodes, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      refute subscribed_to_policy?(nodes, scope)
     end
 
     test "the overview reads nothing of the policy", %{conn: conn, scope: scope} do

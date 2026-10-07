@@ -5,7 +5,7 @@ defmodule ApiaryWeb.RunLive.Index do
   long, and its denials. It is narrowed as every list is (docs/ui.md, Lists): the views as
   tabs (every run, alive, ended badly, with denials, each counted under the other filters),
   one query field whose filters show as tokens, one Filter menu (target, state, task,
-  runtime, host, access key, when it started, denials), and Sort (newest, oldest, longest,
+  runtime, host, node, when it started, denials), and Sort (newest, oldest, longest,
   most denials). From 1280 px a rail beside the list holds the targets with their runs,
   pinned first; choosing one is the target filter. The list has no time range until the
   reader sets one. Pages of 25, 50 or 100, "1–50 of 3,137", and Jump to date. The query's
@@ -51,7 +51,6 @@ defmodule ApiaryWeb.RunLive.Index do
   on_mount {ApiaryWeb.Access, :"run.read"}
 
   alias Apiary.Access
-  alias Apiary.AccessKeys
   alias Apiary.Features
   alias Apiary.Nodes
   alias Apiary.Runs
@@ -480,40 +479,43 @@ defmodule ApiaryWeb.RunLive.Index do
         <% end %>
 
         <div :if={!@load_error && first_run?(@listing, @filters)} class="grid gap-4">
-          <.empty_state :if={!@has_keys} icon="hero-play-circle" title={gettext("No runs yet")}>
+          <.empty_state :if={!@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext(
-              "A run appears here when a machine with an access key of this workspace starts one."
+              "A run appears here when a machine enrolled on a node of this workspace starts one."
             )}
-            {gettext(
-              "Create a key, paste its server block into the runner file on the machine, and start a run."
-            )}
+            {gettext("Add a node, enrol the machine on it, and start a run.")}
+            <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
             <:actions>
               <.button
-                id="runs-create-key"
+                :if={@may_add_node}
+                id="runs-new-node"
                 variant="primary"
-                navigate={
-                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/new"
-                }
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes/new"}
               >
-                {gettext("Create an access key")}
+                {gettext("New node")}
+              </.button>
+              <.button
+                :if={!@may_add_node}
+                id="runs-go-to-nodes"
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
+              >
+                {gettext("Go to nodes")}
               </.button>
             </:actions>
           </.empty_state>
-          <.empty_state :if={@has_keys} icon="hero-play-circle" title={gettext("No runs yet")}>
+          <.empty_state :if={@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
-            {gettext("The server block to paste into the runner file is on the access keys page.")}
+            {gettext("A machine posts once its key is approved on a node.")}
             <:actions>
               <.button
-                id="runs-go-to-keys"
-                navigate={
-                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"
-                }
+                id="runs-go-to-nodes"
+                navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}
               >
-                {gettext("Go to access keys")}
+                {gettext("Go to nodes")}
               </.button>
             </:actions>
           </.empty_state>
-          <.listening :if={@has_keys}>{gettext("Listening for the first run.")}</.listening>
+          <.listening :if={@has_nodes}>{gettext("Listening for the first run.")}</.listening>
         </div>
       </div>
     </Layouts.app>
@@ -720,7 +722,8 @@ defmodule ApiaryWeb.RunLive.Index do
        security:
          Features.on?(scope, :security) and
            Access.can?(scope, :"security_policy.read", scope.workspace),
-       has_keys: AccessKeys.list_access_keys(scope) != []
+       has_nodes: Nodes.count_nodes(scope) |> Map.values() |> Enum.sum() > 0,
+       may_add_node: Access.can?(scope, :"node.create", scope.workspace)
      )}
   end
 
@@ -782,7 +785,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # What the reader types in a section narrows that section's options on the server, over
   # every value there is; Show more asks for more of them.
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
-      when name in ~w(target task runtime host key) and is_binary(q) do
+      when name in ~w(target task runtime host node) and is_binary(q) do
     narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
     {:noreply, socket |> assign(:narrow, narrow) |> load_facets()}
   end
@@ -790,7 +793,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
   def handle_event("more_options", %{"name" => name}, socket)
-      when name in ~w(target task runtime host key) do
+      when name in ~w(target task runtime host node) do
     limit = Map.get(socket.assigns.limits, name, Runs.facet_size()) + Runs.facet_size()
 
     {:noreply,
@@ -1431,14 +1434,14 @@ defmodule ApiaryWeb.RunLive.Index do
       {"task", gettext("Task"), "hero-command-line"},
       {"runtime", gettext("Runtime"), "hero-cpu-chip"},
       {"host", gettext("Host"), "hero-server-stack"},
-      {"key", gettext("Access key"), "hero-key"}
+      {"node", gettext("Node"), "hero-server"}
     ]
   end
 
   defp text_param(filters, "task"), do: task_param(filters.task)
   defp text_param(filters, "runtime"), do: filters.runtime
   defp text_param(filters, "host"), do: filters.host
-  defp text_param(filters, "key"), do: filters.key
+  defp text_param(filters, "node"), do: filters.node
 
   defp text_value(filters, "task"), do: task_label(filters.task)
   defp text_value(filters, name), do: text_param(filters, name)

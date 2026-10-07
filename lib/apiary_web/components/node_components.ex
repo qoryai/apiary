@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.NodeComponents do
   @moduledoc """
   What the Nodes list and a node's page say alike (`docs/ui.md`, Nodes): a node's state in
-  words, from what it is doing (`Apiary.Nodes.activity/3`), the sentence that says what an
-  instance is, and the line that says nodes receive no runs yet, since Qory can't check a
-  node's key yet. And what a node's page's two LiveViews share: its header
+  words, from what it is doing (`Apiary.Nodes.activity/3`), and the sentence that says what
+  an instance is. And what a node's page's two LiveViews share: its header
   (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings; and
   an enrolment code's expiry (`code_expiry/1`).
 
@@ -143,42 +142,6 @@ defmodule ApiaryWeb.NodeComponents do
         {gettext("Settings")}
       </:tab>
     </.page_tabs>
-    """
-  end
-
-  @doc """
-  not_yet/1 is the one plain line a page about a node's keys says, once, near its top:
-  Qory can't check a node's keys yet, so nodes receive no runs, and machines send their
-  runs with a workspace access key, with the way to them (Workspace settings › Access
-  keys). Its words are the page's own sentence, which ends with `%{link}`, where the link
-  goes, flush against the full stop.
-  """
-  attr :id, :string, default: "not-on-runs"
-  attr :scope, :map, required: true
-  attr :text, :any, required: true, doc: "`rich_gettext/2` of the sentence, with `link`"
-  attr :class, :any, default: nil
-
-  def not_yet(assigns) do
-    ~H"""
-    <.not_on_runs id={@id} class={@class}>
-      <.rich text={@text}>
-        <:part name={:link}><.keys_link id={"#{@id}-keys"} scope={@scope} /></:part>
-      </.rich>
-    </.not_on_runs>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :scope, :map, required: true
-
-  # Written flush: no whitespace inside the link or after it, before the sentence's stop.
-  defp keys_link(assigns) do
-    ~H"""
-    <.link
-      id={@id}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
-      class="text-accent hover:underline"
-    >{gettext("Workspace settings › Access keys")}</.link>
     """
   end
 

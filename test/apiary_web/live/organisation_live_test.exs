@@ -49,7 +49,7 @@ defmodule ApiaryWeb.OrganisationLiveTest do
 
       assert redirected_to(get(conn, ~p"/")) == ~p"/#{organisation}/#{scope.workspace}"
 
-      conn = conn |> get(~p"/#{organisation}/#{platform}/settings/keys") |> recycle()
+      conn = conn |> get(~p"/#{organisation}/#{platform}/settings/runs") |> recycle()
       assert redirected_to(get(conn, ~p"/")) == ~p"/#{organisation}/#{platform}"
     end
 

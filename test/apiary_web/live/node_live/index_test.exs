@@ -98,6 +98,8 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
 
       assert ids == ["new-node", "new-node-pool"]
       refute has_element?(lv, "#page-header-actions .btn-primary")
+      # No line under it sends the reader to a workspace's access keys: there are none.
+      refute has_element?(lv, "#not-on-runs")
     end
 
     test "New node is a page of the Nodes section", %{conn: conn, scope: scope} do

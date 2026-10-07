@@ -83,7 +83,10 @@ defmodule Apiary.Runs.ListingTest do
       refute Filters.any?(parse(%{"sort" => "oldest", "per" => "100", "page" => "2"}))
       assert Filters.any?(parse(%{"since" => "7d"}))
       assert Filters.any?(parse(%{"q" => "checkout"}))
-      assert Filters.any?(parse(%{"key" => "ci-fleet"}))
+      assert Filters.any?(parse(%{"node" => "build-01"}))
+      # The access key is no filter of the runs: an old address's `key` is not read.
+      refute Map.has_key?(%Filters{}, :key)
+      assert Filters.to_params(parse(%{"key" => "ci-fleet"})) == %{}
 
       assert Filters.to_params(parse(%{"sort" => "longest", "per" => "100", "q" => " fix "})) ==
                %{"sort" => "longest", "per" => "100", "q" => "fix"}
@@ -178,7 +181,7 @@ defmodule Apiary.Runs.ListingTest do
       end
     end
 
-    test "the sections that are on or off, the key and the range change the URL alone" do
+    test "the sections that are on or off, the node and the range change the URL alone" do
       f = parse(%{"state" => "failed", "page" => "3"})
 
       assert Filters.to_params(Filters.change(f, %{"_filter" => "denials", "denials" => "1"})) ==
@@ -187,7 +190,10 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.change(parse(%{"denials" => "1"}), %{"_filter" => "denials"}).denials ==
                false
 
-      assert Filters.change(f, %{"_filter" => "key", "key" => "ci-fleet"}).key == "ci-fleet"
+      assert Filters.change(f, %{"_filter" => "node", "node" => "build-01"}).node == "build-01"
+
+      assert Filters.change(f, %{"_filter" => "key", "key" => "ci-fleet"}) |> Filters.to_params() ==
+               %{"state" => "failed"}
 
       assert Filters.change(f, %{"_filter" => "since", "since" => "all", "_target" => ["since"]})
              |> Filters.to_params() == %{"state" => "failed"}
@@ -266,7 +272,7 @@ defmodule Apiary.Runs.ListingTest do
     test "qualifiers set their filters, the other words are the free text" do
       {f, []} =
         query(
-          ~s(state:failed,lost repo:acme/shop task:"Fix the build" runtime:claude host:gpu-01 key:ci-fleet denied:yes checkout totals)
+          ~s(state:failed,lost repo:acme/shop task:"Fix the build" runtime:claude host:gpu-01 node:build-01 denied:yes checkout totals)
         )
 
       assert f.states == ~w(failed lost)
@@ -274,7 +280,7 @@ defmodule Apiary.Runs.ListingTest do
       assert f.task == "Fix the build"
       assert f.runtime == "claude"
       assert f.host == "gpu-01"
-      assert f.key == "ci-fleet"
+      assert f.node == "build-01"
       assert f.denials
       assert f.q == "checkout totals"
       assert f.page == 1
@@ -432,9 +438,8 @@ defmodule Apiary.Runs.ListingTest do
       assert run.id == pending.id
     end
 
-    test "state, target, task, runtime, host, key and denials", %{scope: scope} do
-      %{access_key: key} =
-        Apiary.AccessKeysFixtures.access_key_fixture(scope, %{label: "ci-fleet"})
+    test "state, target, task, runtime, host, node and denials", %{scope: scope} do
+      node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
 
       a =
         started(scope, Map.put(shop(), "task", "checkout-tax"), 100,
@@ -453,7 +458,7 @@ defmodule Apiary.Runs.ListingTest do
         )
 
       Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^a.id),
-        set: [access_key_id: key.id]
+        set: [node_id: node.id]
       )
 
       by = fn params ->
@@ -470,8 +475,9 @@ defmodule Apiary.Runs.ListingTest do
       assert by.(%{"task" => "none"}) == [c.id]
       assert by.(%{"runtime" => "otherrt"}) == [c.id]
       assert by.(%{"host" => "build-03"}) == [b.id]
-      assert by.(%{"key" => "ci-fleet"}) == [a.id]
-      assert by.(%{"key" => "nobody"}) == []
+      assert by.(%{"node" => "build-01"}) == [a.id]
+      assert by.(%{"node" => node.public_id}) == [a.id]
+      assert by.(%{"node" => "nobody"}) == []
       assert by.(%{"denials" => "1"}) == [a.id]
       assert by.(%{"system" => "github.example", "target" => "nothing/here"}) == []
     end
@@ -730,7 +736,7 @@ defmodule Apiary.Runs.ListingTest do
       assert facets.task.options == [{"checkout-tax", "checkout-tax", 2}, {"No task", "none", 1}]
       assert facets.runtime.options == [{"claude", "claude", 3}]
       assert facets.host == %{options: [{"dev-laptop", "dev-laptop", 3}], total: 1}
-      assert facets.key == %{options: [], total: 0}
+      assert facets.node == %{options: [], total: 0}
     end
 
     test "a facet holds the fifty most frequent values and the chosen one, more when asked, and narrows as text",
@@ -767,21 +773,47 @@ defmodule Apiary.Runs.ListingTest do
       assert Runs.like("50%_\\") == "%50\\%\\_\\\\%"
     end
 
-    test "the access keys are a facet by their label", %{scope: scope, runs: runs} do
-      %{access_key: key} =
-        Apiary.AccessKeysFixtures.access_key_fixture(scope, %{label: "ci-fleet"})
+    test "the nodes are a facet: one in use by its name, a deleted one by its id", %{
+      scope: scope,
+      runs: runs
+    } do
+      node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
+      pool = Apiary.NodesFixtures.pool_fixture(scope, %{name: "spot-runners"})
 
-      ids = [runs.shop.id, runs.api.id]
-
-      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id in ^ids),
-        set: [access_key_id: key.id]
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id in ^[runs.shop.id, runs.api.id]),
+        set: [node_id: node.id]
       )
 
-      assert Runs.run_facets(scope, parse(%{}), now: @now).key ==
-               %{options: [{"ci-fleet", "ci-fleet", 2}], total: 1}
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^runs.gitlab.id),
+        set: [node_id: pool.id]
+      )
 
-      assert Runs.run_facets(scope, parse(%{"key" => "gone"}), now: @now).key.options ==
-               [{"gone", "gone", 0}, {"ci-fleet", "ci-fleet", 2}]
+      facets = fn params, opts ->
+        Runs.run_facets(scope, parse(params), [now: @now] ++ opts).node
+      end
+
+      assert facets.(%{}, []) ==
+               %{
+                 options: [{"build-01", "build-01", 2}, {"spot-runners", "spot-runners", 1}],
+                 total: 2
+               }
+
+      # Chosen by its id, as a node's page links, the node's own option is checked.
+      assert {"build-01", node.public_id, 2} in facets.(%{"node" => node.public_id}, []).options
+
+      # A value the data no longer offers still shows.
+      assert hd(facets.(%{"node" => "gone"}, []).options) == {"gone", "gone", 0}
+
+      assert facets.(%{}, narrow: %{"node" => "BUILD"}).options == [{"build-01", "build-01", 2}]
+
+      assert facets.(%{}, narrow: %{"node" => "spot"}).options == [
+               {"spot-runners", "spot-runners", 1}
+             ]
+
+      # A deleted node keeps its runs, offered by its id under its name, marked deleted.
+      {:ok, _deleted} = Apiary.Nodes.delete_node(scope, node)
+
+      assert {"build-01 (deleted)", node.public_id, 2} in facets.(%{}, []).options
     end
 
     test "matches?/4 tells whether a changed run belongs to the view", %{

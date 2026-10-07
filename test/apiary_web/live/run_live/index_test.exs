@@ -2,7 +2,6 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
@@ -47,14 +46,24 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   end
 
   describe "empty states" do
-    test "no runs and no keys: create a key", %{conn: conn, scope: scope} do
+    test "no runs and no node: add a node, or, for a member, go to the nodes", %{
+      conn: conn,
+      scope: scope
+    } do
       view = open(conn, scope)
       assert has_element?(view, "h2", "No runs yet")
 
+      assert text(view, "#main") =~
+               "A run appears here when a machine enrolled on a node of this workspace starts one."
+
       assert has_element?(
                view,
-               "#runs-create-key[href='#{workspace_path(scope)}/settings/keys/new']"
+               "#runs-new-node[href='#{workspace_path(scope)}/nodes/new']",
+               "New node"
              )
+
+      refute has_element?(view, "#runs-go-to-nodes")
+      refute render(view) =~ "settings/keys"
 
       refute has_element?(view, "#runs")
       refute has_element?(view, "#runs-views")
@@ -62,10 +71,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#nav-runs-alive")
     end
 
-    test "no runs, keys exist: go to the keys, and listen", %{conn: conn, scope: scope} do
-      access_key_fixture(scope)
+    test "no runs and no node, for a member: an owner or admin adds nodes", %{scope: scope} do
+      %{user: member} = member_fixture(scope, :member)
+      view = open(log_in_user(build_conn(), member), scope)
+
+      refute has_element?(view, "#runs-new-node")
+      assert has_element?(view, "#main", "An owner or admin adds nodes.")
+      assert has_element?(view, "#runs-go-to-nodes[href='#{workspace_path(scope)}/nodes']")
+    end
+
+    test "no runs, a node exists: go to the nodes, and listen", %{conn: conn, scope: scope} do
+      Apiary.NodesFixtures.pool_fixture(scope)
       view = open(conn, scope)
-      assert has_element?(view, "#runs-go-to-keys[href='#{workspace_path(scope)}/settings/keys']")
+      assert text(view, "#main") =~ "A machine posts once its key is approved on a node."
+
+      assert has_element?(
+               view,
+               "#runs-go-to-nodes[href='#{workspace_path(scope)}/nodes']",
+               "Go to nodes"
+             )
+
+      refute has_element?(view, "#runs-new-node")
       assert render(view) =~ "Listening for the first run."
     end
 
@@ -435,7 +461,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, "#runs-filter-panel[role=group]")
 
-      for key <- ~w(target state task runtime host key since denials) do
+      for key <- ~w(target state task runtime host node since denials) do
         assert has_element?(view, "#runs-filter-open-#{key}")
         assert has_element?(view, "#runs-filter-section-#{key}[role=group]")
       end
@@ -464,6 +490,26 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#runs-summary")
       view |> element("#runs-clear") |> render_click()
       assert_patch(view, runs(scope))
+    end
+
+    test "the Node section: the nodes the runs ran on, by name, in place of the access key",
+         %{conn: conn, running: running, scope: scope} do
+      node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
+
+      Apiary.Runs.Run
+      |> Apiary.Repo.get!(running.id)
+      |> Ecto.Changeset.change(node_id: node.id)
+      |> Apiary.Repo.update!()
+
+      view = open(conn, scope)
+      assert has_element?(view, "#runs-filter-open-node", "Node")
+      refute has_element?(view, "#runs-filter-open-key")
+      assert text(view, "#filter-node-form") =~ "build-01 1"
+
+      view |> form("#filter-node-form") |> render_change(%{"node" => "build-01"})
+      assert_patch(view, runs(scope, "?node=build-01"))
+      render_async(view)
+      assert has_element?(view, row(running))
     end
 
     test "the State section reads as three families, each heading a checkbox over its states",

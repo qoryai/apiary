@@ -4,11 +4,11 @@ defmodule Apiary.AccessKeys do
   (`Apiary.AccessKeys.AccessKey`).
 
   **Today's keys** have a key id and one or two secrets the server made, encrypted at
-  rest, and no node; the workspace's settings list them (`list_access_keys/1`). The
-  secret is returned exactly once, from `create_access_key/2` and `rotate_access_key/2`,
-  and is never read back through this module except for verification. Every member makes,
-  rotates and revokes them (`access_key.create`, `access_key.rotate`,
-  `access_key.revoke_secret_key`).
+  rest, and no node (`list_access_keys/1`); no page of the console lists or makes them
+  any more. The secret is returned exactly once, from `create_access_key/2` and
+  `rotate_access_key/2`, and is never read back through this module except for
+  verification. Their actions (`access_key.create`, `access_key.rotate`,
+  `access_key.revoke_secret_key`) are every member's.
 
   **A node's keys** each have one Ed25519 public key and belong to one node or node pool
   of the workspace (`Apiary.Nodes`); a node holds several over its life. Owners and admins
@@ -454,6 +454,22 @@ defmodule Apiary.AccessKeys do
         where: k.node_id == ^node_id,
         order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id],
         preload: [:enrolment_code]
+    )
+  end
+
+  @doc """
+  list_workspace_node_keys/1 is the keys of the scope's workspace's nodes and node pools in
+  use, neither revoked nor rejected (so approved or awaiting approval), each with its
+  node, newest first.
+  """
+  @spec list_workspace_node_keys(Scope.t()) :: [AccessKey.t()]
+  def list_workspace_node_keys(%Scope{} = scope) do
+    Repo.all(
+      from k in in_workspace(AccessKey, scope),
+        join: n in assoc(k, :node),
+        where: is_nil(k.revoked_at) and is_nil(n.deleted_at),
+        order_by: [desc: k.inserted_at, desc: k.id],
+        preload: [node: n]
     )
   end
 

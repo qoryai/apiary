@@ -57,7 +57,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   end
 
   describe "the tab" do
-    test "is a tab of the node's page, and says once that Qory can't check these keys yet",
+    test "is a tab of the node's page, with no line about a workspace's access keys",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       {:ok, lv, html} = live(conn, tab_path(scope, node))
@@ -70,32 +70,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                ~s{#node-tabs-overview[href="#{~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}"}"]}
              )
 
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Qory can't check these keys yet, so this node receives no runs."
-             )
-
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Until it can, machines send their runs with a workspace access key, from"
-             )
-
-      assert has_element?(lv, "#not-on-runs-keys", "Workspace settings › Access keys")
-      # Flush against the full stop: no space before it.
-      assert lv |> element("#not-on-runs") |> render() =~ ~r{Access keys</a>\.}
-
-      assert has_element?(
-               lv,
-               ~s{#not-on-runs-keys[href="#{~p"/#{scope.organisation}/#{scope.workspace}/settings/keys"}"]}
-             )
-
-      assert lv
-             |> element("#node-access-key")
-             |> render()
-             |> String.split("not-on-runs\"")
-             |> length() == 2
+      refute has_element?(lv, "#not-on-runs")
+      refute render(lv) =~ "workspace access key"
 
       assert has_element?(lv, "#node-keys-none", "No key yet.")
       assert has_element?(lv, "#node-codes-none", "No enrolment code is outstanding.")
@@ -300,7 +276,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert_patch(lv, tab_path(scope, node, "/add"))
       assert has_element?(lv, "#key-add-title", "Add a public key")
       assert has_element?(lv, "#key-add", "approved as you add it")
-      assert has_element?(lv, "#not-on-runs", "Qory can't check these keys yet")
+      refute has_element?(lv, "#not-on-runs")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add a public key")
       assert has_element?(lv, ~s{#key-add-save-cancel[href="#{tab_path(scope, node)}"]})
       refute_untrue(render(lv))
@@ -477,11 +453,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       # The page's heading takes the focus as it opens.
       assert lv |> element("#code-new-form") |> render() =~ ~r/phx-mounted="[^"]*code-new-title/
 
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Qory can't check these keys yet, so this node receives no runs"
-             )
+      refute has_element?(lv, "#not-on-runs")
 
       html =
         lv

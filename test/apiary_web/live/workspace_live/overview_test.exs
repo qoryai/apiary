@@ -54,9 +54,19 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     log_in_user(build_conn(), member)
   end
 
+  # A node's key, approved as it is pasted, on a node of its own unless `node` is given.
+  defp node_key(scope, label, node \\ nil) do
+    node = node || Apiary.NodesFixtures.node_fixture(scope)
+    %{access_key: key} = node_key_fixture(scope, node, label: label)
+    key
+  end
+
   defp long_ago(%AccessKey{id: id}, days) do
-    Repo.update_all(from(k in AccessKey, where: k.id == ^id),
-      set: [inserted_at: DateTime.add(DateTime.utc_now(), -days, :day)]
+    at = DateTime.add(DateTime.utc_now(), -days, :day)
+    Repo.update_all(from(k in AccessKey, where: k.id == ^id), set: [inserted_at: at])
+
+    Repo.update_all(from(k in AccessKey, where: k.id == ^id and not is_nil(k.approved_at)),
+      set: [approved_at: at]
     )
   end
 
@@ -119,16 +129,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         view
         |> element("#onboarding-create")
         |> render_click()
-        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new")
 
-      assert html =~ "New access key"
+      assert html =~ "New node"
     end
 
     test "a key, nothing posted: step 1 done, step 2 current, the box and nothing else", %{
       conn: conn,
       scope: scope
     } do
-      %{access_key: key} = access_key_fixture(scope, label: "build-01")
+      key = node_key(scope, "build-01")
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='2'] h2", "Send your first run")
@@ -145,7 +155,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       conn: conn,
       scope: scope
     } do
-      %{access_key: key} = access_key_fixture(scope, label: "build-01")
+      key = node_key(scope, "build-01")
       {:ok, _} = AccessKeys.touch(key, %{last_runner_version: "v0.4.2", last_contract_version: 1})
       view = open(conn, scope)
 
@@ -158,7 +168,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     test "the first run lands: step 3 ticks, the box stays with a link, and leaves on the next mount",
          %{conn: conn, scope: scope} do
-      access_key_fixture(scope, label: "build-01")
+      node_key(scope, "build-01")
       view = open(conn, scope)
       assert has_element?(view, "#onboarding[data-step='2']")
 
@@ -491,7 +501,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       conn: conn,
       scope: scope
     } do
-      %{access_key: idle} = access_key_fixture(scope, label: "old-runner")
+      idle = node_key(scope, "old-runner")
       long_ago(idle, 34)
 
       # Two denied destinations, one of them under a locked deny.
@@ -520,7 +530,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#attention-more[href='#{workspace_path(scope, "/settings/keys")}']"
+               "#attention-more[href='#{workspace_path(scope, "/nodes?sort=seen")}'][title='1 more item, on the nodes page']"
              )
 
       kinds =
@@ -584,7 +594,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "Open"
              )
 
-      # The idle key is the sixth: on the keys page, not on this list.
+      # The idle key is the sixth: on the nodes page, not on this list.
       refute has_element?(view, "#att-key-#{idle.id}")
     end
 
@@ -692,28 +702,45 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
     end
 
-    test "an idle key names its label and links to the revoke confirm", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "an idle node key names its label and node, and links to the node's revoke confirm",
+         %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      %{access_key: idle} = access_key_fixture(scope, label: "old-runner")
+      node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
+      idle = node_key(scope, "old-runner", node)
       long_ago(idle, 34)
-      %{access_key: fresh} = access_key_fixture(scope, label: "build-02")
+      fresh = node_key(scope, "build-02", node)
       {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
+      # A key awaiting approval is not idle: it waits on its node's tab.
+      %{access_key: pending} =
+        pending_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
+
+      long_ago(pending, 40)
+      # Nor is a workspace key of today's kind, which no page lists any more.
+      %{access_key: old} = access_key_fixture(scope, label: "hmac-runner")
+      long_ago(old, 40)
 
       view = open(conn, scope)
       assert text(view, "#att-key-#{idle.id}") =~ "old-runner #{idle.key_id}"
-
+      assert text(view, "#att-key-#{idle.id}") =~ "build-01"
       assert text(view, "#att-key-#{idle.id}") =~ "Never used in 34 days"
+
+      revoke =
+        workspace_path(scope, "/nodes/#{node.public_id}/access-key/keys/#{idle.key_id}/revoke")
 
       assert has_element?(
                view,
-               "#att-key-#{idle.id}-act[href='#{workspace_path(scope, "/settings/keys/#{idle.id}/revoke")}'][aria-label='Revoke old-runner']",
+               "#att-key-#{idle.id}-act[href='#{revoke}'][aria-label='Revoke old-runner']",
                "Revoke"
              )
 
       refute has_element?(view, "#att-key-#{fresh.id}")
+      refute has_element?(view, "#att-key-#{pending.id}")
+      refute has_element?(view, "#att-key-#{old.id}")
+
+      # A member may not revoke a node's key: the list, which holds acts, has no item for it.
+      %{user: member} = member_fixture(scope, :member)
+      view = open(log_in_user(build_conn(), member), scope)
+      refute has_element?(view, "#att-key-#{idle.id}")
     end
 
     test "close a lost run in place: the row stays struck, the count drops, the page says so",

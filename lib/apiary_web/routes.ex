@@ -351,8 +351,6 @@ defmodule ApiaryWeb.Routes do
           get "/:org/settings/audit-log", MovedController, :show
           get "/:org/members", MovedController, :show
           get "/:org/members/*rest", MovedController, :show
-          get "/:org/:workspace/keys", MovedController, :show
-          get "/:org/:workspace/keys/*rest", MovedController, :show
           get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
@@ -462,10 +460,6 @@ defmodule ApiaryWeb.Routes do
               # Who reaches the workspace, read only: membership is the organisation's.
               live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
-              live "/settings/keys", AccessKeyLive.Index, :index
-              live "/settings/keys/new", AccessKeyLive.Index, :new
-              live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
-              live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
               # The stored secrets and the variables, one section of two views, with the
               # `security` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by

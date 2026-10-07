@@ -209,32 +209,6 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
        "remove", %{"id" => :rule_locked}, answer: :ignored},
 
-      # The access keys.
-      {:"access_key.create", :removed_member, "/:org/:workspace/settings/keys/new", "create",
-       %{"access_key" => %{"label" => "removed"}}},
-      {:"access_key.rotate", :removed_member, "/:org/:workspace/settings/keys/:key/rotate",
-       "rotate", %{}},
-      {:"access_key.rotate", :removed_member, "/:org/:workspace/settings/keys", "retire_confirm",
-       %{}, prelude: [{"retire", %{"id" => :key}}]},
-      # Without the key's confirmation open, from a member, who may rotate and revoke keys: a
-      # second click, and the list is shown again.
-      {:"access_key.rotate", :member, "/:org/:workspace/settings/keys", "rotate", %{},
-       answer: :ignored},
-      {:"access_key.rotate", :member, "/:org/:workspace/settings/keys", "retire_confirm", %{},
-       answer: :ignored},
-      {:"access_key.revoke_secret_key", :member, "/:org/:workspace/settings/keys", "revoke", %{},
-       answer: :ignored},
-      {:"access_key.revoke_secret_key", :removed_member,
-       "/:org/:workspace/settings/keys/:key/revoke", "revoke", %{}},
-      # The key's confirmation is a path: another organisation's key is a 404 as the page opens.
-      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys/:key/rotate",
-       "rotate", %{}, answer: :not_found_at_mount},
-      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys", "retire",
-       %{"id" => :key}, answer: :not_found},
-      {:"access_key.revoke_secret_key", :other_owner,
-       "/:other_org/:other_ws/settings/keys/:key/revoke", "revoke", %{},
-       answer: :not_found_at_mount},
-
       # The nodes. Without the page or the confirmation open, from a member: refused, as
       # the page offers them no button.
       {:"node.create", :member, "/:org/:workspace/nodes", "create",
@@ -382,6 +356,13 @@ defmodule ApiaryWeb.RefusalsRows do
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],
+      # A workspace's keys of today's kind: their page is removed, and the actions go
+      # with the keys themselves.
+      no_page_any_more: [
+        :"access_key.create",
+        :"access_key.rotate",
+        :"access_key.revoke_secret_key"
+      ],
       no_page_yet: [
         :"secret.use",
         :"connection.read",
@@ -498,7 +479,6 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:target, world), do: {:id, world.target.id}
   # A target's page is its path alone where no other target of its workspace has it.
   def value(:target_page, world), do: world.target.path
-  def value(:key, world), do: {:id, world.key.id}
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}

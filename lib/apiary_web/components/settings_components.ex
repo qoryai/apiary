@@ -15,8 +15,8 @@ defmodule ApiaryWeb.SettingsComponents do
     and deleting it), People (who reaches it, and at what level: read here, managed in the
     organisation's People), with the `security` feature Integrations
     (`ApiaryWeb.IntegrationLive.Index`) and Secrets and variables
-    (`ApiaryWeb.SecretLive.Index`), Runs (how long it keeps runs, their events and their
-    logs), and Access keys last.
+    (`ApiaryWeb.SecretLive.Index`), and Runs (how long it keeps runs, their events and
+    their logs).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
@@ -124,15 +124,6 @@ defmodule ApiaryWeb.SettingsComponents do
         label: gettext("Runs"),
         icon: "hero-archive-box",
         path: ~p"/#{organisation}/#{workspace}/settings/runs"
-      },
-      # Last, as the map has it.
-      %Entry{
-        section: :main,
-        key: :keys,
-        label: gettext("Access keys"),
-        icon: "hero-key",
-        path: ~p"/#{organisation}/#{workspace}/settings/keys",
-        count: :keys
       }
     ]
     |> Enum.filter(& &1)

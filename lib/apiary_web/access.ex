@@ -14,9 +14,9 @@ defmodule ApiaryWeb.Access do
   is refused here, and its test shows it; an edition's page is refused the same way for
   the action it asks. Every member may read what the other pages ask, so no signed-in
   reader of a workspace is refused by them, nor by the run page's terminal tab
-  (`run.read_log`), the access keys page's refusal of a key action, or the log endpoint's
-  refusal. Their end-to-end tests land with the first role that is refused one of these;
-  until then the answers are in `Apiary.Access`'s table.
+  (`run.read_log`) or the log endpoint's refusal. Their end-to-end tests land with the
+  first role that is refused one of these; until then the answers are in
+  `Apiary.Access`'s table.
 
   A reader (`Apiary.Access.reader/1`), who reads the organisation through the edition's
   reach with no membership there, reads everything and changes nothing: a page that

@@ -227,7 +227,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
     now = DateTime.utc_now()
-    keys = scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at))
+    keys = AccessKeys.list_workspace_node_keys(scope)
     alive = Runs.count_alive(scope)
     posted? = alive > 0 or Runs.recent_runs(scope, 1) != []
     security? = Common.may?(scope, :"security_policy.read")
@@ -384,7 +384,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       connections: connections,
       above_level: if(security?, do: above_level(scope)),
       lost: Runs.lost_since(scope, DateTime.add(now, -@thresholds.lost_days, :day), @shown + 1),
-      keys: scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at)),
+      keys: AccessKeys.list_workspace_node_keys(scope),
       read_at: now
     }
   end
@@ -717,10 +717,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       {:noreply, read(socket, :attention)}
     else
       # The checklist reads its steps from the record: a key used since is step 2 done.
-      keys =
-        socket.assigns.current_scope
-        |> AccessKeys.list_access_keys()
-        |> Enum.filter(&is_nil(&1.revoked_at))
+      keys = AccessKeys.list_workspace_node_keys(socket.assigns.current_scope)
 
       {:noreply,
        assign(socket, keys: sort_keys(keys), preview: preview(keys), now: DateTime.utc_now())}
@@ -1180,7 +1177,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     policy = policy_item(assigns)
 
     idle =
-      for key <- assigns.keys,
+      for key <- idle_candidates(assigns),
           days = idle_days(key, now),
           is_integer(days) and days >= @thresholds.idle_key_days do
         %{id: "att-key-#{key.id}", kind: :idle_key, key: key, days: days}
@@ -1241,10 +1238,20 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 
+  # The node keys the idle item weighs: the approved ones, for a reader who may revoke them
+  # (`access_key.revoke`, owners and admins). A key awaiting approval is not idle: it waits
+  # on its node's Access key tab. The list holds acts, and a member has none on a key.
+  defp idle_candidates(assigns) do
+    if Common.may?(assigns.current_scope, :"access_key.revoke"),
+      do: Enum.filter(assigns.keys, & &1.approved_at),
+      else: []
+  end
+
+  # Idle since the key's last use, or since its approval when it has never been used.
   defp idle_days(%AccessKey{last_used_at: %DateTime{} = at}, now),
     do: DateTime.diff(now, at, :day)
 
-  defp idle_days(%AccessKey{inserted_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
+  defp idle_days(%AccessKey{approved_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
   defp idle_days(_key, _now), do: nil
 
   # The list as shown: rows already there keep their place and are patched, rows whose item
@@ -1379,11 +1386,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       _ ->
         %{
           count: count,
-          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys",
+          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
           title:
             ngettext(
-              "%{number} more item, on the keys page",
-              "%{number} more items, on the keys page",
+              "%{number} more item, on the nodes page",
+              "%{number} more items, on the nodes page",
               count,
               number: Format.number(count)
             )

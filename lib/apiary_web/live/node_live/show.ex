@@ -7,10 +7,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   Overview and Settings are patches of this LiveView; Access key is
   `ApiaryWeb.NodeLive.AccessKey`'s, a navigation:
 
-  - **Overview** (`/nodes/:node_id`): first, once, the plain line that nodes receive no
-    runs yet, since Qory can't check a node's key yet, with the way to the workspace's
-    access keys, which machines send their runs with until it can; then what the node is
-    doing (`Apiary.Nodes.activity/3`).
+  - **Overview** (`/nodes/:node_id`): what the node is doing (`Apiary.Nodes.activity/3`).
     A Node's instance, running or when it was last seen; a pool's running instances,
     "3 of 10"; the starts refused at the instance limit; the sentence that says an
     instance is a claim; and its recent runs (`runs.node_id`, for a reader of the record,
@@ -474,15 +471,6 @@ defmodule ApiaryWeb.NodeLive.Show do
 
     ~H"""
     <div id="node-overview" class="grid max-w-[60rem] gap-8">
-      <NodeComponents.not_yet
-        scope={@scope}
-        text={
-          rich_gettext(
-            "Nodes receive no runs yet: Qory can't check a node's key yet. Until it can, machines send their runs with a workspace access key, from %{link}.",
-            link: {:part, :link}
-          )
-        }
-      />
       <SettingsComponents.part
         id="node-instances"
         title={if @node.kind == :pool, do: gettext("Running instances"), else: gettext("Instance")}
