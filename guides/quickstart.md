@@ -223,8 +223,10 @@ runtime.
 Before the runtime starts, the runner fetches the server's configuration, signed with the
 machine's access key, checks the answer under the server's key it pinned, and sends a
 ping. If the server does not answer, or refuses the key, there is no run, and the error
-names the URL and the status. The record of the run is also written to `.qory/runs/<id>/`
-in the directory, whatever the server does.
+names the URL and the status. At the end of the run qory prints where its record is,
+`qory run: the record is in <folder>/<id>`. The record is written whatever the server
+does, under `$XDG_STATE_HOME/qory/runs/`, or `~/.local/state/qory/runs/` when
+`XDG_STATE_HOME` is not set, not in the directory.
 
 ## 8. See it
 
