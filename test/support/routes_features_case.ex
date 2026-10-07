@@ -33,6 +33,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.AccessKeyLive.Index,
     ApiaryWeb.NodeLive.Index,
     ApiaryWeb.NodeLive.Show,
+    ApiaryWeb.NodeLive.AccessKey,
     ApiaryWeb.MemberLive.Index,
     ApiaryWeb.MemberLive.Workspace,
     ApiaryWeb.SettingsLive,

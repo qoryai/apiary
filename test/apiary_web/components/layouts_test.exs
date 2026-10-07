@@ -573,7 +573,9 @@ defmodule ApiaryWeb.LayoutsTest do
       html = shell(scope, :runs, %{pins: pins})
       assert html =~ ~s(id="nav-group-pinned")
       assert html =~ ~s(id="nav-pin-#{shop}")
-      assert html =~ ~s(href="#{workspace_path(scope, "/targets/github.example/acme/api")}")
+      # A pin's address is its path, with its system only where the path is shared.
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/acme/api")}")
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/github.example/acme/shop")}")
       assert before?(html, "acme/shop", "acme/api")
       # The system shows where the same path is in another system, and nowhere else.
       assert html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/shop}

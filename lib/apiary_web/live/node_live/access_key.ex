@@ -531,7 +531,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp integrity_words(key),
     do:
       gettext(
-        "%{label} can't be approved: its record was changed outside Apiary.",
+        "%{label} can't be approved: its record was changed outside the application.",
         label: key.label
       )
 
@@ -622,7 +622,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
           <.notice kind={:warning}>
             <strong>{gettext("This code is shown once.")}</strong>
-            {gettext("Copy it now: Apiary keeps only a hash of it and can't show it again.")}
+            {gettext("Copy it now: only a hash of it is kept, and it can't be shown again.")}
           </.notice>
 
           <div class="flex items-center gap-2">
@@ -979,7 +979,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <div :if={!@intact} id={"#{@dom}-integrity"}>
         <.notice kind={:error}>
           {gettext(
-            "This key's record doesn't match its integrity code: it was changed outside Apiary. It can't be approved."
+            "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
           )}
         </.notice>
       </div>

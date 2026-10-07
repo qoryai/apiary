@@ -498,7 +498,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{label} can't be approved: its record was changed outside Apiary."
+msgid "%{label} can't be approved: its record was changed outside the application."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -517,7 +517,7 @@ msgid "%{label} is already revoked."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{label} is approved."
 msgstr ""
 
@@ -532,7 +532,7 @@ msgid "%{label} is not an approved key."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{label} is rejected."
 msgstr ""
 
@@ -542,7 +542,7 @@ msgid "%{label} is revoked and cannot be rotated."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{label} is revoked."
 msgstr ""
 
@@ -668,7 +668,7 @@ msgid "%{name} is used by %{uses}: unlink it there first."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone."
 msgstr ""
 
@@ -2511,7 +2511,7 @@ msgid "Add for this target"
 msgstr "Add for this repository"
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Add key"
 msgstr ""
 
@@ -2927,7 +2927,7 @@ msgid "Applies at once, on this browser. Auto follows the device's light or dark
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Approve %{label}?"
 msgstr ""
 
@@ -3576,7 +3576,7 @@ msgid "Copy block"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Copy code"
 msgstr ""
 
@@ -3592,7 +3592,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Copy it now: Apiary keeps only a hash of it and can't show it again."
+msgid "Copy it now: only a hash of it is kept, and it can't be shown again."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -4426,7 +4426,7 @@ msgid "Enrolment code created"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Enrolment codes"
 msgstr ""
 
@@ -4800,7 +4800,7 @@ msgid "Fixed when it was made."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Fixed when the key was made."
 msgstr ""
 
@@ -4853,7 +4853,7 @@ msgid "For"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "For %{name}."
 msgstr ""
 
@@ -5110,7 +5110,7 @@ msgid "Hosts the runtime says it needs, from the policy applied events of this t
 msgstr "Hosts the runtime says it needs, from the policy applied events of this repository's latest runs."
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Hosts, 14 days"
 msgstr ""
 
@@ -5626,7 +5626,7 @@ msgid "Label"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Label hint"
 msgstr ""
 
@@ -6128,7 +6128,7 @@ msgid "Make code"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Making"
 msgstr ""
 
@@ -7243,7 +7243,7 @@ msgid "On %{reported}; %{in_force} in force"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Once you leave this page, the code is not shown again."
 msgstr ""
 
@@ -7334,7 +7334,7 @@ msgid "Only for a secret that will hold several values: a lowercase name for thi
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Only owners and admins add a node's keys."
 msgstr ""
 
@@ -7389,12 +7389,12 @@ msgid "Only owners and admins delete nodes."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Only owners and admins make enrolment codes."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Only owners and admins manage a node's keys."
 msgstr ""
 
@@ -7668,7 +7668,7 @@ msgid "Paste this %{server} block into the runner file on the machine."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Pasted by %{person}, %{date}"
 msgstr ""
 
@@ -8062,7 +8062,7 @@ msgid "Refused before reaching the tool %{tool}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Reject %{label}?"
 msgstr ""
 
@@ -8077,7 +8077,7 @@ msgid "Rejected an access key"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Rejecting"
 msgstr ""
 
@@ -8362,7 +8362,7 @@ msgid "Revoke this enrolment code?"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Revoked"
 msgstr ""
 
@@ -9178,7 +9178,7 @@ msgid "Stored secret changed"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Stored secrets"
 msgstr ""
 
@@ -10141,7 +10141,7 @@ msgid "This account cannot log in at the moment. Ask the admins of this Qory ins
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "This code is shown once."
 msgstr ""
 
@@ -10189,7 +10189,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "This key's record doesn't match its integrity code: it was changed outside Apiary. It can't be approved."
+msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -10203,12 +10203,12 @@ msgid "This node has no such instance."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "This node has no such key or code any more."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "This node has no such key."
 msgstr ""
 
@@ -11050,7 +11050,7 @@ msgid "Wrote a service definition"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Yes, approve"
 msgstr ""
 
@@ -11087,7 +11087,7 @@ msgid "Yes, on a pseudo-terminal"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Yes, reject"
 msgstr ""
 

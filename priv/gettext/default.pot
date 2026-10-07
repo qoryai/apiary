@@ -498,7 +498,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{label} can't be approved: its record was changed outside Apiary."
+msgid "%{label} can't be approved: its record was changed outside the application."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -3592,7 +3592,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Copy it now: Apiary keeps only a hash of it and can't show it again."
+msgid "Copy it now: only a hash of it is kept, and it can't be shown again."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -10189,7 +10189,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "This key's record doesn't match its integrity code: it was changed outside Apiary. It can't be approved."
+msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

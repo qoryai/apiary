@@ -166,10 +166,12 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#policy-hosts-note") =~
              "Its own rules come first and are changed here; #{scope.workspace.name}'s follow"
 
-    # The target's page holds the tab: its runs and connections are its other tabs.
-    assert has_element?(view, "#target-tab-policy[aria-current=page]")
-    assert has_element?(view, "#target-tab-runs[href$='/acme/shop/-/runs']")
-    assert has_element?(view, "#target-tab-connections[href$='/acme/shop/-/network']")
+    # The target's page holds the tab, beside Overview: its runs and its network access
+    # are the workspace's lists, narrowed to it, not tabs of its page.
+    assert has_element?(view, "#target-tabs-policy[aria-current=page]")
+    assert has_element?(view, "#target-tabs-overview")
+    refute has_element?(view, "#target-tabs-runs")
+    refute has_element?(view, "#target-tabs-network")
   end
 
   test "a deny of its own overrides the workspace's allow; removing it restores the workspace's",
