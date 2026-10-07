@@ -92,9 +92,9 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   ping of a new run from an instance beyond it is a signed `409` `instance_limit`, the run
   does not start and nothing is stored, and the node counts the starts refused.
 - A workspace no run has reached opens on one box, Send your first run: Add a node (a
-  node, or a node pool for a fleet that shares one key), Enrol the machine
-  (`qory access-key enrol` with a code from the node, or the public key
-  `qory access-key create` printed, pasted), and See runs here, with the command that
+  node, or a node pool for a fleet that shares one key), Give it a key
+  (`qory access-key enrol` with a code from the node's page, or, for a CI or a pool, a
+  key generated in the browser on that page), and See runs here, with the command that
   enrols a machine beside it.
   The first sign-in lands there. The overview's To review lists a node's approved key
   nobody has used for 30 days, with Revoke on the node's Access key tab.

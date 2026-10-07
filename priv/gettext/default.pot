@@ -721,6 +721,11 @@ msgstr ""
 msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s own may only narrow them. A deny holds in either mode."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{node} has no key yet."
+msgstr ""
+
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} B"
@@ -3059,7 +3064,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "An owner or admin adds nodes and enrols machines."
+msgid "An owner or admin adds nodes and gives them keys."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -3070,7 +3075,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "An owner or admin enrols the machine, with a code from the node or the public key %{create} prints."
+msgid "An owner or admin gives %{node} its key."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -4567,6 +4572,11 @@ msgstr ""
 msgid "Duration"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Each node or pool gets a key of its own. Qory keeps only its public half."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
@@ -4731,11 +4741,6 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Enforces on its own"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Enrol the machine"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -5404,9 +5409,15 @@ msgstr ""
 msgid "General"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Generate a key"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Generate a key for %{node}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -5422,6 +5433,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Generating"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Give it a key"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -7022,9 +7038,15 @@ msgstr ""
 msgid "New custom API"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "New enrolment code"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "New enrolment code for %{node}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -7820,7 +7842,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Nothing has posted to this workspace yet. A machine posts once it is enrolled on a node, with a key of its own."
+msgid "Nothing has posted to this workspace yet. A machine posts once it has a node's key."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -7960,11 +7982,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "On %{reported}; %{in_force} in force"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "On the machine, run %{enrol} with a code from the node, or paste the public key %{create} prints."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -9243,6 +9260,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run %{enrol} on the machine with a code from the node's page: the secret never leaves the machine. Or, for a CI or a pool, generate a key on that page and copy its secret into the CI's secret store."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -10595,11 +10617,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The machine makes its own key, and Qory keeps only the public half."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex

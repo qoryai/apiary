@@ -110,6 +110,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           nodes={@onboarding.nodes}
           keys={@onboarding.keys}
           may_add={@onboarding.may_add}
+          target={@onboarding.target}
+          may_key={@onboarding.may_key}
           server={@onboarding.server}
           landed={@landed}
         />
@@ -1574,16 +1576,37 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # What the empty workspace's box reads: the nodes and pools in use, their keys not
-  # revoked, whether the reader may add a node, and the address the command names.
+  # revoked, whether the reader may add a node, the newest node or pool that holds no
+  # active key and whether the reader may give it one, and the address the command names.
   defp read_onboarding(scope) do
     counts = Nodes.count_nodes(scope)
+    keys = AccessKeys.list_workspace_node_keys(scope)
+    target = keyless_target(scope, counts, keys)
+    may_key? = &Apiary.Access.can?(scope, &1, target)
 
     %{
       nodes: counts.node + counts.pool,
-      keys: AccessKeys.list_workspace_node_keys(scope),
+      keys: keys,
       may_add: Common.may?(scope, :"node.create"),
+      target: target,
+      may_key:
+        not is_nil(target) and may_key?.(:"access_key.add") and
+          may_key?.(:"access_key.create_code"),
       server: ApiaryWeb.Endpoint.url()
     }
+  end
+
+  # The newest node or pool in use that holds no active key (a revoked key is no key);
+  # while step 2 is current, no node holds one, and it is simply the newest.
+  defp keyless_target(_scope, %{node: 0, pool: 0}, _keys), do: nil
+
+  defp keyless_target(scope, _counts, keys) do
+    keyed = MapSet.new(keys, & &1.node_id)
+
+    scope
+    |> Nodes.list_nodes()
+    |> Enum.reject(&MapSet.member?(keyed, &1.id))
+    |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.public_id}, fn -> nil end)
   end
 
   defp not_loaded,
