@@ -82,8 +82,7 @@ defmodule Apiary.VariablesAboveTest do
       assert {:error, changeset} =
                Variables.create_variable(scope, holder, %{name: "LOG_LEVEL", value: "debug"})
 
-      assert {"is %{name} elsewhere in this workspace: use the same spelling",
-              [name: "Log_Level"]} =
+      assert {"is %{name} in this organisation: use the same spelling", [name: "Log_Level"]} =
                changeset.errors[:name]
     end
   end

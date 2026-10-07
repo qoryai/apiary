@@ -495,19 +495,33 @@ defmodule Apiary.Variables do
         )
 
       other = spelled_otherwise(above, scope, target_id, id, name) ->
-        refuse(
-          changeset,
-          :name,
-          dgettext_noop(
-            "errors",
-            "is %{name} elsewhere in this workspace: use the same spelling"
-          ),
-          name: other
-        )
+        spelling_refusal(changeset, other)
 
       true ->
         {:ok, changeset}
     end
+  end
+
+  # Where the other spelling is: the level above, which the edition keeps over the
+  # organisation's workspaces (`c:Apiary.Edition.above_workspace/1`), is named as the
+  # organisation; the workspace's own variables and its repositories' are in this
+  # workspace.
+  defp spelling_refusal(changeset, {:above, other}) do
+    refuse(
+      changeset,
+      :name,
+      dgettext_noop("errors", "is %{name} in this organisation: use the same spelling"),
+      name: other
+    )
+  end
+
+  defp spelling_refusal(changeset, {:workspace, other}) do
+    refuse(
+      changeset,
+      :name,
+      dgettext_noop("errors", "is %{name} elsewhere in this workspace: use the same spelling"),
+      name: other
+    )
   end
 
   defp refuse(changeset, field, message, keys \\ []),
@@ -532,16 +546,17 @@ defmodule Apiary.Variables do
          ))
   end
 
-  # The other spelling of `name` set in a chain the variable is in, or nil: at the level
-  # above, and in the workspace and every repository for a workspace's variable, or in the
-  # workspace for a repository's. The variable's own row is left out, so a variable may
-  # change the case of its own name.
+  # The other spelling of `name` set in a chain the variable is in, with where it is, or
+  # nil: `{:above, other}` at the level above; `{:workspace, other}` in the workspace or
+  # any of its repositories for a workspace's variable, or in the workspace for a
+  # repository's. The variable's own row is left out, so a variable may change the case
+  # of its own name.
   defp spelled_otherwise(above, scope, target_id, id, name) do
     key = String.downcase(name)
 
     case Enum.find(above, &(String.downcase(&1.name) == key and &1.name != name)) do
       %{name: other} ->
-        other
+        {:above, other}
 
       nil ->
         query = variables(scope)
@@ -552,7 +567,7 @@ defmodule Apiary.Variables do
             do: where(query, [v], is_nil(v.target_id)),
             else: query
 
-        spelled_below(query, [name])
+        if other = spelled_below(query, [name]), do: {:workspace, other}
     end
   end
 
