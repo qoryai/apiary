@@ -28,18 +28,32 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     connection
   end
 
+  # github_description/0 with a yes/no setting its credential role lists, described.
+  defp flag_description do
+    github_description()
+    |> put_in(["settings", "properties", "verbose"], %{
+      "title" => "Verbose",
+      "type" => "boolean",
+      "description" => "Logs every request it makes."
+    })
+    |> update_in(["roles", "credential", "settings"], &(&1 ++ ["verbose"]))
+  end
+
   describe "Overview" do
     test "says what a runtime is, its id, where it applies and the secrets it declares",
          %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, html} = live(conn, ipath(scope, runtime))
 
+      assert has_element?(lv, "#settings-section-title", "Claude Code")
+      assert has_element?(lv, "#connection-name.q-mono", "claude")
       assert has_element?(lv, "#connection-tabs-overview[aria-current=page]")
       assert has_element?(lv, "#connection-id", runtime.public_id)
       assert has_element?(lv, "#connection-facts", "Every repository")
       assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
-      assert has_element?(lv, "#connection-secrets-unlinked", "can't link a stored secret")
+      assert has_element?(lv, "#connection-secrets-unlinked", "can't be linked to it yet")
+      refute lv |> element("#settings-section-integrations") |> render() =~ "Qory"
       assert has_element?(lv, "#not-on-runs", "Runs don't receive integrations yet.")
       refute html =~ "runs receive"
     end
@@ -57,9 +71,23 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
       assert has_element?(lv, "#connection-publisher", "Acme")
       assert has_element?(lv, "#connection-publisher", "github.com/acme")
-      assert has_element?(lv, "#connection-ways", "Calls its API")
-      assert has_element?(lv, "#connection-tool-way", "doesn't support that way yet")
+      assert has_element?(lv, "#connection-ways", "Calls its API.")
+      assert has_element?(lv, "#connection-tool-way", "which no runner runs yet")
+      assert has_element?(lv, "#connection-roles", "credential, tool, work_source")
       assert has_element?(lv, "#connection-plain-settings", "https://tracker.example.com")
+      assert has_element?(lv, "#settings-section-title", "Acme tracker")
+      assert has_element?(lv, "#connection-name", "acme-tracker")
+    end
+
+    test "Applies to leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
+      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime))
+
+      assert lv
+             |> element("#connection-applies-link[phx-click*='connection-tabs-targets']")
+             |> render_click() =~ "It applies to every repository of this workspace."
+
+      assert has_element?(lv, "#connection-tabs-targets[aria-current=page]")
     end
   end
 
@@ -67,7 +95,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     test "a chosen target is added from a page, and removed on its row, confirmed",
          %{conn: conn, scope: scope} do
       shop = target!(scope, "acme/shop")
-      _billing = target!(scope, "acme/billing")
+      billing = target!(scope, "acme/billing")
 
       {:ok, runtime} =
         Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
@@ -78,25 +106,95 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       {:ok, lv, _html} =
         lv |> element("#add-target") |> render_click() |> follow_redirect(conn)
 
-      assert has_element?(lv, "#add-target-page-title")
+      assert has_element?(
+               lv,
+               "#add-target-page-title",
+               "Add a repository to Claude Code (claude)"
+             )
+
       assert has_element?(lv, "#candidate-#{shop.id}")
+      assert has_element?(lv, "#target-candidates-status[role=status]", "2 repositories found.")
+      assert has_element?(lv, "#add-#{shop.id}[aria-label='Add acme/shop']", "Add")
 
       lv |> form("#find-target-form", find: %{text: "shop"}) |> render_change()
+      assert has_element?(lv, "#target-candidates-status", "1 repository found.")
+      refute has_element?(lv, "#candidate-#{billing.id}")
+
       lv |> element("#add-#{shop.id}") |> render_click()
+      # The row leaves the list; the focus goes to the search field, nothing else being left.
+      assert_push_event(lv, "run:focus", %{id: "find_text"})
 
       assert [%{target_id: target_id}] = reload(scope, runtime).targets
       assert target_id == shop.id
       refute has_element?(lv, "#candidate-#{shop.id}")
+      assert has_element?(lv, "#target-candidates-empty")
 
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
       assert has_element?(lv, "#target-#{shop.id}", "acme/shop")
+      assert has_element?(lv, "#remove-target-#{shop.id}[aria-label='Remove acme/shop']")
 
-      lv |> element("#target-#{shop.id} a", "Remove") |> render_click()
-      assert has_element?(lv, "#target-#{shop.id}-confirm", "Remove acme/shop from claude?")
+      # Cancel gives the focus back to the row's Remove.
+      lv |> element("#remove-target-#{shop.id}") |> render_click()
 
-      lv |> element("#target-#{shop.id}-remove") |> render_click()
+      assert has_element?(
+               lv,
+               "#target-#{shop.id}-confirm",
+               "Remove acme/shop from Claude Code (claude)?"
+             )
+
+      render_patch(lv, ipath(scope, runtime, "/targets"))
+      focused = "remove-target-#{shop.id}"
+      assert_push_event(lv, "run:focus", %{id: ^focused})
+      assert has_element?(lv, "#remove-target-#{shop.id}")
+
+      # Yes, remove: the row is gone, and Add target takes the focus.
+      lv |> element("#remove-target-#{shop.id}") |> render_click()
+      lv |> element("#target-#{shop.id}-remove", "Yes, remove") |> render_click()
+      assert_push_event(lv, "run:focus", %{id: "add-target"})
       assert reload(scope, runtime).targets == []
       refute has_element?(lv, "#target-#{shop.id}")
+    end
+
+    test "after an Add, the next row's Add takes the focus", %{conn: conn, scope: scope} do
+      billing = target!(scope, "acme/billing")
+      docs = target!(scope, "acme/docs")
+      shop = target!(scope, "acme/shop")
+
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets/add"))
+
+      lv |> element("#add-#{billing.id}") |> render_click()
+      focused = "add-#{docs.id}"
+      assert_push_event(lv, "run:focus", %{id: ^focused})
+
+      lv |> element("#add-#{shop.id}") |> render_click()
+      focused = "add-#{docs.id}"
+      assert_push_event(lv, "run:focus", %{id: ^focused})
+    end
+
+    test "Add target lists the first 20 by name, and says there are more",
+         %{conn: conn, scope: scope} do
+      for n <- 1..21, do: target!(scope, "acme/shop-#{String.pad_leading("#{n}", 2, "0")}")
+
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets/add"))
+
+      assert has_element?(
+               lv,
+               "#target-candidates-more",
+               "The first 20 by name: type to find another."
+             )
+
+      assert has_element?(lv, "#target-candidates tr", "acme/shop-20")
+      refute has_element?(lv, "#target-candidates tr", "acme/shop-21")
+
+      lv |> form("#find-target-form", find: %{text: "shop-21"}) |> render_change()
+      assert has_element?(lv, "#target-candidates tr", "acme/shop-21")
+      refute has_element?(lv, "#target-candidates-more")
     end
 
     test "a connection for every target offers no target to add", %{conn: conn, scope: scope} do
@@ -105,6 +203,24 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
 
       assert has_element?(lv, "#connection-applies", "every repository")
       refute has_element?(lv, "#add-target")
+    end
+
+    test "for every target, the chosen ones it keeps are not listed to remove",
+         %{conn: conn, scope: scope} do
+      shop = target!(scope, "acme/shop")
+
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
+      {:ok, runtime} = Connections.put_target(scope, runtime, shop.id)
+      {:ok, _runtime} = Connections.update_connection(scope, runtime, %{"applies_to" => "all"})
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
+      refute has_element?(lv, "#connection-targets")
+      refute has_element?(lv, "#remove-target-#{shop.id}")
+
+      assert {:error, {:live_redirect, _}} =
+               live(conn, ipath(scope, runtime, "/targets/#{shop.id}/remove"))
     end
   end
 
@@ -146,18 +262,67 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert html =~ "The argument doesn&#39;t match"
     end
 
-    test "deleting asks in place, then removes it", %{conn: conn, scope: scope} do
+    test "removing asks in place, then removes it", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
 
-      lv |> element("#delete-connection-button") |> render_click()
-      assert has_element?(lv, "#delete-connection-confirming", "Delete claude?")
+      assert has_element?(lv, "#delete-connection-title", "Remove this runtime")
+
+      assert has_element?(
+               lv,
+               "#delete-connection",
+               "It is removed from this workspace. This cannot be undone."
+             )
+
+      lv |> element("#delete-connection-button", "Remove runtime…") |> render_click()
+      assert has_element?(lv, "#delete-connection-button[aria-expanded=true]")
+      assert has_element?(lv, "#delete-connection-confirming", "Remove Claude Code (claude)?")
+      assert has_element?(lv, "#delete-connection-confirm", "Yes, remove")
 
       {:error, {:live_redirect, %{to: to}}} =
-        lv |> form("#delete-connection-form") |> render_submit()
+        result = lv |> form("#delete-connection-form") |> render_submit()
 
       assert to =~ "/settings/integrations"
+      {:ok, _lv, html} = follow_redirect(result, conn)
+      assert html =~ "Claude Code (claude) is removed."
       assert {:ok, []} = Connections.list_connections(scope)
+    end
+
+    test "an integration's and a service's removal say what they remove",
+         %{conn: conn, scope: scope} do
+      release = ready_release!(scope, github_description())
+      {:ok, integration} = Connections.create_integration(scope, release.id, %{})
+      {:ok, service} = Connections.create_service(scope, %{service: "npm"})
+
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
+      assert has_element?(lv, "#delete-connection-button", "Remove integration…")
+
+      {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
+      assert has_element?(lv, "#delete-connection-button", "Remove service…")
+    end
+
+    test "a yes/no setting says what it is, and is saved as no", %{conn: conn, scope: scope} do
+      release = ready_release!(scope, flag_description())
+
+      {:ok, integration} =
+        Connections.create_integration(scope, release.id, %{settings: %{"verbose" => true}})
+
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/settings"))
+
+      assert has_element?(
+               lv,
+               "#connection-setting-verbose[aria-describedby='connection-setting-verbose-hint']"
+             )
+
+      assert has_element?(lv, "#connection-setting-verbose-hint", "Logs every request it makes.")
+
+      lv
+      |> form("#connection-form",
+        connection: %{applies_to: "all", argument: "", settings: %{verbose: "false"}}
+      )
+      |> render_submit()
+
+      assert Connection.settings_map(reload(scope, integration)) == %{"verbose" => false}
     end
 
     test "another version is asked for, and leads to the release", %{conn: conn, scope: scope} do
@@ -172,8 +337,34 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert to =~ "/releases/#{asked.id}?for=#{integration.public_id}"
     end
 
-    test "is read only for a member, whose acts are refused", %{scope: scope} do
+    test "a version that isn't one is said under its field", %{conn: conn, scope: scope} do
+      release = ready_release!(scope, github_description())
+      {:ok, integration} = Connections.create_integration(scope, release.id, %{})
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/version"))
+
+      assert has_element?(lv, "#version-page-title", "Change the version of GitHub (github)")
+
+      lv |> form("#version-form", version: %{version: "latest"}) |> render_submit()
+      assert has_element?(lv, "#version_version-error", "must be a version such as 1.4.0")
+      refute has_element?(lv, "#version-problems")
+    end
+
+    test "a runtime or a service has no version to change", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, ipath(scope, runtime, "/version"))
+
+      assert to == ipath(scope, runtime, "/settings")
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
+      refute has_element?(lv, "#change-version")
+    end
+
+    test "is read only for a member, whose acts are refused", %{scope: scope} do
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
       conn = member_conn(scope, :member)
 
       {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets"))
@@ -192,10 +383,93 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert {:error, {:live_redirect, _}} = live(conn, ipath(scope, runtime, "/delete"))
     end
 
+    test "a member's writes, sent as events, are refused and change nothing", %{scope: scope} do
+      shop = target!(scope, "acme/shop")
+      billing = target!(scope, "acme/billing")
+      release = ready_release!(scope, github_description())
+
+      {:ok, integration} =
+        Connections.create_integration(scope, release.id, %{applies_to: "selected"})
+
+      {:ok, integration} = Connections.put_target(scope, integration, shop.id)
+      conn = member_conn(scope, :member)
+      {:ok, lv, _html} = live(conn, ipath(scope, integration, "/targets"))
+
+      for {event, params} <- [
+            {"put_target", %{"id" => billing.id}},
+            {"remove_target", %{"id" => shop.id}},
+            {"save", %{"connection" => %{"applies_to" => "all", "argument" => "acme/shop"}}},
+            {"request_version", %{"version" => %{"version" => "0.2.0"}}},
+            {"delete", %{}}
+          ] do
+        assert render_hook(lv, event, params) =~ "Only owners and admins", event
+      end
+
+      after_all = reload(scope, integration)
+      assert after_all.applies_to == "selected"
+      assert after_all.argument == integration.argument
+      assert [%{target_id: target_id}] = after_all.targets
+      assert target_id == shop.id
+      assert Apiary.Repo.all(Release) |> length() == 1
+    end
+
+    test "an admin changes it", %{scope: scope} do
+      shop = target!(scope, "acme/shop")
+
+      {:ok, runtime} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
+      conn = member_conn(scope, :admin)
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/targets/add"))
+      lv |> element("#add-#{shop.id}") |> render_click()
+      assert [%{target_id: target_id}] = reload(scope, runtime).targets
+      assert target_id == shop.id
+
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, "/settings"))
+      lv |> form("#connection-form", connection: %{applies_to: "all"}) |> render_submit()
+      assert reload(scope, runtime).applies_to == "all"
+    end
+
+    test "an event its controls don't send changes nothing", %{conn: conn, scope: scope} do
+      {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime))
+
+      render_hook(lv, "save", %{"not" => "a form"})
+      render_hook(lv, "request_version", %{"version" => %{"version" => "0.2.0"}})
+      render_hook(lv, "unknown", %{})
+
+      assert Process.alive?(lv.pid)
+      assert reload(scope, runtime).applies_to == "all"
+      assert Apiary.Repo.all(Release) == []
+    end
+
     test "a connection the workspace does not have is not found", %{conn: conn, scope: scope} do
       assert_raise ApiaryWeb.NotFound, fn ->
         live(conn, ipath(scope, %{public_id: "con_0123456789abcdef"}))
       end
+    end
+
+    test "another workspace's connection and targets are not this one's",
+         %{conn: conn, scope: scope} do
+      other = sign_up_fixture().scope
+      {:ok, theirs} = Connections.create_runtime(other, %{runtime: "claude"})
+      their_target = target!(other, "acme/shop")
+
+      assert_raise ApiaryWeb.NotFound, fn -> live(conn, ipath(scope, theirs)) end
+
+      {:ok, ours} =
+        Connections.create_runtime(scope, %{runtime: "claude", applies_to: "selected"})
+
+      assert {:error, {:live_redirect, _}} =
+               live(conn, ipath(scope, ours, "/targets/#{their_target.id}/remove"))
+
+      {:ok, lv, _html} = live(conn, ipath(scope, ours, "/targets/add"))
+      refute has_element?(lv, "#candidate-#{their_target.id}")
+
+      assert render_hook(lv, "put_target", %{"id" => their_target.id}) =~
+               "That repository is not one of this workspace&#39;s."
+
+      assert reload(scope, ours).targets == []
     end
   end
 end

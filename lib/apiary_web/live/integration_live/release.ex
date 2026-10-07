@@ -15,8 +15,8 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   release whose source the instance no longer accepts (`Apiary.Integrations.accepted_source/1`)
   is shown and not offered.
 
-  With `?for=<connection's public id>`, the release is another version of that
-  integration, asked for from its Settings, and the page offers to move it there
+  With `?for=<connection's public id>`, an integration of the same source, the release is
+  another version of it, asked for from its Settings, and the page offers to move it there
   (`Apiary.Connections.change_release/3`) instead of adding it. No run receives any of it
   yet, and the page says so once.
   """
@@ -25,6 +25,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.{Connections, Integrations}
+  alias Apiary.Connections.Connection
   alias ApiaryWeb.IntegrationLive.Common
   alias ApiaryWeb.SettingsComponents
 
@@ -46,7 +47,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       <:crumb navigate={Common.settings_path(@current_scope)}>{gettext("Settings")}</:crumb>
       <:crumb navigate={Common.index_path(@current_scope)}>{gettext("Integrations")}</:crumb>
       <:crumb :if={@moving} navigate={Common.connection_path(@current_scope, @moving)}>
-        {@moving.name}
+        {elem(Common.names(@moving), 0)}
       </:crumb>
       <:crumb>{if @moving, do: gettext("Change version"), else: gettext("Add integration")}</:crumb>
 
@@ -58,16 +59,31 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       >
         <:subtitle>
           <span class="q-mono">{@release.source}</span>
-          <span :if={@release.version || @release.requested_version} class="text-faint">·</span>
-          <span class="q-mono">{@release.version || @release.requested_version}</span>
+          <span
+            :if={@release.version || @release.requested_version}
+            class="text-faint"
+            aria-hidden="true"
+          >
+            ·
+          </span>
+          <span :if={@release.version || @release.requested_version} class="q-mono">
+            {@release.version || @release.requested_version}
+          </span>
         </:subtitle>
 
         <Common.not_yet />
 
+        <%!-- What the poll finds, said once it changes: the release fetched, then read. A
+             failure says itself, as an alert. --%>
+        <p id="release-status" role="status" class="sr-only">
+          <span :if={@release.state == "pending"}>{fetching()}</span>
+          <span :if={@release.state == "ready"}>{gettext("The release is read.")}</span>
+        </p>
+
         <div :if={@release.state == "pending"} id="release-pending" class="grid gap-2">
           <p class="inline-flex items-center gap-2 text-[13.5px]/5">
             <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
-            {gettext("Qory is fetching the release's description.json and checksums.txt.")}
+            {fetching()}
           </p>
           <p class="text-[13px]/5 text-muted">
             {gettext("This page shows what it says once it is read.")}
@@ -82,7 +98,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               navigate={
                 if @moving,
                   do: Common.connection_path(@current_scope, @moving, :version),
-                  else: Common.add_path(@current_scope)
+                  else: Common.add_path(@current_scope, ask_again(@release))
               }
             >
               {gettext("Ask for a release again")}
@@ -113,7 +129,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             scope={@current_scope}
           />
           <p :if={!@may_write} id="release-readonly" class="text-[13px]/5 text-muted">
-            {Common.only_admins()}
+            {Common.only_admins(@current_scope)}
           </p>
         <% end %>
       </.settings_page>
@@ -158,10 +174,10 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd id="release-ways">
           <span :if={"credential" in @description.ways}>{gettext("Calls its API")}</span>
           <span :if={"tool" in @description.ways} class="text-muted">
-            {gettext("Also a tool (MCP), which Qory doesn't support yet")}
+            {gettext("Also a tool (MCP), which no runner runs yet")}
           </span>
           <span :if={"credential" not in @description.ways} class="text-muted">
-            {gettext("No way Qory supports yet")}
+            {gettext("No way a runner runs yet")}
           </span>
         </dd>
         <dt class="text-faint">{gettext("Secrets")}</dt>
@@ -194,7 +210,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       </dl>
       <p class="text-[12.5px]/[18px] text-faint">
         {gettext(
-          "Nothing verifies the publisher's name: check the source. Qory only reads the release, and runs nothing of it."
+          "Nothing verifies the publisher's name: check the source. The release is only read; nothing of it runs on the server."
         )}
       </p>
     </SettingsComponents.part>
@@ -214,11 +230,15 @@ defmodule ApiaryWeb.IntegrationLive.Release do
     ~H"""
     <SettingsComponents.part id="release-move" title={gettext("Change version")}>
       <p class="text-[13px]/5">
-        {gettext("Move %{name} from %{from} to %{to}. Its settings and argument are kept.",
-          name: @moving.name,
-          from: @moving.version,
-          to: @release.version
-        )}
+        <.rich text={
+          rich_gettext("Move %{name} from %{from} to %{to}. Its settings and argument are kept.",
+            name: {:part, :name},
+            from: {:m, @moving.version},
+            to: {:m, @release.version}
+          )
+        }>
+          <:part name={:name}><Common.name names={@moving} /></:part>
+        </.rich>
       </p>
       <div>
         <.button
@@ -246,14 +266,23 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       <.form for={@form} id="add-release-form" phx-change="validate" phx-submit="add" novalidate>
         <div class="grid gap-4">
           <%= for setting <- @plain do %>
-            <.input
-              :if={setting.type == :boolean}
-              id={"release-setting-#{setting.name}"}
-              name={"integration[settings][#{setting.name}]"}
-              type="checkbox"
-              label={setting.title}
-              value={@form.params["settings"][setting.name]}
-            />
+            <div :if={setting.type == :boolean} class="grid gap-1.5">
+              <.input
+                id={"release-setting-#{setting.name}"}
+                name={"integration[settings][#{setting.name}]"}
+                type="checkbox"
+                label={setting.title}
+                value={@form.params["settings"][setting.name]}
+                aria-describedby={setting.description && "release-setting-#{setting.name}-hint"}
+              />
+              <p
+                :if={setting.description}
+                id={"release-setting-#{setting.name}-hint"}
+                class="text-[12.5px]/[18px] text-muted"
+              >
+                {setting.description}
+              </p>
+            </div>
             <.input
               :if={setting.type != :boolean}
               id={"release-setting-#{setting.name}"}
@@ -293,7 +322,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               {gettext("Add %{title}", title: @description.title)}
             </.button>
             <:note :if={@description.secrets != []}>
-              {gettext("Qory can't link a stored secret to it yet.")}
+              {gettext("A stored secret can't be linked to it yet.")}
             </:note>
           </SettingsComponents.save>
         </div>
@@ -305,20 +334,29 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   defp title(%{state: "ready"}, %{title: title}), do: title
   defp title(release, _description), do: release.source
 
+  defp fetching, do: gettext("Fetching the release's description.json and checksums.txt…")
+
+  # The source and version a release was asked for with, for Add integration to ask again.
+  defp ask_again(release) do
+    for {key, value} <- [source: release.source, version: release.requested_version],
+        is_binary(value),
+        do: {key, value}
+  end
+
   defp failure("integration_source_refused"),
     do: gettext("This instance doesn't accept integrations from this source.")
 
   defp failure("fetch_failed"),
     do:
       gettext(
-        "Qory couldn't fetch the release's description.json and checksums.txt. Check the source and the version, and that the release is public."
+        "The release's description.json and checksums.txt couldn't be fetched. Check the source and the version, and that the release is public."
       )
 
   defp failure("description_invalid"),
     do: gettext("The release's description.json is not a valid description of an integration.")
 
   defp failure("placeholder_conflict"),
-    do: gettext("The release's description.json names a placeholder Qory refuses.")
+    do: gettext("The release's description.json names a placeholder that isn't allowed.")
 
   defp failure("integration_source_mismatch"),
     do:
@@ -326,7 +364,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         "What the release serves doesn't match its source: its checksums.txt, its version, or a description of the same version fetched before."
       )
 
-  defp failure(_code), do: gettext("Qory couldn't read the release.")
+  defp failure(_code), do: gettext("The release couldn't be read.")
 
   ## Mount, params and the poll
 
@@ -354,9 +392,13 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   @impl true
   def handle_params(params, _uri, socket) do
+    source = socket.assigns.release.source
+
+    # Only an integration of the release's own source moves to it; any other `for` is
+    # not one, and the release is offered as it is.
     moving =
       with id when is_binary(id) <- params["for"],
-           {:ok, connection} <-
+           {:ok, %Connection{kind: "integration", source: ^source} = connection} <-
              Connections.get_connection(socket.assigns.current_scope, id) do
         connection
       else
@@ -401,10 +443,10 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   ## Events
 
   @impl true
-  def handle_event("validate", %{"integration" => params}, socket),
+  def handle_event("validate", %{"integration" => params}, socket) when is_map(params),
     do: {:noreply, assign(socket, :form, to_form(params, as: :integration))}
 
-  def handle_event("add", %{"integration" => params}, socket) do
+  def handle_event("add", %{"integration" => params}, socket) when is_map(params) do
     scope = socket.assigns.current_scope
 
     attrs = %{
@@ -422,7 +464,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
         {:noreply,
          socket
-         |> put_flash(:info, gettext("%{name} is added.", name: connection.name))
+         |> put_flash(:info, gettext("%{name} is added.", name: Common.label(connection)))
          |> push_navigate(to: to)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -434,7 +476,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
     end
   end
 
-  def handle_event("move", _params, socket) do
+  def handle_event("move", _params, %{assigns: %{moving: %Connection{}}} = socket) do
     %{current_scope: scope, moving: connection, release: release} = socket.assigns
 
     case Connections.change_release(scope, connection, release.id) do
@@ -444,7 +486,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
          |> put_flash(
            :info,
            gettext("%{name} is at %{version}.",
-             name: connection.name,
+             name: Common.label(connection),
              version: connection.version
            )
          )
@@ -455,6 +497,9 @@ defmodule ApiaryWeb.IntegrationLive.Release do
     end
   end
 
+  # An event the page's controls do not send, or sent where they are not: nothing.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
   defp refusal(scope, reason) do
     connections =
       case Connections.list_connections(scope) do
@@ -462,6 +507,6 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         {:error, _} -> []
       end
 
-    Common.refusal(reason, connections)
+    Common.refusal(scope, reason, connections)
   end
 end

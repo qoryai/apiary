@@ -67,6 +67,16 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       {:ok, lv, _html} = live(conn, ipath(scope))
 
       assert has_element?(lv, "#runtimes #connection-#{runtime.public_id}", "Every repository")
+      assert has_element?(lv, "#runtimes #connection-#{runtime.public_id} a", "Claude Code")
+      assert has_element?(lv, "#runtimes #connection-#{runtime.public_id} a .q-mono", "(claude)")
+      assert has_element?(lv, "#integrations #connection-#{integration.public_id} a", "GitHub")
+
+      assert has_element?(
+               lv,
+               "#integrations #connection-#{integration.public_id} a .q-mono",
+               "(github)"
+             )
+
       assert has_element?(lv, "#services #connection-#{service.public_id}", "npm registry")
 
       assert has_element?(
@@ -108,6 +118,34 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
                live(conn, ipath(scope, "/new-runtime"))
 
       assert flash["error"] =~ "Only owners and admins"
+
+      # A request sent as an event is refused too, and asks for nothing.
+      html =
+        render_hook(lv, "request", %{
+          "release" => %{"where" => "github.com", "path" => "acme/shop", "version" => "1.0.0"}
+        })
+
+      assert html =~ "Only owners and admins"
+      assert Apiary.Repo.all(Release) == []
+    end
+
+    test "an event its controls don't send changes nothing", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope))
+
+      render_hook(lv, "create", %{"connection" => %{"runtime" => "claude"}})
+      render_hook(lv, "unknown", %{})
+
+      assert Process.alive?(lv.pid)
+      assert {:ok, []} = Connections.list_connections(scope)
+    end
+
+    test "says the runner's catalogue and the built-in definitions, naming no product",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope))
+
+      assert has_element?(lv, "#runtimes-part", "Agent runtimes from the runner's catalogue.")
+      assert has_element?(lv, "#definitions-part", "beside the built-in ones: ")
+      refute lv |> element("#settings-section-integrations") |> render() =~ "Qory"
     end
 
     test "is another organisation's to read, not this one's", %{scope: scope} do
@@ -123,8 +161,10 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
       assert has_element?(lv, "#new-runtime-page-title", "New runtime")
       assert has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
+      assert has_element?(lv, "#connection_runtime[aria-describedby=runtime-catalogue]")
 
       {:error, {:live_redirect, %{to: to}}} =
+        result =
         lv
         |> form("#new-runtime-form", connection: %{runtime: "claude", applies_to: "all"})
         |> render_submit()
@@ -132,6 +172,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       {:ok, [connection]} = Connections.list_connections(scope)
       assert connection.kind == "runtime"
       assert to == ipath(scope, "/#{connection.public_id}")
+      {:ok, _lv, html} = follow_redirect(result, conn)
+      assert html =~ "Claude Code (claude) is set up."
     end
 
     test "a second runtime that would overlap is refused, by name", %{conn: conn, scope: scope} do
@@ -143,12 +185,17 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
         |> form("#new-runtime-form", connection: %{runtime: "claude", applies_to: "all"})
         |> render_submit()
 
-      assert html =~ "It would overlap with claude"
+      assert html =~ "It would overlap with Claude Code (claude)"
     end
 
     test "New service sets one up from a built-in definition, chosen targets at once",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-service"))
+
+      assert has_element?(
+               lv,
+               "#connection_definition[aria-describedby=service-definition-about]"
+             )
 
       {:error, {:live_redirect, %{to: to}}} =
         lv
@@ -166,6 +213,18 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     test "Add integration asks for a release and leads to it", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/add"))
       assert has_element?(lv, "#add-integration-page-title", "Add integration")
+
+      assert has_element?(
+               lv,
+               "#release_path-hint",
+               "Its owner and name, such as acme/shop-integration."
+             )
+
+      assert has_element?(
+               lv,
+               "#add-integration-save",
+               "Only its description.json and checksums.txt are read, and nothing of it runs on the server."
+             )
 
       {:error, {:live_redirect, %{to: to}}} =
         lv
@@ -199,6 +258,31 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
 
       for host <- ~w(github.com gitlab.com codeberg.org), do: assert(html =~ host)
       assert html =~ "An https address"
+    end
+
+    test "a hint for every forge's path", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ipath(scope, "/add"))
+
+      for {where, hint} <- [
+            {"codeberg.org", "Its owner and name, such as acme/shop-integration."},
+            {"gitlab.com", "The project's full path, its groups included."}
+          ] do
+        lv |> form("#add-integration-form", release: %{where: where}) |> render_change()
+        assert has_element?(lv, "#release_path-hint", hint)
+      end
+    end
+
+    test "is filled in with the release asked for again", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} =
+        live(conn, ipath(scope, "/add?source=gitlab.com/acme/tools/hooks&version=1.0.0"))
+
+      assert has_element?(lv, "#release_where-1[value='gitlab.com'][checked]")
+      assert has_element?(lv, "#release_path[value='acme/tools/hooks']")
+      assert has_element?(lv, "#release_version[value='1.0.0']")
+
+      url = "https://downloads.example.com/acme/shop/description.json"
+      {:ok, lv, _html} = live(conn, ipath(scope, "/add?" <> URI.encode_query(source: url)))
+      assert has_element?(lv, "#release_url[value='#{url}']")
     end
   end
 end

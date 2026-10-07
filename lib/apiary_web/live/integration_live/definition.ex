@@ -21,6 +21,9 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   alias ApiaryWeb.IntegrationLive.Common
   alias ApiaryWeb.SettingsComponents
 
+  # The most bytes of JSON a definition's form takes; more is refused before it is read.
+  @json_max 65_536
+
   @example """
   {
     "version": 1,
@@ -62,18 +65,21 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
           )}
         </:description>
         <Common.not_yet />
-        <.notice :if={@problems != []} kind={:error}>
-          <p :for={problem <- @problems}>{problem}</p>
-        </.notice>
         <.form for={@form} id="definition-form" phx-submit="save" novalidate>
           <div class="grid gap-4">
+            <%!-- What is wrong with the JSON is the field's error, which describes it and
+                 takes the focus after a save. --%>
             <.input
-              field={@form[:json]}
+              id="definition_json"
+              name="definition[json]"
+              value={@form.params["json"]}
+              errors={@problems}
               type="textarea"
               label={gettext("Definition")}
               rows="14"
               class="font-mono"
               spellcheck="false"
+              phx-hook="FocusOn"
               hint={
                 gettext(
                   "JSON: version 1, a key of lowercase letters, digits and hyphens, a title, 1 to 16 hosts, optional paths, its auth (bearer, header or basic) and the secrets it declares."
@@ -203,7 +209,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
           <SettingsComponents.danger_action
             id="delete-definition"
             title={gettext("Delete this service definition")}
-            button={gettext("Delete…")}
+            button={gettext("Delete definition…")}
             disabled={@users != []}
             open={@live_action == :delete}
             open_path={Common.definition_path(@current_scope, @definition, :delete)}
@@ -214,7 +220,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             <%= if @users == [] do %>
               {gettext("It is removed from this workspace. This cannot be undone.")}
             <% else %>
-              {gettext("Services name it: delete them first.")}
+              {gettext("Services name it: remove them first.")}
             <% end %>
           </SettingsComponents.danger_action>
         </SettingsComponents.danger_zone>
@@ -282,7 +288,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
       not socket.assigns.may_write ->
         {:noreply,
          socket
-         |> put_flash(:error, Common.only_admins())
+         |> put_flash(:error, Common.only_admins(scope))
          |> push_navigate(to: cancel_path(scope, socket.assigns.definition))}
 
       action == :new ->
@@ -311,11 +317,28 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   ## Events
 
   @impl true
-  def handle_event("save", %{"definition" => %{"json" => json} = params}, socket) do
+  def handle_event(
+        "save",
+        %{"definition" => %{"json" => json} = params},
+        %{assigns: %{live_action: action}} = socket
+      )
+      when action in [:new, :edit] and is_binary(json) and byte_size(json) > @json_max do
+    {:noreply,
+     refused(socket, params, [
+       gettext("The definition is too long: it takes at most 64 KiB of JSON.")
+     ])}
+  end
+
+  def handle_event(
+        "save",
+        %{"definition" => %{"json" => json} = params},
+        %{assigns: %{live_action: action}} = socket
+      )
+      when action in [:new, :edit] and is_binary(json) do
     scope = socket.assigns.current_scope
 
     result =
-      case socket.assigns.live_action do
+      case action do
         :new -> Connections.create_service_definition(scope, json)
         :edit -> Connections.update_service_definition(scope, socket.assigns.definition, json)
       end
@@ -328,28 +351,24 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
          |> push_navigate(to: Common.definition_path(scope, definition))}
 
       {:error, {:definition_invalid, problems}} ->
-        {:noreply,
-         assign(socket,
-           form: to_form(params, as: :definition),
-           problems: Common.definition_problems(problems)
-         )}
+        {:noreply, refused(socket, params, Common.definition_problems(problems))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
-         assign(socket,
-           form: to_form(params, as: :definition),
-           problems:
-             for {_field, error} <- changeset.errors do
-               gettext("Its key %{error}.", error: translate_error(error))
-             end
+         refused(
+           socket,
+           params,
+           for {_field, error} <- changeset.errors do
+             gettext("Its key %{error}.", error: translate_error(error))
+           end
          )}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, Common.refusal(reason))}
+        {:noreply, put_flash(socket, :error, Common.refusal(scope, reason))}
     end
   end
 
-  def handle_event("delete", _params, socket) do
+  def handle_event("delete", _params, %{assigns: %{definition: %ServiceDefinition{}}} = socket) do
     scope = socket.assigns.current_scope
     definition = socket.assigns.definition
 
@@ -367,7 +386,18 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             {:error, _} -> []
           end
 
-        {:noreply, put_flash(socket, :error, Common.refusal(reason, connections))}
+        {:noreply, put_flash(socket, :error, Common.refusal(scope, reason, connections))}
     end
+  end
+
+  # An event the page's controls do not send, or sent where they are not: nothing.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  # The form again, as it was sent, with what is wrong with it as the JSON field's error,
+  # which takes the focus.
+  defp refused(socket, params, problems) do
+    socket
+    |> assign(form: to_form(params, as: :definition), problems: problems)
+    |> push_event("run:focus", %{id: "definition_json"})
   end
 end
