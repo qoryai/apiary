@@ -1717,9 +1717,13 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   The empty workspace's one box, with the state of each step read from the record: step 1
   ticks on a node or pool, step 2 on a key of one (every key the list holds is active),
-  step 3 on the first run; a key's `last_used_at` changes step 3's words. Step 2 tells a
-  reader who may add a node how a machine gets its key, and anyone else who gives it one.
-  `landed` is the first run while the page is open; the box leaves at the next navigation.
+  step 3 on the first run; a key's `last_used_at` changes step 3's words. Step 2 names the
+  two ways a node or pool gets its key, enrolling the machine with qory and generating a
+  key in the browser. While it is current, it names `target`, the newest node or pool with
+  no active key, and a reader who may give it one (`may_key`) gets both ways' pages for it,
+  its kind's way first and primary (a node: New enrolment code; a pool: Generate a key);
+  anyone else reads who gives it its key. `landed` is the first run while the page is
+  open; the box leaves at the next navigation.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1734,6 +1738,14 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the keys of the workspace's nodes in use, not revoked, each with its node, newest first"
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
+
+  attr :target, :any,
+    default: nil,
+    doc: "the newest node or pool in use that holds no active key, or nil"
+
+  attr :may_key, :boolean,
+    default: false,
+    doc: "whether the reader may give `target` a key: add one and make its enrolment code"
 
   attr :server, :string, required: true, doc: "this server's address, for the command"
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
@@ -1752,7 +1764,13 @@ defmodule ApiaryWeb.OverviewComponents do
         true -> 1
       end
 
-    assigns = assign(assigns, used: used, current: current)
+    assigns =
+      assign(assigns,
+        used: used,
+        current: current,
+        ways: key_ways(assigns.target),
+        target_path: target_path(assigns.scope, assigns.target)
+      )
 
     ~H"""
     <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
@@ -1760,11 +1778,11 @@ defmodule ApiaryWeb.OverviewComponents do
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
           {gettext(
-            "Nothing has posted to this workspace yet. A machine posts once it is enrolled on a node, with a key of its own."
+            "Nothing has posted to this workspace yet. A machine posts once it has a node's key."
           )}
         </p>
         <p :if={@current > 1} class="q-onb-lead">
-          {gettext("The machine makes its own key, and Qory keeps only the public half.")}
+          {gettext("Each node or pool gets a key of its own. Qory keeps only its public half.")}
         </p>
         <.steps current={@current} class="my-5">
           <:step title={gettext("Add a node")}>
@@ -1772,26 +1790,13 @@ defmodule ApiaryWeb.OverviewComponents do
               "One per machine, or a node pool for a fleet of short-lived instances that share one key."
             )}
           </:step>
-          <:step title={gettext("Enrol the machine")}>
-            <.rich
-              :if={@may_add}
-              text={
-                rich_gettext(
-                  "On the machine, run %{enrol} with a code from the node, or paste the public key %{create} prints.",
-                  enrol: {:m, "qory access-key enrol"},
-                  create: {:m, "qory access-key create"}
-                )
-              }
-            />
-            <.rich
-              :if={!@may_add}
-              text={
-                rich_gettext(
-                  "An owner or admin enrols the machine, with a code from the node or the public key %{create} prints.",
-                  create: {:m, "qory access-key create"}
-                )
-              }
-            />
+          <:step title={gettext("Give it a key")}>
+            <.rich text={
+              rich_gettext(
+                "Run %{enrol} on the machine with a code from the node's page: the secret never leaves the machine. Or, for a CI or a pool, generate a key on that page and copy its secret into the CI's secret store.",
+                enrol: {:m, "qory access-key enrol"}
+              )
+            } />
           </:step>
           <:step title={gettext("See runs here")}>
             {if @used,
@@ -1819,10 +1824,38 @@ defmodule ApiaryWeb.OverviewComponents do
           </.button>
         </div>
         <p :if={@current == 1 and !@may_add} id={"#{@id}-members"} class="text-[13px]/5 text-muted">
-          {gettext("An owner or admin adds nodes and enrols machines.")}
+          {gettext("An owner or admin adds nodes and gives them keys.")}
+        </p>
+        <div :if={(@current == 2 and @target) && @may_key} class="grid gap-3">
+          <p id={"#{@id}-target"} class="text-[13px]/5">
+            <.rich text={
+              rich_gettext("%{node} has no key yet.",
+                node: {:link, @target_path, @target.name, "q-link font-medium"}
+              )
+            } />
+          </p>
+          <div id={"#{@id}-ways"} class="flex flex-wrap gap-2">
+            <.button
+              :for={{way, index} <- Enum.with_index(@ways)}
+              id={"#{@id}-#{way}"}
+              variant={if index == 0, do: "primary", else: "default"}
+              navigate={way_path(@scope, @target, way)}
+              aria-label={way_label(way, @target.name)}
+              class="max-[479px]:w-full"
+            >
+              {way_words(way)}
+            </.button>
+          </div>
+        </div>
+        <p
+          :if={(@current == 2 and @target) && !@may_key}
+          id={"#{@id}-members-key"}
+          class="text-[13px]/5 text-muted"
+        >
+          {gettext("An owner or admin gives %{node} its key.", node: @target.name)}
         </p>
         <.button
-          :if={@current in [2, 3]}
+          :if={@current == 3 or (@current == 2 and !(@target && @may_key))}
           id={"#{@id}-nodes"}
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
           class="max-[479px]:w-full"
@@ -1872,6 +1905,28 @@ defmodule ApiaryWeb.OverviewComponents do
     </p>
     """
   end
+
+  # The two ways to give a node or pool its key, its kind's way first: a machine enrols
+  # with qory, a pool's shared key is generated in the browser.
+  defp key_ways(%{kind: :pool}), do: [:generate, :enrol]
+  defp key_ways(_target), do: [:enrol, :generate]
+
+  defp target_path(_scope, nil), do: nil
+
+  defp target_path(scope, target),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key"
+
+  defp way_path(scope, target, :enrol),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key/new-code"
+
+  defp way_path(scope, target, :generate),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key/generate"
+
+  defp way_words(:enrol), do: gettext("New enrolment code")
+  defp way_words(:generate), do: gettext("Generate a key")
+
+  defp way_label(:enrol, node), do: gettext("New enrolment code for %{node}", node: node)
+  defp way_label(:generate, node), do: gettext("Generate a key for %{node}", node: node)
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil

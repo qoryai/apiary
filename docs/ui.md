@@ -706,7 +706,13 @@ what needs the reader, then what their agents did, and never grows with the data
   says what it does: the policy's mode and version, the targets with rules of their own
   (Review), retention (Change, to Workspace settings › Runs).
 - A workspace no run has reached is one box: the steps from a node to the first run, and
-  the command that enrols the machine.
+  the command that enrols the machine. Step 2, "Give it a key", names both ways a node or
+  pool gets its key: enrolling the machine with qory, or generating a key in the browser.
+  While it is current, it names the newest node or pool with no active key, its name
+  linking to that one's Access key tab; an owner or admin gets New enrolment code and
+  Generate a key for it, its kind's way first and primary (a node enrols, a pool
+  generates), each opening that page on the tab; a member reads who gives it its key, and
+  Go to nodes.
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
