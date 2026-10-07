@@ -5,24 +5,24 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   and tabs are the node's page's (`ApiaryWeb.NodeComponents`).
 
   - **Keys**, under the line that a machine signs with its own key and Qory keeps only
-    the public half, those in use first, then the revoked and the rejected, newest first:
-    each its label, key id and state, its fingerprint, its stored-secrets flag, how and
-    when it arrived, who approved, revoked or rejected it and when, and its use where the
-    record holds any. A key whose row does not match its integrity code says so, and
-    offers no approval. Owners and admins approve or reject a key that awaits approval and
-    revoke an approved one, each confirmed in place, at a path of its own
-    (`…/access-key/keys/:key_id/approve`, `reject`, `revoke`), a key named by its key id.
+    the public half, those in use first, then the revoked, newest first: each its label,
+    key id and state, Active or Revoked (read from `revoked_at` alone: a key is active
+    from the moment it arrives, enrolled with a code or pasted), its fingerprint, its
+    stored-secrets flag, how and when it arrived, who revoked it and when, and its use
+    where the record holds any. A key whose row does not match its integrity code says
+    so: it can't be used. Owners and admins revoke an active key, confirmed in place, at
+    a path of its own (`…/access-key/keys/:key_id/revoke`), a key named by its key id.
     With no key, the tab tells a reader who may make an enrolment code how a machine
     gets one, and anyone else only that there is none.
   - **Runner file for a key** (`…/access-key/keys/:key_id/runner-file`), a page of its
-    own for an approved key, linked from its card for everyone who reads the node, since
+    own for an active key, linked from its card for everyone who reads the node, since
     nothing on it is secret: the runner file's `server` section (`url`, `access_key_id`,
     `apiary_public_key`) and, for CI, the two variables in place of the last two
     (`Apiary.AccessKeys.runner_lines/3`), each with Copy, where the key's secret is, and
     Done back to the tab.
   - **Add a public key** (`…/access-key/add`), a page of its own: a label, the
     stored-secrets flag and the public key, whose fingerprint shows as soon as it reads as
-    one; the key is approved as it is added (`Apiary.AccessKeys.add_access_key/3`), and
+    one; the key is active as it is added (`Apiary.AccessKeys.add_access_key/3`), and
     the page goes on to the key's runner file.
   - **Enrolment codes**: the node's outstanding codes, who made each and when, when it
     expires, and the settings of the key it would bring; owners and admins revoke one in
@@ -45,8 +45,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   it. A page opened again starts without it.
 
   Everyone in the workspace reads the tab (`node.read`); owners and admins act
-  (`access_key.add`, `access_key.create_code`, `access_key.approve`, `access_key.reject`,
-  `access_key.revoke`, `access_key.cancel_code`). A member sees no button and the line that
+  (`access_key.add`, `access_key.create_code`, `access_key.revoke`,
+  `access_key.cancel_code`). A member sees no button and the line that
   says who manages the keys; an act's path refuses them. Every act is asked of
   `Apiary.Access` again by the context function, with the membership as the database has
   it, and an event that comes without its page or its confirmation open acts on nothing.
@@ -64,8 +64,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   @acts [
     add_key: :"access_key.add",
     new_code: :"access_key.create_code",
-    approve: :"access_key.approve",
-    reject: :"access_key.reject",
     revoke: :"access_key.revoke",
     revoke_code: :"access_key.cancel_code"
   ]
@@ -74,8 +72,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   @write_events %{
     "add_key" => :add_key,
     "create_code" => :new_code,
-    "approve" => :approve,
-    "reject" => :reject,
     "revoke" => :revoke,
     "revoke_code" => :revoke_code
   }
@@ -121,7 +117,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     assign(socket, :activity, Map.fetch!(Nodes.activity(scope, [node]), node.id))
   end
 
-  # The node's keys and outstanding codes, with who made, approved and revoked each, and
+  # The node's keys and outstanding codes, with who made and revoked each, and
   # what the record holds of their use.
   defp load(socket) do
     %{current_scope: scope, node: node} = socket.assigns
@@ -129,7 +125,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     keys =
       scope
       |> AccessKeys.list_for_node(node)
-      |> Repo.preload([:created_by, :approved_by, :revoked_by])
+      |> Repo.preload([:created_by, :revoked_by])
 
     codes = scope |> AccessKeys.list_enrolment_codes(node) |> Repo.preload(:created_by)
     ids = Enum.map(keys, & &1.id)
@@ -202,9 +198,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp opener(%{shown: :add_key}), do: :add_key
   defp opener(%{shown: :new_code}), do: :new_code
 
-  defp opener(%{shown: act, key: %AccessKey{key_id: key_id}})
-       when act in [:approve, :reject, :revoke],
-       do: {:key, key_id, act}
+  defp opener(%{shown: :revoke, key: %AccessKey{key_id: key_id}}),
+    do: {:key, key_id, :revoke}
 
   defp opener(%{shown: :revoke_code, code: %EnrolmentCode{id: id}}), do: {:code, id}
 
@@ -233,8 +228,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         nil
 
       key ->
-        if act in key_acts(key, assigns.may, assigns.intact[key.id]) or
-             (act == :runner_file and state(key) == :approved),
+        if act in key_acts(key, assigns.may) or
+             (act == :runner_file and state(key) == :active),
            do: "key-#{key_id}-#{String.replace(to_string(act), "_", "-")}",
            else: "key-#{key_id}-title"
     end
@@ -264,25 +259,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       else: refused(socket, gettext("Only owners and admins make enrolment codes."))
   end
 
-  defp apply_action(socket, act, %{"key_id" => key_id})
-       when act in [:approve, :reject, :revoke] do
+  defp apply_action(socket, :revoke, %{"key_id" => key_id}) do
     key = Enum.find(socket.assigns.keys, &(&1.key_id == key_id))
 
     cond do
-      not socket.assigns.may[act] ->
+      not socket.assigns.may.revoke ->
         refused(socket, gettext("Only owners and admins manage a node's keys."))
 
       is_nil(key) ->
         to_tab(socket, :error, gettext("This node has no such key."))
 
-      act in [:approve, :reject] and AccessKey.status(key) != :pending ->
-        to_tab(socket, :error, gettext("%{label} no longer awaits approval.", label: key.label))
-
-      act == :approve and not socket.assigns.intact[key.id] ->
-        to_tab(socket, :error, integrity_words(key))
-
-      act == :revoke and AccessKey.status(key) != :active ->
-        to_tab(socket, :error, gettext("%{label} is not an approved key.", label: key.label))
+      state(key) != :active ->
+        to_tab(socket, :error, revoked_words(key))
 
       true ->
         assign(socket, :key, key)
@@ -296,10 +284,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         to_tab(socket, :error, gettext("This node has no such key."))
 
       key ->
-        if state(key) == :approved,
+        if state(key) == :active,
           do: assign(socket, :key, key),
-          else:
-            to_tab(socket, :error, gettext("%{label} is not an approved key.", label: key.label))
+          else: to_tab(socket, :error, revoked_words(key))
     end
   end
 
@@ -352,7 +339,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       {:ok, key} ->
         {:noreply,
          socket
-         |> put_flash(:info, gettext("%{label} is added, and approved.", label: key.label))
+         |> put_flash(:info, gettext("%{label} is added.", label: key.label))
          |> load()
          |> push_patch(to: key_path(socket.assigns.paths, key, "runner-file"))}
 
@@ -365,7 +352,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
            socket,
            :error,
            gettext(
-             "%{name} holds two keys already. Revoke or reject one before you add another.",
+             "%{name} holds two keys already. Revoke one before you add another.",
              name: node.name
            )
          )}
@@ -419,70 +406,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   def handle_event(
-        "approve",
-        _params,
-        %{assigns: %{live_action: :approve, key: %AccessKey{} = key, may: %{approve: true}}} =
-          socket
-      ) do
-    case AccessKeys.approve(socket.assigns.current_scope, key) do
-      {:ok, key} ->
-        {:noreply, to_tab(socket, :info, gettext("%{label} is approved.", label: key.label))}
-
-      {:error, :key_limit} ->
-        {:noreply,
-         to_tab(
-           socket,
-           :error,
-           gettext(
-             "%{name} holds two approved keys already. Revoke one before you approve another.",
-             name: socket.assigns.node.name
-           )
-         )}
-
-      {:error, :not_pending} ->
-        {:noreply,
-         to_tab(socket, :error, gettext("%{label} no longer awaits approval.", label: key.label))}
-
-      {:error, :integrity} ->
-        {:noreply, to_tab(socket, :error, integrity_words(key))}
-
-      {:error, :not_found} ->
-        {:noreply, not_found(socket)}
-
-      {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
-
-      {:error, _not_saved} ->
-        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
-    end
-  end
-
-  def handle_event(
-        "reject",
-        _params,
-        %{assigns: %{live_action: :reject, key: %AccessKey{} = key, may: %{reject: true}}} =
-          socket
-      ) do
-    case AccessKeys.reject(socket.assigns.current_scope, key) do
-      {:ok, key} ->
-        {:noreply, to_tab(socket, :info, gettext("%{label} is rejected.", label: key.label))}
-
-      {:error, :not_pending} ->
-        {:noreply,
-         to_tab(socket, :error, gettext("%{label} no longer awaits approval.", label: key.label))}
-
-      {:error, :not_found} ->
-        {:noreply, not_found(socket)}
-
-      {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
-
-      {:error, _not_saved} ->
-        {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
-    end
-  end
-
-  def handle_event(
         "revoke",
         _params,
         %{assigns: %{live_action: :revoke, key: %AccessKey{} = key, may: %{revoke: true}}} =
@@ -491,14 +414,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     case AccessKeys.revoke_access_key(socket.assigns.current_scope, key) do
       {:ok, key} ->
         {:noreply, to_tab(socket, :info, gettext("%{label} is revoked.", label: key.label))}
-
-      {:error, :pending} ->
-        {:noreply,
-         to_tab(
-           socket,
-           :error,
-           gettext("%{label} awaits approval: reject it instead.", label: key.label)
-         )}
 
       {:error, :not_found} ->
         {:noreply, not_found(socket)}
@@ -716,44 +631,22 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     assign(socket, :page_title, title <> " · " <> assigns.node.name)
   end
 
-  defp integrity_words(key),
-    do:
-      gettext(
-        "%{label} can't be approved: its record was changed outside the application.",
-        label: key.label
-      )
+  defp revoked_words(key), do: gettext("%{label} is revoked.", label: key.label)
 
   defp runner_file_title(key), do: gettext("Runner file for %{label}", label: key.label)
 
   defp outstanding_no_more, do: gettext("This enrolment code is no longer outstanding.")
 
-  # The acts a key's card offers the reader: approving or rejecting one that awaits
-  # approval, approving it only while its record is intact; revoking an approved one.
-  defp key_acts(%AccessKey{} = key, may, intact) do
-    case state(key) do
-      :pending ->
-        for {act, true} <- [approve: may.approve and intact, reject: may.reject], do: act
+  # The acts a key's card offers the reader: revoking an active one.
+  defp key_acts(%AccessKey{} = key, may),
+    do: if(state(key) == :active and may.revoke, do: [:revoke], else: [])
 
-      :approved ->
-        if may.revoke, do: [:revoke], else: []
+  # A key is active from the moment it arrives, until it is revoked.
+  defp state(%AccessKey{revoked_at: nil}), do: :active
+  defp state(%AccessKey{}), do: :revoked
 
-      _revoked_or_rejected ->
-        []
-    end
-  end
-
-  defp state(%AccessKey{} = key) do
-    case AccessKey.status(key) do
-      :pending -> :pending
-      :revoked -> if key.approved_at, do: :revoked, else: :rejected
-      _approved -> :approved
-    end
-  end
-
-  defp state_words(:pending), do: gettext("Awaiting approval")
-  defp state_words(:approved), do: gettext("Approved")
+  defp state_words(:active), do: gettext("Active")
   defp state_words(:revoked), do: gettext("Revoked")
-  defp state_words(:rejected), do: gettext("Rejected")
 
   defp secrets_words(true), do: gettext("Allowed")
   defp secrets_words(_false), do: gettext("Not allowed")
@@ -783,13 +676,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       )
 
   defp limits_words do
-    %{approved: approved, pending: pending} = AccessKeys.key_limits()
-
-    gettext(
-      "A node holds at most %{approved} keys at a time, at most %{pending} of them awaiting approval.",
-      approved: Format.number(approved),
-      pending: Format.number(pending)
-    )
+    %{approved: keys} = AccessKeys.key_limits()
+    gettext("A node holds at most %{keys} keys at a time.", keys: Format.number(keys))
   end
 
   ## Render
@@ -866,9 +754,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 minutes: Format.number(AccessKeys.code_ttl_minutes())
               )}
             </p>
-            <p id="code-issued-approve" class="text-[13px]/5 text-muted">
+            <p id="code-issued-key" class="text-[13px]/5 text-muted">
               {gettext(
-                "The key it brings arrives here awaiting approval. Compare the fingerprint qory prints with the key's before you approve it."
+                "The key it brings is active as soon as it arrives here. If its fingerprint is not the one qory prints, revoke it."
               )}
             </p>
           </div>
@@ -927,7 +815,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         cancel_by="patch"
       >
         <:description>
-          {gettext("A key for %{name}. A key you add here is approved as you add it.",
+          {gettext("A key for %{name}. It is active as soon as you add it.",
             name: @node.name
           )}
         </:description>
@@ -1327,13 +1215,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # A key: what it is, how it came and what was done to it, and the acts its state allows.
   # An act asked of it is confirmed in place of the acts.
   defp key_card(assigns) do
-    %{key: key, may: may, intact: intact} = assigns
+    %{key: key, may: may} = assigns
 
     assigns =
       assign(assigns,
         state: state(key),
         dom: "key-#{key.key_id}",
-        acts: key_acts(key, may, intact)
+        acts: key_acts(key, may)
       )
 
     ~H"""
@@ -1349,7 +1237,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       >
         <span id={"#{@dom}-label"} class="font-medium">{@key.label}</span>
         <span class="q-mono text-muted">{@key.key_id}</span>
-        <.state_word id={"#{@dom}-state"} hot={@state == :pending}>
+        <.state_word id={"#{@dom}-state"}>
           {state_words(@state)}
         </.state_word>
       </h3>
@@ -1365,7 +1253,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <.icon name="hero-exclamation-circle-micro" class="mt-px size-4" />
         <div class="min-w-0">
           {gettext(
-            "This key's record doesn't match its integrity code: it was changed outside the application. It can't be approved."
+            "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
           )}
         </div>
       </div>
@@ -1380,10 +1268,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </dd>
         <dt class="text-faint">{gettext("Arrived")}</dt>
         <dd id={"#{@dom}-arrived"}>{arrived_words(@key)}</dd>
-        <dt :if={@key.approved_at} class="text-faint">{gettext("Approved")}</dt>
-        <dd :if={@key.approved_at}>{when_words(@key.approved_by, @key.approved_at)}</dd>
-        <dt :if={@state in [:revoked, :rejected]} class="text-faint">{state_words(@state)}</dt>
-        <dd :if={@state in [:revoked, :rejected]}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>
+        <dt :if={@state == :revoked} class="text-faint">{state_words(@state)}</dt>
+        <dd :if={@state == :revoked}>{when_words(@key.revoked_by, @key.revoked_at)}</dd>
         <dt :if={@key.last_used_at} class="text-faint">{gettext("Last used")}</dt>
         <dd :if={@key.last_used_at}>
           {Format.datetime(@key.last_used_at)}
@@ -1419,47 +1305,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       </dl>
 
       <%= case @confirming do %>
-        <% :approve -> %>
-          <.inline_confirm
-            id={"#{@dom}-confirm"}
-            question={gettext("Approve %{label}?", label: @key.label)}
-            cancel={@paths.access_key}
-          >
-            {gettext(
-              "Approve it only if its fingerprint, %{fingerprint}, is the one on the machine that holds the key.",
-              fingerprint: AccessKey.fingerprint(@key)
-            )}
-            <:action>
-              <.button
-                id={"#{@dom}-confirm-button"}
-                variant="primary"
-                size="xs"
-                phx-click="approve"
-                loading_text={gettext("Approving")}
-              >
-                {gettext("Yes, approve")}
-              </.button>
-            </:action>
-          </.inline_confirm>
-        <% :reject -> %>
-          <.inline_confirm
-            id={"#{@dom}-confirm"}
-            question={gettext("Reject %{label}?", label: @key.label)}
-            cancel={@paths.access_key}
-          >
-            {gettext("Its public key can never be used again. This cannot be undone.")}
-            <:action>
-              <.button
-                id={"#{@dom}-confirm-button"}
-                variant="danger"
-                size="xs"
-                phx-click="reject"
-                loading_text={gettext("Rejecting")}
-              >
-                {gettext("Yes, reject")}
-              </.button>
-            </:action>
-          </.inline_confirm>
         <% :revoke -> %>
           <.inline_confirm
             id={"#{@dom}-confirm"}
@@ -1482,14 +1327,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </:action>
           </.inline_confirm>
         <% _none -> %>
-          <p :if={:approve in @acts} id={"#{@dom}-guidance"} class="text-muted">
-            {gettext(
-              "Approve it only if its fingerprint is the one on the machine that holds the key."
-            )}
-          </p>
-          <p :if={@acts != [] or @state == :approved} class="flex flex-wrap gap-3">
+          <p :if={@state == :active} class="flex flex-wrap gap-3">
             <.button
-              :if={@state == :approved}
               id={"#{@dom}-runner-file"}
               variant="link"
               patch={key_path(@paths, @key, "runner-file")}
@@ -1499,24 +1338,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               <span class="sr-only">
                 {gettext("Runner file lines for %{label}", label: @key.label)}
               </span>
-            </.button>
-            <.button
-              :if={:approve in @acts}
-              id={"#{@dom}-approve"}
-              variant="link"
-              patch={key_path(@paths, @key, "approve")}
-              phx-hook="FocusOn"
-            >
-              {gettext("Approve…")}
-            </.button>
-            <.button
-              :if={:reject in @acts}
-              id={"#{@dom}-reject"}
-              variant="link"
-              patch={key_path(@paths, @key, "reject")}
-              phx-hook="FocusOn"
-            >
-              {gettext("Reject…")}
             </.button>
             <.button
               :if={:revoke in @acts}
