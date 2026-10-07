@@ -51,9 +51,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   recorded as seen on the key's node (`Apiary.Nodes.seen/3`), for a key that awaits
   approval too, once its instance id passes and, on a GET, only when its timestamp is
   within the window: a stale or replayed GET leaves neither the instance's last sighting
-  nor its name, and still gets its refusal in the order above. On a GET of an approved key the use of the
-  key is recorded: the runner version, reduced to what the column holds and dropped when
-  it does not fit, and the contract version; on a POST the receiver records the use with
+  nor its name, and still gets its refusal in the order above. On a GET of an approved
+  key the use of the key is recorded: the runner version, reduced to what the column
+  holds and dropped when it does not fit, and the contract version; on a POST the receiver records the use with
   the delivery. Neither failing fails the request. The Logger metadata carries the key's
   organisation and workspace ids from verification on (`Apiary.LogMetadata`); a refused
   request's carries neither.
