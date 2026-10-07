@@ -148,9 +148,10 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   not_yet/1 is the one plain line a page about a node's keys says, once, near its top:
-  runners can't use a node's keys yet, and runs still use the workspace's access keys, with
-  the way to them (Settings › Access keys). Its words are the page's own sentence, which
-  ends with `%{link}`, where the link goes.
+  Qory can't check a node's keys yet, so nodes receive no runs, and machines send their
+  runs with a workspace access key, with the way to them (Workspace settings › Access
+  keys). Its words are the page's own sentence, which ends with `%{link}`, where the link
+  goes, flush against the full stop.
   """
   attr :id, :string, default: "not-on-runs"
   attr :scope, :map, required: true
@@ -161,17 +162,23 @@ defmodule ApiaryWeb.NodeComponents do
     ~H"""
     <.not_on_runs id={@id} class={@class}>
       <.rich text={@text}>
-        <:part name={:link}>
-          <.link
-            id={"#{@id}-keys"}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
-            class="text-accent hover:underline"
-          >
-            {gettext("Settings › Access keys")}
-          </.link>
-        </:part>
+        <:part name={:link}><.keys_link id={"#{@id}-keys"} scope={@scope} /></:part>
       </.rich>
     </.not_on_runs>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :scope, :map, required: true
+
+  # Written flush: no whitespace inside the link or after it, before the sentence's stop.
+  defp keys_link(assigns) do
+    ~H"""
+    <.link
+      id={@id}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
+      class="text-accent hover:underline"
+    >{gettext("Workspace settings › Access keys")}</.link>
     """
   end
 

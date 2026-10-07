@@ -759,7 +759,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp not_yet_text,
     do:
       rich_gettext(
-        "Runners can't use these keys or enrolment codes yet. Runs still use the workspace's access keys, in %{link}.",
+        "Qory can't check these keys yet, so this node receives no runs. Until it can, machines send their runs with a workspace access key, from %{link}.",
         link: {:part, :link}
       )
 

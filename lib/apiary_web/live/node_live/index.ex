@@ -424,7 +424,7 @@ defmodule ApiaryWeb.NodeLive.Index do
           scope={@current_scope}
           text={
             rich_gettext(
-              "Runners can't use a node's keys yet, so no run is placed on a node today. Runs still use the workspace's access keys, in %{link}.",
+              "Nodes receive no runs yet: Qory can't check a node's key yet. Until it can, machines send their runs with a workspace access key, from %{link}.",
               link: {:part, :link}
             )
           }
