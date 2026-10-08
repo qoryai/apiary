@@ -2,8 +2,8 @@ defmodule Apiary.Variables do
   @moduledoc """
   A workspace's variables: names and values for a run's process, set for the workspace or
   for one of its repositories (a target), resolved for each holder by
-  `Apiary.Variables.Resolution`. Runs don't receive them yet: nothing puts them in the run
-  configuration, and the pages say so.
+  `Apiary.Variables.Resolution`. Nothing puts them in the run configuration: a run
+  receives only its security policy, and the pages say so.
 
   ## Levels and locks
 
@@ -112,8 +112,7 @@ defmodule Apiary.Variables do
   @doc """
   resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values in force
   for its runs, with which level set and which locked each, for the pages; its `values/1`
-  maps each name to its value, from which the run configuration's `variables` will be
-  built once runs receive them. `{:ok, resolution}`, for a reader who may `variable.read`;
+  maps each name to its value. `{:ok, resolution}`, for a reader who may `variable.read`;
   else `{:error, reason}`.
   """
   @spec resolve(Scope.t(), holder) :: {:ok, Resolution.t()} | {:error, Access.reason()}

@@ -20,13 +20,12 @@ defmodule Apiary.Variables.Resolution do
   itself (`Apiary.Variables.Denied.refused?/1`) or that breaks the name rule is left out,
   from whichever level it comes, so a level above that sets one does not pass it on.
 
-  `values/1` maps each name to its value, `%{NAME => value}`; the run configuration
-  carries each under its name as `{"value": …}`
-  (`priv/contract/run-configuration.schema.json`). Runs don't receive variables yet, and
-  nothing puts them there. A holder's resolved variables are at
-  most #{128} names and #{65_536} bytes of names and values (`check_limits/1`), the
-  contract's limits; `Apiary.Variables` refuses a save that would take any holder over
-  them.
+  `values/1` maps each name to its value, `%{NAME => value}`. Nothing puts them in the run
+  configuration: a run receives only its security policy. A holder's resolved variables
+  are at most #{128} names and #{65_536} bytes of names and values (`check_limits/1`), the
+  limits of the run configuration's `variables`
+  (`priv/contract/run-configuration.schema.json`); `Apiary.Variables` refuses a save that
+  would take any holder over them.
   """
 
   alias Apiary.Variables.{Denied, Variable}
@@ -109,8 +108,7 @@ defmodule Apiary.Variables.Resolution do
     do: Regex.match?(Variable.name_format(), name) and not Denied.refused?(name)
 
   @doc """
-  values/1 is the resolution as a map of each name to its value, `%{NAME => value}`, from
-  which the run configuration's `variables` (each value as `{"value": …}`) will be built.
+  values/1 is the resolution as a map of each name to its value, `%{NAME => value}`.
   """
   @spec values(t) :: %{String.t() => String.t()}
   def values(%__MODULE__{entries: entries}), do: Map.new(entries, &{&1.name, &1.value})

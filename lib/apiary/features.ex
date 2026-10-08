@@ -7,21 +7,20 @@ defmodule Apiary.Features do
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to runners | `observability` |
 
-  The core's third name in `all/0` is kept for a feature not built yet; it needs
-  `observability`. An edition adds its own features after the core's
-  (`c:Apiary.Edition.features/0`), each with the features it needs and whether it is
-  built. The list is read once, checked (`registry/1`), and kept for the life of the node:
-  a name listed twice, or a feature that needs one the list does not have, stops the boot.
+  An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each
+  with the features it needs and whether `built/0` holds it. The list is read once,
+  checked (`registry/1`), and kept for the life of the node: a name listed twice, or a
+  feature that needs one the list does not have, stops the boot.
 
   `QORY_FEATURES` names the features the instance has, of the whole list: `all`; `all-`
   and the features left out, separated by commas (`all-security`); or the features on,
-  separated by commas (`observability,security`). Unset or blank is `all`. A list keeps a
-  feature a later release adds off until it is listed; `all` and `all-…` take it on with
-  the upgrade. A feature of another edition is unknown here. `config/runtime.exs` keeps
-  the value as it is (a release reads that file before the application's modules can be
-  relied on), and `boot!/0` checks it with `parse/1` when the application starts: an
-  unknown name or a feature without the features it needs stops the boot. The list is
-  fixed while the instance runs.
+  separated by commas (`observability,security`). Unset or blank is `all`. A list keeps
+  off every feature it does not name, one an upgrade adds included; `all` and `all-…`
+  take that one on with the upgrade. A feature of another edition is unknown here.
+  `config/runtime.exs` keeps the value as it is (a release reads that file before the
+  application's modules can be relied on), and `boot!/0` checks it with `parse/1` when
+  the application starts: an unknown name or a feature without the features it needs
+  stops the boot. The list is fixed while the instance runs.
 
   A feature that is off is absent, not disabled: its pages answer not found, the navigation
   and the discovery document leave it out, its processes are not started. Every surface asks
@@ -51,7 +50,7 @@ defmodule Apiary.Features do
   alias Apiary.Repo
 
   # The core's features, in the order the instance lists them, each with the features it
-  # needs and whether it is built: a feature not built yet is kept for what is to come.
+  # needs and whether `built/0` holds it.
   @core [
     observability: [needs: [], built: true],
     security: [needs: [:observability], built: true],
@@ -65,9 +64,9 @@ defmodule Apiary.Features do
   @type registry :: %{all: [feature], needs: %{feature => [feature]}, built: [feature]}
 
   @doc """
-  built/0 is the features built so far, in the order of `all/0`: the ones a page of an
-  edition may switch on or off for an organisation. A feature not built yet keeps
-  whatever an edition says of it.
+  built/0 is the features listed with `built: true`, in the order of `all/0`: the ones a
+  page of an edition may switch on or off for an organisation. Any other keeps whatever
+  an edition says of it.
   """
   @spec built() :: [feature]
   def built, do: registry().built

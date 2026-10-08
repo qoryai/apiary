@@ -14,7 +14,7 @@ defmodule Apiary.Accounts.Preferences do
     each zone with the countries that keep its clock (`time_zone_countries/1`); a link
     name the database also knows (`UTC`, `Europe/Oslo`) is accepted as well.
   - A **skin** says the words and the look over the domain's. Only `standard`, the
-    domain's own words, exists: the apiary skin is not built, and nothing offers it.
+    domain's own words, exists.
 
   A new person reads English in UTC with the standard skin until they change it.
   """
