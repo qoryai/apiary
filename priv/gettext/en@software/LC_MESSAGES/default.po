@@ -2155,7 +2155,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice."
+msgid "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex

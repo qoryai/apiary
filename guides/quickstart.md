@@ -157,13 +157,13 @@ Apiary keeps only its public half.
 1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
    `build-01` say, and select **Add node**. The node's **Access key** tab opens and asks
    "How do you want to connect build-01?", with two ways: **Connect with a command**
-   first, and **Generate a key in the browser**. (Back on the overview, step 2 asks the same, and **Get
-   the command** there shows the command in place.)
+   first, and **Generate a key in the browser**. (Back on the overview, step 2 asks the
+   same, and **Get the command** there shows the command in place.)
 2. Under **Connect with a command**, select **Get the command**. The page **Connect
-   build-01 with a command** shows the command to run on the machine, with this server and
-   a one-time code in it. Select **Copy command**. Since `PUBLIC_URL` is a `localhost`
-   address, the page also says machines can't reach it; that holds for other machines, and
-   this trial's machine is the server's own, so the command works here.
+   build-01 with a command** shows the command to run on the machine, with Qory Apiary's
+   address and a one-time code in it. Select **Copy command**. Since `PUBLIC_URL` is a
+   `localhost` address, the page also says machines can't reach it; that holds for other
+   machines, and this trial's machine is Qory Apiary's own, so the command works here.
 3. On the machine, run the command:
 
    ```sh
@@ -176,7 +176,8 @@ Apiary keeps only its public half.
    set: Qory Apiary's `url`, the key's `access_key_id`, and `apiary_public_key`, Qory
    Apiary's key, which the code named and Qory Apiary's signed answer confirmed. The
    address and Qory Apiary's key are the same for every machine connected to this Qory
-   Apiary; only `access_key_id` is the machine's key's. The command works once, for 15 minutes.
+   Apiary; only `access_key_id` is the machine's key's. The command works once, for 15
+   minutes.
 4. The page, which read "Waiting for build-01 to run it.", now says "build-01 is
    connected." with the key and its **Fingerprint**. It is the one `qory` printed; if it
    is not, revoke the key on the **Access key** tab. Select **Done**.
@@ -187,10 +188,9 @@ start runs at once. On the **Access key** tab, the key's card says where its sec
 The runner file belongs to the machine and to no repository.
 [The runner file's `server` section](runner-file.md) has the rest of it.
 
-For a CI or a node pool, **Generate a key in the browser** on the same tab makes the key in your browser
-and shows its secret once, with the other values the CI sets;
-[Nodes and their keys](nodes.md) says more about both ways, node pools and revoking a
-key.
+For a CI or a node pool, **Generate a key in the browser** on the same tab makes the key
+in your browser and shows its secret once, with the other values the CI sets; [Nodes and
+their keys](nodes.md) says more about both ways, node pools and revoking a key.
 
 ## 6. First run
 

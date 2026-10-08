@@ -889,8 +889,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   the node holds an active key, **Configure a machine** (`#node-configure`), for everyone,
   at the limit too, at most 46rem wide: "A machine connected with the command needs
   nothing more: qory saved all of this on it. Don't set these again there; qory refuses a
-  value set twice." and "With a generated key, set these where the machine runs qory.",
-  then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the runner
+  key ID or a public key set twice." and "With a generated key, set these where the
+  machine runs qory.", then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the runner
   file. It is required: without it, qory ignores the three variables below.",
   `runner.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
   a plain setting. The same for every machine connected to this Qory Apiary.", the value

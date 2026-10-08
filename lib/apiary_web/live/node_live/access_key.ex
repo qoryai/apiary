@@ -902,8 +902,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   ## The server's part
   #
   # The server's address and its public key, `QORY_APIARY_PUBLIC_KEY`, the instance's own
-  # signing key (`Apiary.SigningKey`): the same for every machine connected to this Qory,
-  # never part of a node's key, and said so wherever they show (`same_note/0`).
+  # signing key (`Apiary.SigningKey`): the same for every machine connected to this Qory
+  # Apiary, never part of a node's key, and said so wherever they show (`same_note/0`).
 
   defp same_note, do: gettext("The same for every machine connected to this Qory Apiary.")
 
@@ -2017,7 +2017,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <div id={"#{@id}-lead"} class="grid gap-1 text-muted">
           <p>
             {gettext(
-              "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice."
+              "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice."
             )}
           </p>
           <p>{gettext("With a generated key, set these where the machine runs qory.")}</p>

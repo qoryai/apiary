@@ -83,7 +83,7 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   The code is the approval: the key it brings is active at once, and the code is
   refused unless its maker is still an owner or an admin of the workspace when it is
   redeemed. Generate a key in the browser: the browser makes the key (WebCrypto Ed25519, on a page
-  served over HTTPS) and sends Qory its name and its public half alone; the page Key
+  served over HTTPS) and sends Qory Apiary its name and its public half alone; the page Key
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
   set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the runner file's

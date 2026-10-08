@@ -1210,7 +1210,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert has_element?(lv, "#node-configure-title", "Configure a machine")
 
         assert words(lv, "#node-configure-lead") ==
-                 "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice. With a generated key, set these where the machine runs qory."
+                 "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice. With a generated key, set these where the machine runs qory."
 
         assert words(lv, "#node-configure-steps-1") =~
                  "1 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables below."

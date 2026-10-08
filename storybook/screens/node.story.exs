@@ -397,7 +397,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <div class="grid max-w-[46rem] gap-4 text-[13px]/5">
         <div class="grid gap-1 text-muted">
           <p>
-            A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice.
+            A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice.
           </p>
           <p>With a generated key, set these where the machine runs qory.</p>
         </div>
