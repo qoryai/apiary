@@ -208,24 +208,16 @@ created concurrently.
 
 `access_keys` holds the keys of nodes: each row's node (`node_id`), Ed25519 public key
 (`public_key`), the time it was received (`received_at`) and how it arrived
-(`arrived_by`: `code`, with its `enrolment_code_id`, or `browser`), all NOT NULL,
-with
-<!-- feature: secrets -->
-`allow_secrets`,
-<!-- /feature -->
-`rate`, `burst`, `revoked_by_id`, `integrity_code` and `integrity_key_id`, and no
-secret. The trigger `access_keys_fixed_at_insert` refuses a change of a key's node,
-public key,
-<!-- feature: secrets -->
-`allow_secrets`
-<!-- /feature -->
-or arrival. New:
-`access_key_enrolment_codes`, a node's enrolment codes, and `access_key_public_keys`, the
-instance's ledger of public keys. `20261007210000_make_an_enrolled_key_active_at_once`
-drops the approval's columns (`approved_at`, `approved_by_id`, `last_pending_at`), their
-check and index, and the ledger's `pending` state and `rejected` reason; it deletes every
-node's key, with its deliveries, and every enrolment code, and makes every public key in
-the ledger a tombstone, so machines enrol again with a new key.
+(`arrived_by`: `code`, with its `enrolment_code_id`, or `browser`), all NOT NULL, with
+`rate`, `burst`, `revoked_by_id`, `integrity_code` and `integrity_key_id`, and no secret.
+The trigger `access_keys_fixed_at_insert` refuses a change of a key's node, public key or
+arrival. New: `access_key_enrolment_codes`, a node's enrolment codes, and
+`access_key_public_keys`, the instance's ledger of public keys.
+`20261007210000_make_an_enrolled_key_active_at_once` drops the approval's columns
+(`approved_at`, `approved_by_id`, `last_pending_at`), their check and index, and the
+ledger's `pending` state and `rejected` reason; it deletes every node's key, with its
+deliveries, and every enrolment code, and makes every public key in the ledger a
+tombstone, so machines enrol again with a new key.
 `20261008090000_let_a_key_arrive_made_in_a_browser` lets a key arrive `browser`.
 `20261008120000_remove_the_pasted_key` removes the paste arrival: it deletes every key
 that arrived `paste`, with its deliveries, makes its public key a tombstone in the
