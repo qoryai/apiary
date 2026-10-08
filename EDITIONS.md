@@ -2,8 +2,7 @@
 
 Qory Apiary comes in a free edition, which is this repository, and in paid editions, which
 8wonders GmbH, the company behind Qory, licenses. Every paid edition is the same Qory
-Apiary: the free edition's code, with more added to it, in one image. Qory Cloud is Qory's
-own hosted Qory Apiary.
+Apiary: the free edition's code, with more added to it, in one image.
 
 **Nothing in the free edition will ever move to a paid one.**
 
@@ -17,9 +16,9 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
 - **The record.** Every run of every machine of the workspace: the session as a timeline,
   the terminal as it was written, every connection with the decision and the rule behind
   it, and how the run ended.
-- **The wall and the policy.** Every connection a session makes goes through the runner's
-  proxy, and the security policy of the workspace says what it may reach: observe or
-  enforce, rules per repository, locked rules, a history with a diff.
+- **The wall and the policy.** The runner's proxy records each connection and decides it
+  by the workspace's policy; behind a wall it is the session's only way out. The policy
+  observes or enforces, with rules per repository, locked rules and a history with a diff.
 - **Nodes and their access keys.** A node is one machine, a node pool a fleet of
   short-lived instances. A machine makes its own Ed25519 key and enrols it with a code
   from its node, or an owner or admin generates a key in the browser; a key is active as
@@ -41,8 +40,7 @@ Pro adds, for a company that runs Qory Apiary for more than one team:
 - per-member workspace access: a member reaches the workspaces they are added to;
 - narrowing features per workspace;
 - the Admin area, where the instance's admins manage the organisations, accounts and
-  features of the instance;
-- white label: the instance under a name of your own, without Qory's attribution.
+  features of the instance.
 
 ## Operator
 
@@ -54,7 +52,3 @@ Operator adds, for a company that provides a harness its clients run on Qory Api
   its harness needs, and each client answers;
 - features granted down the chain, from the instance to the operator and from the operator
   to its clients.
-
-## Enterprise
-
-For larger organisations, in preparation.
