@@ -123,8 +123,8 @@ secrets, from wherever it came from.
 <!-- /feature -->
 
 Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity
-code verifies either, so the instance trusts none of them: every signed request of a runner
-is answered `401`, no machine starts a run against this server and no events arrive. For each
+code verifies, so the instance trusts none of them: every signed request of a runner is
+answered `401`, no machine starts a run against this server and no events arrive. For each
 request the log has `access key row does not match its integrity code key_id=ak_…`. Put the
 right `APIARY_ENCRYPTION_SECRET` back and every key verifies again.
 
