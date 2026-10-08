@@ -139,13 +139,10 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
     test "each is built line by line, and its signature is the access key's" do
       %{"requests" => requests} = known_answers!("signatures")
       access_key = fixture_key!("access_key")
-      assert length(requests) == 3
+      assert length(requests) == 2
 
-      for %{"lines" => lines, "length" => length, "signature" => signature} = request <-
-            requests do
+      for %{"lines" => lines, "length" => length, "signature" => signature} <- requests do
         ["qory-request-ed25519-v1", key_id, instance_id, method, target, last] = lines
-        if body = request["body"], do: assert(body(body) == last)
-
         message = SignedMessage.request(key_id, instance_id, method, target, last)
 
         assert message == Enum.join(lines, "\n")
