@@ -72,7 +72,13 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute has_element?(view, "#target-mode")
     assert has_element?(view, "#target-external[href='https://github.example/acme/shop']")
 
-    # The breadcrumb's third segment is the target, the page itself on Overview.
+    # The breadcrumb ends with the section, a link to its list, and the target, the page
+    # itself on Overview.
+    assert crumbs(view) == [
+             {"Repositories", workspace_path(scope, "/targets")},
+             {"github.example/acme/shop", nil}
+           ]
+
     assert has_element?(view, "#breadcrumb [aria-current=page]", "github.example/acme/shop")
     assert has_element?(view, "#nav-targets[aria-current=page]")
     # The tablist names the thing's kind, in the workspace's words.
@@ -229,6 +235,11 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute page_title(view) =~ "github.example"
     assert name(view, "#breadcrumb a[href='#{path}']") == "acme/billing"
 
+    assert crumbs(view) == [
+             {"Repositories", workspace_path(scope, "/targets")},
+             {"acme/billing", path}
+           ]
+
     view = open(conn, workspace_path(scope, "/targets/github.example/acme/shop/-/policy"))
     assert page_title(view) =~ "Policy · github.example/acme/shop"
   end
@@ -273,6 +284,11 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     view = open(conn, workspace_path(scope, "/targets/acme/shop"))
 
     assert has_element?(view, "#target-choose-title", "acme/shop")
+
+    assert crumbs(view) == [
+             {"Repositories", workspace_path(scope, "/targets")},
+             {"acme/shop", nil}
+           ]
 
     assert has_element?(
              view,

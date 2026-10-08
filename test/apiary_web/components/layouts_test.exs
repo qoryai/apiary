@@ -758,7 +758,7 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert has_element?(view, "#breadcrumb a", "acme/shop")
+      assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope, "/runs")}']", "Runs")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{short}")
       assert has_element?(view, "#nav-runs[aria-current='page']")
     end

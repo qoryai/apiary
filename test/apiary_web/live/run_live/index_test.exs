@@ -45,6 +45,17 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}/runs")
   end
 
+  test "the breadcrumb ends with Runs, the page itself, whether the list is narrowed or not",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop())
+
+    view = open(conn, scope)
+    assert crumbs(view) == [{"Runs", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Runs")
+
+    assert crumbs(open(conn, runs(scope, "?target=acme%2Fshop"))) == [{"Runs", nil}]
+  end
+
   describe "empty states" do
     test "no runs and no node: add a node, or, for a member, go to the nodes", %{
       conn: conn,

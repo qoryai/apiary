@@ -93,12 +93,8 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
-      <:crumb :if={@run.target_id} navigate={target_link(@current_scope, @run, @target_shared)}>
-        <.target_name
-          path={@run.target_path}
-          system={@target_shared && @run.target_system}
-          class="truncate"
-        />
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
+        {gettext("Runs")}
       </:crumb>
       <:crumb>{gettext("Run %{id}", id: short_id(@run.run_id))}</:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">

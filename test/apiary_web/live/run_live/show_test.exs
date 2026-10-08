@@ -111,8 +111,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ ~s(aria-label="Breadcrumb")
       refute has_element?(lv, ".q-kvs")
 
-      # the top bar's segments: the target's page, then this run
-      assert has_element?(lv, ~s(#breadcrumb a[href="#{target}"]), "acme/shop")
+      # the top bar's segments: Runs, a link to the list, then this run; the target is on
+      # the meta line, not in the breadcrumb
+      assert crumbs(lv) == [
+               {"Runs", workspace_path(scope, "/runs")},
+               {"Run #{String.slice(run.run_id, 0, 8)}", nil}
+             ]
 
       assert has_element?(
                lv,
@@ -264,12 +268,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{other.run_id}")
 
       assert has_element?(lv, "#run-target .q-tname-sys", "github.example")
-      assert has_element?(lv, "#breadcrumb .q-tname-sys", "github.example")
 
-      # Its links land on its page at its address, which keeps the system.
+      # Its link lands on its page at its address, which keeps the system.
       page = workspace_path(scope, "/targets/github.example/acme/shop")
       assert has_element?(lv, "#run-target[href='#{page}']")
-      assert has_element?(lv, "#breadcrumb a[href='#{page}']")
     end
 
     test "a run without a task is titled by its short id, and one without a wall says None", %{
@@ -284,9 +286,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
       assert html =~ "This run had no wall"
       refute has_element?(lv, "#run-labels")
-      # unassigned: neither the meta line nor the breadcrumb names a target
+      # unassigned: the meta line names no target, and the breadcrumb is Runs and the run
       refute has_element?(lv, "#run-target")
-      refute has_element?(lv, "#breadcrumb a[href*='/targets/']")
+
+      assert crumbs(lv) == [
+               {"Runs", workspace_path(scope, "/runs")},
+               {"Run #{String.slice(run.run_id, 0, 8)}", nil}
+             ]
     end
 
     test "a pending run says Ping only and waits on every tab but Details", %{

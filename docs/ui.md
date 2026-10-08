@@ -25,7 +25,10 @@ page, the one the person came from (Two levels, below).
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
   then the workspace, each a link to its home, and the page's own segments, a target or a
-  record, the last one the page with `aria-current="page"`; on a page of a level's
+  record, the last one the page with `aria-current="page"`. A page under a section's list
+  starts them with the section's name as the sidebar words it, a link to the list
+  (`Acme / Main / Runs / Run 0191f2a4`), and the lists of Runs, Targets, Nodes and Network
+  access end with it, the page itself (`Acme / Main / Runs`); on a page of a level's
   settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows
@@ -756,7 +759,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   names the target as it is addressed (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
-  the system is a host name; the breadcrumb's third segment is the target.
+  the system is a host name; the breadcrumb ends with the section, a link to the index,
+  and the target.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
     runs; the destinations it was denied in 14 days, each with a faint barred circle,
     never red), beside a plain About column (the
@@ -1264,8 +1268,9 @@ not fill fails until it is filled there.
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
 on its own) sits beside it, on every tab but Terminal, which is wide and takes the
-whole width (`q-run-wide`). The top bar's breadcrumb ends with the run's target, a link to
-the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
+whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to the list,
+and `Run 0191f2a4`; the run's target is on its meta line, not in the breadcrumb, and the
+page has no breadcrumb of its own.
 
 - **The header is two lines**: the title (the task, or the run's short id) alone, then
   one muted meta line that starts with the state as a dot and its word

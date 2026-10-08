@@ -89,6 +89,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       width="work"
       narrowed={Layouts.narrowed(@filters.target, Narrowing.shared?(@narrowing))}
     >
+      <:crumb>{gettext("Network access")}</:crumb>
+
       <div id="connections-page" class="q-lp">
         <.page_header title={gettext("Network access")}>
           <:description>

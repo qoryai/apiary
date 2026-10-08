@@ -9522,6 +9522,7 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
@@ -10333,6 +10334,7 @@ msgstr "Repository policy"
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets"
 msgstr "Repositories"
