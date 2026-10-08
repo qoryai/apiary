@@ -17,8 +17,8 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   With `?for=<connection's public id>`, an integration of the same source, the release is
   another version of it, asked for from its Settings, and the page offers to move it there
-  (`Apiary.Connections.change_release/3`) instead of adding it. No run receives any of it
-  yet, and the page says so once.
+  (`Apiary.Connections.change_release/3`) instead of adding it. The page says once that a
+  run receives only its security policy.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -68,7 +68,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           </span>
         </:subtitle>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
 
         <%!-- What the poll finds, said once it changes: the release fetched, then read. A
              failure says itself, as an alert. --%>
@@ -171,10 +171,10 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd id="release-ways">
           <span :if={"credential" in @description.ways}>{gettext("Calls its API")}</span>
           <span :if={"tool" in @description.ways} class="text-muted">
-            {gettext("Also a tool (MCP), which no runner runs yet")}
+            {gettext("Also a tool (MCP), which Qory Apiary does not use")}
           </span>
           <span :if={"credential" not in @description.ways} class="text-muted">
-            {gettext("No way a runner runs yet")}
+            {gettext("No way a runner runs")}
           </span>
         </dd>
         <dt class="text-faint">{gettext("Secrets")}</dt>
@@ -319,7 +319,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               {gettext("Add %{title}", title: @description.title)}
             </.button>
             <:note :if={@description.secrets != []}>
-              {gettext("A stored secret can't be linked to it yet.")}
+              {gettext("Qory Apiary links no stored secret to it.")}
             </:note>
           </SettingsComponents.save>
         </div>

@@ -198,7 +198,7 @@ defmodule Apiary.Access do
       feature: :security,
       roles: @admins
     ),
-    # Stored secrets and variables, for runs; runs don't receive them yet.
+    # Stored secrets and variables.
     Action.new(
       :"secret.read",
       "read the stored secrets: their names, notes and value IDs, never a value",
@@ -214,7 +214,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"secret.use",
-      "link a stored secret to what uses it (runs don't receive its value yet)",
+      "link a stored secret to what uses it",
       feature: :security,
       roles: @admins,
       audited:

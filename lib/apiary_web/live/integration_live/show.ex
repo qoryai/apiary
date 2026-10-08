@@ -21,8 +21,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   It reads and writes through `Apiary.Connections` (`get_connection/2`,
   `update_connection/3`, `put_target/4`, `remove_target/3`, `delete_connection/2`,
   `definition/1`, `description/1`) and asks
-  `Apiary.Integrations.request_release/2` for another version. No run receives any of it
-  yet, and the page says so once.
+  `Apiary.Integrations.request_release/2` for another version. The page says once that a
+  run receives only its security policy.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -66,7 +66,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <:description>
           {gettext("Choose a target of this workspace for it to apply to.")}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.form for={@find} id="find-target-form" phx-change="find" phx-submit="find" novalidate>
           <.input
             field={@find[:text]}
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             source: @connection.source
           )}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <div :if={@version_problems != []} id="version-problems">
           <.notice kind={:error}>
             <p :for={problem <- @version_problems}>{problem}</p>
@@ -245,7 +245,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           </:tab>
         </.page_tabs>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.notice :if={!@connection.intact} kind={:error}>
           {gettext("%{name} fails its integrity check: its record is not as it was saved.",
             name: Common.label(@names)
@@ -391,13 +391,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         id="connection-tool-way"
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description also offers it as a tool (MCP), which no runner runs yet.")}
+        {gettext("Its description also offers it as a tool (MCP), which Qory Apiary does not use.")}
       </p>
       <p
         :if={!@description || "credential" not in @description.ways}
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description offers no way a runner runs yet.")}
+        {gettext("Its description offers no way a runner runs.")}
       </p>
     </SettingsComponents.part>
 
@@ -427,7 +427,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <p :if={@secrets != []} id="connection-secrets-unlinked" class="text-[13px]/5 text-muted">
         <.rich text={
           rich_gettext(
-            "A stored secret can't be linked to it yet. The workspace's secrets are in %{secrets}.",
+            "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}.",
             secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets and variables")}
           )
         } />

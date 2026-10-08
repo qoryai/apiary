@@ -8,8 +8,8 @@ defmodule ApiaryWeb.LingoCatalogueCase do
   A language other than English has a catalogue of its own (`de`), which every domain of
   that language falls back to (`ApiaryWeb.Gettext.Fallback`). English has none: the source
   text is English already. A domain's catalogue holds only the sentences it says in its
-  own words, no catalogue holds a fuzzy entry, which Gettext would serve as it is, and
-  none says a word of the apiary skin.
+  own words, no catalogue holds a fuzzy entry, which Gettext would serve as it is, and no
+  source string or catalogue shows a word such as apiary, hive or bee.
 
   Each backend has catalogues of its own, the core's in `priv/gettext` and an edition's in
   its own folder, and each is held to the rules. A test module uses this one with the
@@ -33,9 +33,8 @@ defmodule ApiaryWeb.LingoCatalogueCase do
   # are the same words in every domain.
   @engine_words ~r/\b(targets?|systems?|change[ -]requests?|appl(?:y|ies|ied|ying))\b/i
 
-  # The apiary skin's words, shown by no domain. The skin is per user and not built; when
-  # it is, it gets its own catalogue. A hive is the skin's word for a workspace, and an
-  # apiary its word for an organisation. `Qory Apiary` is the product's name.
+  # The words no source string or catalogue shows: apiary, hive, bee and the like.
+  # `Qory Apiary`, the product's name, is taken out before the check.
   @apiary_words ~r/\b(apiary|apiaries|hives?|bees?|swarms?|flowers?|nectar|honey|jars?|beekeepers?|hivekeeping)\b/i
 
   # A source string whose engine word is the ordinary English word ("the operating system",

@@ -68,16 +68,18 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-facts", "Every repository")
       assert has_element?(lv, "#connection-secrets", "ANTHROPIC_API_KEY")
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
-      assert has_element?(lv, "#connection-secrets-unlinked", "can't be linked to it yet")
-      section = lv |> element("#settings-section-integrations") |> render()
-      # Qory Apiary is named only in the not-yet line.
-      refute String.replace(section, "today Qory Apiary sends a run", "") =~ "Qory"
 
       assert has_element?(
                lv,
-               "#not-on-runs",
-               "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
+               "#connection-secrets-unlinked",
+               "Qory Apiary links no stored secret to it."
              )
+
+      section = lv |> element("#settings-section-integrations") |> render()
+      # Qory Apiary is named only in the line of the secrets it declares.
+      refute String.replace(section, "Qory Apiary links no stored secret", "") =~ "Qory"
+
+      assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
 
       refute html =~ "runs receive"
     end
@@ -96,7 +98,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-publisher", "Acme")
       assert has_element?(lv, "#connection-publisher", "github.com/acme")
       assert has_element?(lv, "#connection-ways", "Calls its API.")
-      assert has_element?(lv, "#connection-tool-way", "which no runner runs yet")
+      assert has_element?(lv, "#connection-tool-way", "which Qory Apiary does not use")
       assert has_element?(lv, "#connection-roles", "credential, tool, work_source")
       assert has_element?(lv, "#connection-plain-settings", "https://tracker.example.com")
       assert has_element?(lv, "#settings-section-title", "Acme tracker")

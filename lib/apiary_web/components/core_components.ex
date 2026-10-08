@@ -90,8 +90,8 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.term word="wall" standard="The enclosure the agent runs in." />
 
-  Not a way to show the apiary skin's words, apiary or hive: a page says organisation and
-  workspace through Gettext (`docs/lingo.md`).
+  Not a way to show a word such as apiary or hive: a page says organisation and workspace
+  through Gettext (`docs/lingo.md`).
   """
   attr :word, :string, required: true
   attr :standard, :string, required: true, doc: "the standard term, or what the word means"

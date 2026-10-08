@@ -856,7 +856,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "the kinds, in the order of the brief, bounded at five with the overflow linked", %{
+    test "the kinds, in their order, bounded at five with the overflow linked", %{
       conn: conn,
       scope: scope
     } do

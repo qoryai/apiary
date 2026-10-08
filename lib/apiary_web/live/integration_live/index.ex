@@ -17,7 +17,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       release….
 
   It is all for the runs, none of it for Qory Apiary itself, and the page says so in its
-  subtitle. No run uses any of it yet, and the page says so once, at its top.
+  subtitle. It says once, at its top, that a run receives only its security policy.
 
   The forms are pages of the section, at paths of their own, never a dialog: Add from a
   release (`…/add`), which asks for a release and leads to it
@@ -61,7 +61,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         cancel={Common.index_path(@current_scope)}
       >
         <:description>{form_sentence(@live_action)}</:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.form_body {assigns} />
       </.page_form>
     </Layouts.app>
@@ -90,7 +90,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           )}
         </:subtitle>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
         <p :if={!@may_write} id="integrations-readonly" class="text-[13px]/5 text-muted">
           {Common.only_admins(@current_scope)}
         </p>
@@ -339,7 +339,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   end
 
   # The line under an agent's name: the catalogue has no description, so the console
-  # says what a run gets from each of its runtimes; one it doesn't know yet, what it is.
+  # says what a run gets from each of its runtimes; one it doesn't know, what it is.
   defp runtime_line(%{name: "claude"}),
     do:
       gettext(
@@ -349,7 +349,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   defp runtime_line(_runtime), do: gettext("A coding agent the runner can start.")
 
   # The line under a built-in API's name: what the agent may do with it, said by the
-  # console; one it doesn't know yet, its definition's description, which its page keeps
+  # console; one it doesn't know, its definition's description, which its page keeps
   # as its About.
   defp api_line(%{"key" => "sentry"}),
     do: gettext("The agent may call Sentry's API on sentry.io, such as to read issues.")

@@ -22,8 +22,8 @@ defmodule Apiary.Connections do
       (`Apiary.Kinds.Services`) or the workspace's own, and nothing else: the definition is
       the one source of its hosts, paths, auth and declared secrets.
 
-  The secrets a connection needs are linked to stored secrets by the piece that links
-  them; nothing here holds a secret, and the audit trail never carries a value.
+  Nothing here links a stored secret to a connection or holds a secret, and the audit
+  trail never carries a value.
 
   ## Where a connection applies
 
@@ -80,8 +80,7 @@ defmodule Apiary.Connections do
   """
   @type refusal :: Access.reason() | Ecto.Changeset.t() | atom | {atom, term}
 
-  # A description may offer the tool way too, but no runner runs it yet, so a connection
-  # is used through its credential alone.
+  # Only the credential way is accepted; the tool way is refused.
   @ways ~w(credential)
 
   ## Reading

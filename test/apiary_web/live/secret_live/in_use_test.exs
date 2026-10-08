@@ -37,7 +37,7 @@ defmodule ApiaryWeb.SecretLive.InUseTest do
 
     {:ok, lv, _html} = live(conn, path)
     assert has_element?(lv, "#secret-#{secret.public_id}", "Example")
-    refute has_element?(lv, "#secret-#{secret.public_id}", "Not used yet")
+    refute has_element?(lv, "#secret-#{secret.public_id}", "Not used")
 
     {:ok, lv, _html} = live(conn, path <> "/#{secret.public_id}/delete")
     lv |> element("#secret-#{secret.public_id}-confirm button", "Yes, delete") |> render_click()

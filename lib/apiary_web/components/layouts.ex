@@ -2,8 +2,7 @@ defmodule ApiaryWeb.Layouts do
   @moduledoc """
   Layouts: the application shell (`app/1`) for signed-in pages and the split
   view (`auth/1`) for log-in, registration, invitation and welcome pages. The
-  product on every surface is Qory Apiary; the shell is section 4 of the v2 design
-  brief (`docs/ui.md`).
+  product on every surface is Qory Apiary.
 
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the
@@ -2231,7 +2230,7 @@ defmodule ApiaryWeb.Layouts do
           <%!-- Before sign-in there is no organisation: the instance's features decide. --%>
           <p :if={Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
             {gettext(
-              "Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that."
+              "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
             )}
           </p>
           <p :if={!Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">

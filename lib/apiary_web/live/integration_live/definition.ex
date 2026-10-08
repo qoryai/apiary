@@ -11,7 +11,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   key, title, description, hosts, paths, auth and declared secrets. The page calls
   `Apiary.Connections.get_service_definition/2`, `create_service_definition/2`,
   `update_service_definition/3`, `delete_service_definition/2` and `list_connections/1`.
-  No run receives an API yet, and the page says so once.
+  The page says once that a run receives only its security policy.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -63,7 +63,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             "A custom API says which hosts it is, how its secret is sent and which secrets it needs."
           )}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.form for={@form} id="definition-form" phx-submit="save" novalidate>
           <div class="grid gap-4">
             <%!-- What is wrong with the JSON is the field's error, which describes it and
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
           </.button>
         </:actions>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
 
         <p :if={@decoded["description"]} id="definition-about" class="max-w-[72ch] text-[13.5px]/5">
           {@decoded["description"]}

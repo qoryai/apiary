@@ -134,7 +134,7 @@ defmodule Apiary.RunEventsFixtures do
   @doc """
   A `run.policy_applied` whose run has one tool, `files`, serving `files.tools.internal`
   under a path rule. Not a line of `priv/demo`: the contract fixtures at the pinned ref
-  have no tools yet.
+  have no tools.
   """
   def tool_policy_data(extra \\ %{}) do
     Map.merge(

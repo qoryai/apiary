@@ -13,9 +13,9 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   starts), an API (a service, an outside API the agent may call) or a Program (an
   integration added from a release, which the runner starts outside the agent); a service
   definition of the workspace's own is a Custom API. "Integrations" is the section's name
-  alone, and "service definition" is not a word of the pages. No run receives any of them
-  yet: each page says so once, near its top (`not_yet/1`), and nothing on them says
-  otherwise.
+  alone, and "service definition" is not a word of the pages. Each page says once, near
+  its top, that a run receives only its security policy (`not_on_runs/1`), and nothing on
+  them says otherwise.
   """
   use ApiaryWeb, :html
 
@@ -134,18 +134,16 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   ## The line every page says once
 
   @doc """
-  not_yet/1 is the one line each page of the section says near its top: no run uses an
-  agent, an API or a program set up here yet (`not_on_runs/1`).
+  not_on_runs/1 is the one line each page of the section says near its top: a run receives
+  only its security policy (`ApiaryWeb.PageComponents.not_on_runs/1`).
   """
   attr :id, :string, default: "not-on-runs"
 
-  def not_yet(assigns) do
+  def not_on_runs(assigns) do
     ~H"""
-    <.not_on_runs id={@id}>
-      {gettext(
-        "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
-      )}
-    </.not_on_runs>
+    <ApiaryWeb.PageComponents.not_on_runs id={@id}>
+      {gettext("A run receives only its security policy.")}
+    </ApiaryWeb.PageComponents.not_on_runs>
     """
   end
 

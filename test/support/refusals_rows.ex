@@ -344,7 +344,7 @@ defmodule ApiaryWeb.RefusalsRows do
   # organisation for a person who is not signed in, and asks no one's level; no page of
   # the core offers it to a signed-in person. An edition's: creating a workspace, which
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
-  # a stored secret to what uses it: no page links one yet, and the context's tests
+  # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
   @impl true
   def exempt do
@@ -364,7 +364,7 @@ defmodule ApiaryWeb.RefusalsRows do
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],
-      no_page_yet: [
+      no_page: [
         :"secret.use",
         :"connection.read",
         :"connection.write"

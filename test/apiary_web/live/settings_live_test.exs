@@ -14,7 +14,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
          %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
-      # The software domain's words, and no skin word: no apiary, no hive.
+      # The software domain's words: no apiary, no hive.
       # A flat column: the section's h1 and its fields, no card of its own.
       assert has_element?(lv, "h1#settings-section-title", "General")
       assert has_element?(lv, "#organisation-form label", "Name")
