@@ -33,7 +33,7 @@ being one. Every variable named here is described in [Install and configure](ins
   the release with your address and your organisation's name: it is the instance's first
   sign-up, and emails you your log-in link.
   [Install and configure](install.md#the-instance-admins) has the command.
-<!-- feature: security -->
+<!-- feature: secrets -->
 - **Where integrations come from.** A workspace adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
   `description.json`, which may be on any host; Qory Apiary fetches it from public addresses

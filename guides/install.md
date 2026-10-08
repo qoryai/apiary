@@ -278,12 +278,15 @@ QORY_FEATURES=all-security
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
+An opt-in feature is on only when a list names it: `all`, `all-…`, and a value that is not
+set or empty leave it off, with or without an upgrade.
+
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:
 
 ```text
 environment variable QORY_FEATURES is not valid: unknown feature obsevability; the Install guide at /docs lists the features.
-Leave it unset or set it to all for every feature, or name them, for example:
+Leave it unset or set it to all for the default features, or name them, for example:
 QORY_FEATURES=observability
 ```
 
@@ -326,7 +329,7 @@ since an address is not kept longer than its entry. The values are read at boot,
 change takes a restart. A shorter period deletes or clears what it no longer keeps at the
 next day's job; setting it longer again does not bring it back.
 
-<!-- feature: security -->
+<!-- feature: secrets -->
 ### Integrations
 
 | Variable | Required or default | Meaning and accepted values |

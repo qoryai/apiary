@@ -116,9 +116,11 @@ It encrypts what the database holds secret:
 Nothing else in the database is encrypted with it. The integrity codes some rows carry
 are keyed by it too: a row changed outside the application no longer matches its code.
 
+<!-- feature: secrets -->
 **Losing `APIARY_ENCRYPTION_SECRET` loses every stored secret value.** There is no other
 copy and no way to recover them: each value has to be entered again, in the workspace's
 secrets, from wherever it came from.
+<!-- /feature -->
 
 Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity
 code verifies either, so the instance trusts none of them: every signed request of a runner
