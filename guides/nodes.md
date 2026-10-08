@@ -229,9 +229,11 @@ filter, or **Node** in the Filter menu, keeps a node's runs alone.
 **Revoke…** on an active key's card revokes it at once: the machine's next request is
 refused, `401`, and it starts no new run. Its public key can never be used again. To move a
 machine to a new key without a gap, give it the new key first, under **Add a key**, and
-revoke the old one once the machine uses the new one. On a machine that already has a key,
-add `--replace`: `qory access-key enrol --replace <server> <code>`. The old key stays in
-use until the new one is active; then revoke the old key on the node's page.
+revoke the old one once the machine uses the new one. For a node that has or had a key,
+the command page adds `--replace` by itself, so a machine that already has a key moves to
+the new one; you add it only when you type the command yourself:
+`qory access-key enrol --replace <server> <code>`. The old key stays in use until the new
+one is active; then revoke the old key on the node's page.
 
 Deleting a node revokes its keys and cancels a command not yet run. Suspending a member
 revokes nothing: a key belongs to its node, not to the person who added it, so revoke the

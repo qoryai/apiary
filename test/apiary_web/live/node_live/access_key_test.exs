@@ -91,7 +91,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     lv |> element("#code-new-button") |> render_click()
     assert_patch(lv, tab_path(scope, node, "/new-code"))
     command = lv |> element("#code-issued-command") |> render() |> text() |> String.trim()
-    ["qory", "access-key", "enrol", _server, code] = String.split(command, " ")
+    ["qory", "access-key", "enrol" | rest] = String.split(command, " ")
+    [_server, code] = rest -- ["--replace"]
     code
   end
 
@@ -675,6 +676,44 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       refute html =~ code
       refute has_element?(lv, "#code-issued")
+    end
+
+    test "carries --replace for a node or a pool that has or had a key, and says what it does",
+         %{conn: conn, scope: scope} do
+      server = ApiaryWeb.Endpoint.url()
+
+      # The command shown and copied, and the line under it, if any.
+      shown = fn node ->
+        {:ok, lv, _html} = live(conn, tab_path(scope, node))
+        code = get_command(lv, scope, node)
+        command = lv |> element("#code-issued-command") |> render() |> text() |> String.trim()
+        assert has_element?(lv, ~s{#code-issued-command-copy[data-copy="#{command}"]})
+        line = if has_element?(lv, "#code-issued-replace"), do: words(lv, "#code-issued-replace")
+        {command, code, line}
+      end
+
+      for {kind, name} <- [{"node", "build-02"}, {"pool", "spot-runners"}] do
+        node = node_fixture(scope, name: name, kind: kind)
+
+        # Never a key: the plain command, no line; a code waiting unused changes nothing.
+        for _ <- 1..2 do
+          {command, code, line} = shown.(node)
+          assert command == "qory access-key enrol #{server} #{code}"
+          assert line == nil
+        end
+
+        %{access_key: key} = access_key_fixture(scope, node: node)
+        {command, code, line} = shown.(node)
+        assert command == "qory access-key enrol --replace #{server} #{code}"
+
+        assert line ==
+                 "It moves #{name} to a new key. The old key keeps working until you revoke it on the Access key tab."
+
+        {:ok, _revoked} = AccessKeys.revoke_access_key(scope, key)
+        {command, code, line} = shown.(node)
+        assert command == "qory access-key enrol --replace #{server} #{code}"
+        assert line == "It moves #{name} to a new key."
+      end
     end
 
     test "a crafted Get the command asks nothing: stored secrets stay not allowed", %{

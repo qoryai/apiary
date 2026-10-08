@@ -829,6 +829,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp command_title(node), do: gettext("Connect %{name} with a command", name: node.name)
 
+  # Under the command of a node that has or had a key, which carries `--replace`: what it
+  # does, and, while a key is active, that the old one works until it is revoked.
+  defp replace_line(keys, node) do
+    if Enum.any?(keys, &is_nil(&1.revoked_at)),
+      do:
+        gettext(
+          "It moves %{name} to a new key. The old key keeps working until you revoke it on the Access key tab.",
+          name: node.name
+        ),
+      else: gettext("It moves %{name} to a new key.", name: node.name)
+  end
+
   defp values_title(node), do: gettext("Key for %{name}", name: node.name)
 
   defp runner_file_title(key), do: gettext("Runner file for %{label}", label: key.label)
@@ -1078,11 +1090,16 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   <div tabindex="-1" phx-mounted={JS.focus(to: "#code-issued-command")}>
                     <.code_block
                       id="code-issued-command"
-                      code={NodeComponents.enrol_command(@server, @issued.code.())}
+                      code={
+                        NodeComponents.enrol_command(@server, @issued.code.(), replace: @keys != [])
+                      }
                       copy_label={gettext("Copy command")}
                       wrap
                     />
                   </div>
+                  <p :if={@keys != []} id="code-issued-replace" class="text-[13px]/5">
+                    {replace_line(@keys, @node)}
+                  </p>
                 </div>
                 <.listening id="code-issued-waiting">
                   {gettext("Waiting for %{name} to run it. This page shows when it is connected.",

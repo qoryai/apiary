@@ -673,7 +673,20 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     assigns =
       assign(assigns,
         command:
-          "qory access-key enrol https://apiary.example.com qec_" <> code_of(assigns.node.id),
+          "qory access-key enrol " <>
+            if(assigns.node.keys != [], do: "--replace ", else: "") <>
+            "https://apiary.example.com qec_" <> code_of(assigns.node.id),
+        replace:
+          cond do
+            Enum.any?(assigns.node.keys, &(&1.state == :active)) ->
+              "It moves #{assigns.node.name} to a new key. The old key keeps working until you revoke it on the Access key tab."
+
+            assigns.node.keys != [] ->
+              "It moves #{assigns.node.name} to a new key."
+
+            true ->
+              nil
+          end,
         until: DateTime.add(DateTime.utc_now(), 15 * 60),
         next:
           if(assigns.node.id == "build_01",
@@ -693,6 +706,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
 
       <p class="text-[13px]/5">On {@node.name}, run:</p>
       <.code_block id="command" code={@command} copy_label="Copy command" wrap />
+      <p :if={@replace} class="text-[13px]/5">{@replace}</p>
       <.listening id="command-waiting">
         Waiting for {@node.name} to run it. This page shows when it is connected.
       </.listening>

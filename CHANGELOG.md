@@ -74,7 +74,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   secrets yet. Connect with a command: Get the command makes, in one click, a
   single-use code valid for 15 minutes, and the page Connect build-01 with a command
   shows it, once, only inside the command `qory access-key enrol <server> <code>`, with
-  the time it stops working; the machine makes its key, keeps its secret and posts the
+  `--replace` for a node that has or had a key, saying it moves the node to a new key,
+  and the time it stops working; the machine makes its key, keeps its secret and posts the
   code with the new public key to `POST /.well-known/qory-enrolment`, which answers
   signed, and qory names the key after the machine's host name. The page turns, live,
   to "build-01 is connected." with the key's fingerprint, and says when the server's

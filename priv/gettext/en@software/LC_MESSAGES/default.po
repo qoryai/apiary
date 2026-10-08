@@ -6067,6 +6067,16 @@ msgstr ""
 msgid "It may have been accepted already, revoked, or it expired after seven days. Ask the person who invited you to send a new one."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "It moves %{name} to a new key."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "It moves %{name} to a new key. The old key keeps working until you revoke it on the Access key tab."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "It needs one of: %{ids}."

@@ -905,7 +905,12 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   enrolment code at once, with defaults: Stored secrets Not allowed and no label hint, so
   qory names the key after the machine's host name; there is no form. The page shows the
   whole command, `qory access-key enrol https://apiary.example.com` and the code, wrapped,
-  with one Copy command, then "It works once, until 14:32, 15 minutes from when you got
+  with one Copy command. For a node or pool that has or had a key, the command carries
+  `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code),
+  shown and copied alike, with the line "It moves build-01 to a new key. The old key keeps
+  working until you revoke it on the Access key tab." under it while a key is active, or
+  "It moves build-01 to a new key." alone once every key is revoked; a code waiting
+  unused does not count. Then "It works once, until 14:32, 15 minutes from when you got
   it. This is the only time it is shown." and "Waiting for build-01 to run it. This page
   shows when it is connected." The code is never shown on its own, and the page never
   names it. When the machine runs the command, the page turns, live, to "build-01 is

@@ -6,7 +6,7 @@ defmodule ApiaryWeb.NodeComponents do
   (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings. And
   what the two places that give a person the command that connects a machine share, the
   Access key tab's command page and the workspace overview's first-run box: the command
-  (`enrol_command/2`), and the notice that machines can't reach a loopback address
+  (`enrol_command/3`), and the notice that machines can't reach a loopback address
   (`unreachable_server/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
@@ -160,13 +160,18 @@ defmodule ApiaryWeb.NodeComponents do
   end
 
   @doc """
-  enrol_command/2 is the command that connects a machine: `qory access-key enrol`, this
+  enrol_command/3 is the command that connects a machine: `qory access-key enrol`, this
   server's address and the code as the machine sends it. Only a page that shows the
-  command once calls it, with the code it holds.
+  command once calls it, with the code it holds. With `replace: true`, for a node that has
+  or had a key, it carries `--replace`, so that a machine already holding a key moves to
+  the new one; qory enrols a machine without a key with it all the same.
   """
-  @spec enrol_command(String.t(), String.t()) :: String.t()
-  def enrol_command(server, code) when is_binary(server) and is_binary(code),
-    do: "qory access-key enrol #{server} #{code}"
+  @spec enrol_command(String.t(), String.t(), [{:replace, boolean}]) :: String.t()
+  def enrol_command(server, code, opts \\ []) when is_binary(server) and is_binary(code) do
+    if Keyword.get(opts, :replace, false),
+      do: "qory access-key enrol --replace #{server} #{code}",
+      else: "qory access-key enrol #{server} #{code}"
+  end
 
   @doc """
   unreachable_server/1 is the notice a command's page shows when the server's address,
