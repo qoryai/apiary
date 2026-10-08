@@ -1,9 +1,9 @@
 # From nothing to a first run
 
-This page takes a machine with Docker and nothing else to a running Qory Apiary with one run on its
-runs page. It is a trial on one machine: the server is reached at `http://localhost:4100`,
-and emails are written to the log instead of being sent. For an installation other people
-sign in to, read [Install and configure](install.md) and the
+This page takes a machine with Docker and nothing else to a running Qory Apiary with one
+run on its runs page. It is a trial on one machine: Qory Apiary is reached at
+`http://localhost:4100`, and emails are written to the log instead of being sent. For an
+installation other people sign in to, read [Install and configure](install.md) and the
 [hosting checklist](hosting-checklist.md).
 
 You need Docker with the `docker compose` command, `git` and `openssl`. From step 5 on you
@@ -28,7 +28,7 @@ Generate four values:
 
 ```sh
 openssl rand -hex 24       # the database password
-openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least the server accepts
+openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least Qory Apiary accepts
 openssl rand -base64 32    # APIARY_ENCRYPTION_SECRET: 32 bytes in base64, 44 characters
 openssl rand -base64 32    # APIARY_SIGNING_SECRET: another 32 bytes, never the same value
 ```
@@ -86,7 +86,7 @@ The members of the object may come in another order, and the version is the rele
 Open `http://localhost:4100/users/register`. Under **Create your account**, enter an email
 address, `ada@qory.example` say, and the **Organisation name**, usually your company's,
 `Acme` say, and select **Create account**. No password is asked for:
-the server sends a link, and the page says where it went and that the link works for 15
+Qory Apiary sends a link, and the page says where it went and that the link works for 15
 minutes.
 
 With `MAIL_TO_LOG=true` the email is in the log of the `apiary` service. This prints the
@@ -208,11 +208,11 @@ The example is composed for the `claude` runtime, so that runtime's command has 
 installed on this machine and able to start a session. Arguments after `--` go to the
 runtime.
 
-Before the runtime starts, the runner fetches the server's configuration, signed with the
-machine's access key, checks the answer under the server's key it pinned, and sends a
-ping. If the server does not answer, or refuses the key, there is no run, and the error
+Before the runtime starts, the runner fetches Qory Apiary's configuration, signed with the
+machine's access key, checks the answer under Qory Apiary's key it pinned, and sends a
+ping. If Qory Apiary does not answer, or refuses the key, there is no run, and the error
 names the URL and the status. At the end of the run qory prints where its record is,
-`qory run: the record is in <folder>/<id>`. The record is written whatever the server
+`qory run: the record is in <folder>/<id>`. The record is written whatever Qory Apiary
 does, under `~/.local/state/qory/runs/`, or `$XDG_STATE_HOME/qory/runs/` when
 `XDG_STATE_HOME` is set to an absolute path, not in the directory.
 
@@ -237,6 +237,6 @@ version.
   [The security policy](security-policy.md) before the first rule: the first change takes
   over for every machine of the workspace.
 <!-- /feature -->
-- `qory run --local` records to files only and does not contact the server.
+- `qory run --local` records to files only and does not contact Qory Apiary.
 - To stop the trial: `docker compose down`. The database stays in the `postgres-data`
   volume; `docker compose down --volumes` deletes it.
