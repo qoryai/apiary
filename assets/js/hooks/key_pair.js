@@ -8,7 +8,7 @@
 // key Qory stores is the JWK's `x`, the 32 raw bytes in base64url. Neither is re-encoded.
 //
 // Only the public key ever leaves this file: `generate` pushes the one event
-// `generate_key` with `{key: {label, allow_secrets, public_key}}`, and hands the secret
+// `generate_key` with `{key: {label, public_key}}`, and hands the secret
 // back to its caller alone, which shows it once and drops it. Nothing here logs, stores
 // or puts a value in an error: a failure is a `KeyPairError` whose `kind` says which, and
 // it carries no other value (no `cause`).
@@ -98,16 +98,15 @@ async function encode(subtle) {
 }
 
 // Makes a key and pushes the one event that registers it, `push(EVENT, {key: {label,
-// allow_secrets, public_key}})`, exactly once, with strings only. Answers `{secret,
+// public_key}})`, exactly once, with strings only. Answers `{secret,
 // publicKey, reply}`, `reply` being what `push` returned (LiveView's promise of the
 // server's reply), not awaited: the caller holds the secret before any reply can arrive.
 // A key that cannot be made is KeyPairError("unsupported"), and nothing is pushed.
-export async function generate({subtle, label, allowSecrets, push}) {
+export async function generate({subtle, label, push}) {
   const {secret, publicKey} = await makeKey(subtle)
   const reply = push(EVENT, {
     key: {
       label: String(label ?? ""),
-      allow_secrets: String(allowSecrets ?? ""),
       public_key: publicKey,
     },
   })

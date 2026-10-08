@@ -249,22 +249,23 @@ defmodule ApiaryWeb.RefusalsRows do
       # opened is refused by the context".
       {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "generate_key",
        %{
-         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }},
       {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key",
        "generate_key",
        %{
-         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }},
       {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
        "generate_key",
        %{
-         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }},
+      # Get the command, on the tab: one click, no form.
       {:"access_key.create_code", :member, "/:org/:workspace/nodes/:node/access-key",
-       "create_code", %{"code" => %{}}},
-      {:"access_key.create_code", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}}},
+       "create_code", %{}},
+      {:"access_key.create_code", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
+       "create_code", %{}},
       {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
       {:"access_key.revoke", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
@@ -276,11 +277,10 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/generate",
        "generate_key",
        %{
-         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
        }, answer: :not_found_at_mount},
-      {:"access_key.create_code", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}},
-       answer: :not_found_at_mount},
+      {:"access_key.create_code", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key",
+       "create_code", %{}, answer: :not_found_at_mount},
       {:"access_key.cancel_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
        answer: :not_found_at_mount},

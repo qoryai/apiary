@@ -13,8 +13,8 @@
 // - Generate key: the hook takes the form's submit (`#key-generate-form`, which has a
 //   `phx-change` and no `phx-submit`), and keeps it from LiveView too, which would submit
 //   such a form natively. It turns the button off and busy (its "Generating", from the
-//   server's render), makes the key, and pushes `generate_key` with the label, the Stored
-//   secrets choice and the public key: never the secret.
+//   server's render), makes the key, and pushes `generate_key` with the label and the
+//   public key: never the secret.
 // - It holds `{secret, publicKey}` until the secret's slot shows,
 //   `[data-secret-slot][data-public-key]` (a `phx-update="ignore"` whose ids are the
 //   key's), and writes it there only if the slot's public key is its own: with
@@ -128,7 +128,6 @@ export const GenerateKey = {
       made = await generate({
         subtle: window.crypto.subtle,
         label: this.field(form, "label"),
-        allowSecrets: this.field(form, "allow_secrets"),
         push: (event, payload) => this.pushEvent(event, payload),
       })
     } catch (e) {

@@ -3,8 +3,11 @@ defmodule ApiaryWeb.NodeComponents do
   What the Nodes list and a node's page say alike (`docs/ui.md`, Nodes): a node's state in
   words, from what it is doing (`Apiary.Nodes.activity/3`), and the sentence that says what
   an instance is. And what a node's page's two LiveViews share: its header
-  (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings; and
-  an enrolment code's expiry (`code_expiry/1`).
+  (`node_header/1`) and its tabs (`node_tabs/1`), Overview, Access key and Settings. And
+  what the two places that give a person the command that connects a machine share, the
+  Access key tab's command page and the workspace overview's first-run box: the command
+  (`enrol_command/2`), and the notice that machines can't reach a loopback address
+  (`unreachable_server/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
@@ -146,25 +149,60 @@ defmodule ApiaryWeb.NodeComponents do
   end
 
   @doc """
-  code_expiry/1 is an enrolment code's expiry, as a term and its description in a `<dl>`:
-  "Expires" and the moment, as the reader's clock writes it, or "Expired" once `now` is
-  past it. The description is the moment, or the page's own words (`inner_block`). The
-  term's id is the description's, then `-label`.
+  enrol_command/2 is the command that connects a machine: `qory access-key enrol`, this
+  server's address and the code as the machine sends it. Only a page that shows the
+  command once calls it, with the code it holds.
+  """
+  @spec enrol_command(String.t(), String.t()) :: String.t()
+  def enrol_command(server, code) when is_binary(server) and is_binary(code),
+    do: "qory access-key enrol #{server} #{code}"
+
+  @doc """
+  unreachable_server/1 is the notice a command's page shows when the server's address,
+  which the command carries, is a loopback one (`loopback?/1`): no other machine reaches
+  it, and `PUBLIC_URL` sets the one they use. Nothing where the address is any other.
   """
   attr :id, :string, required: true
-  attr :at, DateTime, required: true, doc: "when the code expires"
-  attr :now, DateTime, required: true, doc: "the moment the page last read the codes"
-  slot :inner_block, doc: "the description's words, where the moment alone does not do"
+  attr :url, :string, required: true, doc: "the server's address, as the command carries it"
 
-  def code_expiry(assigns) do
+  def unreachable_server(assigns) do
     ~H"""
-    <dt id={"#{@id}-label"} class="text-faint">
-      {if DateTime.after?(@at, @now), do: gettext("Expires"), else: gettext("Expired")}
-    </dt>
-    <dd id={@id}>
-      {if @inner_block == [], do: Format.datetime(@at), else: render_slot(@inner_block)}
-    </dd>
+    <div :if={loopback?(@url)} id={@id}>
+      <.notice kind={:warning}>
+        <strong>{gettext("Machines can't reach this address.")}</strong>
+        {gettext(
+          "%{url} works only on the computer Qory runs on. Set PUBLIC_URL to the address machines use, and the command will carry it.",
+          url: @url
+        )}
+      </.notice>
+    </div>
     """
+  end
+
+  @doc """
+  loopback?/1 is whether `url`'s host is one only the computer it names reaches:
+  `localhost`, a name under `.localhost`, or a loopback address, IPv4 (`127.0.0.0/8`), IPv6
+  (`::1`) or IPv4 mapped into IPv6.
+  """
+  @spec loopback?(String.t()) :: boolean
+  def loopback?(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{host: host} when is_binary(host) and host != "" ->
+        host = host |> String.downcase() |> String.trim_trailing(".")
+        host == "localhost" or String.ends_with?(host, ".localhost") or loopback_ip?(host)
+
+      _no_host ->
+        false
+    end
+  end
+
+  defp loopback_ip?(host) do
+    case :inet.parse_strict_address(String.to_charlist(host)) do
+      {:ok, {127, _, _, _}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0, 0, 1}} -> true
+      {:ok, {0, 0, 0, 0, 0, 0xFFFF, high, _low}} -> Bitwise.bsr(high, 8) == 127
+      _other -> false
+    end
   end
 
   @doc "kind_label/1 is a node's kind in a word or two: Node, Node pool."

@@ -25,18 +25,18 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     end)
   end
 
-  test "an enrolment code is in no log line: not the event's, nor the query's", %{
+  test "a command's code is in no log line: not the event's, nor the query's", %{
     conn: conn,
     scope: scope
   } do
     node = node_fixture(scope)
-    path = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key/new-code"
+    path = ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/access-key"
 
     {code, log} =
       with_log([level: :debug], fn ->
         {:ok, lv, _html} = live(conn, path)
-        lv |> form("#code-new-form", code: %{label_hint: "build-01"}) |> render_submit()
-        html = lv |> element("#code-issued-value") |> render()
+        lv |> element("#code-new-button") |> render_click()
+        html = lv |> element("#code-issued-command") |> render()
         [code] = Regex.run(~r/qec_[0-9A-Z]{26}/, html)
         render_click(element(lv, "#code-issued-done-button"))
         code
@@ -59,11 +59,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     } do
       node = node_fixture(scope)
 
-      key = %{
-        "label" => "ci",
-        "allow_secrets" => "false",
-        "public_key" => ed25519_key_pair().encoded
-      }
+      key = %{"label" => "ci", "public_key" => ed25519_key_pair().encoded}
 
       for event <- [
             %{"key" => Map.put(key, "secret", @secret)},
@@ -97,7 +93,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
       info =
         capture_log([level: :info], fn ->
           render_hook(lv, "generate_key", %{
-            "key" => %{"label" => "ci", "allow_secrets" => "true", "public_key" => pair.encoded}
+            "key" => %{"label" => "ci", "public_key" => pair.encoded}
           })
 
           render(lv)
@@ -117,7 +113,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
         end)
 
       assert debug =~ ~s(HANDLE EVENT "generate_key")
-      # Phoenix's name filter: the flag's name holds "secret".
+      # Phoenix's name filter: the flag's name holds "secret". A flag sent anyway is
+      # refused, and filtered from the line.
       assert debug =~ ~s("allow_secrets" => "[FILTERED]")
       refute debug =~ ~r/qak_/i
     end

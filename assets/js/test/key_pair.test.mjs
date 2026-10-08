@@ -113,7 +113,6 @@ test("generate pushes generate_key once, with the label, the choice and the publ
   const made = await generate({
     subtle: subtleWith({generateKey: async () => pair}),
     label: "build-01",
-    allowSecrets: "false",
     push,
   })
 
@@ -122,10 +121,9 @@ test("generate pushes generate_key once, with the label, the choice and the publ
   assert.equal(event, "generate_key")
   assert.equal(EVENT, "generate_key")
   assert.deepEqual(Object.keys(payload), ["key"])
-  assert.deepEqual(Object.keys(payload.key).sort(), ["allow_secrets", "label", "public_key"])
+  assert.deepEqual(Object.keys(payload.key).sort(), ["label", "public_key"])
   assert.deepEqual(payload.key, {
     label: "build-01",
-    allow_secrets: "false",
     public_key: FIXTURE.public_key,
   })
   for (const value of Object.values(payload.key)) assert.equal(typeof value, "string")
@@ -145,12 +143,11 @@ test("generate pushes generate_key once, with the label, the choice and the publ
 test("generate sends no secret for fresh keys either, and strings for whatever it is given", async () => {
   for (let i = 0; i < 10; i++) {
     const {calls, push} = recordingPush()
-    const made = await generate({subtle, label: "spot-runners", allowSecrets: true, push})
+    const made = await generate({subtle, label: "spot-runners", push})
 
     assert.equal(calls.length, 1)
     assert.deepEqual(calls[0].payload.key, {
       label: "spot-runners",
-      allow_secrets: "true",
       public_key: made.publicKey,
     })
     const seed = decodeBase64url(made.secret.slice("qak_".length))
@@ -256,7 +253,7 @@ test("a browser whose key fails a check is unsupported, says no value, and pushe
 
     const {calls, push} = recordingPush()
     await assert.rejects(
-      generate({subtle: brokenSubtle, label: "build-01", allowSecrets: "false", push}),
+      generate({subtle: brokenSubtle, label: "build-01", push}),
       KeyPairError,
     )
     assert.equal(calls.length, 0, why)
