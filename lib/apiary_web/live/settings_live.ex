@@ -16,7 +16,7 @@ defmodule ApiaryWeb.SettingsLive do
     events and their logs, and what the nightly job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
-  A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
+  A slug is shown, not edited. Deleting asks to type the
   slug, in place, never in a dialog, each at a path of its own: the organisation's and this
   workspace's in their danger zone's line, expanded on General
   (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`

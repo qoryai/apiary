@@ -80,8 +80,7 @@ defmodule Apiary.Connections do
   """
   @type refusal :: Access.reason() | Ecto.Changeset.t() | atom | {atom, term}
 
-  # A description may offer the tool way too, but no runner runs it yet, so a connection
-  # is used through its credential alone.
+  # Only the credential way is accepted; the tool way is refused.
   @ways ~w(credential)
 
   ## Reading

@@ -25,8 +25,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     end
   end
 
-  # The section without the two lines that name Qory Apiary: the subtitle's "Not Qory
-  # Apiary's own settings." and the not-yet line's "today Qory Apiary sends a run".
+  # The section without the line that names Qory Apiary: the subtitle's "Not Qory
+  # Apiary's own settings."
   defp without_qory_lines(section) do
     section
     |> String.replace("Not Qory Apiary&#39;s own settings.", "")
@@ -54,7 +54,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#settings-section-title", "Integrations")
     end
 
-    test "says once that runs don't use any of it yet, and never that they do",
+    test "says once that a run receives only its security policy, and never that runs get any of it",
          %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, ipath(scope))
 
@@ -165,7 +165,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       refute lv |> element("#add-group-agent") |> render() =~ "never holds"
     end
 
-    test "offers no card it can't add: no forge's own, no named release yet",
+    test "offers no card it can't add: no forge's own, no named release",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
       # The cards themselves; the Programs group's sentence names GitHub's token as an

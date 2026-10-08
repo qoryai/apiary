@@ -370,7 +370,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <%= case row do %>
           <% {:secret, secret} -> %>
             <span :if={Map.get(@uses, secret.id, []) == []} class="q-faint">
-              {gettext("Not used yet")}
+              {gettext("Not used")}
             </span>
             <span :if={Map.get(@uses, secret.id, []) != []}>
               {@uses |> Map.get(secret.id) |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")}

@@ -179,7 +179,7 @@ defmodule ApiaryWeb.PageComponentsTest do
         ~H|<.not_on_runs>A run receives only its security policy.</.not_on_runs>|
       )
 
-    assert text(html, "p#not-on-runs.q-not-yet") =~ "A run receives only its security policy."
+    assert text(html, "p#not-on-runs.q-not-on-runs") =~ "A run receives only its security policy."
 
     html =
       rendered_to_string(~H"""

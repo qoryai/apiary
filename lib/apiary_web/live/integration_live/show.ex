@@ -66,7 +66,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         <:description>
           {gettext("Choose a target of this workspace for it to apply to.")}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.form for={@find} id="find-target-form" phx-change="find" phx-submit="find" novalidate>
           <.input
             field={@find[:text]}
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
             source: @connection.source
           )}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <div :if={@version_problems != []} id="version-problems">
           <.notice kind={:error}>
             <p :for={problem <- @version_problems}>{problem}</p>
@@ -245,7 +245,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           </:tab>
         </.page_tabs>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.notice :if={!@connection.intact} kind={:error}>
           {gettext("%{name} fails its integrity check: its record is not as it was saved.",
             name: Common.label(@names)
@@ -391,13 +391,13 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         id="connection-tool-way"
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description also offers it as a tool (MCP), which no runner runs yet.")}
+        {gettext("Its description also offers it as a tool (MCP), which Qory Apiary does not use.")}
       </p>
       <p
         :if={!@description || "credential" not in @description.ways}
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description offers no way a runner runs yet.")}
+        {gettext("Its description offers no way a runner runs.")}
       </p>
     </SettingsComponents.part>
 

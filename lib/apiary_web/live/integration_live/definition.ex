@@ -63,7 +63,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             "A custom API says which hosts it is, how its secret is sent and which secrets it needs."
           )}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.form for={@form} id="definition-form" phx-submit="save" novalidate>
           <div class="grid gap-4">
             <%!-- What is wrong with the JSON is the field's error, which describes it and
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
           </.button>
         </:actions>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
 
         <p :if={@decoded["description"]} id="definition-about" class="max-w-[72ch] text-[13.5px]/5">
           {@decoded["description"]}

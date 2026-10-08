@@ -167,7 +167,7 @@ defmodule Apiary.Edition do
   Whether the scope's membership, at a level that does not reach every workspace
   (`every_workspace_levels/0`), reaches the workspace `workspace_id`, as the scope carries
   it: from what `reach/1`, `reached_workspaces/2` and `reload/2` put on it, without a
-  read. `opts` is for later use.
+  read. `opts` is ignored.
   """
   @callback reaches_workspace?(Scope.t(), workspace_id :: Ecto.UUID.t(), keyword) :: boolean
 

@@ -68,7 +68,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
           </span>
         </:subtitle>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
 
         <%!-- What the poll finds, said once it changes: the release fetched, then read. A
              failure says itself, as an alert. --%>
@@ -171,10 +171,10 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd id="release-ways">
           <span :if={"credential" in @description.ways}>{gettext("Calls its API")}</span>
           <span :if={"tool" in @description.ways} class="text-muted">
-            {gettext("Also a tool (MCP), which no runner runs yet")}
+            {gettext("Also a tool (MCP), which Qory Apiary does not use")}
           </span>
           <span :if={"credential" not in @description.ways} class="text-muted">
-            {gettext("No way a runner runs yet")}
+            {gettext("No way a runner runs")}
           </span>
         </dd>
         <dt class="text-faint">{gettext("Secrets")}</dt>

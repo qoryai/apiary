@@ -67,7 +67,7 @@ defmodule Apiary.Accounts.Preferences do
   @spec default_skin() :: String.t()
   def default_skin, do: @default_skin
 
-  @doc "The skins a person may have: the standard one, until the apiary skin is built."
+  @doc "The skins a person may have: the standard one."
   @spec skins() :: [String.t()]
   def skins, do: @skins
 

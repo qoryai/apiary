@@ -270,8 +270,8 @@ defmodule ApiaryWeb.PageComponents do
 
   def not_on_runs(assigns) do
     ~H"""
-    <p id={@id} class={["q-not-yet", @class]}>
-      <.icon name="hero-information-circle-micro" class="q-not-yet-i size-4" />
+    <p id={@id} class={["q-not-on-runs", @class]}>
+      <.icon name="hero-information-circle-micro" class="q-not-on-runs-i size-4" />
       <span>{render_slot(@inner_block)}</span>
     </p>
     """

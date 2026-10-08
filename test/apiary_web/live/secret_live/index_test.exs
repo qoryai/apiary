@@ -255,7 +255,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert reveal(scope, secret) == {:ok, @value}
       assert has_element?(lv, "#secret-#{secret.public_id}", "FORGE_TOKEN")
       assert has_element?(lv, "#secret-#{secret.public_id}", "One value")
-      assert has_element?(lv, "#secret-#{secret.public_id}", "Not used yet")
+      assert has_element?(lv, "#secret-#{secret.public_id}", "Not used")
 
       # Opened again, the field is empty.
       lv |> element("#new-secret") |> render_click()

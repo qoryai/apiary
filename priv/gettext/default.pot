@@ -3008,7 +3008,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
-msgid "Also a tool (MCP), which no runner runs yet"
+msgid "Also a tool (MCP), which Qory Apiary does not use"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6144,12 +6144,12 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Its description also offers it as a tool (MCP), which no runner runs yet."
+msgid "Its description also offers it as a tool (MCP), which Qory Apiary does not use."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Its description offers no way a runner runs yet."
+msgid "Its description offers no way a runner runs."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -7681,7 +7681,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
-msgid "No way a runner runs yet"
+msgid "No way a runner runs"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -7935,7 +7935,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Not used yet"
+msgid "Not used"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

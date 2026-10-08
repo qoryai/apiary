@@ -1476,7 +1476,7 @@ defmodule ApiaryWeb.RunLive.Index do
   end
 
   # The section's headings: the family's checkbox reads its label and is named for a screen
-  # reader as the sentence of the brief ("Every alive state").
+  # reader as a sentence ("Every alive state").
   defp state_groups do
     for family <- Filters.families() do
       %{

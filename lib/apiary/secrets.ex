@@ -31,7 +31,7 @@ defmodule Apiary.Secrets do
   Reading the secrets, their names, notes and value ids, is `secret.read`, every member;
   every change is `secret.write`, owners and admins, asked of the workspace for a new
   secret and of the secret for a change to it. Linking a secret to what uses it is
-  `secret.use`, which the piece that links asks. Every change leaves one `secret.write`
+  `secret.use`. Every change leaves one `secret.write`
   entry in the audit trail, in its transaction, the secret its subject, with
   `details.change` saying what: `created`, `updated`, `value_set`, `value_added`,
   `value_renamed`, `value_deleted` or `deleted`, and the names and value ids it touched.

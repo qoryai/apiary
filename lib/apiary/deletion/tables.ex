@@ -1,7 +1,7 @@
 defmodule Apiary.Deletion.Tables do
   @moduledoc """
   Every table that holds an organisation's rows, in the order the purge of an organisation
-  or a workspace deletes them (`Apiary.Deletion`), and that an export will take.
+  or a workspace deletes them (`Apiary.Deletion`).
 
   A table is on the list when it has an `organisation_id` column, and every one that has
   is; the test compares the list with the database's schema (`Apiary.Deletion.TablesCase`),

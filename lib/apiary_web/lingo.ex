@@ -6,9 +6,9 @@ defmodule ApiaryWeb.Lingo do
   them for one kind of work. Every visible sentence goes through Gettext with its
   source text in engine words, and a domain is a Gettext locale in GNU's
   `language@modifier` form: `en@software` is English in the software domain's words
-  (repository, forge, pull request, merge, workspace). A later `de@software` would be
-  German for the same domain: it holds only the sentences in the domain's words and falls
-  back to the language's catalogue, `de`, for the rest (`ApiaryWeb.Gettext.Fallback`).
+  (repository, forge, pull request, merge, workspace). A domain's catalogue holds only the
+  sentences in the domain's words and falls back to the language's catalogue for the rest
+  (`ApiaryWeb.Gettext.Fallback`).
   `docs/lingo.md` has the conventions.
 
   The locale is built from two things, kept apart: the **language** is the person's

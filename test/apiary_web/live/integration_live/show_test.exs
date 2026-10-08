@@ -98,7 +98,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-publisher", "Acme")
       assert has_element?(lv, "#connection-publisher", "github.com/acme")
       assert has_element?(lv, "#connection-ways", "Calls its API.")
-      assert has_element?(lv, "#connection-tool-way", "which no runner runs yet")
+      assert has_element?(lv, "#connection-tool-way", "which Qory Apiary does not use")
       assert has_element?(lv, "#connection-roles", "credential, tool, work_source")
       assert has_element?(lv, "#connection-plain-settings", "https://tracker.example.com")
       assert has_element?(lv, "#settings-section-title", "Acme tracker")
