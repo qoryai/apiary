@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.IntegrationLive.Definition do
   @moduledoc """
   The workspace's own custom APIs, its service definitions in `Apiary.Connections`' words,
-  under Workspace settings › Integrations, with the `security` feature: New custom API
+  under Workspace settings › Integrations, with the `secrets` feature: New custom API
   (`…/definitions/new`), one custom API (`…/definitions/:id`, its public id `svc_…`) with
   where it is set up, the APIs set up from it, its edit (`…/edit`), a page, and its
   deletion (`…/delete`), confirmed in place in its danger zone and refused while an API is
@@ -11,10 +11,10 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   key, title, description, hosts, paths, auth and declared secrets. The page calls
   `Apiary.Connections.get_service_definition/2`, `create_service_definition/2`,
   `update_service_definition/3`, `delete_service_definition/2` and `list_connections/1`.
-  No run receives an API yet, and the page says so once.
+  The page says once that a run receives only its security policy.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.Connections
@@ -63,7 +63,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
             "A custom API says which hosts it is, how its secret is sent and which secrets it needs."
           )}
         </:description>
-        <Common.not_yet />
+        <Common.not_on_runs />
         <.form for={@form} id="definition-form" phx-submit="save" novalidate>
           <div class="grid gap-4">
             <%!-- What is wrong with the JSON is the field's error, which describes it and
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
           </.button>
         </:actions>
 
-        <Common.not_yet />
+        <Common.not_on_runs />
 
         <p :if={@decoded["description"]} id="definition-about" class="max-w-[72ch] text-[13.5px]/5">
           {@decoded["description"]}

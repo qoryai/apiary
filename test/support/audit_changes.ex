@@ -59,8 +59,6 @@ defmodule Apiary.AuditChanges do
       :"access_key.create_code",
       :"access_key.cancel_code",
       :"access_key.add",
-      :"access_key.approve",
-      :"access_key.reject",
       :"access_key.revoke",
       :"node.create",
       :"node.edit",
@@ -223,20 +221,6 @@ defmodule Apiary.AuditChanges do
     node = node_fixture(scope)
     before = entries()
     %{access_key: key} = node_key_fixture(scope, node)
-    %{scope: scope, subject: {"access_key", key.id}, before: before}
-  end
-
-  def make(:"access_key.approve", %{scope: scope}) do
-    %{access_key: key} = pending_key_fixture(scope, node_fixture(scope))
-    before = entries()
-    {:ok, _} = AccessKeys.approve(scope, key)
-    %{scope: scope, subject: {"access_key", key.id}, before: before}
-  end
-
-  def make(:"access_key.reject", %{scope: scope}) do
-    %{access_key: key} = pending_key_fixture(scope, node_fixture(scope))
-    before = entries()
-    {:ok, _} = AccessKeys.reject(scope, key)
     %{scope: scope, subject: {"access_key", key.id}, before: before}
   end
 
@@ -458,10 +442,6 @@ defmodule Apiary.AuditChanges do
 
   defp prepare(:"access_key.add", %{scope: scope}), do: node_fixture(scope)
 
-  defp prepare(action, %{scope: scope})
-       when action in [:"access_key.approve", :"access_key.reject"],
-       do: pending_key_fixture(scope, node_fixture(scope)).access_key
-
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
@@ -551,9 +531,6 @@ defmodule Apiary.AuditChanges do
         label: "build-01",
         public_key: ed25519_key_pair().encoded
       })
-
-  defp attempt(:"access_key.approve", scope, key), do: AccessKeys.approve(scope, key)
-  defp attempt(:"access_key.reject", scope, key), do: AccessKeys.reject(scope, key)
 
   defp attempt(:"node.create", scope, _),
     do: Nodes.create_node(scope, %{kind: "node", name: "build-01"})

@@ -124,7 +124,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
       <span id="connections-error">
         {gettext(
-          "The connections could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+          "The connections could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
         )}
       </span>
     </.notice>

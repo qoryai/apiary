@@ -173,15 +173,25 @@ defmodule ApiaryWeb.Routes do
         get "/run-configuration", RunConfigurationController, :show
       end
 
-      # LiveDashboard and the Swoosh mailbox preview, in development only.
+      # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
+      # and styles carry the request's nonce (`ApiaryWeb.ContentSecurityPolicy`), and they
+      # may frame their own pages, as the mailbox frames a message.
       if Application.compile_env(:apiary, :dev_routes) do
         import Phoenix.LiveDashboard.Router
 
-        scope "/dev" do
-          pipe_through :browser
+        pipeline :dev_tools do
+          plug ApiaryWeb.ContentSecurityPolicy, allow_frames: :self
+        end
 
-          live_dashboard "/dashboard", metrics: ApiaryWeb.Telemetry
-          forward "/mailbox", Plug.Swoosh.MailboxPreview
+        scope "/dev" do
+          pipe_through [:browser, :dev_tools]
+
+          live_dashboard "/dashboard",
+            metrics: ApiaryWeb.Telemetry,
+            csp_nonce_assign_key: :csp_nonce
+
+          forward "/mailbox", Plug.Swoosh.MailboxPreview,
+            csp_nonce_assign_key: %{script: :csp_nonce, style: :csp_nonce}
         end
       end
     end
@@ -201,6 +211,16 @@ defmodule ApiaryWeb.Routes do
         if Application.compile_env(:apiary, :dev_routes) do
           import PhoenixStorybook.Router
 
+          # The library's own pipeline, and the storybook may frame its own pages (a story
+          # in an iframe container); its scripts carry the request's nonce
+          # (`ApiaryWeb.ContentSecurityPolicy`).
+          pipeline :storybook_browser do
+            plug :accepts, ["html"]
+            plug :fetch_session
+            plug :protect_from_forgery
+            plug ApiaryWeb.ContentSecurityPolicy, allow_frames: :self
+          end
+
           scope "/" do
             storybook_assets("/dev/storybook/assets")
           end
@@ -208,7 +228,9 @@ defmodule ApiaryWeb.Routes do
           scope "/" do
             live_storybook("/dev/storybook",
               backend_module: ApiaryWeb.Storybook,
-              assets_path: "/dev/storybook/assets"
+              assets_path: "/dev/storybook/assets",
+              pipeline: false,
+              csp_nonce_assign_key: :csp_nonce
             )
           end
         end
@@ -437,25 +459,23 @@ defmodule ApiaryWeb.Routes do
               live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
               live "/nodes/:node_id/settings", NodeLive.Show, :settings
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
-              # A node's Access key tab: its keys and its outstanding enrolment codes; adding
-              # a key by its public key and making a code, each a page of its own; and each
-              # act on a key or a code confirmed in place, at a path of its own; and an
-              # approved key's runner file, a page of its own. A key is named by its key id
-              # (`ak_…`), a code by its row's id: never by the code.
+              # A node's Access key tab: its keys and its outstanding enrolment codes;
+              # generating a key in the browser and making a code, each a page of its own; and each act on a key or a code confirmed in place,
+              # at a path of its own; an active key's runner file, and the variables of a
+              # key just made in the browser, each a page of its own. A key is named by its
+              # key id (`ak_…`), a code by its row's id: never by the code, nor a secret.
               live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
-              live "/nodes/:node_id/access-key/add", NodeLive.AccessKey, :add_key
+              live "/nodes/:node_id/access-key/generate", NodeLive.AccessKey, :generate
               live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
-
-              live "/nodes/:node_id/access-key/keys/:key_id/approve",
-                   NodeLive.AccessKey,
-                   :approve
-
-              live "/nodes/:node_id/access-key/keys/:key_id/reject", NodeLive.AccessKey, :reject
               live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
 
               live "/nodes/:node_id/access-key/keys/:key_id/runner-file",
                    NodeLive.AccessKey,
                    :runner_file
+
+              live "/nodes/:node_id/access-key/keys/:key_id/generated",
+                   NodeLive.AccessKey,
+                   :generated
 
               live "/nodes/:node_id/access-key/codes/:code_id/revoke",
                    NodeLive.AccessKey,
@@ -482,7 +502,7 @@ defmodule ApiaryWeb.Routes do
               live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
               # The stored secrets and the variables, one section of two views, with the
-              # `security` feature; each form a page and each confirmation on its row, at
+              # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
               # its value id; the one value without a value id is the secret's
               # `change-value`.
@@ -513,7 +533,7 @@ defmodule ApiaryWeb.Routes do
               live "/settings/variables/:id/delete", SecretLive.Index, :delete_variable
               live "/settings/variables/:id/targets", SecretLive.Index, :variable_targets
               # The runtimes, integrations and services set up in the workspace, and its
-              # own service definitions, with the `security` feature: the list and its
+              # own service definitions, with the `secrets` feature: the list and its
               # forms; a release asked for, by its id, before it is added; a service
               # definition by its public id (`svc_…`); and one runtime, integration or
               # service by its public id (`con_…`), its tabs and acts after it. The fixed

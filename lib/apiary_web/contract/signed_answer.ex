@@ -9,17 +9,20 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
     * `X-Qory-Signature-Ed25519`, the Ed25519 signature under the instance's signing key
       (`Apiary.SigningKey`), 64 bytes in base64url without padding, of the answer string
       (`Apiary.Contract.SignedMessage.answer/5`): the status, the request's
-      `X-Qory-Signature-Ed25519` exactly as sent (or an enrolment's `proof`), the SHA-256
-      of the body as sent, and the answer's `X-Qory-Configuration` and
-      `X-Qory-Run-Configuration`, each empty when the answer has none;
+      `X-Qory-Signature-Ed25519` exactly as sent, the SHA-256 of the body as sent, and
+      the answer's `X-Qory-Configuration` and `X-Qory-Run-Configuration`, each empty when
+      the answer has none; or, for an answer to an enrolment, of the enrolment answer
+      string (`Apiary.Contract.SignedMessage.enrolment_answer/3`), under its own domain
+      line, with the request's `proof` in place of a signature;
     * `Cache-Control: no-store, no-transform`, so no cache keeps the answer and no proxy
       re-codes the body the signature covers.
 
   `register/2` is how a verified request's answer is signed: it registers a callback that
   signs the answer as it is sent, from the status, body and digest headers the answer
   has by then, so a controller writes its answer as any other and the signature covers
-  exactly what goes out. `put/3` signs an answer already written but not yet sent, for a
-  caller that binds it to something other than a request signature.
+  exactly what goes out. `put_enrolment/3` signs an answer to an enrolment, written but
+  not yet sent, bound to its proof: a function of its own, so an enrolment answer is never
+  signed under the request answers' domain line.
 
   Nothing here logs, and no error message carries a signature or a key.
   """
@@ -49,15 +52,16 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
 
   @doc """
   put/3 sets the signature and `Cache-Control` of an answer whose status, body and digest
-  headers are set, bound to `bound_to` (a request's signature, or an enrolment's proof),
-  under `key`, the instance's key unless given.
+  headers are set, bound to `request_signature`, the signed request's
+  `X-Qory-Signature-Ed25519` as sent, under `key`, the instance's key unless given.
   """
   @spec put(Plug.Conn.t(), String.t(), SigningKey.t() | nil) :: Plug.Conn.t()
-  def put(%Plug.Conn{} = conn, bound_to, key \\ nil) when is_binary(bound_to) do
+  def put(%Plug.Conn{} = conn, request_signature, key \\ nil)
+      when is_binary(request_signature) do
     {cache_control, signature} =
       headers(
         conn.status,
-        bound_to,
+        request_signature,
         conn.resp_body || "",
         single(conn, @configuration),
         single(conn, @run_configuration),
@@ -70,9 +74,26 @@ defmodule ApiaryWeb.Contract.SignedAnswer do
   end
 
   @doc """
+  put_enrolment/3 sets the signature and `Cache-Control` of an answer to an enrolment
+  whose status and body are set, bound to `proof`, the request's `proof` exactly as sent:
+  the signature, under `key`, the instance's key unless given, of the enrolment answer
+  string (`Apiary.Contract.SignedMessage.enrolment_answer/3`).
+  """
+  @spec put_enrolment(Plug.Conn.t(), String.t(), SigningKey.t() | nil) :: Plug.Conn.t()
+  def put_enrolment(%Plug.Conn{} = conn, proof, key \\ nil) when is_binary(proof) do
+    message = SignedMessage.enrolment_answer(conn.status, proof, conn.resp_body || "")
+    signature = Ed25519.encode(SigningKey.sign(key || SigningKey.current(), message))
+
+    conn
+    |> put_resp_header("cache-control", @cache_control)
+    |> put_resp_header(@signature, signature)
+  end
+
+  @doc """
   headers/6 is the values of a signed answer's two headers, `{cache_control, signature}`,
-  for an answer with `status` and `body` bound to `bound_to`, carrying the digest headers
-  `configuration` and `run_configuration` (nil for one it does not carry), under `key`.
+  for an answer with `status` and `body` bound to `bound_to`, a signed request's
+  signature, carrying the digest headers `configuration` and `run_configuration` (nil for
+  one it does not carry), under `key`.
   """
   @spec headers(
           100..599,

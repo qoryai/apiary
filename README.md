@@ -2,14 +2,14 @@
 
 The control plane for coding agent runs.
 
-Every agent session runs behind a wall, reaches only what your policy allows, never holds
-your keys, and leaves a full record. Qory Apiary is the server your machines report to and
-the console you read. Open source, so you can check all of that.
+Every run of a connected machine reports to Qory Apiary: its session, terminal and every
+connection, with the decision and rule behind it. Qory Apiary is the server your machines report to and the
+console you read. Open source, so you can check all of that.
 
 - **The record.** Every run in one place: the session as a timeline, the terminal output,
   and every connection with the decision and the rule behind it.
-- **The wall.** A session's only way out is a proxy on its machine. Credentials stay
-  outside the container; the record names them and never holds them.
+- **The wall.** Behind the runner's wall a session's only way out is its proxy; each run's
+  record says whether it had a wall.
 - **The policy.** What runs may reach, versioned and edited in one place. A change reaches
   the runs in flight within about 30 seconds.
 
@@ -27,11 +27,13 @@ Sign up at `http://localhost:4100/users/register`; the trial writes the log-in l
 `docker compose logs apiary`. The first person to sign up creates the organisation and runs
 the instance, and everyone else joins by invitation.
 
-Then add a node under **Nodes**, make an enrolment code on it, run
-`qory access-key enrol <server> <code>` on the machine with the
-[`qory`](https://github.com/qoryai/qory) command, approve the key it brings, and start a
-run. It shows up under **Runs** while it runs. [The quickstart](guides/quickstart.md) walks
-through each step.
+Then add a node under **Nodes**, select **Get the command** on its **Access key** tab, run
+the command it gives, `qory access-key enrol <server> <code>`, on the machine, which needs
+the [`qory`](https://github.com/qoryai/qory) command, and start a run. The key the machine
+makes is active as soon as it arrives. For a CI or a node pool, **Generate a key** on the
+same tab makes the key in your browser and shows its secret once, for the CI's secret
+store. A run shows up under **Runs** while it runs. [The quickstart](guides/quickstart.md)
+walks through each step.
 
 ## Guides
 

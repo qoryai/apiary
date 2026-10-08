@@ -90,8 +90,8 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.term word="wall" standard="The enclosure the agent runs in." />
 
-  Not a way to show the apiary skin's words, apiary or hive: a page says organisation and
-  workspace through Gettext (`docs/lingo.md`).
+  Not a way to show a word such as apiary or hive: a page says organisation and workspace
+  through Gettext (`docs/lingo.md`).
   """
   attr :word, :string, required: true
   attr :standard, :string, required: true, doc: "the standard term, or what the word means"
@@ -198,9 +198,10 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  An inline notice: a soft fill, an icon, no close button.
+  An inline notice: a soft fill, an icon, no close button. `:success` says a thing the
+  reader waited for has happened.
   """
-  attr :kind, :atom, default: :info, values: [:info, :warning, :error]
+  attr :kind, :atom, default: :info, values: [:info, :warning, :error, :success]
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
@@ -213,6 +214,7 @@ defmodule ApiaryWeb.CoreComponents do
         @kind == :info && "bg-info-soft text-info-soft-content",
         @kind == :warning && "bg-primary-soft text-primary-soft-content",
         @kind == :error && "bg-error-soft text-error-soft-content",
+        @kind == :success && "bg-success-soft text-success-soft-content",
         @class
       ]}
     >
@@ -222,6 +224,7 @@ defmodule ApiaryWeb.CoreComponents do
             :info -> "hero-information-circle-micro"
             :warning -> "hero-exclamation-triangle-micro"
             :error -> "hero-exclamation-circle-micro"
+            :success -> "hero-check-circle-micro"
           end
         }
         class="mt-px size-4"
@@ -952,12 +955,13 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   A quiet line that says the page is waiting for something.
   """
+  attr :id, :string, default: nil
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
   def listening(assigns) do
     ~H"""
-    <p class={["flex items-center gap-2.5 text-[13px]/[18px] text-muted", @class]}>
+    <p id={@id} class={["flex items-center gap-2.5 text-[13px]/[18px] text-muted", @class]}>
       <span class="listening-dot mx-1" aria-hidden="true" />
       {render_slot(@inner_block)}
     </p>
@@ -1082,6 +1086,11 @@ defmodule ApiaryWeb.CoreComponents do
   attr :code, :string, required: true
   attr :label, :string, default: nil
   attr :copy_label, :string, default: nil, doc: "defaults to Copy block"
+
+  attr :wrap, :boolean,
+    default: false,
+    doc: "wraps long lines, breaking anywhere, instead of scrolling them: a command shown whole"
+
   attr :class, :any, default: nil
 
   def code_block(assigns) do
@@ -1104,7 +1113,10 @@ defmodule ApiaryWeb.CoreComponents do
       <pre
         id={@id}
         tabindex="0"
-        class="overflow-x-auto p-3.5 font-mono text-[12.5px]/5 [tab-size:2]"
+        class={[
+          "p-3.5 font-mono text-[12.5px]/5 [tab-size:2]",
+          if(@wrap, do: "whitespace-pre-wrap break-all", else: "overflow-x-auto")
+        ]}
       ><code>{@highlighted}</code></pre>
     </div>
     """
@@ -1294,6 +1306,8 @@ defmodule ApiaryWeb.CoreComponents do
   the focus as it shows, so Enter does not act by mistake; Escape cancels too. The group
   is named by its question and described by the sentence (`id`-sub), so a screen reader
   says what happens, "This cannot be undone." included, as Cancel takes the focus.
+  Where the act is itself a cancelling, `cancel_label` names the way back instead ("Keep
+  it"), so the two buttons don't both say cancel.
 
       <.inline_confirm id="secret-1-confirm" question="Delete FORGE_TOKEN?" cancel={@list}>
         The secret and its value are deleted. This cannot be undone.
@@ -1312,6 +1326,12 @@ defmodule ApiaryWeb.CoreComponents do
     doc: "where Cancel leads: a path to patch to, or a JS command"
 
   attr :class, :any, default: nil
+
+  attr :cancel_label, :string,
+    default: nil,
+    doc:
+      "the words of the button that leads back, where Cancel would be ambiguous; Cancel unless given"
+
   slot :inner_block, doc: "what happens, one or two short sentences"
   slot :action, required: true, doc: "the button that acts"
 
@@ -1348,7 +1368,7 @@ defmodule ApiaryWeb.CoreComponents do
           phx-click={@cancel_js}
           phx-mounted={JS.focus()}
         >
-          {gettext("Cancel")}
+          {@cancel_label || gettext("Cancel")}
         </button>
       </div>
     </div>
@@ -1395,8 +1415,11 @@ defmodule ApiaryWeb.CoreComponents do
   slot :inner_block
 
   def row_menu(assigns) do
+    assigns = assign(assigns, :items?, not blank_slot?(assigns.inner_block))
+
     ~H"""
     <div
+      :if={@items?}
       id={@id}
       class={["q-rowmenu dropdown dropdown-end", @class]}
       phx-hook="Menu"
@@ -1425,6 +1448,21 @@ defmodule ApiaryWeb.CoreComponents do
       </ul>
     </div>
     """
+  end
+
+  # Whether a slot renders nothing but whitespace: absent, or each of its items left out
+  # by its `:if`. It renders the slot on its own, apart from the template's render, so the
+  # menu's markup keeps its change tracking.
+  defp blank_slot?([]), do: true
+
+  defp blank_slot?(slot) do
+    assigns = %{slot: slot}
+
+    ~H"{render_slot(@slot)}"
+    |> Phoenix.HTML.Safe.to_iodata()
+    |> IO.iodata_to_binary()
+    |> String.trim()
+    |> Kernel.==("")
   end
 
   @doc """

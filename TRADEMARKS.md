@@ -1,8 +1,8 @@
 # Trademarks
 
-*Qory* is a trademark of 8wonders GmbH, and the one mark. Qory Apiary, the names of its
-editions ([EDITIONS.md](EDITIONS.md)) and Qory Cloud are products under that mark, not
-marks of their own. The Apache License, Version 2.0, grants no right to use it
+*Qory* is a trademark of 8wonders GmbH, and the one mark. Qory Apiary and the names of
+its editions ([EDITIONS.md](EDITIONS.md)) are products under that mark, not marks of their
+own. The Apache License, Version 2.0, grants no right to use it
 (section 6). This page says what you may do with it without asking.
 
 ## You may

@@ -9,7 +9,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
   alias Apiary.Connections
   alias Apiary.Integrations.Release
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   setup :register_and_log_in_user
 
@@ -25,12 +25,11 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     end
   end
 
-  # The section without the two lines that name Qory: the subtitle's "Not Qory's own
-  # settings." and the not-yet line's "today Qory sends a run".
+  # The section without the line that names Qory Apiary: the subtitle's "Not Qory
+  # Apiary's own settings."
   defp without_qory_lines(section) do
     section
-    |> String.replace("Not Qory&#39;s own settings.", "")
-    |> String.replace("today Qory sends a run", "")
+    |> String.replace("Not Qory Apiary&#39;s own settings.", "")
   end
 
   defp lv_section(html) do
@@ -55,15 +54,11 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#settings-section-title", "Integrations")
     end
 
-    test "says once that runs don't use any of it yet, and never that they do",
+    test "says once that a run receives only its security policy, and never that runs get any of it",
          %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, ipath(scope))
 
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Runs don't use any of this yet: today Qory sends a run only its security policy."
-             )
+      assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
 
       refute html =~ "applies to runs"
       refute html =~ "runs receive"
@@ -82,7 +77,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
-               "Runs start Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
+               "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
              )
 
       assert has_element?(lv, "#add-card-api-sentry h4", "Sentry")
@@ -91,7 +86,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-api-sentry",
-               "The agent may call Sentry's API on sentry.io, such as to read issues."
+               "Sentry's web API on sentry.io."
              )
 
       assert has_element?(lv, "#add-card-api-npm h4", "npm registry")
@@ -100,7 +95,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-api-npm",
-               "The agent may install and publish packages on registry.npmjs.org."
+               "The public npm registry on registry.npmjs.org."
              )
 
       assert has_element?(lv, "#add-card-release h4", "From a release…")
@@ -113,13 +108,13 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-custom-api",
-               "Describe another API the agent may call: its hosts and how its token is sent."
+               "Describe another API: its hosts and how its token is sent."
              )
 
       assert has_element?(lv, ~s(#new-definition[href="#{ipath(scope, "/definitions/new")}"]))
       assert has_element?(lv, "#new-definition", "New custom API")
 
-      # The cards in their groups, in order: the agent, the APIs the agent may call ending
+      # The cards in their groups, in order: the agent, the outside APIs ending
       # with Custom API…, then the programs ending with From a release….
       assert card_ids(lv) == %{
                "add-group-agent" => ["add-card-runtime-claude"],
@@ -132,7 +127,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
              }
     end
 
-    test "groups the cards under three headings, each its sentence and a list it names",
+    test "groups the cards under three headings, each its sentence where it has one and a list it names",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
 
@@ -146,15 +141,15 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert groups == ["add-group-agent", "add-group-apis", "add-group-programs"]
 
       for {id, heading, sentence} <- [
-            {"add-group-agent", "Agent",
-             "The coding agent a run starts in the repositories it applies to."},
-            {"add-group-apis", "APIs the agent may call",
-             "Outside APIs the agent reaches while it works. The runner adds the API's token to the agent's requests, so the agent never holds it."},
-            {"add-group-programs", "Programs",
-             "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's repositories."}
+            {"add-group-agent", "Agent", nil},
+            {"add-group-apis", "Outside APIs", nil},
+            {"add-group-programs", "Programs", "Programs added from a release."}
           ] do
         assert has_element?(lv, "##{id} h3##{id}-title", heading)
-        assert has_element?(lv, "##{id}-about", sentence)
+
+        if sentence,
+          do: assert(has_element?(lv, "##{id}-about", sentence)),
+          else: refute(has_element?(lv, "##{id}-about"))
 
         assert has_element?(
                  lv,
@@ -166,15 +161,16 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#add-part h2", "Add an integration")
       refute has_element?(lv, "#add-cards li h3")
 
-      # The runner's design that the agent never holds a token is never said of the agent.
-      refute lv |> element("#add-group-agent") |> render() =~ "never holds"
+      # No line says the runner adds a token, or names a publisher.
+      cards = lv |> element("#add-cards") |> render()
+      refute cards =~ "runner"
+      refute cards =~ "publisher"
     end
 
-    test "offers no card it can't add: no forge's own, no named release yet",
+    test "offers no card it can't add: no forge's own, no named release",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
-      # The cards themselves; the Programs group's sentence names GitHub's token as an
-      # example of what a program gets a run.
+      # The cards themselves, not the groups' sentences.
       cards =
         lv
         |> render()
@@ -255,7 +251,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       own = ipath(scope, "/new-service?definition=own%3A#{definition.public_id}")
       assert has_element?(lv, ~s(#{card}-act[href="#{own}"]))
 
-      # Among the APIs the agent may call, after the built-in ones, before Custom API….
+      # Among the outside APIs, after the built-in ones, before Custom API….
       assert card_ids(lv)["add-group-apis"] == [
                "add-card-api-npm",
                "add-card-api-sentry",
@@ -387,8 +383,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
                "connection-#{integration.public_id}"
              ]
 
-      assert has_element?(lv, "#set-up-part thead th", "For runs in")
-      refute render(lv) =~ "Applies to"
+      assert has_element?(lv, "#set-up-part thead th", "Applies to")
+      refute render(lv) =~ "For runs in"
 
       assert has_element?(lv, "#set-up-part .q-part-n", "3")
       refute has_element?(lv, "#connections-empty")
@@ -481,15 +477,14 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert {:ok, []} = Connections.list_connections(scope)
     end
 
-    test "names no product of its own, only Qory, whose settings these are not",
+    test "names no product of its own, only Qory Apiary, whose settings these are not",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
       section = lv |> element("#settings-section-integrations") |> render()
 
-      # Qory is named in the subtitle and the not-yet line, and nowhere else.
-      assert section =~ "Not Qory&#39;s own settings."
-      assert section =~ "today Qory sends a run only its security policy."
-      refute section =~ "Qory Apiary"
+      # Qory Apiary is named in the subtitle, and nowhere else.
+      assert section =~ "Not Qory Apiary&#39;s own settings."
+      assert section =~ "A run receives only its security policy."
       refute without_qory_lines(section) =~ "Qory"
     end
 
@@ -501,7 +496,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#settings-section-integrations header",
-               "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory's own settings. Each applies to every repository or to the ones you choose."
+               "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
              )
 
       assert page_title(lv) =~
@@ -520,12 +515,18 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     test "Set up an agent sets one up and opens it", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
       assert has_element?(lv, "#new-runtime-page-title", "Set up an agent")
-      assert has_element?(lv, "#new-runtime-page", "Choose the coding agent runs start.")
+
+      assert has_element?(
+               lv,
+               "#new-runtime-page",
+               "Choose a coding agent of the runner's catalogue."
+             )
+
       assert has_element?(lv, "#breadcrumb-section", "Integrations")
       assert has_element?(lv, "#breadcrumb", "Set up an agent")
       assert page_title(lv) =~ "Set up an agent · Workspace settings"
       assert has_element?(lv, "label[for=connection_runtime]", "Agent")
-      assert has_element?(lv, "#new-runtime-form fieldset legend", "For runs in")
+      assert has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
       assert has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
@@ -563,10 +564,10 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#new-service-page",
-               "Choose an outside API the agent may call while it works."
+               "Choose an outside API: a built-in one, or a custom API of this workspace."
              )
 
-      assert has_element?(lv, "#new-service-form fieldset legend", "For runs in")
+      assert has_element?(lv, "#new-service-form fieldset legend", "Applies to")
 
       assert has_element?(lv, "label[for=connection_definition]", "API")
 
@@ -617,7 +618,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-integration-save",
-               "Only its description.json and checksums.txt are read, and nothing of it runs on the server."
+               "Only its description.json and checksums.txt are read, and nothing of it runs on Qory Apiary."
              )
 
       {:error, {:live_redirect, %{to: to}}} =

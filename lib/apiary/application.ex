@@ -35,6 +35,9 @@ defmodule Apiary.Application do
     ApiaryWeb.Features.boot!()
     # Then the edition's own settings, once the core's are known to be right.
     :ok = Apiary.Edition.boot!()
+    # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
+    # covers and what it does not.
+    Apiary.SecretLogFilter.install()
     attach_request_log()
     # A job's failure, cancellation or discard is one line, with its organisation and
     # workspace ids and without its arguments.

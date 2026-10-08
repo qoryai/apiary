@@ -14,7 +14,7 @@ defmodule Apiary.Accounts.Preferences do
     each zone with the countries that keep its clock (`time_zone_countries/1`); a link
     name the database also knows (`UTC`, `Europe/Oslo`) is accepted as well.
   - A **skin** says the words and the look over the domain's. Only `standard`, the
-    domain's own words, exists: the apiary skin is not built, and nothing offers it.
+    domain's own words, exists.
 
   A new person reads English in UTC with the standard skin until they change it.
   """
@@ -67,7 +67,7 @@ defmodule Apiary.Accounts.Preferences do
   @spec default_skin() :: String.t()
   def default_skin, do: @default_skin
 
-  @doc "The skins a person may have: the standard one, until the apiary skin is built."
+  @doc "The skins a person may have: the standard one."
   @spec skins() :: [String.t()]
   def skins, do: @skins
 

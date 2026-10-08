@@ -1,4 +1,4 @@
-// The timeline's own layer (brief-runs rh): what a stream's items cannot get from the
+// The timeline's own layer: what a stream's items cannot get from the
 // server once they are on the page, and the keyboard path through them.
 //
 //   data-target="e-18"    the item ?seq= points at: highlighted, scrolled to once

@@ -16,7 +16,7 @@ defmodule ApiaryWeb.SettingsLive do
     events and their logs, and what the nightly job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
-  A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
+  A slug is shown, not edited. Deleting asks to type the
   slug, in place, never in a dialog, each at a path of its own: the organisation's and this
   workspace's in their danger zone's line, expanded on General
   (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`
@@ -445,8 +445,8 @@ defmodule ApiaryWeb.SettingsLive do
       </ul>
       <p :if={@retention_runs != []} id="retention-runs-note" class="q-foot-note">
         {ngettext(
-          "The pruning job's last pass. It is also a line in the server's log.",
-          "The pruning job's last %{number} passes. Each is also a line in the server's log.",
+          "The pruning job's last pass. It is also a line in Qory Apiary's log.",
+          "The pruning job's last %{number} passes. Each is also a line in Qory Apiary's log.",
           length(@retention_runs),
           number: Format.number(length(@retention_runs))
         )}

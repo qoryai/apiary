@@ -1,7 +1,7 @@
 defmodule Apiary.Secrets do
   @moduledoc """
-  A workspace's stored secrets: values a run is given, kept by name, encrypted at rest,
-  and never shown again once saved.
+  A workspace's stored secrets: values kept by name, encrypted at rest, and never shown
+  again once saved. A run receives none of them: it receives only its security policy.
 
   A secret (`Apiary.Secrets.Secret`) has a name, unique in the workspace whatever its
   case, a public id (`sec_…`), a note on what it is used for, and either one value or
@@ -31,7 +31,7 @@ defmodule Apiary.Secrets do
   Reading the secrets, their names, notes and value ids, is `secret.read`, every member;
   every change is `secret.write`, owners and admins, asked of the workspace for a new
   secret and of the secret for a change to it. Linking a secret to what uses it is
-  `secret.use`, which the piece that links asks. Every change leaves one `secret.write`
+  `secret.use`. Every change leaves one `secret.write`
   entry in the audit trail, in its transaction, the secret its subject, with
   `details.change` saying what: `created`, `updated`, `value_set`, `value_added`,
   `value_renamed`, `value_deleted` or `deleted`, and the names and value ids it touched.

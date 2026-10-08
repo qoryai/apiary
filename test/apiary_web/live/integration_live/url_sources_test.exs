@@ -10,7 +10,7 @@ defmodule ApiaryWeb.IntegrationLive.UrlSourcesTest do
   alias Apiary.{Connections, Integrations}
   alias Apiary.Integrations.{Release, Source}
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   @keys ~w(integration_url_sources_setting integration_url_sources)a
   @url "https://downloads.example.com/acme/shop/description.json"

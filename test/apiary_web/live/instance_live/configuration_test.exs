@@ -40,14 +40,21 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
     end
   end
 
-  # The values that come from a setting of the server's environment, by their ids.
-  @variables [
-    {"config-url-sources", "INTEGRATION_URL_SOURCES"},
+  # The values that come from a setting of the server's environment, by their ids; the
+  # Integrations part's with the `secrets` feature.
+  @url_sources {"config-url-sources", "INTEGRATION_URL_SOURCES"}
+
+  @all_variables [
+    @url_sources,
     {"config-audit-retention", "AUDIT_RETENTION_DAYS"},
     {"config-audit-address-retention", "AUDIT_ADDRESS_RETENTION_DAYS"},
     {"config-grace", "DELETION_GRACE_DAYS"},
     {"config-invitations-per-day", "INVITATIONS_PER_DAY"}
   ]
+
+  # The values from a setting of the server's environment the page shows, by their ids.
+  defp variables,
+    do: if(Features.on?(:secrets), do: @all_variables, else: @all_variables -- [@url_sources])
 
   describe "for an instance admin" do
     setup do
@@ -73,8 +80,12 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
         assert text(view, "#config-feature-#{feature}-value") == value
       end
 
-      assert text(view, "#config-url-sources-value") ==
-               if(Apiary.Integrations.Source.url_sources?(), do: "Allowed", else: "Not allowed")
+      if Features.on?(:secrets) do
+        assert text(view, "#config-url-sources-value") ==
+                 if(Apiary.Integrations.Source.url_sources?(), do: "Allowed", else: "Not allowed")
+      else
+        refute has_element?(view, "#config-integrations")
+      end
 
       assert text(view, "#config-audit-retention-value") == "#{Audit.retention_days()} days"
 
@@ -94,7 +105,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       # Each value says the setting of the server's environment it comes from, the features
       # once for them all.
-      for {id, variable} <- @variables do
+      for {id, variable} <- variables() do
         assert text(view, "##{id}-source code") == variable
       end
 
@@ -135,12 +146,12 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       # The hour the scheduler starts at, and the hour within which it prunes.
       assert text(view, "#config-run-pruning-value") == "Every day, 23:00–00:00 UTC"
-      assert text(view, "#config-run-pruning") =~ "The server prunes each workspace's runs"
+      assert text(view, "#config-run-pruning") =~ "Qory Apiary prunes each workspace's runs"
 
       assert text(view, "#config-run-pruning-source") ==
                "Set in the application's configuration"
 
-      for {id, variable} <- @variables do
+      for {id, variable} <- variables() do
         assert text(view, "##{id}-source") == "Set by #{variable}"
       end
 
@@ -162,12 +173,13 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       {:ok, view, html} = live(conn, ~p"/instance/configuration")
 
-      assert html =~ "What whoever runs this server set for the whole instance, or the default"
+      assert html =~
+               "What whoever runs this Qory Apiary set for the whole instance, or the default"
 
       # Set to an empty or blank value: the default too, and said so.
       empty = ["config-audit-retention", "config-audit-address-retention"]
 
-      for {id, variable} <- @variables do
+      for {id, variable} <- variables() do
         if id in empty,
           do: assert(text(view, "##{id}-source") == "The default: #{variable} is empty"),
           else: assert(text(view, "##{id}-source") == "The default: #{variable} is not set")
@@ -186,8 +198,15 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
                "The default: the application's configuration does not set it"
     end
 
-    test "/instance sends on to the first section the person may open", %{conn: conn} do
-      assert conn |> get(~p"/instance") |> redirected_to(302) == "/instance/configuration"
+    test "/instance sends on to the first section the person may open",
+         %{conn: conn, scope: scope} do
+      # Configuration in the core, the last section, after whatever the edition puts
+      # before it.
+      [first | _] = sections = ApiaryWeb.Layouts.instance_sections(scope)
+      assert %{key: :configuration, path: "/instance/configuration"} = List.last(sections)
+      path = ApiaryWeb.Nav.Entry.path(first, scope.organisation, scope.workspace)
+
+      assert conn |> get(~p"/instance") |> redirected_to(302) == path
     end
 
     test "is the Qory Apiary menu's Instance settings, a page of its own beside the sidebar the person came from",
@@ -207,21 +226,28 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert has_element?(view, instance, "Instance settings")
       refute has_element?(view, "#user-menu-instance")
 
-      # The core's Instance has the one section: no second column.
-      refute has_element?(view, "#instance-tabs")
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
 
-      assert has_element?(
-               view,
-               "#breadcrumb a[href='/instance/configuration']",
-               "Instance settings"
-             )
-
+      # The breadcrumb's Instance settings leads to the first section, as the menu does.
+      assert has_element?(view, "#breadcrumb a[href='#{path}']", "Instance settings")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Configuration")
 
-      # With no second column and so no disclosure, a phone's bar keeps both segments.
-      refute has_element?(view, "#settings-disclosure")
-      refute has_element?(view, "#breadcrumb li.q-trail-lead")
+      case ApiaryWeb.Layouts.instance_sections(scope) do
+        [_configuration] ->
+          # The core's Instance has the one section: no second column, and so no
+          # disclosure, and a phone's bar keeps both segments.
+          refute has_element?(view, "#instance-tabs")
+          refute has_element?(view, "#settings-disclosure")
+          refute has_element?(view, "#breadcrumb li.q-trail-lead")
+
+        [_, _ | _] ->
+          # An edition's sections before it: the second column lists Configuration too,
+          # the current page.
+          assert has_element?(
+                   view,
+                   "#instance-tabs a#instance-tab-configuration[href='/instance/configuration'][aria-current='page']"
+                 )
+      end
 
       # The sidebar's lists open whole: nothing carries a target here.
       assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")

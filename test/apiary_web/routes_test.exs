@@ -42,8 +42,14 @@ defmodule ApiaryWeb.RoutesTest do
     {live_view, extra.name}
   end
 
+  # The storybook's routes are the core's alone: an edition's router does not call
+  # `storybook_routes/0`.
   test "the core's router holds the core's routes, and the edition's holds them all" do
-    core = for %{verb: verb, path: path} <- ApiaryWeb.Router.__routes__(), do: {verb, path}
+    core =
+      for %{verb: verb, path: path} <- ApiaryWeb.Router.__routes__(),
+          not String.starts_with?(path, "/dev/storybook"),
+          do: {verb, path}
+
     edition = for %{verb: verb, path: path} <- Router.__routes__(), do: {verb, path}
 
     assert core -- edition == []

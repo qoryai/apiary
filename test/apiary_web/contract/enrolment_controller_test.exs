@@ -6,7 +6,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{AccessKeys, Deletion, Nodes, Repo, SigningKey}
+  alias Apiary.{Accounts, AccessKeys, Deletion, Nodes, Organisations, Repo, SigningKey}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Audit.Entry
   alias Apiary.Contract.{Ed25519, SignedMessage}
@@ -56,13 +56,23 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     |> post(@path, body)
   end
 
-  # The answer's signature verifies under the instance's key, line 3 being the proof.
+  # The answer's signature verifies under the instance's key, as an enrolment answer: under
+  # the enrolment answers' own domain line, line 3 being the proof; never as the answer to
+  # a signed request.
   defp assert_signed(conn, body) do
     %{"proof" => proof} = Jason.decode!(body)
     assert [signature] = get_resp_header(conn, "x-qory-signature-ed25519")
     assert {:ok, signature} = Ed25519.decode(signature, 64)
-    message = SignedMessage.answer(conn.status, proof, conn.resp_body, nil, nil)
+    message = SignedMessage.enrolment_answer(conn.status, proof, conn.resp_body)
+    assert String.starts_with?(message, "qory-enrol-answer-ed25519-v1\n")
     assert Ed25519.verify(message, signature, SigningKey.public_key())
+
+    refute Ed25519.verify(
+             SignedMessage.answer(conn.status, proof, conn.resp_body, nil, nil),
+             signature,
+             SigningKey.public_key()
+           )
+
     assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
     assert [<<"application/json", _::binary>>] = get_resp_header(conn, "content-type")
     Jason.decode!(conn.resp_body)
@@ -73,7 +83,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
   defp apiary_public_key, do: SigningKey.apiary_public_key()
 
   describe "a code accepted" do
-    test "makes the key awaiting approval and answers 201, signed, with its id and node", %{
+    test "makes the key, active, and answers 201, signed, with its id and node", %{
       scope: scope,
       node: node
     } do
@@ -92,7 +102,6 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
                "access_key_id" => key.key_id,
                "node_id" => node.public_id,
                "node_kind" => "node",
-               "approved" => false,
                "stored_secrets" => false,
                "apiary_public_key" => apiary_public_key()
              }
@@ -100,7 +109,8 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       # The members in the contract's order.
       assert conn.resp_body =~ ~r/\A\{"version":1,"access_key_id":"ak_[a-z0-9]{16}","node_id":/
 
-      assert AccessKey.status(key) == :pending
+      assert AccessKey.status(key) == :active
+      assert {:ok, _verified} = AccessKeys.fetch_for_verification(key.key_id)
       assert key.node_id == node.id
       assert key.arrived_by == :code
       assert key.enrolment_code_id == row.id
@@ -114,7 +124,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert %DateTime{} = used.used_at
       assert EnrolmentCode.verify_integrity(used) == :ok
 
-      assert %PublicKey{state: :pending, key_id: key_id} = Repo.get(PublicKey, pair.public_key)
+      assert %PublicKey{state: :current, key_id: key_id} = Repo.get(PublicKey, pair.public_key)
       assert key_id == key.key_id
     end
 
@@ -248,6 +258,34 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       _ = node
     end
 
+    test "a timestamp more than 300 seconds from the server's clock, either way", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      now = System.os_time(:second)
+
+      for timestamp <- [now - 400, now + 400],
+          do: assert_unauthorized(enrol(body(code, pair, timestamp: timestamp)))
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+      assert enrol(body(code, pair, timestamp: now - 250)).status == 201
+    end
+
+    test "comes before the key's and the proof's checks: a refused code with a bad proof, or a key of small order",
+         %{code: code, pair: pair} do
+      [_head, fingerprint] = String.split(code, ".")
+      unknown = "qec_" <> String.duplicate("0", 26) <> "." <> fingerprint
+      forged = body(unknown, ed25519_key_pair(), public_key: pair.encoded)
+      assert_unauthorized(enrol(forged))
+
+      small = body(unknown, pair, public_key: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+      assert_unauthorized(enrol(small))
+
+      stale = body(code, ed25519_key_pair(), public_key: pair.encoded, timestamp: 0)
+      assert_unauthorized(enrol(stale))
+    end
+
     @tag :capture_log
     test "a code row changed outside the application", %{row: row, code: code, pair: pair} do
       Repo.update_all(from(c in EnrolmentCode, where: c.id == ^row.id),
@@ -255,6 +293,169 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       )
 
       assert_unauthorized(enrol(body(code, pair)))
+    end
+  end
+
+  describe "the code refused, 401 unsigned, once its maker may no longer make it" do
+    # The code is the approval of the key it brings only while the person who made it is
+    # still an owner or an admin of its workspace. An admin makes it here, as the sole
+    # owner cannot be demoted.
+    setup %{scope: owner, node: node} do
+      %{scope: admin, membership: membership, user: user} = member_fixture(owner, :admin)
+      Map.merge(code(admin, node), %{admin: admin, membership: membership, user: user})
+    end
+
+    defp assert_refused(code, row, node) do
+      pair = ed25519_key_pair()
+      conn = enrol(body(code, pair))
+      assert conn.status == 401
+      assert conn.resp_body == ~s({"error":"unauthorized"})
+      assert_unsigned(conn)
+
+      assert %EnrolmentCode{used_at: nil} = Repo.get!(EnrolmentCode, row.id)
+      assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^node.id), :count) == 0
+      assert Repo.get(PublicKey, pair.public_key) == nil
+    end
+
+    test "an admin's code enrols while they are an admin", %{code: code, user: user} do
+      pair = ed25519_key_pair()
+      assert enrol(body(code, pair)).status == 201
+      assert Repo.get_by!(AccessKey, public_key: pair.public_key).created_by_id == user.id
+    end
+
+    test "made a member since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+      assert_refused(code, row, node)
+    end
+
+    test "suspended since, and enrols again once active", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.suspend_member(owner, membership.id)
+      assert_refused(code, row, node)
+
+      {:ok, _} = Organisations.activate_member(owner, membership.id)
+      assert enrol(body(code, ed25519_key_pair())).status == 201
+    end
+
+    test "made a member since, with a bad proof or a key of small order: 401, not 409", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+
+      pair = ed25519_key_pair()
+
+      for body <- [
+            body(code, ed25519_key_pair(), public_key: pair.encoded),
+            body(code, pair, public_key: "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+          ] do
+        conn = enrol(body)
+        assert conn.status == 401
+        assert_unsigned(conn)
+      end
+
+      assert_refused(code, row, node)
+    end
+
+    test "removed since", ctx do
+      %{scope: owner, membership: membership, code: code, row: row, node: node} = ctx
+      {:ok, _} = Organisations.remove_member(owner, membership.id)
+      assert_refused(code, row, node)
+    end
+
+    test "their account deleted since", ctx do
+      %{user: user, code: code, row: row, node: node} = ctx
+      {:ok, _} = Accounts.delete_user(user, origin: nil)
+      assert_refused(code, row, node)
+    end
+
+    test "the same code again, with the same key, once the maker is a member", ctx do
+      %{scope: owner, membership: membership, code: code} = ctx
+      pair = ed25519_key_pair()
+      assert enrol(body(code, pair)).status == 201
+
+      {:ok, _} = Organisations.set_member_level(owner, membership.id, :member)
+      conn = enrol(body(code, pair))
+      assert conn.status == 401
+      assert_unsigned(conn)
+
+      # The key it made stays, active: revoking it is an owner's or an admin's to do.
+      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
+      assert AccessKey.status(key) == :active
+    end
+  end
+
+  defp assert_code_unused(row) do
+    assert %EnrolmentCode{used_at: nil, used_by_key_id: nil, public_key: nil} =
+             Repo.get!(EnrolmentCode, row.id)
+  end
+
+  describe "the key or the proof refused, 409 key_invalid unsigned" do
+    # Nothing is signed for a proof no checked key made: the answer lists no key, and a
+    # machine reads it as unsigned.
+    setup %{scope: scope, node: node} do
+      Map.put(code(scope, node), :pair, ed25519_key_pair())
+    end
+
+    defp assert_key_unproven(conn) do
+      assert conn.status == 409
+      assert Jason.decode!(conn.resp_body) == %{"error" => "key_invalid"}
+      assert_unsigned(conn)
+    end
+
+    test "a proof that does not verify", %{row: row, code: code, pair: pair} do
+      other = ed25519_key_pair()
+      # Signed by another key than the one the body carries.
+      assert_key_unproven(enrol(body(code, other, public_key: pair.encoded)))
+      assert_code_unused(row)
+    end
+
+    test "a proof over other lines than the body's", %{row: row, code: code, pair: pair} do
+      signed = body(code, pair, name: "build-02") |> Jason.decode!()
+      assert_key_unproven(enrol(body(code, pair, proof: signed["proof"])))
+      assert_code_unused(row)
+    end
+
+    test "a key of small order, the identity, and the torsion key", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      for encoded <- [
+            "xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA3o",
+            "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "KH9r2npX9PKHPzv_Xl6pwmCmpjQ73zfHq800btWQTBE"
+          ],
+          do: assert_key_unproven(enrol(body(code, pair, public_key: encoded)))
+
+      assert_code_unused(row)
+    end
+
+    test "a key of small order with the degenerate proof plain verification accepts", %{
+      row: row,
+      code: code
+    } do
+      # The identity's encoding as the key, and R = the identity, S = 0 as the proof: an
+      # [S]B = R + [k]A check passes it for any message, so only the key checks, run
+      # first, refuse it.
+      identity = "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      proof = Ed25519.encode(<<1::little-size(256), 0::size(256)>>)
+
+      assert_key_unproven(
+        enrol(body(code, ed25519_key_pair(), public_key: identity, proof: proof))
+      )
+
+      assert_code_unused(row)
+    end
+
+    test "the published fixture keys", %{row: row, code: code} do
+      for range <- [1..32, 193..224] do
+        seed = :binary.list_to_bin(Enum.to_list(range))
+        {public, _} = :crypto.generate_key(:eddsa, :ed25519, seed)
+        pair = %{public_key: public, secret: seed, encoded: Ed25519.encode(public)}
+        assert_key_unproven(enrol(body(code, pair)))
+      end
+
+      assert_code_unused(row)
     end
   end
 
@@ -272,43 +473,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
              }
     end
 
-    defp assert_code_unused(row) do
-      assert %EnrolmentCode{used_at: nil, used_by_key_id: nil, public_key: nil} =
-               Repo.get!(EnrolmentCode, row.id)
-    end
-
-    test "a proof that does not verify", %{row: row, code: code, pair: pair} do
-      other = ed25519_key_pair()
-      # Signed by another key than the one the body carries.
-      body = body(code, other, public_key: pair.encoded)
-      assert_key_invalid(enrol(body), body)
-      assert_code_unused(row)
-    end
-
-    test "a proof over other lines than the body's", %{row: row, code: code, pair: pair} do
-      signed = body(code, pair, name: "build-02") |> Jason.decode!()
-      body = body(code, pair, proof: signed["proof"])
-      assert_key_invalid(enrol(body), body)
-      assert_code_unused(row)
-    end
-
-    test "a timestamp more than 300 seconds from the server's clock, either way", %{
-      row: row,
-      code: code,
-      pair: pair
-    } do
-      now = System.os_time(:second)
-
-      for timestamp <- [now - 400, now + 400] do
-        body = body(code, pair, timestamp: timestamp)
-        assert_key_invalid(enrol(body), body)
-      end
-
-      assert_code_unused(row)
-      assert enrol(body(code, pair, timestamp: now - 250)).status == 201
-    end
-
-    test "a key the ledger holds already", %{scope: scope, node: node, row: row, code: code} do
+    test "a key another access key holds", %{scope: scope, node: node, row: row, code: code} do
       %{pair: pair} = node_key_fixture(scope, node_fixture(scope))
       body = body(code, pair)
       assert_key_invalid(enrol(body), body)
@@ -316,23 +481,39 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^node.id), :count) == 0
     end
 
-    test "a key of small order, and the torsion key", %{row: row, code: code, pair: pair} do
-      for encoded <- [
-            "xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA3o",
-            "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            "KH9r2npX9PKHPzv_Xl6pwmCmpjQ73zfHq800btWQTBE"
-          ] do
-        body = body(code, pair, public_key: encoded)
-        assert_key_invalid(enrol(body), body)
-      end
+    test "a key revoked, which the ledger keeps", %{
+      scope: scope,
+      node: node,
+      row: row,
+      code: code
+    } do
+      %{access_key: key, pair: pair} = node_key_fixture(scope, node_fixture(scope))
+      {:ok, _} = AccessKeys.revoke_access_key(scope, key)
+      body = body(code, pair)
+      assert_key_invalid(enrol(body), body)
+      assert_code_unused(row)
+      assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^node.id), :count) == 0
+    end
 
+    test "comes before the limit: a node that holds two keys, and a key the ledger holds", %{
+      scope: scope,
+      node: node,
+      row: row,
+      code: code
+    } do
+      node_key_fixture(scope, node)
+      node_key_fixture(scope, node)
+      %{pair: pair} = node_key_fixture(scope, node_fixture(scope))
+      body = body(code, pair)
+      assert_key_invalid(enrol(body), body)
       assert_code_unused(row)
     end
   end
 
   describe "the node full, 409 key_limit signed" do
-    test "while it holds a key awaiting approval", %{scope: scope, node: node} do
-      pending_key_fixture(scope, node)
+    test "while it holds two keys", %{scope: scope, node: node} do
+      node_key_fixture(scope, node)
+      enrolled_key_fixture(scope, node)
       %{row: row, code: code} = code(scope, node)
       body = body(code, ed25519_key_pair())
 
@@ -347,7 +528,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert Repo.get!(EnrolmentCode, row.id).used_at == nil
     end
 
-    test "while it holds two approved keys", %{scope: scope, node: node} do
+    test "while it holds two keys made in a browser", %{scope: scope, node: node} do
       node_key_fixture(scope, node)
       node_key_fixture(scope, node)
       %{code: code} = code(scope, node)
@@ -358,7 +539,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert assert_signed(conn, body)["error"] == "key_limit"
     end
 
-    test "but not while it holds one approved key", %{scope: scope, node: node} do
+    test "but not while it holds one key", %{scope: scope, node: node} do
       node_key_fixture(scope, node)
       %{code: code} = code(scope, node)
       assert enrol(body(code, ed25519_key_pair())).status == 201
@@ -383,39 +564,29 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert conn.status == 201
       answer = assert_signed(conn, again)
       assert answer["access_key_id"] == key.key_id
-      assert answer["approved"] == false
+      refute Map.has_key?(answer, "approved")
 
       assert Repo.aggregate(from(k in AccessKey, where: k.node_id == ^key.node_id), :count) == 1
       assert Repo.get!(EnrolmentCode, row.id) == used
       assert Repo.aggregate(Entry, :count) == entries
     end
 
-    test "answers the key as it is now: approved once approved", %{
-      scope: scope,
+    test "still needs a fresh timestamp, 401, and a proof that verifies, 409 unsigned", %{
       code: code,
       pair: pair
     } do
       assert enrol(body(code, pair)).status == 201
-      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
-      {:ok, _} = AccessKeys.approve(scope, key)
 
-      again = body(code, pair)
-      conn = enrol(again)
-      assert conn.status == 201
-      assert assert_signed(conn, again)["approved"] == true
+      stale = enrol(body(code, pair, timestamp: System.os_time(:second) - 400))
+      assert stale.status == 401
+      assert_unsigned(stale)
+
+      forged = enrol(body(code, ed25519_key_pair(), public_key: pair.encoded))
+      assert forged.status == 409
+      assert_unsigned(forged)
     end
 
-    test "still needs a proof that verifies, and a fresh timestamp", %{code: code, pair: pair} do
-      assert enrol(body(code, pair)).status == 201
-
-      stale = body(code, pair, timestamp: System.os_time(:second) - 400)
-      assert enrol(stale).status == 409
-
-      forged = body(code, ed25519_key_pair(), public_key: pair.encoded)
-      assert enrol(forged).status == 409
-    end
-
-    test "is 401 once the key is rejected, or the code's lifetime is over", %{
+    test "is 401 once the key is revoked, or the code's lifetime is over", %{
       scope: scope,
       row: row,
       code: code,
@@ -423,7 +594,7 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
     } do
       assert enrol(body(code, pair)).status == 201
       key = Repo.get_by!(AccessKey, public_key: pair.public_key)
-      {:ok, _} = AccessKeys.reject(scope, key)
+      {:ok, _} = AccessKeys.revoke_access_key(scope, key)
       assert enrol(body(code, pair)).status == 401
 
       %{row: row2, code: code2} = code(scope, node_fixture(scope))
@@ -503,6 +674,155 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       conn = enrol(body <> String.duplicate(" ", 8 * 1024))
       assert conn.status == 413
       assert_unsigned(conn)
+    end
+  end
+
+  # A request with exactly `headers`, in their order, a header twice or none included:
+  # straight to the endpoint, as `post/3` wants a content type with a body.
+  defp enrol_with(body, headers) do
+    %{build_conn() | req_headers: headers}
+    |> Map.put(:remote_ip, {127, 0, 0, 1})
+    |> Plug.Adapters.Test.Conn.conn(:post, @path, body)
+    |> ApiaryWeb.Endpoint.call(ApiaryWeb.Endpoint.init([]))
+  end
+
+  defp json, do: {"content-type", "application/json"}
+  defp version(value \\ "1"), do: {"x-qory-contract-version", value}
+
+  describe "the refusals before the code, in the contract's order, each unsigned" do
+    setup %{scope: scope, node: node} do
+      Map.put(code(scope, node), :pair, ed25519_key_pair())
+    end
+
+    defp assert_refusal(conn, status, body) do
+      assert conn.status == status
+      assert Jason.decode!(conn.resp_body) == body
+      assert_unsigned(conn)
+      assert get_resp_header(conn, "retry-after") == []
+    end
+
+    test "1: a body over 8 KiB is 413, before its content type or its headers", %{
+      code: code,
+      pair: pair
+    } do
+      long = body(code, pair) <> String.duplicate(" ", 8 * 1024)
+
+      for headers <- [
+            [json(), version()],
+            [{"content-type", "text/plain"}, version()],
+            [json(), json(), version("2")],
+            [version()]
+          ] do
+        assert_refusal(enrol_with(long, headers), 413, %{"error" => "payload_too_large"})
+      end
+    end
+
+    test "2: a content type other than application/json is 415", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      body = body(code, pair)
+
+      for headers <- [
+            [version()],
+            [{"content-type", "text/plain"}, version()],
+            [{"content-type", "application/jsonx"}, version()],
+            [{"content-type", "application/json-seq"}, version()],
+            [{"content-type", "application/cloudevents-batch+json"}, version()],
+            [{"content-type", "application/x-www-form-urlencoded"}, version()],
+            [json(), {"content-type", "text/plain"}, version()]
+          ] do
+        assert_refusal(enrol_with(body, headers), 415, %{"error" => "unsupported_media_type"})
+      end
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+    end
+
+    test "2: application/json in any case, with parameters, passes", %{code: code, pair: pair} do
+      headers = [{"content-type", "Application/JSON; charset=utf-8"}, version()]
+      assert enrol_with(body(code, pair), headers).status == 201
+    end
+
+    test "2 before 3: a wrong content type with a header sent twice is 415", %{
+      code: code,
+      pair: pair
+    } do
+      headers = [{"content-type", "text/plain"}, version(), version()]
+
+      assert_refusal(enrol_with(body(code, pair), headers), 415, %{
+        "error" => "unsupported_media_type"
+      })
+    end
+
+    test "3: Content-Type or X-Qory-Contract-Version sent twice is 400 bad_request", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      body = body(code, pair)
+
+      for headers <- [[json(), json(), version()], [json(), version(), version()]] do
+        assert_refusal(enrol_with(body, headers), 400, %{"error" => "bad_request"})
+      end
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
+    end
+
+    test "3 before 5: a header sent twice with a version not served is bad_request", %{
+      code: code,
+      pair: pair
+    } do
+      for headers <- [[json(), json(), version("2")], [json(), version("1"), version("2")]] do
+        assert_refusal(enrol_with(body(code, pair), headers), 400, %{"error" => "bad_request"})
+      end
+    end
+
+    test "3: a header the enrolment does not read, sent twice, is no refusal", %{
+      code: code,
+      pair: pair
+    } do
+      headers = [json(), version(), {"accept", "application/json"}, {"accept", "*/*"}]
+      assert enrol_with(body(code, pair), headers).status == 201
+    end
+
+    test "5: an X-Qory-Contract-Version absent or not served is 400 unsupported_contract_version",
+         %{code: code, pair: pair} do
+      for headers <- [[json()], [json(), version("2")], [json(), version("x")]] do
+        assert_refusal(enrol_with(body(code, pair), headers), 400, %{
+          "error" => "unsupported_contract_version",
+          "supported" => [1]
+        })
+      end
+    end
+
+    test "5 before 6: a version not served with a body the schema refuses is unsupported_contract_version",
+         %{code: code, pair: pair} do
+      invalid =
+        body(code, pair) |> Jason.decode!() |> Map.put("name", "-build") |> Jason.encode!()
+
+      for body <- [invalid, "{}", "", "[]"] do
+        assert_refusal(enrol_with(body, [json(), version("2")]), 400, %{
+          "error" => "unsupported_contract_version",
+          "supported" => [1]
+        })
+      end
+    end
+
+    test "6: a body the schema refuses is 400 invalid_request, naming the members", %{
+      row: row,
+      code: code,
+      pair: pair
+    } do
+      invalid =
+        body(code, pair) |> Jason.decode!() |> Map.put("name", "-build") |> Jason.encode!()
+
+      assert_refusal(enrol_with(invalid, [json(), version()]), 400, %{
+        "error" => "invalid_request",
+        "names" => ["name"]
+      })
+
+      assert Repo.get!(EnrolmentCode, row.id).used_at == nil
     end
   end
 

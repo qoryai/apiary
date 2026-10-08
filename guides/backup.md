@@ -10,8 +10,8 @@ four things:
 4. `SECRET_KEY_BASE`.
 
 Keep the three values beside the dumps and not inside them, in a password manager or a
-secret store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the stored
-secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET` protects nothing of them.
+secret store: a dump restored without its `APIARY_ENCRYPTION_SECRET` trusts none of its
+access keys, and a dump stored with the three values protects nothing they guard.
 
 ## Back up
 
@@ -99,7 +99,7 @@ curl http://localhost:4100/health
 ```
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
-enrolled on one of the workspace's nodes: if it appears, the keys' integrity codes
+connected to one of the workspace's nodes: if it appears, the keys' integrity codes
 verified, which means `APIARY_ENCRYPTION_SECRET` is the right one, and the machine took
 the server's signed answers, which means `APIARY_SIGNING_SECRET` is.
 
@@ -107,22 +107,24 @@ the server's signed answers, which means `APIARY_SIGNING_SECRET` is.
 
 ### `APIARY_ENCRYPTION_SECRET`
 
-It encrypts what the database holds secret:
+It keys the integrity codes some rows carry, access keys and enrolment codes among them: a
+row changed outside the application no longer matches its code.
+<!-- feature: secrets -->
 
-- the values of the workspaces' stored secrets, the table `secret_values`, each encrypted
-  under its workspace's data key, which is kept in `workspace_data_keys` encrypted under a
-  key derived from `APIARY_ENCRYPTION_SECRET`.
+It also encrypts the values of the workspaces' stored secrets, the table `secret_values`,
+each under its workspace's data key, which is kept in `workspace_data_keys` encrypted under
+a key derived from it.
+<!-- /feature -->
 
-Nothing else in the database is encrypted with it. The integrity codes some rows carry
-are keyed by it too: a row changed outside the application no longer matches its code.
-
+<!-- feature: secrets -->
 **Losing `APIARY_ENCRYPTION_SECRET` loses every stored secret value.** There is no other
 copy and no way to recover them: each value has to be entered again, in the workspace's
 secrets, from wherever it came from.
+<!-- /feature -->
 
 Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity
-code verifies either, so the instance trusts none of them: every signed request of a runner
-is answered `401`, no machine starts a run against this server and no events arrive. For each
+code verifies, so the instance trusts none of them: every signed request of a runner is
+answered `401`, no machine starts a run against this server and no events arrive. For each
 request the log has `access key row does not match its integrity code key_id=ak_…`. Put the
 right `APIARY_ENCRYPTION_SECRET` back and every key verifies again.
 
@@ -133,7 +135,10 @@ So does the security policy, with its versions and history.
 <!-- /feature -->
 
 For the same reason `APIARY_ENCRYPTION_SECRET` must never change on a running installation
-once an access key or a stored secret exists.
+once an access key exists.
+<!-- feature: secrets -->
+The same holds once a stored secret exists.
+<!-- /feature -->
 
 ### `APIARY_SIGNING_SECRET`
 

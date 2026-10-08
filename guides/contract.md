@@ -14,7 +14,7 @@ contract takes the same runners.
 The contract is not in this repository. It is the `contracts/runner/v1` directory of the
 runner's repository: a README that defines every document and header, one JSON schema per
 document, and fixtures, among them signed requests with the status a receiver has to answer.
-This server implements version 1, revision 1, tool invocations included: the `tools` of
+Qory Apiary implements version 1, revision 1, tool invocations included: the `tools` of
 `dev.qory.run.policy_applied`, and the `tool`, `request_id` and `status` of
 `dev.qory.run.egress`.
 <!-- feature: security -->
@@ -122,9 +122,12 @@ Every answer to a request that verified is signed with the server's own Ed25519 
 key every machine pins as `apiary_public_key`: `X-Qory-Signature-Ed25519` over the answer's
 status, the request's signature, the SHA-256 of the body, and the answer's
 `X-Qory-Configuration` and `X-Qory-Run-Configuration`, with
-`Cache-Control: no-store, no-transform`. A runner treats an answer without a valid
-signature as no answer. Every `401` goes out unsigned, and so does a refusal before the
-request is verified (`413`, `415`, a header sent twice).
+`Cache-Control: no-store, no-transform`. The signed string starts with the line
+`qory-answer-ed25519-v1`. A runner treats an answer without a valid signature as no answer.
+Every `401` goes out unsigned, and so does a refusal before the request is verified (`413`,
+`415`, a header sent twice). An answer to an enrolment is signed under its own first line,
+`qory-enrol-answer-ed25519-v1`, with the request's `proof` in place of a signature, so
+neither kind of answer can pass for the other (below).
 
 ### Refusals, in order
 
@@ -139,11 +142,10 @@ On every endpoint, the first refusal that applies is the answer:
 5. `429` `rate_limited`, the key's rate is spent (the events endpoint and the run
    configuration);
 6. `400` `bad_request`, signed, an instance id absent or outside its pattern;
-7. `409` `key_pending`, signed, a key that awaits approval;
-8. `400` `unsupported_contract_version`;
-9. `400` `invalid_request`, a body the contract refuses (the events endpoint);
-10. `401`, a GET's timestamp that is not an integer or is outside the window;
-11. then each endpoint's own.
+7. `400` `unsupported_contract_version`;
+8. `400` `invalid_request`, a body the contract refuses (the events endpoint);
+9. `401`, a GET's timestamp that is not an integer or is outside the window;
+10. then each endpoint's own.
 
 A refusal after verification is `application/json`, `{"error":"<code>"}`, signed.
 
@@ -202,7 +204,6 @@ this order, and the first refusal that applies is the answer:
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
-| `409` | the key awaits approval | `{"error":"key_pending"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit, or holds a ping whose `interval_seconds` is absent or not from 1 to 300 | `{"error":"invalid_request"}` |
 | `410` | the workspace has closed the run: the delivery is recorded, no event is stored | empty |
@@ -212,8 +213,8 @@ this order, and the first refusal that applies is the answer:
 
 To a runner a `2xx` means accepted, `410` means send nothing more for this run, and anything
 else is retried with backoff until the run ends. The ping that opens a run is a batch like
-any other: a `202` lets the run start, and a revoked key, a bad signature, a key awaiting
-approval, an instance beyond the limit or an unsupported version does not.
+any other: a `202` lets the run start, and a revoked key, a bad signature, an instance
+beyond the limit or an unsupported version does not.
 
 - **The envelope is checked, the data is not.** Each event has `id` and `subject` (lower-case
   UUIDs), `type` (beginning `dev.qory.`), `sequence` (ten digits, from `0000000001`),
@@ -259,7 +260,6 @@ baseline.
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | nobody has made the workspace's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
-| `409` | the key awaits approval | `{"error":"key_pending"}` |
 | `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
@@ -278,12 +278,13 @@ rendered for a request, so the digest is of exactly what is sent. It is the conf
 of the key's workspace for the repository the two labels name; a repository the workspace
 has not seen, one with no rules of its own, and a request that names none, or one label of
 the two, get the workspace's baseline. The labels are compared to the stored ones byte for
-byte after the query's percent-decoding. The server does not answer `400` to a query the
+byte after the query's percent-decoding. Qory Apiary does not answer `400` to a query the
 contract's rules for labels refuse, as the reference receiver does: a `forge` or
 `repository` that cannot be a label names no repository, and of a parameter sent twice the
 last is read.
 
-The `security_policy` is the policy: the runner does not merge it with the machine's own.
+The runner applies the `security_policy` narrowed by the machine's own `egress`; the
+machine only takes away.
 When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
 runner denies first and in either mode; without any, the section is as above.
 <!-- /feature -->
@@ -299,25 +300,30 @@ the code, the public key, the name and the timestamp.
 
 The code is `qec_`, 26 characters, then `.` and the fingerprint of the server's key, so
 the machine knows which key's answer to trust before it has pinned any. It works once, for
-15 minutes. The answers, in order:
+15 minutes. Nothing is signed until the code is accepted, the key passes the key checks and
+the proof verifies under it. The answers, in order:
 
 | Status | Signed | When |
 |---|---|---|
 | `413` | no | a body over 8 KiB |
+| `415` `unsupported_media_type` | no | no `Content-Type`, or one other than `application/json` |
+| `400` `bad_request` | no | `Content-Type` or `X-Qory-Contract-Version` sent twice |
 | `429` `rate_limited` | no | over the limit of the address the request came from, with `Retry-After` |
-| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault |
 | `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |
-| `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, or carries another fingerprint than the server's key's |
-| `409` `key_invalid` | yes | the key fails the key checks, or has served another access key, the proof does not verify, or its timestamp is more than 300 seconds from the server's clock |
-| `409` `key_limit` | yes | the node holds a key awaiting approval, or two approved keys |
-| `201` | yes | the key is made, awaiting approval |
+| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault |
+| `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, carries another fingerprint than the server's key's, or was made by someone who is no longer an owner or an admin of its workspace; or the timestamp is more than 300 seconds from the server's clock |
+| `409` `key_invalid` | no | the key fails the key checks, checked first, or the proof does not verify under it |
+| `429` `rate_limited` | yes | over the code's own limit, with `Retry-After` |
+| `409` `key_invalid` | yes | the key has served another access key, a revoked one included |
+| `409` `key_limit` | yes | the node holds two keys |
+| `201` | yes | the key is made, and active |
 
-The `201` carries the access key id, the node's id and kind, `approved`,
-`stored_secrets` and `apiary_public_key`; each signed refusal lists `apiary_public_key`
-too. A signed answer's line 3 is the request's `proof`. A refusal changes nothing, and the
-code stays outstanding. The same code, posted again with the same public key while its 15
-minutes last and the key is neither revoked nor rejected, is the same `201` for the same
-key; any other key on a used code is `401`.
+The `201` carries the access key id, the node's id and kind, `stored_secrets` and
+`apiary_public_key`; each signed refusal lists `apiary_public_key` too, and an unsigned one
+none. A signed answer is signed under `qory-enrol-answer-ed25519-v1`, and its line 3 is
+the request's `proof`. A refusal changes nothing, and the code stays outstanding. The same
+code, posted again with the same public key while its 15 minutes last and the key is not
+revoked, is the same `201` for the same key; any other key on a used code is `401`.
 
 ## A receiver of your own
 

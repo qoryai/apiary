@@ -2917,7 +2917,7 @@ defmodule ApiaryWeb.RunComponents do
     |> binary_part(0, 16)
   end
 
-  ## What a connection's row may ask of the policy (brief-policy.md)
+  ## What a connection's row may ask of the policy
 
   defp rule_action_attrs(act) do
     %{

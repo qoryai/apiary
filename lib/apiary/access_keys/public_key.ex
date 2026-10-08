@@ -6,10 +6,9 @@ defmodule Apiary.AccessKeys.PublicKey do
   Every node's key's public key is written here in the transaction that makes the key,
   under the key's id, and refused when it is here already, whatever state its row is in
   and whichever organisation it was in: so a public key never serves a second access key,
-  nor comes back once retired. Its `state` follows the key: `pending` while it awaits
-  approval, `current` once approved, `tombstone` once retired, with when and why
-  (`retired_reason`: `revoked`, `rejected`, `expired`, `node_deleted` or
-  `workspace_deleted`).
+  nor comes back once retired. Its `state` follows the key: `current` while the key is
+  in use, `tombstone` once retired, with when and why (`retired_reason`: `revoked`,
+  `expired`, `node_deleted` or `workspace_deleted`).
 
   The ledger is the instance's own: it has no organisation and no foreign key, so it
   outlives the purge of the key's workspace and organisation, and no purge walks it.
@@ -20,14 +19,14 @@ defmodule Apiary.AccessKeys.PublicKey do
   @type t :: %__MODULE__{}
 
   @typedoc "Why a public key was retired."
-  @type reason :: :revoked | :rejected | :expired | :node_deleted | :workspace_deleted
+  @type reason :: :revoked | :expired | :node_deleted | :workspace_deleted
 
-  @reasons [:revoked, :rejected, :expired, :node_deleted, :workspace_deleted]
+  @reasons [:revoked, :expired, :node_deleted, :workspace_deleted]
 
   @primary_key {:public_key, :binary, autogenerate: false}
   schema "access_key_public_keys" do
     field :key_id, :string
-    field :state, Ecto.Enum, values: [:pending, :current, :tombstone]
+    field :state, Ecto.Enum, values: [:current, :tombstone]
     field :received_at, :utc_datetime_usec
     field :retired_at, :utc_datetime_usec
     field :retired_reason, Ecto.Enum, values: @reasons

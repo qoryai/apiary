@@ -721,7 +721,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert effect =~ "only what a deny rule names is denied in this repository's runs"
 
       assert effect =~
-               "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
+               "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
 
       refute effect =~ "other repositories do not change"
 

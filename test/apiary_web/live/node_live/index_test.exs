@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.NodeLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -305,6 +306,43 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "?view=idle"))
       refute has_element?(lv, "#node-#{running.public_id}")
       assert has_element?(lv, "#node-#{idle.public_id}")
+    end
+
+    test "a pool whose instances were pruned is last seen when its key was used, and sorts so",
+         %{conn: conn, scope: scope} do
+      never = node_fixture(scope, name: "a-never")
+      pool = pool_fixture(scope, name: "b-pruned")
+      seen = node_fixture(scope, name: "c-seen")
+      running = pool_fixture(scope, name: "d-running")
+      unused = pool_fixture(scope, name: "e-unused")
+      %{access_key: key} = Apiary.AccessKeysFixtures.node_key_fixture(scope, pool)
+      Apiary.AccessKeysFixtures.node_key_fixture(scope, unused)
+      instance_fixture(pool, instance_id: "p_1", seen_at: ago(2 * 86_400))
+      instance_fixture(seen, seen_at: ago(60))
+      node_run_fixture(running, "r_1")
+
+      Apiary.Repo.update_all(
+        from(k in Apiary.AccessKeys.AccessKey, where: k.id == ^key.id),
+        set: [last_used_at: ago(2 * 86_400)]
+      )
+
+      assert Nodes.prune_instances() >= 1
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "?sort=seen"))
+
+      assert has_element?(lv, "#node-#{pool.public_id}-state", "Last seen")
+      assert has_element?(lv, "#node-#{never.public_id}-state", "Never seen")
+      assert has_element?(lv, "#node-#{unused.public_id}-state", "Never seen")
+      assert has_element?(lv, "#node-#{running.public_id}-state", "1 running")
+
+      ids =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#nodes > tr[id^='node-']:not([id*='-instance-'])")
+        |> LazyHTML.attribute("id")
+
+      assert ids == Enum.map([running, seen, pool, never, unused], &"node-#{&1.public_id}")
     end
 
     test "sorts by name, or by last seen", %{conn: conn, scope: scope} do

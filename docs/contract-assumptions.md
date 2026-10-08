@@ -57,10 +57,9 @@ served. One check decides it for the three (`ApiaryWeb.Contract.ContractVersion`
 the signature: a request that does not verify is `401` whatever the header says.
 
 A request that verifies records its instance as seen on the key's node
-(`Apiary.Nodes.seen/3`), with its name, the runner version and the contract version, for
-a key that awaits approval too, once the instance id passes and, on a GET, only when its
-timestamp is within the window: a stale or replayed GET records nothing before its `401`.
-A key that awaits approval is then answered `409` `key_pending` on every endpoint.
+(`Apiary.Nodes.seen/3`), with its name, the runner version and the contract version, once
+the instance id passes and, on a GET, only when its timestamp is within the window: a GET
+outside it, stale or replayed after the window closes, records nothing before its `401`.
 
 **Signed answers.** Every answer to a request that verified is signed with the server's
 own Ed25519 key, the key every machine pins as `apiary_public_key`
@@ -71,7 +70,11 @@ sent, the lowercase hex SHA-256 of the body, the answer's `X-Qory-Configuration`
 `X-Qory-Run-Configuration` (each empty when absent), with `Cache-Control: no-store,
 no-transform`. A refusal after verification is coded, `application/json`,
 `{"error":"<code>"}`. Every `401` goes out unsigned, and so does a refusal before
-verification: the `413`, the `415` and the `400` of a header sent twice. The server's key
+verification: the `413`, the `415` and the `400` of a header sent twice. An answer to an
+enrolment is signed under its own first line, `qory-enrol-answer-ed25519-v1`
+(`Apiary.Contract.SignedMessage.enrolment_answer/3`), with the request's `proof` as line 3
+and lines 5 and 6 empty, so it never verifies as the answer to a signed request, nor the
+reverse (see "Enrolment"). The server's key
 comes from `APIARY_SIGNING_SECRET`, which is refused at boot when it is one of the
 contract's fixture seeds.
 
@@ -110,8 +113,8 @@ replaces a machine's own enforcement with an empty policy. The document therefor
 by node, and for a node is one of two, by its workspace, and so is its digest, here and in
 every answer to a batch. The first
 change of a workspace's policy changes that digest: a run in flight fetches the document
-again, finds the section, fetches its run configuration and applies it, which is the
-moment the workspace takes over. It does not go back: a workspace whose rules were all
+again, finds the section, fetches its run configuration and applies it, narrowed by the
+machine's own policy. It does not go back: a workspace whose rules were all
 removed again still serves its (empty) policy. Sections a runner does not know are to be
 ignored.
 
@@ -141,7 +144,6 @@ first refusal that applies is the answer:
 | `401` | any failure of authentication (see Failure); unsigned | `{"error":"unauthorized"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
-| `409` | the key awaits approval | `{"error":"key_pending"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, or holds a ping whose `interval_seconds` is absent or not an integer from 1 to 300 | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
@@ -158,8 +160,8 @@ workspace's discovery answer carries, and, for a workspace whose policy somebody
 "The run configuration" below for which that is while the repository is not known yet). A
 workspace without a policy of its own is never answered the second. No other status
 carries it. No error body repeats anything that was sent. The ping is a batch like any
-other: a `2xx` lets the run start, and a revoked key, a bad signature, a key awaiting
-approval, an instance beyond the limit or an unsupported version does not.
+other: a `2xx` lets the run start, and a revoked key, a bad signature, an instance beyond the
+limit or an unsupported version does not.
 
 A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
 hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev.qory.`),
@@ -275,21 +277,28 @@ at most 100 paths.
 `POST /.well-known/qory-enrolment` (`ApiaryWeb.Contract.EnrolmentController`): a machine
 enrols a new access key with an enrolment code made on a node, by the contract's
 `enrolment.schema.json`. No access key id and no request signature: the code and the
-proof authenticate it. The answers, in order:
+proof authenticate it. Nothing is signed until the code is accepted, the key passes the key
+checks and the proof verifies under it. The answers, in order:
 
 | Status | Signed | When |
 |---|---|---|
 | `413` | no | a body over 8 KiB |
+| `415` `unsupported_media_type` | no | a `Content-Type` absent, or one of its values not `application/json` (any case, parameters allowed) |
+| `400` `bad_request` | no | `Content-Type` or `X-Qory-Contract-Version` sent twice |
 | `429` `rate_limited` | no | over the limit of the address it came from, with `Retry-After` |
-| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault: a member unknown or twice, a code not in its normal form, a timestamp with a fraction or an exponent |
 | `400` `unsupported_contract_version` | no | `X-Qory-Contract-Version` absent or not `1` |
-| `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, or carries another fingerprint than the instance's key's |
-| `409` `key_invalid` | yes | the key checks or the ledger refuse the key, the proof does not verify, or its timestamp is more than 300 seconds from the server's clock |
-| `409` `key_limit` | yes | the node holds a key awaiting approval, or two approved keys |
-| `201` | yes | the key is made, awaiting approval |
+| `400` `invalid_request` | no | a body the schema refuses, naming the members at fault: a member unknown or twice, a code not in its normal form, a timestamp with a fraction or an exponent |
+| `401` `unauthorized` | no | the code is used, expired, cancelled or unknown, carries another fingerprint than the instance's key's, or was made by someone who is no longer an owner or an admin of its workspace; or the timestamp is more than 300 seconds from the server's clock |
+| `409` `key_invalid` | no | the key checks refuse the key (`Apiary.Contract.Ed25519.decode_public_key/1`: a canonical encoding, on the curve, y ≠ 1, not of small order, of prime order, not a published fixture key), checked first, or the proof does not verify under it |
+| `429` `rate_limited` | yes | over the code's own limit, with `Retry-After` |
+| `409` `key_invalid` | yes | the ledger holds the key: another access key's, a revoked one included |
+| `409` `key_limit` | yes | the node holds two keys |
+| `201` | yes | the key is made, and active |
 
-A signed answer's line 3 is the request's `proof`, and its body lists `apiary_public_key`.
-A refusal changes nothing: the code stays outstanding.
+A signed answer is signed under `qory-enrol-answer-ed25519-v1`; its line 3 is the request's
+`proof`, and its body lists `apiary_public_key`. The `201` carries `version`,
+`access_key_id`, `node_id`, `node_kind`, `stored_secrets` and `apiary_public_key`. An
+unsigned answer lists no key. A refusal changes nothing: the code stays outstanding.
 
 ## The log and the terminal
 
@@ -333,13 +342,13 @@ nothing else, unsigned, whether the cause is a missing or empty `X-Qory-Access-K
 Crockford base32 characters (including one that is not valid UTF-8; such a value is refused
 before any lookup), a key id that does not exist, a revoked key, a key of a node that was
 deleted, a key whose row does not match its integrity code, a signature that is not 64
-bytes of base64url or does not verify, or, on a GET only and after the `409` and the
-version's `400`, a timestamp that is not an integer or is outside the window. The body
+bytes of base64url or does not verify, or, on a GET only and after the version's `400`, a
+timestamp that is not an integer or is outside the window. The body
 never says which. A request under a key id the server does not hold is verified under a
 fixed public key all the same, so that it costs what a known one does. Nothing about the
 request's headers is logged.
 
-On a GET that verifies, of an approved key, the key records the time, the runner version from `User-Agent` (when
+On a GET that verifies, the key records the time, the runner version from `User-Agent` (when
 it is of the form `qory-runner/<version>`) and the contract version from
 `X-Qory-Contract-Version` when it is `1`; a request with any other is refused and leaves the
 recorded contract version as it is. The runner version never decides the answer:
@@ -352,7 +361,7 @@ No header value makes the endpoint answer `500`.
 
 ## Assumed
 
-The contract has not fixed these; Apiary chose, and the runner should match:
+The contract has not fixed these; Qory Apiary chose, and the runner should match:
 
 - The signature is decoded strictly: base64url without padding, 86 characters for 64
   bytes. Padding, the standard alphabet or another length is `401`, like a signature that
@@ -368,10 +377,12 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   answers JSON only (no content negotiation on `Accept`).
 - The public base URL of the document comes from the application's own URL configuration,
   not from the request's `Host` header.
-- On every endpoint, a `X-Qory-Contract-Version` that is not the integer `1` (absent,
-  another number, not a number, sent twice) is `400` with the versions served, once the
-  request has verified, after the `429`, the instance id's `400` and the `409`
-  `key_pending`.
+- On every signed endpoint, a `X-Qory-Contract-Version` that is not the integer `1`
+  (absent, another number, not a number, sent twice) is `400` with the versions served,
+  once the request has verified, after the `429` and the instance id's `400`. At
+  enrolment the header is read before the code, unsigned: sent twice it is `400`
+  `bad_request`, and any other value that is not `1` is `400` with the versions served,
+  after the per-address `429`.
 - The body limit is 2 MiB, twice the mebibyte a runner cuts a batch at, and it is checked
   before the signature.
 - The rate limit is per access key and per node: 50 batches a second, 100 at once
@@ -504,16 +515,29 @@ The contract has not fixed these; Apiary chose, and the runner should match:
     `allow` and refuses a configuration that selects credentials. The apiary renders what
     the rules say and selects no credential; the page and the export say that paths need
     a wall.
-- Enrolment: a proof whose timestamp is outside ±300 seconds is `409` `key_invalid`, as a
-  proof that does not verify; the contract fixes the window, not the answer.
 - Enrolment: the same code posted again with the same public key, a proof that verifies and
-  a fresh timestamp, while the code's 15 minutes last and the key is neither revoked nor
-  rejected, is the same `201` for the same key, as it is now; the contract says a used code
-  is `401`, and says nothing of a repeat. Any other key on a used code is `401`.
+  a fresh timestamp, while the code's 15 minutes last and the key is not revoked, is the
+  same `201` for the same key, as it is now, once within the code's limit; the contract
+  says a used code is `401`, and says nothing of a repeat. Any other key on a used code is
+  `401`.
+- Enrolment: the published fixture keys are among the key checks, so a fixture key is the
+  unsigned `409` `key_invalid`; the contract has every side refuse them, and names no step.
 - Enrolment: the instance's key does not rotate, so a code it issues carries one
   fingerprint; a code that carries two, or another, is `401`.
 - Enrolment: the key's label is the code's label hint, else the name the machine sent,
   with `-2`, `-3` and on when a key of the node in use has it already.
+- Enrolment: the contract names no content type for the request; the runner sends
+  `application/json`, so that is the one accepted: the media type, whatever its case and
+  whatever parameters follow, in each value sent. The contract's `400` `bad_request` for "a header
+  sent twice" names no headers at enrolment, and the four it names for a signed request are
+  not in one; the headers counted are the two the enrolment reads, `Content-Type` and
+  `X-Qory-Contract-Version`, so a header a proxy repeats, such as `X-Forwarded-For`, is no
+  refusal. A `Content-Type` sent twice, each `application/json`, is that `400`; with one
+  value of another type it is the `415` before it.
 - Enrolment: the rate limit is per address, 1 a second and 10 at once
   (`config :apiary, ApiaryWeb.Contract.EnrolmentController, rate: 1, burst: 10`), counted
-  before the body is read.
+  once the content type and the headers pass, before the version or the body is looked at,
+  so a request refused at `413`, `415` or a header sent twice spends none of it; the
+  contract does not mention `Retry-After`, which the `429` carries all the same; and per
+  code, 1 a second and 5 at once (`code_rate`, `code_burst`), counted only once the code
+  is accepted and the key proven, so a refused code or an unproven key spends none of it. The contract fixes the order, not the numbers.

@@ -18,8 +18,9 @@ defmodule Apiary.SigningKeyTest do
   @next_public_key "C0eCPnEJXdWb54rCccV27zifh7ZFYasHz5pOvNAtIEE"
   @next_fingerprint "52vzzF--Ic7qH_eZWi5K2A"
 
-  # Every 32-byte value the contract publishes: the fixture access key's seed, the sealed
-  # fixture's ephemeral key, the signing keys', and the seed of the key awaiting approval.
+  # Every 32-byte value the contract publishes or has published: the fixture access key's
+  # seed, the ephemeral key of the sealed fixture of earlier commits, the signing keys', and
+  # the seed of the second fixture access key.
   @published [1..32, 33..64, 65..96, 161..192, 193..224]
              |> Enum.map(&:binary.list_to_bin(Enum.to_list(&1)))
 
@@ -179,8 +180,12 @@ defmodule Apiary.SigningKeyTest do
           capture_log(fn ->
             for fun <- [&SigningKey.boot!/0, &SigningKey.current/0, &SigningKey.public_key/0] do
               error = assert_raise ArgumentError, fun
-              assert error.message =~ "APIARY_SIGNING_SECRET"
-              assert error.message =~ "fixtures"
+
+              assert error.message ==
+                       "APIARY_SIGNING_SECRET is a value the runner contract publishes " <>
+                         "in its fixtures, so anyone could sign as this instance. " <>
+                         "Generate one with: openssl rand -base64 32"
+
               refute_seed(error.message, seed)
             end
 

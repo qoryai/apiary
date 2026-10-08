@@ -1,9 +1,9 @@
 # From nothing to a first run
 
-This page takes a machine with Docker and nothing else to a running Qory Apiary with one run on its
-runs page. It is a trial on one machine: the server is reached at `http://localhost:4100`,
-and emails are written to the log instead of being sent. For an installation other people
-sign in to, read [Install and configure](install.md) and the
+This page takes a machine with Docker and nothing else to a running Qory Apiary with one
+run on its runs page. It is a trial on one machine: Qory Apiary is reached at
+`http://localhost:4100`, and emails are written to the log instead of being sent. For an
+installation other people sign in to, read [Install and configure](install.md) and the
 [hosting checklist](hosting-checklist.md).
 
 You need Docker with the `docker compose` command, `git` and `openssl`. From step 5 on you
@@ -28,7 +28,7 @@ Generate four values:
 
 ```sh
 openssl rand -hex 24       # the database password
-openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least the server accepts
+openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least Qory Apiary accepts
 openssl rand -base64 32    # APIARY_ENCRYPTION_SECRET: 32 bytes in base64, 44 characters
 openssl rand -base64 32    # APIARY_SIGNING_SECRET: another 32 bytes, never the same value
 ```
@@ -86,7 +86,7 @@ The members of the object may come in another order, and the version is the rele
 Open `http://localhost:4100/users/register`. Under **Create your account**, enter an email
 address, `ada@qory.example` say, and the **Organisation name**, usually your company's,
 `Acme` say, and select **Create account**. No password is asked for:
-the server sends a link, and the page says where it went and that the link works for 15
+Qory Apiary sends a link, and the page says where it went and that the link works for 15
 minutes.
 
 With `MAIL_TO_LOG=true` the email is in the log of the `apiary` service. This prints the
@@ -98,7 +98,7 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your workspace. Until a run reaches it, the
-overview is one box, **Send your first run**: Add a node, Enrol the machine, See runs here.
+overview is one box, **Send your first run**: Add a node, Connect it, See runs here.
 Steps 5 to 8 below are those steps.
 
 Signing up created an organisation with the name you gave, one workspace in it named
@@ -116,9 +116,9 @@ from the names at sign-up: an organisation named `Acme` gives `/acme/main`, and 
 are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
 a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
 
-The people of the organisation are under **Settings › People**, `/<organisation>/settings/people`, each
+The people of the organisation are under **Organisation settings › People**, `/<organisation>/settings/people`, each
 at one of three levels, and every one of them reaches the workspace; the workspace's own
-**Settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
+**Workspace settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
 and leads owners and admins to the organisation's. An invitation is an
 email address and nothing else: the person joins as a member, and an owner changes their
 level afterwards. An **owner** and an **admin** manage the organisation's members and
@@ -127,14 +127,15 @@ and an admin manages members only, not owners or other admins. A **member** work
 workspace and manages neither the members nor the settings. `http://localhost:4100/` and
 the log-in take you to the workspace.
 
-<!-- feature: security -->
-The values runs are given are under the workspace's **Settings › Secrets and variables**,
-`/<organisation>/<workspace>/settings/secrets`, in two views. A **secret**, such as a
-token for a forge, holds one value or several, each named by a **value ID**; once saved, a
-value is never shown again, to anyone, and the page lists only names, value IDs, who
-changed each value and when, and what uses it. A **variable** is a plain value, such as
-the address of a package registry, which a repository may set its own value of unless the
-variable is **locked**. Every member reads both views; owners and admins change them. A
+<!-- feature: secrets -->
+Secrets and variables are under **Workspace settings › Secrets and variables**,
+`/<organisation>/<workspace>/settings/secrets`, in two views; a run receives only its
+security policy. A **secret**, such as a token for a forge, holds one value or several,
+each named by a **value ID**; once saved, a value is never shown again, to anyone, and the
+page lists only names, value IDs and who changed each value and when. A **variable** is a
+plain value of the workspace, such as the address of a package registry. A **locked**
+variable sets aside any value of its own a repository has for the name; no page sets a
+repository's own value. Every member reads both views; owners and admins change them. A
 name beginning `QORY_` is the runner's own and is refused.
 <!-- /feature -->
 
@@ -145,17 +146,24 @@ organisation's. Mail to you, such as a log-in link, is written in your language.
 of the workspace's pages are its domain's, chosen when it was created: software, the one
 domain there is, which says repository, forge and pull request.
 
-## 5. Add a node, then enrol the machine
+## 5. Add a node, then connect it
 
 A machine posts its runs with an access key of its own, on a **node** of the workspace: a
 node is one permanent machine, a **node pool** a fleet of short-lived instances that share
-one key. The machine makes the key, and Qory Apiary keeps only its public half.
+one key. These are the overview's first two steps, **Add a node** and **Connect it**.
+Here you connect the machine with a command: `qory` makes the key on the machine, and Qory
+Apiary keeps only its public half.
 
 1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
-   `build-01` say, and select **Add node**. The node's **Access key** tab opens.
-2. Select **New enrolment code**, leave **Stored secrets** at **Not allowed**, and select
-   **Make code**. The page shows the code once, and under "On the machine, run:" the
-   command with this server and the code filled in. Select **Copy command**.
+   `build-01` say, and select **Add node**. The node's **Access key** tab opens and asks
+   "How do you want to connect build-01?", with two ways: **Connect with a command**
+   first, and **Generate a key in the browser**. (Back on the overview, step 2 asks the
+   same, and **Get the command** there shows the command in place.)
+2. Under **Connect with a command**, select **Get the command**. The page **Connect
+   build-01 with a command** shows the command to run on the machine, with Qory Apiary's
+   address and a one-time code in it. Select **Copy command**. Since `PUBLIC_URL` is a
+   `localhost` address, the page also says machines can't reach it; that holds for other
+   machines, and this trial's machine is Qory Apiary's own, so the command works here.
 3. On the machine, run the command:
 
    ```sh
@@ -165,38 +173,26 @@ one key. The machine makes the key, and Qory Apiary keeps only its public half.
    `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable
    by you alone, and prints the key's fingerprint. It writes the `server` section into
    `~/.config/qory/runner.yaml`, `$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is
-   set: the server's `url`, the key's `access_key_id`, and `apiary_public_key`, the
-   server's key, which the code named and the server's signed answer confirmed. The code
-   works once, for 15 minutes.
-4. Select **Done**. Once the command has run, the node's **Access key** tab shows the key,
-   **Awaiting approval**, under the machine's name; reload the tab if it is not there yet.
-   Compare its **Fingerprint** with the one `qory` printed, then select **Approve…** and
-   **Yes, approve**.
+   set: Qory Apiary's `url`, the key's `access_key_id`, and `apiary_public_key`, Qory
+   Apiary's key, which the code named and Qory Apiary's signed answer confirmed. The
+   address and Qory Apiary's key are the same for every machine connected to this Qory
+   Apiary; only `access_key_id` is the machine's key's. The command works once, for 15
+   minutes.
+4. The page, which read "Waiting for build-01 to run it.", now says "build-01 is
+   connected." with the key and its **Fingerprint**. It is the one `qory` printed; if it
+   is not, revoke the key on the **Access key** tab. Select **Done**.
 
-Until the key is approved, every request of the machine is refused `key_pending`, and no
-run starts.
+The command is the approval: the key is active as soon as it arrives, and the machine can
+start runs at once. On the **Access key** tab, the key's card says where its secret is.
 
 The runner file belongs to the machine and to no repository.
 [The runner file's `server` section](runner-file.md) has the rest of it.
 
-## 6. Or paste the key
+For a CI or a node pool, **Generate a key in the browser** on the same tab makes the key
+in your browser and shows its secret once, with the other values the CI sets; [Nodes and
+their keys](nodes.md) says more about both ways, node pools and revoking a key.
 
-Instead of a code, the machine can make its key on its own, and you paste the public key
-into the node:
-
-1. On the machine, `qory access-key create` makes the key, keeps its secret in
-   `~/.config/qory/access-key-secret`, and prints the public key and its fingerprint.
-2. On the node's **Access key** tab, select **Add a public key**, give it a **Label**,
-   paste the **Public key**, check that the **Fingerprint** under it is the one the
-   machine printed, and select **Add key**. A key you add here is approved as you add it.
-3. The page **Runner file for build-01** shows the lines to put in
-   `~/.config/qory/runner.yaml`, with **Copy lines**, and for a CI the same id and pin as
-   variables. Nothing on it is secret, and an approved key's **Runner file lines** opens it
-   again.
-
-[Nodes and their keys](nodes.md) says more about both ways, node pools and revoking a key.
-
-## 7. First run
+## 6. First run
 
 Write the command's hello example into an empty directory, compose its harness and start
 one headless turn:
@@ -212,13 +208,15 @@ The example is composed for the `claude` runtime, so that runtime's command has 
 installed on this machine and able to start a session. Arguments after `--` go to the
 runtime.
 
-Before the runtime starts, the runner fetches the server's configuration, signed with the
-machine's access key, checks the answer under the server's key it pinned, and sends a
-ping. If the server does not answer, or refuses the key, there is no run, and the error
-names the URL and the status. The record of the run is also written to `.qory/runs/<id>/`
-in the directory, whatever the server does.
+Before the runtime starts, the runner fetches Qory Apiary's configuration, signed with the
+machine's access key, checks the answer under Qory Apiary's key it pinned, and sends a
+ping. If Qory Apiary does not answer, or refuses the key, there is no run, and the error
+names the URL and the status. At the end of the run qory prints where its record is,
+`qory run: the record is in <folder>/<id>`. The record is written whatever Qory Apiary
+does, under `~/.local/state/qory/runs/`, or `$XDG_STATE_HOME/qory/runs/` when
+`XDG_STATE_HOME` is set to an absolute path, not in the directory.
 
-## 8. See it
+## 7. See it
 
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,
@@ -236,9 +234,10 @@ version.
 
 <!-- feature: security -->
 - Until somebody changes the workspace's policy, runs use each machine's own policy. Read
-  [The security policy](security-policy.md) before the first rule: the first change takes
-  over for every machine of the workspace.
+  [The security policy](security-policy.md) before the first rule: from the first change,
+  each machine's runs take the workspace's policy, narrowed by the machine's own `egress`
+  section.
 <!-- /feature -->
-- `qory run --local` records to files only and does not contact the server.
+- `qory run --local` records to files only and does not contact Qory Apiary.
 - To stop the trial: `docker compose down`. The database stays in the `postgres-data`
   volume; `docker compose down --volumes` deletes it.

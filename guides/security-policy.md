@@ -11,9 +11,11 @@ which apply it to the runs they start and to the runs already in flight. In the 
 > Installing or upgrading the server changes no machine's policy. Until somebody makes the
 > workspace's policy, by the first rule or the first change of mode, the server offers the
 > workspace's machines no run configuration, and every machine keeps the `egress` section
-> of its own runner file, enforcement included. The first change takes over for every
-> machine of the workspace at once. Read [The first change](#the-first-change) before you
-> make it.
+> of its own runner file, enforcement included. From the first change, every machine of
+> the workspace applies the workspace's policy narrowed by its own `egress` section: a run
+> enforces when either side enforces, a host is allowed only where both sides allow it,
+> and what either side denies is denied. Read [The first change](#the-first-change) before
+> you make it.
 
 ## Rules
 
@@ -30,8 +32,7 @@ A rule allows or denies one thing:
 Paths need a wall. Without one the runner refuses to start a run whose policy has them.
 
 Credentials are not part of the policy: the run configuration this server renders selects
-none, and a run uses no credential of its machine's. Secrets are coming as a feature of
-their own.
+none, and a run uses no credential of its machine's.
 
 The policy document the runner reads has a deny list and an allow list. The runner decides
 the deny list first, in either mode: a host a deny rule names is denied under observe as
@@ -314,23 +315,24 @@ Until somebody has made the workspace's policy:
 - the policy page says: "Runs use each machine's own policy until the first change here."
 
 The first rule or the first change of mode, the workspace's or a repository's, is the
-moment the workspace takes over:
+moment the workspace's policy applies:
 
-- for every machine under the workspace's access keys, and for the runs in flight, which
+- to every machine under the workspace's access keys, and to the runs in flight, which
   reload within a heartbeat;
-- entirely: from then on the workspace's policy is the policy, and a machine's own
-  `egress` section is not merged with it;
-- in the mode the workspace is in, which is observe until an owner or an admin sets it. A
-  machine that enforced a list of its own is, after the first change, under a workspace
-  that observes and denies only what a deny rule names, until an owner or an admin
-  switches the workspace to enforce.
+- narrowed by each machine's own `egress` section, which only takes away: a run enforces
+  when either side enforces, a host is allowed only where both sides allow it (a side in
+  observe allows every host), and the deny rules are both sides' together;
+- in the mode the workspace is in, which is observe until an owner or an admin sets it,
+  unless the machine enforces. A machine that enforced a list of its own stays in
+  enforce after the first change: while the workspace observes, its runs reach the hosts
+  of its own list, less what a deny rule of the workspace names.
 
 So before the first change:
 
 1. Collect what the machines' own lists say, the `egress.allow` of every runner file.
-2. Say all of it in the workspace. The first rule you add already takes over, so add the
-   rest straight after it; while the workspace is in observe only what a deny rule names
-   is denied in between.
+2. Say all of it in the workspace. The first rule you add already applies, so add the
+   rest straight after it; where both sides enforce, a run reaches only the hosts both
+   allow.
 3. When the rules are complete, an owner or an admin switches to enforce. The confirmation lists what
    would start being denied, from the record.
 

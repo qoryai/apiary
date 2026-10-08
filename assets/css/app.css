@@ -1168,7 +1168,7 @@
 
 /* ==== The shell (`ApiaryWeb.Layouts.app/1`): the top bar with the breadcrumb and its
    switcher, Search or jump to, New and the account menu; the sidebar of the page's scope;
-   the page's width; the palette. Section 4 of the v2 brief (docs/ui.md). ==== */
+   the page's width; the palette. ==== */
 @layer qory {
   :root {
     --q-bar: 3rem;
@@ -1987,8 +1987,8 @@
     gap: 16px;
   }
 
-  /* ---- What runs don't receive yet (PageComponents.not_on_runs) ---- */
-  .q-not-yet {
+  /* ---- What a run receives (PageComponents.not_on_runs) ---- */
+  .q-not-on-runs {
     display: flex;
     align-items: flex-start;
     gap: 6px;
@@ -1996,7 +1996,7 @@
     font-size: 0.8125rem;
     line-height: 1.25rem;
   }
-  .q-not-yet-i {
+  .q-not-on-runs-i {
     flex: none;
     margin-top: 2px;
     color: var(--q-faint);
@@ -2162,7 +2162,7 @@
     line-height: 1.25rem;
     font-weight: 600;
   }
-  /* On a person's page the part's heading is an h2 over a rule (the mock's part-h). */
+  /* On a person's page the part's heading is an h2 over a rule. */
   .q-part-h2 {
     padding-bottom: 8px;
     border-bottom: 1px solid var(--q-border-subtle);
@@ -7176,8 +7176,8 @@
     align-items: center;
     gap: 8px;
   }
-  /* The version in a policy page's head is plain muted text, as the mock draws it: the
-     version, the digest and its copy, no box. */
+  /* The version in a policy page's head is plain muted text: the version, the digest and
+     its copy, no box. */
   .q-head-side .q-vpill {
     height: auto;
     gap: 8px;
@@ -9154,15 +9154,6 @@
   .q-onb-lbl {
     color: var(--q-faint);
     font-size: 0.75rem;
-  }
-  .q-onb-pre {
-    overflow-x: auto;
-    margin: 0;
-    padding: 12px 14px;
-    border-radius: var(--radius-field);
-    background-color: var(--q-code-bg);
-    font: 12.5px/20px var(--font-mono);
-    tab-size: 2;
   }
   .q-onb-after {
     max-width: 1040px;

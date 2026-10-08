@@ -3,8 +3,8 @@
 # that answers the runner. run.sh starts it; see e2e/README.md.
 #
 # It makes a workspace with an owner, a node and the node's access key: a fresh Ed25519
-# key, generated here, whose public key is pasted into the node the way the node's page
-# adds one, approved as it is added. It puts the workspace in enforce with nothing
+# key, generated here, whose public key is added to the node the way the node's Generate
+# a key adds one made in a browser, active as it is added. It puts the workspace in enforce with nothing
 # allowed, writes the node's runner file, with the server lines the key's page shows, and
 # the key's secret in access-key-secret beside it, starts the session on the node, waits
 # for the denied connection to arrive, allows its host the way the connection's row does,
@@ -70,13 +70,19 @@ defmodule E2E do
     :active = AccessKey.status(access_key)
     write_secret(Path.dirname(runner_file), secret)
 
-    File.write!(
-      runner_file,
-      AccessKeys.runner_lines(access_key, ApiaryWeb.Endpoint.url()).file <> runner_tail
-    )
+    # The key's server lines: the server's address, the key's id and the server's pin.
+    server = AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
+
+    server_section =
+      Enum.map_join(
+        ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key],
+        &(&1 <> "\n")
+      )
+
+    File.write!(runner_file, server_section <> runner_tail)
 
     say(
-      "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, approved; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"
+      "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, active; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"
     )
 
     step("the node")
@@ -362,8 +368,8 @@ defmodule E2E do
     end
   end
 
-  # A fresh Ed25519 key, as `qory access-key create` makes one: the public key in
-  # base64url without padding, as the node's page takes a paste, and the secret, `qak_`
+  # A fresh Ed25519 key, as a browser's Generate a key makes one: the public key in
+  # base64url without padding, as the node's page receives it, and the secret, `qak_`
   # and the key's 32-byte seed in base64url without padding (the runner's accesskey
   # package, which qory reads it with).
   defp new_key do

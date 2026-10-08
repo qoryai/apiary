@@ -28,8 +28,9 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   A node's access key that signs requests as a runner does: a node of the scope's
-  workspace (`attrs` `:node`, else a new node, kind `node`), with a key pasted on it, so
-  approved. Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
+  workspace (`attrs` `:node`, else a new node, kind `node`), with a key made in a browser
+  on it.
+  Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
   request carries it (`Apiary.AccessKeys.fetch_for_verification/1`, with its workspace
   and node), and its raw 32-byte seed, which `signed_post/5` and `signed_get/5` sign with.
   """
@@ -42,17 +43,15 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`,
-  approved, or `"pending_access_key"`, awaiting approval), held under its published id on
-  `node`, as a receiver under test holds it. Written straight into the table, past the key
-  checks, which refuse every fixture key: test support only.
+  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`),
+  held under its published id on `node`, active, as a receiver under test holds it.
+  Written straight into the table, past the key checks, which refuse every fixture key:
+  test support only.
   """
-  def fixture_access_key!(%Scope{user: user}, node, name)
-      when name in ~w(access_key pending_access_key) do
+  def fixture_access_key!(%Scope{user: user}, node, "access_key" = name) do
     entry = Map.fetch!(known_answers!("keys"), name)
     %{public_key: public_key} = fixture_key!(name)
     now = DateTime.utc_now()
-    approved? = name == "access_key"
 
     %AccessKey{
       id: Ecto.UUID.generate(),
@@ -62,10 +61,8 @@ defmodule Apiary.ContractFixtures do
       key_id: Map.fetch!(entry, "access_key_id"),
       public_key: public_key,
       created_by_id: user.id,
-      arrived_by: :paste,
-      received_at: now,
-      approved_at: if(approved?, do: now),
-      approved_by_id: if(approved?, do: user.id)
+      arrived_by: :browser,
+      received_at: now
     }
     |> AccessKey.insert_changeset(%{allow_secrets: false, label: name})
     |> AccessKey.put_integrity()
@@ -315,14 +312,14 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   fixture_key!/1 is one of the contract's fixture keys of `known-answers/keys.json`
-  (`"access_key"`, `"pending_access_key"`, `"signing_key"`, `"next_signing_key"`), with
+  (`"access_key"`, `"signing_key"`, `"next_signing_key"`), with
   its raw `:seed`, its raw `:public_key` derived from the seed and checked against the
   published one, and the published `:fingerprint`, plus `:access_key_id` and
   `:instance_id` where the file gives them. Test support only: every instance refuses
   these keys.
   """
   def fixture_key!(name)
-      when name in ~w(access_key pending_access_key signing_key next_signing_key) do
+      when name in ~w(access_key signing_key next_signing_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
 
     encoded_seed =
@@ -342,6 +339,22 @@ defmodule Apiary.ContractFixtures do
       access_key_id: entry["access_key_id"],
       instance_id: entry["instance_id"]
     }
+  end
+
+  # The second fixture access key's public key, as the contract's README publishes it.
+  @second_fixture_access_key "dSnEVtk40rj-kPpsz5FtNGdwpkvLt7UyO2h6zeIM0Aw"
+
+  @doc """
+  second_fixture_access_key/0 is the contract's second fixture access key, by value: the
+  seed of bytes 193 to 224 and its public key, which the README publishes and every side
+  refuses. The contract's `keys.json` no longer lists it, since no fixture signs with it.
+  Test support only.
+  """
+  def second_fixture_access_key do
+    seed = :binary.list_to_bin(Enum.to_list(193..224))
+    {public_key, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+    {:ok, ^public_key} = Apiary.Contract.Ed25519.decode(@second_fixture_access_key, 32)
+    %{seed: seed, public_key: public_key}
   end
 
   @doc """

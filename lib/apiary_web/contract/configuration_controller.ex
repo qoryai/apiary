@@ -3,8 +3,8 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   Discovery: the configuration document of the server contract
   (`ApiaryWeb.Contract.Configuration`), reached only through
   `ApiaryWeb.Contract.SignedRequest`, which verifies the request, refuses what the
-  contract refuses before the document (a key awaiting approval, a contract revision not
-  served, a stale timestamp) and signs the answer. The events URL it names is served by
+  contract refuses before the document (a contract revision not served, a stale
+  timestamp) and signs the answer. The events URL it names is served by
   `ApiaryWeb.Contract.EventsController`.
 
   The document names the key's node or node pool, lists the instance's signing key, and

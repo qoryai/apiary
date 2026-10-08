@@ -1,9 +1,7 @@
 defmodule Apiary.Connections.Target do
   @moduledoc """
-  A repository a connection applies to (`connection_targets`), and the ways an
-  integration is used there: `credential` ("Calls its API"), the one way a connection is
-  used in, or nil, the same when its description offers it. A runtime's and a service's
-  rows have no ways. Changed only through `Apiary.Connections`.
+  A repository a connection applies to (`connection_targets`). Changed only through
+  `Apiary.Connections`.
   """
   use Ecto.Schema
 
@@ -13,8 +11,6 @@ defmodule Apiary.Connections.Target do
   @primary_key false
   @foreign_key_type :binary_id
   schema "connection_targets" do
-    field :ways, {:array, :string}
-
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :connection, Apiary.Connections.Connection, primary_key: true

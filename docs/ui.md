@@ -10,9 +10,9 @@ Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes 
 page's active navigation item (`nav`), the counts the sidebar shows (`counts`), the width
 of its column (`width`), on a page of a level's settings the level's sections and its own
 (`sections`, `section`), on a list narrowed to one target that target (`narrowed`) and, in
-`crumb` slots, the page's own segments of the breadcrumb. The shell is section 4 of the v2
-design brief: it shows one scope's sidebar at a time, the one the page belongs to, or, on a
-person's own page and an Instance page, the one the person came from (Two levels, below).
+`crumb` slots, the page's own segments of the breadcrumb. The shell shows one scope's
+sidebar at a time, the one the page belongs to, or, on a person's own page and an Instance
+page, the one the person came from (Two levels, below).
 
 - **A page belongs to one scope**: a workspace, an organisation, the person or the
   Instance. The navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page
@@ -170,11 +170,12 @@ the console keeps. Every other act happens on a page, in place:
   from (`SettingsComponents.save/1`, `cancel`). Its header has no Back link: Cancel and the
   breadcrumb lead back (`PageComponents.page_form/1`, `page_form_foot/1`). A save goes back
   with a flash; a refused one stays, the error under its field. What a save shows once,
-  such as an enrolment code, it shows on that page, never again once the reader leaves it.
+  such as a generated key's secret, it shows on the page the save leads to, never again
+  once the reader leaves it.
   The pattern is Add
   integration's (storybook, Screens); A form is a page, under Settings, says the rest.
 - **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
-  Revoke, Approve, Remove, Suspend or Clear turns that row into the question, "Delete
+  Revoke, Remove, Suspend or Clear turns that row into the question, "Delete
   FORGE_TOKEN?", what is lost, "Yes, delete" and Cancel; a danger zone's line expands
   under its sentence, with the field to type where one is asked; a page's own setting,
   such as the policy's mode, opens its choices in place and asks under them. Each keeps
@@ -203,22 +204,21 @@ replaces the navigation it is in.
   `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
-  (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the runs of the
-  workspace use, never Qory's own settings, as its subtitle says; one list, Set up in
-  this workspace, in the groups' order, each row its name, its kind, Agent, API or Program
-  (one added from a release), a program's version and For runs in, where it applies; then,
+  (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the workspace sets
+  up, never Qory Apiary's own settings, as its subtitle says; one list, Set up in this
+  workspace, in the groups' order, each row its name, its kind, Agent, API or Program (one
+  added from a release), a program's version and Applies to, where it applies; then,
   for whoever may change it, Add an integration, a card for each thing to add by name, its
-  kind a small muted word and one line of what a run gets from it, in three groups, each an
-  `<h3>`, one sentence and a list its heading names: Agent (the runtimes of the runner's
-  catalogue), APIs the agent may call (the built-in APIs, the workspace's own custom APIs,
-  then Custom API…) and Programs (the named releases, `ApiaryWeb.IntegrationLive.Named`,
-  none yet, then From a release…); the runner's design that the agent never holds a token
-  is said for APIs and programs, never for the agent; a card's act opens its form with its
+  kind a small muted word and one line about it, in three groups, each an `<h3>`, a
+  sentence where it has one and a list its heading names: Agent (the runtimes of the
+  runner's catalogue), Outside APIs (the built-in APIs, the workspace's own
+  custom APIs, then Custom API…) and Programs (the named releases,
+  `ApiaryWeb.IntegrationLive.Named`, then From a release…); a card's act opens its form with its
   item chosen, `?runtime=` or `?definition=` (a named release's opens Add from a release,
   its source filled in, `?source=`), an unknown one opening the form as it starts; the
   forms are Set up an agent, Set up an API and Add from a release; an item's page says its
-  kind and one line by kind under its title; each page says once that no run uses any of it
-  yet) and Secrets and variables (`/settings/secrets`,
+  kind under its title; each page says once that a run receives only
+  its security policy) and Secrets and variables (`/settings/secrets`,
   below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
   logs; `/settings/retention`, its path before, sends on with its query). A workspace's
@@ -268,7 +268,7 @@ replaces the navigation it is in.
   itself does: the edition's sections
   (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
   Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, its
-  `<h1>` Configuration), read only: what whoever runs the server set, as the server read it
+  `<h1>` Configuration), read only: what whoever runs Qory Apiary set, as Qory Apiary read it
   when it started, each value with the setting it is set by. Anyone else is answered not
   found. The sidebar stays the one the person came from. In the core Configuration is the
   one section, so there is no second column; an edition's sections add to it, and with two
@@ -364,14 +364,14 @@ reader of `secret.read`) is one section of two tabs, under its `<h1>` and its se
 (`PageComponents.page_tabs/1`, `place="section"`, `#secrets-tabs-secrets` and
 `#secrets-tabs-variables`), each a link with its count, the current one
 `aria-current="page"`, not an ARIA tablist; the bar is a navigation named "Secrets and
-variables", wraps and does not stick. Each tab's panel holds, in order, the line that runs
-don't receive these yet, who changes them, its New (New secret, New variable) beside its
-search, Filter and Sort, and its list: nothing in the header changes with the tab. Each
-list is on the list pattern (Lists, below), its search, its
-Filter menu, Sort and its tokens in the URL (`ApiaryWeb.SecretLive.Query`): a secret found
-by its name or a value ID and filtered by one value or several; a variable by its name or
-its value, and filtered by its lock and by whether a repository sets it too; both ordered
-by name or the latest change.
+variables", wraps and does not stick. Each tab's panel holds, in order, the line that a
+run receives only its security policy, who changes them, its New (New secret, New
+variable) beside its search, Filter and Sort, and its list: nothing in the header changes
+with the tab. Each list is on the list pattern (Lists, below), its search, its Filter
+menu, Sort and its tokens in the URL (`ApiaryWeb.SecretLive.Query`): a secret found by its
+name or a value ID and filtered by one value or several; a variable by its name or its
+value, and filtered by its lock and by whether a repository sets it too; both ordered by
+name or the latest change.
 
 - **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
   both tabs (a tab is not a segment). The second column marks the section as the page on
@@ -382,31 +382,30 @@ by name or the latest change.
   start and outside both tabs' parts, says out of sight the tab a switch led to and its
   count ("Variables, 7"), and under the filters what a search left ("1 secret matches").
   The focus stays on the tab that was activated.
-- **Runs don't receive these yet.** A run receives its security policy alone, so each
-  tab, and each of its pages, says once near its top "Runs don't receive secrets yet."
-  or "Runs don't receive variables yet.", with "Today a run receives only its security
-  policy." (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a
-  run is given what it holds.
+- **What a run receives.** Each tab, and each of its pages, says once near its top "A
+  run receives only its security policy." (`ApiaryWeb.PageComponents.not_on_runs/1`),
+  and no line of the section says a run is given what it holds.
 - **A secret** is one row: its name in mono, its note beside it, how many values it
-  holds, who changed it and when (`ApiaryWeb.People`), and what uses it, "Not used yet"
-  while nothing does (`Apiary.Secrets.list_uses/2`). A secret of several values, or of one
-  named value, has a line under it for each, its value ID in mono, with who changed that
-  value and when, and the value's own acts. **No value is ever rendered**: the value is a
-  textarea whose content is always empty, written and sent once; the form the context
-  hands back after a refused save holds none, so a refusal shows the error under an
-  empty field, and a save goes back to the list, so the field is gone. No secret form
-  sends a change event, so a value travels only when it is submitted. A parameter named
-  `value` is `[FILTERED]` in the logs, a LiveView event's included
+  holds, and who changed it and when (`ApiaryWeb.People`). A secret of several values,
+  or of one named value, has a line under it for each, its value ID in mono, with who
+  changed that value and when, and the value's own acts. **No value is ever rendered**:
+  the value is a textarea whose content is always empty, written and sent once; the form
+  the context hands back after a refused save holds none, so a refusal shows the error
+  under an empty field, and a save goes back to the list, so the field is gone. No secret
+  form sends a change event, so a value travels only when it is submitted. A parameter
+  named `value` is `[FILTERED]` in the logs, a LiveView event's included
   (`:filter_parameters`).
 - **A variable** is one row: its name, its value in mono (plain configuration, shown
   whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
-  the workspace says so), and the repositories that set their own value, or whose value
-  the lock sets aside, from their resolution (`Apiary.Variables.repository_overrides/1`),
-  a link to the page that lists them. Locked means a repository
-  may not set its own value, and nothing more. A name on the runner's deny list other
-  than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
-  ("NAME is on the runner's deny list.", which describes the name's field while it
-  shows) and "On the runner's deny list" on its row.
+  the workspace says so), and the repositories that have a value of their own, or whose
+  value the lock sets aside, from their resolution
+  (`Apiary.Variables.repository_overrides/1`), a link to the page that lists them. No
+  page sets a repository's own value: the context keeps one
+  (`Apiary.Variables.create_variable/3` with a target), and the demo makes a few. Locked
+  means a repository's own value of the name is set aside, and nothing more. A name on
+  the runner's deny list other than `QORY_…`, which the context refuses, is saved with a
+  warning on New variable's page ("NAME is on the runner's deny list.", which describes
+  the name's field while it shows) and "On the runner's deny list" on its row.
 - **New secret** asks for its name, then **Values**, native radios in a fieldset with that
   legend: "One value" (to start), its one Value, with no value ID; or "Several values,
   each with a value ID", a Value ID and a Value for each, two to start, each row a group
@@ -456,10 +455,10 @@ by name or the latest change.
 
 ## Lists
 
-A page that lists things reads top down, and every level of it has a look of its own
-(principles 8 to 12 of the v2 brief): a summary, the largest numbers on the page, only
-where the page has one; then blocks or tables, each one box; then rows. Two levels that
-look alike are one level too many, and nothing is boxed inside a row.
+A page that lists things reads top down, and every level of it has a look of its own: a
+summary, the largest numbers on the page, only where the page has one; then blocks or
+tables, each one box; then rows. Two levels that look alike are one level too many, and
+nothing is boxed inside a row.
 
 - **A row is one line.** Its title, the thing's name, is the only strong text: 14 px,
   medium, in the text colour. Every other cell is 12.5 px and muted; what is tertiary is
@@ -468,8 +467,8 @@ look alike are one level too many, and nothing is boxed inside a row.
   secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
   (revoked, suspended) is `row-off`, its title muted.
 - **A state is said only when it is not the usual one.** An active key, a member in use,
-  a run that ended well say nothing (a screen reader hears the word); a key awaiting
-  approval, a suspended member, a revoked key say so in words (`<.state_word>`), with a dot and the
+  a run that ended well say nothing (a screen reader hears the word); a suspended
+  member, a revoked key say so in words (`<.state_word>`), with a dot and the
   text colour when the state needs someone. A pill is for a state of at most two words
   that needs someone, and never on every row.
 - **A row's acts.** The one act its state asks for is a text action (`<.button
@@ -496,16 +495,15 @@ look alike are one level too many, and nothing is boxed inside a row.
 ### The runs list and Network access
 
 A long record is narrowed by filters written in the URL, never folded into groups the
-reader has to open (the brief's principle 4). The runs list (`ApiaryWeb.RunLive.Index`)
-and the workspace's Network access (`ApiaryWeb.ConnectionLive.Index`,
-`/:org/:workspace/network`: every destination the runs reached, what decided it, and the
-way to allow or deny it) are one flat list each, and `Apiary.Runs.Filters` reads and
-writes every control of them. The page was Connections: `/:org/:workspace/connections`
-and a run's `/runs/:run_id/connections` send on to the new paths with their query, moved
-permanently (`ApiaryWeb.MovedController`). A connection as a thing keeps its word: a row is
-a destination and the connections made to it. The Policy page's hosts and paths are its
-Network access section, which links to the page ("See what the runs reached"); the page's
-rule links lead to the rule there.
+reader has to open. The runs list (`ApiaryWeb.RunLive.Index`) and the workspace's Network
+access (`ApiaryWeb.ConnectionLive.Index`, `/:org/:workspace/network`: every destination
+the runs reached, what decided it, and the way to allow or deny it) are one flat list
+each, and `Apiary.Runs.Filters` reads and writes every control of them. The page was
+Connections: `/:org/:workspace/connections` and a run's `/runs/:run_id/connections` send
+on to the new paths with their query, moved permanently (`ApiaryWeb.MovedController`). A
+connection as a thing keeps its word: a row is a destination and the connections made to
+it. The Policy page's hosts and paths are its Network access section, which links to the
+page ("See what the runs reached"); the page's rule links lead to the rule there.
 
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by
@@ -703,8 +701,21 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
   says what it does: the policy's mode and version, the targets with rules of their own
   (Review), retention (Change, to Workspace settings › Runs).
-- A workspace no run has reached is one box: the steps from a node to the first run, and
-  the command that enrols the machine.
+- A workspace no run has reached is one box: the steps from a node to the first run, and a
+  panel beside them. Step 2 is "Connect it" ("Run one command on the machine, or generate
+  a key for a CI or another system."). While it is current, it names the newest node or
+  pool with no active key, its name linking to that one's Access key tab. At step 1 the
+  panel explains "Two ways to connect a machine", Generate a key in the browser's line ending "… this
+  page shows the key's secret once, and you copy it into that system."; at step 2 it asks
+  an owner or admin "How do you want to connect build-01?", with the two ways as rows,
+  Connect with a command and Generate a key in the browser, a pool's Generate a key in
+  the browser first, the buttons Get the command and Generate a key. Get the
+  command there makes the command in place, as on the tab: the panel shows the real
+  command with Copy, "It works once, until 14:32. This is the only time it is shown." and
+  "Waiting for build-01 to run it.", with the notice when the server's address is a
+  loopback one. Generate a key opens the node's Generate a key page. A member reads who
+  connects it, and Go to nodes. At step 3 the panel reads "Listening for the first run.
+  build-01 verified 2 min ago." alone. No placeholder command shows anywhere.
 
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them; Details has no link to the
@@ -782,7 +793,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   (`Apiary.Runs.Liveness.alive/2`): running means "not yet lost". A Node says
   "Running"; a pool says "3 of 10 running", or "3 running" without a limit; one that runs
   nothing says "Last seen" and a time that ticks, or "Never seen" until an instance of it
-  reports.
+  reports. Once a pool's instances are pruned, a day after they were last seen, "Last
+  seen" is when one of its keys, revoked ones too, was last used; "Never seen" is for a
+  node with no instance and no key ever used.
 - **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
   above): one line a node, its name the title with its public id beside it in `q-side`,
   its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), its
@@ -827,29 +840,146 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   taking the focus.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
   record. A node the workspace does not have, or a deleted one, is not found.
-- **Access key**, a node's tab, opens on "A machine signs every request with its own
-  key. Qory keeps only the public half.", the key limits, Add a public key and New
-  enrolment code, then the keys as cards (approve, reject or revoke confirmed in place) and
-  the outstanding codes. With no key it tells owners and admins how a machine gets one:
-  "No key yet. Make an enrolment code and run the command it shows on the machine, or add
-  the public key `qory access-key create` printed there."; a member reads "No key yet."
-  An approved key's card links **Runner file lines**,
-  for everyone who reads the node.
-- **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`,
-  an approved key's alone; any other goes back to the tab with why) is a page, not a
-  dialog, and what Add key leads to, with its flash "build-01 is added, and approved.":
-  "For build-01. Nothing here is secret: the key's secret stays on the machine.", the
-  lines for `~/.config/qory/runner.yaml` (the `server` section: `url`, `access_key_id`
-  and `apiary_public_key`, the pin in YAML's flow form) with Copy lines, for CI the two
-  variables in place of the last two (`QORY_ACCESS_KEY_ID`, and `QORY_APIARY_PUBLIC_KEY`,
-  the pin as JSON) with Copy variables, where the key's secret is
-  (`~/.config/qory/access-key-secret`, or `QORY_ACCESS_KEY_SECRET` in CI), and Done back
-  to the tab, the focus on the link.
-- **New enrolment code**, once made, shows the code once, as the machine sends it (the
-  server key's fingerprint after a `.`), then "On the machine, run:" and `qory access-key
-  enrol https://apiary.example qec_…` with Copy command, "It works once, for 15 minutes.",
-  and that the key it brings arrives awaiting approval, its fingerprint to compare with the
-  one qory prints.
+- **Access key**, a node's tab. While the node holds no active key, owners and admins read
+  "How do you want to connect build-01?", "build-01 needs a key before it can start runs.
+  Choose one of two ways to give it one." (a pool's: "spot-runners needs a key before it
+  can start runs; its instances share one. Choose one of two ways to give it one."), and
+  two options of equal weight, side by side from `md`, stacked below it, of one height
+  (`items-stretch`), each its icon and title, "Choose it when …" in the body colour, what
+  happens in two muted sentences, then the same four facts in the same rows (a `dl` of two
+  columns, the labels faint: Key made, Secret, By hand, Needs), a waiting command where
+  it is the command's, and one button at the foot (`mt-auto`), so the buttons line up.
+  No steps, no code, no variable and no Copy. **Connect with a command**: "Choose it when
+  you can open a terminal on build-01: a laptop, or a server of your own.", "You get one
+  command to run on build-01. It carries a one-time code, not a key, which works once
+  within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public
+  half, and saves everything else there itself.", Key made "On build-01, by qory", Secret
+  "Stays on build-01; it is never shown", By hand "Nothing", Needs "A terminal on
+  build-01", then Get the command. **Generate a key in the browser**: "Choose it when
+  build-01 runs in a CI job, or on a machine you can't open a terminal on.", "This browser
+  makes the key, and Qory Apiary receives only its public half. The next page shows the
+  secret once, with everything else the machine needs, for you to set where build-01
+  runs.", Key made "In this browser", Secret "Shown to you once, for the machine's or the
+  CI's secret store", By hand "The key's ID, its secret, Qory Apiary's public key and
+  address", Needs "This page open over HTTPS", then Generate a key. A node lists the
+  command first, its button primary; a pool lists
+  Generate a key in the browser first. A member reads, under "Connect build-01", "build-01 has no key
+  yet, so it can't start runs. An owner or admin connects it." A command not yet run shows
+  in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
+  on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
+  shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
+  confirmed in place ("Cancel the command from 14:17?", Yes, cancel it and Keep it); its
+  button becomes Get a new command. There is no list of codes. With keys, the tab lists
+  them under Keys, with a count, one card each, headed by its label and Active or Revoked:
+  Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
+  a command by dana@example.com, …" or "Generated in a browser by …"), Secret (where the
+  key's secret is), Last used ("Not yet" while unused), Fingerprint and Stored secrets,
+  and an active key's **Runner file**, for everyone who reads the node, and Revoke…,
+  confirmed in place. A key whose record doesn't match its integrity code says so on its
+  card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add
+  it either way and then revoke the old one, and offers the two ways as compact rows, in
+  the same order, each its title and its "Choose it when …" line, with its button. At two keys, the most a node or a pool holds, it has no
+  buttons, only "build-01 holds two keys, the most a node can. Revoke the one it no longer
+  uses to add another." A member sees the keys and none of the actions. At the foot, once
+  the node holds an active key, **Configure a machine** (`#node-configure`), for everyone,
+  at the limit too, at most 46rem wide: "A machine connected with the command needs
+  nothing more: qory saved all of this on it. Don't set these again there; qory refuses a
+  key ID or a public key set twice." and "With a generated key, set these where the
+  machine runs qory.", then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the runner
+  file. It is required: without it, qory ignores the three variables below.",
+  `runner.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
+  a plain setting. The same for every machine connected to this Qory Apiary.", the value
+  with Copy), 3 "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID, a plain
+  setting." and its ID with Copy; with two, "QORY_ACCESS_KEY_ID, a plain setting: the ID
+  of the key the machine uses, on its card above."), 4 "Keep the key's secret in a secret
+  store." ("QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is
+  never shown here. If it is lost, generate a new key and revoke the old one.", text
+  alone, never a value or a Copy).
+- **Connect build-01 with a command** (`/nodes/:node_id/access-key/new-code`, owners and
+  admins; its crumb is Command) is where Get the command leads. The click makes the
+  enrolment code at once, with defaults: Stored secrets Not allowed and no label hint, so
+  qory names the key after the machine's host name; there is no form. The page shows the
+  whole command, `qory access-key enrol https://apiary.example.com` and the code, wrapped,
+  with one Copy command. For a node or pool that has or had a key, the command carries
+  `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code),
+  shown and copied alike, with the line "It moves build-01 to a new key. The old key keeps
+  working until you revoke it on the Access key tab." under it while a key is active, or
+  "It moves build-01 to a new key." alone once every key is revoked; a code waiting
+  unused does not count. Then "It works once, until 14:32, 15 minutes from when you got
+  it. This is the only time it is shown." and "Waiting for build-01 to run it. This page
+  shows when it is connected." The code is never shown on its own, and the page never
+  names it. When the machine runs the command, the page turns, live, to "build-01 is
+  connected. Its key arrived at 14:20 and is active.", with the Key and its Fingerprint,
+  and "qory printed a fingerprint on build-01 when it ran the command. If it isn't this
+  one, revoke the key on the Access key tab." When the server's own address
+  (`ApiaryWeb.Endpoint.url/0`, from `PUBLIC_URL`) is a loopback one, such as
+  `http://localhost:4100`, a notice says "Machines can't reach this address. … Set
+  PUBLIC_URL to the address machines use, and the command will carry it."
+- **Generate a key for build-01** (`/nodes/:node_id/access-key/generate`, owners and
+  admins; at the key limit it goes back to the tab with "build-01 holds two keys already.
+  Revoke one before you add another.") is a form page: "This browser makes a key for
+  build-01. You see its secret once, to copy into your CI's secret store, or the settings
+  of the system that runs it; Qory Apiary receives only the public half. The key's ID stays on
+  the Access key tab." (a pool's ends its first part "… or the settings of whatever runs
+  the instances"), then one field, Name of the key, filled in with the node's name (then
+  `-2` when a key has that name), its hint "Shown on the Access key tab, so you can tell
+  its keys apart.", and Generate key ("Generating") with Cancel. There is no Stored
+  secrets choice: every new key, either way, is Not allowed. The browser makes the Ed25519
+  key (the `GenerateKey` hook) and sends Qory Apiary the name and the public key alone;
+  the form has no other field. Where the browser can't make one it says why and Generate
+  key stays off: "This browser makes keys only on a page served over HTTPS. Open Qory
+  Apiary over HTTPS, or connect the machine with a command." or "This browser can't make
+  an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or connect the machine
+  with a command."; a key lost on its way says "The connection to Qory Apiary dropped
+  before the key was confirmed, and its secret is gone. If a new key shows on the Access
+  key tab, revoke it, then generate another." Anything sent beyond the name and the public
+  key, a name holding a secret, or a public key that does not decode as one, goes back to
+  the tab with "The key wasn't added. Try again.", and nothing is added.
+- **Key for build-01** (`/nodes/:node_id/access-key/keys/:key_id/generated`) is what
+  Generate key leads to, with no flash: "Do these where build-01 runs. Only the secret
+  can't be seen again.", the notice "**The secret is shown once.** …", then four numbered
+  steps, each value with Copy. 1 "Store the secret." ("In the secret store of the system
+  that runs build-01, such as your CI's.", `QORY_ACCESS_KEY_SECRET`, tagged "secret ·
+  shown once"), 2 "Set the key's ID." ("As a plain setting. It stays on the Access key
+  tab.", `QORY_ACCESS_KEY_ID`), 3 "Set Qory Apiary's public key." ("As a plain setting.
+  The same for every machine connected to this Qory Apiary. It stays on the Access key
+  tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point qory at Qory Apiary." ("In
+  the runner file. It is required: without it, qory ignores the three variables.", the
+  two lines `server:` and `url: https://apiary.example.com` with Copy
+  lines). The server's address and public key are the instance's own, the same for every
+  organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
+  back to the tab ("Once you leave this page, the secret is not shown again."). The secret
+  is the browser's alone: the server renders its place empty, and the page that made the
+  key fills it. Opened again, the page has no notice, no Copy for the secret and no line
+  beside Done; where the secret was, "Not shown: only the page that made the key held its
+  secret, and this one was opened again. If you didn't copy it, revoke build-01 and
+  generate another key." The browser decides which (the `GenerateKey` hook): the server
+  renders both hidden, alike for every visit, and never the secret; the page shows the
+  notice, the secret's Copy and the line beside Done while its slot shows the secret, the
+  "Not shown" line while the browser holds nothing for the key, never both. A page joined
+  again after a dropped connection keeps the secret and its Copy. It is the page of an
+  active key the reader made in a browser while they
+  may add keys; another key's address goes to its runner file, a revoked one's back to the
+  tab.
+- **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`, an
+  active key's alone; a revoked one goes back to the tab with "build-01 is revoked.") is a
+  page, not a dialog, which an active key's card opens with **Runner file**: "The runner
+  file's lines for this key. Nothing here is secret." (a generated key's: "What build-01 needs,
+  besides the secret. Nothing here is secret.") What follows depends on how the key came. A
+  key connected with a command: the `runner.yaml` lines the command wrote (the `server`
+  section, each line marked: `url` `# Qory Apiary`, `access_key_id` `# this key`,
+  `apiary_public_key` `# Qory Apiary's public key`, the pin in YAML's flow form), "Only
+  the key ID is this key's. The address and the public key are Qory Apiary's, the same for
+  every machine connected to it.", and "The key's secret is on build-01, in
+  ~/.config/qory/access-key-secret, where the command saved it. It has never been on a
+  screen." A generated key: four numbered steps. 1 "Keep the secret in a secret store."
+  ("It was shown once, when the key was generated, and belongs in QORY_ACCESS_KEY_SECRET
+  in the secret store of the system that runs qory. If it is lost, generate a new key and
+  revoke this one."), 2 "Set the key's ID." ("As a plain setting.",
+  `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key." ("As a
+  plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every
+  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`server:` / `url:` with Copy lines). Done goes back to the
+  tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at
   `/nodes/:node_id/instances/:instance/clear` (the instance's id) that line, or that row in
@@ -913,7 +1043,7 @@ needs becomes a component, or an attribute of one, not a copy.
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads, such as Back to the variables, stays
   where a page has one); and
-  `not_on_runs/1`, the one plain line a page over data no run receives yet says, in the
+  `not_on_runs/1`, the one plain line a page over data no run receives says, in the
   page's own sentence (`inner_block`, required): it has no words of its own.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
@@ -976,16 +1106,16 @@ needs becomes a component, or an attribute of one, not a copy.
 - **`<.empty_state>`** says what is missing and offers the one next step. Where it titles
   the page (`heading="h1"`), its title is the page's `<h1>` and takes the focus as a
   header's does (`tabindex="-1"`).
-- **Icons** are Heroicons through `<.icon>`, in two styles (the v2 mocks' split). Nav and
-  object icons are the 24 px outline, `hero-<name>`: the sidebar's entries and pins, the
-  top bar, menu items, tabs, toolbar buttons (Filter, Sort, Export), find fields, a Filter
-  menu's sections, empty states, and an icon that stands for a thing (a target, a run, an
-  access key, a workspace). They are drawn at 18 px in the sidebar, 14 px in a Filter
-  menu's sections and 16 px elsewhere. Small glyphs are the solid micro,
-  `hero-<name>-micro`, at 12 to 16 px: check, x, chevrons, arrows, the deny mark, lock,
-  warning, plus, and a row's mark, a badge's or a timeline node's. The current navigation
-  item changes its background, weight and ring and its icon takes `accent`; the icon never
-  turns solid. A name is written out whole in the source, so Tailwind generates its class.
+- **Icons** are Heroicons through `<.icon>`, in two styles. Nav and object icons are the
+  24 px outline, `hero-<name>`: the sidebar's entries and pins, the top bar, menu items,
+  tabs, toolbar buttons (Filter, Sort, Export), find fields, a Filter menu's sections,
+  empty states, and an icon that stands for a thing (a target, a run, an access key, a
+  workspace). They are drawn at 18 px in the sidebar, 14 px in a Filter menu's sections
+  and 16 px elsewhere. Small glyphs are the solid micro, `hero-<name>-micro`, at 12 to 16
+  px: check, x, chevrons, arrows, the deny mark, lock, warning, plus, and a row's mark, a
+  badge's or a timeline node's. The current navigation item changes its background, weight
+  and ring and its icon takes `accent`; the icon never turns solid. A name is written out
+  whole in the source, so Tailwind generates its class.
 
 The styles are in `assets/css/app.css`. Overrides of daisyUI are in `@layer utilities`,
 wrapped in `:where()` so a Tailwind utility on the element still wins; the classes a group
@@ -1037,31 +1167,6 @@ In test every story is compiled with the backend, and `test/apiary_web/storybook
 renders every variation and every page in both themes, so a story that a change to a
 component breaks fails the suite. The dev server compiles a story when it is opened, and
 reloads the page when one changes.
-
-**Screen mock-ups** (`storybook/screens/`, in the order of `_screens.index.exs`) are page
-stories of whole screens drawn to be clicked through, a proposal before any route or context
-exists: 1. Sidebar and shell, the sidebar one list without group headings (Overview, Runs,
-Targets, Nodes, Network access, Policy; Settings at its foot); 2. Settings (General, People,
-Runs, Integrations, Secrets and variables; Runs is Retention renamed, and Access keys is
-gone; a secret holds one value or several, each under a value ID, and a variable is set for
-the workspace or for one repository); 3. Integrations, by role, with the ways each connects
-(API, MCP), the tools under Services, and each one's source: Built in for the LLM providers
-and services that ship inside Apiary, else the publisher's repository and version of its
-release; 4. An integration (Overview, Secrets and Settings, which ask for each setting it
-declares, secret or plain, a secret one linked to a workspace secret and, where it holds
-several values, to one by its value ID); 5. Add integration, built in or from a release on
-GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json` with its
-publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
-ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
-seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
-key, Settings), its key approved, awaiting approval or revoked, a new one by enrolment code
-or a pasted public key, a replacement beside the current key, and a member's view without
-the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
-(`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
-links; inside it they use the real components (`SettingsComponents.layout/1`,
-`<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a
-plain link to a story and its tab (`?tab=`, carrying `?theme=`), built by `Mockup.path/3`,
-and the storybook test checks that each leads to a story and a tab it has.
 
 ## Colour and themes
 
@@ -1129,6 +1234,30 @@ collection `app.js` and an edition's bundle import. It holds no words (see
 [lingo.md](lingo.md)), and keeps in `localStorage` only a reading preference, such as
 the theme, the sidebar's fold or the keyboard shortcuts; filters, the order, the page and
 a chosen row are query parameters.
+
+**The content security policy.** Every page, the storybook's and the development tools'
+included, carries a strict `Content-Security-Policy` (`ApiaryWeb.ContentSecurityPolicy`):
+`script-src 'self'` and the request's nonce, so only the console's own bundles and the
+scripts that carry the nonce run, and a script a bug lets into a page does not. A page
+keeps to it:
+
+- A `<script>` written into a template carries the nonce, `nonce={@csp_nonce}`, as the root
+  layout's theme script does. Anything else a page runs is a hook in the bundle.
+- No `on…=` attribute (`onclick`, `onload`, …) and no `javascript:` address. A
+  `phx-*` binding and a `Phoenix.LiveView.JS` command are not inline script and need
+  nothing.
+- Scripts, stylesheets, images, fonts and form targets are the console's own origin (an
+  image may also be a `data:` address), and no page is framed, except the development
+  tools' own pages under `/dev`. Inline styles are allowed (`style-src 'self'
+  'unsafe-inline'`): `<style>` elements and `style` attributes, which the run page's
+  terminal writes as it runs.
+
+`ApiaryWeb.ContentSecurityPolicyTest` (`test/apiary_web/content_security_policy_test.exs`)
+requests every GET route, signed in and out, and checks each page's markup, its dead
+render and a LiveView's connected one, without a browser: it fails on the header missing
+or changed, and on anything in the markup the policy would refuse. What runs in a browser
+(a script or a style a bundle creates) it does not see. A route with a parameter it does
+not fill fails until it is filled there.
 
 ## The run page
 

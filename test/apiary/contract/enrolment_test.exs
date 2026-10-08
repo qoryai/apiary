@@ -99,16 +99,18 @@ defmodule Apiary.Contract.EnrolmentTest do
              access_key_id: "ak_0000000000000000",
              node_id: "np_0000000000000000",
              node_kind: :pool,
-             approved: true,
              stored_secrets: true,
              apiary_public_key: keys
            }) ==
              ~s({"version":1,"access_key_id":"ak_0000000000000000","node_id":"np_0000000000000000",) <>
-               ~s("node_kind":"pool","approved":true,"stored_secrets":true,) <>
+               ~s("node_kind":"pool","stored_secrets":true,) <>
                ~s("apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
 
     assert Enrolment.refusal_body(:key_limit, keys) ==
              ~s({"error":"key_limit","apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
+
+    assert Enrolment.refusal_body(:rate_limited, keys) ==
+             ~s({"error":"rate_limited","apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
   end
 
   test "issued_code/2 is the code issued_under?/2 accepts" do

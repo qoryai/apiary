@@ -13,8 +13,12 @@ defmodule ApiaryWeb.DocsControllerTest do
   end
 
   # A tree per set of features, as `mix docs` builds them, each page saying which it is.
+  # The security tree is `observability+security`: every feature is more, the core's
+  # opt-in `secrets` among them.
   @every "all"
-  @trees ["observability", "observability+security", @every]
+
+  defp security_tree, do: ApiaryWeb.DocsController.tree_name([:observability, :security])
+  defp trees, do: Enum.uniq(["observability", security_tree(), @every])
 
   defp build(tmp_dir, trees) do
     for tree <- trees do
@@ -26,7 +30,7 @@ defmodule ApiaryWeb.DocsControllerTest do
   end
 
   describe "when the documentation is built" do
-    setup %{tmp_dir: tmp_dir}, do: build(tmp_dir, @trees)
+    setup %{tmp_dir: tmp_dir}, do: build(tmp_dir, trees())
 
     test "/docs goes to its first page, signed in or not", %{conn: conn} do
       assert redirected_to(get(conn, ~p"/docs")) == "/docs/index.html"
@@ -43,9 +47,8 @@ defmodule ApiaryWeb.DocsControllerTest do
     end
 
     @tag with_features: [:observability, :security]
-    test "an instance with security and not every feature is served the security tree",
-         %{conn: conn} do
-      assert served(conn, "/docs/index.html") == "observability+security"
+    test "an instance with security is served the security tree", %{conn: conn} do
+      assert served(conn, "/docs/index.html") == security_tree()
     end
 
     @tag with_features: [:observability]
@@ -62,17 +65,22 @@ defmodule ApiaryWeb.DocsControllerTest do
 
     @tag with_features: [:observability]
     test "another tree is not reachable by its directory", %{conn: conn} do
-      conn = get(conn, "/docs/observability+security/index.html")
+      conn = get(conn, "/docs/#{security_tree()}/index.html")
       assert html_response(conn, 404) =~ "Not Found"
     end
   end
 
   describe "when only some trees are built" do
-    setup %{tmp_dir: tmp_dir}, do: build(tmp_dir, ["observability", "observability+security"])
+    # Every tree but the one of every feature.
+    setup %{tmp_dir: tmp_dir} do
+      some = trees() -- [@every]
+      build(tmp_dir, some)
+      %{richest: List.last(some)}
+    end
 
     @tag with_features: Apiary.Features.all()
-    test "every feature is served the richest tree there is", %{conn: conn} do
-      assert served(conn, "/docs/index.html") == "observability+security"
+    test "every feature is served the richest tree there is", %{conn: conn, richest: richest} do
+      assert served(conn, "/docs/index.html") == richest
     end
   end
 
@@ -90,7 +98,7 @@ defmodule ApiaryWeb.DocsControllerTest do
 
     @tag with_features: [:observability]
     test "so does a tree built for other features only", %{conn: conn, tmp_dir: tmp_dir} do
-      build(tmp_dir, ["observability+security"])
+      build(tmp_dir, [security_tree()])
       html = conn |> get(~p"/docs") |> html_response(404)
       assert html =~ "The documentation is not built"
     end
@@ -101,7 +109,7 @@ defmodule ApiaryWeb.DocsControllerTest do
     # the endpoint's static files at its own path, only through /docs for the instance.
     setup do
       Application.delete_env(:apiary, :docs_root)
-      dir = Application.app_dir(:apiary, "priv/static/docs/observability+security")
+      dir = Application.app_dir(:apiary, "priv/static/docs/#{security_tree()}")
       name = "served-in-test-#{System.unique_integer([:positive])}.html"
       created? = not File.dir?(dir)
       File.mkdir_p!(dir)
@@ -126,7 +134,7 @@ defmodule ApiaryWeb.DocsControllerTest do
     @tag with_features: [:observability]
     test "is not served to an instance without the tree's features", %{conn: conn, name: name} do
       assert conn |> get("/docs/#{name}") |> html_response(404)
-      assert conn |> get("/docs/observability+security/#{name}") |> html_response(404)
+      assert conn |> get("/docs/#{security_tree()}/#{name}") |> html_response(404)
     end
   end
 

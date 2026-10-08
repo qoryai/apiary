@@ -134,13 +134,7 @@ defmodule Apiary.Access do
     Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
       roles: @admins
     ),
-    Action.new(:"access_key.add", "add an access key to a node by its public key, approved",
-      roles: @admins
-    ),
-    Action.new(:"access_key.approve", "approve a node's access key that awaits approval",
-      roles: @admins
-    ),
-    Action.new(:"access_key.reject", "reject a node's access key that awaits approval",
+    Action.new(:"access_key.add", "add an access key to a node by its public key",
       roles: @admins
     ),
     Action.new(:"access_key.revoke", "revoke a node's access key", roles: @admins),
@@ -204,7 +198,7 @@ defmodule Apiary.Access do
       feature: :security,
       roles: @admins
     ),
-    # Stored secrets and variables, which the run configuration delivers.
+    # Stored secrets and variables.
     Action.new(
       :"secret.read",
       "read the stored secrets: their names, notes and value IDs, never a value",
@@ -220,7 +214,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"secret.use",
-      "link a stored secret to what uses it, so runs are given its value",
+      "link a stored secret to what uses it",
       feature: :security,
       roles: @admins,
       audited:

@@ -1737,7 +1737,7 @@ defmodule ApiaryWeb.RunLive.Show do
     |> trim_window(:after_append)
   end
 
-  ## The limits of the record (P5), chosen from it in the brief's order
+  ## The limits of the record, chosen from it in this order
 
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 

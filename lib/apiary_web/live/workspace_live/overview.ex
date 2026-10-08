@@ -22,7 +22,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   While no run has landed the page is the empty workspace's one box, each step read from
   the record; when the first run lands the box stays with its third step ticked and leaves
-  at the next navigation.
+  at the next navigation. Its "Get the command" makes the command that connects the box's
+  node in place (`get_command`), as the node's Access key tab does: the code lives in the
+  page's process alone, in a function, shown once in the box and in no path, flash, title
+  or log line, until the page goes, the command expires, it is cancelled on the tab, or
+  the machine runs it. The page hears the last two on the node's topic
+  (`Apiary.AccessKeys.subscribe/2`): a cancel brings the question back, a run moves the box
+  on.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
   it belongs to `security`, and where that is off for the scope the page is one that never
@@ -44,9 +50,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   alias Apiary.Runs.Filters
 
-  alias Apiary.Access
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Contract.Enrolment
   alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Retention
@@ -111,7 +117,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           nodes={@onboarding.nodes}
           keys={@onboarding.keys}
           may_add={@onboarding.may_add}
-          may_approve={@onboarding.may_approve}
+          target={@onboarding.target}
+          may_key={@onboarding.may_key}
+          command={@command}
           server={@onboarding.server}
           landed={@landed}
         />
@@ -260,6 +268,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         now: now,
         today: DateTime.to_date(now),
         onboarding: if(posted?, do: nil, else: read_onboarding(scope)),
+        command: nil,
         table?: false,
         chart_w: 640,
         rule_panel: nil,
@@ -721,16 +730,62 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     if socket.assigns.live? do
       {:noreply, read(socket, :attention)}
     else
-      # The box reads its steps from the record: a node, an approved key, a key used since.
+      # The box reads its steps from the record: a node, a key, a key used since.
       {:noreply,
-       assign(socket,
+       socket
+       |> assign(
          onboarding: read_onboarding(socket.assigns.current_scope),
          now: DateTime.utc_now()
-       )}
+       )
+       |> keep_command()}
     end
   end
 
+  # The machine ran the box's command: the box reads its steps again and moves on, and
+  # the command, spent, is let go.
+  def handle_info(
+        {:key_enrolled, %{node_id: node_id}},
+        %{assigns: %{command: %{node: %{id: node_id}}}} = socket
+      ) do
+    socket = assign(socket, :onboarding, read_onboarding(socket.assigns.current_scope))
+    {:noreply, drop_command(socket)}
+  end
+
+  # The box's command was cancelled, on the node's Access key tab: it is let go, and the
+  # box asks again.
+  def handle_info(
+        {:code_cancelled, %{code_id: code_id}},
+        %{assigns: %{command: %{code_id: code_id}}} = socket
+      ),
+      do: {:noreply, drop_command(socket)}
+
+  # The box's command expired: it is let go, and the box asks again.
+  def handle_info(
+        {:command_expired, code_id},
+        %{assigns: %{command: %{code_id: code_id}}} = socket
+      ),
+      do: {:noreply, drop_command(socket)}
+
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  # The box's command, while its node is still the one the box names and has no key; let
+  # go otherwise.
+  defp keep_command(%{assigns: %{command: %{node: %{id: id}}, onboarding: onboarding}} = socket) do
+    case onboarding do
+      %{target: %{id: ^id}, keys: []} -> socket
+      _moved_on -> drop_command(socket)
+    end
+  end
+
+  defp keep_command(socket), do: socket
+
+  defp drop_command(%{assigns: %{command: %{node: node, timer: timer}}} = socket) do
+    Process.cancel_timer(timer)
+    AccessKeys.unsubscribe(socket.assigns.current_scope, node)
+    assign(socket, :command, nil)
+  end
+
+  defp drop_command(socket), do: socket
 
   # The coalesced re-read: today's column, the alive rows, the last runs, the lost runs. At
   # midnight UTC the window has moved: the fourteen days are read anew.
@@ -800,6 +855,64 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   def handle_event("chart_size", _params, socket), do: {:noreply, socket}
+
+  # Get the command, in the box: a code made at once for the box's node, with the defaults
+  # (stored secrets not allowed, no label hint), whatever the event carries, as on the
+  # node's Access key tab. The code is held in a function, and shown in the box alone.
+  def handle_event(
+        "get_command",
+        _params,
+        %{
+          assigns: %{
+            checklist?: true,
+            command: nil,
+            onboarding: %{target: %Nodes.Node{} = target, may_key: true, keys: []}
+          }
+        } = socket
+      ) do
+    scope = socket.assigns.current_scope
+
+    case AccessKeys.create_enrolment_code(scope, target, %{}) do
+      {:ok, row, code} ->
+        code = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+        AccessKeys.subscribe(scope, target)
+        wait = DateTime.diff(row.expires_at, DateTime.utc_now(), :millisecond)
+        timer = Process.send_after(self(), {:command_expired, row.id}, max(wait, 0) + 1)
+
+        {:noreply,
+         assign(socket,
+           command: %{
+             node: target,
+             code_id: row.id,
+             code: fn -> code end,
+             expires_at: row.expires_at,
+             timer: timer
+           }
+         )}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         socket
+         |> assign(:onboarding, read_onboarding(scope))
+         |> put_flash(:error, gettext("Only owners and admins connect a node."))}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> assign(:onboarding, read_onboarding(scope))
+         |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
+  # Get the command where the box offers none: a second click once the command shows, or
+  # an event the page never sent. One who may connect a node is shown the page as it is;
+  # anyone else is refused, and nothing is made.
+  def handle_event("get_command", _params, socket) do
+    if Common.may?(socket.assigns.current_scope, :"access_key.create_code"),
+      do: {:noreply, socket},
+      else:
+        {:noreply, put_flash(socket, :error, gettext("Only owners and admins connect a node."))}
+  end
 
   def handle_event("close_ask", %{"id" => id}, socket) do
     case find_item(socket, id) do
@@ -1244,20 +1357,21 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 
-  # The node keys the idle item weighs: the approved ones, for a reader who may revoke them
-  # (`access_key.revoke`, owners and admins). A key awaiting approval is not idle: it waits
-  # on its node's Access key tab. The list holds acts, and a member has none on a key.
+  # The node keys the idle item weighs: every key not revoked (each is active), for a reader
+  # who may revoke them (`access_key.revoke`, owners and admins). The list holds acts, and
+  # a member has none on a key.
   defp idle_candidates(assigns) do
     if Common.may?(assigns.current_scope, :"access_key.revoke"),
-      do: Enum.filter(assigns.keys, & &1.approved_at),
+      do: assigns.keys,
       else: []
   end
 
-  # Idle since the key's last use, or since its approval when it has never been used.
+  # Idle since the key's last use, or since it arrived when it has never been used.
   defp idle_days(%AccessKey{last_used_at: %DateTime{} = at}, now),
     do: DateTime.diff(now, at, :day)
 
-  defp idle_days(%AccessKey{approved_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
+  defp idle_days(%AccessKey{received_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
+  defp idle_days(%AccessKey{inserted_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
   defp idle_days(_key, _now), do: nil
 
   # The list as shown: rows already there keep their place and are patched, rows whose item
@@ -1433,7 +1547,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: gettext("Qory serves the policy now."), done: nil}
+    do: %{mark: :resolved, what: gettext("Qory Apiary serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
     what =
@@ -1575,27 +1689,43 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # What the empty workspace's box reads: the nodes and pools in use, their keys not
-  # revoked, whether the reader may add a node and approve the key the box names (the
-  # newest awaiting approval, as the node's Access key tab asks), and the address the
-  # command names.
+  # revoked, whether the reader may add a node, the newest node or pool that holds no
+  # active key and whether the reader may give it one, and the address the command names.
   defp read_onboarding(scope) do
     counts = Nodes.count_nodes(scope)
     keys = AccessKeys.list_workspace_node_keys(scope)
-    pending = Enum.find(keys, &is_nil(&1.approved_at))
+    target = keyless_target(scope, counts, keys)
+    may_key? = &Apiary.Access.can?(scope, &1, target)
 
     %{
       nodes: counts.node + counts.pool,
       keys: keys,
       may_add: Common.may?(scope, :"node.create"),
-      may_approve: pending != nil and Access.can?(scope, :"access_key.approve", pending.node),
+      target: target,
+      may_key:
+        not is_nil(target) and may_key?.(:"access_key.add") and
+          may_key?.(:"access_key.create_code"),
       server: ApiaryWeb.Endpoint.url()
     }
+  end
+
+  # The newest node or pool in use that holds no active key (a revoked key is no key);
+  # while step 2 is current, no node holds one, and it is simply the newest.
+  defp keyless_target(_scope, %{node: 0, pool: 0}, _keys), do: nil
+
+  defp keyless_target(scope, _counts, keys) do
+    keyed = MapSet.new(keys, & &1.node_id)
+
+    scope
+    |> Nodes.list_nodes()
+    |> Enum.reject(&MapSet.member?(keyed, &1.id))
+    |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.public_id}, fn -> nil end)
   end
 
   defp not_loaded,
     do:
       gettext(
-        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+        "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
   # What became of a run that ended while it was on the list.

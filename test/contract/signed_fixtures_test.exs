@@ -2,11 +2,10 @@ defmodule Apiary.Contract.SignedFixturesTest do
   @moduledoc """
   Replays the contract's signed requests, `fixtures/signed/*.json` of the runner's
   contract directory at the commit in `.runner-contract-ref`: one request per file, signed
-  with Ed25519 under the contract's fixture access key, or the pending one, with the
-  status a receiver answers and, for a coded refusal, its code. The receiver holds the
-  fixture access key under `ak_f1xt0re000000000`, approved, and the pending one under
-  `ak_pend1ng000000000`, awaiting approval, on one node, and sets its clock to the second
-  the fixtures are signed around, 1700000000. The clock is in the application
+  with Ed25519 under the contract's fixture access key, with the status a receiver answers
+  and, for a coded refusal, its code. The receiver holds the fixture access key under
+  `ak_f1xt0re000000000` on a node, and sets its clock to the second the fixtures are
+  signed around, 1700000000. The clock is in the application
   environment, so this module is not async.
 
   Every answer is checked for its signature too: a `401`, and a refusal before
@@ -39,7 +38,6 @@ defmodule Apiary.Contract.SignedFixturesTest do
     %{scope: scope} = sign_up_fixture()
     node = node_fixture(scope)
     fixture_access_key!(scope, node, "access_key")
-    fixture_access_key!(scope, node, "pending_access_key")
 
     # A workspace serves a run configuration once somebody has made its policy; an
     # instance without the security feature serves none, and its fixtures are left out
@@ -76,14 +74,14 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
   test "the fixtures are there, and the ones expected" do
     names = Enum.map(@fixtures, &elem(&1, 0))
-    assert length(names) == 12
+    assert length(names) == 11
 
     for name <-
           ~w(batch-valid.json batch-replayed.json batch-tampered.json batch-unknown-key.json
              get-configuration-valid.json get-configuration-stale.json
              get-configuration-bad-signature.json get-configuration-header-twice.json
-             get-configuration-no-instance-id.json get-configuration-pending-key.json
-             get-run-configuration-valid.json get-run-configuration-labels-valid.json),
+             get-configuration-no-instance-id.json get-run-configuration-valid.json
+             get-run-configuration-labels-valid.json),
         do: assert(name in names, name)
 
     for name <- @skipped, do: assert(name in names)

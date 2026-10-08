@@ -31,10 +31,9 @@ defmodule Apiary.Integrations do
       `checksums.txt` lists no `description.json`, or another digest; the description's
       `program_version` is not the version asked for; or a release of the same source and
       version this workspace found before had another description;
-    * `description_invalid` and `placeholder_conflict`, from
-      `Apiary.Integrations.Description.parse/1`.
+    * `description_invalid`, from `Apiary.Integrations.Description.parse/1`.
 
-  Nothing of the release runs on the server: it is only read.
+  Nothing of the release runs on Qory Apiary: it is only read.
 
   ## Who
 
@@ -457,9 +456,7 @@ defmodule Apiary.Integrations do
                   description: bytes,
                   description_sha256: sha,
                   name: description.name,
-                  version: description.program_version,
-                  publisher_name: description.publisher["name"],
-                  publisher_url: description.publisher["url"]
+                  version: description.program_version
                 ]
 
               {:failed, code} ->

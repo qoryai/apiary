@@ -83,7 +83,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <% else %>
             {gettext("No changes yet.")}
             <span :if={@scope == :workspace}>
-              {gettext("Qory serves no policy for this workspace until the first one.")}
+              {gettext("Qory Apiary serves no policy for this workspace until the first one.")}
             </span>
             <span :if={@scope == :target}>
               {gettext("The first rule here, or a mode of its own, starts this target's history.")}

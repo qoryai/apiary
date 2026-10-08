@@ -1,4 +1,4 @@
-// The policy pages (brief-policy ph): what the server cannot do once the page is there.
+// The policy pages: what the server cannot do once the page is there.
 //
 // PolicyPage, on the page's root:
 //   "policy:focus"  {id}       focus after an action, so that it never falls to the body

@@ -58,7 +58,7 @@ end
 
 # QORY_FEATURES names the features this instance has: all (the default when unset or
 # blank), all- and the features left out (all-security), or the features on
-# (observability,security).
+# (observability,security). An opt-in feature is on only when a list names it.
 # Read in every environment, so the test suite runs under the value CI gives it.
 # `Apiary.Features` checks it at boot and says what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")

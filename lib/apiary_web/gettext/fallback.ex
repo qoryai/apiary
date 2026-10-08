@@ -3,12 +3,12 @@ defmodule ApiaryWeb.Gettext.Fallback do
   The fallback chain of a Gettext backend: a message a locale's catalogue lacks is looked
   up in the next locale of `chain/1`, and only the last one falls back to the source text.
 
-  A domain's catalogue (`de@software`) holds only the sentences it says in its own words;
-  every other sentence is the language's and lives once in the language's catalogue
-  (`de`), shared by every domain. So `de@software` falls back to `de`, and
-  `de_AT@software` to `de_AT`, then `de`. English needs no language catalogue: its source
-  text is already English, and `en@software` translates every sentence with an engine word
-  (`ApiaryWeb.LingoCatalogueTest`), so none of them reaches the page in engine words.
+  A domain's catalogue holds only the sentences it says in its own words; every other
+  sentence is the language's, looked up in the locale without its `@modifier`, then
+  without its territory. `priv/gettext` holds one catalogue, `en@software`. English needs
+  no language catalogue: its source text is already English, and `en@software` translates
+  every sentence with an engine word (`ApiaryWeb.LingoCatalogueTest`), so none of them
+  reaches the page in engine words.
 
   `use ApiaryWeb.Gettext.Fallback` after `use Gettext.Backend` overrides the backend's
   `handle_missing_translation/5` and `handle_missing_plural_translation/7`. The core's

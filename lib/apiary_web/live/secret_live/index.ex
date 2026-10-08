@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.SecretLive.Index do
   @moduledoc """
   The workspace's Secrets and variables, a section of its settings
-  (`ApiaryWeb.SettingsComponents`, the frame's second column) with the `security` feature:
+  (`ApiaryWeb.SettingsComponents`, the frame's second column) with the `secrets` feature:
   two tabs under the section's title (`ApiaryWeb.PageComponents.page_tabs/1`, links, each
   with its count), Secrets (`/:org/:workspace/settings/secrets`) and Variables
   (`…/settings/variables`). Each tab's panel holds its New and its list on the list pattern
@@ -17,10 +17,9 @@ defmodule ApiaryWeb.SecretLive.Index do
   their paths, which must not act as they open, ask on the row first. A confirmation the
   context refuses stays open and says why under its question.
 
-  No run receives a secret or a variable yet: a run receives its security policy alone.
-  Each tab, and each of its pages, says so once, near its top
-  (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a run is
-  given what it holds.
+  A run receives its security policy alone. Each tab, and each of its pages, says so
+  once, near its top (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the
+  section says a run is given what it holds.
 
   - **Secrets** (`Apiary.Secrets`): a secret's name and note, its value ids, who changed
     each value and when, and what uses it; never a value. New secret, with one value or
@@ -44,7 +43,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   context functions ask again.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"secret.read"}
 
   alias Apiary.{Access, Organisations, Secrets, Variables}
@@ -83,8 +82,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   @impl true
   # A form is a page of its own (`ApiaryWeb.PageComponents.page_form/1`): the section's
   # list beside it as the frame's second column, the breadcrumb ending with the section and
-  # the page, its title, one sentence, the line that runs don't receive these yet, the form,
-  # its button and Cancel back to the tab.
+  # the page, its title, one sentence, the line that a run receives only its security
+  # policy, the form, its button and Cancel back to the tab.
   def render(%{act: act} = assigns) when act in @pages do
     assigns = assign(assigns, :sentence, form_sentence(assigns))
 
@@ -118,8 +117,9 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   # The section: its title and sentence, then its two tabs, Secrets and Variables, each a
   # link with an address of its own (`page_tabs/1`, not an ARIA tablist) that wraps and
-  # does not stick. Under them the panel of the tab: the line that runs don't receive
-  # these yet, who changes them, its New beside its search, Filter and Sort, and its list.
+  # does not stick. Under them the panel of the tab: the line that a run receives only its
+  # security policy, who changes them, its New beside its search, Filter and Sort, and its
+  # list.
   # One status line, there from the start and outside both tabs' parts, says a switch
   # ("Variables, 7") and what a search left.
   def render(assigns) do
@@ -232,14 +232,9 @@ defmodule ApiaryWeb.SecretLive.Index do
         number: Format.number(number)
       )
 
-  # The one line each tab, and each of its pages, says of what it holds: no run receives
-  # a secret or a variable yet; a run receives its security policy alone (`/v1`).
-  defp not_on_runs_words(:secrets),
-    do: gettext("Runs don't receive secrets yet. Today a run receives only its security policy.")
-
-  defp not_on_runs_words(:variables),
-    do:
-      gettext("Runs don't receive variables yet. Today a run receives only its security policy.")
+  # The one line each tab, and each of its pages, says of what it holds: a run receives
+  # its security policy alone (`/v1`).
+  defp not_on_runs_words(_view), do: gettext("A run receives only its security policy.")
 
   ## The secrets
 
@@ -375,7 +370,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         <%= case row do %>
           <% {:secret, secret} -> %>
             <span :if={Map.get(@uses, secret.id, []) == []} class="q-faint">
-              {gettext("Not used yet")}
+              {gettext("Not used")}
             </span>
             <span :if={Map.get(@uses, secret.id, []) != []}>
               {@uses |> Map.get(secret.id) |> Enum.map(& &1.name) |> Enum.uniq() |> Enum.join(", ")}
@@ -1212,17 +1207,14 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp crumb_words(:variable_targets), do: gettext("Targets")
 
   # The one sentence under the title: what the page does, where it says more than the
-  # title. Nothing here says a run is given what the page holds: none is yet.
+  # title. Nothing here says a run is given what the page holds: none is.
   defp form_sentence(%{act: :new_secret}), do: secret_sentence()
 
   defp form_sentence(%{act: :edit_secret}),
     do: gettext("Its values stay as they are; only its name and what it is for change.")
 
   defp form_sentence(%{act: :add_value}),
-    do:
-      gettext(
-        "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
-      )
+    do: gettext("A secret with several values names each one with a value ID.")
 
   defp form_sentence(%{act: :change_value}),
     do: gettext("The value it holds now is not shown.")
@@ -1408,7 +1400,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Unlock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("A target may set its own value of %{name} again.", name: @variable.name)}
+      {gettext("A target's own value of %{name} applies again.", name: @variable.name)}
       <span :if={@ignored > 0} id="unlock-targets">
         {ngettext(
           "%{number} target set its own: the lock no longer sets it aside.",
@@ -1611,7 +1603,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp token_words({:targets, :own}), do: gettext("Set by a target too")
 
   # A name on the runner's deny list, which the context saves: warned. No run receives a
-  # variable yet, so the words say where the name is, and nothing of a run.
+  # variable, so the words say where the name is, and nothing of a run.
   defp warned?(name) when is_binary(name), do: Denied.denied?(name) and not Denied.refused?(name)
   defp warned?(_name), do: false
 
@@ -2087,11 +2079,11 @@ defmodule ApiaryWeb.SecretLive.Index do
            socket,
            if(value.value_id,
              do:
-               gettext("%{value_id} of %{name} is changed.",
+               gettext("%{value_id} of %{name} is saved.",
                  value_id: value.value_id,
                  name: secret.name
                ),
-             else: gettext("The value of %{name} is changed.", name: secret.name)
+             else: gettext("The value of %{name} is saved.", name: secret.name)
            )
          )}
 
@@ -2196,10 +2188,11 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
       when is_map(params) do
     %{current_scope: scope, variable: variable} = socket.assigns
+    asked_at = DateTime.utc_now()
 
     case Variables.update_variable(scope, variable, %{"value" => params["value"]}) do
       {:ok, variable} ->
-        {:noreply, saved(socket, gettext("%{name} is changed.", name: variable.name), :variables)}
+        {:noreply, saved(socket, value_saved(variable, asked_at), :variables)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, variable_form(changeset))}
@@ -2335,6 +2328,15 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp variable_done("delete_variable", name, _targets),
     do: gettext("%{name} is deleted.", name: name)
+
+  # A value equal to the one the variable has is written nowhere and leaves no entry
+  # (`Apiary.Variables.update_variable/3`): the variable comes back as it was, stamped
+  # before this change was asked, and the flash says it has that value already.
+  defp value_saved(%Variable{updated_at: updated_at, name: name}, asked_at) do
+    if DateTime.before?(updated_at, asked_at),
+      do: gettext("%{name} already has that value.", name: name),
+      else: gettext("%{name} is changed.", name: name)
+  end
 
   ## After a change, and its refusals
 

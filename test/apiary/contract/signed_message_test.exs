@@ -52,4 +52,26 @@ defmodule Apiary.Contract.SignedMessageTest do
       assert_raise FunctionClauseError, fn -> SignedMessage.answer(600, "s", "", nil, nil) end
     end
   end
+
+  describe "enrolment_answer/3" do
+    test "is under the enrolment answers' own domain line, the proof as line 3, lines 5 and 6 empty" do
+      body = ~s({"error":"key_limit"})
+      hash = Base.encode16(:crypto.hash(:sha256, body), case: :lower)
+
+      assert SignedMessage.enrolment_answer(409, "proof", body) ==
+               "qory-enrol-answer-ed25519-v1\n409\nproof\n#{hash}\n\n"
+    end
+
+    test "never equals the answer string of a signed request with the same lines" do
+      body = ~s({"version":1})
+
+      refute SignedMessage.enrolment_answer(201, "sig", body) ==
+               SignedMessage.answer(201, "sig", body, nil, nil)
+    end
+
+    test "takes a status of three digits only" do
+      assert_raise FunctionClauseError, fn -> SignedMessage.enrolment_answer(99, "p", "") end
+      assert_raise FunctionClauseError, fn -> SignedMessage.enrolment_answer(600, "p", "") end
+    end
+  end
 end

@@ -1,15 +1,15 @@
 defmodule Apiary.NodeKeyRacesTest do
-  # Two pastes racing each other, each on a connection of its own, outside the SQL
+  # Two keys made in a browser racing each other, each on a connection of its own, outside the SQL
   # sandbox, so each commits and each waits on the other's locks as it would in
   # production. Not async: what these tests commit is visible to every other test while
   # they run, and they delete it again before they end; the ledger, which outlives an
   # organisation, by the public keys they made.
   #
-  # The rules under test (`Apiary.AccessKeys.add_access_key/3`): a paste locks the node's
-  # row `FOR UPDATE` before it counts the node's keys, so two pastes on one node take
+  # The rules under test (`Apiary.AccessKeys.add_access_key/3`): an addition locks the
+  # node's row `FOR UPDATE` before it counts the node's keys, so two on one node take
   # turns, and the second counts the first; a public key enters the ledger by its unique
-  # key, so two pastes of one key on two nodes wait on each other there, and the second
-  # finds the first's row.
+  # key, so two additions of one key on two nodes wait on each other there, and the
+  # second finds the first's row.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -46,7 +46,7 @@ defmodule Apiary.NodeKeyRacesTest do
     Base.url_encode64(public, padding: false)
   end
 
-  defp paste(owner, node, label, public_key),
+  defp add(owner, node, label, public_key),
     do: AccessKeys.add_access_key(owner, node, %{label: label, public_key: public_key})
 
   defp live_keys(node) do
@@ -56,15 +56,15 @@ defmodule Apiary.NodeKeyRacesTest do
     )
   end
 
-  test "two pastes on a node with room for one: the second waits, and is refused", ctx do
+  test "two keys added on a node with room for one: the second waits, and is refused", ctx do
     %{owner: owner} = ctx
     node = node(owner, "build-01")
-    {:ok, _first} = paste(owner, node, "build-01-a", fresh_key(ctx))
+    {:ok, _first} = add(owner, node, "build-01-a", fresh_key(ctx))
 
-    {first, first_pid} = hold(fn -> paste(owner, node, "build-01-b", fresh_key(ctx)) end)
+    {first, first_pid} = hold(fn -> add(owner, node, "build-01-b", fresh_key(ctx)) end)
     assert {:ok, %AccessKey{}} = first.result
 
-    second = start(fn -> paste(owner, node, "build-01-c", fresh_key(ctx)) end)
+    second = start(fn -> add(owner, node, "build-01-c", fresh_key(ctx)) end)
     await_blocked(second.backend, first_pid)
     commit(first)
 
@@ -72,16 +72,16 @@ defmodule Apiary.NodeKeyRacesTest do
     assert live_keys(node) == 2
   end
 
-  test "one public key pasted on two nodes at once: the second waits, and is refused", ctx do
+  test "one public key added on two nodes at once: the second waits, and is refused", ctx do
     %{owner: owner} = ctx
     node_a = node(owner, "build-01")
     node_b = node(owner, "build-02")
     public_key = fresh_key(ctx)
 
-    {first, first_pid} = hold(fn -> paste(owner, node_a, "build-01", public_key) end)
+    {first, first_pid} = hold(fn -> add(owner, node_a, "build-01", public_key) end)
     assert {:ok, %AccessKey{} = key} = first.result
 
-    second = start(fn -> paste(owner, node_b, "build-02", public_key) end)
+    second = start(fn -> add(owner, node_b, "build-02", public_key) end)
     await_blocked(second.backend, first_pid)
     commit(first)
 

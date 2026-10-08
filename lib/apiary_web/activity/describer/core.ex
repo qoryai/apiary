@@ -16,6 +16,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   import ApiaryWeb.Activity.Describer, only: [text: 1, from_to: 2]
 
   alias Apiary.Features
+
+  # The actions of the `secrets` feature's surfaces, which `Apiary.Access` keeps under
+  # `security`.
+  @secrets_actions [
+    :"secret.read",
+    :"secret.write",
+    :"secret.use",
+    :"variable.read",
+    :"variable.edit",
+    :"connection.read",
+    :"connection.write"
+  ]
   alias ApiaryWeb.{Format, RunComponents}
 
   @impl true
@@ -28,8 +40,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.remove"), do: gettext("Member removed")
   def label(:"invitation.revoke"), do: gettext("Invitation revoked")
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
-  def label(:"instance_admin.grant"), do: gettext("Owner made on the server")
-  def label(:"instance_admin.revoke"), do: gettext("Owner made a member on the server")
+  def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
+  def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -38,14 +50,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"workspace.delete"), do: gettext("Workspace deleted")
   def label(:"workspace.restore"), do: gettext("Workspace's deletion cancelled")
   def label(:"workspace.purge"), do: gettext("Workspace purged")
-  def label(:"access_key.create"), do: gettext("Access key created")
-  def label(:"access_key.rotate"), do: gettext("Access key rotated")
-  def label(:"access_key.revoke_secret_key"), do: gettext("Access key revoked in settings")
-  def label(:"access_key.create_code"), do: gettext("Enrolment code created")
-  def label(:"access_key.cancel_code"), do: gettext("Enrolment code cancelled")
+  def label(:"access_key.create_code"), do: gettext("Command made")
+  def label(:"access_key.cancel_code"), do: gettext("Command cancelled")
   def label(:"access_key.add"), do: gettext("Access key added")
-  def label(:"access_key.approve"), do: gettext("Access key approved")
-  def label(:"access_key.reject"), do: gettext("Access key rejected")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
   def label(:"node.create"), do: gettext("Node created")
   def label(:"node.edit"), do: gettext("Node changed")
@@ -61,8 +68,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"connection.write"), do: gettext("Integration changed")
   def label(_action), do: nil
 
-  # The core offers every action it has in the filter.
+  # The core offers every action it has in the filter, but the stored secrets', variables'
+  # and integrations' only where they are: they ask `on?(scope, :secrets)`. Their entries
+  # still show, by their labels.
   @impl true
+  def offered?(scope, action) when action in @secrets_actions,
+    do: Features.on?(scope, :secrets)
+
   def offered?(_scope, _action), do: true
 
   @impl true
@@ -122,10 +134,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"invitation.accept", _details, _actor), do: gettext("Accepted an invitation")
 
   defp said(:"instance_admin.grant", _details, _actor),
-    do: gettext("Made a person an owner, by a command run on the server")
+    do: gettext("Made a person an owner, by a command run on Qory Apiary")
 
   defp said(:"instance_admin.revoke", _details, _actor),
-    do: gettext("Made an owner a member, by a command run on the server")
+    do: gettext("Made an owner a member, by a command run on Qory Apiary")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -145,25 +157,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"workspace.purge", _details, _actor),
     do: gettext("Purged a deleted workspace and everything in it")
 
-  defp said(:"access_key.create", _details, _actor), do: gettext("Created an access key")
-
-  defp said(:"access_key.rotate", %{"change" => "previous_retired"}, _actor),
-    do: gettext("Retired an access key's previous secret")
-
-  defp said(:"access_key.rotate", _details, _actor), do: gettext("Rotated an access key")
-
-  defp said(:"access_key.revoke_secret_key", _details, _actor),
-    do: gettext("Revoked an access key")
-
   defp said(:"access_key.create_code", _details, _actor),
-    do: gettext("Created an enrolment code for a node")
+    do: gettext("Made a command to connect a node")
 
   defp said(:"access_key.cancel_code", _details, _actor),
-    do: gettext("Cancelled a node's enrolment code")
+    do: gettext("Cancelled a command to connect a node")
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
-  defp said(:"access_key.approve", _details, _actor), do: gettext("Approved an access key")
-  defp said(:"access_key.reject", _details, _actor), do: gettext("Rejected an access key")
 
   defp said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor),
     do: gettext("Revoked an access key with its deleted node")
@@ -355,9 +355,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   def change(:"member.remove", %{"level" => level}, _after, _details), do: as_level(level)
 
-  def change(action, _before, %{"key_id" => key_id}, _details)
-      when action in [:"access_key.create", :"access_key.add"],
-      do: [{:m, key_id}]
+  def change(:"access_key.add", _before, %{"key_id" => key_id}, _details),
+    do: [{:m, key_id}]
 
   def change(:"node.create", _before, %{"kind" => kind, "public_id" => id}, _details),
     do: [[kind_word(kind), " ", {:m, id}]]

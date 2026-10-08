@@ -95,7 +95,7 @@ many chunks, and the dates before which it pruned. A row is marked *By hand* whe
 from the task below, and *Not finished* when the job stopped at its bound or a run failed;
 the next night goes on from there.
 
-The same is one line in the server's log per workspace:
+The same is one line in Qory Apiary's log per workspace:
 
 ```text
 retention pruned workspace=6f1c… trigger=schedule runs=12 events=48210 log_chunks=9120 log_bytes=73400320 deliveries=640 events_cutoff=2026-06-01T03:12:44Z log_cutoff=2026-08-02T03:12:44Z complete=true duration_ms=8450

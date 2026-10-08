@@ -10,7 +10,7 @@ defmodule Apiary.IntegrationsTest do
   alias Apiary.Integrations.{FetchJob, Release}
   alias Apiary.Audit.Entry
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   @github %{source: "github.com/qoryai/qory-github", version: "0.1.0"}
   @base "/qoryai/qory-github/releases/download/v0.1.0/"
@@ -135,8 +135,6 @@ defmodule Apiary.IntegrationsTest do
       assert release.description == bytes
       assert release.name == "github"
       assert release.version == "0.1.0"
-      assert release.publisher_name == "Qory"
-      assert release.publisher_url == "https://qory.dev"
 
       assert release.description_sha256 ==
                :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
@@ -212,8 +210,8 @@ defmodule Apiary.IntegrationsTest do
       end)
     end
 
-    test "is description_invalid for a description without a publisher", %{scope: scope} do
-      serve_release(Map.delete(github_description(), "publisher"))
+    test "is description_invalid for a description with a publisher", %{scope: scope} do
+      serve_release(github_description(%{"publisher" => %{"name" => "Qory"}}))
       {:ok, release} = Integrations.request_release(scope, @github)
 
       capture_log(fn ->
@@ -221,31 +219,12 @@ defmodule Apiary.IntegrationsTest do
       end)
     end
 
-    test "records a publisher without a URL as nil", %{scope: scope} do
-      serve_release(github_description(%{"publisher" => %{"name" => "Acme"}}))
-      {:ok, release} = Integrations.request_release(scope, @github)
-      assert %Release{publisher_name: "Acme", publisher_url: nil} = fetch!(scope, release)
-    end
-
-    test "is description_invalid, or placeholder_conflict, as the description says", %{
-      scope: scope
-    } do
+    test "is description_invalid as the description says", %{scope: scope} do
       serve_release(github_description(%{"name" => "Not A Name"}))
       {:ok, release} = Integrations.request_release(scope, @github)
 
       capture_log(fn ->
         assert %Release{failure: "description_invalid"} = fetch!(scope, release)
-      end)
-
-      conflicting =
-        tracker_description(%{"program_version" => "0.1.0"})
-        |> put_in(["roles", "tool", "placeholders"], ["QORY_TOKEN"])
-
-      serve_release(conflicting)
-      {:ok, release} = Integrations.request_release(scope, %{@github | version: "0.1.0"})
-
-      capture_log(fn ->
-        assert %Release{failure: "placeholder_conflict"} = fetch!(scope, release)
       end)
     end
 
@@ -337,6 +316,41 @@ defmodule Apiary.IntegrationsTest do
       capture_log(fn ->
         assert Integrations.get_release(scope, release.id) == {:error, :not_found}
       end)
+    end
+  end
+
+  describe "a release's integrity code" do
+    test "is of version 2, over no publisher", %{scope: scope} do
+      serve_release(github_description())
+      {:ok, release} = Integrations.request_release(scope, @github)
+      release = fetch!(scope, release)
+
+      assert release.integrity_version == 2
+      assert Release.intact?(release)
+    end
+
+    test "of version 1 verifies when it covered no publisher, and not when it covered one",
+         %{scope: scope} do
+      {:ok, release} = Integrations.request_release(scope, @github)
+
+      code_v1 = fn fields ->
+        {key_id, code} = Apiary.Integrity.code(Release.integrity_kind(), 1, fields)
+
+        Repo.update_all(from(r in Release, where: r.id == ^release.id),
+          set: [integrity_key_id: key_id, integrity_code: code, integrity_version: 1]
+        )
+
+        Repo.get!(Release, release.id)
+      end
+
+      assert release |> Release.integrity_fields(1) |> code_v1.() |> Release.intact?()
+
+      with_publisher =
+        release
+        |> Release.integrity_fields(1)
+        |> Keyword.put(:publisher_name, "Acme")
+
+      refute with_publisher |> code_v1.() |> Release.intact?()
     end
   end
 

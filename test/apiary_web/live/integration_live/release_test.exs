@@ -9,7 +9,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
   alias Apiary.{Connections, Integrations}
   alias Apiary.Connections.Connection
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   setup :register_and_log_in_user
 
@@ -52,7 +52,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
            )
 
     assert has_element?(lv, "#release-status.sr-only[role=status]", "Fetching the release's")
-    assert has_element?(lv, "#not-on-runs", "Runs don't use any of this yet:")
+    assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
     assert has_element?(lv, "#settings-section-integrations header span[aria-hidden=true]", "·")
     refute has_element?(lv, "#add-release-form")
   end
@@ -122,20 +122,21 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(lv, "#breadcrumb-section", "Integrations")
     assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add from a release")
     assert page_title(lv) =~ "Add from a release · Workspace settings"
-    assert has_element?(lv, "#release-publisher", "Qory")
-    assert has_element?(lv, "#release-publisher", "github.com/qoryai")
-    assert has_element?(lv, "#release-ways", "Calls its API")
+    refute has_element?(lv, "#release-publisher")
+    refute has_element?(lv, "#release-ways")
+    refute render(lv) =~ "publisher"
     assert has_element?(lv, "#release-description", "private_key")
 
     assert has_element?(
              lv,
              "#release-found",
-             "The release is only read; nothing of it runs on the server."
+             "The release is only read; nothing of it runs on Qory Apiary."
            )
 
     assert has_element?(lv, "#release-setting-app_id")
     refute has_element?(lv, "#release-setting-private_key")
-    assert has_element?(lv, "#add-release-form fieldset legend", "For runs in")
+    assert has_element?(lv, "#add-release-form fieldset legend", "Applies to")
+    assert has_element?(lv, "#add-release-form", "Qory Apiary links no stored secret to it.")
 
     {:error, {:live_redirect, %{to: to}}} =
       lv
@@ -158,7 +159,6 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
         "type" => "boolean",
         "description" => "Logs every request it makes."
       })
-      |> update_in(["roles", "credential", "settings"], &(&1 ++ ["verbose"]))
 
     release = ready_release!(scope, description)
     {:ok, lv, _html} = live(conn, ipath(scope, release))
@@ -169,6 +169,21 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
            )
 
     assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request it makes.")
+  end
+
+  test "a release whose only role Qory Apiary does not know shows that role as given",
+       %{conn: conn, scope: scope} do
+    description =
+      tracker_description(%{
+        "roles" => Map.delete(tracker_description()["roles"], "credential")
+      })
+
+    release = ready_release!(scope, description, "github.com/acme/tracker")
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-roles", "acme_role")
+    assert has_element?(lv, "#release-setting-url")
+    refute has_element?(lv, "#integration_argument")
   end
 
   test "settings its description refuses are said, and nothing is added",

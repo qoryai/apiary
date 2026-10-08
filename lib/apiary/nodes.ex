@@ -39,6 +39,7 @@ defmodule Apiary.Nodes do
 
   alias Apiary.{Access, AccessKeys, Audit, Repo, Runs}
   alias Apiary.Accounts.Scope
+  alias Apiary.AccessKeys.AccessKey
   alias Apiary.Nodes.{Instance, Node, Throttle}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Liveness, Run}
@@ -199,8 +200,7 @@ defmodule Apiary.Nodes do
   @doc """
   delete_node/2 deletes `node` (`node.delete`, owners and admins): it leaves every page,
   its name is free again, and its row stays for what names it until its workspace is
-  purged. In the same transaction it revokes every key of the node in use, a key awaiting
-  approval among them, each with its entry of `access_key.revoke` and its public key a
+  purged. In the same transaction it revokes every key of the node in use, each with its entry of `access_key.revoke` and its public key a
   tombstone for `node_deleted`, and cancels its outstanding enrolment codes
   (`Apiary.AccessKeys.revoke_node_keys/3`). `{:ok, node}`, `{:error, :forbidden}`, or
   `{:error, :not_found}` for a node that is deleted already or not the workspace's.
@@ -294,10 +294,15 @@ defmodule Apiary.Nodes do
         }
 
   @typedoc """
-  What a node is doing: its instances running now, oldest first, and the instance seen
-  last, running or not (nil when none was recorded).
+  What a node is doing: its instances running now, oldest first, the instance seen last,
+  running or not (nil when none was recorded, or every one was pruned), and when one of
+  its keys, revoked ones too, was last used (nil when none was).
   """
-  @type activity :: %{running: [running], last: Instance.t() | nil}
+  @type activity :: %{
+          running: [running],
+          last: Instance.t() | nil,
+          used: DateTime.t() | nil
+        }
 
   @doc """
   topic/1 is the topic of a workspace's nodes: `{:nodes_touched, workspace_id}` whenever
@@ -319,7 +324,7 @@ defmodule Apiary.Nodes do
   seen/3 records that an instance of `node` was seen at `now`, from what a verified
   request said of it (`t:claim/0`): the instance's row is made, or its last time, name,
   key and versions are brought up to date, and `{:nodes_touched, workspace_id}` is
-  broadcast (`topic/1`). A key awaiting approval is seen too, so an admin sees what waits.
+  broadcast (`topic/1`).
 
   It writes at most once per node and instance id in each fifteen seconds
   (`Apiary.Nodes.Throttle`), and records at most #{@bound} new instances of a node in a
@@ -633,8 +638,10 @@ defmodule Apiary.Nodes do
   @doc """
   activity/3 is what each of `nodes`, nodes of the scope's workspace, is doing at `now`
   (`t:activity/0`), by node id: its instances running now, those with a run alive by the
-  lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), oldest first; and the instance
-  seen last. Three reads, whatever the number of nodes.
+  lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), oldest first; the instance
+  seen last; and when one of its keys was last used, which still says the node was seen
+  once `prune_instances/1` has taken a pool's last instance. Four reads, whatever the
+  number of nodes.
   """
   @spec activity(Scope.t(), [Node.t()], DateTime.t()) :: %{Ecto.UUID.t() => activity}
   def activity(scope, nodes, now \\ DateTime.utc_now())
@@ -653,6 +660,8 @@ defmodule Apiary.Nodes do
       |> order_by([i], asc: i.node_id, desc: i.last_seen_at, desc: i.id)
       |> Repo.all()
       |> Map.new(&{&1.node_id, &1})
+
+    used = keys_used(scope, ids)
 
     instance_ids = runs |> Enum.map(& &1.instance_id) |> Enum.uniq()
 
@@ -691,9 +700,29 @@ defmodule Apiary.Nodes do
            running
            |> Map.get(id, [])
            |> Enum.sort_by(&{DateTime.to_unix(&1.since, :microsecond), &1.instance_id}),
-         last: Map.get(last, id)
+         last: Map.get(last, id),
+         used: Map.get(used, id)
        }}
     end)
+  end
+
+  # When each node's keys were last used, revoked keys too, by node id: a node none of
+  # whose keys was used is not among them.
+  defp keys_used(
+         %Scope{
+           organisation: %Organisation{id: organisation_id},
+           workspace: %Workspace{id: workspace_id}
+         },
+         ids
+       ) do
+    from(k in AccessKey,
+      where: k.organisation_id == ^organisation_id and k.workspace_id == ^workspace_id,
+      where: k.node_id in ^ids and not is_nil(k.last_used_at),
+      group_by: k.node_id,
+      select: {k.node_id, max(k.last_used_at)}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   defp alive_runs(%Scope{organisation: organisation, workspace: workspace}, ids, now) do

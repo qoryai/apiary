@@ -3,8 +3,8 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   The run configuration endpoint of the server contract: a signed
   `GET /v1/run-configuration?<label>=<value>&…`, reached only through
   `ApiaryWeb.Contract.SignedRequest`, as discovery is, which verifies the request, refuses
-  what the contract refuses before the configuration (the key's rate limit, a key
-  awaiting approval, a contract revision not served, a stale timestamp) and signs the
+  what the contract refuses before the configuration (the key's rate limit, a contract
+  revision not served, a stale timestamp) and signs the
   answer. Every query parameter is one of the run's labels, and the runner sends every
   label of the run. The workspace's domain (`Apiary.Lingo.Domain`) says which of them name
   the target.

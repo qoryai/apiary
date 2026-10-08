@@ -4,9 +4,9 @@ defmodule Apiary.FeaturesTest do
   alias Apiary.Features
 
   describe "parse/1, the value of QORY_FEATURES" do
-    test "unset, empty or blank is every feature" do
+    test "unset, empty or blank is every feature but the opt-in ones" do
       for value <- [nil, "", "  ", " , "] do
-        assert Features.parse(value) == {:ok, Features.all()}
+        assert Features.parse(value) == {:ok, Features.all() -- Features.opt_in()}
       end
     end
 
@@ -34,14 +34,15 @@ defmodule Apiary.FeaturesTest do
       end
     end
 
-    test "all is every feature, and all- every feature but those it names" do
-      assert Features.parse("all") == {:ok, Features.all()}
-      assert Features.parse(" all ") == {:ok, Features.all()}
+    test "all is every feature but the opt-in ones, and all- those but the ones it names" do
+      default = Features.all() -- Features.opt_in()
+      assert Features.parse("all") == {:ok, default}
+      assert Features.parse(" all ") == {:ok, default}
 
       # A feature nothing else needs can be left out on its own; one another needs takes
       # that one with it.
-      leaf = Enum.find(Features.all() -- [:observability], &(not needed?(&1)))
-      assert Features.parse("all-#{leaf}") == {:ok, Features.all() -- [leaf]}
+      leaf = Enum.find(default -- [:observability], &(not needed?(&1, default)))
+      assert Features.parse("all-#{leaf}") == {:ok, default -- [leaf]}
 
       all_but_the_record = Enum.join(Features.all() -- [:observability], ", ")
       assert Features.parse("all-" <> all_but_the_record) == {:ok, [:observability]}
@@ -61,6 +62,28 @@ defmodule Apiary.FeaturesTest do
 
       assert {:error, reason} = Features.parse("all-observability")
       assert reason == "security needs observability, which is left out"
+    end
+
+    test "an opt-in feature is off unless a list names it" do
+      assert :secrets in Features.opt_in()
+
+      for value <- [nil, "", "  ", "all", "all-security"] do
+        assert {:ok, features} = Features.parse(value)
+        refute :secrets in features, inspect(value)
+      end
+
+      assert Features.parse("observability,security,secrets") ==
+               {:ok, [:observability, :security, :secrets]}
+
+      assert Features.parse("secrets, security, observability") ==
+               {:ok, [:observability, :security, :secrets]}
+    end
+
+    test "an opt-in feature named without the features it needs is refused" do
+      assert Features.parse("observability,secrets") ==
+               {:error, "secrets needs security, which is left out"}
+
+      assert Features.parse("secrets") == {:error, "secrets needs security, which is left out"}
     end
 
     test "all is not a feature to list" do
@@ -97,14 +120,23 @@ defmodule Apiary.FeaturesTest do
 
   describe "the core's features and the edition's" do
     test "the core's come first, the edition's after, each built or not" do
-      core = [:observability, :security]
+      core = [:observability, :security, :secrets]
       edition = Enum.map(Apiary.Edition.features(), &elem(&1, 0))
 
-      assert Enum.take(Features.all(), 2) == core
+      assert Enum.take(Features.all(), 3) == core
       assert Enum.take(Features.all(), -length(edition)) == edition
 
+      # An opt-in feature is never offered for an organisation's switch.
       assert Features.built() ==
-               core ++ for({name, opts} <- Apiary.Edition.features(), opts[:built], do: name)
+               [:observability, :security] ++
+                 for(
+                   {name, opts} <- Apiary.Edition.features(),
+                   opts[:built] and Keyword.get(opts, :default, true),
+                   do: name
+                 )
+
+      assert :secrets in Features.opt_in()
+      refute :secrets in Features.built()
     end
 
     test "registry/1 takes each name once, with needs it has and built or not" do
@@ -127,6 +159,43 @@ defmodule Apiary.FeaturesTest do
 
       assert_raise ArgumentError, ~r/a feature is \{name, needs/, fn ->
         Features.registry(core ++ [security: [needs: [:observability]]])
+      end
+    end
+
+    test "registry/1 takes default: false for an opt-in feature, which built/0 leaves out" do
+      core = [observability: [needs: [], built: true]]
+
+      assert %{
+               all: [:observability, :security, :secrets],
+               built: [:observability, :security],
+               opt_in: [:secrets]
+             } =
+               Features.registry(
+                 core ++
+                   [
+                     security: [needs: [:observability], built: true, default: true],
+                     secrets: [needs: [:security], built: true, default: false]
+                   ]
+               )
+
+      assert %{opt_in: []} = Features.registry(core)
+
+      assert_raise ArgumentError,
+                   ~r/security needs secrets, which is opt-in: so is a feature that needs one/,
+                   fn ->
+                     Features.registry(
+                       core ++
+                         [
+                           secrets: [needs: [:observability], built: true, default: false],
+                           security: [needs: [:secrets], built: true]
+                         ]
+                     )
+                   end
+
+      assert_raise ArgumentError, ~r/with default: boolean where it is given/, fn ->
+        Features.registry(
+          core ++ [security: [needs: [:observability], built: true, default: nil]]
+        )
       end
     end
   end
@@ -159,8 +228,8 @@ defmodule Apiary.FeaturesTest do
     end
   end
 
-  # Whether another feature needs `feature`.
-  defp needed?(feature), do: Enum.any?(Features.all(), &(feature in Features.needs(&1)))
+  # Whether another feature of `features` needs `feature`.
+  defp needed?(feature, features), do: Enum.any?(features, &(feature in Features.needs(&1)))
 
   # Every feature `feature` needs, through what those need.
   defp needs_all(feature) do
@@ -195,6 +264,18 @@ defmodule Apiary.FeaturesBootTest do
 
     for feature <- Features.all() -- [:observability, :security],
         do: refute(Features.on?(nil, feature))
+  end
+
+  test "boot!/0 leaves an opt-in feature off unless QORY_FEATURES names it" do
+    for value <- [nil, "", "all", "all-security"] do
+      Application.put_env(:apiary, :features_setting, value)
+      refute :secrets in Features.boot!(), inspect(value)
+      refute Features.on?(:secrets)
+    end
+
+    Application.put_env(:apiary, :features_setting, "observability,security,secrets")
+    assert Features.boot!() == [:observability, :security, :secrets]
+    assert Features.on?(:secrets)
   end
 
   test "boot!/0 stops the boot on a value parse/1 refuses, saying how to fix it" do

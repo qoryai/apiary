@@ -19,8 +19,12 @@ being one. Every variable named here is described in [Install and configure](ins
 - **The three keys, kept.** `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and
   `APIARY_SIGNING_SECRET` are generated once, each on its own, and stored where the
   database backups are stored, not only in the `.env` of the machine.
-  `APIARY_ENCRYPTION_SECRET` never changes once an access key or a stored secret exists,
-  and losing it loses every stored secret value. Every machine pins the key of
+  `APIARY_ENCRYPTION_SECRET` never changes once an access key exists: without it, no
+  access key is trusted.
+  <!-- feature: secrets -->
+  Losing it also loses every stored secret value.
+  <!-- /feature -->
+  Every machine pins the key of
   `APIARY_SIGNING_SECRET`, so changing or losing it means pinning every machine again.
   [Backup and restore](backup.md) says what each loss costs.
 - **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
@@ -33,10 +37,10 @@ being one. Every variable named here is described in [Install and configure](ins
   the release with your address and your organisation's name: it is the instance's first
   sign-up, and emails you your log-in link.
   [Install and configure](install.md#the-instance-admins) has the command.
-<!-- feature: security -->
+<!-- feature: secrets -->
 - **Where integrations come from.** A workspace adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
-  `description.json`, which may be on any host; Qory fetches it from public addresses
+  `description.json`, which may be on any host; Qory Apiary fetches it from public addresses
   only. On an instance open to people you do not know, set
   `INTEGRATION_URL_SOURCES=false` so that they are added from forges' releases alone; a
   release's download links, which its author chooses on GitLab and Codeberg, are still
@@ -74,6 +78,9 @@ being one. Every variable named here is described in [Install and configure](ins
   <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
+- **The security headers.** Every page carries a `Content-Security-Policy` that lets only
+  the console's own scripts run. The proxy must pass it on as it is: not strip it, not
+  replace it with one of its own, and not add a second.
 
 ## Upgrades
 

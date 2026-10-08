@@ -43,10 +43,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
       keys added by their public keys; build-01's first key was replaced and revoked. No
       run is placed on them. build-02 has an outstanding enrolment code (below).
-    * Secrets, one with two values; variables of the workspace, two locked, and of a few
+    * With the `secrets` feature (`Apiary.Features.on?/2`, of each workspace): secrets,
+      one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
-      fetched, and one release whose fetch failed. Runs do not receive these yet.
+      fetched, and one release whose fetch failed. A run receives only its security policy.
     * Where the edition allows an organisation a second workspace, **Shop ops**
       (`shop-ops`) is made too, with a smaller history of its own; the core's allows
       one.
@@ -257,7 +258,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     replays(main)
     nodes(main)
 
-    if Apiary.Features.on?(main, :security) do
+    if Apiary.Features.on?(main, :secrets) do
       secrets(main)
       variables(main)
       connections(main)
@@ -271,7 +272,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
             ["--seed", "#{seed + 1}"] ++ concurrency
         )
 
-        if Apiary.Features.on?(scope, :security), do: variables_of_second(scope)
+        if Apiary.Features.on?(scope, :secrets), do: variables_of_second(scope)
         [scope_of_second(owner, scope)]
       end
 
@@ -397,8 +398,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     Mix.shell().info("Nodes build-01, build-02 and spot-runners, with their keys")
   end
 
-  # A key added by its public key, as an owner pastes one: a fresh Ed25519 key pair whose
-  # private half is dropped.
+  # A key added by its public key, as Generate a key adds one made in a browser
+  # (`arrived_by: :browser`): a fresh Ed25519 key pair whose private half is dropped.
   defp add_key!(scope, node, label, allow_secrets) do
     {public, _private} = :crypto.generate_key(:eddsa, :ed25519)
 
@@ -607,8 +608,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       "version" => 1,
       "name" => "github",
       "title" => "GitHub",
-      "publisher" => %{"name" => "Qory", "url" => "https://qory.dev"},
-      "description" => "Mints a GitHub App installation token for a run's repositories.",
+      "description" => "Mints GitHub App installation tokens.",
       "domains" => ["software"],
       "program_version" => "0.1.0",
       "settings" => %{
@@ -624,8 +624,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
           "private_key" => %{
             "title" => "Private key",
             "type" => "string",
-            "writeOnly" => true,
-            "x-secret-name" => "GITHUB_APP_PRIVATE_KEY"
+            "writeOnly" => true
           },
           "private_key_file" => %{"title" => "Private key file", "type" => "string"}
         }
@@ -633,9 +632,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       "roles" => %{
         "credential" => %{
           "argument" => "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}",
-          "hosts" => ["github.com", "api.github.com"],
-          "settings" => ["app_id", "private_key"],
-          "required" => ["app_id", "private_key"]
+          "hosts" => ["github.com", "api.github.com"]
         }
       }
     }
@@ -646,8 +643,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       "version" => 1,
       "name" => "acme-tracker",
       "title" => "Acme tracker",
-      "publisher" => %{"name" => "Acme"},
-      "description" => "Opens and updates the tracker's issues for a run.",
+      "description" => "Opens and updates the tracker's issues.",
       "program_version" => "0.3.0",
       "settings" => %{
         "type" => "object",
@@ -660,8 +656,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       "roles" => %{
         "credential" => %{
           "argument" => "[A-Z]+",
-          "hosts" => ["tracker.example.com"],
-          "settings" => ["url", "api_key"]
+          "hosts" => ["tracker.example.com"]
         }
       }
     }

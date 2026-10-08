@@ -27,7 +27,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
         refute html =~ "policy"
       end
 
-      # Only owners and admins add or approve a node's key: a member manages no keys.
+      # Only owners and admins add a node's key: a member manages no keys.
       refute html =~ "manage access keys"
       refute html =~ "Manages access keys"
 

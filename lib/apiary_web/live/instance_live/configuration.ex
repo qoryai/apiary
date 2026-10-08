@@ -11,7 +11,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   started, with where it comes from: the setting of the server's environment that set it,
   or the default, where that setting is not set (`config/runtime.exs` keeps each as it
   read it). They are the features
-  (`Apiary.Features`, `QORY_FEATURES`), whether an integration may come from an address
+  (`Apiary.Features`, `QORY_FEATURES`; an opt-in feature only where it is on), with the
+  `secrets` feature whether an integration may come from an address
   (`Apiary.Integrations.Source.url_sources?/0`, `INTEGRATION_URL_SOURCES`), how long the
   audit trail keeps an entry and its address (`Apiary.Audit`), the grace period before a
   deleted workspace or organisation is purged (`Apiary.Deletion.grace_days/0`), the
@@ -41,7 +42,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
       <.settings_page section={:configuration} title={gettext("Configuration")}>
         <:subtitle>
           {gettext(
-            "What whoever runs this server set for the whole instance, or the default, as the server read it when it started. Nothing here changes it."
+            "What whoever runs this Qory Apiary set for the whole instance, or the default, as Qory Apiary read it when it started. Nothing here changes it."
           )}
         </:subtitle>
 
@@ -62,7 +63,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           </p>
         </SettingsComponents.part>
 
-        <SettingsComponents.part id="config-integrations" title={gettext("Integrations")}>
+        <SettingsComponents.part
+          :if={@secrets}
+          id="config-integrations"
+          title={gettext("Integrations")}
+        >
           <dl class="grid gap-4">
             <.setting
               id="config-url-sources"
@@ -112,11 +117,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               {if @pruning,
                 do:
                   gettext(
-                    "The server prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
+                    "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
                   ),
                 else:
                   gettext(
-                    "The server does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
+                    "Qory Apiary does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
                   )}
             </.setting>
           </dl>
@@ -152,7 +157,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
         <p id="config-note" class="q-foot-note">
           {gettext(
-            "To change a value, whoever runs the server changes the setting named beside it and starts the server again."
+            "To change a value, whoever runs Qory Apiary changes the setting named beside it and starts it again."
           )}
         </p>
       </.settings_page>
@@ -198,6 +203,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
              gettext("Configuration")
            ]),
          features: features(),
+         # The Integrations part asks `on?(:secrets)`, of the instance.
+         secrets: Features.on?(:secrets),
          url_sources: Source.url_sources?(),
          audit_days: Audit.retention_days(),
          address_days: Audit.address_retention_days(),
@@ -211,12 +218,17 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
     end
   end
 
-  # The features built so far, each on or off as the instance has it, by the name
-  # `QORY_FEATURES` takes, with what it covers where the core knows it.
+  # The built features (`Features.built/0`), each on or off as the instance has it, and an
+  # opt-in feature (`Features.opt_in/0`) only where it is on, in the order of
+  # `Features.all/0`, by the name `QORY_FEATURES` takes, with what it covers where the
+  # core knows it.
   defp features do
     enabled = Features.enabled()
+    built = Features.built()
+    opt_in = Features.opt_in()
 
-    for feature <- Features.built() do
+    for feature <- Features.all(),
+        feature in built or (feature in opt_in and feature in enabled) do
       %{
         name: feature,
         label: Atom.to_string(feature),
@@ -237,8 +249,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   defp description(:security),
     do:
       gettext(
-        "The security policy, which Qory serves to a workspace's runs once it has a rule or a mode set."
+        "The security policy, which Qory Apiary serves to a workspace's runs once it has a rule or a mode set."
       )
+
+  defp description(:secrets),
+    do: gettext("Stored secrets, variables and integrations, in each workspace's settings.")
 
   defp description(_feature), do: nil
 

@@ -16,9 +16,8 @@ repository; the rules for people are the same, and are written out in
   never a password. The engine's words for the work are *target*, *system*,
   *change request*, *apply*, *work item* and *task*. The product surface, pages, emails
   and flashes, is the one place with other words: it says a domain's words through Gettext
-  ([docs/lingo.md](docs/lingo.md)), and only the apiary skin, a per-user setting not built
-  yet, says *apiary* for an organisation and *hive* for a workspace: skin words, never
-  used for these anywhere else. British spelling throughout (organisation, licence,
+  ([docs/lingo.md](docs/lingo.md)), and never says *apiary* for an organisation or *hive*
+  for a workspace. British spelling throughout (organisation, licence,
   behaviour).
 - **Organisation keys.** Every table except `users` and `users_tokens` (and the
   instance's own, `purged_organisations`) carries `organisation_id`; every workspace-owned
@@ -48,13 +47,14 @@ repository; the rules for people are the same, and are written out in
 - **Commits and pull requests** carry no attribution to an AI: no `Co-Authored-By` trailer
   for a model, no "generated with" line, no session link. The message says what changed
   and why, in the imperative.
-- **Toolchain.** Erlang and Elixir come from mise (`mise.toml`); run every mix command as
+- **Toolchain.** Erlang, Elixir and Node come from mise (`mise.toml`); run every mix command as
   `mise x -- mix ...` from the repository root. Postgres on `localhost:5432` as `postgres`
   without a password.
 - **Quality gate.** `mise x -- mix precommit` before a pull request: it compiles with
   warnings as errors, drops unused lock entries, formats, builds the documentation with
   warnings as errors (`mix docs --warnings-as-errors`) and runs the tests. CI runs the
-  same checks plus `MIX_ENV=prod mix assets.deploy`.
+  same checks plus the browser scripts' tests (`node --test 'assets/js/test/*.test.mjs'`)
+  and `MIX_ENV=prod mix assets.deploy`.
 - **Editions.** The core names no edition's module and describes no edition's features:
   it asks `Apiary.Edition` and `ApiaryWeb.Edition`, which the configuration points at
   one, at the places an edition may add to the core or narrow it

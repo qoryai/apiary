@@ -139,7 +139,7 @@ defmodule ApiaryWeb do
       # The components of the runs, run and connections pages
       import ApiaryWeb.RunComponents
       # The patterns every page is built from: its header, a thing's tabs, a settings
-      # page, a form page, the line of what runs don't receive yet
+      # page, a form page, the line of what a run receives
       import ApiaryWeb.PageComponents
       # Whole translated sentences with marked-up parts
       import ApiaryWeb.RichText

@@ -1,8 +1,9 @@
 defmodule Apiary.Variables do
   @moduledoc """
-  A workspace's variables: names and values a run's process is given, set for the
-  workspace or for one of its repositories (a target), resolved for each holder by
-  `Apiary.Variables.Resolution`.
+  A workspace's variables: names and values for a run's process, set for the workspace or
+  for one of its repositories (a target), resolved for each holder by
+  `Apiary.Variables.Resolution`. Nothing puts them in the run configuration: a run
+  receives only its security policy, and the pages say so.
 
   ## Levels and locks
 
@@ -109,9 +110,9 @@ defmodule Apiary.Variables do
   end
 
   @doc """
-  resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values its runs
-  are given, with which level set and which locked each, for the pages; its `values/1`
-  for the run configuration. `{:ok, resolution}`, for a reader who may `variable.read`;
+  resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values in force
+  for its runs, with which level set and which locked each, for the pages; its `values/1`
+  maps each name to its value. `{:ok, resolution}`, for a reader who may `variable.read`;
   else `{:error, reason}`.
   """
   @spec resolve(Scope.t(), holder) :: {:ok, Resolution.t()} | {:error, Access.reason()}
@@ -125,7 +126,7 @@ defmodule Apiary.Variables do
   @doc """
   repository_overrides/1 is, for each name the workspace's chain sets (the level above and
   the workspace), the repositories that set it too, as each repository's resolution has
-  it: `:own` for a repository whose value its runs are given in place of the workspace's,
+  it: `:own` for a repository whose own value is in force in place of the workspace's,
   `:ignored` for one whose value a lock above it sets aside. `{:ok, overrides}`, keyed by
   the name without case, each list of `%{target: target, state: state}` by the target's
   system and path, for a reader who may `variable.read`; else `{:error, reason}`.
@@ -371,7 +372,7 @@ defmodule Apiary.Variables do
   workspace's, or the workspace's that overrode the level above's, gives back the larger
   value it hid, to the repository or to the workspace and every repository that takes
   it; and a workspace's locked variable takes its lock with it, so the repositories'
-  values it set aside are given to their runs again, as after `unlock_variable/2`.
+  values it set aside are in force again, as after `unlock_variable/2`.
   """
   @spec delete_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
   def delete_variable(%Scope{} = scope, %Variable{id: id}) do
@@ -495,19 +496,33 @@ defmodule Apiary.Variables do
         )
 
       other = spelled_otherwise(above, scope, target_id, id, name) ->
-        refuse(
-          changeset,
-          :name,
-          dgettext_noop(
-            "errors",
-            "is %{name} elsewhere in this workspace: use the same spelling"
-          ),
-          name: other
-        )
+        spelling_refusal(changeset, other)
 
       true ->
         {:ok, changeset}
     end
+  end
+
+  # Where the other spelling is: the level above, which the edition keeps over the
+  # organisation's workspaces (`c:Apiary.Edition.above_workspace/1`), is named as the
+  # organisation; the workspace's own variables and its repositories' are in this
+  # workspace.
+  defp spelling_refusal(changeset, {:above, other}) do
+    refuse(
+      changeset,
+      :name,
+      dgettext_noop("errors", "is %{name} in this organisation: use the same spelling"),
+      name: other
+    )
+  end
+
+  defp spelling_refusal(changeset, {:workspace, other}) do
+    refuse(
+      changeset,
+      :name,
+      dgettext_noop("errors", "is %{name} elsewhere in this workspace: use the same spelling"),
+      name: other
+    )
   end
 
   defp refuse(changeset, field, message, keys \\ []),
@@ -532,16 +547,17 @@ defmodule Apiary.Variables do
          ))
   end
 
-  # The other spelling of `name` set in a chain the variable is in, or nil: at the level
-  # above, and in the workspace and every repository for a workspace's variable, or in the
-  # workspace for a repository's. The variable's own row is left out, so a variable may
-  # change the case of its own name.
+  # The other spelling of `name` set in a chain the variable is in, with where it is, or
+  # nil: `{:above, other}` at the level above; `{:workspace, other}` in the workspace or
+  # any of its repositories for a workspace's variable, or in the workspace for a
+  # repository's. The variable's own row is left out, so a variable may change the case
+  # of its own name.
   defp spelled_otherwise(above, scope, target_id, id, name) do
     key = String.downcase(name)
 
     case Enum.find(above, &(String.downcase(&1.name) == key and &1.name != name)) do
       %{name: other} ->
-        other
+        {:above, other}
 
       nil ->
         query = variables(scope)
@@ -552,7 +568,7 @@ defmodule Apiary.Variables do
             do: where(query, [v], is_nil(v.target_id)),
             else: query
 
-        spelled_below(query, [name])
+        if other = spelled_below(query, [name]), do: {:workspace, other}
     end
   end
 

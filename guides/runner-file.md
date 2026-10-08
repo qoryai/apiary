@@ -19,23 +19,29 @@ server:
     - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
 ```
 
-You rarely write it by hand. `qory access-key enrol <server> <code>` writes it when a
-machine enrols with a code, and a key pasted into a node leads to the page **Runner file
-for build-01**, which shows these lines with the values filled in
-([Nodes and their keys](nodes.md)). When the file exists already, add the `server`
-section to it. The file is read strictly: a key it does not know, or a key written twice,
-is refused with a message that names the file.
+You rarely write it by hand. `qory access-key enrol <server> <code>`, the command a
+node's **Connect with a command** gives, writes it when it connects the machine. For a
+key connected that way, an active key's **Runner file** opens the page **Runner file for
+build-01**, which shows these lines with the values filled in, each marked as Qory
+Apiary's or this key's ([Nodes and their keys](nodes.md)). When the file exists already,
+add the `server` section to it. The file is read strictly: a key it does not know, or a
+key written twice, is refused with a message that names the file.
 
 | Key | Holds |
 |---|---|
-| `url` | The server's scheme and host, with a port when it has one, and nothing after: no path, no query. It is the server's `PUBLIC_URL`. `https`, or `http` to an address of this machine, `localhost` or a loopback address; `http` to any other host is refused. The runner finds every endpoint through the configuration document under this URL. |
-| `access_key_id` | The id the server gave the machine's access key: `ak_` and 16 characters. It names the key to the server and travels in clear with every request. |
-| `apiary_public_key` | The pin: the server's public keys, a list of `alg` and `public_key`. Every answer of the server is signed, and the runner verifies it under these keys before it reads it. A runner with a server and no pin does not start, `apiary_public_key_missing`. |
+| `url` | Qory Apiary's scheme and host, with a port when it has one, and nothing after: no path, no query. It is Qory Apiary's `PUBLIC_URL`. `https`, or `http` to an address of this machine, `localhost` or a loopback address; `http` to any other host is refused. The runner finds every endpoint through the configuration document under this URL. |
+| `access_key_id` | The id Qory Apiary gave the machine's access key: `ak_` and 16 characters. It names the key to Qory Apiary and travels in clear with every request. |
+| `apiary_public_key` | The pin: Qory Apiary's public keys, a list of `alg` and `public_key`. Every answer of Qory Apiary is signed, and the runner verifies it under these keys before it reads it. A runner with a server and no pin does not start, `apiary_public_key_missing`. |
+
+Only `access_key_id` belongs to the machine's key. `url` and `apiary_public_key` are
+Qory Apiary's, and the instance's own: the same for every organisation, workspace, node and
+machine. The address is Qory Apiary's `PUBLIC_URL`, and its key is made from its
+`APIARY_SIGNING_SECRET`.
 
 Nothing in the section is secret. The access key's secret is never in `runner.yaml`:
 `qory access-key` keeps it in the file `access-key-secret` beside it,
-`~/.config/qory/access-key-secret`, readable by its owner alone. The server holds only the
-key's public half, so nothing the server stores, shows or logs can sign for the machine.
+`~/.config/qory/access-key-secret`, readable by its owner alone. Qory Apiary holds only the
+key's public half, so nothing Qory Apiary stores, shows or logs can sign for the machine.
 
 ### The id and the pin in the environment
 
@@ -49,9 +55,11 @@ QORY_ACCESS_KEY_ID=ak_0123456789abcdef
 QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q"}]
 ```
 
-Those are the lines **Runner file for build-01** shows under "For CI", for a CI's
-variables or an env file, where a value is taken as written. In a shell the JSON has
-brackets and double quotes the shell would read, so put the value in single quotes:
+Those are the values **Runner file for spot-runners** shows for a generated key, as plain
+settings (the public key and the address are also under **Configure a machine** on the
+node's **Access key** tab), for a CI's variables or an env file, where a value is taken as
+written. In a shell the JSON has brackets and double quotes the shell would read, so put
+the value in single quotes:
 
 ```sh
 export QORY_ACCESS_KEY_ID=ak_0123456789abcdef
@@ -59,9 +67,10 @@ export QORY_APIARY_PUBLIC_KEY='[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmO
 ```
 
 The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs in a CI's
-secret store; `qory access-key enrol --print` and `qory access-key create --print` print it
-instead of keeping it on the machine. With the three variables set, the CI's `runner.yaml`
-needs `server.url` alone.
+secret store; `qory access-key enrol --print` prints it instead of keeping it on the
+machine, and **Generate a key in the browser** on the node's **Access key** tab shows it
+once, with the other two, on the page **Key for …**. With the three variables set, the
+CI's `runner.yaml` needs `server.url` alone.
 
 The three stay the runner's. `qory` reads them when it starts and takes them out of its
 environment before it starts anything, so no session inherits them, and naming one in
@@ -70,20 +79,20 @@ environment before it starts anything, so no session inherits them, and naming o
 
 ### A new key, and revoking one
 
-A key is never rotated. To change a machine's key, enrol or paste a new one on the same
-node, approve it, and once the machine uses it, **Revoke…** the old one on the node's
-**Access key** tab. A node holds two approved keys at a time for this. A revoked key stops
-verifying at once: a machine still using it fails its next request, `401`, and starts no
-new run.
+A key is never rotated. To change a machine's key, add a new one on the same node, under
+**Add a key** on its **Access key** tab, with a command or generated, and once the machine
+uses it, **Revoke…** the old one there. A node holds two keys at a time for this. A
+revoked key stops verifying at once: a machine still using it fails its next request,
+`401`, and starts no new run.
 
 ## What the runner does with it
 
 With a `server` section, every `qory run` on the machine:
 
-1. fetches the server's configuration document, a signed `GET` of
+1. fetches Qory Apiary's configuration document, a signed `GET` of
    `/.well-known/qory-configuration` under `url`;
-2. sends a ping, a batch of one event, to the events URL the document names, which on this
-   server is `/v1/events`;
+2. sends a ping, a batch of one event, to the events URL the document names, which on Qory
+   Apiary is `/v1/events`;
    <!-- feature: security -->
 3. when the document names a `run` section, fetches the run configuration for the checkout,
    a signed `GET` of `/v1/run-configuration` with the run's labels as the query. That
@@ -92,25 +101,33 @@ With a `server` section, every `qory run` on the machine:
 4. starts the runtime, and posts the run's events in signed batches while it runs.
 
 Each request names the machine's instance, its id kept in the file `instance-id` beside
-`runner.yaml`, and is signed with the access key. Each answer is signed with the server's
+`runner.yaml`, and is signed with the access key. Each answer is signed with Qory Apiary's
 key, and the runner verifies it under the pin before it reads anything of it.
 
 The run fails closed. A configuration fetch that fails or is refused, an answer that does
-not verify under the pin, or a ping the server does not accept: no run, and the error
-names the URL and the status. A key that awaits approval is refused `key_pending`, and an
-instance beyond its node pool's instance limit `instance_limit`.
+not verify under the pin, or a ping Qory Apiary does not accept: no run, and the error
+names the URL and the status. An instance beyond its node pool's instance limit is refused
+`instance_limit`.
 <!-- feature: security -->
 A named run configuration that does not answer `200` is no run either.
 <!-- /feature -->
 A redirect is not followed.
 
-Once the run is under way the server never delays the session. Events are posted behind a
-queue, what is undelivered when the run ends is kept under `.qory/runs/<id>/undelivered/`
-in the checkout, and `qory run resend <run-id>` sends a finished run's record to the server
-again. The record itself, `.qory/runs/<id>/events.jsonl` and `output.log`, is written
-whatever the server does.
+Once the run is under way Qory Apiary never delays the session. Events are posted behind a
+queue. At the end of a run qory prints where the run's record is, once, after the line
+that says how the run ended, which names no path:
+`qory run: the record is in <folder>/<id>`. That is
+`~/.local/state/qory/runs/<checkout folder name>-<hash>/<id>/` on Linux and macOS alike,
+or the same under `$XDG_STATE_HOME/qory` when `XDG_STATE_HOME` is set to an absolute path,
+and not in the checkout. `<hash>` is the first 12 hex digits of the SHA-256 of the
+checkout's full path, links resolved. qory's state directory, its `runs` directory and the
+checkout's folder are mode 0700. The record itself, `events.jsonl` and `output.log`, is
+written there whatever Qory Apiary does. What is undelivered when the run ends is kept
+beside it under `undelivered/`, and `qory run resend <run-id>` sends a finished run's
+record to Qory Apiary again.
 
-[The server contract](contract.md) says how requests are signed and what the server answers.
+[The server contract](contract.md) says how requests are signed and what Qory Apiary
+answers.
 
 ## There is no `webhook` section any more
 
@@ -137,26 +154,27 @@ egress:
 It applies:
 
 - on a machine with no `server` section;
-- with `qory run --local`, which records to files only and does not contact the server;
-- while the workspace of the access key's node has no policy yet. The server then names
+- with `qory run --local`, which records to files only and does not contact Qory Apiary;
+- while the workspace of the access key's node has no policy yet. Qory Apiary then names
   no run configuration, and the machine's own policy stands, enforcement included.
 
-From the first change of the workspace's policy in the console, the server's run
-configuration is the policy of every run under the keys of the workspace's nodes, and the
-file's `egress` section is not merged with it. [The security policy](security-policy.md)
-says what to do before that first change.
+From the first change of the workspace's policy in the console, Qory Apiary's run
+configuration, narrowed by the file's `egress` section (enforce when either enforces;
+allowed only where both allow; denied where either denies), is the policy of every run
+under the keys of the workspace's nodes. [The security policy](security-policy.md) says
+what to do before that first change.
 
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
-too: the server's run configuration is the policy.
+too.
 
-One section of the runner file still matters under a workspace's policy: `wall` starts the
-runtime in a container, and a policy with paths needs one. The workspace's policy selects
+Under a workspace's policy, `egress` narrows it and `wall` starts the runtime in a
+container; a policy with paths needs one. The workspace's policy selects
 none of the machine's `credentials`, so a run under it uses none.
 <!-- /feature -->
 
 ## The `forge` and `repository` labels
 
-The server reads a run's repository from two of its labels, `forge` and `repository`.
+Qory Apiary reads a run's repository from two of its labels, `forge` and `repository`.
 <!-- feature: security -->
 It keeps a policy per repository, and the runner asks for the run configuration with the
 run's labels.
@@ -185,11 +203,11 @@ files runs under the repository these two name.
 <!-- feature: security -->
 It keeps repository rules by them too.
 <!-- /feature -->
-The server compares them to the stored labels byte for byte, so one repository reached
+Qory Apiary compares them to the stored labels byte for byte, so one repository reached
 through two remotes that spell it differently is two repositories unless the labels are
 named.
 
 <!-- feature: security -->
-The runner sends every label of the run on the run configuration request. The server
+The runner sends every label of the run on the run configuration request. Qory Apiary
 reads the repository from `forge` and `repository`; any other label names no repository.
 <!-- /feature -->

@@ -9,16 +9,20 @@ jobs:
   test:
     name: Elixir tests (${{ matrix.name }})
     runs-on: ubuntu-latest
-    # The suite runs under each instance a launch may make: every feature, the wall and
-    # the record, and the record alone. A test that exercises a feature is tagged `needs:`
-    # and left out where the feature is off; the checks that do not depend on the features
-    # run once, with every feature.
+    # The suite runs under each instance a launch may make: every feature, the opt-in
+    # ones included (QORY_FEATURES unset or empty, which the tests take for every
+    # feature); the default features, as `all` gives them to an instance; and the record
+    # alone. A test that exercises a feature is tagged `needs:` and left out where the
+    # feature is off; the checks that do not depend on the features run once, with every
+    # feature.
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: every feature
             features: ""
+          - name: the default features
+            features: all
           - name: the record alone
             features: observability
     services:
@@ -80,6 +84,12 @@ jobs:
       - name: Check the Gettext catalogues are extracted
         if: matrix.features == ''
         run: mix gettext.extract --check-up-to-date
+
+      # The hooks' own tests, under Node's test runner and its WebCrypto, with no npm: the
+      # key a browser makes against the contract's known answer, and what it sends Qory.
+      - name: Test the browser scripts
+        if: matrix.features == ''
+        run: node --test 'assets/js/test/*.test.mjs'
 
       - name: Build the documentation without warnings
         if: matrix.features == ''

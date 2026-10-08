@@ -20,9 +20,8 @@ defmodule ApiaryWeb.RefusalsRows do
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
   locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, an approved key, a key awaiting approval and an outstanding enrolment code, a
-  run that has not ended, and a pending invitation; and another organisation, with its
-  owner.
+  instance, an active key and an outstanding enrolment code, a run that has not ended, and
+  a pending invitation; and another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -242,23 +241,34 @@ defmodule ApiaryWeb.RefusalsRows do
 
       # A node's access keys and enrolment codes, its Access key tab. Without the page or
       # the confirmation open, from a member: refused, as the page offers them no button;
-      # a demoted admin's page or confirmation was open, and the context refuses them.
-      {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "add_key",
-       %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
-      {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key", "add_key",
-       %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
-      {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key/add",
-       "add_key", %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
+      # a demoted admin's page or confirmation was open, and the context refuses them. A
+      # key made in a browser is sent from the tab here, where the page refuses it before
+      # the context: Generate a key's page holds the hook's notices, hidden by a class,
+      # which this case reads as alerts shown. The context's refusal of a demoted admin's
+      # key is the Access key tab's test "an admin made a member since Generate a key
+      # opened is refused by the context".
+      {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
+       }},
+      {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key",
+       "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
+       }},
+      {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
+       "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
+       }},
+      # Get the command, on the tab: one click, no form.
       {:"access_key.create_code", :member, "/:org/:workspace/nodes/:node/access-key",
-       "create_code", %{"code" => %{}}},
-      {:"access_key.create_code", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}}},
-      {:"access_key.approve", :member, "/:org/:workspace/nodes/:node/access-key", "approve", %{}},
-      {:"access_key.approve", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{}},
-      {:"access_key.reject", :member, "/:org/:workspace/nodes/:node/access-key", "reject", %{}},
-      {:"access_key.reject", :demoted_admin,
-       "/:org/:workspace/nodes/:node/access-key/keys/:pending_key/reject", "reject", %{}},
+       "create_code", %{}},
+      {:"access_key.create_code", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
+       "create_code", %{}},
+      # Get the command, in the overview's first-run box, which a member is offered no
+      # button of: the page refuses them.
+      {:"access_key.create_code", :member, "/:org/:workspace", "get_command", %{}},
       {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
       {:"access_key.revoke", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},
@@ -267,56 +277,59 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"access_key.cancel_code", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{}},
       # A node's page is its path: another organisation's node is a 404 as the page opens.
-      {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/add",
-       "add_key", %{"key" => %{"label" => "sneaky", "public_key" => :public_key}},
-       answer: :not_found_at_mount},
-      {:"access_key.create_code", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}},
-       answer: :not_found_at_mount},
-      {:"access_key.approve", :other_owner,
-       "/:other_org/:other_ws/nodes/:node/access-key/keys/:pending_key/approve", "approve", %{},
-       answer: :not_found_at_mount},
+      {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/generate",
+       "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "public_key" => :public_key}
+       }, answer: :not_found_at_mount},
+      {:"access_key.create_code", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key",
+       "create_code", %{}, answer: :not_found_at_mount},
       {:"access_key.cancel_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
        answer: :not_found_at_mount},
 
-      # Stored secrets and variables, the workspace's settings' Secrets and variables. A
-      # member's page has no dialog to open, so the event reaches the context function, or
-      # the page refuses it for their role; a demoted admin's dialog was open.
+      # Stored secrets and variables, the workspace's settings' Secrets and variables, whose
+      # pages need the `secrets` feature beside their actions' `security`. A member's page
+      # has no dialog to open, so the event reaches the context function, or the page
+      # refuses it for their role; a demoted admin's dialog was open.
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "create_secret",
-       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
-      {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{}},
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
+      {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{},
+       needs: :secrets},
       {:"secret.write", :removed_member, "/:org/:workspace/settings/secrets", "create_secret",
-       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/new", "create_secret",
-       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/change-value",
-       "set_value", %{"secret_value" => %{"value" => "not-to-be-saved"}}},
+       "set_value", %{"secret_value" => %{"value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/add-value",
        "add_value",
-       %{"secret_value" => %{"first_value_id" => "a", "value_id" => "b", "value" => "c"}}},
+       %{"secret_value" => %{"first_value_id" => "a", "value_id" => "b", "value" => "c"}},
+       needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/edit",
-       "update_secret", %{"secret" => %{"name" => "SNEAKY"}}},
+       "update_secret", %{"secret" => %{"name" => "SNEAKY"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/delete",
-       "delete_secret", %{}},
+       "delete_secret", %{}, needs: :secrets},
       # This organisation's secret, in a dialog of another organisation's path: the dialog
       # does not open, and the page says the secret is not there.
       {:"secret.write", :other_owner, "/:other_org/:other_ws/settings/secrets/:secret/delete",
-       "delete_secret", %{}, answer: :refused_at_mount},
+       "delete_secret", %{}, answer: :refused_at_mount, needs: :secrets},
       {:"variable.edit", :member, "/:org/:workspace/settings/variables", "create_variable",
-       %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}},
-      {:"variable.edit", :member, "/:org/:workspace/settings/variables", "lock_variable", %{}},
+       %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}, needs: :secrets},
+      {:"variable.edit", :member, "/:org/:workspace/settings/variables", "lock_variable", %{},
+       needs: :secrets},
       {:"variable.edit", :removed_member, "/:org/:workspace/settings/variables",
-       "create_variable", %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}},
+       "create_variable", %{"variable" => %{"name" => "SNEAKY", "value" => "x"}},
+       needs: :secrets},
       {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/change",
-       "change_variable", %{"variable" => %{"value" => "changed"}}},
+       "change_variable", %{"variable" => %{"value" => "changed"}}, needs: :secrets},
       {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/lock",
-       "lock_variable", %{}},
+       "lock_variable", %{}, needs: :secrets},
       {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/delete",
-       "delete_variable", %{}},
+       "delete_variable", %{}, needs: :secrets},
       {:"variable.edit", :other_owner,
        "/:other_org/:other_ws/settings/variables/:variable/delete", "delete_variable", %{},
-       answer: :refused_at_mount},
+       answer: :refused_at_mount, needs: :secrets},
 
       # A run.
       {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
@@ -336,7 +349,7 @@ defmodule ApiaryWeb.RefusalsRows do
   # organisation for a person who is not signed in, and asks no one's level; no page of
   # the core offers it to a signed-in person. An edition's: creating a workspace, which
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
-  # a stored secret to what uses it: no page links one yet, and the context's tests
+  # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
   @impl true
   def exempt do
@@ -356,7 +369,7 @@ defmodule ApiaryWeb.RefusalsRows do
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],
-      no_page_yet: [
+      no_page: [
         :"secret.use",
         :"connection.read",
         :"connection.write"
@@ -398,7 +411,6 @@ defmodule ApiaryWeb.RefusalsRows do
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
     %{access_key: node_key} = node_key_fixture(owner, node)
-    %{access_key: pending_key} = pending_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
     node_run_fixture(node, instance.instance_id)
@@ -443,7 +455,6 @@ defmodule ApiaryWeb.RefusalsRows do
       key: key,
       node: node,
       node_key: node_key,
-      pending_key: pending_key,
       code: code,
       public_key: ed25519_key_pair().encoded,
       instance: instance,
@@ -475,7 +486,6 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
-  def value(:pending_key, world), do: {:id, world.pending_key.key_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key
   def value(:instance, world), do: world.instance.instance_id

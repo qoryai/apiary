@@ -23,7 +23,15 @@ defmodule ApiaryWeb.OverviewComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [button: 1, icon: 1, inline_confirm: 1, listening: 1, sparkline: 1, steps: 1]
+    only: [
+      button: 1,
+      code_block: 1,
+      icon: 1,
+      inline_confirm: 1,
+      listening: 1,
+      sparkline: 1,
+      steps: 1
+    ]
 
   import ApiaryWeb.RunComponents,
     only: [
@@ -487,7 +495,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_subject(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <span class="q-ar-t">{gettext("Qory serves no policy yet")}</span>
+    <span class="q-ar-t">{gettext("Qory Apiary serves no policy yet")}</span>
     """
   end
 
@@ -707,7 +715,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_when(%{item: %{kind: :idle_key, key: key}} = assigns) do
-    assigns = assign(assigns, :at, key.last_used_at || key.approved_at)
+    assigns = assign(assigns, :at, key.last_used_at || key.received_at || key.inserted_at)
 
     ~H"""
     <span class="tabular-nums">{Format.day(@at)}</span>
@@ -1709,17 +1717,24 @@ defmodule ApiaryWeb.OverviewComponents do
   defp not_loaded,
     do:
       gettext(
-        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+        "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
   ## The empty workspace
 
   @doc """
   The empty workspace's one box, with the state of each step read from the record: step 1
-  ticks on a node or pool, step 2 on an approved key of one, step 3 on the first run; a
-  key's `last_used_at` changes step 3's words. Step 2 names the newest key awaiting
-  approval, and links to its node's Access key tab to approve it for a reader who may. `landed` is the first run while the page is
-  open; the box leaves at the next navigation.
+  ticks on a node or pool, step 2 on a key of one (every key the list holds is active),
+  step 3 on the first run; a key's `last_used_at` changes step 3's words. Step 2,
+  "Connect it", is the two ways a node or pool gets its key: a command run on the machine,
+  or a key generated in the browser. While it is current, it names `target`, the newest
+  node or pool with no active key, and the panel asks a reader who may connect it
+  (`may_key`) how, with the two ways as rows, its kind's own first and primary (a node:
+  Get the command; a pool: Generate a key). Get the command makes the command in place
+  (the caller's `get_command` event): `command`, once got, is shown in the panel, with
+  Copy, until when it works, and that the box waits for the machine. Anyone else reads who
+  connects it. `landed` is the first run while the page is open; the box leaves at the
+  next navigation.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1735,30 +1750,44 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
 
-  attr :may_approve, :boolean,
+  attr :target, :any,
+    default: nil,
+    doc: "the newest node or pool in use that holds no active key, or nil"
+
+  attr :may_key, :boolean,
     default: false,
-    doc: "whether the reader may approve the key that awaits approval, on its node"
+    doc: "whether the reader may connect `target`: add a key and make its enrolment code"
+
+  attr :command, :any,
+    default: nil,
+    doc:
+      "the command got for `target`, shown once: `%{code: fun, expires_at: at}`, the code in a function, or nil"
 
   attr :server, :string, required: true, doc: "this server's address, for the command"
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
   def onboarding(assigns) do
-    {approved, pending} = Enum.split_with(assigns.keys, & &1.approved_at)
-
     used =
-      approved
+      assigns.keys
       |> Enum.filter(& &1.last_used_at)
       |> Enum.max_by(& &1.last_used_at, DateTime, fn -> nil end)
 
     current =
       cond do
         assigns.landed -> 4
-        approved != [] -> 3
+        assigns.keys != [] -> 3
         assigns.nodes > 0 -> 2
         true -> 1
       end
 
-    assigns = assign(assigns, used: used, current: current, pending: List.first(pending))
+    assigns =
+      assign(assigns,
+        used: used,
+        current: current,
+        asks: current == 2 and assigns.target != nil and assigns.may_key,
+        ways: key_ways(assigns.target),
+        target_path: target_path(assigns.scope, assigns.target)
+      )
 
     ~H"""
     <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
@@ -1766,50 +1795,23 @@ defmodule ApiaryWeb.OverviewComponents do
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
           {gettext(
-            "Nothing has posted to this workspace yet. A machine posts once it is enrolled on a node, with a key of its own."
+            "Nothing has posted to this workspace yet. A machine posts once it is connected to a node."
           )}
         </p>
         <p :if={@current > 1} class="q-onb-lead">
-          {gettext("The machine makes its own key, and Qory keeps only the public half.")}
+          {gettext(
+            "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
+          )}
         </p>
         <.steps current={@current} class="my-5">
           <:step title={gettext("Add a node")}>
-            {gettext(
-              "One per machine, or a node pool for a fleet of short-lived instances that share one key."
-            )}
+            {gettext("One per machine, or a node pool for short-lived instances that share one key.")}
           </:step>
-          <:step title={gettext("Enrol the machine")}>
-            <.rich text={
-              rich_gettext(
-                "On the machine, run %{enrol} with a code from the node, then approve the key it brings. Or paste the public key %{create} prints.",
-                enrol: {:m, "qory access-key enrol"},
-                create: {:m, "qory access-key create"}
-              )
-            } />
-            <span :if={@pending} id={"#{@id}-pending"} class="mt-1 block">
-              <.rich
-                :if={@may_approve}
-                text={
-                  rich_gettext("%{key} awaits approval on %{node}. %{approve}",
-                    key: {:m, @pending.label},
-                    node: @pending.node.name,
-                    approve:
-                      {:link,
-                       ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@pending.node.public_id}/access-key",
-                       gettext("Approve it")}
-                  )
-                }
-              />
-              <.rich
-                :if={!@may_approve}
-                text={
-                  rich_gettext("%{key} awaits approval on %{node}.",
-                    key: {:m, @pending.label},
-                    node: @pending.node.name
-                  )
-                }
-              />
-            </span>
+          <:step title={gettext("Connect it")}>
+            {pgettext(
+              "plain",
+              "Run one command on the machine, or generate a key for a CI or another system."
+            )}
           </:step>
           <:step title={gettext("See runs here")}>
             {if @used,
@@ -1837,10 +1839,24 @@ defmodule ApiaryWeb.OverviewComponents do
           </.button>
         </div>
         <p :if={@current == 1 and !@may_add} id={"#{@id}-members"} class="text-[13px]/5 text-muted">
-          {gettext("An owner or admin adds nodes and enrols machines.")}
+          {gettext("An owner or admin adds nodes and connects them.")}
+        </p>
+        <p :if={@asks} id={"#{@id}-target"} class="text-[13px]/5">
+          <.rich text={
+            rich_gettext("%{node} has no key yet.",
+              node: {:link, @target_path, @target.name, "q-link font-medium"}
+            )
+          } />
+        </p>
+        <p
+          :if={(@current == 2 and @target) && !@may_key}
+          id={"#{@id}-members-key"}
+          class="text-[13px]/5 text-muted"
+        >
+          {gettext("An owner or admin connects %{node}.", node: @target.name)}
         </p>
         <.button
-          :if={@current in [2, 3]}
+          :if={@current == 3 or (@current == 2 and !@asks)}
           id={"#{@id}-nodes"}
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
           class="max-[479px]:w-full"
@@ -1855,32 +1871,107 @@ defmodule ApiaryWeb.OverviewComponents do
           >{gettext("Open it")}</.link>
         </p>
       </div>
-      <div class="q-onb-paste">
-        <span class="q-onb-lbl">
-          {if @current >= 3,
-            do: gettext("What you ran on the machine"),
-            else: gettext("What you run on the machine")}
-        </span>
-        <pre id={"#{@id}-command"} class="q-onb-pre"><code>qory access-key enrol {@server} qec_…</code></pre>
-        <p class="text-[13px]/5 text-muted">
-          <.rich text={
-            rich_gettext(
-              "The code comes from the node's Access key tab, %{new_code}. It works once, for 15 minutes.",
-              new_code: {:m, "New enrolment code"}
-            )
-          } />
-        </p>
-        <.listening :if={!@landed}>
-          <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
-          <span :if={@used}>
-            <.rich text={
-              rich_gettext("Listening for the first run. %{key} verified %{when}.",
-                key: {:m, @used.label, "font-mono text-[12.5px]"},
-                when: relative_time(%{__changed__: nil, at: @used.last_used_at})
-              )
-            } />
-          </span>
-        </.listening>
+      <div id={"#{@id}-panel"} class="q-onb-paste">
+        <%= cond do %>
+          <% @current < 2 or (@current == 2 and !@asks) -> %>
+            <span class="q-onb-lbl">{gettext("Two ways to connect a machine")}</span>
+            <div class="grid gap-3 text-[13px]/5">
+              <div class="flex gap-3">
+                <.icon name="hero-command-line" class="mt-0.5 size-4.5 flex-none text-muted" />
+                <p>
+                  <span class="font-medium">{gettext("Connect with a command.")}</span>
+                  {gettext(
+                    "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
+                  )}
+                </p>
+              </div>
+              <div class="flex gap-3">
+                <.icon name="hero-key" class="mt-0.5 size-4.5 flex-none text-muted" />
+                <p>
+                  <span class="font-medium">{gettext("Generate a key in the browser.")}</span>
+                  {pgettext(
+                    "plain",
+                    "For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system."
+                  )}
+                </p>
+              </div>
+              <%!-- Said only to one who may add a node and connect it. --%>
+              <p :if={@may_add} id={"#{@id}-choose"} class="text-muted">
+                {gettext("You choose one for each node, once you have added it.")}
+              </p>
+            </div>
+            <.listening>{gettext("Listening for the first post from a machine.")}</.listening>
+          <% @asks and @command == nil -> %>
+            <span id={"#{@id}-ask"} class="q-onb-lbl">
+              {gettext("How do you want to connect %{node}?", node: @target.name)}
+            </span>
+            <div id={"#{@id}-ways"} class="grid text-[13px]/5">
+              <div
+                :for={{way, index} <- Enum.with_index(@ways)}
+                id={"#{@id}-way-#{way}"}
+                class={["flex items-start gap-3 py-3", index > 0 && "border-t border-line"]}
+              >
+                <.icon name={way_icon(way)} class="mt-0.5 size-4.5 flex-none text-muted" />
+                <div class="grid min-w-0 flex-1 gap-1">
+                  <p class="font-medium">{way_title(way)}</p>
+                  <p class="text-muted">{way_for(way)}</p>
+                </div>
+                <.button
+                  :if={way == :enrol}
+                  id={"#{@id}-enrol"}
+                  variant={if index == 0, do: "primary", else: "default"}
+                  phx-click="get_command"
+                  aria-label={way_label(way, @target.name)}
+                  class="flex-none"
+                >
+                  {way_words(way)}
+                </.button>
+                <.button
+                  :if={way == :generate}
+                  id={"#{@id}-generate"}
+                  variant={if index == 0, do: "primary", else: "default"}
+                  navigate={generate_path(@scope, @target)}
+                  aria-label={way_label(way, @target.name)}
+                  class="flex-none"
+                >
+                  {way_words(way)}
+                </.button>
+              </div>
+            </div>
+            <.listening>{gettext("Listening for the first post from a machine.")}</.listening>
+          <% @asks -> %>
+            <span class="q-onb-lbl">
+              {gettext("What you run on %{node}", node: @target.name)}
+            </span>
+            <ApiaryWeb.NodeComponents.unreachable_server id={"#{@id}-unreachable"} url={@server} />
+            <.code_block
+              id={"#{@id}-command"}
+              code={ApiaryWeb.NodeComponents.enrol_command(@server, @command.code.())}
+              copy_label={gettext("Copy command")}
+              wrap
+            />
+            <p id={"#{@id}-works"} class="text-[13px]/5 text-muted">
+              {gettext("It works once, until %{time}. This is the only time it is shown.",
+                time: Format.time(@command.expires_at)
+              )}
+            </p>
+            <.listening id={"#{@id}-waiting"}>
+              {gettext("Waiting for %{node} to run it.", node: @target.name)}
+            </.listening>
+          <% !@landed -> %>
+            <.listening>
+              <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
+              <span :if={@used}>
+                <.rich text={
+                  rich_gettext("Listening for the first run. %{key} verified %{when}.",
+                    key: {:m, @used.label, "font-mono text-[12.5px]"},
+                    when: relative_time(%{__changed__: nil, at: @used.last_used_at})
+                  )
+                } />
+              </span>
+            </.listening>
+          <% true -> %>
+        <% end %>
       </div>
     </section>
     <p :if={!@landed} class="q-onb-after">
@@ -1890,6 +1981,36 @@ defmodule ApiaryWeb.OverviewComponents do
     </p>
     """
   end
+
+  # The two ways to connect a node or pool, its kind's way first: a machine runs a
+  # command, a pool's shared key is generated in the browser.
+  defp key_ways(%{kind: :pool}), do: [:generate, :enrol]
+  defp key_ways(_target), do: [:enrol, :generate]
+
+  defp target_path(_scope, nil), do: nil
+
+  defp target_path(scope, target),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key"
+
+  defp generate_path(scope, target),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key/generate"
+
+  defp way_icon(:enrol), do: "hero-command-line"
+  defp way_icon(:generate), do: "hero-key"
+
+  defp way_title(:enrol), do: gettext("Connect with a command")
+  defp way_title(:generate), do: gettext("Generate a key in the browser")
+
+  defp way_for(:enrol), do: gettext("For a laptop or a server you can open a terminal on.")
+
+  defp way_for(:generate),
+    do: gettext("For a CI job, a pool of short-lived machines, or a machine you can't type on.")
+
+  defp way_words(:enrol), do: gettext("Get the command")
+  defp way_words(:generate), do: gettext("Generate a key")
+
+  defp way_label(:enrol, node), do: gettext("Get the command for %{node}", node: node)
+  defp way_label(:generate, node), do: gettext("Generate a key for %{node}", node: node)
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil
