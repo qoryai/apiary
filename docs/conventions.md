@@ -83,8 +83,7 @@ at the commit in `.runner-contract-ref`: `RUNNER_CONTRACT_DIR`, or else that com
 into `_build/` (that checkout is only read, whatever it has checked out). Without either
 they are excluded and a line says so; CI checks the runner out at that commit and sets
 `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is one on
-the runner's `next` branch, pinned by its id since no tag of the runner has these files
-yet; the next tag comes with the joint release. The end to end job builds qory against
+the runner's `next` branch, pinned by its id. The end to end job builds qory against
 the runner at `.runner-e2e-ref`, pinned apart.
 
 ## Doc comments
@@ -116,8 +115,8 @@ token; a secret is never a password. The product surface is the one place with o
 words: a page, an email or a flash says a domain's words through Gettext, and the software
 domain calls a target a **repository** ([lingo.md](lingo.md)). So do the guides,
 which are written in the software domain's words. Organisation and workspace are the same
-words in every domain; apiary and hive are words of the apiary skin, which is not built
-yet. Code, schemas, migrations and these documents say organisation and workspace.
+words in every domain; apiary and hive are words of the apiary skin. Code, schemas,
+migrations and these documents say organisation and workspace.
 
 The product surface's sentences are in Gettext catalogues ([lingo.md](lingo.md)): the
 core's in `priv/gettext`, which `mix gettext.extract --merge` updates. An edition

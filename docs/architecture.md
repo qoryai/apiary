@@ -482,8 +482,7 @@ the schema cannot say. Its `publisher`, required, a `name` and a `url` that may 
 is kept on the release and shown beside the source's owner, never instead of it, since
 nothing verifies it; for a URL source it is the one name a page has. The vendored schema and
 the contract's fixtures (`test/fixtures/integration-contract/`) are pinned to a commit on
-the integrations' `next` branch, by its id, since no tag of the integrations has this
-contract yet; the next tag comes with the joint release. The contracts' patterns are
+the integrations' `next` branch, by its id. The contracts' patterns are
 compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor written
 `\z` (`Apiary.Kinds.Pattern`), so a value with a trailing newline never passes.
 

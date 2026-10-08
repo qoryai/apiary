@@ -11,9 +11,8 @@ This is done with Gettext, not with a list of word swaps:
 - Every visible string goes through Gettext. The source text (the msgid) is written in
   **engine words**: `gettext("Every target follows it.")`.
 - A **domain is a Gettext locale**, written in GNU's `language@modifier` form:
-  `priv/gettext/en@software/` is English in the software domain's words. A later
-  `de@software` is German for the same domain, and `en@marketing` is another domain. The
-  language and the domain stay separate. (A Gettext domain, such as `errors`, is another
+  `priv/gettext/en@software/` is English in the software domain's words. The language and
+  the domain stay separate. (A Gettext domain, such as `errors`, is another
   thing: one catalogue file of a locale.)
 - **A domain's catalogue holds only its own sentences.** A message the locale's catalogue
   lacks is looked up in the next locale of the chain (`ApiaryWeb.Gettext.Fallback`):
@@ -47,8 +46,7 @@ This is done with Gettext, not with a list of word swaps:
   knows) is how times are shown; every time is stored in UTC.
   `Apiary.Accounts.Scope.time_zone/1` reads it, and `ApiaryWeb.Lingo` sets it for
   `ApiaryWeb.Format` beside the locale, from the same scope. The **skin** (`users.skin`) is stored
-  too, with one value, `standard`, the domain's own words, until the apiary skin is
-  built; its catalogue will go in front of the domain's in the chain.
+  too, with one value, `standard`.
 - `test/apiary_web/lingo_catalogue_test.exs` fails when a source string contains an engine
   word and a domain's catalogue has no translation for it, and, for a language other than
   English, when a sentence has a translation neither in the domain's catalogue nor in the
@@ -68,10 +66,9 @@ This is done with Gettext, not with a list of word swaps:
 Everything else (run, task, work item, gate, evidence, member, access key, policy) is the
 same word in the engine and in the software domain. Qory Apiary is the product's name and
 stays as it is. Organisation and workspace are the same word in the software domain, so
-their msgids need no translation there. Without the apiary skin, no page says apiary,
-hive, bee, flower, nectar, honey or jar: the skin, a per-user setting that is not built
-yet, calls an organisation an apiary and a workspace a hive. The `<.term>` hover component
-is for words that need a standard term on hover. It is not a way to show hive or apiary.
+their msgids need no translation there. No page says apiary, hive, bee, flower, nectar,
+honey or jar. The `<.term>` hover component is for words that need a standard term on
+hover. It is not a way to show hive or apiary.
 
 Contracts, wire bodies, JSON errors for machines, the schema, code and logs use engine words
 and do not go through Gettext.
