@@ -47,7 +47,7 @@ is a card, with numbered steps and one button in the first:
      shown once.
   2. **Run it on build-01.** `qory` makes the key there and saves its secret, which never
      leaves build-01. It also writes this server's address and public key into
-     build-01's runner file. There is nothing to copy by hand.
+     the runner file on build-01. There is nothing to copy by hand.
   3. **See it connected.** The command's page shows build-01 connected, with the key's
      fingerprint to check against the one `qory` printed.
 - **Generate a key**, for a CI job, a pool of short-lived machines, or a machine you can't

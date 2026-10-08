@@ -1102,7 +1102,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       # Each card: its title, when to pick it, then numbered steps, the button in the first.
       assert words(lv, "#way-new_code") ==
-               "Connect with a command Pick it for a laptop or a server you can open a terminal on. 1 Get the command. It carries a code that works once, for 15 minutes, and is shown once. Get the command 2 Run it on build-01. qory makes the key there and saves its secret, which never leaves build-01. It also writes this server's address and public key into build-01's runner file. There is nothing to copy by hand. 3 See it connected. The command's page shows build-01 connected, with the key's fingerprint to check against the one qory printed."
+               "Connect with a command Pick it for a laptop or a server you can open a terminal on. 1 Get the command. It carries a code that works once, for 15 minutes, and is shown once. Get the command 2 Run it on build-01. qory makes the key there and saves its secret, which never leaves build-01. It also writes this server's address and public key into the runner file on build-01. There is nothing to copy by hand. 3 See it connected. The command's page shows build-01 connected, with the key's fingerprint to check against the one qory printed."
 
       assert has_element?(lv, "#way-new_code-steps-1 #code-new-button")
       assert has_element?(lv, "#way-generate-steps-1 #key-generate-button")

@@ -13389,7 +13389,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "qory makes the key there and saves its secret, which never leaves %{name}. It also writes this server's address and public key into %{name}'s runner file. There is nothing to copy by hand."
+msgid "qory makes the key there and saves its secret, which never leaves %{name}. It also writes this server's address and public key into the runner file on %{name}. There is nothing to copy by hand."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

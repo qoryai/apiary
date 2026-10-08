@@ -1724,7 +1724,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <:step title={gettext("Run it on %{name}.", name: @node.name)}>
           <p class="text-muted">
             {gettext(
-              "qory makes the key there and saves its secret, which never leaves %{name}. It also writes this server's address and public key into %{name}'s runner file. There is nothing to copy by hand.",
+              "qory makes the key there and saves its secret, which never leaves %{name}. It also writes this server's address and public key into the runner file on %{name}. There is nothing to copy by hand.",
               name: @node.name
             )}
           </p>

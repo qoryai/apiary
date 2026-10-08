@@ -854,7 +854,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   code that works once, for 15 minutes, and is shown once.", a waiting command, Get the
   command), 2 "Run it on build-01." ("qory makes the key there and saves its secret,
   which never leaves build-01. It also writes this server's address and public key into
-  build-01's runner file. There is nothing to copy by hand."), 3 "See it connected." ("The
+  the runner file on build-01. There is nothing to copy by hand."), 3 "See it connected." ("The
   command's page shows build-01 connected, with the key's fingerprint to check against the
   one qory printed."). **Generate a key**: 1 "Generate a key here." ("This browser makes it
   and shows its ID and its secret once.", Generate a key), 2 "Set the key where build-01

@@ -485,7 +485,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       {"Get the command.",
        "It carries a code that works once, for 15 minutes, and is shown once."},
       {"Run it on #{node.name}.",
-       "qory makes the key there and saves its secret, which never leaves #{node.name}. It also writes this server's address and public key into #{node.name}'s runner file. There is nothing to copy by hand."},
+       "qory makes the key there and saves its secret, which never leaves #{node.name}. It also writes this server's address and public key into the runner file on #{node.name}. There is nothing to copy by hand."},
       {"See it connected.",
        "The command's page shows #{node.name} connected, with the key's fingerprint to check against the one qory printed."}
     ]
