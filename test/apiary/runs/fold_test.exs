@@ -357,6 +357,67 @@ defmodule Apiary.Runs.FoldTest do
       end
     end
 
+    test "details are measured as the event carries them, <, > and & six bytes each" do
+      # `{"k":"` and `"}` are eight bytes around the value, and `<`, `>` and `&` are written
+      # `\u003c`, `\u003e` and `\u0026` in the event: five bytes more each.
+      fits = %{"k" => "<>&" <> String.duplicate("a", 8184 - 18)}
+      assert about(%{"details" => fits}).about_details == fits
+
+      over = %{"k" => "<>&" <> String.duplicate("a", 8184 - 17)}
+      assert byte_size(Jason.encode!(over)) < 8192
+      assert about(%{"details" => over}).about_details == nil
+    end
+
+    test "a details key is 1 to 64 bytes at every level, or the details are dropped whole" do
+      key = String.duplicate("k", 64)
+
+      for details <- [%{key => 1}, %{"a" => %{key => [%{key => true}]}}] do
+        assert about(%{"details" => details}).about_details == details
+      end
+
+      for details <- [
+            %{(key <> "k") => 1},
+            %{"" => 1},
+            %{"a" => %{(key <> "k") => 1}},
+            %{"a" => [%{"" => 1}]}
+          ] do
+        run = about(%{"details" => details, "kind" => "implementation"})
+        assert {run.about_details, run.about_kind} == {nil, "implementation"}
+      end
+    end
+
+    test "a string with a control character drops what holds it" do
+      for bad <- ["\u0000", "\a", "\n", "\u007F", "\u0085", "\u009F", "\u2028", "\u2029"] do
+        run = about(%{"kind" => "imple#{bad}mentation", "title" => "Fix the#{bad} build"})
+        assert {run.about_kind, run.about_title} == {nil, nil}
+
+        run =
+          about(%{
+            "subjects" => [
+              subject("ticket", "ENG-1#{bad}"),
+              subject("ticket", "ENG-2", %{
+                "url" => "https://example.com/ENG-2#{bad}",
+                "title" => "Login#{bad}"
+              })
+            ]
+          })
+
+        assert run.about_subjects == [%{"type" => "ticket", "ref" => "ENG-2"}]
+
+        for details <- [
+              %{"a#{bad}" => 1},
+              %{"a" => "b#{bad}"},
+              %{"a" => [%{"b" => ["c#{bad}"]}]},
+              %{"a" => %{"b#{bad}" => 1}}
+            ] do
+          assert about(%{"details" => details}).about_details == nil
+        end
+      end
+
+      kept = %{"a" => "é and a no-break space,\u00A0are fine"}
+      assert about(%{"details" => kept, "title" => "é \u00A0"}).about_details == kept
+    end
+
     test "details that are not an object are dropped" do
       for details <- [[%{"a" => 1}], "priority: high", 1, nil] do
         assert about(%{"details" => details}).about_details == nil

@@ -30,14 +30,20 @@ defmodule Apiary.Runs.Fold do
   allowed (`Apiary.Runs.tool_invocation?/2`); one a path rule refused keeps its tool, and
   never reached it.
 
-  What a run is about is `about` of its `run.started`, read member by member. `kind` (1 to
-  64 bytes), `title` (1 to 256) and `details` (an object of at most 8192 bytes encoded,
-  nested at most 4 levels deep) are each kept whole or dropped whole. A subject is kept
-  when its `type` matches `^[a-z0-9]+([ _.-][a-z0-9]+)*$` in at most 64 bytes and its
-  `ref` is 1 to 256 bytes; its `title` (1 to 256 bytes) and `url` (at most 2048 bytes,
-  absolute `http` or `https` with a host and no user name or password) are dropped from it
-  alone when they break their bounds. Of the subjects kept, the first of each type and ref
-  stays, at most 16 in the order given. An `about` that is not an object says nothing.
+  What a run is about is `about` of its `run.started`, read member by member. No string of
+  it, key or value, may hold a control character (U+0000 to U+001F, U+007F to U+009F,
+  U+2028, U+2029). `kind` (1 to 64 bytes), `title` (1 to 256) and `details` are each kept
+  whole or dropped whole. `details` is an object of at most 8192 bytes as the event carries
+  it (compact, with `<`, `>` and `&` written as `\\u003c`, `\\u003e` and `\\u0026`), nested
+  at most 4 levels deep, each key at any level 1 to 64 bytes; a key or a string that
+  breaks a rule anywhere in it drops it whole. A member name given twice in `details`
+  cannot be seen once the event is decoded, which keeps the last; the runner refuses it
+  before it sends. A subject is kept when its `type` matches `^[a-z0-9]+([ _.-][a-z0-9]+)*$`
+  in at most 64 bytes and its `ref` is 1 to 256 bytes; its `title` (1 to 256 bytes) and
+  `url` (at most 2048 bytes, absolute `http` or `https` with a host and no user name or
+  password) are dropped from it alone when they break their rules. Of the subjects kept,
+  the first of each type and ref stays, at most 16 in the order given. An `about` that is
+  not an object says nothing.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
@@ -96,6 +102,10 @@ defmodule Apiary.Runs.Fold do
   @subject_url 2048
   @details_bytes 8192
   @details_depth 4
+  @details_key 64
+  # What no string of `about` holds, key or value, as `Apiary.Runs.Target` reads a label: C0
+  # and DEL, C1, and the line and paragraph separators.
+  @control ~r/[\x{00}-\x{1F}\x{7F}-\x{9F}\x{2028}\x{2029}]/u
 
   @terminal ~w(succeeded failed timed_out)
   @streams ~w(terminal stdout stderr)
@@ -455,13 +465,18 @@ defmodule Apiary.Runs.Fold do
     }
   end
 
-  # A string of 1 to `max` bytes, whole, or nil: never cut.
+  # A string of 1 to `max` bytes with no control character, whole, or nil: never cut.
   defp bounded(data, key, max) do
     case data do
-      %{^key => value} when is_binary(value) and byte_size(value) in 1..max//1 -> value
-      _ -> nil
+      %{^key => value} when is_binary(value) and byte_size(value) in 1..max//1 ->
+        if clean?(value), do: value
+
+      _ ->
+        nil
     end
   end
+
+  defp clean?(string), do: String.valid?(string) and not Regex.match?(@control, string)
 
   # Dropped one by one, then the first of each type and ref, then cut.
   defp subjects(%{"subjects" => subjects}) when is_list(subjects) do
@@ -504,9 +519,10 @@ defmodule Apiary.Runs.Fold do
 
   # An object within its bounds, whole, or nil.
   defp details(%{"details" => %{} = details}) do
-    with {:ok, json} <- Jason.encode(details),
-         true <- byte_size(json) <= @details_bytes,
-         true <- nested_within?(details, @details_depth) do
+    with true <- nested_within?(details, @details_depth),
+         true <- clean_details?(details),
+         {:ok, json} <- Jason.encode(details),
+         true <- carried_size(json) <= @details_bytes do
       details
     else
       _ -> nil
@@ -524,6 +540,24 @@ defmodule Apiary.Runs.Fold do
     do: levels > 0 and Enum.all?(list, &nested_within?(&1, levels - 1))
 
   defp nested_within?(_value, _levels), do: true
+
+  # Whether every key at every level is 1 to 64 bytes, and every key and string has no
+  # control character.
+  defp clean_details?(%{} = map) do
+    Enum.all?(map, fn {key, value} ->
+      byte_size(key) in 1..@details_key//1 and clean?(key) and clean_details?(value)
+    end)
+  end
+
+  defp clean_details?(list) when is_list(list), do: Enum.all?(list, &clean_details?/1)
+  defp clean_details?(string) when is_binary(string), do: clean?(string)
+  defp clean_details?(_value), do: true
+
+  # The bytes of compact JSON as the event carries it, `<`, `>` and `&` written as
+  # `\u003c`, `\u003e` and `\u0026`, six bytes each. They are counted here: Jason's
+  # `html_safe` escape writes `<` alone of the three, and `/` as `\/` besides.
+  defp carried_size(json),
+    do: byte_size(json) + 5 * length(:binary.matches(json, ["<", ">", "&"]))
 
   # The target the labels as sent name, whole, by the workspace's domain
   # (`Apiary.Lingo.Domain`), or nil. Labels that name no target stay in `labels` (cut like
