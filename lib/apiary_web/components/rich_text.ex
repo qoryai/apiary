@@ -20,6 +20,8 @@ defmodule ApiaryWeb.RichText do
     * `{:m, text}`, `{:m, text, class}`: monospace, a host or a target
     * `{:code, text}`, `{:code, text, class}`: a chip of code, a rule or a path
     * `{:bad, rich}`: in the denied hue
+    * `{:bdi, rich}`: isolated (`<bdi>`), for words a runner gave, such as a run's
+      title, so a bidirectional character in them reorders nothing of the sentence
     * `{:link, path, rich}`, `{:link, path, rich, class}`: a link that navigates
     * `{:href, url, rich}`, `{:href, url, rich, class}`: a link that loads a page
     * `{:term, word, standard}`: a word with its standard term on hover (`CoreComponents.term/1`)
@@ -155,7 +157,7 @@ defmodule ApiaryWeb.RichText do
   def plain_text({link, _to, inner, _class}, parts) when link in [:link, :href],
     do: plain_text(inner, parts)
 
-  def plain_text({mark, inner}, parts) when mark in [:b, :m, :code, :bad],
+  def plain_text({mark, inner}, parts) when mark in [:b, :m, :code, :bad, :bdi],
     do: plain_text(inner, parts)
 
   def plain_text({mark, inner, _class}, parts) when mark in [:b, :m, :code],
@@ -215,6 +217,11 @@ defmodule ApiaryWeb.RichText do
   defp piece(%{piece: {:code, inner, class}} = assigns) do
     assigns = assign(assigns, inner: inner, class: class)
     ~H|<code class={@class}><.piece piece={@inner} parts={@parts} /></code>|
+  end
+
+  defp piece(%{piece: {:bdi, inner}} = assigns) do
+    assigns = assign(assigns, :inner, inner)
+    ~H|<bdi><.piece piece={@inner} parts={@parts} /></bdi>|
   end
 
   defp piece(%{piece: {:bad, inner}} = assigns) do

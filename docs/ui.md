@@ -1322,8 +1322,9 @@ page has no breadcrumb of its own.
   the host alone.
 - **A run's title and kind** are each isolated in a `<bdi>` wherever they show as markup
   (the run page's `<h1>` and About, the runs list's row and preview, a target's runs, the
-  Overview, Network access's hits and ⌘K's results); a tooltip, the page's `<title>` and
-  an `aria-label` hold them as plain text. Below 1440 px,
+  Overview's rows and its Close question, Network access's hits and ⌘K's results), in a
+  sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
+  an `aria-label` and an announcement hold them as plain text. Below 1440 px,
   and from it when Terminal took the rail's room, the Details tab shows this same element
   in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.
