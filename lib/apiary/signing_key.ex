@@ -16,12 +16,13 @@ defmodule Apiary.SigningKey do
   is made from it on each call (`current/0`), which costs one Ed25519 key generation.
 
   **What is refused.** A seed that is not 32 bytes, and a seed the runner contract
-  publishes or names: in `fixtures/known-answers/keys.json`, the bytes 1 to 32, 65 to 96
-  and 161 to 192; in `fixtures/sealed/vectors.json`, 33 to 64; and in its README, the
-  second fixture access key's, 193 to 224, whose secret is published elsewhere. Apiary
-  refuses each of them because it is published. The contract's sides refuse the keys of
-  four of them, 1 to 32, 65 to 96, 161 to 192 and 193 to 224; it names no refusal of the
-  ephemeral key's, 33 to 64, which Apiary alone refuses. `boot!/0` checks the seed when
+  publishes, names or has published: in `fixtures/known-answers/keys.json`, the bytes 1
+  to 32, 65 to 96 and 161 to 192; in its README, the second fixture access key's, 193 to
+  224, whose secret is published elsewhere; and 33 to 64, the ephemeral key of a sealed
+  fixture that earlier commits of the contract published. Apiary refuses each of them
+  because it is published. The contract's sides refuse the keys of four of them, 1 to 32,
+  65 to 96, 161 to 192 and 193 to 224; it names no refusal of the ephemeral key's, 33 to
+  64, which Apiary alone refuses. `boot!/0` checks the seed when
   the application starts, and checks the public key it makes against the contract's key
   checks too (`Apiary.Contract.Ed25519.check_public_key/1`), so the instance does not
   start with a key a machine would refuse. Every refusal names the variable, never its
@@ -62,10 +63,11 @@ defmodule Apiary.SigningKey do
 
   @variable "APIARY_SIGNING_SECRET"
 
-  # The 32-byte values the runner contract publishes in its fixtures, each refused as a
-  # seed: the fixture access key's (bytes 1 to 32), the sealed fixture's ephemeral key's
-  # (33 to 64), the fixture signing keys', current and next (65 to 96, 161 to 192), and
-  # the second fixture access key the contract published (193 to 224).
+  # The 32-byte values the runner contract publishes, or has published, in its fixtures,
+  # each refused as a seed: the fixture access key's (bytes 1 to 32), the ephemeral key of
+  # the sealed fixture of earlier commits (33 to 64), the fixture signing keys', current
+  # and next (65 to 96, 161 to 192), and the second fixture access key the contract
+  # published (193 to 224).
   @fixture_seeds Enum.map(
                    [1..32, 33..64, 65..96, 161..192, 193..224],
                    &:binary.list_to_bin(Enum.to_list(&1))
