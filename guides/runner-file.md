@@ -19,18 +19,24 @@ server:
     - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
 ```
 
-You rarely write it by hand. `qory access-key enrol <server> <code>` writes it when a
-machine enrols with a code, and an active key's **Runner file lines** opens the page
-**Runner file for build-01**, which shows these lines with the values filled in
-([Nodes and their keys](nodes.md)). When the file exists already, add the `server`
-section to it. The file is read strictly: a key it does not know, or a key written twice,
-is refused with a message that names the file.
+You rarely write it by hand. `qory access-key enrol <server> <code>`, the command a
+node's **Connect with a command** gives, writes it when it connects the machine. For a
+key connected that way, an active key's **Runner file** opens the page **Runner file for
+build-01**, which shows these lines with the values filled in, each marked as this
+server's or this key's ([Nodes and their keys](nodes.md)). When the file exists already,
+add the `server` section to it. The file is read strictly: a key it does not know, or a
+key written twice, is refused with a message that names the file.
 
 | Key | Holds |
 |---|---|
 | `url` | The server's scheme and host, with a port when it has one, and nothing after: no path, no query. It is the server's `PUBLIC_URL`. `https`, or `http` to an address of this machine, `localhost` or a loopback address; `http` to any other host is refused. The runner finds every endpoint through the configuration document under this URL. |
 | `access_key_id` | The id the server gave the machine's access key: `ak_` and 16 characters. It names the key to the server and travels in clear with every request. |
 | `apiary_public_key` | The pin: the server's public keys, a list of `alg` and `public_key`. Every answer of the server is signed, and the runner verifies it under these keys before it reads it. A runner with a server and no pin does not start, `apiary_public_key_missing`. |
+
+Only `access_key_id` belongs to the machine's key. `url` and `apiary_public_key` are the
+server's, and the instance's own: the same for every organisation, workspace, node and
+machine. The address is the server's `PUBLIC_URL`, and its key is made from its
+`APIARY_SIGNING_SECRET`.
 
 Nothing in the section is secret. The access key's secret is never in `runner.yaml`:
 `qory access-key` keeps it in the file `access-key-secret` beside it,
@@ -49,9 +55,10 @@ QORY_ACCESS_KEY_ID=ak_0123456789abcdef
 QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q"}]
 ```
 
-Those are the lines **Runner file for build-01** shows under "For CI", for a CI's
-variables or an env file, where a value is taken as written. In a shell the JSON has
-brackets and double quotes the shell would read, so put the value in single quotes:
+Those are the values **Runner file for spot-runners** shows for a generated key, as plain
+settings, for a CI's variables or an env file, where a value is taken as written. In a
+shell the JSON has brackets and double quotes the shell would read, so put the value in
+single quotes:
 
 ```sh
 export QORY_ACCESS_KEY_ID=ak_0123456789abcdef
@@ -61,7 +68,7 @@ export QORY_APIARY_PUBLIC_KEY='[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmO
 The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs in a CI's
 secret store; `qory access-key enrol --print` prints it instead of keeping it on the
 machine, and **Generate a key** on the node's **Access key** tab shows it once, with the
-other two, on the page **Variables for …**. With the three variables set, the CI's
+other two, on the page **Key for …**. With the three variables set, the CI's
 `runner.yaml` needs `server.url` alone.
 
 The three stay the runner's. `qory` reads them when it starts and takes them out of its
@@ -71,10 +78,11 @@ environment before it starts anything, so no session inherits them, and naming o
 
 ### A new key, and revoking one
 
-A key is never rotated. To change a machine's key, enrol or generate a new one on the same
-node, and once the machine uses it, **Revoke…** the old one on the node's **Access key**
-tab. A node holds two keys at a time for this. A revoked key stops verifying at once: a
-machine still using it fails its next request, `401`, and starts no new run.
+A key is never rotated. To change a machine's key, add a new one on the same node, under
+**Add a key** on its **Access key** tab, with a command or generated, and once the machine
+uses it, **Revoke…** the old one there. A node holds two keys at a time for this. A
+revoked key stops verifying at once: a machine still using it fails its next request,
+`401`, and starts no new run.
 
 ## What the runner does with it
 
