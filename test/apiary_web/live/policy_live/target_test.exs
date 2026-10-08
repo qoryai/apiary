@@ -218,10 +218,29 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert {:error, {:live_redirect, %{to: to}}} = live(conn, base <> "/document")
     assert to == base <> "/versions/2"
 
+    # A version and its export continue the breadcrumb as on the workspace's Policy.
+    page = workspace_path(scope, "/targets/github.example/acme/shop")
+    repositories = {"Repositories", workspace_path(scope, "/targets")}
+
     view = open(conn, base <> "/versions/2")
+
+    assert crumbs(view) == [
+             repositories,
+             {"github.example/acme/shop", page},
+             {"Version 2", nil}
+           ]
+
     assert has_element?(view, "#version-export[href='#{base}/versions/2/export']")
     view |> element("#version-export") |> render_click()
     assert_patch(view, base <> "/versions/2/export")
+
+    assert crumbs(view) == [
+             repositories,
+             {"github.example/acme/shop", page},
+             {"Version 2", base <> "/versions/2"},
+             {"Export", nil}
+           ]
+
     assert text(view, "#export-lead") =~ "The effective policy of github.example/acme/shop as of"
     assert has_element?(view, "#export-done[href='#{base}/versions/2']")
   end

@@ -476,6 +476,14 @@ defmodule ApiaryWeb.TargetLive.Show do
           shared={@shared}
         />
       </:crumb>
+      <%!-- A version of the target's policy and its export, as the workspace's own. --%>
+      <:crumb
+        :if={@tab == :policy && @action in [:version, :export] && @v}
+        navigate={@action == :export && "#{@base}/versions/#{@v.configuration.version}"}
+      >
+        {gettext("Version %{version}", version: @v.configuration.version)}
+      </:crumb>
+      <:crumb :if={@tab == :policy && @action == :export && @v}>{gettext("Export")}</:crumb>
 
       <.target_header
         target={@target}

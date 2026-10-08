@@ -767,7 +767,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
   the system is a host name; the breadcrumb ends with the section, a link to the index,
-  and the target.
+  and the target, then on a version of its policy `Version 3` and on its export
+  `Export`, as on the workspace's Policy.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
     runs; the destinations it was denied in 14 days, each with a faint barred circle,
     never red), beside a plain About column (the
