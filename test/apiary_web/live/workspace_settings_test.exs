@@ -106,7 +106,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
       refute has_element?(lv, "#retention-pruned form, #retention-pruned button")
     end
 
-    @tag needs: :security
+    @tag needs: :secrets
     test "Secrets and variables, and each of its pages, are the section's",
          %{conn: conn, scope: scope} do
       # The section is the page on its first tab, Secrets, the one its entry leads to; it is
