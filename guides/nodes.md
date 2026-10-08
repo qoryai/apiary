@@ -39,14 +39,26 @@ the old one revoked.
 
 There are two ways to connect a node's machine, both on the node's **Access key** tab, for
 owners and admins. While the node holds no active key, the tab asks "How do you want to
-connect build-01?" and offers each way as a card with one button:
+connect build-01?": "Pick the way that fits the machine, then follow its steps." Each way
+is a card, with numbered steps and one button in the first:
 
-- **Connect with a command**, for a laptop or a server you can open a terminal on. You run
-  one command on the machine: `qory` makes the key there, saves its secret and connects
-  the machine. The secret never leaves the machine.
+- **Connect with a command**, for a laptop or a server you can open a terminal on.
+  1. **Get the command.** It carries a code that works once, for 15 minutes, and is
+     shown once.
+  2. **Run it on build-01.** `qory` makes the key there and saves its secret, which never
+     leaves build-01. It also writes this server's address and public key into
+     build-01's runner file. There is nothing to copy by hand.
+  3. **See it connected.** The command's page shows build-01 connected, with the key's
+     fingerprint to check against the one `qory` printed.
 - **Generate a key**, for a CI job, a pool of short-lived machines, or a machine you can't
-  type on. Your browser makes the key and shows you its secret once; you copy it, with
-  the key's ID, into the system that runs `qory`.
+  type on.
+  1. **Generate a key here.** This browser makes it and shows its ID and its secret once.
+  2. **Set the key where build-01 runs.** `QORY_ACCESS_KEY_ID` as a plain setting,
+     `QORY_ACCESS_KEY_SECRET` in that system's secret store.
+  3. **Set this server's public key beside them.** `QORY_APIARY_PUBLIC_KEY`, with
+     **Copy variable**. It belongs to this server, not to build-01: the same for every
+     machine connected to this Qory.
+  4. **Point qory at this server.** The runner file's `server.url`, with **Copy lines**.
 
 A node lists **Connect with a command** first, its button primary; a pool lists **Generate
 a key** first. A member reads "build-01 has no key yet, so it can't start runs. An owner or
@@ -61,6 +73,13 @@ key** offers the same two ways, in the same order, to move the node to a new key
 either way, then revoke the old one. At two keys it offers neither, and says "build-01
 holds two keys, the most a node can. Revoke the one it no longer uses to add another." A
 member sees the keys and none of the buttons.
+
+At the foot, **This server** gives the server's own values, to everyone, at two keys too:
+"They belong to this server, not to build-01: the same for every machine connected to
+this Qory. A machine connected with the command already has both. With a generated key,
+set them beside the key's ID and secret." Then the public key, as a plain setting,
+`QORY_APIARY_PUBLIC_KEY`, with **Copy variable**, and the address, in the runner file,
+with **Copy lines**.
 
 ### Connect with a command
 
@@ -86,7 +105,8 @@ member sees the keys and none of the buttons.
    key** tab. The key is named after the machine's host name (`-2`, `-3` and on when the
    node has a key of that name already).
 
-A command not yet run shows on the tab, in the **Connect with a command** card or row: "A
+A command not yet run shows on the tab, in the **Connect with a command** card's first step
+or row: "A
 command is waiting to be run on build-01.", who got it and when, and until when it works.
 **Cancel the command…** cancels it, confirmed in place, and the button then reads **Get a
 new command**. A lost command can't be shown again: cancel it and get a new one.
@@ -113,12 +133,14 @@ key came:
   same for every machine connected to it. The page says the key's secret is on the
   machine, in `~/.config/qory/access-key-secret`, where the command saved it. It has
   never been on a screen.
-- A generated key: under **This key**, `QORY_ACCESS_KEY_ID`, to set as a plain setting;
-  under **This server**, the same for every machine connected to this Qory,
-  `QORY_APIARY_PUBLIC_KEY` and the one line the runner file needs, `server.url`. The
-  page says the key's secret belongs in `QORY_ACCESS_KEY_SECRET`, in the secret store of
-  the system that runs `qory`. It was shown once, when the key was generated; if it is
-  lost, generate a new key and revoke this one.
+- A generated key: "What build-01 needs, besides the secret. Nothing here is secret." Four
+  numbered steps. **Keep the secret in a secret store**: it was shown once, when the key
+  was generated, and belongs in `QORY_ACCESS_KEY_SECRET` in the secret store of the
+  system that runs `qory`; if it is lost, generate a new key and revoke this one. **Set
+  the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set this server's public
+  key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: it belongs to this server, not to
+  build-01, the same for every machine connected to this Qory. **Point qory at this
+  server**: the one line the runner file needs, `server.url`.
 
 ### For a CI
 
@@ -143,26 +165,32 @@ A fleet of short-lived CI runners is a node pool with one key.
    (`spot-runners-2` when a key has that name already). Select **Generate key**.
 2. Your browser makes the Ed25519 key and sends Qory only its name and its public half.
    The key gets **Stored secrets** **Not allowed**, and is active as soon as it arrives.
-3. The page **Key for spot-runners** lists what to set where spot-runners runs, each with
-   **Copy**, in two groups. **This key**: `QORY_ACCESS_KEY_ID`, a plain setting, and
-   `QORY_ACCESS_KEY_SECRET`, which is `qak_` and the key's secret, for a secret store,
-   tagged "secret · shown once". **This server**, the same for every machine connected
-   to this Qory, not only spot-runners: the server's public key, `QORY_APIARY_PUBLIC_KEY`,
-   a plain setting, and the runner file there, which needs only the server's address,
-   with **Copy lines**:
+3. The page **Key for spot-runners** says "Do these where spot-runners runs. Only the
+   secret can't be seen again." Under the notice "The secret is shown once.", four
+   numbered steps, each value with **Copy**:
+   1. **Store the secret.** In the secret store of the system that runs spot-runners,
+      such as your CI's: `QORY_ACCESS_KEY_SECRET`, which is `qak_` and the key's secret,
+      tagged "secret · shown once".
+   2. **Set the key's ID.** As a plain setting: `QORY_ACCESS_KEY_ID`. It stays on the
+      **Access key** tab.
+   3. **Set this server's public key.** As a plain setting: `QORY_APIARY_PUBLIC_KEY`. It
+      belongs to this server, not to spot-runners: the same for every machine connected
+      to this Qory. It stays on the **Access key** tab.
+   4. **Point qory at this server.** The runner file there needs only the server's
+      address, with **Copy lines**:
 
-   ```yaml
-   server:
-     url: https://apiary.example.com
-   ```
+      ```yaml
+      server:
+        url: https://apiary.example.com
+      ```
 
    Only the secret is shown once: it was made in your browser, Qory never received it,
    and it can't be shown again. Copy it into the secret store before you select **Done**.
-   The key's ID stays on its card on the **Access key** tab.
 
-Opened again, the page says the secret is not shown: only the page that made the key held
-it. If you didn't copy it, revoke the key and generate another. The key's card says
-**Generated in a browser by** you, and when.
+Opened again, the page has no notice and nothing to copy for the secret: where it was, it
+says "Not shown: only the page that made the key held its secret, and this one was opened
+again. If you didn't copy it, revoke spot-runners and generate another key." The other
+steps stay. The key's card says **Generated in a browser by** you, and when.
 
 The browser makes keys only on a page served over HTTPS (a browser counts
 `http://localhost` as one too) and only if it can make an Ed25519 key: a current Chrome,

@@ -12,9 +12,9 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     do:
       "A node's or a pool's page, under Nodes: Overview, Runs, Access key and Settings. " <>
         "Access key holds its keys: with none, the two ways to connect it, its kind's way " <>
-        "first; then each key, active or revoked, its ID and how it was added, and Add a " <>
-        "key, the same two ways, for a new key beside the current one until that one is " <>
-        "revoked."
+        "first, each as numbered steps; then each key, active or revoked, its ID and how it " <>
+        "was added, Add a key, the same two ways, for a new key beside the current one " <>
+        "until that one is revoked, and This server, its public key and address."
 
   # The keys a node or pool holds at a time, as the limit line says: its current key and a
   # replacement.
@@ -290,7 +290,9 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         keys: keys,
         active: active,
         full: active >= @key_limit,
-        ways: ways(assigns.node)
+        ways: ways(assigns.node),
+        server_pin: server_pin(),
+        server_yaml: server_yaml()
       )
 
     ~H"""
@@ -307,15 +309,16 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <p class="text-[13px]/5 text-muted">
         {if @node.kind == :pool,
           do:
-            "#{@node.name} needs a key before it can start runs. Its instances share one key. Each way below gives it one; pick the one that fits where they run.",
+            "#{@node.name} needs a key before it can start runs. Its instances share one key. Pick the way that fits where they run, then follow its steps.",
           else:
-            "#{@node.name} needs a key before it can start runs. Each way below gives it one; pick the one that fits the machine."}
+            "#{@node.name} needs a key before it can start runs. Pick the way that fits the machine, then follow its steps."}
       </p>
-      <div class="grid items-stretch gap-3 md:grid-cols-2">
+      <div class="grid items-start gap-3 md:grid-cols-2">
         <.way_card
           :for={{way, index} <- Enum.with_index(@ways)}
           way={way}
           primary={index == 0}
+          node={@node}
           to={@to}
         />
       </div>
@@ -383,35 +386,125 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         </div>
       </div>
     </SettingsComponents.part>
+
+    <SettingsComponents.part :if={@active > 0} id="node-server" title="This server" level={:h2}>
+      <div class="grid gap-3 text-[13px]/5">
+        <p class="text-muted">
+          They belong to this server, not to {@node.name}: the same for every machine connected to this Qory. A machine connected with the command already has both. With a generated key, set them beside the key's ID and secret.
+        </p>
+        <div class="grid max-w-[46rem] gap-3">
+          <div class="grid gap-1.5">
+            <p>Public key, as a plain setting:</p>
+            <.code_block
+              id="node-server-pin"
+              code={@server_pin}
+              copy_label="Copy variable"
+              wrap
+            />
+          </div>
+          <div class="grid gap-1.5">
+            <p>Address, in the runner file:</p>
+            <.code_block
+              id="node-server-yaml"
+              label="runner.yaml"
+              code={@server_yaml}
+              copy_label="Copy lines"
+            />
+          </div>
+        </div>
+      </div>
+    </SettingsComponents.part>
     """
   end
 
   attr :way, :atom, required: true
   attr :primary, :boolean, required: true
+  attr :node, :map, required: true
   attr :to, :any, required: true
 
-  # A way to connect the node, as a card: what it is, when to pick it, what happens on the
-  # machine, and its one button.
+  # A way to connect the node, as a card: its title and when to pick it, then its numbered
+  # steps, its one button in the first.
   defp way_card(assigns) do
+    assigns = assign(assigns, server_pin: server_pin(), server_yaml: server_yaml())
+
     ~H"""
-    <div class="flex flex-col gap-3 rounded-box border border-line bg-base-100 p-4 text-[13px]/5 shadow-xs">
+    <div class="flex min-w-0 flex-col gap-3 rounded-box border border-line bg-base-100 p-4 text-[13px]/5 shadow-xs">
       <div class="flex items-center gap-3">
         <span class="grid size-8 flex-none place-items-center rounded-field bg-base-200 text-muted">
           <.icon name={way_icon(@way)} class="size-4.5" />
         </span>
-        <h3 class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
+        <div class="grid min-w-0">
+          <h3 class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
+          <p class="text-muted">{way_pick(@way)}</p>
+        </div>
       </div>
-      <p>{way_what(@way)}</p>
-      <p class="text-muted">{way_pick(@way)}</p>
-      <p class="text-muted">{way_machine(@way)}</p>
-      <div class="mt-auto">
-        <.button variant={if @primary, do: "primary", else: "default"} href={way_to(@way, @to)}>
-          {way_button(@way)}
-        </.button>
-      </div>
+      <ol class="q-steps">
+        <li :for={{{title, body}, n} <- Enum.with_index(way_steps(@way, @node), 1)}>
+          <span class="q-step-disc" aria-hidden="true">{n}</span>
+          <div class="grid min-w-0 gap-2">
+            <p class="text-[13.5px]/6 font-medium">{title}</p>
+            <p :if={is_binary(body)} class="text-muted">{body}</p>
+            <div :if={n == 1}>
+              <.button
+                variant={if @primary, do: "primary", else: "default"}
+                href={way_to(@way, @to)}
+              >
+                {way_button(@way)}
+              </.button>
+            </div>
+            <%= case body do %>
+              <% :pin -> %>
+                <.code_block
+                  id={"way-#{@way}-pin"}
+                  code={@server_pin}
+                  copy_label="Copy variable"
+                  wrap
+                />
+                <p class="text-muted">
+                  It belongs to this server, not to {@node.name}: the same for every machine connected to this Qory.
+                </p>
+              <% :yaml -> %>
+                <.code_block
+                  id={"way-#{@way}-yaml"}
+                  label="runner.yaml"
+                  code={@server_yaml}
+                  copy_label="Copy lines"
+                />
+              <% _ -> %>
+            <% end %>
+          </div>
+        </li>
+      </ol>
     </div>
     """
   end
+
+  # A way's steps: each its title and what it says, or the server's value it holds.
+  defp way_steps(:command, node),
+    do: [
+      {"Get the command.",
+       "It carries a code that works once, for 15 minutes, and is shown once."},
+      {"Run it on #{node.name}.",
+       "qory makes the key there and saves its secret, which never leaves #{node.name}. It also writes this server's address and public key into #{node.name}'s runner file. There is nothing to copy by hand."},
+      {"See it connected.",
+       "The command's page shows #{node.name} connected, with the key's fingerprint to check against the one qory printed."}
+    ]
+
+  defp way_steps(:generate, node),
+    do: [
+      {"Generate a key here.", "This browser makes it and shows its ID and its secret once."},
+      {"Set the key where #{node.name} runs.",
+       "QORY_ACCESS_KEY_ID as a plain setting, QORY_ACCESS_KEY_SECRET in that system's secret store."},
+      {"Set this server's public key beside them.", :pin},
+      {"Point qory at this server.", :yaml}
+    ]
+
+  # This server's values, the same for every node: a sample public key and address.
+  defp server_pin,
+    do:
+      ~s(QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"q3Vd9xGm2LkR7tYbW4nE8sJpZ1cH6uFaT0oKiNvXyBe"}]\n)
+
+  defp server_yaml, do: "server:\n  url: https://apiary.example.com\n"
 
   # The two ways, the kind's own first: a machine runs a command, a pool's shared key is
   # generated in the browser.
@@ -424,26 +517,10 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   defp way_title(:command), do: "Connect with a command"
   defp way_title(:generate), do: "Generate a key"
 
-  defp way_what(:command),
-    do:
-      "You run one command on the machine. qory makes the machine's own key there and connects it to Qory."
-
-  defp way_what(:generate),
-    do:
-      "This page makes a key and shows you its secret once. You copy it, with the key's ID, into the system that runs qory."
-
   defp way_pick(:command), do: "Pick it for a laptop or a server you can open a terminal on."
 
   defp way_pick(:generate),
     do: "Pick it for a CI job, a pool of short-lived machines, or a machine you can't type on."
-
-  defp way_machine(:command),
-    do:
-      "On the machine, the key's secret is made there and saved by qory. It never leaves the machine, and there is nothing to copy by hand."
-
-  defp way_machine(:generate),
-    do:
-      "On the machine, qory reads the key from three variables you set there. The secret goes in that system's secret store."
 
   defp way_button(:command), do: "Get the command"
   defp way_button(:generate), do: "Generate a key"

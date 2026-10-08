@@ -56,7 +56,8 @@ QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkde
 ```
 
 Those are the values **Runner file for spot-runners** shows for a generated key, as plain
-settings, for a CI's variables or an env file, where a value is taken as written. In a
+settings (the public key and the address are also under **This server** on the node's
+**Access key** tab), for a CI's variables or an env file, where a value is taken as written. In a
 shell the JSON has brackets and double quotes the shell would read, so put the value in
 single quotes:
 
