@@ -2383,11 +2383,6 @@ msgstr ""
 msgid "APIs are set up from it: remove them first."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "APIs the agent may call"
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
@@ -3100,6 +3095,12 @@ msgctxt "plain"
 msgid "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/common.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "Applies to"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
@@ -3529,6 +3530,11 @@ msgstr ""
 msgid "Checking the organisations you own"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a coding agent of the runner's catalogue."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a day from the year 2000 to 2999."
@@ -3551,7 +3557,7 @@ msgstr "Choose a repository of this workspace for it to apply to."
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Choose an outside API the agent may call while it works."
+msgid "Choose an outside API: a built-in one, or a custom API of this workspace."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -3562,11 +3568,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Choose it when you can open a terminal on %{name}: a laptop, or a server of your own."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Choose the coding agent runs start."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -5295,11 +5296,6 @@ msgstr ""
 msgid "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "For runs in"
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -6050,6 +6046,12 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "It moves %{name} to a new key. The old key keeps working until you revoke it on the Access key tab."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/release.ex
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "It must match %{patterns}."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -8431,6 +8433,11 @@ msgstr "Other repositories do not change."
 msgid "Outcome"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Outside APIs"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Overrides"
@@ -9530,11 +9537,6 @@ msgstr ""
 msgid "Runs and denied attempts per day"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Runs in the targets it applies to start this agent."
-msgstr "Runs in the repositories it applies to start this agent."
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs per day"
@@ -9757,6 +9759,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Sent"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sentry's web API on sentry.io."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -10473,13 +10480,8 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The agent may call Sentry's API on sentry.io, such as to read issues."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The agent may install and publish packages on registry.npmjs.org."
-msgstr ""
+msgid "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
+msgstr "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
@@ -10520,11 +10522,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
 msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "The coding agent a run starts in the targets it applies to."
-msgstr "The coding agent a run starts in the repositories it applies to."
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -10899,6 +10896,11 @@ msgid "The pruning job's last pass. It is also a line in Qory Apiary's log."
 msgid_plural "The pruning job's last %{number} passes. Each is also a line in Qory Apiary's log."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The public npm registry on registry.npmjs.org."
+msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
@@ -12110,12 +12112,6 @@ msgstr ""
 msgid "What it is for"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "What it is started with. It must match %{patterns}."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "What no rule names is let through and recorded; a deny rule holds, and so do %{workspace}'s locked rules."
@@ -12135,11 +12131,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "What the release serves doesn't match its source: its checksums.txt, its version, or a description of the same version fetched before."
 msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
-msgstr "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format

@@ -135,7 +135,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
 
     assert has_element?(lv, "#release-setting-app_id")
     refute has_element?(lv, "#release-setting-private_key")
-    assert has_element?(lv, "#add-release-form fieldset legend", "For runs in")
+    assert has_element?(lv, "#add-release-form fieldset legend", "Applies to")
     assert has_element?(lv, "#add-release-form", "Qory Apiary links no stored secret to it.")
 
     {:error, {:live_redirect, %{to: to}}} =

@@ -86,7 +86,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-api-sentry",
-               "The agent may call Sentry's API on sentry.io, such as to read issues."
+               "Sentry's web API on sentry.io."
              )
 
       assert has_element?(lv, "#add-card-api-npm h4", "npm registry")
@@ -95,7 +95,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-api-npm",
-               "The agent may install and publish packages on registry.npmjs.org."
+               "The public npm registry on registry.npmjs.org."
              )
 
       assert has_element?(lv, "#add-card-release h4", "From a release…")
@@ -114,7 +114,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, ~s(#new-definition[href="#{ipath(scope, "/definitions/new")}"]))
       assert has_element?(lv, "#new-definition", "New custom API")
 
-      # The cards in their groups, in order: the agent, the APIs the agent may call ending
+      # The cards in their groups, in order: the agent, the outside APIs ending
       # with Custom API…, then the programs ending with From a release….
       assert card_ids(lv) == %{
                "add-group-agent" => ["add-card-runtime-claude"],
@@ -141,9 +141,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert groups == ["add-group-agent", "add-group-apis", "add-group-programs"]
 
       for {id, heading, sentence} <- [
-            {"add-group-agent", "Agent",
-             "The coding agent a run starts in the repositories it applies to."},
-            {"add-group-apis", "APIs the agent may call", nil},
+            {"add-group-agent", "Agent", nil},
+            {"add-group-apis", "Outside APIs", nil},
             {"add-group-programs", "Programs",
              "Programs added from a release. A release is only read, never run."}
           ] do
@@ -253,7 +252,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       own = ipath(scope, "/new-service?definition=own%3A#{definition.public_id}")
       assert has_element?(lv, ~s(#{card}-act[href="#{own}"]))
 
-      # Among the APIs the agent may call, after the built-in ones, before Custom API….
+      # Among the outside APIs, after the built-in ones, before Custom API….
       assert card_ids(lv)["add-group-apis"] == [
                "add-card-api-npm",
                "add-card-api-sentry",
@@ -385,8 +384,8 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
                "connection-#{integration.public_id}"
              ]
 
-      assert has_element?(lv, "#set-up-part thead th", "For runs in")
-      refute render(lv) =~ "Applies to"
+      assert has_element?(lv, "#set-up-part thead th", "Applies to")
+      refute render(lv) =~ "For runs in"
 
       assert has_element?(lv, "#set-up-part .q-part-n", "3")
       refute has_element?(lv, "#connections-empty")
@@ -498,7 +497,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#settings-section-integrations header",
-               "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
+               "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
              )
 
       assert page_title(lv) =~
@@ -517,12 +516,18 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
     test "Set up an agent sets one up and opens it", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope, "/new-runtime"))
       assert has_element?(lv, "#new-runtime-page-title", "Set up an agent")
-      assert has_element?(lv, "#new-runtime-page", "Choose the coding agent runs start.")
+
+      assert has_element?(
+               lv,
+               "#new-runtime-page",
+               "Choose a coding agent of the runner's catalogue."
+             )
+
       assert has_element?(lv, "#breadcrumb-section", "Integrations")
       assert has_element?(lv, "#breadcrumb", "Set up an agent")
       assert page_title(lv) =~ "Set up an agent · Workspace settings"
       assert has_element?(lv, "label[for=connection_runtime]", "Agent")
-      assert has_element?(lv, "#new-runtime-form fieldset legend", "For runs in")
+      assert has_element?(lv, "#new-runtime-form fieldset legend", "Applies to")
       assert has_element?(lv, "#new-runtime-save button[type=submit]", "Set up agent")
       refute lv |> element("#new-runtime-page") |> render() =~ "Runtime"
       assert has_element?(lv, "#runtime-catalogue", "ANTHROPIC_API_KEY")
@@ -560,10 +565,10 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#new-service-page",
-               "Choose an outside API the agent may call while it works."
+               "Choose an outside API: a built-in one, or a custom API of this workspace."
              )
 
-      assert has_element?(lv, "#new-service-form fieldset legend", "For runs in")
+      assert has_element?(lv, "#new-service-form fieldset legend", "Applies to")
 
       assert has_element?(lv, "label[for=connection_definition]", "API")
 

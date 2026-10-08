@@ -157,22 +157,15 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc """
   kind_order/1 is a kind's place among the section's groups, the order its list and its
-  cards follow: the agent (a runtime), then the APIs the agent may call (services), then
-  programs (integrations).
+  cards follow: the agent (a runtime), then outside APIs (services), then programs
+  (integrations).
   """
   def kind_order("runtime"), do: 0
   def kind_order("service"), do: 1
   def kind_order("integration"), do: 2
 
-  @doc """
-  role_line/1 is the one line under a set-up item's title, by its kind, or nil where its
-  kind has none: an API and a program have none.
-  """
-  def role_line("runtime"), do: gettext("Runs in the targets it applies to start this agent.")
-  def role_line(_kind), do: nil
-
   @doc "applies_label/0 is the label of where a connection applies, in a list, a form or its facts."
-  def applies_label, do: gettext("For runs in")
+  def applies_label, do: pgettext("plain", "Applies to")
 
   @doc """
   names/1 is how a person reads a connection's name, `{title, machine_name}`: a runtime's

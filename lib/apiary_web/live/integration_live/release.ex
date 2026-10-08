@@ -275,7 +275,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             label={gettext("Argument")}
             optional
             hint={
-              gettext("What it is started with. It must match %{patterns}.",
+              gettext("It must match %{patterns}.",
                 patterns: Enum.join(@patterns, ", ")
               )
             }

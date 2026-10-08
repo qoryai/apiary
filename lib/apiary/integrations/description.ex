@@ -214,7 +214,7 @@ defmodule Apiary.Integrations.Description do
   end
 
   @doc """
-  check_argument/2 checks the argument a connection of `description` is started with:
+  check_argument/2 checks the argument a connection of `description` stores:
   nil, or matched whole by the credential role's `argument` pattern.
   `:ok`, or `{:error, {:integration_argument_not_allowed, ["credential"]}}`.
   """

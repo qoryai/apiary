@@ -3,8 +3,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   One agent (a runtime), API (a service) or program (an integration added from a release)
   of the workspace, under Workspace settings › Integrations
   (`/:org/:workspace/settings/integrations/:id`, `:id` its public id, `con_…`), with the
-  `security` feature. Under its title, its kind, and an agent's one line
-  (`ApiaryWeb.IntegrationLive.Common.role_line/1`). Three tabs, each an address:
+  `security` feature. Under its title, its kind. Three tabs, each an address:
 
     * **Overview** (`:overview`): what it is, its id, its source, version and roles (a
       program's), the API it is set up from, built in or a custom API (an API's), or its
@@ -222,9 +221,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <span :if={@connection.source} class="q-mono">{@connection.source}</span>
           <span :if={@connection.version} class="text-faint" aria-hidden="true">·</span>
           <span :if={@connection.version} class="q-mono">{@connection.version}</span>
-          <span :if={Common.role_line(@connection.kind)} id="connection-role" class="block">
-            {Common.role_line(@connection.kind)}
-          </span>
         </:subtitle>
 
         <.page_tabs id="connection-tabs" label={Common.kind_word(@connection.kind)} current={@tab}>
@@ -613,7 +609,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           label={gettext("Argument")}
           optional
           hint={
-            gettext("What it is started with. It must match %{patterns}.",
+            gettext("It must match %{patterns}.",
               patterns: Enum.join(@patterns, ", ")
             )
           }

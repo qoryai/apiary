@@ -1,6 +1,6 @@
 defmodule Apiary.Connections do
   @moduledoc """
-  Connections holds what a workspace sets up for its runs: the runtimes, integrations and
+  Connections holds what a workspace sets up: the runtimes, integrations and
   services the contract calls connections, and the pages call integrations
   (`Apiary.Connections.Connection`), where each applies, and the workspace's own service
   definitions (`Apiary.Connections.ServiceDefinition`).
@@ -37,8 +37,7 @@ defmodule Apiary.Connections do
 
   Every connection, release and custom definition carries an integrity code
   (`Apiary.Kinds.Coded`). A listing marks each connection `intact`;
-  `list_for_rendering/1`, what renders a run configuration asks, refuses the workspace's
-  connections when one of them, its release or its definition fails its code, with an
+  `list_for_rendering/1` refuses the workspace's connections when one of them, its release or its definition fails its code, with an
   error in the log.
 
   ## Who, and the trail
@@ -217,12 +216,12 @@ defmodule Apiary.Connections do
   defp part_intact?(_connection), do: false
 
   @doc """
-  list_for_rendering/1 is `workspace`'s connections for what renders its run
-  configurations, loaded as `list_connections/1` loads them, every one checked:
+  list_for_rendering/1 is `workspace`'s connections, loaded as `list_connections/1` loads
+  them, every one checked:
   `{:ok, connections}`, or `{:error, {:integrity, public_ids}}` when a connection, its
   release or its definition is not as it was written, with an error in the log. It asks
-  nothing of `Apiary.Access`: it is the server's own rendering path, with no person's
-  scope to ask about.
+  nothing of `Apiary.Access`: it is the server's own path, with no person's scope to ask
+  about.
   """
   @spec list_for_rendering(%Workspace{}) ::
           {:ok, [Connection.t()]} | {:error, {:integrity, [String.t()]}}

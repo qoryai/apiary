@@ -204,20 +204,20 @@ replaces the navigation it is in.
   `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
-  (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the runs of the
-  workspace use, never Qory Apiary's own settings, as its subtitle says; one list, Set up in
-  this workspace, in the groups' order, each row its name, its kind, Agent, API or Program
-  (one added from a release), a program's version and For runs in, where it applies; then,
+  (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the workspace sets
+  up, never Qory Apiary's own settings, as its subtitle says; one list, Set up in this
+  workspace, in the groups' order, each row its name, its kind, Agent, API or Program (one
+  added from a release), a program's version and Applies to, where it applies; then,
   for whoever may change it, Add an integration, a card for each thing to add by name, its
   kind a small muted word and one line about it, in three groups, each an `<h3>`, a
   sentence where it has one and a list its heading names: Agent (the runtimes of the
-  runner's catalogue), APIs the agent may call (the built-in APIs, the workspace's own
+  runner's catalogue), Outside APIs (the built-in APIs, the workspace's own
   custom APIs, then Custom API…) and Programs (the named releases,
   `ApiaryWeb.IntegrationLive.Named`, then From a release…); a card's act opens its form with its
   item chosen, `?runtime=` or `?definition=` (a named release's opens Add from a release,
   its source filled in, `?source=`), an unknown one opening the form as it starts; the
   forms are Set up an agent, Set up an API and Add from a release; an item's page says its
-  kind under its title, and an agent's one line; each page says once that a run receives only
+  kind under its title; each page says once that a run receives only
   its security policy) and Secrets and variables (`/settings/secrets`,
   below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their

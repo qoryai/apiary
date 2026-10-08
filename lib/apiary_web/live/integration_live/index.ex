@@ -3,20 +3,20 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   Workspace settings › Integrations (`/:org/:workspace/settings/integrations`), with the
   `security` feature, in two parts:
 
-    * **Set up in this workspace**: one list of what the runs of the workspace use,
-      which `Apiary.Connections` calls connections, in the order of the groups below,
-      each row its name, its kind (Agent, API, or Program, one added from a release), a
-      program's version and where it applies (For runs in), every target or the chosen
-      ones, leading to its page (`ApiaryWeb.IntegrationLive.Show`);
+    * **Set up in this workspace**: one list of what the workspace sets up, which
+      `Apiary.Connections` calls connections, in the order of the groups below, each row
+      its name, its kind (Agent, API, or Program, one added from a release), a program's
+      version and where it applies (Applies to), every target or the chosen ones,
+      leading to its page (`ApiaryWeb.IntegrationLive.Show`);
     * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name,
       in three groups, each a heading, a sentence where it has one, and its own list: Agent, the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`);
-      APIs the agent may call, the built-in APIs (`Apiary.Kinds.Services`), the
+      Outside APIs, the built-in APIs (`Apiary.Kinds.Services`), the
       workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`) and Custom
       API…; Programs, the named releases (`ApiaryWeb.IntegrationLive.Named`) and From a
       release….
 
-  It is all for the runs, none of it for Qory Apiary itself, and the page says so in its
-  subtitle. It says once, at its top, that a run receives only its security policy.
+  None of it is Qory Apiary's own settings, and the page says so in its subtitle. It says
+  once, at its top, that a run receives only its security policy.
 
   The forms are pages of the section, at paths of their own, never a dialog: Add from a
   release (`…/add`), which asks for a release and leads to it
@@ -85,7 +85,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       >
         <:subtitle>
           {gettext(
-            "What the runs in this workspace use: the coding agent a run starts, and the outside APIs and programs it may reach. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
+            "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
           )}
         </:subtitle>
 
@@ -151,7 +151,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
     * **Agent** (`#add-group-agent`): the runtimes of the runner's catalogue
       (`Apiary.Kinds.Runtimes`);
-    * **APIs the agent may call** (`#add-group-apis`): the built-in APIs
+    * **Outside APIs** (`#add-group-apis`): the built-in APIs
       (`Apiary.Kinds.Services`), the workspace's own custom APIs, each its name leading to
       its page, then Custom API…;
     * **Programs** (`#add-group-programs`): the named releases
@@ -174,11 +174,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     ~H"""
     <SettingsComponents.part id="add-part" title={gettext("Add an integration")}>
       <div id="add-cards" class="grid gap-6">
-        <.add_group
-          id="add-group-agent"
-          title={gettext("Agent")}
-          about={gettext("The coding agent a run starts in the targets it applies to.")}
-        >
+        <.add_group id="add-group-agent" title={gettext("Agent")}>
           <.add_card
             :for={runtime <- Runtimes.list()}
             id={"add-card-runtime-#{runtime.name}"}
@@ -189,7 +185,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             navigate={Common.new_runtime_path(@scope, runtime.name)}
           />
         </.add_group>
-        <.add_group id="add-group-apis" title={gettext("APIs the agent may call")}>
+        <.add_group id="add-group-apis" title={gettext("Outside APIs")}>
           <.add_card
             :for={definition <- Services.list()}
             id={"add-card-api-#{definition["key"]}"}
@@ -329,14 +325,13 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
   defp runtime_line(_runtime), do: gettext("A coding agent the runner can start.")
 
-  # The line under a built-in API's name: what the agent may do with it, said by the
-  # console; one it doesn't know, its definition's description, which its page keeps
-  # as its About.
+  # The line under a built-in API's name: what the API is, said by the console; one it
+  # doesn't know, its definition's description, which its page keeps as its About.
   defp api_line(%{"key" => "sentry"}),
-    do: gettext("The agent may call Sentry's API on sentry.io, such as to read issues.")
+    do: gettext("Sentry's web API on sentry.io.")
 
   defp api_line(%{"key" => "npm"}),
-    do: gettext("The agent may install and publish packages on registry.npmjs.org.")
+    do: gettext("The public npm registry on registry.npmjs.org.")
 
   defp api_line(definition), do: definition["description"]
 
@@ -581,10 +576,11 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         "Name the release of a program: its description is fetched, and you add it from there."
       )
 
-  defp form_sentence(:new_runtime), do: gettext("Choose the coding agent runs start.")
+  defp form_sentence(:new_runtime),
+    do: gettext("Choose a coding agent of the runner's catalogue.")
 
   defp form_sentence(:new_service),
-    do: gettext("Choose an outside API the agent may call while it works.")
+    do: gettext("Choose an outside API: a built-in one, or a custom API of this workspace.")
 
   ## Mount, the list and the forms
 

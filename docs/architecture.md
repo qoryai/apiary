@@ -431,12 +431,11 @@ route no stored value, and the runner bounds what a variable can do.
 
 ## Integrations, services and runtimes
 
-What a workspace sets up for its runs is a **connection** in the contract's words and an
+What a workspace sets up is a **connection** in the contract's words and an
 integration on its pages (`Apiary.Connections`): a runtime, an integration or a service,
 which the pages call a Runtime, a Program and an API (a workspace's own service definition
 is a Custom API there), in `workspace_connections` (the record's `connections` are the
-hosts a run reached), with a public id, `con_` and 16 characters, that the run
-configuration names. Each applies to every repository of the workspace or to the ones
+hosts a run reached), with a public id, `con_` and 16 characters. Each applies to every repository of the workspace or to the ones
 `connection_targets` names. Two connections
 that would give a repository the same runtime, the same integration, or a value on the
 same host (one host pattern covering another) are refused on save. A connection holds no
@@ -504,9 +503,8 @@ code (`Apiary.Kinds.Coded`), a connection's over its kind, name, where it applie
 settings and argument, and what it names; a release's over its source, state and
 description digest (version 2; version 1 also covered a publisher, and a release of version
 1 that recorded none still verifies), and the description's bytes are checked against the digest. A page
-reads each connection marked `intact`; what renders a run configuration takes the
-workspace's connections from `Apiary.Connections.list_for_rendering/1`, which refuses them
-all when one fails. The targets carry no code.
+reads each connection marked `intact`, and `Apiary.Connections.list_for_rendering/1`
+refuses all the workspace's connections when one fails. The targets carry no code.
 
 ## The audit trail
 

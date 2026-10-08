@@ -39,7 +39,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   end
 
   describe "Overview" do
-    test "says what an agent is, its id, the runs it is for and the secrets it declares",
+    test "says what an agent is, its id, where it applies and the secrets it declares",
          %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, html} = live(conn, ipath(scope, runtime))
@@ -48,17 +48,12 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-name.q-mono", "claude")
       assert has_element?(lv, "#connection-kind", "Agent")
 
-      assert has_element?(
-               lv,
-               "header #connection-role",
-               "Runs in the repositories it applies to start this agent."
-             )
-
-      refute has_element?(lv, "#connection-role", "never holds")
+      # No kind has a line under its title: nothing it would say is Qory Apiary's.
+      refute has_element?(lv, "#connection-role")
       assert has_element?(lv, "#connection-facts dt", "Agent")
-      assert has_element?(lv, "#connection-facts dt", "For runs in")
+      assert has_element?(lv, "#connection-facts dt", "Applies to")
       refute has_element?(lv, "#connection-facts dt", "Runtime")
-      refute has_element?(lv, "#connection-facts dt", "Applies to")
+      refute has_element?(lv, "#connection-facts dt", "For runs in")
       assert has_element?(lv, "#connection-tabs[aria-label=Agent]")
       assert has_element?(lv, "#breadcrumb-section", "Integrations")
       assert page_title(lv) =~ "Claude Code · Integrations · Workspace settings"
@@ -121,7 +116,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       refute lv |> element("#settings-section-integrations") |> render() =~ "ervice"
     end
 
-    test "For runs in leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
+    test "Applies to leads to Targets, its tab taking the focus", %{conn: conn, scope: scope} do
       {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
       {:ok, lv, _html} = live(conn, ipath(scope, runtime))
 
@@ -301,7 +296,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     test "where it applies and a service's name are saved", %{conn: conn, scope: scope} do
       {:ok, service} = Connections.create_service(scope, %{service: "npm"})
       {:ok, lv, _html} = live(conn, ipath(scope, service, "/settings"))
-      assert has_element?(lv, "#connection-form fieldset legend", "For runs in")
+      assert has_element?(lv, "#connection-form fieldset legend", "Applies to")
 
       lv
       |> form("#connection-form", connection: %{applies_to: "selected", name: "Packages"})
