@@ -31,7 +31,8 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
   who made it, when and from where.
 - **Deletion.** A workspace or an organisation is marked for deletion first, and purged
   after a grace period.
-- **The docs.** The guides and the module reference, served by every instance at `/docs`.
+- **The docs.** The guides and the release notes, served by every instance at `/docs`, and
+  the module reference, served by an instance with every feature.
 
 ## Pro
 
