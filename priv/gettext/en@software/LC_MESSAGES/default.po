@@ -2244,6 +2244,12 @@ msgstr ""
 msgid "A run id, a page, a target or a place"
 msgstr "A run id, a page, a repository or a place"
 
+#: lib/apiary_web/live/integration_live/common.ex
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A run receives only its security policy."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "A run reloads at its next heartbeat."
@@ -2287,7 +2293,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
+msgid "A secret with several values names each one with a value ID."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -2298,16 +2304,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "A stored secret"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "A stored secret can't be linked to it yet."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "A stored secret can't be linked to it yet. The workspace's secrets are in %{secrets}."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4902,6 +4898,11 @@ msgstr ""
 msgid "Every path, or /v1/* /health"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every run the machines of this workspace have posted, as their events tell it."
@@ -4910,11 +4911,6 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Every session leaves a full record: what it ran, what it printed and where it reached out to. Open source, so you can check all of that."
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -8850,6 +8846,16 @@ msgstr ""
 msgid "Qory Apiary does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/release.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary links no stored secret to it."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary menu"
@@ -9579,21 +9585,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs and denied attempts per day"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Runs don't receive secrets yet. Today a run receives only its security policy."
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Runs don't receive variables yet. Today a run receives only its security policy."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -11474,7 +11465,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "This is the workspace's first change: it renders version 1, and machines take their policy from Qory Apiary from then on."
+msgid "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11894,7 +11885,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory Apiary from then on. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex

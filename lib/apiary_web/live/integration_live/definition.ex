@@ -11,7 +11,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   key, title, description, hosts, paths, auth and declared secrets. The page calls
   `Apiary.Connections.get_service_definition/2`, `create_service_definition/2`,
   `update_service_definition/3`, `delete_service_definition/2` and `list_connections/1`.
-  No run receives an API yet, and the page says so once.
+  The page says once that a run receives only its security policy.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security

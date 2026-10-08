@@ -11,14 +11,14 @@ defmodule ApiaryWeb.Storybook.Page.NotOnRuns do
       %Variation{
         id: :default,
         description:
-          "Once, near the top of a page over data no run receives yet, in the page's own " <>
-            "words, naming what runs don't receive.",
-        slots: ["Runs don't receive secrets yet. Today a run receives only its security policy."]
+          "Once, near the top of a page over data no run receives, in the page's own " <>
+            "words, saying what a run receives.",
+        slots: ["A run receives only its security policy."]
       },
       %Variation{
         id: :own_words,
-        attributes: %{id: "links-not-yet"},
-        slots: ["Runs don't receive a secret's links yet."]
+        attributes: %{id: "policy-only"},
+        slots: ["Qory Apiary sends a run only its security policy."]
       }
     ]
   end

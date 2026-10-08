@@ -59,11 +59,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
          %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, ipath(scope))
 
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
-             )
+      assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
 
       refute html =~ "applies to runs"
       refute html =~ "runs receive"

@@ -2231,7 +2231,7 @@ defmodule ApiaryWeb.Layouts do
           <%!-- Before sign-in there is no organisation: the instance's features decide. --%>
           <p :if={Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
             {gettext(
-              "Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that."
+              "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
             )}
           </p>
           <p :if={!Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">

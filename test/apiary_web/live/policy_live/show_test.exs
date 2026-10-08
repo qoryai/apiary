@@ -146,6 +146,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-unmanaged") =~
                "Until the first change here, every machine of this workspace runs under its own policy"
 
+      assert text(view, "#policy-unmanaged") =~
+               "renders version 1, and from then on each machine applies it, narrowed by its own."
+
       refute has_element?(view, "#policy-version-pill-copy")
       assert text(view, "#policy-version-pill") == "No version yet"
       # Export is off but focusable, described by why, and does nothing.

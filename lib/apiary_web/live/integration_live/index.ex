@@ -17,7 +17,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       release….
 
   It is all for the runs, none of it for Qory Apiary itself, and the page says so in its
-  subtitle. No run uses any of it yet, and the page says so once, at its top.
+  subtitle. It says once, at its top, that a run receives only its security policy.
 
   The forms are pages of the section, at paths of their own, never a dialog: Add from a
   release (`…/add`), which asks for a release and leads to it

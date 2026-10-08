@@ -146,7 +146,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#secrets-tabs-panel #not-on-runs",
-               "Runs don't receive variables yet."
+               "A run receives only its security policy."
              )
 
       lv |> element("#secrets-tabs-secrets") |> render_click()
@@ -198,12 +198,9 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#secrets-empty")
       assert html =~ "New secret"
 
-      # No run receives a secret yet, which the view says once, and nothing says otherwise.
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Runs don't receive secrets yet. Today a run receives only its security policy."
-             )
+      # A run receives only its security policy, which the view says once, and nothing says
+      # otherwise.
+      assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
 
       refute html =~ "the runs of this workspace are given"
       refute html =~ "runs are given"
@@ -219,7 +216,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
       assert has_element?(lv, "#secret-page-title", "New secret")
       refute has_element?(lv, "#secret-page-back")
-      assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")
+
+      assert has_element?(
+               lv,
+               "#secret-page #not-on-runs",
+               "A run receives only its security policy."
+             )
+
       refute render(lv) =~ "runs are given"
       refute has_element?(lv, "#secrets-tabs")
       assert has_element?(lv, "#breadcrumb-settings", "Workspace settings")
@@ -594,6 +597,15 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute has_element?(lv, "#secret-dialog")
       assert has_element?(lv, "#secret-page-title", "Add a value to GITHUB_APP_PRIVATE_KEY")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add value")
+
+      assert has_element?(
+               lv,
+               "#secret-page-description",
+               "A secret with several values names each one with a value ID."
+             )
+
+      refute has_element?(lv, "#secret-page-description", "what uses the secret")
+
       refute lv |> element("#secret-form") |> render() =~ "phx-change"
 
       html =
@@ -686,7 +698,12 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert lv |> element("#breadcrumb [aria-current=page]") |> render() =~
                ~r{>\s*Edit name and note\s*<}
 
-      assert has_element?(lv, "#secret-page #not-on-runs", "Runs don't receive secrets yet.")
+      assert has_element?(
+               lv,
+               "#secret-page #not-on-runs",
+               "A run receives only its security policy."
+             )
+
       assert page_title(lv) =~ "Edit the name and note of FORGE_TOKEN · Workspace settings"
       assert has_element?(lv, "#secret-save button[type=submit]", "Save")
       refute has_element?(lv, "#secret-save button[type=submit]", "Save secret")
@@ -940,13 +957,9 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
       assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
 
-      # No run receives a variable yet, which the view says once, and nothing says
+      # A run receives only its security policy, which the view says once, and nothing says
       # otherwise.
-      assert has_element?(
-               lv,
-               "#not-on-runs",
-               "Runs don't receive variables yet. Today a run receives only its security policy."
-             )
+      assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
 
       refute html =~ "runs are given"
       refute html =~ "Runs are given"
@@ -1052,7 +1065,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert_patch(lv, variables_path(scope, "/#{variable.id}/change"))
       refute has_element?(lv, "#variable-dialog")
       assert has_element?(lv, "#variable-page-title", "Change the value of NODE_ENV")
-      assert has_element?(lv, "#variable-page #not-on-runs", "Runs don't receive variables yet.")
+
+      assert has_element?(
+               lv,
+               "#variable-page #not-on-runs",
+               "A run receives only its security policy."
+             )
+
       refute render(lv) =~ "Runs are given"
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Change value")
       lv |> form("#variable-form", variable: %{value: "prod"}) |> render_submit()

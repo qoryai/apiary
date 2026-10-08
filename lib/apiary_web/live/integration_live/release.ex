@@ -17,8 +17,8 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   With `?for=<connection's public id>`, an integration of the same source, the release is
   another version of it, asked for from its Settings, and the page offers to move it there
-  (`Apiary.Connections.change_release/3`) instead of adding it. No run receives any of it
-  yet, and the page says so once.
+  (`Apiary.Connections.change_release/3`) instead of adding it. The page says once that a
+  run receives only its security policy.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -319,7 +319,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
               {gettext("Add %{title}", title: @description.title)}
             </.button>
             <:note :if={@description.secrets != []}>
-              {gettext("A stored secret can't be linked to it yet.")}
+              {gettext("Qory Apiary links no stored secret to it.")}
             </:note>
           </SettingsComponents.save>
         </div>

@@ -1231,7 +1231,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       >
         <span :if={!@managed?} id="policy-unmanaged">
           {gettext(
-            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory Apiary from then on. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
@@ -1597,7 +1597,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     {gettext("You can switch back at any time.")}
     <span :if={!@started}>
       {gettext(
-        "This is the workspace's first change: it renders version 1, and machines take their policy from Qory Apiary from then on."
+        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
       )}
     </span>
     """

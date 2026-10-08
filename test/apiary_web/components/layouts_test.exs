@@ -1365,6 +1365,9 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert response =~
                ~s(Can you trust your agents? With Qory <span class="text-accent">you don&#39;t have to</span>.)
+
+      assert response =~
+               "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it."
     end
   end
 

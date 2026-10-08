@@ -52,7 +52,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
            )
 
     assert has_element?(lv, "#release-status.sr-only[role=status]", "Fetching the release's")
-    assert has_element?(lv, "#not-on-runs", "Runs don't use any of this yet:")
+    assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
     assert has_element?(lv, "#settings-section-integrations header span[aria-hidden=true]", "·")
     refute has_element?(lv, "#add-release-form")
   end
@@ -136,6 +136,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(lv, "#release-setting-app_id")
     refute has_element?(lv, "#release-setting-private_key")
     assert has_element?(lv, "#add-release-form fieldset legend", "For runs in")
+    assert has_element?(lv, "#add-release-form", "Qory Apiary links no stored secret to it.")
 
     {:error, {:live_redirect, %{to: to}}} =
       lv

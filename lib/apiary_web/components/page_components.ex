@@ -12,7 +12,7 @@ defmodule ApiaryWeb.PageComponents do
     `sections` and `section`).
   - `page_form/1` and `page_form_foot/1`: a create or edit form as a page of its own, never
     a dialog, with Cancel back to where it was opened from.
-  - `not_on_runs/1`: the one plain line a page over data no run receives yet says.
+  - `not_on_runs/1`: the one plain line a page over data no run receives says.
 
   Two more patterns are `ApiaryWeb.CoreComponents`': the confirmation in place, never a
   dialog (`inline_confirm/1`, and a deletion's, `ApiaryWeb.SettingsComponents.deletion_confirm/1`),
@@ -256,18 +256,17 @@ defmodule ApiaryWeb.PageComponents do
   end
 
   @doc """
-  not_on_runs/1 is the one plain line a page over data no run receives yet says, once, near
-  its top: a workspace's integrations, a target's own integrations and variables, a
-  secret's links. Its words are the page's own (`inner_block`), naming what runs don't
-  receive ("Runs don't receive secrets yet."), never a vague "these": such a page never
-  says that runs receive what it holds.
+  not_on_runs/1 is the one plain line a page over data no run receives says, once, near
+  its top: a workspace's secrets, variables and integrations. Its words are the page's own
+  (`inner_block`), saying what a run receives ("A run receives only its security
+  policy."): such a page never says that runs receive what it holds.
   """
   attr :id, :string, default: "not-on-runs"
   attr :class, :any, default: nil
 
   slot :inner_block,
     required: true,
-    doc: "the page's sentence, naming what runs don't receive yet"
+    doc: "the page's sentence, saying what a run receives"
 
   def not_on_runs(assigns) do
     ~H"""

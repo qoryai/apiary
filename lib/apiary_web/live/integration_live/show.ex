@@ -21,8 +21,8 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   It reads and writes through `Apiary.Connections` (`get_connection/2`,
   `update_connection/3`, `put_target/4`, `remove_target/3`, `delete_connection/2`,
   `definition/1`, `description/1`) and asks
-  `Apiary.Integrations.request_release/2` for another version. No run receives any of it
-  yet, and the page says so once.
+  `Apiary.Integrations.request_release/2` for another version. The page says once that a
+  run receives only its security policy.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -427,7 +427,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       <p :if={@secrets != []} id="connection-secrets-unlinked" class="text-[13px]/5 text-muted">
         <.rich text={
           rich_gettext(
-            "A stored secret can't be linked to it yet. The workspace's secrets are in %{secrets}.",
+            "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}.",
             secrets: {:link, Common.secrets_path(@current_scope), gettext("Secrets and variables")}
           )
         } />

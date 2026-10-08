@@ -171,19 +171,22 @@ defmodule ApiaryWeb.PageComponentsTest do
     refute html =~ "/acme/shop/nodes"
   end
 
-  test "the line of what runs don't receive yet, in the page's own words" do
+  test "the line of what a run receives, in the page's own words" do
     assigns = %{}
 
-    html = rendered_to_string(~H|<.not_on_runs>Runs don't receive secrets yet.</.not_on_runs>|)
-    assert text(html, "p#not-on-runs.q-not-yet") =~ "Runs don't receive secrets yet."
+    html =
+      rendered_to_string(
+        ~H|<.not_on_runs>A run receives only its security policy.</.not_on_runs>|
+      )
+
+    assert text(html, "p#not-on-runs.q-not-yet") =~ "A run receives only its security policy."
 
     html =
       rendered_to_string(~H"""
-      <.not_on_runs id="links-not-yet">Runs don't receive a secret's links yet.</.not_on_runs>
+      <.not_on_runs id="policy-only">Qory Apiary sends a run only its security policy.</.not_on_runs>
       """)
 
-    assert text(html, "#links-not-yet") =~ "Runs don't receive a secret's links yet."
-    refute html =~ "these yet"
+    assert text(html, "#policy-only") =~ "Qory Apiary sends a run only its security policy."
 
     # The page's sentence is required: no vague default.
     assert %{required: true} =
