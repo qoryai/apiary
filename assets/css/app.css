@@ -5745,6 +5745,16 @@
     white-space: nowrap;
     overflow-wrap: normal;
   }
+  /* A detail's value wraps rather than hides its end: text at its spaces, a word too long
+     for the column within it, and compact JSON anywhere. */
+  .q-rail-kv-mono.q-rail-about-details dd {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .q-rail-kv-mono.q-rail-about-details dd.q-rail-json {
+    overflow-wrap: anywhere;
+  }
   .q-rail-kv a:hover {
     color: var(--color-accent);
     text-decoration: underline;

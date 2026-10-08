@@ -1601,10 +1601,11 @@ defmodule ApiaryWeb.RunPageComponents do
         id="run-about-details"
         class="q-rail-kv q-rail-kv-mono q-rail-about-details"
       >
-        <%= for {key, value} <- @details do %>
-          <%!-- A dotted key may break before each of its dots. --%>
+        <%= for {key, value, form} <- @details do %>
+          <%!-- A dotted key may break before each of its dots. A value wraps, never cut:
+               text at its spaces, compact JSON anywhere. --%>
           <dt phx-no-format><%= for {part, index} <- Enum.with_index(String.split(key, ".")) do %><wbr :if={index > 0} />{if index > 0, do: "."}{part}<% end %></dt>
-          <dd>{value}</dd>
+          <dd class={form == :json && "q-rail-json"}>{value}</dd>
         <% end %>
       </dl>
     </section>
@@ -1612,11 +1613,12 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   @doc """
-  The details as `{key, value}` rows, by key. A top-level member is a row; one that is a
-  non-empty object is instead a row per member of its own, keyed `outer.inner`, so a key
-  has at most two segments. A value is shown as given when it is a string, and as compact
-  JSON otherwise: a number, true, false, null, an array, and an object one level below
-  that, or an empty one. An object nested deeper stays one JSON value, never more rows.
+  The details as `{key, value, form}` rows, by key. A top-level member is a row; one that
+  is a non-empty object is instead a row per member of its own, keyed `outer.inner`, so a
+  key has at most two segments. A value is shown as given when it is a string (`:text`),
+  and as compact JSON otherwise (`:json`): a number, true, false, null, an array, and an
+  object one level below that, or an empty one. An object nested deeper stays one JSON
+  value, never more rows.
   """
   def about_details(%{} = details) do
     details
@@ -1625,15 +1627,20 @@ defmodule ApiaryWeb.RunPageComponents do
       {key, %{} = inner} when map_size(inner) > 0 ->
         inner
         |> Enum.sort_by(fn {inner_key, _value} -> inner_key end)
-        |> Enum.map(fn {inner_key, value} -> {"#{key}.#{inner_key}", detail(value)} end)
+        |> Enum.map(fn {inner_key, value} -> row("#{key}.#{inner_key}", value) end)
 
       {key, value} ->
-        [{key, detail(value)}]
+        [row(key, value)]
     end)
   end
 
   def about_details(_details), do: []
 
-  defp detail(value) when is_binary(value), do: value
-  defp detail(value), do: Jason.encode!(value)
+  defp row(key, value) do
+    {shown, form} = detail(value)
+    {key, shown, form}
+  end
+
+  defp detail(value) when is_binary(value), do: {value, :text}
+  defp detail(value), do: {Jason.encode!(value), :json}
 end

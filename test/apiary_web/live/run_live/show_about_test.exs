@@ -270,7 +270,20 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
 
         # a dotted key may break before its dot
         assert has_element?(lv, "#run-about-details > dt > wbr")
-        assert has_element?(lv, "#run-about-details.q-rail-kv-mono")
+        assert has_element?(lv, "#run-about-details.q-rail-kv-mono.q-rail-about-details")
+
+        # a value wraps, never cut: text at its spaces, compact JSON anywhere
+        assert texts(lv, "#run-about-details > dd.q-rail-json") ==
+                 [
+                   "2",
+                   "false",
+                   "{}",
+                   "null",
+                   ~s(["plan","edit","test"]),
+                   ~s({"confidence":"medium","points":3})
+                 ]
+
+        assert texts(lv, "#run-about-details > dd:not(.q-rail-json)") == ["qory/eng-17", "high"]
       end
     end
 
@@ -325,6 +338,31 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
     end
   end
 
+  test "a detail's value wraps in the rail and is never cut; a subject's title is one line" do
+    css = File.read!(Path.expand("../../../../assets/css/app.css", __DIR__))
+
+    rule = fn selector ->
+      [rule] = Regex.run(~r/#{Regex.escape(selector)} \{([^}]*)\}/, css, capture: :all_but_first)
+      rule
+    end
+
+    value = rule.(".q-rail-kv-mono.q-rail-about-details dd")
+
+    for declaration <- [
+          "overflow: visible;",
+          "white-space: normal;",
+          "overflow-wrap: break-word;"
+        ],
+        do: assert(value =~ declaration)
+
+    refute value =~ "ellipsis"
+
+    assert rule.(".q-rail-kv-mono.q-rail-about-details dd.q-rail-json") =~
+             "overflow-wrap: anywhere;"
+
+    assert rule.(".q-rail-sub") =~ "text-overflow: ellipsis;"
+  end
+
   describe "the details as rows" do
     test "flatten one level into dotted keys; the rest is compact JSON" do
       assert RunPageComponents.about_details(nil) == []
@@ -335,10 +373,10 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
                "a" => "text",
                "n" => 1.5
              }) == [
-               {"a", "text"},
-               {"b.a", ~s({"deep":{"deeper":true}})},
-               {"b.z", ~s([1,{"k":"v"}])},
-               {"n", "1.5"}
+               {"a", "text", :text},
+               {"b.a", ~s({"deep":{"deeper":true}}), :json},
+               {"b.z", ~s([1,{"k":"v"}]), :json},
+               {"n", "1.5", :json}
              ]
     end
   end
