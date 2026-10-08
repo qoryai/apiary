@@ -6,6 +6,8 @@ defmodule Apiary.Nodes.InstancesTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
+  alias Apiary.AccessKeys
+  alias Apiary.AccessKeys.AccessKey
   alias Apiary.Audit.Entry
   alias Apiary.Nodes
   alias Apiary.Nodes.{Instance, Node, Throttle}
@@ -90,7 +92,10 @@ defmodule Apiary.Nodes.InstancesTest do
 
       assert Nodes.get_instance(scope, node, instance.instance_id).id == instance.id
       assert Nodes.get_instance(stranger, node, instance.instance_id) == nil
-      assert Nodes.activity(stranger, [node]) == %{node.id => %{running: [], last: nil}}
+
+      assert Nodes.activity(stranger, [node]) ==
+               %{node.id => %{running: [], last: nil, used: nil}}
+
       assert Nodes.names(stranger, [node.id]) == %{}
     end
   end
@@ -499,7 +504,40 @@ defmodule Apiary.Nodes.InstancesTest do
       assert %{instance_id: "i_2", name: nil} = two
 
       assert %{running: [], last: %Instance{instance_id: "i_4"}} = activity[idle.id]
-      assert activity[never.id] == %{running: [], last: nil}
+      assert activity[never.id] == %{running: [], last: nil, used: nil}
+    end
+
+    test "when a node's keys were last used, revoked ones too, outlives its pruned instances",
+         %{scope: scope} do
+      now = DateTime.utc_now()
+      pool = pool_fixture(scope, name: "spot-runners")
+      unused = pool_fixture(scope, name: "spot-idle")
+      %{access_key: old} = node_key_fixture(scope, pool, %{label: "old"})
+      %{access_key: new} = node_key_fixture(scope, pool, %{label: "new"})
+      node_key_fixture(scope, unused)
+      instance_fixture(pool, instance_id: "p_1", seen_at: ago(2 * 86_400, now))
+
+      used = fn key, at ->
+        Repo.update_all(from(k in AccessKey, where: k.id == ^key.id), set: [last_used_at: at])
+      end
+
+      used.(new, ago(3 * 86_400, now))
+      used.(old, ago(2 * 86_400, now))
+      {:ok, _} = AccessKeys.revoke_access_key(scope, old)
+
+      assert Nodes.prune_instances(now) >= 1
+      activity = Nodes.activity(scope, [pool, unused], now)
+
+      # The pool's instance went with the day; the revoked key's use, the latest, stays.
+      assert %{running: [], last: nil, used: at} = activity[pool.id]
+      assert DateTime.compare(at, ago(2 * 86_400, now)) == :eq
+      assert activity[unused.id] == %{running: [], last: nil, used: nil}
+
+      %{scope: stranger} = sign_up_fixture()
+
+      assert Nodes.activity(stranger, [pool]) == %{
+               pool.id => %{running: [], last: nil, used: nil}
+             }
     end
   end
 

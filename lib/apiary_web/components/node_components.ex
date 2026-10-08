@@ -12,7 +12,8 @@ defmodule ApiaryWeb.NodeComponents do
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
   ("3 of 10 running", "3 running"). One that runs nothing says when an instance of it was
-  last seen, ticking in the browser, or "Never seen".
+  last seen, or, with no instance left, when one of its keys was last used, ticking in the
+  browser (`seen_at/1`), or "Never seen".
   """
   use ApiaryWeb, :html
 
@@ -33,15 +34,25 @@ defmodule ApiaryWeb.NodeComponents do
           <span class="q-sdot q-sdot-running">
             <i aria-hidden="true"></i><span>{running_words(@node, length(@activity.running))}</span>
           </span>
-        <% @activity.last -> %>
+        <% seen = seen_at(@activity) -> %>
           {gettext("Last seen")}
-          <.relative_time id={"#{@id}-seen"} at={@activity.last.last_seen_at} />
+          <.relative_time id={"#{@id}-seen"} at={seen} />
         <% true -> %>
           <span class="text-faint">{gettext("Never seen")}</span>
       <% end %>
     </span>
     """
   end
+
+  @doc """
+  seen_at/1 is when a node was last seen, from its `t:Apiary.Nodes.activity/0`: its
+  instance seen last, or, when no instance is left (a pool's are pruned after a day), the
+  last use of one of its keys, revoked ones too; nil when neither was.
+  """
+  @spec seen_at(map) :: DateTime.t() | nil
+  def seen_at(%{last: %{last_seen_at: at}}), do: at
+  def seen_at(%{used: %DateTime{} = at}), do: at
+  def seen_at(_activity), do: nil
 
   @doc """
   running_words/2 is how many instances of `node` run, `count`, as its state says it:

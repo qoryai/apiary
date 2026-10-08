@@ -113,7 +113,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - A node's instances: what a runner using the node's access key reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation. An
   instance runs while it has a run the lost-run check holds alive. The Nodes list says
-  each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"), with the
+  each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"; a pool
+  whose instances were pruned is last seen when its key was last used), with the
   views All, Running and Not running, Sort by name or last seen, and a pool's running
   instances under it; a node's Overview shows its instance or a pool's running
   instances, the starts refused at the limit, and its recent runs. Owners and admins

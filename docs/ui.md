@@ -797,7 +797,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   (`Apiary.Runs.Liveness.alive/2`): running means "not yet lost". A Node says
   "Running"; a pool says "3 of 10 running", or "3 running" without a limit; one that runs
   nothing says "Last seen" and a time that ticks, or "Never seen" until an instance of it
-  reports.
+  reports. Once a pool's instances are pruned, a day after they were last seen, "Last
+  seen" is when one of its keys, revoked ones too, was last used; "Never seen" is for a
+  node with no instance and no key ever used.
 - **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
   above): one line a node, its name the title with its public id beside it in `q-side`,
   its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), its

@@ -364,6 +364,54 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-state", "2 running")
     end
 
+    test "a pool whose instances were pruned says when its key was last used, not Never seen",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners")
+      %{access_key: key} = Apiary.AccessKeysFixtures.node_key_fixture(scope, pool)
+      instance_fixture(pool, instance_id: "i_1", seen_at: ago(2 * 86_400))
+      two_days = ago(2 * 86_400)
+
+      Repo.update_all(from(k in Apiary.AccessKeys.AccessKey, where: k.id == ^key.id),
+        set: [last_used_at: two_days]
+      )
+
+      assert Nodes.prune_instances() >= 1
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+
+      assert has_element?(lv, "#node-state", "Last seen")
+      refute has_element?(lv, "#node-state", "Never seen")
+
+      assert has_element?(
+               lv,
+               ~s{#node-state-seen[datetime="#{DateTime.to_iso8601(two_days)}"]}
+             )
+
+      # A revoked key was seen too.
+      {:ok, _} = Apiary.AccessKeys.revoke_access_key(scope, key)
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+      assert has_element?(lv, "#node-state", "Last seen")
+
+      # Running, it says so, whatever its keys' use.
+      node_run_fixture(pool, "i_2")
+      send(lv.pid, :tick)
+      assert has_element?(lv, "#node-state", "1 running")
+    end
+
+    test "a node or a pool with no instance and no key used says Never seen", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      pool = pool_fixture(scope, name: "spot-runners")
+      Apiary.AccessKeysFixtures.node_key_fixture(scope, pool)
+
+      for target <- [node, pool] do
+        {:ok, lv, _html} = live(conn, node_path(scope, target))
+        assert has_element?(lv, "#node-state", "Never seen")
+      end
+    end
+
     test "says when a pool's last instance was seen, once none runs", %{conn: conn, scope: scope} do
       pool = pool_fixture(scope)
       instance_fixture(pool, instance_id: "i_1", seen_at: ago(3600))
