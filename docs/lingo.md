@@ -50,7 +50,8 @@ This is done with Gettext, not with a list of word swaps:
 - `test/apiary_web/lingo_catalogue_test.exs` fails when a source string contains an engine
   word and a domain's catalogue has no translation for it, and, for a language other than
   English, when a sentence has a translation neither in the domain's catalogue nor in the
-  language's. It also fails when a catalogue shows a word of the apiary skin.
+  language's. It also fails when a catalogue shows a word such as apiary, hive, bee,
+  flower, nectar, honey or jar.
 
 ## The words
 

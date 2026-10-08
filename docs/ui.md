@@ -213,7 +213,7 @@ replaces the navigation it is in.
   `<h3>`, one sentence and a list its heading names: Agent (the runtimes of the runner's
   catalogue), APIs the agent may call (the built-in APIs, the workspace's own custom APIs,
   then Custom API…) and Programs (the named releases, `ApiaryWeb.IntegrationLive.Named`,
-  none yet, then From a release…); the runner's design that the agent never holds a token
+  then From a release…); the runner's design that the agent never holds a token
   is said for APIs and programs, never for the agent; a card's act opens its form with its
   item chosen, `?runtime=` or `?definition=` (a named release's opens Add from a release,
   its source filled in, `?source=`), an unknown one opening the form as it starts; the

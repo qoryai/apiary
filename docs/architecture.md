@@ -51,8 +51,8 @@ beside it:
   the node's row lock (`check_instance_limit/3`, `admit/4`).
 - `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
   with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
-  says what uses one, so it is not deleted while it is (Secrets at rest and integrity
-  codes, below).
+  answers what uses one before a deletion: nothing links a secret, so the answer is
+  empty, but in a test that sets one (Secrets at rest and integrity codes, below).
 - `Apiary.Variables`: a workspace's variables and its repositories' own, with the
   workspace's locks, resolved per holder down the chain from the level above the
   workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
@@ -642,7 +642,7 @@ but a person's account, which leaves a tombstone.
   foreign key to: the edition's tables (`c:Apiary.Edition.deletion_tables/0`), in the
   edition's order, then the core's, in theirs. The edition's go first because a key only
   ever points from an edition's table to a core table, never back, so that order is
-  always valid. The purge walks it, and an export will; retention deletes a run's log
+  always valid. The purge walks it; retention deletes a run's log
   chunks, events and deliveries in the same order. Its test
   (`Apiary.Deletion.TablesCase`) compares it with the schema.
 - **The edition's part.** The edition refuses what it will not let go

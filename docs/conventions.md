@@ -9,11 +9,10 @@ One migration per change, generated with `mix ecto.gen.migration`, named for wha
 The rules are in [guides/upgrading.md](../guides/upgrading.md), because they exist for the person
 who restarts a self-hosted installation; the short form:
 
-- **A replacement backfills and drops in one migration.** Until Qory Apiary has
-  installations, a change that replaces a column or a table backfills the new one and
-  drops the old one in the same migration: no expand-then-contract across releases, no
-  dual-writes, no notes on rolling back to the old shape, since nothing is installed yet
-  and nobody runs an older release against a newer schema.
+- **A replacement backfills and drops in one migration.** A change that replaces a
+  column or a table backfills the new one and drops the old one in the same migration: no
+  expand-then-contract across releases, no dual-writes, no notes on rolling back to the
+  old shape.
 - **Every migration reverses.** `change` when Ecto can invert it, an explicit `down`
   otherwise. `Apiary.Release.rollback/2` runs it in production.
 - **No data rewrite inside a schema migration** but a replacement's backfill, and indexes
@@ -115,8 +114,8 @@ token; a secret is never a password. The product surface is the one place with o
 words: a page, an email or a flash says a domain's words through Gettext, and the software
 domain calls a target a **repository** ([lingo.md](lingo.md)). So do the guides,
 which are written in the software domain's words. Organisation and workspace are the same
-words in every domain; apiary and hive are words of the apiary skin. Code, schemas,
-migrations and these documents say organisation and workspace.
+words in every domain. Code, schemas, migrations and these documents say organisation and
+workspace.
 
 The product surface's sentences are in Gettext catalogues ([lingo.md](lingo.md)): the
 core's in `priv/gettext`, which `mix gettext.extract --merge` updates. An edition
