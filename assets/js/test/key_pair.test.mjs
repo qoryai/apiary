@@ -17,6 +17,7 @@ import {
   encodeBase64url,
   generate,
   makeKey,
+  slotShows,
   slotStep,
 } from "../hooks/key_pair.js"
 
@@ -289,6 +290,61 @@ test("the secret's slot shows only the secret of its own key", () => {
   assert.equal(slotStep({held: null, filled: null, slotKey: a, shown: true}), "wipe")
   // A slot with no public key is filled by nothing.
   assert.equal(slotStep({held: heldA, filled: null, slotKey: null, shown: false}), "gone")
+})
+
+test("the page never says the secret is not shown beside it, and a reconnect keeps it", () => {
+  const a = "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
+  const b = "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+  const heldA = {secret: "qak_a", publicKey: a}
+  const says = state => slotShows(slotStep(state))
+
+  // Made here: the secret, the notice, its Copy and the note beside Done; not the gone line.
+  assert.deepEqual(says({held: heldA, filled: null, slotKey: a, shown: false}), {
+    secret: true,
+    gone: false,
+  })
+  // Joined again after a dropped connection: the slot kept the secret the hook wrote, so
+  // the page still shows it, says it is shown once, and does not say it is gone.
+  assert.deepEqual(says({held: null, filled: a, slotKey: a, shown: true}), {
+    secret: true,
+    gone: false,
+  })
+  // Opened again, or reloaded: nothing held for this key, the gone line alone.
+  assert.deepEqual(says({held: null, filled: null, slotKey: a, shown: false}), {
+    secret: false,
+    gone: true,
+  })
+  // Another key's secret under this key's slot, or one the hook never wrote: gone alone.
+  assert.deepEqual(says({held: null, filled: b, slotKey: a, shown: true}), {
+    secret: false,
+    gone: true,
+  })
+  assert.deepEqual(says({held: null, filled: null, slotKey: a, shown: true}), {
+    secret: false,
+    gone: true,
+  })
+
+  // Never both, whatever the step.
+  for (const step of ["fill", "keep", "wipe", "gone"]) {
+    const {secret, gone} = slotShows(step)
+    assert.notEqual(secret, gone, step)
+  }
+})
+
+test("the hook leaves the slot alone on a reconnect, and says again what it shows", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../hooks/generate_key.js", import.meta.url)),
+    "utf8",
+  )
+  const body = name => {
+    const start = source.indexOf(`  ${name}() {`)
+    assert.notEqual(start, -1, name)
+    return source.slice(start, source.indexOf("\n  },", start))
+  }
+  // A dropped connection loses only a key still on its way, never the shown secret.
+  assert.doesNotMatch(body("disconnected"), /clear\(|textContent/)
+  assert.doesNotMatch(body("reconnected"), /clear\(|textContent/)
+  assert.match(body("reconnected"), /this\.fill\(\)/)
 })
 
 test("the hook logs nothing, stores nothing and writes the secret as text only", () => {

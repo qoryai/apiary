@@ -940,7 +940,12 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   key fills it. Opened again, the page has no notice, no Copy for the secret and no line
   beside Done; where the secret was, "Not shown: only the page that made the key held its
   secret, and this one was opened again. If you didn't copy it, revoke build-01 and
-  generate another key." It is the page of an active key the reader made in a browser while they
+  generate another key." The browser decides which (the `GenerateKey` hook): the server
+  renders both hidden, alike for every visit, and never the secret; the page shows the
+  notice, the secret's Copy and the line beside Done while its slot shows the secret, the
+  "Not shown" line while the browser holds nothing for the key, never both. A page joined
+  again after a dropped connection keeps the secret and its Copy. It is the page of an
+  active key the reader made in a browser while they
   may add keys; another key's address goes to its runner file, a revoked one's back to the
   tab.
 - **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`, an

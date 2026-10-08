@@ -19,11 +19,18 @@
 //   `[data-secret-slot][data-public-key]` (a `phx-update="ignore"` whose ids are the
 //   key's), and writes it there only if the slot's public key is its own: with
 //   `textContent` into the slot's `[data-secret-value]`, which it focuses. Then it drops
-//   its copy and remembers the public key it wrote for. A slot it holds nothing for (the
-//   page reloaded, or opened again) shows its `[data-secret-gone]`, which the server
-//   renders hidden. A slot that shows a secret for another public key than the one it
-//   wrote for is emptied and says the secret is gone. Which of these is key_pair.js
-//   `slotStep`.
+//   its copy and remembers the public key it wrote for. A slot that shows a secret for
+//   another public key than the one it wrote for is emptied. Which of these is
+//   key_pair.js `slotStep`.
+// - The server renders the page alike whether it made the key, was opened again or was
+//   joined again after a dropped connection, and never with the secret: what says the
+//   secret is shown once, `[data-secret-shown]` (the notice, the secret's Copy, the note
+//   beside Done), hidden, and the slot's `[data-secret-gone]` ("Not shown: …") hidden.
+//   The hook shows one or the other, never both (key_pair.js `slotShows`): the first
+//   while the slot shows the secret it wrote, the gone line while it holds nothing for
+//   the slot's key (the page reloaded, opened again, or another key's secret emptied).
+//   A dropped connection leaves the slot as it is; joined again, the hook says again what
+//   it shows, so the page still shows the secret, as shown once, with its Copy.
 // - A reply without a key (the form shows why) drops the secret and turns the button back
 //   on: the next Generate key makes a new pair. No reply and no slot within 15 seconds, a
 //   push that fails, or the connection dropping while the secret waits for its slot, drop
@@ -32,13 +39,14 @@
 //   (`pagehide`, which a back-forward cache would otherwise keep) empties the slot; a key
 //   still on its way then is lost, as above.
 //
-// The words are the server's: the notices, the gone line and the busy label are in the
-// render, the notices and the gone line hidden by the class `hidden` (not the attribute,
-// which the stylesheet keeps hidden whatever `show` sets). Shown and turned off with
-// `this.js()`, so that a patch keeps them. Nothing here logs, stores or keeps anything
-// outside this hook.
+// The words are the server's: the notices, the gone line, what says the secret is shown
+// once and the busy label are in the render, all but the label hidden by the class
+// `hidden` (not the attribute, which the stylesheet keeps hidden whatever `show` sets).
+// The notices and the gone line are shown with `this.js().show`, and `[data-secret-shown]`
+// by taking its class `hidden` off with `this.js()`, so that a patch keeps them. Nothing
+// here logs, stores or keeps anything outside this hook.
 
-import {checkSupport, generate, slotStep} from "./key_pair"
+import {checkSupport, generate, slotShows, slotStep} from "./key_pair"
 
 const REPLY_TIMEOUT = 15000
 
@@ -47,6 +55,7 @@ const SUBMIT = "#key-generate-submit"
 const SLOT = "[data-secret-slot]"
 const VALUE = "[data-secret-value]"
 const GONE = "[data-secret-gone]"
+const SHOWN = "[data-secret-shown]"
 const NOTICES = {
   insecure: "#key-generate-insecure",
   unsupported: "#key-generate-unsupported",
@@ -95,8 +104,11 @@ export const GenerateKey = {
     if (this.held || this.pending) this.lose()
   },
 
+  // Joined again: the slot is the hook's (`phx-update="ignore"`), and keeps what it
+  // shows; what the page says of it is said again.
   reconnected() {
     this.offline = false
+    this.fill()
   },
 
   destroyed() {
@@ -185,9 +197,9 @@ export const GenerateKey = {
     return chosen ? chosen.value : ""
   },
 
-  // Writes the held secret into its slot if the slot is there and is for the held key;
-  // a slot this hook holds nothing for, or one showing another key's secret, says the
-  // secret is gone (key_pair.js `slotStep`).
+  // Writes the held secret into its slot if the slot is there and is for the held key,
+  // and empties one showing another key's secret (key_pair.js `slotStep`); then says on
+  // the page what the slot shows: the secret, as shown once, or that it is gone (`say`).
   fill() {
     const slot = this.el.querySelector(SLOT)
     if (!slot) return
@@ -210,8 +222,21 @@ export const GenerateKey = {
       value.textContent = ""
       this.filled = null
       if (this.held) this.drop()
-      this.show(slot.querySelector(GONE))
     }
+    this.say(slot, slotShows(step))
+  },
+
+  // What the page says of the secret: shown once, with its Copy and the note beside
+  // Done, while the slot shows it; else the slot's gone line alone.
+  say(slot, {secret, gone}) {
+    for (const el of this.el.querySelectorAll(SHOWN)) {
+      if (secret) this.js().removeClass(el, "hidden")
+      else this.js().addClass(el, "hidden")
+    }
+    const goneLine = slot && slot.querySelector(GONE)
+    if (!goneLine) return
+    if (gone) this.show(goneLine)
+    else this.js().hide(goneLine)
   },
 
   drop() {
@@ -260,7 +285,8 @@ export const GenerateKey = {
   },
 
   // The slot emptied and the held copy dropped: the page is going (`destroyed`), or put
-  // away (`pagehide`), after which the slot says the secret is gone.
+  // away (`pagehide`), after which the page says the secret is gone, and no longer that
+  // it is shown once.
   clear(sayGone) {
     this.attempt++
     this.drop()
@@ -269,7 +295,7 @@ export const GenerateKey = {
     const value = this.el.querySelector(VALUE)
     if (value && value.textContent !== "") {
       value.textContent = ""
-      if (sayGone) this.show(this.el.querySelector(GONE))
+      if (sayGone) this.say(this.el.querySelector(SLOT), slotShows("gone"))
     }
   },
 }

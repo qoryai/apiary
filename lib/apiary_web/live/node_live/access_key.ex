@@ -38,9 +38,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     qory at this server, the runner file's address. The hook writes the secret into the
     slot only beside its own public key, empties a slot that shows a secret for another
     public key, and empties it as the page goes. The server never has the secret: not in
-    assigns, a render, a log line or the record. Only the page that made the key (`made`)
-    says the secret is shown once and offers it to copy; opened again, the page says it is
-    not shown, and keeps the rest. It is the page of an active key the reader made in a
+    assigns, a render, a log line or the record. What the page says of the secret follows
+    what the browser holds, not the server, whose render is the same whether the page made
+    the key, was opened again or was joined again after a dropped connection: the notice
+    that the secret is shown once, the secret's Copy and the note beside Done come hidden
+    (`data-secret-shown`), and the hook shows them while the slot shows the secret; while
+    it holds nothing for the key, it shows the slot's "Not shown" line instead. A
+    reconnect never empties the slot. It is the page of an active key the reader made in a
     browser, while they may add keys; any other key's address goes to its runner file, or
     back to the tab.
 
@@ -142,7 +146,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          socket
          |> assign(node: node, paths: paths(scope, node.public_id))
          |> assign(issued: nil, carry: false, form: nil, key: nil, code: nil)
-         |> assign(shown: nil, expiry_timer: nil, made: nil)
+         |> assign(shown: nil, expiry_timer: nil)
          |> assign_may()
          |> assign_activity()
          |> load()
@@ -251,14 +255,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     # once the reader leaves its page.
     issued = if socket.assigns.carry and action == :new_code, do: socket.assigns.issued
 
-    # The key this page just made, kept for its own page alone: that page says its secret
-    # is shown only now; the page opened again, or any other, does not.
-    made =
-      if action == :generated and socket.assigns.made == params["key_id"],
-        do: socket.assigns.made
-
-    socket =
-      assign(socket, issued: issued, carry: false, made: made, form: nil, key: nil, code: nil)
+    socket = assign(socket, issued: issued, carry: false, form: nil, key: nil, code: nil)
 
     {:noreply,
      socket
@@ -672,7 +669,6 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       {:ok, key} ->
         {:reply, %{key_id: key.key_id},
          socket
-         |> assign(:made, key.key_id)
          |> load()
          |> push_patch(to: key_path(socket.assigns.paths, key, "generated"))}
 
@@ -1235,9 +1231,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </.page_form_foot>
           </.form>
 
-          <%!-- The secret is shown once: on the page that made the key alone. Opened again,
-               the page says the secret is not shown, and offers nothing to copy. --%>
-          <div :if={@live_action == :generated and @made == @key.key_id} id="key-generated-once">
+          <%!-- What says the secret is shown once (this notice, the secret's Copy, the note
+               beside Done) comes hidden, `data-secret-shown`: the hook shows it while the
+               slot shows the secret it wrote, and the slot's gone line while it holds
+               nothing for this key. The server's render is the same whether the page made
+               the key, was opened again, or joined again after a dropped connection. --%>
+          <div
+            :if={@live_action == :generated}
+            id="key-generated-once"
+            data-secret-shown
+            class="hidden"
+          >
             <.notice kind={:warning}>
               <strong>{gettext("The secret is shown once.")}</strong>
               {gettext(
@@ -1285,7 +1289,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                       <p
                         id={"key-generated-secret-#{@key.key_id}-gone"}
                         data-secret-gone
-                        class={["text-muted", @made == @key.key_id && "hidden"]}
+                        class="hidden text-muted"
                       >
                         {gettext(
                           "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke %{label} and generate another key.",
@@ -1293,14 +1297,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                         )}
                       </p>
                     </div>
-                    <.copy_button
-                      :if={@made == @key.key_id}
-                      id="key-generated-secret-copy"
-                      target={"#key-generated-secret-#{@key.key_id}-value"}
-                      label={gettext("Copy %{name}", name: "QORY_ACCESS_KEY_SECRET")}
-                      placement="left"
-                      icon_only
-                    />
+                    <span
+                      id="key-generated-secret-copy-shown"
+                      data-secret-shown
+                      class="hidden flex-none"
+                    >
+                      <.copy_button
+                        id="key-generated-secret-copy"
+                        target={"#key-generated-secret-#{@key.key_id}-value"}
+                        label={gettext("Copy %{name}", name: "QORY_ACCESS_KEY_SECRET")}
+                        placement="left"
+                        icon_only
+                      />
+                    </span>
                   </dd>
                 </div>
               </dl>
@@ -1349,8 +1358,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             <.button id="key-generated-done-button" variant="primary" patch={@paths.access_key}>
               {gettext("Done")}
             </.button>
-            <:note :if={@made == @key.key_id}>
-              {gettext("Once you leave this page, the secret is not shown again.")}
+            <:note>
+              <span id="key-generated-done-note" data-secret-shown class="hidden">
+                {gettext("Once you leave this page, the secret is not shown again.")}
+              </span>
             </:note>
           </SettingsComponents.save>
         </div>

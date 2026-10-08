@@ -1265,16 +1265,53 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     defp generated_path(scope, node, key_id),
       do: tab_path(scope, node, "/keys/#{key_id}/generated")
 
-    # A key's page opened again, not the one that made it: no "shown once" notice, no Copy
-    # for the secret, no note beside Done; the "Not shown" line where the secret was.
-    defp assert_reopened(lv, key) do
-      refute has_element?(lv, "#key-generated-once")
-      refute has_element?(lv, "#key-generated-secret-copy")
-      refute render(lv) =~ "Once you leave this page, the secret is not shown again."
-      refute has_element?(lv, "#key-generated-secret-#{key.key_id}-gone.hidden")
+    # A key's page as the server renders it, the same whether the page made the key, was
+    # opened again or joined again: what says the secret is shown once (the notice, the
+    # secret's Copy, the note beside Done) hidden, for the hook to show while the slot
+    # shows the secret; the "Not shown" line hidden inside the slot, for the hook to show
+    # while it holds nothing for the key; the slot empty. Nothing of it shows without the
+    # hook, and the server never says the secret is gone beside it.
+    defp assert_server_render(lv, key) do
+      slot = "#key-generated-secret-#{key.key_id}"
 
-      assert words(lv, "#key-generated-steps-1") =~
+      assert has_element?(lv, "#key-generated-once[data-secret-shown].hidden")
+
+      assert has_element?(
+               lv,
+               "#key-generated-secret-copy-shown[data-secret-shown].hidden #key-generated-secret-copy[data-copy-target=\"#{slot}-value\"]"
+             )
+
+      assert has_element?(
+               lv,
+               "#key-generated-done #key-generated-done-note[data-secret-shown].hidden",
+               "Once you leave this page, the secret is not shown again."
+             )
+
+      shown =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[data-secret-shown]")
+        |> LazyHTML.attribute("id")
+
+      assert shown ==
+               [
+                 "key-generated-once",
+                 "key-generated-secret-copy-shown",
+                 "key-generated-done-note"
+               ]
+
+      assert has_element?(lv, ~s{#{slot}[data-secret-slot][phx-update="ignore"]})
+      assert has_element?(lv, "#{slot} #{slot}-gone[data-secret-gone].hidden.text-muted")
+      assert lv |> element("#{slot}-value") |> render() =~ ~r{>\s*</code>}
+
+      assert words(lv, "#{slot}-gone") ==
                "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke #{key.label} and generate another key."
+    end
+
+    # A key's page opened again: the server's render, as on the page that made it.
+    defp assert_reopened(lv, key) do
+      assert_server_render(lv, key)
 
       # The rest stays: the key's ID and this server's values.
       assert has_element?(lv, "#key-generated-id-copy")
@@ -1497,11 +1534,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                )
       end
 
-      assert has_element?(
-               lv,
-               "#key-generated-done",
-               "Once you leave this page, the secret is not shown again."
-             )
+      # The page that made the key renders as one opened again: the hook, which holds the
+      # secret, shows what says it is shown once.
+      assert_server_render(lv, added)
 
       # Nothing secret anywhere, and no form at all.
       refute html =~ ~r/qak_/i
@@ -1587,9 +1622,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              |> text()
              |> String.trim() =~ "revoke ci and generate another key."
 
-      # A's page is opened again, not made here: nothing to copy, the gone line shown.
-      refute has_element?(lv, "#key-generated-secret-copy")
-      refute has_element?(lv, "#key-generated-secret-#{a.key_id}-gone.hidden")
+      # A's page renders as any: what says the secret is shown once hidden, and the gone
+      # line hidden in A's slot, for the hook to choose between.
+      assert_server_render(lv, a)
     end
 
     test "a crafted event is refused before anything is stored", %{conn: conn, scope: scope} do

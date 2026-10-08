@@ -155,10 +155,20 @@ function equalBytes(a, b) {
 //   it); empty it, drop anything held, and say the secret is gone.
 // - "gone": the slot is empty and nothing held is for it; drop anything held, and say the
 //   secret is gone.
-// - "keep": the slot shows this key's secret; leave it.
+// - "keep": the slot shows this key's secret, as after a patch or a reconnect; leave it.
 export function slotStep({held, filled, slotKey, shown}) {
   if (held && typeof slotKey === "string" && held.publicKey === slotKey) return "fill"
   if (shown && filled !== slotKey) return "wipe"
   if (!shown) return "gone"
   return "keep"
+}
+
+// What the page says of the secret after `step` (`slotStep`): `secret`, whether the slot
+// shows it, and with it what says it is shown once (the notice, its Copy, the note beside
+// Done, `[data-secret-shown]`); `gone`, whether the slot says it is not shown. Never both:
+// a page joined again after a dropped connection keeps the secret its slot shows ("keep"),
+// and says so, and a page that holds nothing for its key says only that it is gone.
+export function slotShows(step) {
+  const secret = step === "fill" || step === "keep"
+  return {secret, gone: !secret}
 }
