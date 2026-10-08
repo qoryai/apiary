@@ -214,6 +214,74 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
+    test "under its title, what a run is about: its kind and two subjects as text, then how many more",
+         %{conn: conn, scope: scope} do
+      subject = fn type, ref -> %{"type" => type, "ref" => ref} end
+
+      review =
+        started_run(scope, shop(),
+          about: %{
+            "kind" => "Review",
+            "title" => "Review the payment retry change",
+            "subjects" => [
+              Map.put(subject.("pull request", "#418"), "url", "https://git.example.com/pr/418"),
+              Map.put(subject.("ticket", "ENG-21"), "url", "https://tracker.example.com/ENG-21"),
+              subject.("incident", "INC-5")
+            ]
+          }
+        )
+
+      untitled =
+        started_run(scope, shop(),
+          about: %{
+            "kind" => "Implementation",
+            "subjects" => [subject.("pull request", "#412"), subject.("ticket", "ENG-17")]
+          }
+        )
+
+      kind_only =
+        started_run(scope, shop(),
+          about: %{"kind" => "Demo recording", "title" => "Record the onboarding walkthrough"}
+        )
+
+      subject_only =
+        started_run(scope, shop(), about: %{"subjects" => [subject.("ticket", "ENG-9")]})
+
+      title_only = started_run(scope, shop(), about: %{"title" => "Fix the login redirect"})
+      view = open(conn, scope)
+
+      assert text(view, "#{row(review)} .q-rowlink") == "Review the payment retry change"
+      line = "Review · pull request #418 · ticket ENG-21 · +1 more"
+      assert text(view, "#{row(review)} .q-rl-about-wide") == line
+      assert has_element?(view, ~s(#{row(review)} .q-rl-about-wide[title="#{line}"]))
+      # Below 640 px one subject, so the count is not cut off.
+      assert text(view, "#{row(review)} .q-rl-about-phone") ==
+               "Review · pull request #418 · +2 more"
+
+      # Text, never a link: the title's link covers the row.
+      refute has_element?(view, "#{row(review)} .q-rl-about a")
+      refute render(view) =~ "tracker.example.com"
+
+      # No title: the short id, in mono, and the line under it.
+      assert has_element?(
+               view,
+               "#{row(untitled)} .q-rowlink.q-rl-id",
+               String.slice(untitled.run_id, 0, 8)
+             )
+
+      assert text(view, "#{row(untitled)} .q-rl-about-wide") ==
+               "Implementation · pull request #412 · ticket ENG-17"
+
+      assert text(view, "#{row(untitled)} .q-rl-about-phone") ==
+               "Implementation · pull request #412 · +1 more"
+
+      assert text(view, "#{row(kind_only)} .q-rl-about") == "Demo recording"
+      assert text(view, "#{row(subject_only)} .q-rl-about") == "ticket ENG-9"
+      refute has_element?(view, "#{row(subject_only)} .q-rl-about-phone")
+      # Neither a kind nor a subject: no line.
+      refute has_element?(view, "#{row(title_only)} .q-rl-about")
+    end
+
     test "a run without a title is its id, a task an ordinary label; a pinged run is pending", %{
       conn: conn,
       scope: scope

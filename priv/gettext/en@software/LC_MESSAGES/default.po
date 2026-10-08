@@ -1970,6 +1970,13 @@ msgstr ""
 msgid "(was %{mode})"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "+%{number} more"
+msgid_plural "+%{number} more"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "1 place matches."

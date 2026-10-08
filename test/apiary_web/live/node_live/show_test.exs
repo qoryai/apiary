@@ -301,7 +301,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
 
       run =
-        node_run_fixture(node, "i_1", %{about_title: "Fix the build"})
+        node_run_fixture(node, "i_1", %{
+          about_title: "Fix the build",
+          about_kind: "Implementation",
+          about_subjects: [%{"type" => "ticket", "ref" => "ENG-17"}]
+        })
 
       {:ok, lv, _html} = live(conn, node_path(scope, node))
 
@@ -321,6 +325,12 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       render_async(lv)
       assert has_element?(lv, "#node-runs-table #run-#{run.run_id} .q-rowlink", "Fix the build")
+
+      assert has_element?(
+               lv,
+               "#node-runs-table #run-#{run.run_id} .q-rl-about",
+               "Implementation · ticket ENG-17"
+             )
 
       assert has_element?(lv, ~s{#node-runs-all[href*="node=#{node.public_id}"]})
 

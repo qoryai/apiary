@@ -724,7 +724,7 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
   end
 
-  describe "a run's title" do
+  describe "a run's title and what it is about" do
     @run_id "7f3e9b20-5b1d-4c7e-9a10-2f6d0c4b7e11"
 
     test "the title is the one the run gave, else Run and its short id" do
@@ -741,6 +741,31 @@ defmodule ApiaryWeb.RunComponentsTest do
         assert RunComponents.run_title(untitled) == "Run 7f3e9b20"
         assert RunComponents.given_title(untitled) == nil
       end
+    end
+
+    test "the about line: the kind, two subjects as text, then how many more" do
+      subjects =
+        for {type, ref} <- [{"pull request", "#418"}, {"ticket", "ENG-21"}, {"incident", "INC-5"}],
+            do: %{"type" => type, "ref" => ref, "url" => "https://example.com/#{ref}"}
+
+      run = %{about_kind: "Review", about_subjects: subjects}
+
+      assert RunComponents.about_line(run) ==
+               "Review · pull request #418 · ticket ENG-21 · +1 more"
+
+      assert RunComponents.about_line(run, 1) == "Review · pull request #418 · +2 more"
+
+      assert RunComponents.about_line(%{run | about_subjects: Enum.take(subjects, 2)}) ==
+               "Review · pull request #418 · ticket ENG-21"
+
+      assert RunComponents.about_line(%{about_kind: "Demo recording", about_subjects: []}) ==
+               "Demo recording"
+
+      assert RunComponents.about_line(%{about_kind: nil, about_subjects: [hd(subjects)]}) ==
+               "pull request #418"
+
+      assert RunComponents.about_line(%{about_kind: nil, about_subjects: []}) == nil
+      assert RunComponents.about_line(%{about_kind: "", about_subjects: []}) == nil
     end
 
     test "the pill hides at zero and counts in words" do

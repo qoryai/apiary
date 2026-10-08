@@ -3928,6 +3928,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  /* What the run is about, one muted line under the title, cut to an ellipsis. Below
+     640 px it names one subject fewer (`.q-rl-about-phone`), so its count stays in sight. */
+  .q-rl-about {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    margin-top: 1px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-about.q-rl-about-phone {
+    display: none;
+  }
   .q-rl-faint {
     color: var(--q-faint);
   }
@@ -5262,6 +5278,12 @@
     }
     .q-rl-tt .q-rl-title {
       max-width: 100%;
+    }
+    .q-rl-about.q-rl-about-wide {
+      display: none;
+    }
+    .q-rl-about.q-rl-about-phone {
+      display: block;
     }
     .q-rl tbody tr td.q-rl-st {
       grid-column: 2;

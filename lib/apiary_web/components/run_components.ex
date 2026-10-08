@@ -539,6 +539,33 @@ defmodule ApiaryWeb.RunComponents do
   def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
   def given_title(_run), do: nil
 
+  @doc """
+  What a run is about in one line of a list, as text: its kind, then its first two
+  subjects, each its type and ref as given ("pull request #412"), then how many more there
+  are, joined by " · "; nil when it gave neither a kind nor a subject. `limit` is how many
+  subjects are named.
+  """
+  def about_line(run, limit \\ 2) do
+    case about_parts(run, limit) do
+      [] -> nil
+      parts -> Enum.join(parts, " · ")
+    end
+  end
+
+  defp about_parts(run, limit) do
+    subjects = Map.get(run, :about_subjects) || []
+    more = length(subjects) - limit
+
+    Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""])) ++
+      Enum.map(Enum.take(subjects, limit), &subject_text/1) ++
+      if(more > 0, do: [more_text(more)], else: [])
+  end
+
+  defp subject_text(subject), do: "#{subject["type"]} #{subject["ref"]}"
+
+  defp more_text(n),
+    do: ngettext("+%{number} more", "+%{number} more", n, number: Format.number(n))
+
   ## Alive indicator
 
   @doc """
@@ -1447,10 +1474,11 @@ defmodule ApiaryWeb.RunComponents do
   def exit_note(_run), do: nil
 
   @doc """
-  The runs of a list, one line each: the state as a mark, the run's title (`given_title/1`,
+  The runs of a list, one row each: the state as a mark, the run's title (`given_title/1`,
   else its short id) the only strong text, its target after it until the table is 1000 px
-  wide and then in a column of its own, the runtime and the host faint from 1150 px, when
-  it started, how long it ran from 720 px, and its denials, red when there are any. The
+  wide and then in a column of its own, what the run is about in a muted line under them
+  (`about_line/1`) when it said, the runtime and the host faint from 1150 px, when it
+  started, how long it ran from 720 px, and its denials, red when there are any. The
   columns join by the table's own width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
@@ -1547,6 +1575,26 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  # What the run is about, one muted line under its title: `about_line/1`, text and never a
+  # link, since the title's link covers the row. Below 640 px the line is cut at the
+  # screen's width, so it names one subject fewer and keeps its count in sight.
+  attr :run, :map, required: true
+
+  defp row_about(assigns) do
+    assigns =
+      assign(assigns, line: about_line(assigns.run), phone: about_line(assigns.run, 1))
+
+    ~H"""
+    <span :if={@line && @line == @phone} class="q-rl-about" title={@line}>{@line}</span>
+    <span :if={@line && @line != @phone} class="q-rl-about q-rl-about-wide" title={@line}>
+      {@line}
+    </span>
+    <span :if={@line && @line != @phone} class="q-rl-about q-rl-about-phone" title={@line}>
+      {@phone}
+    </span>
+    """
+  end
+
   attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :target, :boolean, required: true
@@ -1590,6 +1638,7 @@ defmodule ApiaryWeb.RunComponents do
             shared={@shared}
           />
         </span>
+        <.row_about run={@run} />
       </td>
       <td :if={@target} class="q-rl-c3" role="cell">
         <.target_name

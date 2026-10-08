@@ -84,7 +84,8 @@ defmodule ApiaryWeb.Storybook.Sample do
 
   @doc """
   Runs of the workspace, as the runs list holds them (`ApiaryWeb.RunComponents.runs_table/1`):
-  running, succeeded, failed with denials, and pending. Their times are this minute's.
+  running, succeeded, failed with denials, and pending, which says nothing about itself.
+  Their times are this minute's.
   """
   @spec runs() :: [map()]
   def runs do
@@ -92,10 +93,18 @@ defmodule ApiaryWeb.Storybook.Sample do
 
     [
       run(1, "running", "Add stock levels to the order page", now, -240,
+        about_kind: "Implementation",
+        about_subjects: [
+          %{"type" => "ticket", "ref" => "ENG-17"},
+          %{"type" => "pull request", "ref" => "#412"},
+          %{"type" => "incident", "ref" => "INC-5"}
+        ],
         elapsed_seconds: 236,
         last_heartbeat_at: DateTime.add(now, -4)
       ),
       run(2, "succeeded", "Fix the rounding of order totals", now, -3_600,
+        about_kind: "Review",
+        about_subjects: [%{"type" => "pull request", "ref" => "#418"}],
         duration_ms: 1_122_000
       ),
       run(3, "failed", "Upgrade the payment client", now, -9_000,
@@ -115,6 +124,8 @@ defmodule ApiaryWeb.Storybook.Sample do
         run_id: "8f3c2a#{n}e0-5b1d-4c7e-9a10-2f6d0c4b7e1#{n}",
         state: state,
         about_title: title,
+        about_kind: nil,
+        about_subjects: [],
         target_system: "git.example.com",
         target_path: if(rem(n, 2) == 0, do: "acme/shared-ui", else: "acme/shop"),
         runtime: "claude",
