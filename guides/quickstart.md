@@ -183,7 +183,7 @@ Apiary keeps only its public half.
    is not, revoke the key on the **Access key** tab. Select **Done**.
 
 The command is the approval: the key is active as soon as it arrives, and the machine can
-start runs at once. On the **Access key** tab, the key's card says where its secret is.
+use it at once. On the **Access key** tab, the key's card says where its secret is.
 
 The runner file belongs to the machine and to no repository.
 [The runner file's `server` section](runner-file.md) has the rest of it.

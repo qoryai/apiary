@@ -139,7 +139,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect build-01?")
 
       assert words(lv, "#node-connect-intro") ==
-               "build-01 needs a key before it can start runs. Choose one of two ways to give it one."
+               "build-01 connects to Qory with a key. Choose one of two ways to give it one."
 
       refute has_element?(lv, "#node-keys")
       refute has_element?(lv, "#node-codes")
@@ -1189,7 +1189,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect spot-runners?")
 
       assert words(lv, "#node-connect-intro") ==
-               "spot-runners needs a key before it can start runs; its instances share one. Choose one of two ways to give it one."
+               "spot-runners connects to Qory with a key; its instances share one. Choose one of two ways to give it one."
 
       assert ways(lv, "#node-ways") ==
                {~w(key-generate-button code-new-button), ["key-generate-button"]}
@@ -1981,7 +1981,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "Connect build-01")
 
       assert words(lv, "#node-keys-members") ==
-               "build-01 has no key yet, so it can't start runs. An owner or admin connects it."
+               "build-01 has no key yet, so it isn't connected to Qory. An owner or admin connects it."
 
       refute has_element?(lv, "#node-ways")
       refute has_element?(lv, "#code-#{row.id}")

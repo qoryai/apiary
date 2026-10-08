@@ -40,9 +40,9 @@ A key is never rotated: a new one is made, and the old one revoked.
 
 There are two ways to connect a node's machine, both on the node's **Access key** tab, for
 owners and admins. While the node holds no active key, the tab asks "How do you want to
-connect build-01?": "build-01 needs a key before it can start runs. Choose one of two ways
-to give it one." The two ways are two options side by side, each saying when to choose
-it, what happens, and the same four facts, with one button:
+connect build-01?": "build-01 connects to Qory with a key. Choose one of two ways to give
+it one." The two ways are two options side by side, each saying when to choose it, what
+happens, and the same four facts, with one button:
 
 - **Connect with a command**: "Choose it when you can open a terminal on build-01: a
   laptop, or a server of your own." You get one command to run on build-01. It carries a
