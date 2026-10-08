@@ -25,6 +25,13 @@ defmodule Apiary.Runs.Run do
     field :target_path, :string
     field :task, :string
     field :labels, :map, default: %{}
+    # What the run said it is about: `about` of `run.started`, each member as the fold
+    # kept it (`Apiary.Runs.Fold`), nil or empty when it said none. A subject is a map
+    # with "type" and "ref", and "url" and "title" only when it carried them.
+    field :about_kind, :string
+    field :about_title, :string
+    field :about_subjects, {:array, :map}, default: []
+    field :about_details, :map
     field :runtime, :string
     field :runtime_version, :string
     field :runner_version, :string

@@ -665,6 +665,64 @@ defmodule Apiary.Runs.ProjectorTest do
       assert Runs.get_run!(scope, run.id).host == "dev-laptop"
     end
 
+    test "what the run is about is stored and survives a rebuild", %{run: run} do
+      about = %{
+        "kind" => "implementation",
+        "title" => "Fix the login redirect",
+        "subjects" => [
+          %{"type" => "ticket", "ref" => "ENG-17", "url" => "https://tracker.example.com/ENG-17"},
+          %{"type" => "pull request", "ref" => "#412", "url" => "javascript:alert(1)"}
+        ],
+        "details" => %{"ticket" => %{"priority" => "high"}, "attempts" => [1, 2]}
+      }
+
+      event_fixture(run, 2, "run.started", started_data(%{"about" => about}))
+      {:ok, _} = Projector.project(run)
+
+      stored = Repo.get!(Run, run.id)
+      assert stored.about_kind == "implementation"
+      assert stored.about_title == "Fix the login redirect"
+
+      assert stored.about_subjects == [
+               %{
+                 "type" => "ticket",
+                 "ref" => "ENG-17",
+                 "url" => "https://tracker.example.com/ENG-17"
+               },
+               %{"type" => "pull request", "ref" => "#412"}
+             ]
+
+      assert stored.about_details == about["details"]
+
+      incremental = projection(run)
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [about_kind: "other", about_title: nil, about_subjects: [], about_details: nil]
+      )
+
+      assert {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == incremental
+    end
+
+    test "a rebuild clears what no event says the run is about", %{run: run} do
+      event_fixture(run, 2, "run.started", started_data())
+      {:ok, _} = Projector.project(run)
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [
+          about_kind: "implementation",
+          about_title: "Fix the login redirect",
+          about_subjects: [%{"type" => "ticket", "ref" => "ENG-17"}],
+          about_details: %{"attempt" => 1}
+        ]
+      )
+
+      assert {:ok, rebuilt} = Projector.rebuild(run)
+
+      assert {rebuilt.about_kind, rebuilt.about_title, rebuilt.about_subjects,
+              rebuilt.about_details} == {nil, nil, [], nil}
+    end
+
     # Only a run without an end is closed (`Runs.close_run/2`): the record here stops
     # before its exit.
     test "keeps a close, which no event records", %{scope: scope, run: run} do

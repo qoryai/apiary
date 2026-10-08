@@ -30,6 +30,15 @@ defmodule Apiary.Runs.Fold do
   allowed (`Apiary.Runs.tool_invocation?/2`); one a path rule refused keeps its tool, and
   never reached it.
 
+  What a run is about is `about` of its `run.started`, read member by member. `kind` (1 to
+  64 bytes), `title` (1 to 256) and `details` (an object of at most 8192 bytes encoded,
+  nested at most 4 levels deep) are each kept whole or dropped whole. A subject is kept
+  when its `type` matches `^[a-z0-9]+([ _.-][a-z0-9]+)*$` in at most 64 bytes and its
+  `ref` is 1 to 256 bytes; its `title` (1 to 256 bytes) and `url` (at most 2048 bytes,
+  absolute `http` or `https` with a host) are dropped from it alone when they break their
+  bounds. Of the subjects kept, the first of each type and ref stays, at most 16 in the
+  order given. An `about` that is not an object says nothing.
+
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
   with the highest sequence, because the lost-run check compares it with the server's
@@ -77,6 +86,16 @@ defmodule Apiary.Runs.Fold do
   @max_labels 64
   @max_cells 65_535
   @statuses 100..599
+
+  @about_kind 64
+  @about_title 256
+  @max_subjects 16
+  @subject_type ~r/\A[a-z0-9]+([ _.-][a-z0-9]+)*\z/
+  @subject_type_bytes 64
+  @subject_text 256
+  @subject_url 2048
+  @details_bytes 8192
+  @details_depth 4
 
   @terminal ~w(succeeded failed timed_out)
   @streams ~w(terminal stdout stderr)
@@ -145,6 +164,7 @@ defmodule Apiary.Runs.Fold do
         target_path: target && target.path,
         started_at: event.time
       })
+      |> Map.merge(about(data))
       |> started_state()
     end)
   end
@@ -418,6 +438,92 @@ defmodule Apiary.Runs.Fold do
         []
     end
   end
+
+  # The four fields of what the run is about, from `about` (see the moduledoc). Every one
+  # is set, so a later `run.started` replaces all of them.
+  defp about(data) do
+    about =
+      case data do
+        %{"about" => %{} = about} -> about
+        _ -> %{}
+      end
+
+    %{
+      about_kind: bounded(about, "kind", @about_kind),
+      about_title: bounded(about, "title", @about_title),
+      about_subjects: subjects(about),
+      about_details: details(about)
+    }
+  end
+
+  # A string of 1 to `max` bytes, whole, or nil: never cut.
+  defp bounded(data, key, max) do
+    case data do
+      %{^key => value} when is_binary(value) and byte_size(value) in 1..max//1 -> value
+      _ -> nil
+    end
+  end
+
+  # Dropped one by one, then the first of each type and ref, then cut.
+  defp subjects(%{"subjects" => subjects}) when is_list(subjects) do
+    subjects
+    |> Stream.map(&subject/1)
+    |> Stream.reject(&is_nil/1)
+    |> Stream.uniq_by(&{&1["type"], &1["ref"]})
+    |> Enum.take(@max_subjects)
+  end
+
+  defp subjects(_about), do: []
+
+  # A type and a ref, or no subject; a title or a url only when it keeps its bound.
+  defp subject(%{} = subject) do
+    with type when is_binary(type) <- bounded(subject, "type", @subject_type_bytes),
+         true <- Regex.match?(@subject_type, type),
+         ref when is_binary(ref) <- bounded(subject, "ref", @subject_text) do
+      [{"url", url(subject)}, {"title", bounded(subject, "title", @subject_text)}]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+      |> Map.merge(%{"type" => type, "ref" => ref})
+    else
+      _ -> nil
+    end
+  end
+
+  defp subject(_subject), do: nil
+
+  # An absolute http or https url with a host, as given, or nil.
+  defp url(subject) do
+    with url when is_binary(url) <- bounded(subject, "url", @subject_url),
+         {:ok, %URI{scheme: scheme, host: host}}
+         when scheme in ["http", "https"] and is_binary(host) and host != "" <- URI.new(url) do
+      url
+    else
+      _ -> nil
+    end
+  end
+
+  # An object within its bounds, whole, or nil.
+  defp details(%{"details" => %{} = details}) do
+    with {:ok, json} <- Jason.encode(details),
+         true <- byte_size(json) <= @details_bytes,
+         true <- nested_within?(details, @details_depth) do
+      details
+    else
+      _ -> nil
+    end
+  end
+
+  defp details(_about), do: nil
+
+  # Whether `value` nests no deeper than `levels`. An object or an array is a level, the
+  # outermost the first, as `Apiary.Runs.Batch` counts the depth of `data`.
+  defp nested_within?(%{} = map, levels),
+    do: levels > 0 and Enum.all?(Map.values(map), &nested_within?(&1, levels - 1))
+
+  defp nested_within?(list, levels) when is_list(list),
+    do: levels > 0 and Enum.all?(list, &nested_within?(&1, levels - 1))
+
+  defp nested_within?(_value, _levels), do: true
 
   # The target the labels as sent name, whole, by the workspace's domain
   # (`Apiary.Lingo.Domain`), or nil. Labels that name no target stay in `labels` (cut like
