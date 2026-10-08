@@ -559,6 +559,16 @@ msgstr ""
 msgid "%{name} already has that value."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} connects to Qory with a key. Choose one of two ways to give it one."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} connects to Qory with a key; its instances share one. Choose one of two ways to give it one."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} fails its integrity check: its record is not as it was saved."
@@ -566,7 +576,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} has no key yet, so it can't start runs. An owner or admin connects it."
+msgid "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -685,16 +695,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} needs a key before it can start runs. Choose one of two ways to give it one."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} needs a key before it can start runs; its instances share one. Choose one of two ways to give it one."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
