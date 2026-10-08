@@ -17,9 +17,9 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "every refused fixture is refused, the one without a publisher among them" do
+    test "every refused fixture is refused" do
       files = Path.wildcard(Path.join(@fixtures, "invalid/*.json"))
-      assert Enum.any?(files, &(Path.basename(&1) == "description-no-publisher.json"))
+      assert files != []
 
       for file <- files do
         assert {:error, {:description_invalid, _}} = file |> File.read!() |> Description.parse(),
@@ -27,59 +27,97 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "github.json: a connection holds what its credential role lists, never api_url" do
+    test "github.json: a connection holds its plain settings, every top-level one" do
       assert {:ok, github} =
                @fixtures |> Path.join("github.json") |> File.read!() |> Description.parse()
 
-      assert github.ways == ["credential"]
       assert github.settings == ["api_url", "app_id", "installation_id", "permissions"]
 
       assert Description.check_settings(github, %{
                "app_id" => 123_456,
                "installation_id" => 7,
-               "permissions" => %{"contents" => "read"}
+               "permissions" => %{"contents" => "read"},
+               "api_url" => "https://api.github.com"
              }) == :ok
 
-      assert Description.check_settings(github, %{"api_url" => "https://api.github.com"}) ==
-               {:error, {:integration_settings_not_allowed, ["api_url"]}}
+      assert Description.check_settings(github, %{"private_key_file" => "/etc/key.pem"}) ==
+               {:error, {:integration_settings_not_allowed, ["private_key_file"]}}
+    end
+
+    test "unknown-role.json: a role Qory Apiary does not know is read as it is" do
+      assert {:ok, description} =
+               @fixtures |> Path.join("unknown-role.json") |> File.read!() |> Description.parse()
+
+      assert description.roles == ["acme_role", "credential"]
     end
   end
 
   describe "a description" do
-    test "is read: its name, publisher, roles, ways, secrets and plain settings" do
+    test "is read: its name, roles, secrets and plain settings" do
       assert {:ok, description} = parse(github_description())
       assert description.name == "github"
       assert description.program_version == "0.1.0"
-      assert description.publisher == %{"name" => "Qory", "url" => "https://qory.dev"}
       assert description.roles == ["credential"]
-      assert description.ways == ["credential"]
-
-      assert description.secrets == [
-               %{name: "private_key", title: "Private key", secret_name: "GITHUB_APP_PRIVATE_KEY"}
-             ]
-
+      assert description.secrets == [%{name: "private_key", title: "Private key"}]
       assert description.settings == ["api_url", "app_id"]
-
-      assert {:ok, tracker} = parse(tracker_description())
-      assert tracker.roles == ["credential", "tool", "work_source"]
-      assert tracker.ways == ["credential", "tool"]
+      refute Map.has_key?(description, :publisher)
     end
 
-    test "is refused without a publisher, or with one the contract refuses" do
-      assert {:error, {:description_invalid, _}} =
-               github_description() |> Map.delete("publisher") |> encode() |> Description.parse()
+    test "is read when it holds only what the contract's shape holds" do
+      minimal = %{
+        "version" => 1,
+        "name" => "acme-chat",
+        "title" => "Acme chat",
+        "program_version" => "0.1.0",
+        "settings" => %{"type" => "object"},
+        "roles" => %{"credential" => %{"argument" => "[a-z]+", "hosts" => ["chat.example.com"]}}
+      }
 
-      assert {:error, {:description_invalid, _}} =
-               parse(github_description(%{"publisher" => %{"name" => " "}}))
+      assert {:ok, %Description{roles: ["credential"], settings: [], secrets: []}} =
+               parse(minimal)
 
-      assert {:ok, %Description{publisher: %{"name" => "Acme"}}} = parse(tracker_description())
+      assert {:ok, %Description{domains: ["software"]}} =
+               parse(Map.put(minimal, "domains", ["software"]))
+    end
 
-      assert {:error, {:description_invalid, _}} =
-               parse(
-                 github_description(%{
-                   "publisher" => %{"name" => "Qory", "url" => "http://qory.dev"}
-                 })
-               )
+    test "is read with a role Qory Apiary does not know, which it leaves as it is" do
+      assert {:ok, tracker} = parse(tracker_description())
+      assert tracker.roles == ["acme_role", "credential"]
+
+      assert tracker.document["roles"]["acme_role"] == %{"events" => ["issue.opened"]}
+    end
+
+    test "takes its plain settings from the top level: neither a secret nor a secret's _file" do
+      assert {:ok, tracker} = parse(tracker_description())
+      assert tracker.settings == ["url"]
+      assert tracker.secrets == [%{name: "api_key", title: "API key"}]
+    end
+
+    test "is refused with a publisher, or any other member the contract does not have" do
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse(github_description(%{"publisher" => %{"name" => "Qory"}}))
+
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse(github_description(%{"ways" => ["credential"]}))
+    end
+
+    test "is refused when its credential role lists settings or requires any" do
+      for {key, value} <- [{"settings", ["app_id"]}, {"required", ["app_id"]}] do
+        assert {:error, {:description_invalid, [{:schema, _}]}} =
+                 parse(put_in(github_description(), ["roles", "credential", key], value))
+      end
+    end
+
+    test "is refused when its credential role has no argument, or no hosts" do
+      for key <- ["argument", "hosts"] do
+        description =
+          update_in(github_description(), ["roles", "credential"], &Map.delete(&1, key))
+
+        assert {:error, {:description_invalid, [{:schema, _}]}} = parse(description)
+      end
+
+      assert {:error, {:description_invalid, [{:schema, _}]}} =
+               parse(put_in(github_description(), ["roles", "credential", "hosts"], []))
     end
 
     test "is refused when it is no JSON object, or the schema refuses it" do
@@ -92,7 +130,7 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert {:error, {:description_invalid, _}} = parse(github_description(%{"version" => 2}))
     end
 
-    test "is refused for a secret without its _file, its title or a role listing it" do
+    test "is refused for a secret without its _file, or nested in another setting" do
       description = github_description()
 
       without_file =
@@ -101,65 +139,31 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert {:error, {:description_invalid, [{:secret_without_file, "private_key"}]}} =
                parse(without_file)
 
-      unlisted =
-        put_in(description, ["roles", "credential", "settings"], ["app_id"])
-        |> put_in(["roles", "credential", "required"], ["app_id"])
+      nested =
+        put_in(description, ["settings", "properties", "app"], %{
+          "type" => "object",
+          "properties" => %{"key" => %{"type" => "string", "writeOnly" => true}}
+        })
 
-      assert {:error, {:description_invalid, [{:secret_not_listed, "private_key"}]}} =
-               parse(unlisted)
+      assert {:error, {:description_invalid, [{:secret_nested, "app"}]}} = parse(nested)
+    end
 
+    test "names a secret by its title, or by its name when it has none" do
       untitled =
-        put_in(description, ["settings", "properties", "private_key", "title"], "  ")
+        update_in(
+          github_description(),
+          ["settings", "properties", "private_key"],
+          &Map.delete(&1, "title")
+        )
 
-      assert {:error, {:description_invalid, [{:secret_without_title, "private_key"}]}} =
+      assert {:ok, %Description{secrets: [%{name: "private_key", title: "private_key"}]}} =
                parse(untitled)
     end
 
-    test "is refused for a role that lists a secret's _file or a setting it does not have" do
-      lists_file =
-        put_in(github_description(), ["roles", "credential", "settings"], [
-          "app_id",
-          "private_key",
-          "private_key_file"
-        ])
+    test "is refused when its credential argument does not compile" do
+      bad = put_in(github_description(), ["roles", "credential", "argument"], "(")
 
-      assert {:error,
-              {:description_invalid, [{:role_lists_file, "credential", "private_key_file"}]}} =
-               parse(lists_file)
-
-      unknown =
-        put_in(github_description(), ["roles", "credential", "required"], ["app_id", "region"])
-
-      assert {:error, {:description_invalid, [{:role_requires_unlisted, "credential", "region"}]}} =
-               parse(unknown)
-    end
-
-    test "is refused when a tool serves a credential host, or its MCP URL is not served" do
-      overlap = put_in(tracker_description(), ["roles", "tool", "serves"], ["*.example.com"])
-      assert {:error, {:description_invalid, problems}} = parse(overlap)
-      assert {:hosts_overlap, "tracker.example.com", "*.example.com"} in problems
-
-      unserved =
-        put_in(tracker_description(), ["roles", "tool", "mcp"], "https://other.example.com/mcp")
-
-      assert {:error, {:description_invalid, [{:mcp_not_served, "other.example.com"}]}} =
-               parse(unserved)
-
-      with_port =
-        put_in(
-          tracker_description(),
-          ["roles", "tool", "mcp"],
-          "https://mcp.example.com:8443/mcp"
-        )
-
-      assert {:error, {:description_invalid, [{:mcp_invalid, _}]}} = parse(with_port)
-    end
-
-    test "is refused for a tool placeholder a placeholder may not take: placeholder_conflict" do
-      for name <- ["QORY_RUN_ID", "ANTHROPIC_API_KEY"] do
-        conflicting = put_in(tracker_description(), ["roles", "tool", "placeholders"], [name])
-        assert {:error, {:placeholder_conflict, [^name]}} = parse(conflicting)
-      end
+      assert {:error, {:description_invalid, [{:argument_invalid, "credential"}]}} = parse(bad)
     end
   end
 
@@ -180,10 +184,10 @@ defmodule Apiary.Integrations.DescriptionTest do
                Description.check_settings(description, %{"app_id" => "1\n"})
     end
 
-    test "never hold a secret, a secret's _file, or a name no role lists, declared or not",
+    test "never hold a secret, a secret's _file, or a name the description does not have",
          %{description: description} do
-      assert {:error, {:integration_settings_not_allowed, ["api_url"]}} =
-               Description.check_settings(description, %{"api_url" => "https://api.github.com"})
+      assert Description.check_settings(description, %{"api_url" => "https://api.github.com"}) ==
+               :ok
 
       assert {:error, {:integration_settings_not_allowed, ["private_key_file"]}} =
                Description.check_settings(description, %{"private_key_file" => "/etc/key.pem"})
@@ -195,6 +199,23 @@ defmodule Apiary.Integrations.DescriptionTest do
                Description.check_settings(description, %{"region" => "eu"})
     end
 
+    test "are each checked against its own property, never a rule across settings" do
+      across =
+        github_description()
+        |> put_in(["settings", "required"], ["app_id"])
+        |> put_in(["settings", "oneOf"], [
+          %{"required" => ["private_key"]},
+          %{"required" => ["private_key_file"]}
+        ])
+
+      assert {:ok, description} = parse(across)
+      assert Description.check_settings(description, %{"app_id" => "123456"}) == :ok
+      assert Description.check_settings(description, %{}) == :ok
+
+      assert {:error, {:integration_settings_invalid, _}} =
+               Description.check_settings(description, %{"app_id" => "not an id"})
+    end
+
     test "are at most 64 KiB as canonical JSON", %{description: description} do
       assert {:error, {:integration_settings_too_large, 65_536}} =
                Description.check_settings(description, %{
@@ -202,7 +223,7 @@ defmodule Apiary.Integrations.DescriptionTest do
                })
     end
 
-    test "an argument matches every role's pattern whole", %{description: description} do
+    test "an argument matches the credential role's pattern whole", %{description: description} do
       assert Description.check_argument(description, nil) == :ok
       assert Description.check_argument(description, "acme/shop") == :ok
 

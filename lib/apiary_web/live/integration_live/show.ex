@@ -3,13 +3,12 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   One agent (a runtime), API (a service) or program (an integration added from a release)
   of the workspace, under Workspace settings › Integrations
   (`/:org/:workspace/settings/integrations/:id`, `:id` its public id, `con_…`), with the
-  `security` feature. Under its title, its kind and one line of what a run gets from it
-  (`ApiaryWeb.IntegrationLive.Common.role_line/1`). Three tabs, each an address:
+  `security` feature. Under its title, its kind. Three tabs, each an address:
 
-    * **Overview** (`:overview`): what it is, its id, its source, version and publisher
-      (a program's), the API it is set up from, built in or a custom API (an API's), or
-      its catalogue entry (an agent's), where it applies, who added and changed it, the
-      way it is used, the secrets it declares and a program's plain settings;
+    * **Overview** (`:overview`): what it is, its id, its source, version and roles (a
+      program's), the API it is set up from, built in or a custom API (an API's), or its
+      catalogue entry (an agent's), where it applies, who added and changed it, the
+      secrets it declares and a program's plain settings;
     * **Targets** (`…/targets`): where it applies, every target or the chosen ones, with
       Add target (`…/targets/add`, a page) and the removal of one, confirmed on its row
       (`…/targets/:target_id/remove`);
@@ -19,7 +18,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       danger zone, its removal confirmed in place (`…/delete`).
 
   It reads and writes through `Apiary.Connections` (`get_connection/2`,
-  `update_connection/3`, `put_target/4`, `remove_target/3`, `delete_connection/2`,
+  `update_connection/3`, `put_target/3`, `remove_target/3`, `delete_connection/2`,
   `definition/1`, `description/1`) and asks
   `Apiary.Integrations.request_release/2` for another version. The page says once that a
   run receives only its security policy.
@@ -222,7 +221,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <span :if={@connection.source} class="q-mono">{@connection.source}</span>
           <span :if={@connection.version} class="text-faint" aria-hidden="true">·</span>
           <span :if={@connection.version} class="q-mono">{@connection.version}</span>
-          <span id="connection-role" class="block">{Common.role_line(@connection.kind)}</span>
         </:subtitle>
 
         <.page_tabs id="connection-tabs" label={Common.kind_word(@connection.kind)} current={@tab}>
@@ -304,15 +302,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <dd class="q-mono">{@connection.source}</dd>
           <dt class="text-faint">{gettext("Version")}</dt>
           <dd class="q-mono">{@connection.version}</dd>
-          <dt :if={@description} class="text-faint">{gettext("Publisher")}</dt>
-          <dd :if={@description} id="connection-publisher">
-            {@description.publisher["name"]}
-            <span class="text-muted">
-              {gettext("(as its description says; the source is %{owner})",
-                owner: Common.source_owner(@connection.source)
-              )}
-            </span>
-          </dd>
           <dt class="text-faint">{gettext("Released on")}</dt>
           <dd>{Common.released_on(@connection.forge_kind)}</dd>
           <dt :if={@description} class="text-faint">{gettext("Roles")}</dt>
@@ -376,29 +365,6 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           <span class="text-muted">· <.time_ago at={@connection.updated_at} /></span>
         </dd>
       </dl>
-    </SettingsComponents.part>
-
-    <SettingsComponents.part
-      :if={@connection.kind == "integration"}
-      id="connection-ways"
-      title={gettext("Its ways")}
-    >
-      <p :if={@description && "credential" in @description.ways} class="text-[13px]/5">
-        {gettext("Calls its API.")}
-      </p>
-      <p
-        :if={@description && "tool" in @description.ways}
-        id="connection-tool-way"
-        class="text-[13px]/5 text-muted"
-      >
-        {gettext("Its description also offers it as a tool (MCP), which Qory Apiary does not use.")}
-      </p>
-      <p
-        :if={!@description || "credential" not in @description.ways}
-        class="text-[13px]/5 text-muted"
-      >
-        {gettext("Its description offers no way Qory Apiary uses.")}
-      </p>
     </SettingsComponents.part>
 
     <SettingsComponents.part
@@ -643,7 +609,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
           label={gettext("Argument")}
           optional
           hint={
-            gettext("What it is started with. It must match %{patterns}.",
+            gettext("It must match %{patterns}.",
               patterns: Enum.join(@patterns, ", ")
             )
           }
@@ -893,7 +859,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   defp about(_connection, _description, _definition), do: nil
 
   # The secrets it declares, each `%{id:, title:, variable:}`: a runtime's declarations,
-  # a service definition's, an integration description's secrets.
+  # a service definition's, an integration description's secrets, which name no variable.
   defp secrets(%Connection{kind: "runtime"}, _description, _definition, %{} = runtime),
     do: for(d <- runtime.declares, do: %{id: d["id"], title: d["title"], variable: d["name"]})
 
@@ -908,7 +874,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
     do:
       for(
         s <- description.secrets,
-        do: %{id: s.name, title: s.title, variable: s.secret_name}
+        do: %{id: s.name, title: s.title, variable: nil}
       )
 
   defp secrets(_connection, _description, _definition, _runtime), do: []

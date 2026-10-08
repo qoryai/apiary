@@ -122,9 +122,9 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(lv, "#breadcrumb-section", "Integrations")
     assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add from a release")
     assert page_title(lv) =~ "Add from a release · Workspace settings"
-    assert has_element?(lv, "#release-publisher", "Qory")
-    assert has_element?(lv, "#release-publisher", "github.com/qoryai")
-    assert has_element?(lv, "#release-ways", "Calls its API")
+    refute has_element?(lv, "#release-publisher")
+    refute has_element?(lv, "#release-ways")
+    refute render(lv) =~ "publisher"
     assert has_element?(lv, "#release-description", "private_key")
 
     assert has_element?(
@@ -135,7 +135,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
 
     assert has_element?(lv, "#release-setting-app_id")
     refute has_element?(lv, "#release-setting-private_key")
-    assert has_element?(lv, "#add-release-form fieldset legend", "For runs in")
+    assert has_element?(lv, "#add-release-form fieldset legend", "Applies to")
     assert has_element?(lv, "#add-release-form", "Qory Apiary links no stored secret to it.")
 
     {:error, {:live_redirect, %{to: to}}} =
@@ -159,7 +159,6 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
         "type" => "boolean",
         "description" => "Logs every request it makes."
       })
-      |> update_in(["roles", "credential", "settings"], &(&1 ++ ["verbose"]))
 
     release = ready_release!(scope, description)
     {:ok, lv, _html} = live(conn, ipath(scope, release))
@@ -172,25 +171,19 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request it makes.")
   end
 
-  test "a release that is only a tool says Qory Apiary uses no way of it",
+  test "a release whose only role Qory Apiary does not know shows that role as given",
        %{conn: conn, scope: scope} do
-    # The tracker's description without its credential role, and the settings only that
-    # role named.
     description =
       tracker_description(%{
-        "settings" => %{
-          "type" => "object",
-          "properties" => %{"url" => %{"title" => "Tracker", "type" => "string"}}
-        },
         "roles" => Map.delete(tracker_description()["roles"], "credential")
       })
 
     release = ready_release!(scope, description, "github.com/acme/tracker")
     {:ok, lv, _html} = live(conn, ipath(scope, release))
 
-    assert has_element?(lv, "#release-ways", "Also a tool (MCP), which Qory Apiary does not use")
-    assert has_element?(lv, "#release-ways", "No way Qory Apiary uses")
-    refute has_element?(lv, "#release-ways", "Calls its API")
+    assert has_element?(lv, "#release-roles", "acme_role")
+    assert has_element?(lv, "#release-setting-url")
+    refute has_element?(lv, "#integration_argument")
   end
 
   test "settings its description refuses are said, and nothing is added",

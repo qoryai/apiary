@@ -2,7 +2,7 @@ defmodule Apiary.Connections.Connection do
   @moduledoc """
   A runtime, an integration or a service set up in a workspace: what the contract calls a
   connection, and the pages call an integration. It has a public id (`con_` and 16
-  lowercase Crockford base32 characters), which the run configuration names, a `kind`, a
+  lowercase Crockford base32 characters), a `kind`, a
   `name`, and applies to every repository of the workspace (`applies_to` `all`) or to
   those its targets name (`selected`).
 
@@ -10,16 +10,15 @@ defmodule Apiary.Connections.Connection do
     * **integration**: `name` is its description's; the row names the release it was added
       from (`release_id`) and copies its `source`, `forge_kind`, `version` and
       `description_sha256`. `settings` are its plain settings, as canonical JSON of an
-      object, and `argument` the argument it is started with, if any.
-    * **service**: `name` is shown and rendered; the row names its definition, built in
+      object, and `argument` its argument, if any.
+    * **service**: `name` is shown; the row names its definition, built in
       by key (`service_builtin`) or the workspace's own (`service_definition_id`), and
       never holds a host, a path or an auth of its own.
 
   A connection's secrets are linked to stored secrets by the links that piece of the
   application keeps; the row holds no secret. The row carries an integrity code over
-  everything above (`Apiary.Kinds.Coded`), which `Apiary.Connections` checks before it
-  hands the row to what renders a run configuration. Changed only through
-  `Apiary.Connections`.
+  everything above (`Apiary.Kinds.Coded`), which `Apiary.Connections` checks where it reads
+  the row. Changed only through `Apiary.Connections`.
   """
   use Ecto.Schema
 

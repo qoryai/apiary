@@ -7,8 +7,8 @@ defmodule Apiary.DescriptionFixtures do
 
   @doc """
   A `qory-github` description in the shape of the contract's `github.json`, at the tests'
-  version 0.1.0, with `overrides` merged at the top. As in `github.json`, `api_url` is a
-  setting no role lists.
+  version 0.1.0, with `overrides` merged at the top: `app_id` and `api_url` are its plain
+  settings, and `private_key` its secret.
   """
   def github_description(overrides \\ %{}) do
     Map.merge(
@@ -16,8 +16,7 @@ defmodule Apiary.DescriptionFixtures do
         "version" => 1,
         "name" => "github",
         "title" => "GitHub",
-        "publisher" => %{"name" => "Qory", "url" => "https://qory.dev"},
-        "description" => "Mints a GitHub App installation token for a run's repositories.",
+        "description" => "Mints GitHub App installation tokens.",
         "domains" => ["software"],
         "program_version" => "0.1.0",
         "settings" => %{
@@ -33,8 +32,7 @@ defmodule Apiary.DescriptionFixtures do
             "private_key" => %{
               "title" => "Private key",
               "type" => "string",
-              "writeOnly" => true,
-              "x-secret-name" => "GITHUB_APP_PRIVATE_KEY"
+              "writeOnly" => true
             },
             "private_key_file" => %{"title" => "Private key file", "type" => "string"}
           }
@@ -42,9 +40,7 @@ defmodule Apiary.DescriptionFixtures do
         "roles" => %{
           "credential" => %{
             "argument" => "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}",
-            "hosts" => ["github.com", "api.github.com"],
-            "settings" => ["app_id", "private_key"],
-            "required" => ["app_id", "private_key"]
+            "hosts" => ["github.com", "api.github.com"]
           }
         }
       },
@@ -52,14 +48,13 @@ defmodule Apiary.DescriptionFixtures do
     )
   end
 
-  @doc "A description with both ways, a credential role and a tool role with an MCP URL."
+  @doc "A description with a credential role and a role Qory Apiary does not know, `acme_role`."
   def tracker_description(overrides \\ %{}) do
     Map.merge(
       %{
         "version" => 1,
         "name" => "acme-tracker",
         "title" => "Acme tracker",
-        "publisher" => %{"name" => "Acme"},
         "program_version" => "0.3.0",
         "settings" => %{
           "type" => "object",
@@ -72,16 +67,9 @@ defmodule Apiary.DescriptionFixtures do
         "roles" => %{
           "credential" => %{
             "argument" => "[A-Z]+",
-            "hosts" => ["tracker.example.com"],
-            "settings" => ["url", "api_key"]
+            "hosts" => ["tracker.example.com"]
           },
-          "tool" => %{
-            "serves" => ["mcp.example.com"],
-            "mcp" => "https://mcp.example.com/mcp",
-            "placeholders" => ["TRACKER_MCP_KEY"],
-            "settings" => ["url"]
-          },
-          "work_source" => %{"events" => ["issue.opened"]}
+          "acme_role" => %{"events" => ["issue.opened"]}
         }
       },
       overrides

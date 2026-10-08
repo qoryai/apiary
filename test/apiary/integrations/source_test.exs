@@ -125,18 +125,6 @@ defmodule Apiary.Integrations.SourceTest do
              "https://downloads.example.com/qory-jira/1.4.0/checksums.txt"
   end
 
-  test "the owner a person can check" do
-    {:ok, github} = Source.parse("github.com/qoryai/qory-github")
-    {:ok, gitlab} = Source.parse("gitlab.com/acme/tools/qory-webhook")
-    {:ok, forgejo} = Source.parse("codeberg.org/acme/shop")
-    {:ok, url} = Source.parse("https://downloads.example.com/description.json")
-
-    assert Source.owner(github) == "github.com/qoryai"
-    assert Source.owner(gitlab) == "gitlab.com/acme/tools"
-    assert Source.owner(forgejo) == "codeberg.org/acme"
-    assert Source.owner(url) == "downloads.example.com"
-  end
-
   describe "INTEGRATION_URL_SOURCES" do
     test "is on unless turned off, in the spellings of the other switches" do
       for value <- [nil, "", " ", "true", "TRUE", "1", "yes"] do

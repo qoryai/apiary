@@ -2,20 +2,20 @@
   "version": 1,
   "name": "acme-tracker",
   "title": "Acme tracker",
-  "publisher": {"name": "Acme", "url": "https://acme.example"},
-  "description": "Issues of the Acme tracker: an access token for a run's project, and the issues as work.",
+  "description": "Issues of the Acme tracker: a token for a run's project, and the issues as work.",
   "program_version": "0.2.0",
   "settings": {
     "type": "object",
     "additionalProperties": false,
+    "required": ["url", "token_file"],
     "properties": {
       "url": {"type": "string"},
       "token_file": {"type": "string"},
-      "token": {"title": "Access token", "type": "string", "writeOnly": true}
+      "token": {"type": "string", "writeOnly": true}
     }
   },
   "roles": {
-    "credential": {"argument": "[A-Z]+", "hosts": ["tracker.acme.example"], "settings": ["url", "token"], "required": ["url", "token"]},
-    "work_source": {"events": ["issue.opened"]}
+    "credential": {"argument": "[A-Z]+", "hosts": ["tracker.acme.example"]},
+    "acme_role": {"events": ["issue.opened"]}
   }
 }

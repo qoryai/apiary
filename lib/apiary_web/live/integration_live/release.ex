@@ -8,8 +8,8 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   While the release is pending, the page reads it again every few seconds
   (`Apiary.Integrations.get_release/2`): a job fetches it. Once it is ready, the page
   shows what its `description.json` says (`Apiary.Integrations.description/1`): its name,
-  version, publisher beside the source's owner, what it does, its roles and ways, the
-  secrets and plain settings it declares, and the file itself; then, to an owner or an
+  version, what it does, its roles, the secrets and plain settings it declares, and the
+  file itself; then, to an owner or an
   admin, the form that adds it (`Apiary.Connections.create_integration/3`): its plain
   settings, its argument and where it applies. A failed release says why, by its code. A
   release whose source the instance no longer accepts (`Apiary.Integrations.accepted_source/1`)
@@ -152,37 +152,17 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         </dd>
         <dt class="text-faint">{gettext("Version")}</dt>
         <dd class="q-mono">{@description.program_version}</dd>
-        <dt class="text-faint">{gettext("Publisher")}</dt>
-        <dd id="release-publisher">
-          {@description.publisher["name"]}
-          <span class="text-muted">
-            {gettext("(as its description says; the source is %{owner})",
-              owner: Common.source_owner(@release.source)
-            )}
-          </span>
-        </dd>
         <dt :if={@description.domains} class="text-faint">{gettext("Domains")}</dt>
         <dd :if={@description.domains} class="q-mono">{Enum.join(@description.domains, ", ")}</dd>
         <dt class="text-faint">{gettext("Released on")}</dt>
         <dd>{Common.released_on(@release.forge_kind)}</dd>
         <dt class="text-faint">{gettext("Roles")}</dt>
-        <dd class="q-mono">{Enum.join(@description.roles, ", ")}</dd>
-        <dt class="text-faint">{gettext("Ways")}</dt>
-        <dd id="release-ways">
-          <span :if={"credential" in @description.ways}>{gettext("Calls its API")}</span>
-          <span :if={"tool" in @description.ways} class="text-muted">
-            {gettext("Also a tool (MCP), which Qory Apiary does not use")}
-          </span>
-          <span :if={"credential" not in @description.ways} class="text-muted">
-            {gettext("No way Qory Apiary uses")}
-          </span>
-        </dd>
+        <dd id="release-roles" class="q-mono">{Enum.join(@description.roles, ", ")}</dd>
         <dt class="text-faint">{gettext("Secrets")}</dt>
         <dd :if={@description.secrets != []}>
           <span :for={secret <- @description.secrets} class="block">
             <span class="q-mono">{secret.name}</span>
             <span class="text-muted">· {secret.title}</span>
-            <span :if={secret.secret_name} class="q-mono text-muted">· {secret.secret_name}</span>
           </span>
         </dd>
         <dd :if={@description.secrets == []} class="text-muted">{gettext("None")}</dd>
@@ -206,9 +186,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
         <dd class="q-mono break-all">{@release.description_sha256}</dd>
       </dl>
       <p class="text-[12.5px]/[18px] text-faint">
-        {gettext(
-          "Nothing verifies the publisher's name: check the source. The release is only read; nothing of it runs on Qory Apiary."
-        )}
+        {gettext("The release is only read; nothing of it runs on Qory Apiary.")}
       </p>
     </SettingsComponents.part>
 
@@ -297,7 +275,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             label={gettext("Argument")}
             optional
             hint={
-              gettext("What it is started with. It must match %{patterns}.",
+              gettext("It must match %{patterns}.",
                 patterns: Enum.join(@patterns, ", ")
               )
             }
@@ -352,9 +330,6 @@ defmodule ApiaryWeb.IntegrationLive.Release do
 
   defp failure("description_invalid"),
     do: gettext("The release's description.json is not a valid description of a program.")
-
-  defp failure("placeholder_conflict"),
-    do: gettext("The release's description.json names a placeholder that isn't allowed.")
 
   defp failure("integration_source_mismatch"),
     do:

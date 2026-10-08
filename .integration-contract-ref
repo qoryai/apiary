@@ -2,4 +2,4 @@
 # is vendored under priv/contract/integration/, and whose fixtures are under
 # test/fixtures/integration-contract/: a commit on the integrations' next branch, pinned by
 # its id.
-bbb23a12a2491d6d0cd9e335f539457788e8882c
+fe9b1783ee649f704197147fb67ab1cc180b07dc

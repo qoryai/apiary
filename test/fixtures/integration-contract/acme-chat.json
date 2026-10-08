@@ -2,12 +2,11 @@
   "version": 1,
   "name": "acme-chat",
   "title": "Acme chat",
-  "publisher": {"name": "Acme", "url": "https://acme.example"},
-  "description": "Messages of Acme chat: an access token for a run's channel.",
+  "description": "Messages of Acme chat: a token for a run's channel.",
   "domains": ["software", "marketing"],
   "program_version": "0.1.0",
   "settings": {"type": "object"},
   "roles": {
-    "credential": {"argument": "[a-z][a-z0-9-]{0,79}", "hosts": ["chat.acme.example"], "settings": []}
+    "credential": {"argument": "[a-z][a-z0-9-]{0,79}", "hosts": ["chat.acme.example"]}
   }
 }

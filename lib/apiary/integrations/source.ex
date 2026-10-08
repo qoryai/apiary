@@ -30,10 +30,6 @@ defmodule Apiary.Integrations.Source do
       it, not a redirect, where the API's route redirects;
     * a URL source: the URL's directory, `<dir>/<file>`, whatever the version.
 
-  The source's **owner**, the part of it a person can check, is shown beside the
-  publisher a description names: `<host>/<owner>` on a forge (the group path on GitLab),
-  the host of a URL.
-
   ## The operator's setting
 
   `INTEGRATION_URL_SOURCES` says whether a URL source is accepted: `true`, `1` or `yes`,
@@ -175,21 +171,6 @@ defmodule Apiary.Integrations.Source do
   # GitLab's API names a project by its full path, URL-encoded: a path's characters are
   # unreserved but for `/`, so only the slashes change.
   defp project_id(path), do: URI.encode(path, &URI.char_unreserved?/1)
-
-  @doc """
-  owner/1 is what a person can check of `source`: `<host>/<owner>` on a forge, the group
-  path on GitLab, and the host of a URL.
-  """
-  @spec owner(t) :: String.t()
-  def owner(%__MODULE__{form: :url, host: host}), do: host
-
-  def owner(%__MODULE__{forge_kind: "gitlab", host: host, path: path}) do
-    groups = path |> String.split("/") |> Enum.drop(-1) |> Enum.join("/")
-    host <> "/" <> groups
-  end
-
-  def owner(%__MODULE__{host: host, path: path}),
-    do: host <> "/" <> (path |> String.split("/") |> hd())
 
   ## The operator's setting
 
