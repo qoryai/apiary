@@ -242,8 +242,11 @@ defmodule ApiaryWeb.RefusalsRows do
       # A node's access keys and enrolment codes, its Access key tab. Without the page or
       # the confirmation open, from a member: refused, as the page offers them no button;
       # a demoted admin's page or confirmation was open, and the context refuses them. A
-      # key made in a browser is sent from the tab here: Generate a key's page holds the
-      # hook's notices, hidden by a class, which this case reads as alerts shown.
+      # key made in a browser is sent from the tab here, where the page refuses it before
+      # the context: Generate a key's page holds the hook's notices, hidden by a class,
+      # which this case reads as alerts shown. The context's refusal of a demoted admin's
+      # key is the Access key tab's test "an admin made a member since Generate a key
+      # opened is refused by the context".
       {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "generate_key",
        %{
          "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}

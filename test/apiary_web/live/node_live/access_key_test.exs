@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   @moduledoc """
   A node's Access key tab (`ApiaryWeb.NodeLive.AccessKey`): its intro and the way a
-  machine gets a key, the keys and their acts confirmed in place, adding a key by its
-  public key and the runner file it leads to, an enrolment code made and shown once with
+  machine gets a key, the keys and their acts confirmed in place, generating a key in the
+  browser and the variables page it leads to, an active key's runner file, an enrolment
+  code made and shown once with
   the command that enrols the machine (redeemed as shown), the outstanding codes and their
   revocation, and what a member, another organisation and a stale page are refused.
   """
@@ -1481,6 +1482,26 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
     assert render(lv) =~ "Only owners and admins manage a node&#39;s keys."
     assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
+  end
+
+  test "an admin made a member since Generate a key opened is refused by the context", %{
+    scope: scope
+  } do
+    node = node_fixture(scope)
+    %{user: user, membership: membership} = member_fixture(scope, :admin)
+    conn = log_in_user(build_conn(), user)
+
+    {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+    Repo.update!(Ecto.Changeset.change(membership, level: :member))
+
+    render_hook(lv, "generate_key", %{"key" => browser_key()})
+    assert render(lv) =~ "Only owners and admins add a node&#39;s keys."
+    assert AccessKeys.list_for_node(scope, node) == []
+
+    assert Repo.all(
+             from e in Apiary.Audit.Entry,
+               where: e.action == "access_key.add" and e.organisation_id == ^scope.organisation.id
+           ) == []
   end
 
   test "a node of another workspace or organisation is not found", %{conn: conn, scope: scope} do

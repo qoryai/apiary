@@ -55,7 +55,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     log_in_user(build_conn(), member)
   end
 
-  # A node's key, active as it is pasted, on a node of its own unless `node` is given.
+  # A node's key, made in a browser and active at once, on a node of its own unless `node` is given.
   defp node_key(scope, label, node \\ nil) do
     node = node || Apiary.NodesFixtures.node_fixture(scope)
     %{access_key: key} = node_key_fixture(scope, node, label: label)

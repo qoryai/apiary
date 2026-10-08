@@ -888,8 +888,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   its runner file, a revoked one's back to the tab.
 - **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`,
   an active key's alone; a revoked one goes back to the tab with "build-01 is revoked.")
-  is a page, not a dialog, and what Add key leads to, with its flash "build-01 is
-  added.":
+  is a page, not a dialog, which an active key's card opens with **Runner file lines**:
   "For build-01. Nothing here is secret: the key's secret stays on the machine.", the
   lines for `~/.config/qory/runner.yaml` (the `server` section: `url`, `access_key_id`
   and `apiary_public_key`, the pin in YAML's flow form) with Copy lines, for CI the two
