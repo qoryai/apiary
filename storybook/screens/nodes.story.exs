@@ -96,7 +96,9 @@ defmodule ApiaryWeb.Storybook.Screens.Nodes do
           <.button variant="primary" type="button">
             {if @kind == :node, do: "Create node", else: "Create node pool"}
           </.button>
-          <:note>Then add its access key: an enrolment code, or a key made in a browser.</:note>
+          <:note>
+            Then connect it: run one command on the machine, or generate a key for a CI or another system.
+          </:note>
         </SettingsComponents.save>
       </form>
     </Mockup.shell>

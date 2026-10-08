@@ -620,7 +620,7 @@ defmodule ApiaryWeb.Storybook.Sample do
 
   @doc """
   The key a node enrols to replace its own, as the mock-up of a replacement draws it: it
-  arrived with an enrolment code today and is active, beside the current key.
+  arrived with a command today and is active, beside the current key.
   """
   @spec replacement_key() :: map()
   def replacement_key do
@@ -642,8 +642,8 @@ defmodule ApiaryWeb.Storybook.Sample do
   defp instance(id, runs, version, since),
     do: %{id: id, runs: runs, version: version, since: since}
 
-  # A key is `:active` or `:revoked`. `way` is how an active one arrived, `:code` with an
-  # enrolment code or `:browser`, made in a browser; `by` and `on` are who made its code or
+  # A key is `:active` or `:revoked`. `way` is how an active one arrived, `:code` with a
+  # command or `:browser`, generated in a browser; `by` and `on` are who made its code or
   # the key and when, or who revoked it and when for a revoked one.
   defp key(id, state, fingerprint, opts) do
     Map.merge(%{id: id, state: state, fingerprint: fingerprint, way: nil}, Map.new(opts))
