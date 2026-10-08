@@ -33,8 +33,7 @@ from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the n
 A key is active from the moment it arrives until it is revoked. A node holds two keys at a
 time, so that a machine can move to a new key before the old one is revoked. Each key's
 **Stored secrets** is fixed when it is made, and every new key, either way, gets **Not
-allowed**: runs don't receive secrets yet. A key is never rotated: a new one is made, and
-the old one revoked.
+allowed**. A key is never rotated: a new one is made, and the old one revoked.
 
 There are two ways to connect a node's machine, both on the node's **Access key** tab, for
 owners and admins. While the node holds no active key, the tab asks "How do you want to

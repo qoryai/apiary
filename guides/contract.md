@@ -283,7 +283,8 @@ contract's rules for labels refuse, as the reference receiver does: a `forge` or
 `repository` that cannot be a label names no repository, and of a parameter sent twice the
 last is read.
 
-The `security_policy` is the policy: the runner does not merge it with the machine's own.
+The runner applies the `security_policy` narrowed by the machine's own `egress`; the
+machine only takes away.
 When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
 runner denies first and in either mode; without any, the section is as above.
 <!-- /feature -->

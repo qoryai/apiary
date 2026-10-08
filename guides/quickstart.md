@@ -128,11 +128,11 @@ workspace and manages neither the members nor the settings. `http://localhost:41
 the log-in take you to the workspace.
 
 <!-- feature: security -->
-Secrets and variables, which runs don't receive yet, are under **Workspace settings ›
-Secrets and variables**, `/<organisation>/<workspace>/settings/secrets`, in two views. A
-**secret**, such as a token for a forge, holds one value or several, each named by a
-**value ID**; once saved, a value is never shown again, to anyone, and the page lists only
-names, value IDs, who changed each value and when, and what uses it. A **variable** is a
+Secrets and variables are under **Workspace settings › Secrets and variables**,
+`/<organisation>/<workspace>/settings/secrets`, in two views; a run receives only its
+security policy. A **secret**, such as a token for a forge, holds one value or several,
+each named by a **value ID**; once saved, a value is never shown again, to anyone, and the
+page lists only names, value IDs and who changed each value and when. A **variable** is a
 plain value of the workspace, such as the address of a package registry. A **locked**
 variable sets aside any value of its own a repository has for the name; no page sets a
 repository's own value. Every member reads both views; owners and admins change them. A
@@ -234,8 +234,9 @@ version.
 
 <!-- feature: security -->
 - Until somebody changes the workspace's policy, runs use each machine's own policy. Read
-  [The security policy](security-policy.md) before the first rule: the first change takes
-  over for every machine of the workspace.
+  [The security policy](security-policy.md) before the first rule: from the first change,
+  each machine's runs take the workspace's policy, narrowed by the machine's own `egress`
+  section.
 <!-- /feature -->
 - `qory run --local` records to files only and does not contact Qory Apiary.
 - To stop the trial: `docker compose down`. The database stays in the `postgres-data`
