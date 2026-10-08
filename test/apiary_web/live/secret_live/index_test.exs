@@ -600,11 +600,11 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       assert has_element?(
                lv,
-               "#secret-page-description",
+               "#secret-page .q-page-desc",
                "A secret with several values names each one with a value ID."
              )
 
-      refute has_element?(lv, "#secret-page-description", "what uses the secret")
+      refute has_element?(lv, "#secret-page .q-page-desc", "what uses the secret")
 
       refute lv |> element("#secret-form") |> render() =~ "phx-change"
 

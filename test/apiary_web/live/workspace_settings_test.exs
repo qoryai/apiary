@@ -125,7 +125,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
                ),
                rest
 
-        assert has_element?(lv, "#not-on-runs", "Today a run receives only its security policy.")
+        assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
       end
     end
   end

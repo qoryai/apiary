@@ -30,7 +30,6 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
   defp without_qory_lines(section) do
     section
     |> String.replace("Not Qory Apiary&#39;s own settings.", "")
-    |> String.replace("today Qory Apiary sends a run", "")
   end
 
   defp lv_section(html) do
@@ -482,9 +481,9 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       {:ok, lv, _html} = live(conn, ipath(scope))
       section = lv |> element("#settings-section-integrations") |> render()
 
-      # Qory Apiary is named in the subtitle and the not-yet line, and nowhere else.
+      # Qory Apiary is named in the subtitle, and nowhere else.
       assert section =~ "Not Qory Apiary&#39;s own settings."
-      assert section =~ "today Qory Apiary sends a run only its security policy."
+      assert section =~ "A run receives only its security policy."
       refute without_qory_lines(section) =~ "Qory"
     end
 

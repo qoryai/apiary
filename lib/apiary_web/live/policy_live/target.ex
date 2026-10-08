@@ -1011,7 +1011,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   defp first_change,
     do:
-      gettext(
+      pgettext(
+        "plain",
         "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
       )
 

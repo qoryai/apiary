@@ -1366,8 +1366,10 @@ defmodule ApiaryWeb.LayoutsTest do
       assert response =~
                ~s(Can you trust your agents? With Qory <span class="text-accent">you don&#39;t have to</span>.)
 
+      # The line under it, by the instance's features.
       assert response =~
-               "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it."
+               "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it." ==
+               Apiary.Features.on?(:security)
     end
   end
 

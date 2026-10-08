@@ -1230,7 +1230,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         }
       >
         <span :if={!@managed?} id="policy-unmanaged">
-          {gettext(
+          {pgettext(
+            "plain",
             "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
@@ -1596,7 +1597,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     {own_words(@own)}
     {gettext("You can switch back at any time.")}
     <span :if={!@started}>
-      {gettext(
+      {pgettext(
+        "plain",
         "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
       )}
     </span>
