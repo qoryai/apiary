@@ -2,10 +2,10 @@ defmodule ApiaryWeb.RunLive.Show do
   @moduledoc """
   One run, read as a record, on a work surface: a header from `run.started`, `run.exited`
   and the policy applied (the title; what the run says it is about, when it says; the state
-  and the run's facts, with Close run and the ⋯ menu), and four tabs that are four live actions of this one LiveView, so
-  that a tab is a `patch` and the header stays: Timeline, Terminal, Network access
-  (`/runs/:run_id/network`, the live action `:connections`; the old `/connections` path
-  sends on here), Details.
+  and the run's facts, with Close run and the ⋯ menu), and four tabs that are four live
+  actions of this one LiveView, so that a tab is a `patch` and the header stays: Timeline,
+  Terminal, Network access (`/runs/:run_id/network`, the live action `:connections`; the
+  old `/connections` path sends on here), Details.
   Details is the rail beside Timeline and Network access from 1440 px, and the tab below
   that shows the same element in the column (`docs/ui.md`, The run page). The Terminal tab
   is wide (`q-run-wide`): at every width the rail folds away there and Details is a tab.

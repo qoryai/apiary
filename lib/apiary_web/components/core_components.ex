@@ -1173,8 +1173,9 @@ defmodule ApiaryWeb.CoreComponents do
   A link to a page outside the console, which opens in a new tab: the icon shows that it
   leaves, and a screen reader hears that it opens a new tab. `rel` keeps the console's
   window and address from the page, and gives the link no weight. A url that is not
-  `external_url?/1` (one with a user name or password among them), or none, renders the content as plain text with the same `class` and
-  attributes, so a url from a record is never a `javascript:`, `data:` or relative link.
+  `external_url?/1` (one with a user name or password among them), or none, renders the
+  content as plain text with the same `class` and attributes, so a url from a record is
+  never a `javascript:`, `data:` or relative link.
   """
   attr :href, :any, required: true, doc: "the url; nil, or one that may not be a link, for text"
   attr :class, :any, default: nil
