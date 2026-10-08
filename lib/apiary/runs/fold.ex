@@ -35,9 +35,9 @@ defmodule Apiary.Runs.Fold do
   nested at most 4 levels deep) are each kept whole or dropped whole. A subject is kept
   when its `type` matches `^[a-z0-9]+([ _.-][a-z0-9]+)*$` in at most 64 bytes and its
   `ref` is 1 to 256 bytes; its `title` (1 to 256 bytes) and `url` (at most 2048 bytes,
-  absolute `http` or `https` with a host) are dropped from it alone when they break their
-  bounds. Of the subjects kept, the first of each type and ref stays, at most 16 in the
-  order given. An `about` that is not an object says nothing.
+  absolute `http` or `https` with a host and no user name or password) are dropped from it
+  alone when they break their bounds. Of the subjects kept, the first of each type and ref
+  stays, at most 16 in the order given. An `about` that is not an object says nothing.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
@@ -491,10 +491,11 @@ defmodule Apiary.Runs.Fold do
 
   defp subject(_subject), do: nil
 
-  # An absolute http or https url with a host, as given, or nil.
+  # An absolute http or https url with a host and no user name or password, as given, or
+  # nil.
   defp url(subject) do
     with url when is_binary(url) <- bounded(subject, "url", @subject_url),
-         {:ok, %URI{scheme: scheme, host: host}}
+         {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
          when scheme in ["http", "https"] and is_binary(host) and host != "" <- URI.new(url) do
       url
     else

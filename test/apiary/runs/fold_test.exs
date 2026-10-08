@@ -426,7 +426,7 @@ defmodule Apiary.Runs.FoldTest do
              ]
     end
 
-    test "a url is kept only when absolute http or https with a host, up to 2048 bytes" do
+    test "a url is kept only when absolute http or https with a host and no user, up to 2048 bytes" do
       long = "https://example.com/" <> String.duplicate("a", 2028)
       assert byte_size(long) == 2048
 
@@ -443,6 +443,8 @@ defmodule Apiary.Runs.FoldTest do
         "http:///ENG-17",
         "https://",
         "mailto:someone@example.com",
+        "https://user@tracker.example.com/ENG-17",
+        "https://user:secret@tracker.example.com/ENG-17",
         "https://example.com/a b",
         "",
         17
@@ -456,6 +458,16 @@ defmodule Apiary.Runs.FoldTest do
       for url <- dropped do
         assert about(%{"subjects" => [subject("ticket", "1", %{"url" => url, "title" => "t"})]}).about_subjects ==
                  [%{"type" => "ticket", "ref" => "1", "title" => "t"}]
+      end
+    end
+
+    test "a url with a user name, or a user name and password, is dropped; the subject stays" do
+      for url <- [
+            "https://user@tracker.example.com/ENG-17",
+            "https://user:secret@tracker.example.com/ENG-17"
+          ] do
+        run = about(%{"subjects" => [subject("ticket", "ENG-17", %{"url" => url})]})
+        assert run.about_subjects == [%{"type" => "ticket", "ref" => "ENG-17"}]
       end
     end
 
