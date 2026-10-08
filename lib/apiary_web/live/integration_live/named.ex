@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.IntegrationLive.Named do
   @moduledoc """
-  The named releases: a short fixed list of programs released by their publishers that
+  The named releases: a short fixed list of programs, each released on a forge, that
   Workspace settings › Integrations offers by name, a card each among the cards to add
   (`ApiaryWeb.IntegrationLive.Index`), beside the runtimes of the runner's catalogue
   (`Apiary.Kinds.Runtimes`) and the built-in APIs (`Apiary.Kinds.Services`), which come

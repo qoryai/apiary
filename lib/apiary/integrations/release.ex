@@ -6,11 +6,9 @@ defmodule Apiary.Integrations.Release do
 
   `state` is `pending` until the fetch ends, then `ready`, with the release's
   `description.json` byte for byte (`description`), its SHA-256 (`description_sha256`),
-  the integration's `name` and `version` as it says, and its publisher's name and URL
-  (`publisher_name`, `publisher_url`, the URL nil when it names none), shown beside the
-  source's owner and never verified, or `failed`, with `failure`, a code:
-  `integration_source_refused`, `fetch_failed`, `description_invalid`,
-  `placeholder_conflict` or `integration_source_mismatch`.
+  and the integration's `name` and `version` as it says, or `failed`, with `failure`, a
+  code: `integration_source_refused`, `fetch_failed`, `description_invalid` or
+  `integration_source_mismatch`.
 
   The row carries an integrity code over its source, its state and what the fetch found,
   the description by its digest (`Apiary.Kinds.Coded`); a reader checks the code, and that
@@ -22,7 +20,7 @@ defmodule Apiary.Integrations.Release do
   @type t :: %__MODULE__{}
 
   @states ~w(pending ready failed)
-  @failures ~w(integration_source_refused fetch_failed description_invalid placeholder_conflict
+  @failures ~w(integration_source_refused fetch_failed description_invalid
                 integration_source_mismatch)
 
   @primary_key {:id, :binary_id, autogenerate: false}
@@ -35,8 +33,6 @@ defmodule Apiary.Integrations.Release do
     field :failure, :string
     field :name, :string
     field :version, :string
-    field :publisher_name, :string
-    field :publisher_url, :string
     field :description, :string, redact: true
     field :description_sha256, :string
     field :fetched_at, :utc_datetime_usec
@@ -59,10 +55,12 @@ defmodule Apiary.Integrations.Release do
 
   @doc false
   def integrity_kind, do: "integration_release"
+  # Version 2: the code no longer covers a publisher, which a release no longer records.
+  # A release of version 1 that recorded none, one that was not ready, still verifies.
   @doc false
-  def integrity_version, do: 1
+  def integrity_version, do: 2
   @doc false
-  def integrity_versions, do: [1]
+  def integrity_versions, do: [1, 2]
 
   @doc false
   def integrity_fields(%__MODULE__{} = release, 1) do
@@ -77,8 +75,24 @@ defmodule Apiary.Integrations.Release do
       failure: release.failure,
       name: release.name,
       version: release.version,
-      publisher_name: release.publisher_name,
-      publisher_url: release.publisher_url,
+      publisher_name: nil,
+      publisher_url: nil,
+      description_sha256: release.description_sha256
+    ]
+  end
+
+  def integrity_fields(%__MODULE__{} = release, 2) do
+    [
+      id: release.id,
+      organisation_id: release.organisation_id,
+      workspace_id: release.workspace_id,
+      source: release.source,
+      forge_kind: release.forge_kind,
+      requested_version: release.requested_version,
+      state: release.state,
+      failure: release.failure,
+      name: release.name,
+      version: release.version,
       description_sha256: release.description_sha256
     ]
   end

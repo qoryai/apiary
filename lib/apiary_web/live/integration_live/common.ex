@@ -7,21 +7,19 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   declares and the form values cast to them, and the sentence for each refusal of
   `Apiary.Connections` and `Apiary.Integrations`.
 
-  Everything the section holds is for the runs of the workspace, never for Qory Apiary
-  itself, and the pages say it from the run's side. They call a connection of
-  `Apiary.Connections` by its kind's word: an Agent (a runtime, the coding agent a run
-  starts), an API (a service, an outside API the agent may call) or a Program (an
-  integration added from a release, which the runner starts outside the agent); a service
-  definition of the workspace's own is a Custom API. "Integrations" is the section's name
-  alone, and "service definition" is not a word of the pages. Each page says once, near
-  its top, that a run receives only its security policy (`not_on_runs/1`), and nothing on
-  them says otherwise.
+  The pages say only what Qory Apiary stores and does. They call a connection of
+  `Apiary.Connections` by its kind's word: an Agent (a runtime), an API (a service) or a
+  Program (an integration added from a release); a service definition of the workspace's
+  own is a Custom API. "Integrations" is the section's name alone, and "service
+  definition" is not a word of the pages. Each page says once, near its top, that a run
+  receives only its security policy (`not_on_runs/1`), and nothing on them says
+  otherwise.
   """
   use ApiaryWeb, :html
 
   alias Apiary.Connections
   alias Apiary.Connections.Connection
-  alias Apiary.Integrations.{Description, Source}
+  alias Apiary.Integrations.Description
   alias Apiary.Kinds.Runtimes
   alias Apiary.Organisations
   alias ApiaryWeb.People
@@ -167,23 +165,11 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def kind_order("integration"), do: 2
 
   @doc """
-  role_line/1 is the one line under a set-up item's title, by its kind: what a run gets
-  from it. The runner's design that the agent never holds a token is said for an API and a
-  program, never for an agent, whose model credential the runner may give the agent.
+  role_line/1 is the one line under a set-up item's title, by its kind, or nil where its
+  kind has none: an API and a program have none.
   """
   def role_line("runtime"), do: gettext("Runs in the targets it applies to start this agent.")
-
-  def role_line("service"),
-    do:
-      gettext(
-        "The agent in a run may call this API. The runner adds its token to the agent's requests."
-      )
-
-  def role_line("integration"),
-    do:
-      gettext(
-        "The runner starts this program outside the agent, to get the run a token for its API."
-      )
+  def role_line(_kind), do: nil
 
   @doc "applies_label/0 is the label of where a connection applies, in a list, a form or its facts."
   def applies_label, do: gettext("For runs in")
@@ -283,24 +269,13 @@ defmodule ApiaryWeb.IntegrationLive.Common do
 
   @doc """
   plain_settings/1 is the plain settings `description` lets a workspace set, in name
-  order, each `%{name:, title:, description:, type:}`: those its roles list, never a
-  secret or a secret's file (`Apiary.Integrations.Description.check_settings/2`).
+  order, each `%{name:, title:, description:, type:}`: every top-level setting that is
+  neither a secret nor a secret's file (`Apiary.Integrations.Description.check_settings/2`).
   """
   def plain_settings(%Description{} = description) do
     properties = get_in(description.document, ["settings", "properties"]) || %{}
-    secrets = Enum.map(description.secrets, & &1.name)
-    files = Enum.map(secrets, &(&1 <> "_file"))
 
-    listed =
-      for {role, body} <- description.document["roles"],
-          role in Description.ways(),
-          name <- body["settings"] || [],
-          uniq: true,
-          do: name
-
-    for name <- Enum.sort(listed),
-        name not in secrets and name not in files,
-        property = properties[name] || %{} do
+    for name <- description.settings, property = properties[name] || %{} do
       %{
         name: name,
         title: property["title"] || name,
@@ -325,14 +300,11 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   defp type(_property), do: :string
 
   @doc """
-  argument_patterns/1 is the patterns of the roles of `description` that have one: an
-  argument must match each of them whole.
+  argument_patterns/1 is the credential role's `argument` pattern of `description`, in a
+  list, or none: an argument must match it whole.
   """
-  def argument_patterns(%Description{document: document}) do
-    for {role, %{"argument" => pattern}} <- document["roles"],
-        role in Description.ways(),
-        do: pattern
-  end
+  def argument_patterns(%Description{} = description),
+    do: List.wrap(Description.argument_pattern(description))
 
   @doc """
   cast_settings/2 is the plain settings a form sent, as `plain_settings/1` declares them:
@@ -380,14 +352,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   def setting_value(value), do: Jason.encode!(value)
 
   ## A source
-
-  @doc "source_owner/1 is what a person can check of a source: its host and owner (`Apiary.Integrations.Source.owner/1`)."
-  def source_owner(source) do
-    case Source.parse(source, url_sources: true) do
-      {:ok, parsed} -> Source.owner(parsed)
-      {:error, _reason} -> nil
-    end
-  end
 
   @doc "released_on/1 is where a release is published, by its forge's kind: the forge, or an address."
   def released_on("github"), do: "GitHub"
@@ -453,7 +417,6 @@ defmodule ApiaryWeb.IntegrationLive.Common do
     do: gettext("That release is from another source.")
 
   defp sentence(:target_not_found, _), do: gettext("That target is not one of this workspace's.")
-  defp sentence(:ways_not_allowed, _), do: gettext("It can't be used that way.")
 
   defp sentence({:integration_settings_not_allowed, names}, _),
     do: gettext("It takes no such settings: %{names}.", names: Enum.join(List.wrap(names), ", "))

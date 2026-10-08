@@ -77,7 +77,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-runtime-claude",
-               "Runs start Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
+               "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
              )
 
       assert has_element?(lv, "#add-card-api-sentry h4", "Sentry")
@@ -108,7 +108,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#add-card-custom-api",
-               "Describe another API the agent may call: its hosts and how its token is sent."
+               "Describe another API: its hosts and how its token is sent."
              )
 
       assert has_element?(lv, ~s(#new-definition[href="#{ipath(scope, "/definitions/new")}"]))
@@ -127,7 +127,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
              }
     end
 
-    test "groups the cards under three headings, each its sentence and a list it names",
+    test "groups the cards under three headings, each its sentence where it has one and a list it names",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
 
@@ -143,13 +143,15 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       for {id, heading, sentence} <- [
             {"add-group-agent", "Agent",
              "The coding agent a run starts in the repositories it applies to."},
-            {"add-group-apis", "APIs the agent may call",
-             "Outside APIs the agent reaches while it works. The runner adds the API's token to the agent's requests, so the agent never holds it."},
+            {"add-group-apis", "APIs the agent may call", nil},
             {"add-group-programs", "Programs",
-             "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's repositories."}
+             "Programs added from a release. A release is only read, never run."}
           ] do
         assert has_element?(lv, "##{id} h3##{id}-title", heading)
-        assert has_element?(lv, "##{id}-about", sentence)
+
+        if sentence,
+          do: assert(has_element?(lv, "##{id}-about", sentence)),
+          else: refute(has_element?(lv, "##{id}-about"))
 
         assert has_element?(
                  lv,
@@ -161,15 +163,16 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#add-part h2", "Add an integration")
       refute has_element?(lv, "#add-cards li h3")
 
-      # The runner's design that the agent never holds a token is never said of the agent.
-      refute lv |> element("#add-group-agent") |> render() =~ "never holds"
+      # No line says the runner adds a token, or names a publisher.
+      cards = lv |> element("#add-cards") |> render()
+      refute cards =~ "runner"
+      refute cards =~ "publisher"
     end
 
     test "offers no card it can't add: no forge's own, no named release",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ipath(scope))
-      # The cards themselves; the Programs group's sentence names GitHub's token as an
-      # example of what a program gets a run.
+      # The cards themselves, not the groups' sentences.
       cards =
         lv
         |> render()

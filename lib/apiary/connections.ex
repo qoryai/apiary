@@ -15,8 +15,8 @@ defmodule Apiary.Connections do
       and the release's source, its forge's kind, its version and its description digest.
       Its plain `settings` are checked against the description
       (`Apiary.Integrations.Description.check_settings/2`): a secret, or a secret's
-      `<name>_file`, is never a setting. Its `argument` must match every pattern of its
-      roles. Moving it to another release keeps its source and its name, else
+      `<name>_file`, is never a setting. Its `argument` must match its credential role's
+      pattern. Moving it to another release keeps its source and its name, else
       `integration_source_mismatch`.
     * A **service** connection names its definition, a built-in one by key
       (`Apiary.Kinds.Services`) or the workspace's own, and nothing else: the definition is
@@ -28,11 +28,8 @@ defmodule Apiary.Connections do
   ## Where a connection applies
 
   `applies_to` is `all`, every repository of the workspace, or `selected`, the
-  repositories of its targets (`Apiary.Connections.Target`). A target of an integration
-  may also carry the **ways** it is used in that repository, of which there is one,
-  `credential` ("Calls its API"), when its description offers it; nil is the same
-  (`used_ways/2`). The `tool` way ("Uses it as a tool (MCP)") a description may offer is
-  refused. A save that would make two connections collide where both apply, the same
+  repositories of its targets (`Apiary.Connections.Target`). A save that would make two
+  connections collide where both apply, the same
   runtime, the same integration, or a host in common, is refused,
   `{:error, {:overlap, public_ids}}` (`Apiary.Connections.Overlap`).
 
@@ -72,16 +69,12 @@ defmodule Apiary.Connections do
   Why a change is refused: the reasons of `Apiary.Access`, a changeset, or a code with
   what it is about: `{:overlap, public_ids}`, `{:in_use, public_ids}`, `:runtime_unknown`,
   `:service_unknown`, `:release_not_ready`, `:integration_source_refused`,
-  `:target_not_found`, `:ways_not_allowed`, `{:integration_source_mismatch, why}`, and the
-  description's
+  `:target_not_found`, `{:integration_source_mismatch, why}`, and the description's
   `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, errors}`,
   `{:integration_settings_too_large, max}` and `{:integration_argument_not_allowed, roles}`;
   for a definition, `{:definition_invalid, problems}`.
   """
   @type refusal :: Access.reason() | Ecto.Changeset.t() | atom | {atom, term}
-
-  # Only the credential way is accepted; the tool way is refused.
-  @ways ~w(credential)
 
   ## Reading
 
@@ -162,8 +155,7 @@ defmodule Apiary.Connections do
 
   @doc """
   description/1 is the description an integration connection was added from, read:
-  `{:ok, description}`, its `publisher` among it, the name to show beside the source's
-  owner, and for a URL source the one name a page has; or `{:error, :not_ready}`.
+  `{:ok, description}`, or `{:error, :not_ready}`.
   """
   @spec description(Connection.t()) :: {:ok, Description.t()} | {:error, :not_ready}
   def description(%Connection{kind: "integration", release: %Release{} = release}),
@@ -171,45 +163,6 @@ defmodule Apiary.Connections do
 
   def description(%Connection{kind: "integration"} = connection),
     do: connection |> Repo.preload(:release) |> description()
-
-  @doc """
-  used_ways/2 is the ways the integration `connection` is used in at the repository
-  `target_id`, of those its description offers, never the tool way: the ways its target
-  there carries, or, where it carries none, the credential way. A connection that does
-  not apply there (a `selected` one without that repository among its targets, or any
-  at a repository not of its workspace), a runtime, a service, or an integration whose
-  release is not ready, is used in none.
-  """
-  @spec used_ways(Connection.t(), Ecto.UUID.t()) :: [String.t()]
-  def used_ways(%Connection{kind: "integration"} = connection, target_id) do
-    connection = Repo.preload(connection, [:release, :targets])
-    offered = offered_ways(connection)
-
-    case {connection.applies_to, Enum.find(connection.targets, &(&1.target_id == target_id))} do
-      {_applies_to, %Target{ways: [_ | _] = ways}} -> Enum.filter(offered, &(&1 in ways))
-      {_applies_to, %Target{}} -> offered
-      {"all", nil} -> if of_its_workspace?(connection, target_id), do: offered, else: []
-      {"selected", nil} -> []
-    end
-  end
-
-  def used_ways(%Connection{}, _target_id), do: []
-
-  defp offered_ways(connection) do
-    case description(connection) do
-      {:ok, description} -> Enum.filter(@ways, &(&1 in description.ways))
-      {:error, :not_ready} -> []
-    end
-  end
-
-  defp of_its_workspace?(%Connection{} = connection, target_id) do
-    workspace = %Workspace{
-      id: connection.workspace_id,
-      organisation_id: connection.organisation_id
-    }
-
-    match?({:ok, _}, target_ids(workspace, [target_id]))
-  end
 
   defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope) do
     with :ok <- Access.authorize(scope, :"connection.read", workspace), do: {:ok, workspace}
@@ -556,19 +509,14 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  put_target/4 makes a connection apply to the repository `target_id` of the scope's
-  workspace, or changes the ways an integration is used there (`connection.write`):
-  `ways` is nil, the credential way when its description offers it, or `["credential"]`
-  when its description offers it; `tool`, or any other way, is refused. A runtime or a
-  service takes nil only. `{:ok, connection}`, or `{:error, refusal}`:
-  `:target_not_found`, `:ways_not_allowed`.
+  put_target/3 makes a connection apply to the repository `target_id` of the scope's
+  workspace (`connection.write`): `{:ok, connection}`, or `{:error, refusal}`,
+  `:target_not_found`.
   """
-  @spec put_target(Scope.t(), Connection.t(), term, [String.t()] | nil) ::
-          {:ok, Connection.t()} | {:error, refusal}
-  def put_target(%Scope{} = scope, %Connection{} = connection, target_id, ways \\ nil) do
+  @spec put_target(Scope.t(), Connection.t(), term) :: {:ok, Connection.t()} | {:error, refusal}
+  def put_target(%Scope{} = scope, %Connection{} = connection, target_id) do
     write_connection(scope, connection, fn scope, workspace, current ->
       with {:ok, [target_id]} <- target_ids(workspace, [target_id]),
-           {:ok, ways} <- ways(current, ways),
            reach = Enum.uniq([target_id | target_ids_of(current)]),
            :ok <- no_overlap(workspace, current, reach) do
         now = DateTime.utc_now()
@@ -581,12 +529,11 @@ defmodule Apiary.Connections do
               workspace_id: current.workspace_id,
               connection_id: current.id,
               target_id: target_id,
-              ways: ways,
               inserted_at: now,
               updated_at: now
             }
           ],
-          on_conflict: [set: [ways: ways, updated_at: now]],
+          on_conflict: [set: [updated_at: now]],
           conflict_target: [:connection_id, :target_id]
         )
 
@@ -596,8 +543,7 @@ defmodule Apiary.Connections do
                    change: "target_set",
                    connection_id: current.public_id,
                    name: current.name,
-                   target_id: target_id,
-                   ways: ways
+                   target_id: target_id
                  }
                }),
              do: {:ok, current}
@@ -605,20 +551,6 @@ defmodule Apiary.Connections do
     end)
     |> reload()
   end
-
-  defp ways(%Connection{}, nil), do: {:ok, nil}
-
-  defp ways(%Connection{kind: "integration"} = connection, ways) when is_list(ways) do
-    with {:ok, description} <- current_description(connection) do
-      ways = Enum.uniq(ways)
-
-      if ways != [] and Enum.all?(ways, &(&1 in @ways and &1 in description.ways)),
-        do: {:ok, Enum.filter(@ways, &(&1 in ways))},
-        else: {:error, :ways_not_allowed}
-    end
-  end
-
-  defp ways(%Connection{}, _ways), do: {:error, :ways_not_allowed}
 
   @doc """
   remove_target/3 takes the repository `target_id` from a connection's targets

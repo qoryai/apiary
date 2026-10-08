@@ -9,8 +9,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       program's version and where it applies (For runs in), every target or the chosen
       ones, leading to its page (`ApiaryWeb.IntegrationLive.Show`);
     * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name,
-      in three groups, each a heading, one sentence of what a run gets from it and its
-      own list: Agent, the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`);
+      in three groups, each a heading, a sentence where it has one, and its own list: Agent, the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`);
       APIs the agent may call, the built-in APIs (`Apiary.Kinds.Services`), the
       workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`) and Custom
       API…; Programs, the named releases (`ApiaryWeb.IntegrationLive.Named`) and From a
@@ -146,9 +145,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
 
   @doc """
   add_cards/1 is the part "Add an integration": a card for each thing the workspace can
-  add, by name, each its kind as a small word, one line about what a run gets from it and
-  the act that adds it. The cards are in three groups, each an `<h3>`, one sentence and a
-  list of its own, labelled by its heading:
+  add, by name, each its kind as a small word, one line about it and the act that adds it.
+  The cards are in three groups, each an `<h3>`, a sentence where it has one, and a list of
+  its own, labelled by its heading:
 
     * **Agent** (`#add-group-agent`): the runtimes of the runner's catalogue
       (`Apiary.Kinds.Runtimes`);
@@ -159,9 +158,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       (`ApiaryWeb.IntegrationLive.Named`), then From a release….
 
   A card's act opens the form with its item chosen; an agent or an API may be set up more
-  than once, so a card stays as it is once it is set up. The runner's design that the
-  agent never holds a token is said for APIs and programs, never for the agent, whose
-  model credential the runner may give it.
+  than once, so a card stays as it is once it is set up.
   """
   attr :scope, :any, required: true
   attr :definitions, :list, required: true, doc: "the workspace's own service definitions"
@@ -192,15 +189,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
             navigate={Common.new_runtime_path(@scope, runtime.name)}
           />
         </.add_group>
-        <.add_group
-          id="add-group-apis"
-          title={gettext("APIs the agent may call")}
-          about={
-            gettext(
-              "Outside APIs the agent reaches while it works. The runner adds the API's token to the agent's requests, so the agent never holds it."
-            )
-          }
-        >
+        <.add_group id="add-group-apis" title={gettext("APIs the agent may call")}>
           <.add_card
             :for={definition <- Services.list()}
             id={"add-card-api-#{definition["key"]}"}
@@ -223,9 +212,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
           <.add_card
             id="add-card-custom-api"
             title={gettext("Custom API…")}
-            about={
-              gettext("Describe another API the agent may call: its hosts and how its token is sent.")
-            }
+            about={gettext("Describe another API: its hosts and how its token is sent.")}
             act={gettext("New custom API")}
             act_id="new-definition"
             navigate={Common.definition_path(@scope, :new)}
@@ -234,11 +221,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         <.add_group
           id="add-group-programs"
           title={gettext("Programs")}
-          about={
-            gettext(
-              "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's targets."
-            )
-          }
+          about={gettext("Programs added from a release. A release is only read, never run.")}
         >
           <.add_card
             :for={named <- @named}
@@ -257,12 +240,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
               if @url_sources,
                 do:
                   gettext(
-                    "Add a program its publisher releases on github.com, gitlab.com or codeberg.org, or at an https address."
+                    "Add a program from a release on github.com, gitlab.com or codeberg.org, or at an https address."
                   ),
                 else:
-                  gettext(
-                    "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
-                  )
+                  gettext("Add a program from a release on github.com, gitlab.com or codeberg.org.")
             }
             act={gettext("Add from a release")}
             act_id="add-integration"
@@ -274,11 +255,11 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     """
   end
 
-  # One group of cards: its heading, one sentence of what a run gets from it, and its
-  # cards as a list of their own, which its heading names.
+  # One group of cards: its heading, a sentence where it has one, and its cards as a list
+  # of their own, which its heading names.
   attr :id, :string, required: true
   attr :title, :string, required: true
-  attr :about, :string, required: true
+  attr :about, :string, default: nil
   slot :inner_block, required: true
 
   defp add_group(assigns) do
@@ -286,7 +267,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     <div id={@id} class="grid min-w-0 gap-2">
       <div class="grid gap-0.5">
         <h3 id={"#{@id}-title"} class="text-[13px]/5 font-semibold">{@title}</h3>
-        <p id={"#{@id}-about"} class="max-w-[72ch] text-[13px]/5 text-muted">{@about}</p>
+        <p :if={@about} id={"#{@id}-about"} class="max-w-[72ch] text-[13px]/5 text-muted">
+          {@about}
+        </p>
       </div>
       <ul
         id={"#{@id}-cards"}
@@ -339,12 +322,10 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   end
 
   # The line under an agent's name: the catalogue has no description, so the console
-  # says what a run gets from each of its runtimes; one it doesn't know, what it is.
+  # says what each of its runtimes is; one it doesn't know, what it is.
   defp runtime_line(%{name: "claude"}),
     do:
-      gettext(
-        "Runs start Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
-      )
+      gettext("Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential.")
 
   defp runtime_line(_runtime), do: gettext("A coding agent the runner can start.")
 

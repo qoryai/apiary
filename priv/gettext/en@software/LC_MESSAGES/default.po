@@ -1960,12 +1960,6 @@ msgstr ""
 msgid "%{workspace}'s policy"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "(as its description says; the source is %{owner})"
-msgstr ""
-
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "(optional)"
@@ -2589,12 +2583,12 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Add a program its publisher releases on github.com, gitlab.com or codeberg.org, or at an https address."
+msgid "Add a program from a release on github.com, gitlab.com or codeberg.org, or at an https address."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
+msgid "Add a program from a release on github.com, gitlab.com or codeberg.org."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3006,11 +3000,6 @@ msgstr ""
 msgid "Already have an account?"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "Also a tool (MCP), which Qory Apiary does not use"
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
@@ -3087,6 +3076,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answered %{status}"
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -3266,16 +3260,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "By hand"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "Calls its API"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Calls its API."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -4511,7 +4495,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Describe another API the agent may call: its hosts and how its token is sent."
+msgid "Describe another API: its hosts and how its token is sent."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -5929,11 +5913,6 @@ msgstr "It applies to the chosen repositories below, and to no other."
 msgid "It can't be changed."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "It can't be used that way."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "It declares no plain setting."
@@ -6142,16 +6121,6 @@ msgid_plural "All %{number} targets follow it."
 msgstr[0] "Its %{number} repository follows it."
 msgstr[1] "All %{number} repositories follow it."
 
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Its description also offers it as a tool (MCP), which Qory Apiary does not use."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Its description offers no way Qory Apiary uses."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Its hosts: %{hosts}."
@@ -6301,11 +6270,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Its version %{error}."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Its ways"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -7679,11 +7643,6 @@ msgstr ""
 msgid "No version yet"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "No way Qory Apiary uses"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "No workspace or target may observe: %{name} requires enforce."
@@ -8017,11 +7976,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing to filter by yet"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "Nothing verifies the publisher's name: check the source. The release is only read; nothing of it runs on Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8477,11 +8431,6 @@ msgstr "Other repositories do not change."
 msgid "Outcome"
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Outside APIs the agent reaches while it works. The runner adds the API's token to the agent's requests, so the agent never holds it."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Overrides"
@@ -8748,15 +8697,15 @@ msgstr ""
 msgid "Programs"
 msgstr ""
 
+#: lib/apiary_web/live/integration_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Programs added from a release. A release is only read, never run."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
 msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's targets."
-msgstr "Programs their publishers release. The runner starts one outside the agent to get the run a short-lived token, such as GitHub's for the run's repositories."
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -8786,12 +8735,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/integration_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Publisher"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -9595,11 +9538,6 @@ msgstr "Runs in the repositories it applies to start this agent."
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs per day"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Runs start Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10533,11 +10471,6 @@ msgstr ""
 msgid "The API's title, unless you give it another."
 msgstr ""
 
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "The agent in a run may call this API. The runner adds its token to the agent's requests."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The agent may call Sentry's API on sentry.io, such as to read issues."
@@ -10984,6 +10917,11 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
+msgid "The release is only read; nothing of it runs on Qory Apiary."
+msgstr ""
+
+#: lib/apiary_web/live/integration_live/release.ex
+#, elixir-autogen, elixir-format
 msgid "The release is read."
 msgstr ""
 
@@ -10995,11 +10933,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "The release's description.json is not a valid description of a program."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "The release's description.json names a placeholder that isn't allowed."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -11120,11 +11053,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The runner has pinged. The run's first event has not arrived."
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "The runner starts this program outside the agent, to get the run a token for its API."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -12099,11 +12027,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Wall"
-msgstr ""
-
-#: lib/apiary_web/live/integration_live/release.ex
-#, elixir-autogen, elixir-format
-msgid "Ways"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
