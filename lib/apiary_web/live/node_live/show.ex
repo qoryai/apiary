@@ -888,7 +888,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         )}
         <:lost>
           {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys and its enrolment codes are revoked. Its runs stay in the record. This cannot be undone.",
+            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
             name: @node.name
           )}
         </:lost>

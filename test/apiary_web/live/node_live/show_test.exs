@@ -222,10 +222,11 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(
                lv,
                "#delete-node-form",
-               "Its access keys and its enrolment codes are revoked."
+               "Its access keys are revoked, and a command not yet run is cancelled."
              )
 
-      refute has_element?(lv, "#delete-node-form", "cancelled")
+      # The code is never named: the command not yet run is.
+      refute has_element?(lv, "#delete-node-form", "enrolment")
       assert has_element?(lv, "#delete-node-confirming", "Delete build-01?")
       # No field to type: Cancel takes the focus, and the red button is ready.
       assert has_element?(lv, "#delete-node-confirming-cancel[phx-mounted]")

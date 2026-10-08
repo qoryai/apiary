@@ -38,8 +38,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"workspace.delete"), do: gettext("Workspace deleted")
   def label(:"workspace.restore"), do: gettext("Workspace's deletion cancelled")
   def label(:"workspace.purge"), do: gettext("Workspace purged")
-  def label(:"access_key.create_code"), do: gettext("Enrolment code created")
-  def label(:"access_key.cancel_code"), do: gettext("Enrolment code cancelled")
+  def label(:"access_key.create_code"), do: gettext("Command made")
+  def label(:"access_key.cancel_code"), do: gettext("Command cancelled")
   def label(:"access_key.add"), do: gettext("Access key added")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
   def label(:"node.create"), do: gettext("Node created")
@@ -141,10 +141,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Purged a deleted workspace and everything in it")
 
   defp said(:"access_key.create_code", _details, _actor),
-    do: gettext("Created an enrolment code for a node")
+    do: gettext("Made a command to connect a node")
 
   defp said(:"access_key.cancel_code", _details, _actor),
-    do: gettext("Cancelled a node's enrolment code")
+    do: gettext("Cancelled a command to connect a node")
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
 
