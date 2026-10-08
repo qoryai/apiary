@@ -4,7 +4,7 @@
 // ApiaryWeb.JumpController) 150 ms after they stop, and the answer is listed as links in
 // groups: ↑ and ↓ move, Enter opens, Escape and the backdrop close, and focus goes back
 // to where it was. Every word comes from the server; what a runner reported (a path, a
-// task) is written as text, never as markup.
+// title) is written as text, never as markup.
 import {singleKeys} from "./shortcuts"
 const DEBOUNCE = 150
 

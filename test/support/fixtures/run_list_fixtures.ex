@@ -10,7 +10,8 @@ defmodule Apiary.RunListFixtures do
 
   @doc """
   A run that started `ago:` seconds ago (default 60) with `labels`, projected. Options:
-  `runtime:`, `host:`, `egress:` (a list of overrides of `egress_data/1`), `exit:` (the
+  `about:` (what `run.started` says the run is about, such as `%{"title" => "Fix the
+  build"}`), `runtime:`, `host:`, `egress:` (a list of overrides of `egress_data/1`), `exit:` (the
   data of `run.exited`), `heartbeat:` `{seconds_ago_received, elapsed, interval}`, `now:`
   the moment `ago:` and the heartbeat count back from (default the clock), for a test that
   reads by UTC day: a clock just after midnight would put a run of a minute ago on
@@ -22,7 +23,9 @@ defmodule Apiary.RunListFixtures do
     time = DateTime.add(now, -Keyword.get(opts, :ago, 60), :second)
 
     extra =
-      opts |> Keyword.take([:runtime, :host]) |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      opts
+      |> Keyword.take([:about, :runtime, :host])
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
 
     event_fixture(run, 2, "run.started", started_data(Map.put(extra, "labels", labels)),
       time: time

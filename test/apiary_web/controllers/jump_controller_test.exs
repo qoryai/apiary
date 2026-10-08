@@ -122,13 +122,14 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert "Delete your account…" in actions
   end
 
-  test "a target by its path, and runs by their id or task", %{conn: conn, scope: scope} do
+  test "a target by its path, and runs by their id or title", %{conn: conn, scope: scope} do
     run =
-      started_run(scope, %{
-        "forge" => "github.example",
-        "repository" => "acme/shop",
-        "task" => "fix-checkout"
-      })
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"},
+        about: %{"title" => "Fix the checkout"}
+      )
+
+    # A task is an ordinary label: ⌘K does not find a run by it.
+    task = started_run(scope, %{"task" => "nightly-load"})
 
     answer = jump(conn, workspace_path(scope, "/jump"), "shop")
     [target] = group(answer, "Repositories")["items"]
@@ -147,7 +148,14 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     answer = jump(conn, workspace_path(scope, "/jump"), "checkout")
     assert [%{"label" => label, "href" => ^href}] = group(answer, "Runs")["items"]
-    assert label == "#{short} · fix-checkout"
+    assert label == "#{short} · Fix the checkout"
+
+    refute group(jump(conn, workspace_path(scope, "/jump"), "nightly"), "Runs")
+
+    # A run without a title is its short id.
+    task_short = String.slice(task.run_id, 0, 8)
+    answer = jump(conn, workspace_path(scope, "/jump"), task_short)
+    assert [%{"label" => ^task_short}] = group(answer, "Runs")["items"]
 
     # three characters are not an id
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
@@ -203,11 +211,9 @@ defmodule ApiaryWeb.JumpControllerTest do
   end
 
   test "a runner's words are text in the answer", %{conn: conn, scope: scope} do
-    started_run(scope, %{
-      "forge" => "github.example",
-      "repository" => "acme/<b>shop</b>",
-      "task" => "<script>x</script>"
-    })
+    started_run(scope, %{"forge" => "github.example", "repository" => "acme/<b>shop</b>"},
+      about: %{"title" => "<script>x</script>"}
+    )
 
     answer = jump(conn, workspace_path(scope, "/jump"), "<")
     assert "acme/<b>shop</b>" in labels(group(answer, "Repositories"))

@@ -23,7 +23,6 @@ defmodule Apiary.Runs.Run do
     # path, kept on the run beside `target_id`, both nil when the labels name none.
     field :target_system, :string
     field :target_path, :string
-    field :task, :string
     field :labels, :map, default: %{}
     # What the run said it is about: `about` of `run.started`, each member as the fold
     # kept it (`Apiary.Runs.Fold`), nil or empty when it said none. A subject is a map

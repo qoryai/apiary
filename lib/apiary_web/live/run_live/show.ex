@@ -117,8 +117,10 @@ defmodule ApiaryWeb.RunLive.Show do
       >
         <div class="q-run-col">
           <header class="q-run-head">
-            <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
-            <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
+            <h1 :if={given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
+              {given_title(@run)}
+            </h1>
+            <h1 :if={!given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
               <.rich text={
                 rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
               } />
@@ -1351,10 +1353,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # The window's title: the run, and the tab when it is not the timeline, so a reader with
   # several tabs of one run open tells them apart.
   defp run_title(run, tab) do
-    title =
-      gettext("%{title} · Runs",
-        title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
-      )
+    title = gettext("%{title} · Runs", title: run_title(run))
 
     case tab do
       :terminal -> gettext("Terminal") <> " · " <> title
@@ -1499,9 +1498,6 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp tab_path(scope, %Run{run_id: id}, :details, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/details?#{query}"
-
-  defp label_path(scope, _run, _shared, "task", value),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{task: value}}"
 
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.

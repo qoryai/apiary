@@ -165,7 +165,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "one line per run: its state, its title, its target, runtime, host, started, duration and denials",
          %{conn: conn, scope: scope} do
       run =
-        started_run(scope, Map.put(shop(), "task", "checkout-tax"),
+        started_run(scope, shop(),
+          about: %{"title" => "checkout-tax"},
           ago: 125,
           egress: [%{"decision" => "denied", "rule" => ""}, %{}],
           exit: %{"state" => "failed", "exit_code" => 1, "duration_ms" => 411_000}
@@ -213,16 +214,94 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run without a task is its id; a pinged run is pending", %{
+    test "under its title, what a run is about: its kind and two subjects as text, then how many more",
+         %{conn: conn, scope: scope} do
+      subject = fn type, ref -> %{"type" => type, "ref" => ref} end
+
+      review =
+        started_run(scope, shop(),
+          about: %{
+            "kind" => "Review",
+            "title" => "Review the payment retry change",
+            "subjects" => [
+              Map.put(subject.("pull request", "#418"), "url", "https://git.example.com/pr/418"),
+              Map.put(subject.("ticket", "ENG-21"), "url", "https://tracker.example.com/ENG-21"),
+              subject.("incident", "INC-5")
+            ]
+          }
+        )
+
+      untitled =
+        started_run(scope, shop(),
+          about: %{
+            "kind" => "Implementation",
+            "subjects" => [subject.("pull request", "#412"), subject.("ticket", "ENG-17")]
+          }
+        )
+
+      kind_only =
+        started_run(scope, shop(),
+          about: %{"kind" => "Demo recording", "title" => "Record the onboarding walkthrough"}
+        )
+
+      subject_only =
+        started_run(scope, shop(), about: %{"subjects" => [subject.("ticket", "ENG-9")]})
+
+      title_only = started_run(scope, shop(), about: %{"title" => "Fix the login redirect"})
+      view = open(conn, scope)
+
+      assert text(view, "#{row(review)} .q-rowlink") == "Review the payment retry change"
+      line = "Review · pull request #418 · ticket ENG-21 · +1 more"
+      assert text(view, "#{row(review)} .q-rl-about-wide") == line
+      assert has_element?(view, ~s(#{row(review)} .q-rl-about-wide[title="#{line}"]))
+      # Below 640 px one subject, so the count is not cut off.
+      assert text(view, "#{row(review)} .q-rl-about-phone") ==
+               "Review · pull request #418 · +2 more"
+
+      # Text, never a link: the title's link covers the row.
+      refute has_element?(view, "#{row(review)} .q-rl-about a")
+      refute render(view) =~ "tracker.example.com"
+
+      # No title: the short id, in mono, and the line under it.
+      assert has_element?(
+               view,
+               "#{row(untitled)} .q-rowlink.q-rl-id",
+               String.slice(untitled.run_id, 0, 8)
+             )
+
+      assert text(view, "#{row(untitled)} .q-rl-about-wide") ==
+               "Implementation · pull request #412 · ticket ENG-17"
+
+      assert text(view, "#{row(untitled)} .q-rl-about-phone") ==
+               "Implementation · pull request #412 · +1 more"
+
+      assert text(view, "#{row(kind_only)} .q-rl-about") == "Demo recording"
+      assert text(view, "#{row(subject_only)} .q-rl-about") == "ticket ENG-9"
+      refute has_element?(view, "#{row(subject_only)} .q-rl-about-phone")
+      # Neither a kind nor a subject: no line.
+      refute has_element?(view, "#{row(title_only)} .q-rl-about")
+    end
+
+    test "a run without a title is its id, a task an ordinary label; a pinged run is pending", %{
       conn: conn,
       scope: scope
     } do
       plain = started_run(scope, %{})
+      task = started_run(scope, Map.put(shop(), "task", "Update the billing copy"))
       pending = run_fixture(scope)
       view = open(conn, scope)
 
       assert text(view, "#{row(plain)} .q-rowlink") == String.slice(plain.run_id, 0, 8)
       assert has_element?(view, "#{row(plain)} .q-rl-c3", "n/a")
+
+      assert has_element?(
+               view,
+               "#{row(task)} .q-rowlink.q-rl-id",
+               String.slice(task.run_id, 0, 8)
+             )
+
+      refute has_element?(view, "#{row(task)} .q-rl-about")
+      refute render(view) =~ "Update the billing copy"
 
       cells = text(view, row(pending))
       assert cells =~ "Pending"
@@ -325,14 +404,15 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     setup %{scope: scope} do
       %{
         failed:
-          started_run(scope, Map.put(shop(), "task", "fix-cart"),
+          started_run(scope, shop(),
+            about: %{"title" => "fix-cart"},
             ago: 300,
             host: "build-02",
             egress: [%{"decision" => "denied", "rule" => ""}],
             exit: %{"state" => "failed", "exit_code" => 1}
           ),
         running:
-          started_run(scope, Map.put(shop("gitlab.example"), "task", "mirror-sync"), ago: 100)
+          started_run(scope, shop("gitlab.example"), about: %{"title" => "mirror-sync"}, ago: 100)
       }
     end
 
@@ -371,7 +451,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
           conn,
           runs(
             scope,
-            "?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+            "?state=failed&system=github.example&target=acme/shop&runtime=claude&host=build-02&denials=1&since=24h"
           )
         )
 
@@ -381,7 +461,6 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       # acme/shop is on two systems here: its token names the system.
       assert token(view, "target") == "repo:github.example/acme/shop"
       assert token(view, "state") == "state:failed"
-      assert token(view, "task") == "task:fix-cart"
       assert token(view, "started") == "started:24h"
       assert token(view, "denied") == "denied:yes"
       assert has_element?(view, "#runs-token-runtime a[aria-label='Remove runtime:claude']")
@@ -420,7 +499,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view |> element("#runs-token-state a") |> render_click()
       assert_patch(view, runs(scope, "?q=fix&target=acme%2Fshop"))
 
-      # The free text alone: a run's task, id or target.
+      # The free text alone: a run's title, id or target.
       view |> form("#runs-query", %{"q" => "mirror"}) |> render_submit()
       assert_patch(view, runs(scope, "?q=mirror&target=acme%2Fshop"))
       render_async(view)
@@ -463,10 +542,15 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, "#runs-filter-panel[role=group]")
 
-      for key <- ~w(target state task runtime host node since denials) do
+      for key <- ~w(target state runtime host node since denials) do
         assert has_element?(view, "#runs-filter-open-#{key}")
         assert has_element?(view, "#runs-filter-section-#{key}[role=group]")
       end
+
+      # A task is an ordinary label: no section, and no "No task".
+      refute has_element?(view, "#runs-filter-open-task")
+      refute has_element?(view, "#runs-filter-section-task")
+      refute render(view) =~ "No task"
 
       # The rail does the Target section's work from 1280 px.
       assert has_element?(view, "#runs-filter-open-target.q-norail")
@@ -481,11 +565,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert has_element?(view, row(running))
 
-      view |> form("#filter-task-form") |> render_change(%{"task" => "mirror-sync"})
-      assert_patch(view, runs(scope, "?state=running&task=mirror-sync"))
+      view |> form("#filter-host-form") |> render_change(%{"host" => "build-02"})
+      assert_patch(view, runs(scope, "?host=build-02&state=running"))
 
       view |> form("#filter-denials-form") |> render_change(%{"denials" => "1"})
-      assert_patch(view, runs(scope, "?denials=1&state=running&task=mirror-sync"))
+      assert_patch(view, runs(scope, "?denials=1&host=build-02&state=running"))
 
       # Nothing matches: the empty state clears them, and the line that counts is not there.
       render_async(view)
@@ -733,13 +817,38 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert to == runs(scope, "?state=failed")
     end
 
+    test "an old link's task is dropped quietly: a task is an ordinary label, no filter", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, Map.put(shop(), "task", "fix-cart"))
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, runs(scope, "?task=fix-cart&state=running"))
+
+      assert to == runs(scope, "?state=running")
+
+      view = open(conn, to)
+      assert has_element?(view, row(run))
+      refute has_element?(view, "#runs-dropped")
+      refute has_element?(view, "#runs-token-task")
+
+      # Typed, `task:` is no qualifier: the words are the free text, which no title holds.
+      view |> form("#runs-query", %{"q" => "task:fix-cart"}) |> render_submit()
+      assert_patch(view, runs(scope, "?q=task%3Afix-cart&state=running"))
+      render_async(view)
+      refute has_element?(view, "#runs-dropped")
+      refute has_element?(view, "#runs-token-task")
+      refute has_element?(view, row(run))
+    end
+
     test "a refused value is said, never silently an unfiltered list", %{conn: conn, scope: scope} do
       started_run(scope, shop())
 
       assert {:error, {:live_redirect, %{to: to}}} =
                live(
                  conn,
-                 ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"task" => <<0>>}}"
+                 ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"runtime" => <<0>>}}"
                )
 
       assert to == ~p"/#{scope.organisation}/#{scope.workspace}/runs"
@@ -783,11 +892,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   describe "the rail, and targets and sections at any size" do
     test "the rail lists the targets with their runs under the other filters; one is a link that sets it",
          %{conn: conn, scope: scope} do
-      shop_run = started_run(scope, Map.put(shop(), "task", "a"))
-      started_run(scope, Map.put(shop(), "task", "b"))
+      shop_run = started_run(scope, shop(), about: %{"title" => "first-title"})
+      started_run(scope, shop(), about: %{"title" => "second-title"})
       api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
       started_run(scope, %{})
-      view = open(conn, runs(scope, "?task=a"))
+      view = open(conn, runs(scope, "?q=first-title"))
 
       assert has_element?(view, "nav#runs-rail[aria-label=Repositories]")
       # The rail's headings sit under a heading of its own, so the outline never skips.
@@ -901,24 +1010,24 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       scope: scope
     } do
       for n <- 1..60 do
-        run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: DateTime.utc_now()})
+        run_fixture(scope, %{state: "running", host: "host-#{n}", started_at: DateTime.utc_now()})
       end
 
       view = open(conn, scope)
-      assert text(view, "#filter-task-more") == "Showing 50 of 60: type to narrow"
+      assert text(view, "#filter-host-more") == "Showing 50 of 60: type to narrow"
 
-      view |> element("#filter-task-show-more") |> render_click()
+      view |> element("#filter-host-show-more") |> render_click()
       render_async(view)
-      refute has_element?(view, "#filter-task-more")
-      refute has_element?(view, "#filter-task-show-more")
+      refute has_element?(view, "#filter-host-more")
+      refute has_element?(view, "#filter-host-show-more")
 
-      view |> form("#filter-task-narrow") |> render_change(%{"q" => "task-6"})
+      view |> form("#filter-host-narrow") |> render_change(%{"q" => "host-6"})
       render_async(view)
-      assert text(view, "#filter-task-form") == "task-6 1 task-60 1"
+      assert text(view, "#filter-host-form") == "host-6 1 host-60 1"
 
-      view |> form("#filter-task-narrow") |> render_change(%{"q" => "%"})
+      view |> form("#filter-host-narrow") |> render_change(%{"q" => "%"})
       render_async(view)
-      assert text(view, "#filter-task-form") == "Nothing matches"
+      assert text(view, "#filter-host-form") == "Nothing matches"
     end
   end
 
@@ -1300,12 +1409,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     setup %{scope: scope} do
       %{
         older:
-          started_run(scope, Map.put(shop(), "task", "older"),
+          started_run(scope, shop(),
+            about: %{"title" => "older"},
             ago: 300,
             egress: [%{"decision" => "denied", "rule" => "", "host" => "files.cdn.example"}],
             exit: %{"state" => "failed", "exit_code" => 1, "duration_ms" => 12_000}
           ),
-        newer: started_run(scope, Map.put(shop(), "task", "newer"), ago: 100)
+        newer: started_run(scope, shop(), about: %{"title" => "newer"}, ago: 100)
       }
     end
 
@@ -1543,9 +1653,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
 
     test "a new run the filters do not return is not announced", %{conn: conn, scope: scope} do
-      started_run(scope, Map.put(shop(), "task", "a"), ago: 30)
-      view = open(conn, runs(scope, "?task=a"))
-      started_run(scope, Map.put(shop(), "task", "b"), ago: 1)
+      started_run(scope, shop(), about: %{"title" => "first-title"}, ago: 30)
+      view = open(conn, runs(scope, "?q=first-title"))
+      started_run(scope, shop(), about: %{"title" => "second-title"}, ago: 1)
       refute has_element?(view, "#runs-new")
     end
 

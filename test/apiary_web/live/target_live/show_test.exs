@@ -42,7 +42,8 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
       )
 
     last =
-      started_run(scope, Map.put(repo("github.example", "acme/shop"), "task", "fix-totals"),
+      started_run(scope, repo("github.example", "acme/shop"),
+        about: %{"title" => "fix-totals"},
         ago: 60,
         host: "ci-02",
         exit: %{"state" => "failed", "exit_code" => 1},
@@ -139,7 +140,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
   } do
     view = open(conn, path)
 
-    send(view.pid, {:run_changed, %{last | task: "fix-totals-again"}})
+    send(view.pid, {:run_changed, %{last | about_title: "fix-totals-again"}})
     assert has_element?(view, "#target-last-runs-#{last.id}", "fix-totals-again")
 
     # The projector says so on the workspace's topic, which the page follows.

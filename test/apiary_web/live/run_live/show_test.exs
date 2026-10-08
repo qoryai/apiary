@@ -85,7 +85,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       # the title alone on its line
-      assert has_element?(lv, "h1#run-title", run.task)
+      assert has_element?(lv, "h1#run-title", ApiaryWeb.RunComponents.run_title(run))
 
       # the meta line: the state as a dot and its word, the target's page, runtime, host,
       # when it started, how long it took, its denials, which lead to its connections
@@ -137,8 +137,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#policy-unrendered")
       end
 
-      # labels are key and value lines, in the record's order with forge, repository and
-      # task first; a label that names the target leads to its page
+      # labels are key and value lines, in the record's order: forge and repository first,
+      # then by name; a label that names the target leads to its page, and a task is an
+      # ordinary label
       assert html
              |> LazyHTML.from_document()
              |> LazyHTML.query("#run-labels dt")
@@ -147,6 +148,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                ~w(forge repository task)
 
       assert has_element?(lv, ~s(#run-labels a[href="#{target}"]), "acme/shop")
+      refute has_element?(lv, ~s(#run-labels a[href*="task="]))
       refute has_element?(lv, ".q-label")
 
       # tabs with their counts; Details is the rail's, a tab below 1440 px and on Terminal
@@ -272,7 +274,38 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#breadcrumb a[href='#{page}']")
     end
 
-    test "a run without a task is titled by its short id, and one without a wall says None", %{
+    test "the title is the one the run gave; a task is an ordinary label, never the title", %{
+      conn: conn,
+      scope: scope
+    } do
+      labels = %{"task" => "fix-login", "team" => "web"}
+
+      titled =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"about" => %{"title" => "Fix the login redirect"}, "labels" => labels})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{titled.run_id}")
+
+      assert has_element?(lv, "h1#run-title", "Fix the login redirect")
+      assert page_title(lv) == "Fix the login redirect · Runs · Qory Apiary"
+      assert has_element?(lv, "#run-labels dd", "fix-login")
+      refute has_element?(lv, "#run-labels a")
+
+      untitled = projected(scope, [{1, "run.started", started_data(%{"labels" => labels})}])
+      short = String.slice(untitled.run_id, 0, 8)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{untitled.run_id}/details")
+
+      assert has_element?(lv, "h1#run-title", "Run #{short}")
+      refute has_element?(lv, "h1#run-title", "fix-login")
+      assert page_title(lv) == "Details · Run #{short} · Runs · Qory Apiary"
+    end
+
+    test "a run without a title is titled by its short id, and one without a wall says None", %{
       conn: conn,
       scope: scope
     } do
@@ -1331,7 +1364,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         |> get(~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
         |> html_response(200)
 
-      assert html =~ run.task
+      assert html =~ "#{ApiaryWeb.RunComponents.run_title(run)} · Runs"
       assert html =~ "Succeeded"
       assert html =~ ~s(id="run-loading")
       refute html =~ ~s(id="timeline")

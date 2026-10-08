@@ -123,8 +123,7 @@ defmodule Apiary.RunEventsFixtures do
         "host" => "dev-laptop",
         "labels" => %{
           "forge" => "git.example.com",
-          "repository" => "acme/shop",
-          "task" => "issue-12"
+          "repository" => "acme/shop"
         }
       },
       extra

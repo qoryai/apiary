@@ -17,7 +17,6 @@ defmodule Apiary.Runs.FoldTest do
     wall: nil,
     image: nil,
     labels: %{},
-    task: nil,
     about_kind: nil,
     about_title: nil,
     about_subjects: [],
@@ -177,7 +176,6 @@ defmodule Apiary.Runs.FoldTest do
       assert run.host == "dev-laptop"
       assert run.wall == "docker"
       assert run.image == "example/agent:1"
-      assert run.task == "issue-12"
       assert run.target_system == "git.example.com"
       assert run.target_path == "acme/shop"
       assert run.labels["task"] == "issue-12"

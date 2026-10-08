@@ -1970,6 +1970,13 @@ msgstr ""
 msgid "(was %{mode})"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "+%{number} more"
+msgid_plural "+%{number} more"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "1 place matches."
@@ -7624,12 +7631,6 @@ msgstr ""
 msgid "No targets yet"
 msgstr ""
 
-#: lib/apiary/runs.ex
-#: lib/apiary_web/live/run_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No task"
-msgstr ""
-
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No variable matches"
@@ -9372,6 +9373,7 @@ msgstr ""
 msgid "Run"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run %{id}"
@@ -10355,11 +10357,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets · Policy"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Task"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

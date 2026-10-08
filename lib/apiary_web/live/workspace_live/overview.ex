@@ -944,7 +944,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             what: gettext("Closed."),
             done: nil
           })
-          |> announce(gettext("%{run} is closed.", run: run_title(run)), :now)
+          |> announce(gettext("%{run} is closed.", run: row_title(run)), :now)
           |> focus_after("att-run-#{run.run_id}")
 
         {:noreply, socket}

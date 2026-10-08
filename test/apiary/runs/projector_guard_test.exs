@@ -111,6 +111,7 @@ defmodule Apiary.Runs.ProjectorGuardTest do
         {1, "run.started",
          started_data(%{
            "args" => ["--prompt", "marker-in-an-arg"],
+           "about" => %{"title" => "marker-in-a-title"},
            "labels" => %{
              "forge" => "git.example.com",
              "repository" => "acme/shop",
@@ -125,7 +126,10 @@ defmodule Apiary.Runs.ProjectorGuardTest do
 
       log =
         capture_log([level: :debug], fn ->
-          assert {:ok, %Run{task: "marker-in-a-label"}} = Projector.project(run)
+          assert {:ok,
+                  %Run{about_title: "marker-in-a-title", labels: %{"task" => "marker-in-a-label"}}} =
+                   Projector.project(run)
+
           assert {:ok, %Run{}} = Projector.rebuild(run)
         end)
 
