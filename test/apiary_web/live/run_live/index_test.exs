@@ -288,6 +288,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert text(view, "#{row(kind_only)} .q-rl-about") == "Demo recording"
       assert text(view, "#{row(subject_only)} .q-rl-about") == "ticket ENG-9"
+      # A subject's type and ref are each isolated, so a bidi override reorders nothing.
+      assert has_element?(view, "#{row(subject_only)} .q-rl-about bdi", "ENG-9")
+      assert has_element?(view, "#{row(review)} .q-rl-about-wide bdi", "#418")
       refute has_element?(view, "#{row(subject_only)} .q-rl-about-phone")
       # Neither a kind nor a subject: no line.
       refute has_element?(view, "#{row(title_only)} .q-rl-about")

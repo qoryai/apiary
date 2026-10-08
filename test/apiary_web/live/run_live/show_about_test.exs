@@ -67,12 +67,12 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       assert has_element?(lv, pr, "pull request #412")
       assert has_element?(lv, pr <> ~s([target="_blank"][rel="noopener noreferrer nofollow"]))
       assert has_element?(lv, pr <> " .sr-only", "(opens in a new tab)")
-      # a subject without a title has no tooltip; one with a title has it as its tooltip
-      refute has_element?(lv, pr <> "[title]")
+      # the tooltip is the subject's title and its url's host, or the host alone
+      assert has_element?(lv, pr <> ~s([title="git.example.com"]))
 
       assert has_element?(
                lv,
-               ~s(#run-about a[href="https://tracker.example.com/browse/ENG-17"][title="Login redirects to a blank page"]),
+               ~s(#run-about a[href="https://tracker.example.com/browse/ENG-17"][title="Login redirects to a blank page · tracker.example.com"]),
                "ticket ENG-17"
              )
 
@@ -89,6 +89,41 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       refute has_element?(lv, "#run-about-more")
     end
 
+    test "isolates a subject's words, and its tooltip names the url's own host", %{
+      conn: conn,
+      scope: scope
+    } do
+      # A right-to-left override in the ref and a host-like title: neither may pass for
+      # where the link leads.
+      ref = "ENG-17\u202Emoc.elpmaxe.live"
+
+      subject = %{
+        "type" => "ticket",
+        "ref" => ref,
+        "url" => "https://tracker.example.com/browse/ENG-17",
+        "title" => "login.example.org"
+      }
+
+      {lv, _html} = page(conn, scope, started(scope, %{"subjects" => [subject]}), "/details")
+
+      link = ~s(a[href="https://tracker.example.com/browse/ENG-17"])
+      tip = "login.example.org · tracker.example.com"
+
+      for place <- ["#run-about", "#run-about-facts"] do
+        assert has_element?(lv, "#{place} #{link}[title=\"#{tip}\"]")
+        assert has_element?(lv, "#{place} #{link} bdi", ref)
+        assert has_element?(lv, "#{place} #{link} bdi", "ticket")
+      end
+
+      assert has_element?(lv, "#run-about-facts .q-rail-sub > bdi", "login.example.org")
+
+      # No url that may be a link: text, with its title and no host.
+      plain = %{subject | "url" => "javascript:alert(1)"}
+      {lv, _html} = page(conn, scope, started(scope, %{"subjects" => [plain]}))
+      refute has_element?(lv, "#run-about a")
+      assert has_element?(lv, ~s(#run-about span[title="login.example.org"] bdi), ref)
+    end
+
     test "shows three subjects, then how many more, as text", %{conn: conn, scope: scope} do
       subjects =
         for n <- 1..5,
@@ -103,8 +138,19 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
 
       refute has_element?(lv, "#run-about-kind")
 
-      assert texts(lv, "#run-about a") |> Enum.map(&String.replace(&1, ~r/\s+\(opens.*/s, "")) ==
-               ["pull request #1", "pull request #2", "pull request #3"]
+      for n <- 1..3 do
+        assert has_element?(
+                 lv,
+                 ~s(#run-about a[href="https://git.example.com/pull/#{n}"]),
+                 "pull request ##{n}"
+               )
+      end
+
+      assert lv
+             |> render()
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#run-about a")
+             |> Enum.count() == 3
 
       assert has_element?(lv, "#run-about > #run-about-more", "+2 more")
       refute has_element?(lv, "#run-about-more a")

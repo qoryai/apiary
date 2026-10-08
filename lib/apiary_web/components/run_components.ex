@@ -548,24 +548,58 @@ defmodule ApiaryWeb.RunComponents do
   def about_line(run, limit \\ 2) do
     case about_parts(run, limit) do
       [] -> nil
-      parts -> Enum.join(parts, " · ")
+      parts -> parts |> Enum.map(&part_text/1) |> Enum.join(" · ")
     end
   end
 
+  # The kind and the "+N more" as text, each subject named as `{:subject, subject}`.
   defp about_parts(run, limit) do
     subjects = Map.get(run, :about_subjects) || []
     more = length(subjects) - limit
 
     Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""])) ++
-      Enum.map(Enum.take(subjects, limit), &subject_words/1) ++
+      Enum.map(Enum.take(subjects, limit), &{:subject, &1}) ++
       if(more > 0, do: [more_text(more)], else: [])
   end
 
+  defp part_text({:subject, subject}), do: subject_words(subject)
+  defp part_text(text), do: text
+
   @doc """
-  A subject in words: its type and ref as given, "pull request #412". Apiary knows no
-  subject types, so neither is mapped or translated.
+  A subject in words, as text: its type and ref as given, "pull request #412", for a
+  tooltip. Apiary knows no subject types, so neither is mapped or translated.
+  `subject_name/1` is the same words as markup.
   """
   def subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
+
+  @doc """
+  A subject in words, as markup: its type and its ref, each isolated in a `<bdi>`, so a
+  bidirectional character in one (U+202E, say) reorders neither the other nor the words
+  around them.
+  """
+  attr :subject, :map, required: true
+
+  def subject_name(assigns) do
+    ~H"""
+    <bdi>{@subject["type"]}</bdi> <bdi>{@subject["ref"]}</bdi>
+    """
+  end
+
+  @doc """
+  The tooltip of a subject's link: its title and the host its url leads to, as the url
+  parses, "Login redirects to a blank page · tracker.example.com", or the host alone. A
+  subject whose url may not be a link (`ApiaryWeb.CoreComponents.external_url?/1`) has its
+  title alone, or nil. Plain text: a tooltip holds no markup.
+  """
+  def subject_tip(subject) do
+    url = subject["url"]
+    host = if ApiaryWeb.CoreComponents.external_url?(url), do: URI.parse(url).host
+
+    case Enum.reject([subject["title"], host], &is_nil/1) do
+      [] -> nil
+      parts -> Enum.join(parts, " · ")
+    end
+  end
 
   defp more_text(n),
     do: ngettext("+%{number} more", "+%{number} more", n, number: Format.number(n))
@@ -1586,16 +1620,32 @@ defmodule ApiaryWeb.RunComponents do
 
   defp row_about(assigns) do
     assigns =
-      assign(assigns, line: about_line(assigns.run), phone: about_line(assigns.run, 1))
+      assign(assigns,
+        line: about_line(assigns.run),
+        phone: about_line(assigns.run, 1),
+        wide_parts: about_parts(assigns.run, 2),
+        phone_parts: about_parts(assigns.run, 1)
+      )
 
     ~H"""
-    <span :if={@line && @line == @phone} class="q-rl-about" title={@line}>{@line}</span>
+    <span :if={@line && @line == @phone} class="q-rl-about" title={@line}>
+      <.about_words parts={@wide_parts} />
+    </span>
     <span :if={@line && @line != @phone} class="q-rl-about q-rl-about-wide" title={@line}>
-      {@line}
+      <.about_words parts={@wide_parts} />
     </span>
     <span :if={@line && @line != @phone} class="q-rl-about q-rl-about-phone" title={@line}>
-      {@phone}
+      <.about_words parts={@phone_parts} />
     </span>
+    """
+  end
+
+  # The parts of `about_line/2` as markup, each subject isolated (`subject_name/1`).
+  attr :parts, :list, required: true
+
+  defp about_words(assigns) do
+    ~H"""
+    <span phx-no-format><%= for {part, index} <- Enum.with_index(@parts) do %>{if index > 0, do: " · "}<%= case part do %><% {:subject, subject} -> %><.subject_name subject={subject} /><% text -> %>{text}<% end %><% end %></span>
     """
   end
 

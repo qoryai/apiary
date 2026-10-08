@@ -31,7 +31,15 @@ defmodule ApiaryWeb.RunPageComponents do
     ]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, middle: 2, subject_words: 1]
+    only: [
+      connection_row: 1,
+      tool_mark: 1,
+      duration: 1,
+      offset: 1,
+      middle: 2,
+      subject_name: 1,
+      subject_tip: 1
+    ]
 
   alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
@@ -1533,8 +1541,8 @@ defmodule ApiaryWeb.RunPageComponents do
 
   @doc """
   The header's line under the title: the kind, then the first three subjects, each a link
-  out with its title as the tooltip, then how many more there are (all of them are in the
-  rail's About). Nothing when the run names neither a kind nor a subject.
+  out with its title and its url's host as the tooltip (`subject_tip/1`), then how many
+  more there are (all of them are in the rail's About). Nothing when the run names neither a kind nor a subject.
   """
   attr :run, :map, required: true
 
@@ -1551,8 +1559,8 @@ defmodule ApiaryWeb.RunPageComponents do
     <p :if={@run.about_kind || @subjects != []} id="run-about" class="q-run-about">
       <span :if={@run.about_kind} id="run-about-kind">{@run.about_kind}</span>
       <span :for={subject <- @subjects}>
-        <.external_link href={subject["url"]} title={subject["title"]}>
-          {subject_words(subject)}
+        <.external_link href={subject["url"]} title={subject_tip(subject)}>
+          <.subject_name subject={subject} />
         </.external_link>
       </span>
       <span :if={@more > 0} id="run-about-more">
@@ -1590,9 +1598,11 @@ defmodule ApiaryWeb.RunPageComponents do
         <dd :if={@run.about_kind}>{@run.about_kind}</dd>
         <dt :if={@subjects != []}>{gettext("Subjects")}</dt>
         <dd :for={subject <- @subjects} class="q-rail-subj">
-          <.external_link href={subject["url"]}>{subject_words(subject)}</.external_link>
+          <.external_link href={subject["url"]} title={subject_tip(subject)}>
+            <.subject_name subject={subject} />
+          </.external_link>
           <span :if={subject["title"]} class="q-rail-sub" title={subject["title"]}>
-            {subject["title"]}
+            <bdi>{subject["title"]}</bdi>
           </span>
         </dd>
       </dl>

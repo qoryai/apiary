@@ -1312,8 +1312,13 @@ page has no breadcrumb of its own.
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
   its title muted under it, cut to a line and whole on hover; then the details in mono, by
   key, a row per member, a member that is a non-empty object a row per member of its own
-  keyed `outer.inner`, a string as given and anything else as compact JSON. The title is the
-  page's `<h1>` and is not repeated there. Below 1440 px,
+  keyed `outer.inner`, a string as given and anything else as compact JSON, each value
+  wrapped and never cut. The title is the page's `<h1>` and is not repeated there.
+- **A subject's words** (its type, ref and title) are each isolated in a `<bdi>` wherever
+  they show, in the runs list, the header and the rail, so a bidirectional character in
+  one reorders nothing around it; a subject's link has as its tooltip its title and the
+  host its url parses to ("Login redirects to a blank page · tracker.example.com"), or
+  the host alone. Below 1440 px,
   and from it when Terminal took the rail's room, the Details tab shows this same element
   in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.
