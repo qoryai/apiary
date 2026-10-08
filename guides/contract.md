@@ -231,6 +231,12 @@ beyond the limit or an unsupported version does not.
   live. The
   events are projected into the run, its connections and its log after the answer, in
   order of `sequence`, never of arrival.
+- **What a run is about.** `about` of `dev.qory.run.started`, its kind, title, subjects
+  and details, is read within its bounds and shown in the console: its title is the run's
+  title. Without one, the run page says "Run" and the run's short id, the lists the short
+  id, and the Overview the run's command line, else its short id. A kind, title or
+  details past its bound is dropped, never cut, and a subject past its own is dropped
+  alone.
 - **The rate** is per access key and per server node: 50 batches a second, 100 at once.
   Every request that passed the `413`, the `415` and the `401` spends one, whatever it is
   answered after that.

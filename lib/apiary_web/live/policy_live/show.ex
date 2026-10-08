@@ -892,6 +892,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="list"
     >
+      <:crumb>{gettext("Policy")}</:crumb>
       <.page_skeleton title={gettext("Policy")} />
     </Layouts.app>
     """
@@ -923,6 +924,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {gettext("Version %{version}", version: @v.configuration.version)}
       </:crumb>
       <:crumb :if={@live_action == :export && @v}>{gettext("Export")}</:crumb>
+      <:crumb :if={!(@live_action in [:version, :export] && @v)}>{gettext("Policy")}</:crumb>
 
       <div
         id="policy-page"
@@ -1055,9 +1057,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
-          crumbs={false}
-          policy={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
-          version={@v.configuration.version}
           done={
             ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
           }

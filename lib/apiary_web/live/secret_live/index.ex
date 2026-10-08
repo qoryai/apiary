@@ -143,7 +143,6 @@ defmodule ApiaryWeb.SecretLive.Index do
       nav={:settings}
       sections={@sections}
       section={:secrets}
-      section_current={if @view == :variables, do: "true", else: "page"}
     >
       <.settings_page
         section={:secrets}

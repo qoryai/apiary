@@ -26,7 +26,7 @@ defmodule ApiaryWeb.JumpController do
   - **Actions** also hold, for what is typed, the deletions the reader may take, each at
     its confirm's path.
   - **Targets**: the workspace's targets by `system/path` (`Apiary.Runs.search_targets/3`).
-  - **Runs**: by the start of their id, a whole id or a run page's address, or by task
+  - **Runs**: by the start of their id, a whole id or a run page's address, or by title
     (`Apiary.Runs.search_runs/3`).
   - **Places**: the organisations and workspaces the reader reaches, by name and slug.
   - **Actions**: what New offers here (`ApiaryWeb.Layouts.new_entries/2`), on a
@@ -37,7 +37,7 @@ defmodule ApiaryWeb.JumpController do
   the organisation's and the person's, never a workspace's, though the scope carries the
   one opened last. Targets and runs are listed only to a reader of the record
   (`run.read`). The palette belongs to the console's record, `observability`, which every
-  instance has. What a runner reported (a path, a task) is text in
+  instance has. What a runner reported (a path, a title) is text in
   the JSON and the hook writes it as text.
   """
   use ApiaryWeb, :controller
@@ -259,10 +259,14 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
-  defp run_label(%{task: task, run_id: run_id}) when is_binary(task) and task != "",
-    do: "#{ApiaryWeb.RunComponents.short_id(run_id)} · #{task}"
+  defp run_label(run) do
+    short_id = ApiaryWeb.RunComponents.short_id(run.run_id)
 
-  defp run_label(%{run_id: run_id}), do: ApiaryWeb.RunComponents.short_id(run_id)
+    case ApiaryWeb.RunComponents.given_title(run) do
+      nil -> short_id
+      title -> "#{short_id} · #{title}"
+    end
+  end
 
   defp places(%{user: user}, text) when text != "" do
     items =

@@ -499,11 +499,10 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A run's labels in the record's order: first the labels that name a target in the
-  workspace's domain (`Apiary.Lingo.Domain.target_labels/1`), then the task, then the rest
-  by name.
+  workspace's domain (`Apiary.Lingo.Domain.target_labels/1`), then the rest by name.
   """
   def ordered_labels(%{} = labels, workspace) do
-    keys = Apiary.Lingo.Domain.target_labels(workspace) ++ ["task"]
+    keys = Apiary.Lingo.Domain.target_labels(workspace)
     first = for key <- keys, value = labels[key], do: {key, value}
     first ++ (labels |> Map.drop(keys) |> Enum.sort())
   end
@@ -526,6 +525,84 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The first eight characters of a run id, as the runner prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
+
+  ## A run's title
+
+  @doc """
+  A run's title: the one it gave in its `about` (`about_title`), else "Run" and its short
+  id. Every page that names a run calls it this; a row that shows the short id alone when
+  there is no title asks `given_title/1`.
+  """
+  def run_title(run), do: given_title(run) || gettext("Run %{id}", id: short_id(run.run_id))
+
+  @doc "The title a run gave in its `about`, or nil when it gave none."
+  def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
+  def given_title(_run), do: nil
+
+  @doc """
+  What a run is about in one line of a list, as text: its kind, then its first two
+  subjects, each its type and ref as given ("pull request #412"), then how many more there
+  are, joined by " · "; nil when it gave neither a kind nor a subject. `limit` is how many
+  subjects are named.
+  """
+  def about_line(run, limit \\ 2) do
+    case about_parts(run, limit) do
+      [] -> nil
+      parts -> parts |> Enum.map(&part_text/1) |> Enum.join(" · ")
+    end
+  end
+
+  # The kind and the "+N more" as text, each subject named as `{:subject, subject}`.
+  defp about_parts(run, limit) do
+    subjects = Map.get(run, :about_subjects) || []
+    more = length(subjects) - limit
+
+    Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""])) ++
+      Enum.map(Enum.take(subjects, limit), &{:subject, &1}) ++
+      if(more > 0, do: [more_text(more)], else: [])
+  end
+
+  defp part_text({:subject, subject}), do: subject_words(subject)
+  defp part_text(text), do: text
+
+  @doc """
+  A subject in words, as text: its type and ref as given, "pull request #412", for a
+  tooltip. Apiary knows no subject types, so neither is mapped or translated.
+  `subject_name/1` is the same words as markup.
+  """
+  def subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
+
+  @doc """
+  A subject in words, as markup: its type and its ref, each isolated in a `<bdi>`, so a
+  bidirectional character in one (U+202E, say) reorders neither the other nor the words
+  around them.
+  """
+  attr :subject, :map, required: true
+
+  def subject_name(assigns) do
+    ~H"""
+    <bdi>{@subject["type"]}</bdi> <bdi>{@subject["ref"]}</bdi>
+    """
+  end
+
+  @doc """
+  The tooltip of a subject's link: its title and the host its url leads to, as the url
+  parses, "Login redirects to a blank page · tracker.example.com", or the host alone. A
+  subject whose url may not be a link (`ApiaryWeb.CoreComponents.external_url?/1`) has its
+  title alone, or nil. Plain text: a tooltip holds no markup.
+  """
+  def subject_tip(subject) do
+    url = subject["url"]
+    host = if ApiaryWeb.CoreComponents.external_url?(url), do: URI.parse(url).host
+
+    case Enum.reject([subject["title"], host], &is_nil/1) do
+      [] -> nil
+      parts -> Enum.join(parts, " · ")
+    end
+  end
+
+  defp more_text(n),
+    do: ngettext("+%{number} more", "+%{number} more", n, number: Format.number(n))
 
   ## Alive indicator
 
@@ -1435,9 +1512,10 @@ defmodule ApiaryWeb.RunComponents do
   def exit_note(_run), do: nil
 
   @doc """
-  The runs of a list, one line each: the state as a mark, the run's title (its task, else
-  its id) the only strong text, its target after it until the table is 1000 px wide and
-  then in a column of its own, the runtime and the host faint from 1150 px, when it
+  The runs of a list, one row each: the state as a mark, the run's title (`given_title/1`,
+  else its short id) the only strong text, its target after it until the table is 1000 px
+  wide and then in a column of its own, what the run is about in a muted line under them
+  (`about_line/1`) when it said, the runtime and the host faint from 1150 px, when it
   started, how long it ran from 720 px, and its denials, red when there are any. The
   columns join by the table's own width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
@@ -1535,6 +1613,42 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  # What the run is about, one muted line under its title: `about_line/1`, text and never a
+  # link, since the title's link covers the row. Below 640 px the line is cut at the
+  # screen's width, so it names one subject fewer and keeps its count in sight.
+  attr :run, :map, required: true
+
+  defp row_about(assigns) do
+    assigns =
+      assign(assigns,
+        line: about_line(assigns.run),
+        phone: about_line(assigns.run, 1),
+        wide_parts: about_parts(assigns.run, 2),
+        phone_parts: about_parts(assigns.run, 1)
+      )
+
+    ~H"""
+    <span :if={@line && @line == @phone} class="q-rl-about" title={@line}>
+      <.about_words parts={@wide_parts} />
+    </span>
+    <span :if={@line && @line != @phone} class="q-rl-about q-rl-about-wide" title={@line}>
+      <.about_words parts={@wide_parts} />
+    </span>
+    <span :if={@line && @line != @phone} class="q-rl-about q-rl-about-phone" title={@line}>
+      <.about_words parts={@phone_parts} />
+    </span>
+    """
+  end
+
+  # The parts of `about_line/2` as markup, each subject isolated (`subject_name/1`).
+  attr :parts, :list, required: true
+
+  defp about_words(assigns) do
+    ~H"""
+    <span phx-no-format><%= for {part, index} <- Enum.with_index(@parts) do %>{if index > 0, do: " · "}<%= case part do %><% {:subject, subject} -> %><.subject_name subject={subject} /><% text -> %>{text}<% end %><% end %></span>
+    """
+  end
+
   attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :target, :boolean, required: true
@@ -1565,10 +1679,10 @@ defmodule ApiaryWeb.RunComponents do
         <span class="q-rl-tt">
           <.link
             navigate={run_page(@scope, @run)}
-            class={["q-rowlink q-rl-title", !@run.task && "q-rl-id"]}
-            title={@run.task}
+            class={["q-rowlink q-rl-title", !given_title(@run) && "q-rl-id"]}
+            title={given_title(@run)}
           >
-            {@run.task || short_id(@run.run_id)}
+            {given_title(@run) || short_id(@run.run_id)}
           </.link>
           <.target_name
             :if={@target && @run.target_system && @run.target_path}
@@ -1578,6 +1692,7 @@ defmodule ApiaryWeb.RunComponents do
             shared={@shared}
           />
         </span>
+        <.row_about run={@run} />
       </td>
       <td :if={@target} class="q-rl-c3" role="cell">
         <.target_name
@@ -1694,7 +1809,7 @@ defmodule ApiaryWeb.RunComponents do
             {gettext("Open run")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
           </.button>
         </div>
-        <h2 class="q-pv-t">{@preview.run.task || short_id(@preview.run.run_id)}</h2>
+        <h2 class="q-pv-t">{given_title(@preview.run) || short_id(@preview.run.run_id)}</h2>
         <p class="q-pv-m">
           <.target_name
             :if={@preview.run.target_system && @preview.run.target_path}
@@ -2195,8 +2310,8 @@ defmodule ApiaryWeb.RunComponents do
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
               <span class="truncate">
-                <b :if={hit.run.task} class="font-medium">{hit.run.task}</b>
-                <span class={["font-mono text-xs text-faint", hit.run.task && "ml-1"]}>
+                <b :if={given_title(hit.run)} class="font-medium">{given_title(hit.run)}</b>
+                <span class={["font-mono text-xs text-faint", given_title(hit.run) && "ml-1"]}>
                   {short_id(hit.run.run_id)}
                 </span>
               </span>

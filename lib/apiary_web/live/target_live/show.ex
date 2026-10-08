@@ -32,8 +32,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   breadcrumb do too; its full `system/path` is the name's tooltip), with the reader's
   pin, one muted line (how many runs since it was first seen, its last run, and its
   policy mode only where it sets its own) and a link to it in its system when the system
-  is a host name. The breadcrumb's third segment is the target, and the sidebar marks its
-  pin.
+  is a host name. The breadcrumb ends with the section, a link to the targets' list, and
+  the target, and the sidebar marks its pin.
 
   - **Overview**: its last runs and the destinations its runs were denied in fourteen
     days, one line each, each card with its link to the narrowed list; beside them, as
@@ -425,6 +425,9 @@ defmodule ApiaryWeb.TargetLive.Show do
       nav={:targets}
       width="read"
     >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/targets"}>
+        {gettext("Targets")}
+      </:crumb>
       <:crumb>{@chosen_path}</:crumb>
 
       <.page_header id="target-choose" title={@chosen_path}>
@@ -463,6 +466,9 @@ defmodule ApiaryWeb.TargetLive.Show do
       target={@target.id}
       width="list"
     >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/targets"}>
+        {gettext("Targets")}
+      </:crumb>
       <:crumb navigate={@tab != :overview && page_path(@current_scope, @target, @shared, [])}>
         <.target_name
           path={@target.path}
@@ -470,6 +476,14 @@ defmodule ApiaryWeb.TargetLive.Show do
           shared={@shared}
         />
       </:crumb>
+      <%!-- A version of the target's policy and its export, as the workspace's own. --%>
+      <:crumb
+        :if={@tab == :policy && @action in [:version, :export] && @v}
+        navigate={@action == :export && "#{@base}/versions/#{@v.configuration.version}"}
+      >
+        {gettext("Version %{version}", version: @v.configuration.version)}
+      </:crumb>
+      <:crumb :if={@tab == :policy && @action == :export && @v}>{gettext("Export")}</:crumb>
 
       <.target_header
         target={@target}

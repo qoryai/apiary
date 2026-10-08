@@ -152,9 +152,17 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   run's page all of it, forms 720 px.
 - The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
   With denials) with their counts, one filter field that takes qualifiers (`repo:`,
-  `state:`, `started:>2026-09-01` and more) and free text, one Filter menu, sorting, the
-  repositories beside the list with their runs from 1280 px, pages of 25 to 100 with a
-  jump to a date, and from 1920 px a preview of the run chosen with the end of its log.
+  `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:`) and free text
+  over a run's id, title and target, one Filter menu, sorting, the repositories beside the
+  list with their runs from 1280 px, pages of 25 to 100 with a jump to a date, and from
+  1920 px a preview of the run chosen with the end of its log.
+- A run can say what it is about, in `about` of its `run.started`: a kind, a title,
+  subjects (each a type and a ref, with a url and a title when given) and details. A
+  run's title is its `about` title; without one, the run page and its tab say "Run" and
+  its short id, the lists show the short id, and the Overview its command line, else its
+  short id. The runs list shows its kind and first subjects under the title; the run page
+  shows them under its heading, each subject a link that opens in a new tab, and the whole
+  of it in an About section of the Details rail. A `task` label is an ordinary label.
 - Network access, in the sidebar's Guard beside the Policy (`/:org/:workspace/network`,
   and a tab of each run and each repository): every destination the runs reached, what
   decided it, and Allow or Deny from its row, narrowed the same way as the runs. Its
@@ -222,6 +230,11 @@ tombstone, so machines enrol again with a new key.
 `20261008120000_remove_the_pasted_key` removes the paste arrival: it deletes every key
 that arrived `paste`, with its deliveries, makes its public key a tombstone in the
 ledger, and leaves the check `browser`, or `code` with its enrolment code.
+
+`20261008180000_say_what_a_run_is_about` adds `runs.about_kind`, `about_title`,
+`about_subjects` and `about_details`, NULL for every existing row, `about_subjects` `[]`.
+`20261009090000_drop_the_task_of_a_run` drops `runs.task`; rolled back, it restores the
+column from each run's `task` label.
 
 ### Upgrading
 

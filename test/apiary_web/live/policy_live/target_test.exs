@@ -218,10 +218,33 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert {:error, {:live_redirect, %{to: to}}} = live(conn, base <> "/document")
     assert to == base <> "/versions/2"
 
+    # A version and its export continue the breadcrumb as on the workspace's Policy.
+    page = workspace_path(scope, "/targets/github.example/acme/shop")
+    repositories = {"Repositories", workspace_path(scope, "/targets")}
+
     view = open(conn, base <> "/versions/2")
+
+    assert crumbs(view) == [
+             repositories,
+             {"github.example/acme/shop", page},
+             {"Version 2", nil}
+           ]
+
     assert has_element?(view, "#version-export[href='#{base}/versions/2/export']")
     view |> element("#version-export") |> render_click()
     assert_patch(view, base <> "/versions/2/export")
+
+    assert crumbs(view) == [
+             repositories,
+             {"github.example/acme/shop", page},
+             {"Version 2", base <> "/versions/2"},
+             {"Export", nil}
+           ]
+
+    # The top bar's breadcrumb is the one way back: the page draws no trail of its own.
+    refute has_element?(view, "#export-crumbs")
+    refute has_element?(view, "#policy-export nav")
+
     assert text(view, "#export-lead") =~ "The effective policy of github.example/acme/shop as of"
     assert has_element?(view, "#export-done[href='#{base}/versions/2']")
   end
@@ -888,8 +911,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "h2", "Version 1")
     assert has_element?(view, "#policy-tabs a[href='#{path}']", "Effective policy")
 
-    # The export is a page of the tab, under the target's own title: an h2, the way back
-    # to the target's policy and the version, and Done to the version.
+    # The export is a page of the tab, under the target's own title: an h2 and Done to the
+    # version. The way back is the top bar's breadcrumb, never a trail of the page's own.
     view = open(conn, path <> "/versions/1/export")
     # The page names the target as it is addressed; the file's head names it in full.
     assert text(view, "#export-lead") =~ "The effective policy of acme/shop as of version 1"
@@ -900,8 +923,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "#export-download[download='acme-shop-policy.yaml']")
     assert has_element?(view, "h2#policy-export-h", "Export for a node without a server")
     refute has_element?(view, "dialog#policy-export")
-    assert has_element?(view, "#export-crumbs a[href='#{path}']", "Policy")
-    assert has_element?(view, "#export-crumbs a[href='#{path}/versions/1']", "Version 1")
+    refute has_element?(view, "#export-crumbs")
+    assert Enum.take(crumbs(view), -2) == [{"Version 1", path <> "/versions/1"}, {"Export", nil}]
     assert has_element?(view, "#export-done[href='#{path}/versions/1']", "Done")
     refute has_element?(view, "#policy-tabs")
 

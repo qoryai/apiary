@@ -75,6 +75,17 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#targets-pager", "1–3 of 3")
   end
 
+  test "the breadcrumb ends with the section, in the workspace's words, the page itself", %{
+    conn: conn,
+    scope: scope
+  } do
+    view = open(conn, scope)
+    assert crumbs(view) == [{"Repositories", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Repositories")
+
+    assert crumbs(open(conn, scope, "?q=shop")) == [{"Repositories", nil}]
+  end
+
   test "the views, with the workspace's counts", %{conn: conn, scope: scope} do
     view = open(conn, scope)
     assert has_element?(view, "#targets-view-all[aria-current=page]", "3")

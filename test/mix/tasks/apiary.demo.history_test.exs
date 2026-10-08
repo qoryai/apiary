@@ -63,6 +63,37 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
     assert DateTime.diff(DateTime.utc_now(), oldest, :day) >= 5
   end
 
+  test "the runs say what they are about, as a caller would, on hosts under example.com",
+       %{scope: scope} do
+    fill(scope, ["--skip-members"])
+
+    runs = runs(scope)
+    kinds = runs |> Enum.map(& &1.about_kind) |> Enum.uniq()
+    assert "Implementation" in kinds
+    assert Enum.all?(kinds, &(&1 in [nil, "Implementation", "Review", "Maintenance", "Audit"]))
+
+    fix = Enum.find(runs, &(&1.about_kind == "Implementation"))
+    assert "Fix ENG-" <> _ = fix.about_title
+    assert [%{"type" => "ticket"}, %{"type" => "pull request"} | _] = fix.about_subjects
+    assert %{"branch" => "qory/eng-" <> _, "attempt" => attempt} = fix.about_details
+    assert is_integer(attempt) and attempt >= 1
+
+    # Every url a subject gives is on example.com; a subject may have none.
+    for run <- runs, %{"url" => url} <- run.about_subjects do
+      assert String.ends_with?(URI.parse(url).host, ".example.com"), url
+    end
+
+    for run <- runs, run.about_kind == "Review" do
+      assert [%{"type" => "pull request", "url" => "https://git.example.com/" <> _}] =
+               run.about_subjects
+    end
+
+    for run <- runs, run.about_kind == "Audit" do
+      assert run.about_title == "Nightly audit"
+      assert run.about_details == %{"schedule" => "0 2 * * *"}
+    end
+  end
+
   test "nodes and keys are made per machine, one revoked and one never used; people join at every level",
        %{scope: scope} do
     fill(scope)

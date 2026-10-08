@@ -25,8 +25,14 @@ page, the one the person came from (Two levels, below).
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
   then the workspace, each a link to its home, and the page's own segments, a target or a
-  record, the last one the page with `aria-current="page"`; on a page of a level's
-  settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
+  record, the last one the page with `aria-current="page"`. A page of a workspace or an
+  organisation starts them with its section's name as the sidebar words it: a link to the
+  section's page on a page under it (`Acme / Main / Runs / Run 0191f2a4`, also where that
+  run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
+  itself on the section's own page (`Acme / Main / Runs`, `Acme / Main / Overview`,
+  `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
+  target, a node, a run, an integration) is the page itself on its first tab and a link
+  to it on the others; on a page of a level's settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows
   the section (`Acme / Main / Workspace settings / Secrets and variables / New secret`); on
@@ -59,7 +65,7 @@ page, the one the person came from (Two levels, below).
   Settings and of the Instance, and Preferences' theme and shortcuts, each
   named by whose it is where two scopes share a name (Workspace overview, Organisation
   settings › People, Instance settings › Configuration; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
-  runs by id or task, places, what New offers and, for what is typed, the deletions the
+  runs by id or title, places, what New offers and, for what is typed, the deletions the
   reader may take. Every word of it comes from the server; a runner's words are written
   as text.
 - **New** offers only what the reader may do where the page is
@@ -90,8 +96,8 @@ page, the one the person came from (Two levels, below).
   parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
   Organisation settings while its sections are the second column, whose entry is the exact
   page, and a second column's section on a page under it, one that passes `crumb` segments
-  (Invite people, New secret), or on a tab of it other than the one its entry leads to
-  (`Layouts.app/1`'s `section_current="true"`).
+  (Invite people, New secret). A section's tabs are the section's own page: the column
+  marks it as the page on each.
 - **The sidebar's foot** holds the scope's settings, named after the level: **Workspace
   settings** (`#nav-settings`) or **Organisation settings** (`#nav-organisation`), never a
   bare Settings, and so its tooltip while folded; the current entry on every page of them
@@ -147,9 +153,12 @@ page, the one the person came from (Two levels, below).
   kept at the top, so on a short screen the foot never squeezes the main entries. It holds
   the sidebar alone; on a settings page the foot's Workspace settings is drawn lighter, the
   page's parent, while the disclosure under the bar (Two levels, above) names the level
-  and lists its sections. The bar names the last segment of the breadcrumb only; on a core
-  Instance page, which has one section and so no disclosure, it keeps both, `Instance
-  settings / Configuration`.
+  and lists its sections. The bar names the last segment of the breadcrumb only, and before
+  it, on a page under a parent, the parent as a link back, a chevron before its name
+  (`‹ Runs / Run 0191f2a4`, `‹ Secrets and variables / New secret`): the item of the one
+  breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail. A
+  section's own page shows its name alone. On a core Instance page, which has one section
+  and so no disclosure, it keeps both, `Instance settings / Configuration`.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
@@ -374,10 +383,10 @@ value, and filtered by its lock and by whether a repository sets it too; both or
 name or the latest change.
 
 - **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
-  both tabs (a tab is not a segment). The second column marks the section as the page on
-  Secrets, and as its parent (`aria-current="true"`) on Variables, where the tab is the
-  page. The browser's title names the tab: `Secrets and variables · Workspace settings ·
-  Main · Acme`, `Variables · Secrets and variables · Workspace settings · Main · Acme`.
+  both tabs (a tab is not a segment), the section the page (`aria-current="page"`), and
+  the second column marks the section as the page on both tabs too. The browser's title
+  names the tab: `Secrets and variables · Workspace settings · Main · Acme`,
+  `Variables · Secrets and variables · Workspace settings · Main · Acme`.
 - **One status line** (`#secrets-and-variables-status`, `role="status"`), there from the
   start and outside both tabs' parts, says out of sight the tab a switch led to and its
   count ("Variables, 7"), and under the filters what a search left ("1 secret matches").
@@ -551,9 +560,10 @@ The policy pages confirm in place, never over the page:
   the page (`#policy-keys`), not an overlay; Escape and its Close hide it.
 
 **The export** (`…/policy/versions/:n/export`, and a target's
-`…/-/policy/versions/:n/export`) is a page, not a dialog: the breadcrumb Policy › Version
-n › Export, the title "Export for a node without a server" and what is exported (an h2
-under a target's own title), the policy file with Download and Copy, the command for the
+`…/-/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
+with Version n and Export and is the one way back, with no trail of the page's own; the
+title "Export for a node without a server" and what is exported (an h2 under a target's
+own title), the policy file with Download and Copy, the command for the
 node and the runner file's egress section, each with Copy, the notes, and Done back to the
 version. Only the version in force is exported; another version's path sends on to it.
 
@@ -565,11 +575,10 @@ version. Only the version in force is exported; another version's path sends on 
   no place otherwise, so a screen reader hears what a view, a filter or a search left; an
   empty list says its empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`,
-  `denied:yes`; `decision:`, `tools:`, `seen:` on Network access) become the URL's
-  parameters and show as tokens, and the other words are the free text, `q`, matched as
-  text without regard to case (a run's id, task or target; a destination's host or
-  path). A word it cannot read is said in a notice, never dropped in silence. On Network
+  (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
+  `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
+  as tokens, and the other words are the free text, `q`, matched as text without regard to
+  case (a run's id, title or target; a destination's host or path). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
@@ -584,10 +593,14 @@ version. Only the version in force is exported; another version's path sends on 
   headings under an `<h2>` for a screen reader so the outline never skips a level.
   Choosing one sets the target; below 1280 px the Filter menu's Target section does it,
   never both.
-- **A run is one line** (`<.runs_table>`): its task, else its id, the only strong text; its
+- **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any.
+  when there are any. What the run says it is about is a muted line under them, only when
+  it names a kind or a subject: the kind, then up to two subjects, each its type and ref
+  as given ("pull request #412"), then "+N more", as text and never a link, since the
+  title's link covers the row. Below 640 px it names one subject, so the count stays in
+  sight; the whole line is its tooltip.
 - **A destination is one line** (`<.connections_table>`, `RunComponents.connection_row/1`):
   its host in mono, the port faint and the path muted, the only strong text; its runs and
   attempts muted numbers; allowed and denied a thin split with its two numbers, the denied
@@ -756,7 +769,9 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   names the target as it is addressed (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
-  the system is a host name; the breadcrumb's third segment is the target.
+  the system is a host name; the breadcrumb ends with the section, a link to the index,
+  and the target, then on a version of its policy `Version 3` and on its export
+  `Export`, as on the workspace's Policy.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
     runs; the destinations it was denied in 14 days, each with a faint barred circle,
     never red), beside a plain About column (the
@@ -1064,6 +1079,12 @@ needs becomes a component, or an attribute of one, not a copy.
   made is the server's too. A whole number is a text field with `inputmode="numeric"`,
   not `type="number"`, whose value the browser empties when it is not a number.
   `test/apiary_web/novalidate_test.exs` fails for a form without the attribute.
+- **`<.external_link>`** is every link out of the console: it opens in a new tab, with
+  `rel="noopener noreferrer nofollow"`, an icon that shows it leaves and "(opens in a new
+  tab)" for a screen reader. A url is a link only when it is absolute `http` or `https`
+  with a host and no user name or password (`external_url?/1`); anything else, or none,
+  is the same words as text, so a url from a record is never a `javascript:`, `data:` or
+  relative link.
 - **`<.inline_confirm>`** is a confirmation in place (No modals, above): the question,
   one muted sentence of what happens, the act's button and Cancel, on one line that
   wraps. The group is named by its question and described by its sentence (`<id>-sub`),
@@ -1264,12 +1285,16 @@ not fill fails until it is filled there.
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
 on its own) sits beside it, on every tab but Terminal, which is wide and takes the
-whole width (`q-run-wide`). The top bar's breadcrumb ends with the run's target, a link to
-the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
+whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to the list,
+and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
+page has no breadcrumb of its own.
 
-- **The header is two lines**: the title (the task, or the run's short id) alone, then
-  one muted meta line that starts with the state as a dot and its word
-  (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
+- **The header** is the title (the one the run gave in its `about`, else "Run" and the
+  run's short id, `Run 0191f2a4`) alone; then, when the run names a kind or subjects, one
+  line of what it is about: the kind, then at most three subjects, each its type and ref
+  as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
+  more" (all of them are in the rail's About); then one muted meta line that starts with
+  the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
   alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
@@ -1281,9 +1306,20 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal, Network access and Details (from 1440 px only on
   Terminal and on Details itself, where there is no rail), stick under the top bar; each is a live action of the one LiveView, so a tab is a patch.
-- **The Details rail** is key and value lines under small headings (Run, Labels, Command,
-  Record, Policy in force), no card and no chip; the run's labels are its own
-  identifiers, in mono, and one that names the target leads to its page. Below 1440 px,
+- **The Details rail** is key and value lines under small headings (About, Run, Labels,
+  Command, Record, Policy in force), no card and no chip; the run's labels are its own
+  identifiers, in mono, and one that names the target leads to its page.
+- **About** is the rail's first section, shown when the run names a kind, a subject or
+  details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
+  its title muted under it, cut to a line and whole on hover; then the details in mono, by
+  key, a row per member, a member that is a non-empty object a row per member of its own
+  keyed `outer.inner`, a string as given and anything else as compact JSON, each value
+  wrapped and never cut. The title is the page's `<h1>` and is not repeated there.
+- **A subject's words** (its type, ref and title) are each isolated in a `<bdi>` wherever
+  they show, in the runs list, the header and the rail, so a bidirectional character in
+  one reorders nothing around it; a subject's link has as its tooltip its title and the
+  host its url parses to ("Login redirects to a blank page · tracker.example.com"), or
+  the host alone. Below 1440 px,
   and from it when Terminal took the rail's room, the Details tab shows this same element
   in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.

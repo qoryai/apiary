@@ -37,6 +37,9 @@ defmodule ApiaryWeb.LayoutsTest do
     |> Enum.map(&(&1 |> LazyHTML.text() |> String.replace(~r/[\s\/]+/, " ") |> String.trim()))
   end
 
+  defp count(html, selector),
+    do: html |> LazyHTML.from_fragment() |> LazyHTML.query(selector) |> Enum.count()
+
   defp before?(html, first, second) do
     {a, _} = :binary.match(html, first)
     {b, _} = :binary.match(html, second)
@@ -758,9 +761,41 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert has_element?(view, "#breadcrumb a", "acme/shop")
+      assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope, "/runs")}']", "Runs")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Run #{short}")
       assert has_element?(view, "#nav-runs[aria-current='page']")
+    end
+
+    test "a phone's bar keeps a page's parent, a link back, in the one breadcrumb", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop())
+      runs = workspace_path(scope, "/runs")
+
+      # A run: Runs is its parent, marked to stay on a phone, with the back chevron.
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      html = render(view)
+      assert has_element?(view, "#breadcrumb li.q-trail-up a[href='#{runs}'] .q-trail-back")
+      assert has_element?(view, "#breadcrumb li.q-trail-up", "Runs")
+      assert count(html, "#breadcrumb li.q-trail-up") == 1
+      # One trail: the parent is an item of the one breadcrumb, not a second link to it.
+      assert count(html, "nav#breadcrumb") == 1
+      assert count(html, "#top-bar a[href='#{runs}']") == 1
+
+      # A section's own page has no parent to keep.
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+      refute has_element?(view, "#breadcrumb .q-trail-up")
+      refute has_element?(view, "#breadcrumb .q-trail-back")
+
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
+      refute has_element?(view, "#breadcrumb .q-trail-up")
+
+      # A page under a settings section: the frame's section is the parent.
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
+      assert has_element?(view, "#breadcrumb li.q-trail-up a#breadcrumb-section .q-trail-back")
     end
 
     test "the page title carries the product name as its suffix", %{conn: conn, scope: scope} do

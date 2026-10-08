@@ -72,6 +72,18 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
              live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}/network")
   end
 
+  test "the breadcrumb ends with Network access, the page itself, whether the list is narrowed or not",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop(), egress: [@denied])
+
+    view = open(conn, scope)
+    assert crumbs(view) == [{"Network access", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Network access")
+
+    narrowed = open(conn, workspace_path(scope, "/network?target=acme%2Fshop"))
+    assert crumbs(narrowed) == [{"Network access", nil}]
+  end
+
   test "the page's old paths, the workspace's and a run's, send on here with the query, for good",
        %{conn: conn, scope: scope} do
     org = scope.organisation
@@ -215,7 +227,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     setup %{scope: scope} do
       %{
         a:
-          started_run(scope, Map.put(shop(), "task", "checkout-tax"),
+          started_run(scope, shop(),
+            about: %{"title" => "checkout-tax"},
             ago: 600,
             egress: [@registry, @denied, @denied]
           ),

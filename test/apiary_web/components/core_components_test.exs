@@ -522,4 +522,74 @@ defmodule ApiaryWeb.CoreComponentsTest do
       assert html =~ ~s(aria-describedby="slug-prefix slug-rules")
     end
   end
+
+  describe "a link out" do
+    defp link_out(href, text \\ "pull request #412", title \\ nil) do
+      assigns = %{href: href, text: text, title: title}
+
+      rendered_to_string(~H"""
+      <CoreComponents.external_link href={@href} title={@title}>{@text}</CoreComponents.external_link>
+      """)
+    end
+
+    test "opens in a new tab, keeps the console from the page, and says so" do
+      doc = LazyHTML.from_fragment(link_out("https://git.example.com/acme/shop/pull/412"))
+
+      [a] = doc |> LazyHTML.query("a") |> Enum.to_list()
+      assert LazyHTML.attribute(a, "href") == ["https://git.example.com/acme/shop/pull/412"]
+      assert LazyHTML.attribute(a, "target") == ["_blank"]
+      assert LazyHTML.attribute(a, "rel") == ["noopener noreferrer nofollow"]
+      assert a |> LazyHTML.query(".hero-arrow-top-right-on-square-micro") |> Enum.count() == 1
+      assert a |> LazyHTML.query(".sr-only") |> LazyHTML.text() == "(opens in a new tab)"
+      assert LazyHTML.text(a) =~ "pull request #412"
+    end
+
+    test "is plain text for a url that may not be a link, or none" do
+      for href <- [
+            "javascript:alert(1)",
+            "JAVASCRIPT:alert(1)",
+            "data:text/html,<b>hi</b>",
+            "ftp://files.example.com/a",
+            "/acme/shop/pull/412",
+            "//git.example.com/acme/shop",
+            "https://",
+            "https:git.example.com",
+            "https://exa mple.com/",
+            "https://user@git.example.com/acme/shop/pull/412",
+            "https://user:secret@git.example.com/acme/shop/pull/412",
+            "",
+            nil
+          ] do
+        html = link_out(href)
+        doc = LazyHTML.from_fragment(html)
+        assert doc |> LazyHTML.query("a, [href], [target]") |> Enum.to_list() == [], inspect(href)
+        assert doc |> LazyHTML.text() |> String.trim() == "pull request #412", inspect(href)
+        refute html =~ "opens in a new tab"
+        refute html =~ "hero-arrow-top-right-on-square-micro"
+      end
+    end
+
+    test "escapes its words and its title, as a link and as text" do
+      for href <- ["https://git.example.com/acme/shop/pull/412", nil] do
+        html = link_out(href, "<b>#412</b>", ~s[Fix "it" <script>alert(1)</script>])
+
+        refute html =~ "<b>"
+        refute html =~ "<script>"
+        assert html =~ "&lt;b&gt;#412&lt;/b&gt;"
+        assert html =~ ~s[title="Fix &quot;it&quot; &lt;script&gt;alert(1)&lt;/script&gt;"]
+      end
+    end
+
+    test "may be a link only when absolute http or https with a host" do
+      assert CoreComponents.external_url?("https://tracker.example.com/browse/ENG-17")
+      assert CoreComponents.external_url?("http://git.example.com")
+      refute CoreComponents.external_url?("javascript:alert(1)")
+      refute CoreComponents.external_url?("mailto:someone@example.com")
+      refute CoreComponents.external_url?("https://user@git.example.com/x")
+      refute CoreComponents.external_url?("https://user:pass@git.example.com/x")
+      refute CoreComponents.external_url?("tracker.example.com/browse/ENG-17")
+      refute CoreComponents.external_url?(nil)
+      refute CoreComponents.external_url?(412)
+    end
+  end
 end

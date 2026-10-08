@@ -4,7 +4,7 @@ defmodule ApiaryWeb.RunLive.Index do
   sorts it otherwise, one line per run with its state, what it worked on, where and for how
   long, and its denials. It is narrowed as every list is (docs/ui.md, Lists): the views as
   tabs (every run, alive, ended badly, with denials, each counted under the other filters),
-  one query field whose filters show as tokens, one Filter menu (target, state, task,
+  one query field whose filters show as tokens, one Filter menu (target, state,
   runtime, host, node, when it started, denials), and Sort (newest, oldest, longest,
   most denials). From 1280 px a rail beside the list holds the targets with their runs,
   pinned first; choosing one is the target filter. The list has no time range until the
@@ -82,6 +82,8 @@ defmodule ApiaryWeb.RunLive.Index do
       width="work"
       narrowed={Layouts.narrowed(@filters.target, Narrowing.shared?(@narrowing))}
     >
+      <:crumb>{gettext("Runs")}</:crumb>
+
       <div id="runs-page" class={["q-lp", @preview_on && "q-lp-preview"]}>
         <.page_header title={gettext("Runs")}>
           <:description>
@@ -203,7 +205,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 label={label}
                 icon={icon}
                 qualifier={name}
-                value={text_value(@filters, name)}
+                value={text_param(@filters, name)}
               >
                 <.filter_options
                   id={"filter-#{name}"}
@@ -214,7 +216,7 @@ defmodule ApiaryWeb.RunLive.Index do
                     with_chosen(
                       facet_options(@facets, String.to_existing_atom(name)),
                       text_param(@filters, name),
-                      text_value(@filters, name)
+                      text_param(@filters, name)
                     )
                   }
                   total={facet_total(@facets, String.to_existing_atom(name))}
@@ -785,7 +787,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # What the reader types in a section narrows that section's options on the server, over
   # every value there is; Show more asks for more of them.
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
-      when name in ~w(target task runtime host node) and is_binary(q) do
+      when name in ~w(target runtime host node) and is_binary(q) do
     narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
     {:noreply, socket |> assign(:narrow, narrow) |> load_facets()}
   end
@@ -793,7 +795,7 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
   def handle_event("more_options", %{"name" => name}, socket)
-      when name in ~w(target task runtime host node) do
+      when name in ~w(target runtime host node) do
     limit = Map.get(socket.assigns.limits, name, Runs.facet_size()) + Runs.facet_size()
 
     {:noreply,
@@ -1431,20 +1433,15 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp text_sections do
     [
-      {"task", gettext("Task"), "hero-command-line"},
       {"runtime", gettext("Runtime"), "hero-cpu-chip"},
       {"host", gettext("Host"), "hero-server-stack"},
       {"node", gettext("Node"), "hero-server"}
     ]
   end
 
-  defp text_param(filters, "task"), do: task_param(filters.task)
   defp text_param(filters, "runtime"), do: filters.runtime
   defp text_param(filters, "host"), do: filters.host
   defp text_param(filters, "node"), do: filters.node
-
-  defp text_value(filters, "task"), do: task_label(filters.task)
-  defp text_value(filters, name), do: text_param(filters, name)
 
   defp sort_label("newest"), do: gettext("Newest")
   defp sort_label("oldest"), do: gettext("Oldest")
@@ -1548,12 +1545,6 @@ defmodule ApiaryWeb.RunLive.Index do
       do: options,
       else: [{label, value, 0} | options]
   end
-
-  defp task_param(:none), do: "none"
-  defp task_param(task), do: task
-
-  defp task_label(:none), do: gettext("No task")
-  defp task_label(task), do: task
 
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
   defp range_value(%Filters{}), do: nil

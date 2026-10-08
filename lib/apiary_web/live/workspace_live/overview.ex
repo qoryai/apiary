@@ -104,6 +104,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       nav={:overview}
       width="list"
     >
+      <:crumb>{gettext("Overview")}</:crumb>
+
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-5">
         <.page_header title={@current_scope.workspace.name} />
 
@@ -944,7 +946,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             what: gettext("Closed."),
             done: nil
           })
-          |> announce(gettext("%{run} is closed.", run: run_title(run)), :now)
+          |> announce(gettext("%{run} is closed.", run: row_title(run)), :now)
           |> focus_after("att-run-#{run.run_id}")
 
         {:noreply, socket}

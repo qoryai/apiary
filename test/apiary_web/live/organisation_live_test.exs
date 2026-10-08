@@ -26,6 +26,10 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       assert has_element?(view, ~s(#people-open[href="/#{organisation.slug}/settings/people"]))
       assert has_element?(view, "#nav-organisation_overview[aria-current=page]")
 
+      # The breadcrumb: the organisation, then Overview, the page itself.
+      assert crumbs(view, :organisation) == [{"Overview", nil}]
+      assert has_element?(view, "#breadcrumb [aria-current=page]", "Overview")
+
       # No bare "Settings" link in Details: the sidebar's foot names Organisation settings
       # on the same page.
       refute has_element?(view, "#about-settings")

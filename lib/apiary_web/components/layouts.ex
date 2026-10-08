@@ -392,7 +392,7 @@ defmodule ApiaryWeb.Layouts do
   column. `aria-current="page"` marks the exact page's entry alone; its parents carry
   `aria-current="true"`: the level's settings at the sidebar's foot while the second column
   lists its sections, and the column's section on a page under it, one that adds `crumb`
-  segments or passes `section_current="true"` (a tab of it other than the first).
+  segments or passes `section_current="true"`.
 
   **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
   of the sidebar carry the target to the other list; nothing else does.
@@ -460,7 +460,7 @@ defmodule ApiaryWeb.Layouts do
     default: nil,
     values: [nil, "page", "true"],
     doc:
-      "how the second column marks the page's section: `\"page\"` where the page is the section's own, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none. A tab of the section other than the one its entry leads to passes `\"true\"`"
+      "how the second column marks the page's section: `\"page\"` where the page is the section's own, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none, a tab of the section included"
 
   attr :narrowed, :map,
     default: nil,
@@ -470,6 +470,10 @@ defmodule ApiaryWeb.Layouts do
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
     attr :navigate, :string, doc: "where the segment leads; none for the page itself"
+
+    attr :patch, :string,
+      doc:
+        "where the segment leads within the page's own LiveView, as its tabs do; in place of `navigate`"
   end
 
   slot :inner_block, required: true
@@ -697,8 +701,7 @@ defmodule ApiaryWeb.Layouts do
         id: second_id(kind),
         current: assigns.section || assigns.nav,
         # The current section is the page, or, on a page under it that adds its own
-        # segments to the breadcrumb (Invite people, Edit secret) or on a tab of it other
-        # than the one its entry leads to, the page's parent.
+        # segments to the breadcrumb (Invite people, Edit secret), the page's parent.
         aria_current:
           assigns.section_current || if(assigns.crumb == [], do: "page", else: "true"),
         entries: for(entry <- list, do: {entry, Entry.path(entry, organisation, workspace)})
@@ -895,14 +898,17 @@ defmodule ApiaryWeb.Layouts do
             {gettext("Your settings")}
           </.link>
         </li>
-        <li :if={@here} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+        <li
+          :if={@here}
+          class={["q-trail-item", @crumb != [] && "q-trail-lead", up?(@crumb) && "q-trail-up"]}
+        >
           <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
           <.link
             :if={@crumb != []}
             navigate={Entry.path(@here, @organisation, @workspace)}
             class="q-trail-link"
           >
-            {@here.label}
+            <.trail_back :if={up?(@crumb)} />{@here.label}
           </.link>
           <span :if={@crumb == []} class="q-trail-link q-trail-page" aria-current="page">
             {@here.label}
@@ -939,14 +945,17 @@ defmodule ApiaryWeb.Layouts do
             {gettext("Instance settings")}
           </span>
         </li>
-        <li :if={@here} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+        <li
+          :if={@here}
+          class={["q-trail-item", @crumb != [] && "q-trail-lead", up?(@crumb) && "q-trail-up"]}
+        >
           <span class={["q-trail-sep", !@keep && "max-md:hidden"]} aria-hidden="true">/</span>
           <.link
             :if={@crumb != []}
             navigate={Entry.path(@here, @organisation, @workspace)}
             class="q-trail-link"
           >
-            {@here.label}
+            <.trail_back :if={up?(@crumb)} />{@here.label}
           </.link>
           <span :if={@crumb == []} class="q-trail-link q-trail-page" aria-current="page">
             {@here.label}
@@ -1050,7 +1059,11 @@ defmodule ApiaryWeb.Layouts do
     assigns = assign(assigns, :last, if(assigns.trail.section, do: :section, else: :level))
 
     ~H"""
-    <li class={["q-trail-item", (@last == :section || @crumb != []) && "q-trail-lead"]}>
+    <li class={[
+      "q-trail-item",
+      (@last == :section || @crumb != []) && "q-trail-lead",
+      @last == :level && up?(@crumb) && "q-trail-up"
+    ]}>
       <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
       <.link
         :if={@last == :section || @crumb != []}
@@ -1058,7 +1071,7 @@ defmodule ApiaryWeb.Layouts do
         navigate={@trail.path}
         class="q-trail-link"
       >
-        {@trail.label}
+        <.trail_back :if={@last == :level && up?(@crumb)} />{@trail.label}
       </.link>
       <span
         :if={@last == :level && @crumb == []}
@@ -1069,7 +1082,10 @@ defmodule ApiaryWeb.Layouts do
         {@trail.label}
       </span>
     </li>
-    <li :if={@trail.section} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+    <li
+      :if={@trail.section}
+      class={["q-trail-item", @crumb != [] && "q-trail-lead", up?(@crumb) && "q-trail-up"]}
+    >
       <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
       <.link
         :if={@crumb != []}
@@ -1077,7 +1093,7 @@ defmodule ApiaryWeb.Layouts do
         navigate={@trail.section.path}
         class="q-trail-link"
       >
-        {@trail.section.label}
+        <.trail_back :if={up?(@crumb)} />{@trail.section.label}
       </.link>
       <span
         :if={@crumb == []}
@@ -1092,27 +1108,52 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The page's own segments of the breadcrumb, after where the page is: each a link but
-  # the page itself, the last, which is current.
+  # the page itself, the last, which is current. The one before the last, when it is a
+  # link, is the page's parent, which a phone's bar keeps (`up?/1`).
   attr :crumb, :list, required: true
 
   defp crumbs(assigns) do
     ~H"""
     <li
       :for={{crumb, i} <- Enum.with_index(@crumb)}
-      class={["q-trail-item", i < length(@crumb) - 1 && "q-trail-lead"]}
+      class={[
+        "q-trail-item",
+        i < length(@crumb) - 1 && "q-trail-lead",
+        i == length(@crumb) - 2 && link?(crumb) && "q-trail-up"
+      ]}
     >
       <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
-      <.link :if={crumb[:navigate]} navigate={crumb.navigate} class="q-trail-link">
-        {render_slot(crumb)}
+      <.link
+        :if={link?(crumb)}
+        navigate={crumb[:navigate]}
+        patch={crumb[:patch]}
+        class="q-trail-link"
+      >
+        <.trail_back :if={i == length(@crumb) - 2} />{render_slot(crumb)}
       </.link>
       <span
-        :if={!crumb[:navigate]}
+        :if={!link?(crumb)}
         class="q-trail-link q-trail-page"
         aria-current={i == length(@crumb) - 1 && "page"}
       >
         {render_slot(crumb)}
       </span>
     </li>
+    """
+  end
+
+  defp link?(crumb), do: is_binary(crumb[:navigate]) or is_binary(crumb[:patch])
+
+  # Whether the segment before the page's one segment, where the frame writes it (the
+  # section of a level's settings, of Your settings, of the Instance), is the page's
+  # parent: a phone's bar names the parent, a link back, before the page; on a section's
+  # own page, which adds no segment, the bar names the page alone.
+  defp up?(crumb), do: length(crumb) == 1
+
+  # The parent's mark on a phone, before its words; hidden from the wider bar.
+  defp trail_back(assigns) do
+    ~H"""
+    <.icon name="hero-chevron-left-micro" class="q-trail-back" />
     """
   end
 

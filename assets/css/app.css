@@ -1234,6 +1234,15 @@
     color: var(--q-muted);
     font-weight: 400;
   }
+  /* The parent's back mark, shown on a phone only (below). */
+  .q-trail-back {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    margin-inline-end: -2px;
+    color: var(--q-faint);
+  }
   .q-trail-chev {
     display: grid;
     width: 1.5rem;
@@ -2653,6 +2662,16 @@
     .q-collapse {
       display: none;
     }
+    /* A page under a parent keeps the parent before it, a link back: "‹ Runs / Run …". */
+    .q-trail-lead.q-trail-up {
+      display: inline-flex;
+    }
+    .q-trail-up .q-trail-back {
+      display: inline-block;
+    }
+    .q-trail-up + .q-trail-item > .q-trail-sep {
+      display: inline;
+    }
   }
 }
 
@@ -3927,6 +3946,22 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  /* What the run is about, one muted line under the title, cut to an ellipsis. Below
+     640 px it names one subject fewer (`.q-rl-about-phone`), so its count stays in sight. */
+  .q-rl-about {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    margin-top: 1px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-about.q-rl-about-phone {
+    display: none;
   }
   .q-rl-faint {
     color: var(--q-faint);
@@ -5263,6 +5298,12 @@
     .q-rl-tt .q-rl-title {
       max-width: 100%;
     }
+    .q-rl-about.q-rl-about-wide {
+      display: none;
+    }
+    .q-rl-about.q-rl-about-phone {
+      display: block;
+    }
     .q-rl tbody tr td.q-rl-st {
       grid-column: 2;
       grid-row: 1;
@@ -5450,6 +5491,35 @@
     font-weight: 600;
     letter-spacing: -0.005em;
     text-wrap: pretty;
+  }
+  /* What the run says it is about, under the title: the kind, then the subjects, each
+     after a faint middle dot like the meta line's items; the dot before the first item of
+     each line is clipped, so a wrapped line starts clean. An item longer than the line
+     wraps within itself. */
+  .q-run-about {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 2px;
+    margin-top: 2px;
+    margin-left: -17px;
+    clip-path: inset(0 0 0 17px);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-run-about > * {
+    position: relative;
+    min-width: 0;
+    max-width: calc(100% - 17px);
+    margin-left: 17px;
+    overflow-wrap: anywhere;
+  }
+  .q-run-about > *::before {
+    content: "·";
+    position: absolute;
+    left: -11px;
+    color: var(--q-faint);
   }
   .q-run-sub {
     display: flex;
@@ -5658,6 +5728,14 @@
     font-family: var(--font-mono);
     font-size: 0.75rem;
   }
+  /* About: each subject a value of its own under Subjects, its title muted under it; a
+     details key breaks before a dot, or within a part too long for the column. */
+  .q-rail-about > dd {
+    grid-column: 2;
+  }
+  .q-rail-about-details dt {
+    overflow-wrap: break-word;
+  }
   .q-rail-kv-mono dt {
     color: var(--q-faint);
   }
@@ -5666,6 +5744,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     overflow-wrap: normal;
+  }
+  /* A detail's value wraps rather than hides its end: text at its spaces, a word too long
+     for the column within it, and compact JSON anywhere. */
+  .q-rail-kv-mono.q-rail-about-details dd {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .q-rail-kv-mono.q-rail-about-details dd.q-rail-json {
+    overflow-wrap: anywhere;
   }
   .q-rail-kv a:hover {
     color: var(--color-accent);
@@ -5714,25 +5802,7 @@
     grid-template-columns: 112px minmax(0, 1fr);
   }
 
-  /* The policy pages' own header (policy_live): the crumbs and a title with its state. */
-  .q-crumbs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-  }
-  .q-crumbs a {
-    border-radius: var(--radius-selector);
-    transition: color 120ms var(--q-ease-out);
-  }
-  .q-crumbs a:hover {
-    color: var(--color-base-content);
-  }
-  .q-crumbs [class*="hero-"] {
-    color: var(--q-faint);
-  }
+  /* The policy pages' own header (policy_live): a title with its state. */
   .q-run-title {
     display: flex;
     flex-wrap: wrap;
@@ -6695,6 +6765,16 @@
   }
   .q-link:hover {
     text-decoration-color: currentColor;
+  }
+  /* A link out of the console (`external_link/1`): its words, then a faint icon. */
+  .q-ext-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .q-ext-icon {
+    flex: none;
+    color: var(--q-faint);
   }
 
   .q-rowbtn {

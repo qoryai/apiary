@@ -132,8 +132,15 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
       refute has_element?(lv, "#secrets-tabs-secrets[aria-current]")
-      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
+      # A tab is not a segment: on either tab the breadcrumb ends with the section, the
+      # page, and the second column marks it the same way.
+      assert crumbs(lv) == [
+               {"Workspace settings", workspace_path(scope, "/settings")},
+               {"Secrets and variables", nil}
+             ]
+
       assert has_element?(lv, "#breadcrumb-section[aria-current=page]", "Secrets and variables")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
 
       assert page_title(lv) =~
                "Variables · Secrets and variables · Workspace settings · #{names}"
@@ -955,7 +962,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       {:ok, lv, html} = live(conn, variables_path(scope))
       assert has_element?(lv, "#variables-empty")
       assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
-      assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
 
       # A run receives only its security policy, which the view says once, and nothing says
       # otherwise.

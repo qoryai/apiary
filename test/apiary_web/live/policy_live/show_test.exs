@@ -132,6 +132,30 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_patch(view, workspace_path(scope, "/policy/history"))
       assert has_element?(view, "#policy-tabs-history[aria-current=page]")
     end
+
+    test "the breadcrumb ends with Policy, the page itself, on each of its tabs", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+
+      for rest <- ["/policy", "/policy/targets", "/policy/history"] do
+        view = open(conn, scope, rest)
+        assert crumbs(view) == [{"Policy", nil}]
+        assert has_element?(view, "#breadcrumb [aria-current=page]", "Policy")
+      end
+
+      # The Document tab is the current version's page: Policy leads back from it.
+      assert {:error, {:live_redirect, %{to: version}}} =
+               live(conn, workspace_path(scope, "/policy/document"))
+
+      assert version == workspace_path(scope, "/policy/versions/1")
+
+      assert crumbs(open(conn, scope, "/policy/versions/1")) == [
+               {"Policy", workspace_path(scope, "/policy")},
+               {"Version 1", nil}
+             ]
+    end
   end
 
   describe "a workspace nobody has changed" do
@@ -1449,6 +1473,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "dialog#policy-export")
       assert has_element?(view, "h1#policy-export-h", "Export for a node without a server")
       refute has_element?(view, "#export-crumbs")
+      refute has_element?(view, "#policy-export nav")
 
       assert has_element?(
                view,

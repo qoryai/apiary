@@ -205,7 +205,8 @@ It keeps repository rules by them too.
 <!-- /feature -->
 Qory Apiary compares them to the stored labels byte for byte, so one repository reached
 through two remotes that spell it differently is two repositories unless the labels are
-named.
+named. Every other label is shown with the run under Labels, as given; none of them files
+or titles it.
 
 <!-- feature: security -->
 The runner sends every label of the run on the run configuration request. Qory Apiary

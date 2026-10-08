@@ -22,7 +22,9 @@ defmodule Apiary.Runs.ListingTest do
       started_data(
         Map.merge(
           %{"labels" => labels},
-          Map.new(Keyword.take(extra, [:runtime, :host]), fn {k, v} -> {to_string(k), v} end)
+          Map.new(Keyword.take(extra, [:about, :runtime, :host]), fn {k, v} ->
+            {to_string(k), v}
+          end)
         )
       )
 
@@ -64,7 +66,6 @@ defmodule Apiary.Runs.ListingTest do
 
       assert filters.states == ["failed", "lost"]
       assert filters.target == {"github.example", "acme/shop"}
-      assert filters.task == :none
       assert filters.since == "all"
       assert filters.sort == "newest"
       assert filters.per == 50
@@ -74,9 +75,13 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.to_params(filters) == %{
                "state" => "failed,lost",
                "system" => "github.example",
-               "target" => "acme/shop",
-               "task" => "none"
+               "target" => "acme/shop"
              }
+
+      # A task is an ordinary label, no filter: an old address's `task` is not read, nor
+      # named as refused.
+      refute Map.has_key?(%Filters{}, :task)
+      refute "task" in filters.dropped
 
       assert Filters.to_params(parse(%{})) == %{}
       assert Filters.to_params(parse(%{"since" => "all"})) == %{}
@@ -125,7 +130,7 @@ defmodule Apiary.Runs.ListingTest do
         })
 
       assert %{filters | dropped: []} == %{parse(%{"state" => "failed"}) | dropped: []}
-      assert Enum.sort(filters.dropped) == ~w(from host page per q runtime since state task)
+      assert Enum.sort(filters.dropped) == ~w(from host page per q runtime since state)
       assert parse(%{"zzz" => "1"}).dropped == []
     end
 
@@ -205,7 +210,7 @@ defmodule Apiary.Runs.ListingTest do
       assert parse(%{"host" => long <> "h"}).host == nil
 
       for bad <- ["a\0", "a\nb", "\e[0m", "a\x7F", <<255>>] do
-        assert %{task: nil, dropped: ["task"]} = parse(%{"task" => bad})
+        assert %{runtime: nil, dropped: ["runtime"]} = parse(%{"runtime" => bad})
         assert %{q: nil, dropped: ["q"]} = parse(%{"q" => bad})
       end
     end
@@ -272,13 +277,12 @@ defmodule Apiary.Runs.ListingTest do
     test "qualifiers set their filters, the other words are the free text" do
       {f, []} =
         query(
-          ~s(state:failed,lost repo:acme/shop task:"Fix the build" runtime:claude host:gpu-01 node:build-01 denied:yes checkout totals)
+          ~s(state:failed,lost repo:acme/shop runtime:"claude code" host:gpu-01 node:build-01 denied:yes checkout totals)
         )
 
       assert f.states == ~w(failed lost)
       assert f.target == {nil, "acme/shop"}
-      assert f.task == "Fix the build"
-      assert f.runtime == "claude"
+      assert f.runtime == "claude code"
       assert f.host == "gpu-01"
       assert f.node == "build-01"
       assert f.denials
@@ -292,8 +296,16 @@ defmodule Apiary.Runs.ListingTest do
       assert f.host == "a"
       assert f.q == nil
 
-      {f, []} = query("", %{"q" => "old", "task" => "t"})
-      assert Filters.to_params(f) == %{"task" => "t"}
+      {f, []} = query("", %{"q" => "old", "runtime" => "t"})
+      assert Filters.to_params(f) == %{"runtime" => "t"}
+    end
+
+    test "a typed task: is free text, as any word whose qualifier the page does not know" do
+      {f, []} = query(~s(task:"Fix the build" state:failed))
+      assert f.states == ["failed"]
+      assert f.q == "task:Fix the build"
+      refute Map.has_key?(f, :task)
+      assert Filters.tokens(f) |> Enum.map(& &1.key) == [:state]
     end
 
     test "a state may be a family, words are folded, and the URL says the states" do
@@ -376,7 +388,7 @@ defmodule Apiary.Runs.ListingTest do
           "state" => "failed,timed_out,lost,closed",
           "system" => "github.example",
           "target" => "acme/shop",
-          "task" => "Fix the build",
+          "runtime" => "claude code",
           "from" => "2026-09-01",
           "denials" => "1",
           "q" => "free"
@@ -387,7 +399,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Enum.map(tokens, &{&1.key, &1.value}) == [
                {:target, "github.example/acme/shop"},
                {:state, "ended_badly"},
-               {:task, ~s("Fix the build")},
+               {:runtime, ~s("claude code")},
                {:started, ">=2026-09-01"},
                {:denied, "yes"}
              ]
@@ -399,7 +411,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.tokens(f, except: [:state, :denied], target_text: fn {_s, p} -> p end)
              |> Enum.map(&{&1.key, &1.value}) == [
                {:target, "acme/shop"},
-               {:task, ~s("Fix the build")},
+               {:runtime, ~s("claude code")},
                {:started, ">=2026-09-01"}
              ]
 
@@ -438,16 +450,18 @@ defmodule Apiary.Runs.ListingTest do
       assert run.id == pending.id
     end
 
-    test "state, target, task, runtime, host, node and denials", %{scope: scope} do
+    test "state, target, runtime, host, node and denials; a task is no filter", %{scope: scope} do
       node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
 
       a =
-        started(scope, Map.put(shop(), "task", "checkout-tax"), 100,
+        started(scope, shop(), 100,
+          about: %{"title" => "checkout-tax"},
           egress: [%{"decision" => "denied", "rule" => ""}]
         )
 
       b =
-        started(scope, Map.put(shop("gitlab.example"), "task", "mirror-sync"), 200,
+        started(scope, shop("gitlab.example"), 200,
+          about: %{"title" => "mirror-sync"},
           host: "build-03"
         )
 
@@ -471,8 +485,7 @@ defmodule Apiary.Runs.ListingTest do
       assert by.(%{"system" => "gitlab.example", "target" => "acme/shop"}) == [b.id]
       assert by.(%{"target" => "acme/shop"}) == Enum.sort([a.id, b.id])
       assert by.(%{"target" => "none"}) == [c.id]
-      assert by.(%{"task" => "mirror-sync"}) == [b.id]
-      assert by.(%{"task" => "none"}) == [c.id]
+      assert by.(%{"task" => "mirror-sync"}) == Enum.sort([a.id, b.id, c.id])
       assert by.(%{"runtime" => "otherrt"}) == [c.id]
       assert by.(%{"host" => "build-03"}) == [b.id]
       assert by.(%{"node" => "build-01"}) == [a.id]
@@ -482,12 +495,18 @@ defmodule Apiary.Runs.ListingTest do
       assert by.(%{"system" => "github.example", "target" => "nothing/here"}) == []
     end
 
-    test "the free text finds the start of a run's id, its task and its target, as text", %{
+    test "the free text finds the start of a run's id, its title and its target, as text", %{
       scope: scope
     } do
-      a = started(scope, Map.put(shop(), "task", "Fix checkout 100%"), 100)
-      b = started(scope, Map.put(shop("gitlab.example"), "task", "mirror-sync"), 200)
-      c = started(scope, %{"forge" => "git.example", "repository" => "data/etl"}, 300)
+      a = started(scope, shop(), 100, about: %{"title" => "Fix checkout 100%"})
+      b = started(scope, shop("gitlab.example"), 200, about: %{"title" => "mirror-sync"})
+
+      c =
+        started(
+          scope,
+          %{"forge" => "git.example", "repository" => "data/etl", "task" => "nightly-load"},
+          300
+        )
 
       by = fn q ->
         Runs.page_runs(scope, parse(%{"q" => q}), @now).runs |> ids() |> Enum.sort()
@@ -502,6 +521,8 @@ defmodule Apiary.Runs.ListingTest do
       assert by.(String.slice(b.run_id, 0, 8)) == [b.id]
       assert by.(String.upcase(String.slice(c.run_id, 0, 6))) == [c.id]
       assert by.("' OR 1=1 --") == []
+      # A task is an ordinary label: the free text does not read it.
+      assert by.("nightly") == []
     end
 
     test "the orders: newest, oldest, longest, most denials", %{scope: scope} do
@@ -614,17 +635,19 @@ defmodule Apiary.Runs.ListingTest do
     setup %{scope: scope, other: other} do
       runs = %{
         shop:
-          started(scope, Map.put(shop(), "task", "checkout-tax"), 100,
+          started(scope, shop(), 100,
+            about: %{"title" => "checkout-tax"},
             egress: [
               %{"decision" => "denied", "rule" => ""},
               %{"decision" => "denied", "rule" => "", "host" => "b.example"}
             ]
           ),
         shop_old:
-          started(scope, Map.put(shop(), "task", "fix-cart"), 5000,
+          started(scope, shop(), 5000,
+            about: %{"title" => "fix-cart"},
             exit: %{"state" => "succeeded", "exit_code" => 0}
           ),
-        gitlab: started(scope, Map.put(shop("gitlab.example"), "task", "checkout-tax"), 50),
+        gitlab: started(scope, shop("gitlab.example"), 50, about: %{"title" => "checkout-tax"}),
         api:
           started(scope, %{"forge" => "github.example", "repository" => "acme/api"}, 70,
             exit: %{"state" => "failed", "exit_code" => 1}
@@ -643,7 +666,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Runs.view_counts(scope, parse(%{"state" => "failed", "denials" => "1"}), @now) ==
                counts
 
-      assert Runs.view_counts(scope, parse(%{"task" => "checkout-tax"}), @now) ==
+      assert Runs.view_counts(scope, parse(%{"q" => "checkout-tax"}), @now) ==
                %{all: 2, alive: 2, ended_badly: 0, with_denials: 1}
 
       assert Runs.count_runs(scope) == 5
@@ -733,7 +756,7 @@ defmodule Apiary.Runs.ListingTest do
                total: 3
              }
 
-      assert facets.task.options == [{"checkout-tax", "checkout-tax", 2}, {"No task", "none", 1}]
+      refute Map.has_key?(facets, :task)
       assert facets.runtime.options == [{"claude", "claude", 3}]
       assert facets.host == %{options: [{"dev-laptop", "dev-laptop", 3}], total: 1}
       assert facets.node == %{options: [], total: 0}
@@ -742,26 +765,25 @@ defmodule Apiary.Runs.ListingTest do
     test "a facet holds the fifty most frequent values and the chosen one, more when asked, and narrows as text",
          %{scope: scope} do
       for n <- 1..55,
-          do: run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: @now})
+          do: run_fixture(scope, %{state: "running", host: "host-#{n}", started_at: @now})
 
-      run_fixture(scope, %{state: "running", task: "100%_done", started_at: @now})
-      run_fixture(scope, %{state: "running", task: "100x-done", started_at: @now})
+      run_fixture(scope, %{state: "running", host: "100%_done", started_at: @now})
+      run_fixture(scope, %{state: "running", host: "100x-done", started_at: @now})
 
-      facets = Runs.run_facets(scope, parse(%{"task" => "task-55"}), now: @now)
-      assert facets.task.total == 60
-      assert length(facets.task.options) == 52
-      assert {"task-55", "task-55", 1} == hd(facets.task.options)
-      assert {"No task", "none", 2} == List.last(facets.task.options)
+      facets = Runs.run_facets(scope, parse(%{"host" => "host-55"}), now: @now)
+      assert facets.host.total == 58
+      assert length(facets.host.options) == 51
+      assert {"host-55", "host-55", 1} == hd(facets.host.options)
 
-      more = Runs.run_facets(scope, parse(%{}), now: @now, limits: %{"task" => 100}).task
-      assert length(more.options) == 60
+      more = Runs.run_facets(scope, parse(%{}), now: @now, limits: %{"host" => 100}).host
+      assert length(more.options) == 58
 
       narrowed = fn q ->
-        Runs.run_facets(scope, parse(%{}), now: @now, narrow: %{"task" => q}).task
+        Runs.run_facets(scope, parse(%{}), now: @now, narrow: %{"host" => q}).host
       end
 
-      assert Enum.map(narrowed.("TASK-5").options, &elem(&1, 0)) ==
-               ~w(task-5 task-50 task-51 task-52 task-53 task-54 task-55)
+      assert Enum.map(narrowed.("HOST-5").options, &elem(&1, 0)) ==
+               ~w(host-5 host-50 host-51 host-52 host-53 host-54 host-55)
 
       # The pattern's own characters are text: "%" and "_" find themselves only.
       assert narrowed.("%").options == [{"100%_done", "100%_done", 1}]
@@ -769,7 +791,7 @@ defmodule Apiary.Runs.ListingTest do
       assert narrowed.("_").options == [{"100%_done", "100%_done", 1}]
       assert narrowed.("\\").options == []
       assert narrowed.("' OR 1=1 --").options == []
-      assert narrowed.(<<0>>).total == 60
+      assert narrowed.(<<0>>).total == 58
       assert Runs.like("50%_\\") == "%50\\%\\_\\\\%"
     end
 
@@ -821,8 +843,8 @@ defmodule Apiary.Runs.ListingTest do
       other: other,
       runs: runs
     } do
-      assert Runs.matches?(scope, parse(%{"task" => "checkout-tax"}), runs.shop, @now)
-      refute Runs.matches?(scope, parse(%{"task" => "fix-cart"}), runs.shop, @now)
+      assert Runs.matches?(scope, parse(%{"q" => "checkout-tax"}), runs.shop, @now)
+      refute Runs.matches?(scope, parse(%{"q" => "fix-cart"}), runs.shop, @now)
       refute Runs.matches?(other, parse(%{}), runs.shop, @now)
     end
   end
@@ -887,7 +909,8 @@ defmodule Apiary.Runs.ListingTest do
       registry = %{"host" => "registry.example", "rule" => "registry.example"}
 
       a =
-        started(scope, Map.put(shop(), "task", "checkout-tax"), 1000,
+        started(scope, shop(), 1000,
+          about: %{"title" => "checkout-tax"},
           egress: [registry, denied, denied]
         )
 

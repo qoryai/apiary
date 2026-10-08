@@ -37,6 +37,7 @@ defmodule ApiaryWeb.OverviewComponents do
     only: [
       beat: 1,
       format_seconds: 1,
+      given_title: 1,
       heard_at: 1,
       relative_time: 1,
       rule_panel: 1,
@@ -313,7 +314,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <li id={@item.id} class="q-ar q-confirming" data-kind={@item.kind}>
       <.inline_confirm
         id="close-run"
-        question={gettext("Close %{run}?", run: run_title(@item.run))}
+        question={gettext("Close %{run}?", run: row_title(@item.run))}
         cancel={JS.push("close_cancel")}
       >
         {gettext(
@@ -473,9 +474,9 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-ar-t"
-      title={run_title(@item.run)}
+      title={row_title(@item.run)}
     >
-      {run_title(@item.run)}
+      {row_title(@item.run)}
     </.link>
     <span class="q-ar-id">{short_id(@item.run.run_id)}</span>
     """
@@ -866,7 +867,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
-      aria-label={gettext("Close %{run}", run: run_title(@item.run))}
+      aria-label={gettext("Close %{run}", run: row_title(@item.run))}
       phx-click={JS.push("close_ask", value: %{id: @item.id})}
     >
       {gettext("Close")}
@@ -876,7 +877,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
-      aria-label={gettext("Open %{run}", run: run_title(@item.run))}
+      aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
       {gettext("Open")}
     </.link>
@@ -890,7 +891,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       navigate={@item.compare}
       class="q-act"
-      aria-label={gettext("What changed for %{run}", run: run_title(@item.run))}
+      aria-label={gettext("What changed for %{run}", run: row_title(@item.run))}
     >
       {gettext("What changed")}
     </.link>
@@ -903,7 +904,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
-      aria-label={gettext("Open %{run}", run: run_title(@item.run))}
+      aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
       {gettext("Open")}
     </.link>
@@ -1028,15 +1029,18 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
-  @doc "The task of a run, else its command line, else its short id: what a row calls it."
-  def run_title(%{task: task}) when is_binary(task) and task != "", do: task
+  @doc """
+  The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
+  else its short id: what a row calls it.
+  """
+  def row_title(run), do: given_title(run) || command_title(run)
 
-  def run_title(%{command: command, args: args}) when is_binary(command) do
+  defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")
     if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
   end
 
-  def run_title(%{run_id: run_id}), do: short_id(run_id)
+  defp command_title(%{run_id: run_id}), do: short_id(run_id)
 
   ## Active targets
 

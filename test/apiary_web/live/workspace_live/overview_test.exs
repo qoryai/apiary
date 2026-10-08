@@ -78,7 +78,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       Map.merge(
         %{
           state: "lost",
-          task: "nightly-mirror",
+          about_title: "nightly-mirror",
           started_at: DateTime.add(now, -7200, :second),
           last_heartbeat_at: DateTime.add(now, -3600, :second),
           lost_at: DateTime.add(now, -3000, :second),
@@ -98,6 +98,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert has_element?(view, "#nav-overview[aria-current='page']")
     assert has_element?(view, "#nav-runs[href='#{workspace_path(scope, "/runs")}']")
     assert has_element?(view, "#nav-network[href='#{workspace_path(scope, "/network")}']")
+  end
+
+  test "the breadcrumb ends with Overview, the page itself", %{conn: conn, scope: scope} do
+    view = open(conn, scope)
+
+    assert crumbs(view) == [{"Overview", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Overview")
   end
 
   describe "the empty workspace" do
@@ -1295,7 +1302,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         second,
         2,
         "run.started",
-        started_data(%{"labels" => Map.put(shop(), "task", "mirror-sync")}),
+        started_data(%{"labels" => shop(), "about" => %{"title" => "mirror-sync"}}),
         time: DateTime.utc_now()
       )
 

@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.RunLive.Show do
   @moduledoc """
-  One run, read as a record, on a work surface: a header of two lines from `run.started`,
-  `run.exited` and the policy applied (the title; the state and the run's facts, with Close
-  run and the ⋯ menu), and four tabs that are four live actions of this one LiveView, so
-  that a tab is a `patch` and the header stays: Timeline, Terminal, Network access
-  (`/runs/:run_id/network`, the live action `:connections`; the old `/connections` path
-  sends on here), Details.
+  One run, read as a record, on a work surface: a header from `run.started`, `run.exited`
+  and the policy applied (the title; what the run says it is about, when it says; the state
+  and the run's facts, with Close run and the ⋯ menu), and four tabs that are four live
+  actions of this one LiveView, so that a tab is a `patch` and the header stays: Timeline,
+  Terminal, Network access (`/runs/:run_id/network`, the live action `:connections`; the
+  old `/connections` path sends on here), Details.
   Details is the rail beside Timeline and Network access from 1440 px, and the tab below
   that shows the same element in the column (`docs/ui.md`, The run page). The Terminal tab
   is wide (`q-run-wide`): at every width the rail folds away there and Details is a tab.
@@ -66,6 +66,13 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
+        {gettext("Runs")}
+      </:crumb>
+      <:crumb :if={missing_id(@loaded_id)}>
+        {gettext("Run %{id}", id: missing_id(@loaded_id))}
+      </:crumb>
+
       <.empty_state
         tone="neutral"
         icon="hero-magnifying-glass"
@@ -93,14 +100,12 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
-      <:crumb :if={@run.target_id} navigate={target_link(@current_scope, @run, @target_shared)}>
-        <.target_name
-          path={@run.target_path}
-          system={@target_shared && @run.target_system}
-          class="truncate"
-        />
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
+        {gettext("Runs")}
       </:crumb>
-      <:crumb>{gettext("Run %{id}", id: short_id(@run.run_id))}</:crumb>
+      <:crumb patch={@live_action != :timeline && tab_path(@current_scope, @run, :timeline)}>
+        {gettext("Run %{id}", id: short_id(@run.run_id))}
+      </:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
       </div>
@@ -117,12 +122,15 @@ defmodule ApiaryWeb.RunLive.Show do
       >
         <div class="q-run-col">
           <header class="q-run-head">
-            <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
-            <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
+            <h1 :if={given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
+              {given_title(@run)}
+            </h1>
+            <h1 :if={!given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
               <.rich text={
                 rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
               } />
             </h1>
+            <.about_header run={@run} />
             <div class="q-run-sub">
               <div class="q-run-meta-wrap">
                 <p id="run-meta" class="q-run-meta">
@@ -807,6 +815,8 @@ defmodule ApiaryWeb.RunLive.Show do
     <aside id="run-details" class="q-run-rail" aria-label={gettext("Details")}>
       <h2 class="q-rail-title">{gettext("Details")}</h2>
 
+      <.about_section run={@run} />
+
       <section class="q-rail-sec" aria-labelledby="rail-run">
         <h3 id="rail-run">{gettext("Run")}</h3>
         <dl id="run-facts" class="q-rail-kv">
@@ -1351,10 +1361,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # The window's title: the run, and the tab when it is not the timeline, so a reader with
   # several tabs of one run open tells them apart.
   defp run_title(run, tab) do
-    title =
-      gettext("%{title} · Runs",
-        title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
-      )
+    title = gettext("%{title} · Runs", title: run_title(run))
 
     case tab do
       :terminal -> gettext("Terminal") <> " · " <> title
@@ -1500,9 +1507,6 @@ defmodule ApiaryWeb.RunLive.Show do
   defp tab_path(scope, %Run{run_id: id}, :details, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/details?#{query}"
 
-  defp label_path(scope, _run, _shared, "task", value),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{task: value}}"
-
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
   defp label_path(scope, %Run{target_id: id} = run, shared, key, _value) when is_binary(id) do
@@ -1510,6 +1514,15 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp label_path(_scope, _run, _shared, _key, _value), do: nil
+
+  # The short form of the id a run that is not here was asked by, when it is a run's id at
+  # all; nil for an address that is none, whose breadcrumb ends with Runs.
+  defp missing_id(run_id) do
+    case Ecto.UUID.cast(run_id) do
+      {:ok, id} -> short_id(id)
+      :error -> nil
+    end
+  end
 
   # The target's page: the run's own copy of its system and path, which the target's row
   # holds too while the run names it, at its address: its system in it only where its
