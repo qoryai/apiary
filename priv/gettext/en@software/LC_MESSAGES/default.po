@@ -8446,6 +8446,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/target_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
