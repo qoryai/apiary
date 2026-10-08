@@ -286,6 +286,16 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
     defp ago(seconds), do: DateTime.add(DateTime.utc_now(), -seconds, :second)
 
+    defp none_line(lv) do
+      lv
+      |> element("#node-instances-none")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.text()
+      |> String.split()
+      |> Enum.join(" ")
+    end
+
     test "a node's running instance, its run, and Clear instance", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
@@ -382,6 +392,12 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(lv, "#node-state", "Last seen")
       refute has_element?(lv, "#node-state", "Never seen")
 
+      # Its instances went a day after they were last seen: none is running.
+      assert none_line(lv) ==
+               "No instance of this pool is running. An instance shows here while it runs."
+
+      refute has_element?(lv, "#node-instances-idle")
+
       assert has_element?(
                lv,
                ~s{#node-state-seen[datetime="#{DateTime.to_iso8601(two_days)}"]}
@@ -410,6 +426,17 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         {:ok, lv, _html} = live(conn, node_path(scope, target))
         assert has_element?(lv, "#node-state", "Never seen")
       end
+
+      # Never seen: the lines that say none has reported yet, the pool's and the node's.
+      {:ok, lv, _html} = live(conn, node_path(scope, pool))
+
+      assert none_line(lv) ==
+               "No instance of this pool has reported yet. An instance shows here while it runs."
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node))
+
+      assert none_line(lv) ==
+               "No instance of this node has reported yet. It shows here once it runs, running or when it was last seen."
     end
 
     test "says when a pool's last instance was seen, once none runs", %{conn: conn, scope: scope} do

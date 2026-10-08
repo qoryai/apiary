@@ -7344,6 +7344,11 @@ msgstr ""
 msgid "No instance of this pool has reported yet. An instance shows here while it runs."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No instance of this pool is running. An instance shows here while it runs."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
