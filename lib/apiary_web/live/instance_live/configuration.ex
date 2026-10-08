@@ -211,8 +211,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
     end
   end
 
-  # The features built so far, each on or off as the instance has it, by the name
-  # `QORY_FEATURES` takes, with what it covers where the core knows it.
+  # The built features (`Features.built/0`), each on or off as the instance has it, by
+  # the name `QORY_FEATURES` takes, with what it covers where the core knows it.
   defp features do
     enabled = Features.enabled()
 

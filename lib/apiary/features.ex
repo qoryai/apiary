@@ -53,8 +53,7 @@ defmodule Apiary.Features do
   # needs and whether `built/0` holds it.
   @core [
     observability: [needs: [], built: true],
-    security: [needs: [:observability], built: true],
-    factory: [needs: [:observability], built: false]
+    security: [needs: [:observability], built: true]
   ]
 
   @typedoc "A feature: one of `all/0`."

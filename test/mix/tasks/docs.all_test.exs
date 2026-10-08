@@ -10,12 +10,11 @@ defmodule Mix.Tasks.Docs.AllTest do
       assert All.trees([]) == [[:observability]]
     end
 
-    test "security's documentation and the release notes are three trees" do
-      assert All.trees([[:security], Apiary.Features.all()]) == [
-               [:observability],
-               [:observability, :security],
-               Apiary.Features.all()
-             ]
+    # Security's tree is every feature's where security is every feature, as in the core,
+    # and a tree of its own where an edition adds features.
+    test "security's documentation and the release notes are a tree each, or one for both" do
+      assert All.trees([[:security], Apiary.Features.all()]) ==
+               Enum.uniq([[:observability], [:observability, :security], Apiary.Features.all()])
     end
   end
 
