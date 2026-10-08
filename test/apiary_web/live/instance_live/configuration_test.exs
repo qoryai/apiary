@@ -40,14 +40,21 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
     end
   end
 
-  # The values that come from a setting of the server's environment, by their ids.
-  @variables [
-    {"config-url-sources", "INTEGRATION_URL_SOURCES"},
+  # The values that come from a setting of the server's environment, by their ids; the
+  # Integrations part's with the `secrets` feature.
+  @url_sources {"config-url-sources", "INTEGRATION_URL_SOURCES"}
+
+  @all_variables [
+    @url_sources,
     {"config-audit-retention", "AUDIT_RETENTION_DAYS"},
     {"config-audit-address-retention", "AUDIT_ADDRESS_RETENTION_DAYS"},
     {"config-grace", "DELETION_GRACE_DAYS"},
     {"config-invitations-per-day", "INVITATIONS_PER_DAY"}
   ]
+
+  # The values from a setting of the server's environment the page shows, by their ids.
+  defp variables,
+    do: if(Features.on?(:secrets), do: @all_variables, else: @all_variables -- [@url_sources])
 
   describe "for an instance admin" do
     setup do
@@ -73,8 +80,12 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
         assert text(view, "#config-feature-#{feature}-value") == value
       end
 
-      assert text(view, "#config-url-sources-value") ==
-               if(Apiary.Integrations.Source.url_sources?(), do: "Allowed", else: "Not allowed")
+      if Features.on?(:secrets) do
+        assert text(view, "#config-url-sources-value") ==
+                 if(Apiary.Integrations.Source.url_sources?(), do: "Allowed", else: "Not allowed")
+      else
+        refute has_element?(view, "#config-integrations")
+      end
 
       assert text(view, "#config-audit-retention-value") == "#{Audit.retention_days()} days"
 
@@ -94,7 +105,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       # Each value says the setting of the server's environment it comes from, the features
       # once for them all.
-      for {id, variable} <- @variables do
+      for {id, variable} <- variables() do
         assert text(view, "##{id}-source code") == variable
       end
 
@@ -140,7 +151,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       assert text(view, "#config-run-pruning-source") ==
                "Set in the application's configuration"
 
-      for {id, variable} <- @variables do
+      for {id, variable} <- variables() do
         assert text(view, "##{id}-source") == "Set by #{variable}"
       end
 
@@ -168,7 +179,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
       # Set to an empty or blank value: the default too, and said so.
       empty = ["config-audit-retention", "config-audit-address-retention"]
 
-      for {id, variable} <- @variables do
+      for {id, variable} <- variables() do
         if id in empty,
           do: assert(text(view, "##{id}-source") == "The default: #{variable} is empty"),
           else: assert(text(view, "##{id}-source") == "The default: #{variable} is not set")
