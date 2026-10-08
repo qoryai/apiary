@@ -270,6 +270,13 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       end
     end
 
+    test "say nothing of stored secrets in any guide" do
+      for path <- Path.wildcard("guides/*.md"), features <- [@off, [:observability]] do
+        file = Path.basename(path)
+        refute guide(file, features) =~ ~r/stored secret|stored value/i, "#{file}"
+      end
+    end
+
     test "read on where a passage was left out" do
       nodes = guide("nodes.md", @off)
 

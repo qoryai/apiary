@@ -19,8 +19,12 @@ being one. Every variable named here is described in [Install and configure](ins
 - **The three keys, kept.** `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and
   `APIARY_SIGNING_SECRET` are generated once, each on its own, and stored where the
   database backups are stored, not only in the `.env` of the machine.
-  `APIARY_ENCRYPTION_SECRET` never changes once an access key or a stored secret exists,
-  and losing it loses every stored secret value. Every machine pins the key of
+  `APIARY_ENCRYPTION_SECRET` never changes once an access key exists: without it, no
+  access key is trusted.
+  <!-- feature: secrets -->
+  Losing it also loses every stored secret value.
+  <!-- /feature -->
+  Every machine pins the key of
   `APIARY_SIGNING_SECRET`, so changing or losing it means pinning every machine again.
   [Backup and restore](backup.md) says what each loss costs.
 - **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
