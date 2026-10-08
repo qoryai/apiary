@@ -3,9 +3,9 @@
 Every release of Qory Apiary, newest first, in the shape of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version numbers follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0 a minor release may
-change what an existing installation does, and says so under Upgrading. Every section names
-the database migrations the release runs on boot, so a self-hoster knows what a restart
-does before doing it (the Upgrading guide, `guides/upgrading.md`).
+change what an existing installation does, and says so under Upgrading. Every section
+says what the database migrations the release runs on boot do, so a self-hoster knows what a
+restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
@@ -172,8 +172,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's own bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
-- The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
-  module reference every instance serves at `/docs`. An opt-in feature is on only when
+- The features an instance has, switched at launch (`QORY_FEATURES`), and the
+  documentation every instance serves at `/docs`: the guides and the release notes, and
+  the module reference on an instance with every feature. An opt-in feature is on only when
   the list names it: `all`, `all-…`, and a value that is not set or empty leave it off.
 - `APIARY_ENCRYPTION_SECRET`, required, 32 bytes: the integrity codes of stored rows are
   keyed from it.
@@ -190,12 +191,12 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Migrations
 
-The baseline, on an empty database: the accounts and their tokens (`users`,
-`users_tokens`), `organisations`, `workspaces`, `memberships`, `invitations`,
-`access_keys`, `targets`, `runs`, the record (`events`, `log_chunks`, `connections`,
-`deliveries`), the security policy (`policy_rules`, `run_configurations`),
-`retention_runs`, `audit_entries`, the instance's own tables (`purged_organisations`,
-`instance_settings`) and Oban's.
+The baseline, on an empty database, creates the schema an instance has, whatever its
+features; among it: the accounts and their tokens (`users`, `users_tokens`),
+`organisations`, `workspaces`, `memberships`, `invitations`, `access_keys`, `targets`,
+`runs`, the record (`events`, `log_chunks`, `connections`, `deliveries`), the security
+policy (`policy_rules`, `run_configurations`), `retention_runs`, `audit_entries`, the
+instance's own tables (`purged_organisations`, `instance_settings`) and Oban's.
 
 `nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
 refuses a change of a node's kind; `nodes.instance_ids_over_bound` and its time.
