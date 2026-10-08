@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.RunPageComponents do
   @moduledoc """
-  The components of the run page (`docs/ui.md`): the session timeline with its lanes and
-  items, the who chip, the background-task strip, the live end, the limits notice and the
-  terminal box.
+  The components of the run page (`docs/ui.md`): what the run is about, as the header's
+  line and the rail's About; the session timeline with its lanes and items, the who chip,
+  the background-task strip, the live end, the limits notice and the terminal box.
 
   An item is what `Apiary.Runs.Record.Timeline.build/3` made of a run's events. Everything
   in it came from a runner and is untrusted: it is interpolated, so it is escaped, and it
@@ -20,7 +20,15 @@ defmodule ApiaryWeb.RunPageComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
+    only: [
+      badge: 1,
+      icon: 1,
+      notice: 1,
+      empty_state: 1,
+      external_link: 1,
+      listening: 1,
+      term: 1
+    ]
 
   import ApiaryWeb.RunComponents,
     only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, middle: 2]
@@ -1514,4 +1522,120 @@ defmodule ApiaryWeb.RunPageComponents do
     </p>
     """
   end
+
+  ## About
+
+  # What the run said it is about (`about` of its `run.started`, as `Apiary.Runs.Fold`
+  # kept it). A subject is its type and ref as given, "pull request #412": Apiary knows no
+  # subject types. Its url is a link out only when it may be one (`external_link/1`).
+
+  @header_subjects 3
+
+  @doc """
+  The header's line under the title: the kind, then the first three subjects, each a link
+  out with its title as the tooltip, then how many more there are (all of them are in the
+  rail's About). Nothing when the run names neither a kind nor a subject.
+  """
+  attr :run, :map, required: true
+
+  def about_line(assigns) do
+    subjects = assigns.run.about_subjects || []
+
+    assigns =
+      assign(assigns,
+        subjects: Enum.take(subjects, @header_subjects),
+        more: max(length(subjects) - @header_subjects, 0)
+      )
+
+    ~H"""
+    <p :if={@run.about_kind || @subjects != []} id="run-about" class="q-run-about">
+      <span :if={@run.about_kind} id="run-about-kind">{@run.about_kind}</span>
+      <span :for={subject <- @subjects}>
+        <.external_link href={subject["url"]} title={subject["title"]}>
+          {subject_words(subject)}
+        </.external_link>
+      </span>
+      <span :if={@more > 0} id="run-about-more">
+        {ngettext("+%{number} more", "+%{number} more", @more, number: Format.number(@more))}
+      </span>
+    </p>
+    """
+  end
+
+  @doc """
+  The rail's About, its first section: the kind; each subject, a link out with its title
+  muted under it, cut to a line and whole in its tooltip; then the details, a mono row
+  each (`about_details/1`). Nothing when the run names no kind, subject or detail; the
+  title is the page's h1, and not repeated here.
+  """
+  attr :run, :map, required: true
+
+  def about_section(assigns) do
+    assigns =
+      assign(assigns,
+        subjects: assigns.run.about_subjects || [],
+        details: about_details(assigns.run.about_details)
+      )
+
+    ~H"""
+    <section
+      :if={@run.about_kind || @subjects != [] || @details != []}
+      id="run-about-section"
+      class="q-rail-sec"
+      aria-labelledby="rail-about"
+    >
+      <h3 id="rail-about">{gettext("About")}</h3>
+      <dl :if={@run.about_kind || @subjects != []} id="run-about-facts" class="q-rail-kv q-rail-about">
+        <dt :if={@run.about_kind}>{gettext("Kind")}</dt>
+        <dd :if={@run.about_kind}>{@run.about_kind}</dd>
+        <dt :if={@subjects != []}>{gettext("Subjects")}</dt>
+        <dd :for={subject <- @subjects} class="q-rail-subj">
+          <.external_link href={subject["url"]}>{subject_words(subject)}</.external_link>
+          <span :if={subject["title"]} class="q-rail-sub" title={subject["title"]}>
+            {subject["title"]}
+          </span>
+        </dd>
+      </dl>
+      <dl
+        :if={@details != []}
+        id="run-about-details"
+        class="q-rail-kv q-rail-kv-mono q-rail-about-details"
+      >
+        <%= for {key, value} <- @details do %>
+          <%!-- A dotted key may break before each of its dots. --%>
+          <dt phx-no-format><%= for {part, index} <- Enum.with_index(String.split(key, ".")) do %><wbr :if={index > 0} />{if index > 0, do: "."}{part}<% end %></dt>
+          <dd>{value}</dd>
+        <% end %>
+      </dl>
+    </section>
+    """
+  end
+
+  defp subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
+
+  @doc """
+  The details as `{key, value}` rows, by key. A top-level member is a row; one that is a
+  non-empty object is instead a row per member of its own, keyed `outer.inner`, so a key
+  has at most two segments. A value is shown as given when it is a string, and as compact
+  JSON otherwise: a number, true, false, null, an array, and an object one level below
+  that, or an empty one. An object nested deeper stays one JSON value, never more rows.
+  """
+  def about_details(%{} = details) do
+    details
+    |> Enum.sort_by(fn {key, _value} -> key end)
+    |> Enum.flat_map(fn
+      {key, %{} = inner} when map_size(inner) > 0 ->
+        inner
+        |> Enum.sort_by(fn {inner_key, _value} -> inner_key end)
+        |> Enum.map(fn {inner_key, value} -> {"#{key}.#{inner_key}", detail(value)} end)
+
+      {key, value} ->
+        [{key, detail(value)}]
+    end)
+  end
+
+  def about_details(_details), do: []
+
+  defp detail(value) when is_binary(value), do: value
+  defp detail(value), do: Jason.encode!(value)
 end
