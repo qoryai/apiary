@@ -25,10 +25,12 @@ page, the one the person came from (Two levels, below).
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
   then the workspace, each a link to its home, and the page's own segments, a target or a
-  record, the last one the page with `aria-current="page"`. A page under a section's list
-  starts them with the section's name as the sidebar words it, a link to the list
-  (`Acme / Main / Runs / Run 0191f2a4`), and the lists of Runs, Targets, Nodes and Network
-  access end with it, the page itself (`Acme / Main / Runs`); on a page of a level's
+  record, the last one the page with `aria-current="page"`. A workspace's page starts them
+  with its section's name as the sidebar words it: a link to the section's page on a page
+  under it (`Acme / Main / Runs / Run 0191f2a4`, also where that run is not found, and
+  `Acme / Main / Runs` where the address is no run's id), the page itself on the section's
+  own page (`Acme / Main / Runs`, `Acme / Main / Overview`, `Acme / Main / Policy`); on a
+  page of a level's
   settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows

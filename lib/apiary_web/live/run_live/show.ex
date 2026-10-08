@@ -66,6 +66,13 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
+        {gettext("Runs")}
+      </:crumb>
+      <:crumb :if={missing_id(@loaded_id)}>
+        {gettext("Run %{id}", id: missing_id(@loaded_id))}
+      </:crumb>
+
       <.empty_state
         tone="neutral"
         icon="hero-magnifying-glass"
@@ -1506,6 +1513,15 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp label_path(_scope, _run, _shared, _key, _value), do: nil
+
+  # The short form of the id a run that is not here was asked by, when it is a run's id at
+  # all; nil for an address that is none, whose breadcrumb ends with Runs.
+  defp missing_id(run_id) do
+    case Ecto.UUID.cast(run_id) do
+      {:ok, id} -> short_id(id)
+      :error -> nil
+    end
+  end
 
   # The target's page: the run's own copy of its system and path, which the target's row
   # holds too while the run names it, at its address: its system in it only where its

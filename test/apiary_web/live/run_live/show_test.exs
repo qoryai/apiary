@@ -65,6 +65,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "the breadcrumb leads to Runs, then names the run asked for when its id is a run's",
+         %{conn: conn, scope: scope} do
+      runs = workspace_path(scope, "/runs")
+      id = Ecto.UUID.generate()
+
+      {:ok, lv, _html} = live(conn, "#{runs}/#{id}")
+      assert crumbs(lv) == [{"Runs", runs}, {"Run #{String.slice(id, 0, 8)}", nil}]
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Run #{String.slice(id, 0, 8)}")
+
+      # An address that is no run's id names no run.
+      {:ok, lv, _html} = live(conn, "#{runs}/0191f2a4")
+      assert crumbs(lv) == [{"Runs", runs}]
+    end
+
     test "signed out, the page redirects to the log-in page", %{scope: scope} do
       conn = build_conn()
 

@@ -104,6 +104,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       nav={:overview}
       width="list"
     >
+      <:crumb>{gettext("Overview")}</:crumb>
+
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-5">
         <.page_header title={@current_scope.workspace.name} />
 
