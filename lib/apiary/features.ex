@@ -6,11 +6,12 @@ defmodule Apiary.Features do
   |---|---|---|
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to runners | `observability` |
+  | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
 
   An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each
-  with the features it needs and whether `built/0` holds it. The list is read once,
-  checked (`registry/1`), and kept for the life of the node: a name listed twice, or a
-  feature that needs one the list does not have, stops the boot.
+  with the features it needs, whether it is built, and whether it is opt-in. The list is
+  read once, checked (`registry/1`), and kept for the life of the node: a name listed
+  twice, or a feature that needs one the list does not have, stops the boot.
 
   `QORY_FEATURES` names the features the instance has, of the whole list: `all`; `all-`
   and the features left out, separated by commas (`all-security`); or the features on,
@@ -21,6 +22,11 @@ defmodule Apiary.Features do
   application's modules can be relied on), and `boot!/0` checks it with `parse/1` when
   the application starts: an unknown name or a feature without the features it needs
   stops the boot. The list is fixed while the instance runs.
+
+  An **opt-in** feature, marked `default: false` (`opt_in/0`), is on only where a list
+  names it: `all`, `all-…`, unset and blank leave it off, as an upgrade that adds one
+  does. Only an opt-in feature may need one, and it is never one a page switches for an
+  organisation (`built/0`).
 
   A feature that is off is absent, not disabled: its pages answer not found, the navigation
   and the discovery document leave it out, its processes are not started. Every surface asks
@@ -50,25 +56,43 @@ defmodule Apiary.Features do
   alias Apiary.Repo
 
   # The core's features, in the order the instance lists them, each with the features it
-  # needs and whether `built/0` holds it.
+  # needs, whether it is built, and `default: false` for one that is opt-in.
   @core [
     observability: [needs: [], built: true],
-    security: [needs: [:observability], built: true]
+    security: [needs: [:observability], built: true],
+    secrets: [needs: [:security], built: true, default: false]
   ]
+
+  # What `registry/1` says an entry is, when it refuses one.
+  @entry_shape "a feature is {name, needs: [feature], built: boolean}, " <>
+                 "with default: boolean where it is given, got: "
 
   @typedoc "A feature: one of `all/0`."
   @type feature :: atom
 
   @typedoc "The features of the core and the edition, as `registry/1` checks them."
-  @type registry :: %{all: [feature], needs: %{feature => [feature]}, built: [feature]}
+  @type registry :: %{
+          all: [feature],
+          needs: %{feature => [feature]},
+          built: [feature],
+          opt_in: [feature]
+        }
 
   @doc """
-  built/0 is the features listed with `built: true`, in the order of `all/0`: the ones a
-  page of an edition may switch on or off for an organisation. Any other keeps whatever
-  an edition says of it.
+  built/0 is the features listed with `built: true` and not opt-in (`opt_in/0`), in the
+  order of `all/0`: the ones a page of an edition may switch on or off for an
+  organisation. Any other keeps whatever an edition says of it.
   """
   @spec built() :: [feature]
   def built, do: registry().built
+
+  @doc """
+  opt_in/0 is the features listed with `default: false`, in the order of `all/0`: on only
+  where the value of `QORY_FEATURES` lists them by name (`parse/1`), and never offered for
+  an organisation's switch (`built/0`).
+  """
+  @spec opt_in() :: [feature]
+  def opt_in, do: registry().opt_in
 
   @doc "Every feature, the core's and then the edition's, in the order the instance lists them."
   @spec all() :: [feature]
@@ -80,9 +104,11 @@ defmodule Apiary.Features do
 
   @doc """
   registry/1 checks a list of features, the core's followed by the edition's, and returns
-  what `all/0`, `needs/1` and `built/0` answer from; raises `ArgumentError` on a mistake:
-  an entry that is not `{name, needs: [feature], built: boolean}`, a name listed twice, or
-  a feature that needs itself or one the list does not have.
+  what `all/0`, `needs/1`, `built/0` and `opt_in/0` answer from; raises `ArgumentError` on
+  a mistake: an entry that is not `{name, needs: [feature], built: boolean}`, with
+  `default: boolean` where it is given (`true` where it is not, `false` for an opt-in
+  feature), a name listed twice, a feature that needs itself or one the list does not
+  have, or a feature that is not opt-in and needs one that is.
   """
   @spec registry([{feature, keyword}]) :: registry
   def registry(features) do
@@ -98,26 +124,32 @@ defmodule Apiary.Features do
       raise ArgumentError, "the feature #{name} needs #{need}, which is no other feature"
     end
 
+    opt_in = for {name, opts} <- features, opts[:default] == false, do: name
+
+    # `all` leaves the opt-in features off, so only another opt-in feature may need one.
+    for {name, opts} <- features, name not in opt_in, need <- opts[:needs], need in opt_in do
+      raise ArgumentError,
+            "the feature #{name} needs #{need}, which is opt-in: so is a feature that needs one"
+    end
+
     %{
       all: names,
       needs: Map.new(features, fn {name, opts} -> {name, opts[:needs]} end),
-      built: for({name, opts} <- features, opts[:built], do: name)
+      built: for({name, opts} <- features, opts[:built], name not in opt_in, do: name),
+      opt_in: opt_in
     }
   end
 
   defp check_entry!({name, opts} = entry) when is_atom(name) and is_list(opts) do
     needs = opts[:needs]
 
-    unless is_list(needs) and Enum.all?(needs, &is_atom/1) and is_boolean(opts[:built]) do
-      raise ArgumentError,
-            "a feature is {name, needs: [feature], built: boolean}, got: #{inspect(entry)}"
+    unless is_list(needs) and Enum.all?(needs, &is_atom/1) and is_boolean(opts[:built]) and
+             is_boolean(Keyword.get(opts, :default, true)) do
+      raise ArgumentError, @entry_shape <> inspect(entry)
     end
   end
 
-  defp check_entry!(entry) do
-    raise ArgumentError,
-          "a feature is {name, needs: [feature], built: boolean}, got: #{inspect(entry)}"
-  end
+  defp check_entry!(entry), do: raise(ArgumentError, @entry_shape <> inspect(entry))
 
   # The core's features and the edition's, checked once and kept for the life of the node.
   defp registry do
@@ -144,18 +176,21 @@ defmodule Apiary.Features do
   The features a value of `QORY_FEATURES` names: `{:ok, features}` in the order of `all/0`,
   or `{:error, reason}`.
 
-    * `nil`, an empty or a blank value, and `all`: every feature.
-    * `all-security`: every feature but those after `all-`, separated by commas.
-    * `observability,security`: those features and no other.
+    * `nil`, an empty or a blank value, and `all`: every feature but the opt-in ones
+      (`opt_in/0`).
+    * `all-security`: those of `all` but the ones after `all-`, separated by commas.
+    * `observability,security`: those features and no other; an opt-in feature is on only
+      where a list names it.
 
   `all` may not be one of the features of a list. Every feature but `observability` needs
   `observability`, whichever form names them.
   """
   @spec parse(String.t() | nil) :: {:ok, [feature]} | {:error, String.t()}
-  def parse(nil), do: {:ok, all()}
+  def parse(nil), do: {:ok, all() -- opt_in()}
 
   def parse(value) when is_binary(value) do
-    all = all()
+    # What `all` names: every feature but the opt-in ones.
+    all = all() -- opt_in()
 
     case String.trim(value) do
       "" ->
@@ -181,7 +216,7 @@ defmodule Apiary.Features do
 
           true ->
             with {:ok, listed} <- known(names),
-                 do: check_needs(Enum.filter(all, &(&1 in listed)))
+                 do: check_needs(Enum.filter(all(), &(&1 in listed)))
         end
     end
   end
@@ -246,7 +281,7 @@ defmodule Apiary.Features do
       {:error, reason} ->
         raise ArgumentError, """
         environment variable QORY_FEATURES is not valid: #{reason}.
-        Leave it unset or set it to all for every feature, or name them, for example:
+        Leave it unset or set it to all for the default features, or name them, for example:
         QORY_FEATURES=observability
         """
     end
