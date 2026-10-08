@@ -1141,11 +1141,10 @@ GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json`
 publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
 ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
 seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
-key with its New key and Enrolment code pages, Settings), its key active or revoked, a new
-one by enrolment code or made in a browser, active as soon as it arrives, a node holding
-at most two keys at a time, and two variations: a replacement beside the current key, both
-active, and a member's view without the actions; Generate a key is drawn only by the page
-itself. They are drawn in a shell built from `Layouts.app/1`'s own classes
+key with its Generate a key and Command pages, Settings), its key active or revoked, a new
+one connected with a command or generated in a browser, active as soon as it arrives, a
+node holding at most two keys at a time, and two variations: a replacement beside the
+current key, both active, and a member's view without the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
 (`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
 links; inside it they use the real components (`SettingsComponents.layout/1`,
 `<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a
