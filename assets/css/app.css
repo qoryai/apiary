@@ -5802,25 +5802,7 @@
     grid-template-columns: 112px minmax(0, 1fr);
   }
 
-  /* The policy pages' own header (policy_live): the crumbs and a title with its state. */
-  .q-crumbs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-  }
-  .q-crumbs a {
-    border-radius: var(--radius-selector);
-    transition: color 120ms var(--q-ease-out);
-  }
-  .q-crumbs a:hover {
-    color: var(--color-base-content);
-  }
-  .q-crumbs [class*="hero-"] {
-    color: var(--q-faint);
-  }
+  /* The policy pages' own header (policy_live): a title with its state. */
   .q-run-title {
     display: flex;
     flex-wrap: wrap;

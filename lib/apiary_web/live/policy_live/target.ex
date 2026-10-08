@@ -810,8 +810,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <.export_page
         :if={@action == :export && @v && @export}
         export={@export}
-        policy={@base}
-        version={@v.configuration.version}
         done={"#{@base}/versions/#{@v.configuration.version}"}
         heading="h2"
       />

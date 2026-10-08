@@ -1473,6 +1473,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "dialog#policy-export")
       assert has_element?(view, "h1#policy-export-h", "Export for a node without a server")
       refute has_element?(view, "#export-crumbs")
+      refute has_element?(view, "#policy-export nav")
 
       assert has_element?(
                view,

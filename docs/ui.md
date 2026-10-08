@@ -560,9 +560,10 @@ The policy pages confirm in place, never over the page:
   the page (`#policy-keys`), not an overlay; Escape and its Close hide it.
 
 **The export** (`…/policy/versions/:n/export`, and a target's
-`…/-/policy/versions/:n/export`) is a page, not a dialog: the breadcrumb Policy › Version
-n › Export, the title "Export for a node without a server" and what is exported (an h2
-under a target's own title), the policy file with Download and Copy, the command for the
+`…/-/policy/versions/:n/export`) is a page, not a dialog: the top bar's breadcrumb ends
+with Version n and Export and is the one way back, with no trail of the page's own; the
+title "Export for a node without a server" and what is exported (an h2 under a target's
+own title), the policy file with Download and Copy, the command for the
 node and the runner file's egress section, each with Copy, the notes, and Done back to the
 version. Only the version in force is exported; another version's path sends on to it.
 

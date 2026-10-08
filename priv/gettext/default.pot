@@ -3266,11 +3266,6 @@ msgstr ""
 msgid "Behind v%{n}"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "Breadcrumb"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -4977,7 +4972,6 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
-#: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Export"
@@ -8625,7 +8619,6 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex

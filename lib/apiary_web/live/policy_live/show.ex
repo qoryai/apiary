@@ -1057,9 +1057,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
-          crumbs={false}
-          policy={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
-          version={@v.configuration.version}
           done={
             ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
           }
