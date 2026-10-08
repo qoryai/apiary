@@ -159,15 +159,16 @@ It applies:
   no run configuration, and the machine's own policy stands, enforcement included.
 
 From the first change of the workspace's policy in the console, Qory Apiary's run
-configuration is the policy of every run under the keys of the workspace's nodes, and the
-file's `egress` section is not merged with it. [The security policy](security-policy.md)
-says what to do before that first change.
+configuration, narrowed by the file's `egress` section (enforce when either enforces;
+allowed only where both allow; denied where either denies), is the policy of every run
+under the keys of the workspace's nodes. [The security policy](security-policy.md) says
+what to do before that first change.
 
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
-too: Qory Apiary's run configuration is the policy.
+too.
 
-One section of the runner file still matters under a workspace's policy: `wall` starts the
-runtime in a container, and a policy with paths needs one. The workspace's policy selects
+Under a workspace's policy, `egress` narrows it and `wall` starts the runtime in a
+container; a policy with paths needs one. The workspace's policy selects
 none of the machine's `credentials`, so a run under it uses none.
 <!-- /feature -->
 

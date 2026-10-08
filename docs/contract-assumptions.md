@@ -113,8 +113,8 @@ replaces a machine's own enforcement with an empty policy. The document therefor
 by node, and for a node is one of two, by its workspace, and so is its digest, here and in
 every answer to a batch. The first
 change of a workspace's policy changes that digest: a run in flight fetches the document
-again, finds the section, fetches its run configuration and applies it, which is the
-moment the workspace takes over. It does not go back: a workspace whose rules were all
+again, finds the section, fetches its run configuration and applies it, narrowed by the
+machine's own policy. It does not go back: a workspace whose rules were all
 removed again still serves its (empty) policy. Sections a runner does not know are to be
 ignored.
 

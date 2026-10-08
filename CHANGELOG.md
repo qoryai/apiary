@@ -9,8 +9,8 @@ does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
-The first release of the open core of Qory Apiary, to be 0.1.0: the free edition, complete
-for one team, as `EDITIONS.md` at the root of the repository describes it.
+The first release of the open core of Qory Apiary: the free edition, complete for one
+team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Added
 
@@ -69,11 +69,10 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   Connect with a command first, a pool Generate a key in the browser), and under Add a
   key, as two rows, once it holds one, with Configure a machine at the tab's foot for
   everyone: four steps, Qory Apiary's address and public key, the key's ID, and where
-  its secret belongs. Every new
-  key, either way, gets the stored-secrets flag Not allowed, since runs don't receive
-  secrets yet. Connect with a command: Get the command makes, in one click, a
-  single-use code valid for 15 minutes, and the page Connect build-01 with a command
-  shows it, once, only inside the command `qory access-key enrol <server> <code>`, with
+  its secret belongs. Every new key, either way, gets the stored-secrets flag Not
+  allowed. Connect with a command: Get the command makes, in one click, a single-use
+  code valid for 15 minutes, and the page Connect build-01 with a command shows it,
+  once, only inside the command `qory access-key enrol <server> <code>`, with
   `--replace` for a node that has or had a key, saying it moves the node to a new key,
   and the time it stops working; the machine makes its key, keeps its secret and posts the
   code with the new public key to `POST /.well-known/qory-enrolment`, which answers
@@ -178,23 +177,22 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   sends a link, and still says the same of an address with an account and one without.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`.
-- Stored secrets and variables, kept for the runs: a workspace's
-  secrets (`Apiary.Secrets`), each with one value or several, each of those with a value
-  ID, written once and never shown again, and not deleted while something uses them; and
-  the variables of a workspace and of each repository (`Apiary.Variables`), which the
-  workspace may lock against its repositories, with names compared without case, names
-  beginning `QORY_` refused, and at most 128 names and 64 KiB for each repository, the
-  limits an edition checks a change of the level above's variables against
-  (`Apiary.Variables.check_above/2`). Who may read and change them are the actions
+- A workspace's stored secrets and variables: its secrets (`Apiary.Secrets`), each with
+  one value or several, each of those with a value ID, written once and never shown
+  again; and the variables of the workspace and of each repository (`Apiary.Variables`),
+  which the workspace may lock against its repositories, with names compared without
+  case, names beginning `QORY_` refused, and at most 128 names and 64 KiB for each
+  repository, the limits an edition checks a change of the level above's variables
+  against (`Apiary.Variables.check_above/2`). Who may read and change them are the actions
   `secret.read`, `secret.write`, `secret.use`, `variable.read` and `variable.edit`, and
   every change is in the audit trail by name, never by value.
 - The workspace's settings have **Secrets and variables**, with the security feature: a
-  view of the secrets, by name, value ID, who changed each value and when, and what uses
-  it, never a value, with New secret, Add value, Change value, Rename value, Delete value
-  and Delete secret; and a view of the variables, each with its value, its lock and the
-  repositories that set their own, with New variable, Change value, Lock, Unlock and
-  Delete variable. Members read them; owners and admins change them. A parameter named
-  `value` is filtered out of the logs, a LiveView event's included.
+  view of the secrets, by name, value ID, who changed each value and when, never a value,
+  with New secret, Add value, Change value, Rename value, Delete value and Delete secret;
+  and a view of the variables, each with its value, its lock and the repositories that
+  set their own, with New variable, Change value, Lock, Unlock and Delete variable.
+  Members read them; owners and admins change them. A parameter named `value` is
+  filtered out of the logs, a LiveView event's included.
 - `APIARY_ENCRYPTION_SECRET`, 32 bytes, encrypts what the database holds secret: each
   workspace's stored values under a data key of its own, with AES-256-GCM, wrapped by a
   key derived from it. Losing it loses every stored value. Integrity codes for stored

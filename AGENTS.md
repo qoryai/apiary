@@ -16,9 +16,8 @@ repository; the rules for people are the same, and are written out in
   never a password. The engine's words for the work are *target*, *system*,
   *change request*, *apply*, *work item* and *task*. The product surface, pages, emails
   and flashes, is the one place with other words: it says a domain's words through Gettext
-  ([docs/lingo.md](docs/lingo.md)), and only the apiary skin, a per-user setting not built
-  yet, says *apiary* for an organisation and *hive* for a workspace: skin words, never
-  used for these anywhere else. British spelling throughout (organisation, licence,
+  ([docs/lingo.md](docs/lingo.md)), and never says *apiary* for an organisation or *hive*
+  for a workspace. British spelling throughout (organisation, licence,
   behaviour).
 - **Organisation keys.** Every table except `users` and `users_tokens` (and the
   instance's own, `purged_organisations`) carries `organisation_id`; every workspace-owned

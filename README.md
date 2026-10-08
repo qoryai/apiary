@@ -2,14 +2,14 @@
 
 The control plane for coding agent runs.
 
-Every agent session runs behind a wall, reaches only what your policy allows, never holds
-your keys, and leaves a full record. Qory Apiary is the server your machines report to and
-the console you read. Open source, so you can check all of that.
+Every run reports to Qory Apiary: its session, terminal and every connection, with the
+decision and rule behind it. Qory Apiary is the server your machines report to and the
+console you read. Open source, so you can check all of that.
 
 - **The record.** Every run in one place: the session as a timeline, the terminal output,
   and every connection with the decision and the rule behind it.
-- **The wall.** A session's only way out is a proxy on its machine. Credentials stay
-  outside the container; the record names them and never holds them.
+- **The wall.** Behind the runner's wall a session's only way out is its proxy; each run's
+  record says whether it had a wall.
 - **The policy.** What runs may reach, versioned and edited in one place. A change reaches
   the runs in flight within about 30 seconds.
 

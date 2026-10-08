@@ -10,9 +10,9 @@ Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes 
 page's active navigation item (`nav`), the counts the sidebar shows (`counts`), the width
 of its column (`width`), on a page of a level's settings the level's sections and its own
 (`sections`, `section`), on a list narrowed to one target that target (`narrowed`) and, in
-`crumb` slots, the page's own segments of the breadcrumb. The shell is section 4 of the v2
-design brief: it shows one scope's sidebar at a time, the one the page belongs to, or, on a
-person's own page and an Instance page, the one the person came from (Two levels, below).
+`crumb` slots, the page's own segments of the breadcrumb. The shell shows one scope's
+sidebar at a time, the one the page belongs to, or, on a person's own page and an Instance
+page, the one the person came from (Two levels, below).
 
 - **A page belongs to one scope**: a workspace, an organisation, the person or the
   Instance. The navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page
@@ -213,13 +213,13 @@ replaces the navigation it is in.
   `<h3>`, one sentence and a list its heading names: Agent (the runtimes of the runner's
   catalogue), APIs the agent may call (the built-in APIs, the workspace's own custom APIs,
   then Custom API…) and Programs (the named releases, `ApiaryWeb.IntegrationLive.Named`,
-  none yet, then From a release…); the runner's design that the agent never holds a token
+  then From a release…); the runner's design that the agent never holds a token
   is said for APIs and programs, never for the agent; a card's act opens its form with its
   item chosen, `?runtime=` or `?definition=` (a named release's opens Add from a release,
   its source filled in, `?source=`), an unknown one opening the form as it starts; the
   forms are Set up an agent, Set up an API and Add from a release; an item's page says its
-  kind and one line by kind under its title; each page says once that no run uses any of it
-  yet) and Secrets and variables (`/settings/secrets`,
+  kind and one line by kind under its title; each page says once that a run receives only
+  its security policy) and Secrets and variables (`/settings/secrets`,
   below), each with `security` and for a reader of it (`connection.read`, `secret.read`),
   and Runs (`/settings/runs`: how long the workspace keeps runs, their events and their
   logs; `/settings/retention`, its path before, sends on with its query). A workspace's
@@ -365,14 +365,14 @@ reader of `secret.read`) is one section of two tabs, under its `<h1>` and its se
 (`PageComponents.page_tabs/1`, `place="section"`, `#secrets-tabs-secrets` and
 `#secrets-tabs-variables`), each a link with its count, the current one
 `aria-current="page"`, not an ARIA tablist; the bar is a navigation named "Secrets and
-variables", wraps and does not stick. Each tab's panel holds, in order, the line that runs
-don't receive these yet, who changes them, its New (New secret, New variable) beside its
-search, Filter and Sort, and its list: nothing in the header changes with the tab. Each
-list is on the list pattern (Lists, below), its search, its
-Filter menu, Sort and its tokens in the URL (`ApiaryWeb.SecretLive.Query`): a secret found
-by its name or a value ID and filtered by one value or several; a variable by its name or
-its value, and filtered by its lock and by whether a repository sets it too; both ordered
-by name or the latest change.
+variables", wraps and does not stick. Each tab's panel holds, in order, the line that a
+run receives only its security policy, who changes them, its New (New secret, New
+variable) beside its search, Filter and Sort, and its list: nothing in the header changes
+with the tab. Each list is on the list pattern (Lists, below), its search, its Filter
+menu, Sort and its tokens in the URL (`ApiaryWeb.SecretLive.Query`): a secret found by its
+name or a value ID and filtered by one value or several; a variable by its name or its
+value, and filtered by its lock and by whether a repository sets it too; both ordered by
+name or the latest change.
 
 - **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
   both tabs (a tab is not a segment). The second column marks the section as the page on
@@ -383,21 +383,18 @@ by name or the latest change.
   start and outside both tabs' parts, says out of sight the tab a switch led to and its
   count ("Variables, 7"), and under the filters what a search left ("1 secret matches").
   The focus stays on the tab that was activated.
-- **Runs don't receive these yet.** A run receives its security policy alone, so each
-  tab, and each of its pages, says once near its top "Runs don't receive secrets yet."
-  or "Runs don't receive variables yet.", with "Today a run receives only its security
-  policy." (`ApiaryWeb.PageComponents.not_on_runs/1`), and no line of the section says a
-  run is given what it holds.
+- **What a run receives.** Each tab, and each of its pages, says once near its top "A
+  run receives only its security policy." (`ApiaryWeb.PageComponents.not_on_runs/1`),
+  and no line of the section says a run is given what it holds.
 - **A secret** is one row: its name in mono, its note beside it, how many values it
-  holds, who changed it and when (`ApiaryWeb.People`), and what uses it, "Not used yet"
-  while nothing does (`Apiary.Secrets.list_uses/2`). A secret of several values, or of one
-  named value, has a line under it for each, its value ID in mono, with who changed that
-  value and when, and the value's own acts. **No value is ever rendered**: the value is a
-  textarea whose content is always empty, written and sent once; the form the context
-  hands back after a refused save holds none, so a refusal shows the error under an
-  empty field, and a save goes back to the list, so the field is gone. No secret form
-  sends a change event, so a value travels only when it is submitted. A parameter named
-  `value` is `[FILTERED]` in the logs, a LiveView event's included
+  holds, and who changed it and when (`ApiaryWeb.People`). A secret of several values,
+  or of one named value, has a line under it for each, its value ID in mono, with who
+  changed that value and when, and the value's own acts. **No value is ever rendered**:
+  the value is a textarea whose content is always empty, written and sent once; the form
+  the context hands back after a refused save holds none, so a refusal shows the error
+  under an empty field, and a save goes back to the list, so the field is gone. No secret
+  form sends a change event, so a value travels only when it is submitted. A parameter
+  named `value` is `[FILTERED]` in the logs, a LiveView event's included
   (`:filter_parameters`).
 - **A variable** is one row: its name, its value in mono (plain configuration, shown
   whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
@@ -459,10 +456,10 @@ by name or the latest change.
 
 ## Lists
 
-A page that lists things reads top down, and every level of it has a look of its own
-(principles 8 to 12 of the v2 brief): a summary, the largest numbers on the page, only
-where the page has one; then blocks or tables, each one box; then rows. Two levels that
-look alike are one level too many, and nothing is boxed inside a row.
+A page that lists things reads top down, and every level of it has a look of its own: a
+summary, the largest numbers on the page, only where the page has one; then blocks or
+tables, each one box; then rows. Two levels that look alike are one level too many, and
+nothing is boxed inside a row.
 
 - **A row is one line.** Its title, the thing's name, is the only strong text: 14 px,
   medium, in the text colour. Every other cell is 12.5 px and muted; what is tertiary is
@@ -499,16 +496,15 @@ look alike are one level too many, and nothing is boxed inside a row.
 ### The runs list and Network access
 
 A long record is narrowed by filters written in the URL, never folded into groups the
-reader has to open (the brief's principle 4). The runs list (`ApiaryWeb.RunLive.Index`)
-and the workspace's Network access (`ApiaryWeb.ConnectionLive.Index`,
-`/:org/:workspace/network`: every destination the runs reached, what decided it, and the
-way to allow or deny it) are one flat list each, and `Apiary.Runs.Filters` reads and
-writes every control of them. The page was Connections: `/:org/:workspace/connections`
-and a run's `/runs/:run_id/connections` send on to the new paths with their query, moved
-permanently (`ApiaryWeb.MovedController`). A connection as a thing keeps its word: a row is
-a destination and the connections made to it. The Policy page's hosts and paths are its
-Network access section, which links to the page ("See what the runs reached"); the page's
-rule links lead to the rule there.
+reader has to open. The runs list (`ApiaryWeb.RunLive.Index`) and the workspace's Network
+access (`ApiaryWeb.ConnectionLive.Index`, `/:org/:workspace/network`: every destination
+the runs reached, what decided it, and the way to allow or deny it) are one flat list
+each, and `Apiary.Runs.Filters` reads and writes every control of them. The page was
+Connections: `/:org/:workspace/connections` and a run's `/runs/:run_id/connections` send
+on to the new paths with their query, moved permanently (`ApiaryWeb.MovedController`). A
+connection as a thing keeps its word: a row is a destination and the connections made to
+it. The Policy page's hosts and paths are its Network access section, which links to the
+page ("See what the runs reached"); the page's rule links lead to the rule there.
 
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by
@@ -929,17 +925,17 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   the instances"), then one field, Name of the key, filled in with the node's name (then
   `-2` when a key has that name), its hint "Shown on the Access key tab, so you can tell
   its keys apart.", and Generate key ("Generating") with Cancel. There is no Stored
-  secrets choice: every new key, either way, is Not allowed, since runs don't receive
-  secrets yet. The browser makes the Ed25519 key (the `GenerateKey` hook) and sends Qory Apiary
-  the name and the public key alone; the form has no other field. Where the browser can't
-  make one it says why and Generate key stays off: "This browser makes keys only on a page
-  served over HTTPS. Open Qory Apiary over HTTPS, or connect the machine with a command." or
-  "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari,
-  or connect the machine with a command."; a key lost on its way says "The connection to
-  Qory Apiary dropped before the key was confirmed, and its secret is gone. If a new key shows on
-  the Access key tab, revoke it, then generate another." Anything sent beyond the name and
-  the public key, a name holding a secret, or a public key that does not decode as one,
-  goes back to the tab with "The key wasn't added. Try again.", and nothing is added.
+  secrets choice: every new key, either way, is Not allowed. The browser makes the Ed25519
+  key (the `GenerateKey` hook) and sends Qory Apiary the name and the public key alone;
+  the form has no other field. Where the browser can't make one it says why and Generate
+  key stays off: "This browser makes keys only on a page served over HTTPS. Open Qory
+  Apiary over HTTPS, or connect the machine with a command." or "This browser can't make
+  an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or connect the machine
+  with a command."; a key lost on its way says "The connection to Qory Apiary dropped
+  before the key was confirmed, and its secret is gone. If a new key shows on the Access
+  key tab, revoke it, then generate another." Anything sent beyond the name and the public
+  key, a name holding a secret, or a public key that does not decode as one, goes back to
+  the tab with "The key wasn't added. Try again.", and nothing is added.
 - **Key for build-01** (`/nodes/:node_id/access-key/keys/:key_id/generated`) is what
   Generate key leads to, with no flash: "Do these where build-01 runs. Only the secret
   can't be seen again.", the notice "**The secret is shown once.** …", then four numbered
@@ -1048,7 +1044,7 @@ needs becomes a component, or an attribute of one, not a copy.
   no Back link in its header, since Cancel at its foot and the breadcrumb lead back (a
   link at a page's foot that names where it leads, such as Back to the variables, stays
   where a page has one); and
-  `not_on_runs/1`, the one plain line a page over data no run receives yet says, in the
+  `not_on_runs/1`, the one plain line a page over data no run receives says, in the
   page's own sentence (`inner_block`, required): it has no words of its own.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
@@ -1111,16 +1107,16 @@ needs becomes a component, or an attribute of one, not a copy.
 - **`<.empty_state>`** says what is missing and offers the one next step. Where it titles
   the page (`heading="h1"`), its title is the page's `<h1>` and takes the focus as a
   header's does (`tabindex="-1"`).
-- **Icons** are Heroicons through `<.icon>`, in two styles (the v2 mocks' split). Nav and
-  object icons are the 24 px outline, `hero-<name>`: the sidebar's entries and pins, the
-  top bar, menu items, tabs, toolbar buttons (Filter, Sort, Export), find fields, a Filter
-  menu's sections, empty states, and an icon that stands for a thing (a target, a run, an
-  access key, a workspace). They are drawn at 18 px in the sidebar, 14 px in a Filter
-  menu's sections and 16 px elsewhere. Small glyphs are the solid micro,
-  `hero-<name>-micro`, at 12 to 16 px: check, x, chevrons, arrows, the deny mark, lock,
-  warning, plus, and a row's mark, a badge's or a timeline node's. The current navigation
-  item changes its background, weight and ring and its icon takes `accent`; the icon never
-  turns solid. A name is written out whole in the source, so Tailwind generates its class.
+- **Icons** are Heroicons through `<.icon>`, in two styles. Nav and object icons are the
+  24 px outline, `hero-<name>`: the sidebar's entries and pins, the top bar, menu items,
+  tabs, toolbar buttons (Filter, Sort, Export), find fields, a Filter menu's sections,
+  empty states, and an icon that stands for a thing (a target, a run, an access key, a
+  workspace). They are drawn at 18 px in the sidebar, 14 px in a Filter menu's sections
+  and 16 px elsewhere. Small glyphs are the solid micro, `hero-<name>-micro`, at 12 to 16
+  px: check, x, chevrons, arrows, the deny mark, lock, warning, plus, and a row's mark, a
+  badge's or a timeline node's. The current navigation item changes its background, weight
+  and ring and its icon takes `accent`; the icon never turns solid. A name is written out
+  whole in the source, so Tailwind generates its class.
 
 The styles are in `assets/css/app.css`. Overrides of daisyUI are in `@layer utilities`,
 wrapped in `:where()` so a Tailwind utility on the element still wins; the classes a group
@@ -1172,32 +1168,6 @@ In test every story is compiled with the backend, and `test/apiary_web/storybook
 renders every variation and every page in both themes, so a story that a change to a
 component breaks fails the suite. The dev server compiles a story when it is opened, and
 reloads the page when one changes.
-
-**Screen mock-ups** (`storybook/screens/`, in the order of `_screens.index.exs`) are page
-stories of whole screens drawn to be clicked through, a proposal before any route or context
-exists: 1. Sidebar and shell, the sidebar one list without group headings (Overview, Runs,
-Targets, Nodes, Network access, Policy; Settings at its foot); 2. Settings (General, People,
-Runs, Integrations, Secrets and variables; Runs is Retention renamed, and Access keys is
-gone; a secret holds one value or several, each under a value ID, and a variable is set for
-the workspace or for one repository); 3. Integrations, by role, with the ways each connects
-(API, MCP), the tools under Services, and each one's source: Built in for the LLM providers
-and services that ship inside Qory Apiary, else the publisher's repository and version of its
-release; 4. An integration (Overview, Secrets and Settings, which ask for each setting it
-declares, secret or plain, a secret one linked to a workspace secret and, where it holds
-several values, to one by its value ID); 5. Add integration, built in or from a release on
-GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json` with its
-publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
-ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
-seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
-key with its Generate a key and Command pages, Settings), its key active or revoked, a new
-one connected with a command or generated in a browser, active as soon as it arrives, a
-node holding at most two keys at a time, and two variations: a replacement beside the
-current key, both active, and a member's view without the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
-(`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
-links; inside it they use the real components (`SettingsComponents.layout/1`,
-`<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a
-plain link to a story and its tab (`?tab=`, carrying `?theme=`), built by `Mockup.path/3`,
-and the storybook test checks that each leads to a story and a tab it has.
 
 ## Colour and themes
 
