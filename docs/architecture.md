@@ -437,10 +437,7 @@ which the pages call a Runtime, a Program and an API (a workspace's own service 
 is a Custom API there), in `workspace_connections` (the record's `connections` are the
 hosts a run reached), with a public id, `con_` and 16 characters, that the run
 configuration names. Each applies to every repository of the workspace or to the ones
-`connection_targets` names; a target of an
-integration may also carry its **ways** there, of which there is one, `credential` ("Calls
-its API"), when its description offers it; none is the same. The `tool` way ("Uses it as a
-tool (MCP)"), which a description may offer, is refused on a connection. Two connections
+`connection_targets` names. Two connections
 that would give a repository the same runtime, the same integration, or a value on the
 same host (one host pattern covering another) are refused on save. A connection holds no
 secret: the links to stored secrets are the linking piece's.
@@ -475,13 +472,15 @@ host with a page instead of a redirect; the URL's directory for a URL source), a
 it ready, byte for byte with
 its digest, or failed with a code. An integration connection is added from a ready
 release, takes its name, source, version and description digest, and stores its plain
-settings as canonical JSON, checked against the description: a secret, or a secret's
-`<name>_file`, is never a setting. A description is validated with JSV against the
+settings as canonical JSON, checked against the description: its plain settings are every
+top-level setting that is neither a secret nor a secret's `<name>_file`, each checked
+against its own property's schema, and its argument must match its credential role's
+pattern. A description is validated with JSV against the
 integrations contract's `description.schema.json` (vendored under
 `priv/contract/integration/`, at the commit in `.integration-contract-ref`), and by the rules
-the schema cannot say. Its `publisher`, required, a `name` and a `url` that may be absent,
-is kept on the release and shown beside the source's owner, never instead of it, since
-nothing verifies it; for a URL source it is the one name a page has. The vendored schema and
+the schema cannot say: a secret has its `<name>_file` beside it and is never nested, and
+the credential role's `argument` compiles. A role other than `credential` is kept as it is
+and shown among the roles. The vendored schema and
 the contract's fixtures (`test/fixtures/integration-contract/`) are pinned to a commit on
 the integrations' `next` branch, by its id. The contracts' patterns are
 compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor written
@@ -503,10 +502,11 @@ when they differ.
 **Integrity.** A connection, a release and a custom definition each carry an integrity
 code (`Apiary.Kinds.Coded`), a connection's over its kind, name, where it applies, its
 settings and argument, and what it names; a release's over its source, state and
-description digest, and the description's bytes are checked against the digest. A page
+description digest (version 2; version 1 also covered a publisher, and a release of version
+1 that recorded none still verifies), and the description's bytes are checked against the digest. A page
 reads each connection marked `intact`; what renders a run configuration takes the
 workspace's connections from `Apiary.Connections.list_for_rendering/1`, which refuses them
-all when one fails. The targets and their ways carry no code.
+all when one fails. The targets carry no code.
 
 ## The audit trail
 

@@ -203,8 +203,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
   development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.
-- Runtimes, integrations and services for the runs, without a page yet
-  (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
+- Runtimes, integrations and services a workspace sets up, under Workspace settings ›
+  Integrations (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
   catalogue, its `runtimes.json` as the runner ships it; an integration added from a
   release on GitHub, GitLab or Codeberg, or at an
   https address of its `description.json`, which a job fetches and checks against the
@@ -212,10 +212,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   download route, `/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, which
   redirects to where a release's link points, where the web route answers a link to
   another host with a page); a service from a built-in
-  definition or one the workspace writes. Each applies to every repository or to chosen
-  ones, an integration through its credential way alone (a description may offer the
-  `tool` way, which a connection refuses), and two that would collide on a repository are
-  refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,
+  definition or one the workspace writes. An integration keeps its plain settings, every
+  top-level setting of its description that is neither a secret nor a secret's
+  `<name>_file`, and an argument its credential role's pattern matches; a role Qory Apiary
+  does not know is shown as given. Each applies to every repository or to chosen ones,
+  and two that would collide on a repository are refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,
   whose host gives its kind of forge, never the request, or at an https address of its
   `description.json`; a forge path on any other host is refused, since self-hosted forges
   are not supported. `INTEGRATION_URL_SOURCES=false` turns off integrations from an
@@ -267,6 +268,13 @@ the ledger a tombstone, so machines enrol again with a new key.
 `20261008120000_remove_the_pasted_key` removes the paste arrival: it deletes every key
 that arrived `paste`, with its deliveries, makes its public key a tombstone in the
 ledger, and leaves the check `browser`, or `code` with its enrolment code.
+
+`20261008150000_remove_the_publisher_and_ways` drops a release's publisher
+(`integration_releases.publisher_name` and `publisher_url`, and the ready check's clause
+that required one) and a connection target's ways (`connection_targets.ways` and its
+check). A ready release's integrity code covered its publisher, so it deletes every ready
+release, with the integration connections added from it and their targets; workspaces add
+their programs again.
 
 ### Upgrading
 
