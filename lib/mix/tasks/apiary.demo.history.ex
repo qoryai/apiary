@@ -18,8 +18,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ago; one run in thirty names no repository. `--seed` (1) makes the plan repeatable: the
   same seed gives the same runs, under new ids every time.
 
-  Each run is a record the runner could have sent: its start, the policy it ran under, an
-  agent's session with its tools and subagents, the terminal's output, its connections and
+  Each run is a record the runner could have sent: its start, with what it is about (an
+  issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
+  under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. Most succeed; some fail, time out, go silent and are found
   lost, or are closed by a member; a few are still running when the task ends and are found
   lost a minute and a half later, as any run that stops talking is; one in two hundred
@@ -192,24 +193,28 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     "the SDK retries a 400 as if it were a 503"
   ]
 
+  # A campaign's task, its title, and its prompt.
   @campaigns [
-    {"renovate-deps",
+    {"renovate-deps", "Update the flagged dependencies",
      "Update the dependencies Renovate flagged, run the tests, and summarise anything that needed a code change."},
-    {"fix-flaky-tests",
+    {"fix-flaky-tests", "Make the flakiest test deterministic",
      "Find the flakiest test in the last week of CI for this repository and make it deterministic."},
-    {"upgrade-node-24",
+    {"upgrade-node-24", "Move to Node 24",
      "Move this repository to Node 24: engines, CI images and anything the upgrade breaks."},
-    {"migrate-to-pnpm",
+    {"migrate-to-pnpm", "Replace npm with pnpm",
      "Replace npm with pnpm, keep the lockfile's versions, and make CI green."},
-    {"docs-refresh",
+    {"docs-refresh", "Bring the docs in line with the code",
      "Bring the README and the docs folder in line with what the code does today."},
-    {"checkout-redesign",
+    {"checkout-redesign", "Split checkout into steps",
      "Split checkout into address, delivery and payment steps and keep the existing validation."},
-    {"tax-rules-2027", "Apply the 2027 VAT changes and add a test per changed rate."},
-    {"sbom-export", "Generate a CycloneDX SBOM in CI and attach it to releases."},
-    {"license-audit",
+    {"tax-rules-2027", "Apply the 2027 VAT changes",
+     "Apply the 2027 VAT changes and add a test per changed rate."},
+    {"sbom-export", "Export an SBOM in CI",
+     "Generate a CycloneDX SBOM in CI and attach it to releases."},
+    {"license-audit", "Audit the dependencies' licences",
      "List every dependency whose licence is not on the allow list; change nothing."},
-    {"go-1-26-upgrade", "Upgrade to Go 1.26 and fix what the new vet checks report."}
+    {"go-1-26-upgrade", "Upgrade to Go 1.26",
+     "Upgrade to Go 1.26 and fix what the new vet checks report."}
   ]
 
   @nightly {"nightly-audit",
@@ -618,7 +623,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end
 
     machine = machine(kind, repository, days_ago)
-    {task, prompt, issues} = task(kind, repository, issues)
+    {task, prompt, attempt, issues} = task(kind, repository, issues)
     runtime = runtime(kind, machine)
     {outcome, duration} = outcome(kind, runtime, at, now_ms)
 
@@ -630,6 +635,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
        host: pick(machine.hosts),
        task: task,
        prompt: prompt,
+       attempt: attempt,
        runtime: runtime,
        interactive: machine.laptop and runtime == "claude" and chance(0.5),
        outcome: outcome,
@@ -653,7 +659,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp task(:nightly, _repository, issues) do
     {name, prompt} = @nightly
-    {name, prompt, issues}
+    {name, prompt, nil, issues}
   end
 
   defp task(_kind, nil, issues) do
@@ -664,9 +670,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
            "tidy up the scratch branch",
            "explain this stack trace",
            "what changed since Friday?"
-         ]), issues},
+         ]), nil, issues},
       else:
-        {"scratch", "Try the new lint rules on this checkout and tell me what breaks.", issues}
+        {"scratch", "Try the new lint rules on this checkout and tell me what breaks.", nil,
+         issues}
   end
 
   defp task(_kind, repository, issues) do
@@ -674,21 +681,30 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     cond do
       chance(0.12) ->
-        {nil, "Look at #{pick(@issues)} and tell me where to start.", issues}
+        {nil, "Look at #{pick(@issues)} and tell me where to start.", nil, issues}
 
       chance(0.17) ->
-        {name, prompt} = pick(@campaigns)
-        {name, prompt, issues}
+        {name, _title, prompt} = pick(@campaigns)
+        {name, prompt, nil, issues}
 
       true ->
-        # Mostly the next issue; one in three is another attempt at the last one.
-        number = Map.fetch!(issues, key)
-        number = if chance(0.33), do: number, else: number + between(1, 6)
+        # Mostly the next issue; one in three is another attempt at the last one. One issue
+        # in nine is a review of its pull request instead.
+        last = Map.fetch!(issues, key)
+        number = if chance(0.33), do: last, else: last + between(1, 6)
         title = Enum.at(@issues, rem(number, length(@issues)))
+        attempt = if number == last, do: Map.get(issues, {:attempt, key}, 1) + 1, else: 1
+        issues = issues |> Map.put(key, number) |> Map.put({:attempt, key}, attempt)
 
-        {"issue-#{number}",
-         "Fix issue ##{number}: #{title}. Keep the existing tests passing and add one for the fix.",
-         Map.put(issues, key, number)}
+        if rem(number, 9) == 0 do
+          {"review-#{pull_request(number)}",
+           "Review pull request ##{pull_request(number)} for issue ##{number}: #{title}. Comment on what to change; change nothing.",
+           nil, issues}
+        else
+          {"issue-#{number}",
+           "Fix issue ##{number}: #{title}. Keep the existing tests passing and add one for the fix.",
+           attempt, issues}
+        end
     end
   end
 
@@ -883,6 +899,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp started(spec) do
     {command, args} = command(spec)
     repository = spec.repository
+    about = about(spec)
 
     labels =
       %{
@@ -905,6 +922,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "host" => spec.host,
       "labels" => labels
     }
+    |> put_if(about, "about", about)
     |> put_if(spec.machine.wall, "wall", spec.machine.wall)
     |> put_if(spec.machine.wall, "image", image(spec))
     |> put_if(spec.interactive, "terminal", %{
@@ -912,6 +930,68 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "rows" => pick([40, 48, 56])
     })
   end
+
+  # What the run says it is about, as a caller would: an issue's ticket and the pull
+  # request that fixes it, a review of a pull request, a campaign, the nightly audit. A run
+  # at a prompt of its own says nothing. Every host is on example.com.
+  defp about(%{task: "nightly-audit"}) do
+    %{"kind" => "Audit", "title" => "Nightly audit", "details" => %{"schedule" => "0 2 * * *"}}
+  end
+
+  defp about(%{task: "issue-" <> number} = spec) do
+    number = String.to_integer(number)
+    issue = Enum.at(@issues, rem(number, length(@issues)))
+
+    # One issue in eleven came from an incident, which has no page to link to.
+    incident =
+      if rem(number, 11) == 0,
+        do: [%{"type" => "incident", "ref" => "INC-#{div(number, 11)}"}],
+        else: []
+
+    %{
+      "kind" => "Implementation",
+      "title" => "Fix ENG-#{number}: #{issue}",
+      "subjects" =>
+        [
+          %{
+            "type" => "ticket",
+            "ref" => "ENG-#{number}",
+            "url" => "https://tracker.example.com/browse/ENG-#{number}",
+            "title" => upcase_first(issue)
+          },
+          pull_request_subject(spec, pull_request(number))
+        ] ++ incident,
+      "details" => %{"branch" => "qory/eng-#{number}", "attempt" => spec.attempt}
+    }
+  end
+
+  defp about(%{task: "review-" <> number} = spec) do
+    %{
+      "kind" => "Review",
+      "title" => "Review pull request ##{number}",
+      "subjects" => [pull_request_subject(spec, String.to_integer(number))]
+    }
+  end
+
+  defp about(%{task: task}) do
+    case List.keyfind(@campaigns, task, 0) do
+      {_task, title, _prompt} -> %{"kind" => "Maintenance", "title" => title}
+      nil -> nil
+    end
+  end
+
+  # The pull request that fixes an issue.
+  defp pull_request(number), do: number + 395
+
+  defp pull_request_subject(spec, number) do
+    %{
+      "type" => "pull request",
+      "ref" => "##{number}",
+      "url" => "https://git.example.com/#{spec.repository.path}/pull/#{number}"
+    }
+  end
+
+  defp upcase_first(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
 
   defp trigger(%{machine: %{key: "nightly"}}), do: "schedule"
   defp trigger(%{machine: %{laptop: true}}), do: nil
