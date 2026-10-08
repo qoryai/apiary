@@ -143,11 +143,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       nav={:settings}
       sections={@sections}
       section={:secrets}
-      section_current={if @view == :variables, do: "true", else: "page"}
     >
-      <%!-- The Variables tab is a page under the section, which leads to its first tab. --%>
-      <:crumb :if={@view == :variables}>{gettext("Variables")}</:crumb>
-
       <.settings_page
         section={:secrets}
         measure="list"

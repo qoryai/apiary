@@ -96,8 +96,8 @@ page, the one the person came from (Two levels, below).
   parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
   Organisation settings while its sections are the second column, whose entry is the exact
   page, and a second column's section on a page under it, one that passes `crumb` segments
-  (Invite people, New secret), or on a tab of it other than the one its entry leads to
-  (`Layouts.app/1`'s `section_current="true"`).
+  (Invite people, New secret). A section's tabs are the section's own page: the column
+  marks it as the page on each.
 - **The sidebar's foot** holds the scope's settings, named after the level: **Workspace
   settings** (`#nav-settings`) or **Organisation settings** (`#nav-organisation`), never a
   bare Settings, and so its tooltip while folded; the current entry on every page of them
@@ -383,11 +383,10 @@ value, and filtered by its lock and by whether a repository sets it too; both or
 name or the latest change.
 
 - **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
-  Secrets, the section the page, and `Workspace settings / Secrets and variables /
-  Variables` on Variables, where the section is a link to Secrets and the tab the page.
-  The second column marks the section the same way: the page on Secrets, its parent
-  (`aria-current="true"`) on Variables. The browser's title names the tab: `Secrets and variables · Workspace settings ·
-  Main · Acme`, `Variables · Secrets and variables · Workspace settings · Main · Acme`.
+  both tabs (a tab is not a segment), the section the page (`aria-current="page"`), and
+  the second column marks the section as the page on both tabs too. The browser's title
+  names the tab: `Secrets and variables · Workspace settings · Main · Acme`,
+  `Variables · Secrets and variables · Workspace settings · Main · Acme`.
 - **One status line** (`#secrets-and-variables-status`, `role="status"`), there from the
   start and outside both tabs' parts, says out of sight the tab a switch led to and its
   count ("Variables, 7"), and under the filters what a search left ("1 secret matches").

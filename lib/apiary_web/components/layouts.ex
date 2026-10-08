@@ -392,7 +392,7 @@ defmodule ApiaryWeb.Layouts do
   column. `aria-current="page"` marks the exact page's entry alone; its parents carry
   `aria-current="true"`: the level's settings at the sidebar's foot while the second column
   lists its sections, and the column's section on a page under it, one that adds `crumb`
-  segments or passes `section_current="true"` (a tab of it other than the first).
+  segments or passes `section_current="true"`.
 
   **Narrowing.** On Runs or Network access narrowed to a target (`narrowed`), both entries
   of the sidebar carry the target to the other list; nothing else does.
@@ -460,7 +460,7 @@ defmodule ApiaryWeb.Layouts do
     default: nil,
     values: [nil, "page", "true"],
     doc:
-      "how the second column marks the page's section: `\"page\"` where the page is the section's own, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none. A tab of the section other than the one its entry leads to passes `\"true\"`"
+      "how the second column marks the page's section: `\"page\"` where the page is the section's own, `\"true\"` where it is under it; unless given, `\"true\"` on a page that adds `crumb` segments and `\"page\"` on one that adds none, a tab of the section included"
 
   attr :narrowed, :map,
     default: nil,
@@ -701,8 +701,7 @@ defmodule ApiaryWeb.Layouts do
         id: second_id(kind),
         current: assigns.section || assigns.nav,
         # The current section is the page, or, on a page under it that adds its own
-        # segments to the breadcrumb (Invite people, Edit secret) or on a tab of it other
-        # than the one its entry leads to, the page's parent.
+        # segments to the breadcrumb (Invite people, Edit secret), the page's parent.
         aria_current:
           assigns.section_current || if(assigns.crumb == [], do: "page", else: "true"),
         entries: for(entry <- list, do: {entry, Entry.path(entry, organisation, workspace)})
