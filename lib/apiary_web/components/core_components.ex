@@ -1370,7 +1370,10 @@ defmodule ApiaryWeb.CoreComponents do
       </.inline_confirm>
   """
   attr :id, :string, required: true
-  attr :question, :string, required: true
+
+  attr :question, :any,
+    required: true,
+    doc: "the question, text or rich text (`ApiaryWeb.RichText`)"
 
   attr :cancel, :any,
     required: true,
@@ -1405,7 +1408,7 @@ defmodule ApiaryWeb.CoreComponents do
       phx-key="Escape"
     >
       <div class="q-confirm-what">
-        <p id={"#{@id}-question"} class="q-confirm-q">{@question}</p>
+        <p id={"#{@id}-question"} class="q-confirm-q"><.rich text={@question} /></p>
         <p :if={@inner_block != []} id={"#{@id}-sub"} class="q-confirm-sub">
           {render_slot(@inner_block)}
         </p>

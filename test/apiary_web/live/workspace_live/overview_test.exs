@@ -1146,6 +1146,23 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert_push_event(view, "overview:focus", %{id: ^next})
     end
 
+    test "a lost run's Close question isolates its title, so a bidi override flips nothing",
+         %{conn: conn, scope: scope} do
+      title = "nightly\u202Erorrim"
+      lost = lost_run(scope, %{about_title: title})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#att-run-#{lost.run_id} .q-ar-t > bdi", title)
+      # The label for a screen reader stays plain text.
+      assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Close #{title}"]))
+      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
+
+      assert has_element?(view, "#close-run-question > bdi", title)
+
+      assert view |> element("#close-run-question") |> render() =~
+               ~r/>Close <bdi[^>]*>#{title}<\/bdi>\?</
+    end
+
     @tag needs: :security
     test "allow a denied destination here: the panel in place, the rule, the struck row", %{
       conn: conn,

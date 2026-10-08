@@ -314,7 +314,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <li id={@item.id} class="q-ar q-confirming" data-kind={@item.kind}>
       <.inline_confirm
         id="close-run"
-        question={gettext("Close %{run}?", run: row_title(@item.run))}
+        question={rich_gettext("Close %{run}?", run: row_name(@item.run))}
         cancel={JS.push("close_cancel")}
       >
         {gettext(
@@ -1035,6 +1035,15 @@ defmodule ApiaryWeb.OverviewComponents do
   else its short id: what a row calls it.
   """
   def row_title(run), do: given_title(run) || command_title(run)
+
+  # `row_title/1` in a sentence: the title a run gave isolated (`{:bdi, title}`), so a
+  # bidirectional character in it reorders nothing of the sentence.
+  defp row_name(run) do
+    case given_title(run) do
+      nil -> command_title(run)
+      title -> {:bdi, title}
+    end
+  end
 
   defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")
