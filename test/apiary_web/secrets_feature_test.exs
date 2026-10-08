@@ -66,6 +66,26 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     end
   end
 
+  # The Audit log's Action filter's options, as their values.
+  defp audit_actions(conn, scope) do
+    {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log")
+    render_async(view)
+
+    html =
+      view
+      |> render()
+      |> LazyHTML.from_fragment()
+
+    actions =
+      html
+      |> LazyHTML.query("#filter-action-form li input")
+      |> LazyHTML.attribute("value")
+
+    {actions, view}
+  end
+
+  @secrets_actions ~w(secret.write variable.edit connection.write)
+
   # The text of `guide` as the tree with `features` has it.
   defp guide(guide, features) do
     path = Path.join("guides", guide)
@@ -141,6 +161,27 @@ defmodule ApiaryWeb.SecretsFeatureTest do
         assert labels(jump(conn, scope, q), "Go to") == [], q
         assert labels(jump(conn, scope, q), "Actions") == [], q
       end
+    end
+
+    test "the Audit log's Action filter offers none of its actions, and its entries still show",
+         %{conn: conn, scope: scope} do
+      {:ok, _secret} = Apiary.Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x"})
+
+      {actions, view} = audit_actions(conn, scope)
+
+      assert "workspace.rename" in actions
+      for action <- @secrets_actions, do: refute(action in actions, action)
+
+      # The entry made while its rows are there keeps its words.
+      assert render(view) =~ "Created a stored secret"
+      assert render(view) =~ "FORGE_TOKEN"
+
+      # Asked for by its address, the filter takes it for none.
+      {:ok, view, _html} =
+        live(conn, "/#{scope.organisation.slug}/audit-log?action=secret.write")
+
+      render_async(view)
+      refute has_element?(view, "#filter-action-button", "Stored secret changed")
     end
 
     test "a key's card has no Stored secrets row", %{conn: conn, scope: scope} do
@@ -278,6 +319,11 @@ defmodule ApiaryWeb.SecretsFeatureTest do
 
       assert labels(jump(conn, scope, "token"), "Go to") ==
                ["Workspace settings › Secrets and variables"]
+    end
+
+    test "the Audit log's Action filter offers its actions", %{conn: conn, scope: scope} do
+      {actions, _view} = audit_actions(conn, scope)
+      for action <- @secrets_actions, do: assert(action in actions, action)
     end
 
     test "a key's card has its Stored secrets row", %{conn: conn, scope: scope} do

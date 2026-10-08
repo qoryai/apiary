@@ -16,6 +16,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   import ApiaryWeb.Activity.Describer, only: [text: 1, from_to: 2]
 
   alias Apiary.Features
+
+  # The actions of the `secrets` feature's surfaces, which `Apiary.Access` keeps under
+  # `security`.
+  @secrets_actions [
+    :"secret.read",
+    :"secret.write",
+    :"secret.use",
+    :"variable.read",
+    :"variable.edit",
+    :"connection.read",
+    :"connection.write"
+  ]
   alias ApiaryWeb.{Format, RunComponents}
 
   @impl true
@@ -56,8 +68,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"connection.write"), do: gettext("Integration changed")
   def label(_action), do: nil
 
-  # The core offers every action it has in the filter.
+  # The core offers every action it has in the filter, but the stored secrets', variables'
+  # and integrations' only where they are: they ask `on?(scope, :secrets)`. Their entries
+  # still show, by their labels.
   @impl true
+  def offered?(scope, action) when action in @secrets_actions,
+    do: Features.on?(scope, :secrets)
+
   def offered?(_scope, _action), do: true
 
   @impl true
