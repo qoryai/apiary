@@ -476,7 +476,8 @@ defmodule ApiaryWeb.OverviewComponents do
       class="q-ar-t"
       title={row_title(@item.run)}
     >
-      {row_title(@item.run)}
+      <bdi :if={given_title(@item.run)}>{given_title(@item.run)}</bdi>
+      {if !given_title(@item.run), do: row_title(@item.run)}
     </.link>
     <span class="q-ar-id">{short_id(@item.run.run_id)}</span>
     """

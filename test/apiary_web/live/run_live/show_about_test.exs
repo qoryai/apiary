@@ -124,6 +124,20 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       assert has_element?(lv, ~s(#run-about span[title="login.example.org"] bdi), ref)
     end
 
+    test "isolates the run's title and kind", %{conn: conn, scope: scope} do
+      title = "Fix the login\u202Eredirect"
+      kind = "Implemen\u202Etation"
+
+      {lv, _html} =
+        page(conn, scope, started(scope, %{"title" => title, "kind" => kind}), "/details")
+
+      assert has_element?(lv, "h1#run-title > bdi", title)
+      assert has_element?(lv, "#run-about-kind > bdi", kind)
+      assert has_element?(lv, "#run-about-facts > dd > bdi", kind)
+      # The tab's title is plain text.
+      assert page_title(lv) =~ title
+    end
+
     test "shows three subjects, then how many more, as text", %{conn: conn, scope: scope} do
       subjects =
         for n <- 1..5,

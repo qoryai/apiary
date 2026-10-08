@@ -111,7 +111,8 @@ export const Palette = {
         const icon = document.createElement("span")
         icon.className = `${item.icon || "hero-arrow-right-micro"} size-4`
         icon.setAttribute("aria-hidden", "true")
-        const label = document.createElement("span")
+        // A <bdi>: a run's title in it reorders nothing around it.
+        const label = document.createElement("bdi")
         label.className = "q-palette-label"
         label.textContent = item.label
         link.append(icon, label)

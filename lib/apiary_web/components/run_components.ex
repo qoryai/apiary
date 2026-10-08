@@ -540,6 +540,21 @@ defmodule ApiaryWeb.RunComponents do
   def given_title(_run), do: nil
 
   @doc """
+  A run's name in a row, as markup: the title it gave, isolated in a `<bdi>` so a
+  bidirectional character in it reorders nothing around it, else its short id. A tooltip
+  or a label takes `given_title/1` as plain text.
+  """
+  attr :run, :map, required: true
+
+  def run_name(assigns) do
+    assigns = assign(assigns, :title, given_title(assigns.run))
+
+    ~H"""
+    <bdi :if={@title}>{@title}</bdi>{if !@title, do: short_id(@run.run_id)}
+    """
+  end
+
+  @doc """
   What a run is about in one line of a list, as text: its kind, then its first two
   subjects, each its type and ref as given ("pull request #412"), then how many more there
   are, joined by " · "; nil when it gave neither a kind nor a subject. `limit` is how many
@@ -552,16 +567,18 @@ defmodule ApiaryWeb.RunComponents do
     end
   end
 
-  # The kind and the "+N more" as text, each subject named as `{:subject, subject}`.
+  # The kind as `{:kind, kind}`, each subject as `{:subject, subject}`, the "+N more" as text.
   defp about_parts(run, limit) do
     subjects = Map.get(run, :about_subjects) || []
     more = length(subjects) - limit
 
-    Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""])) ++
-      Enum.map(Enum.take(subjects, limit), &{:subject, &1}) ++
-      if(more > 0, do: [more_text(more)], else: [])
+    Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""]))
+    |> Enum.map(&{:kind, &1})
+    |> Kernel.++(Enum.map(Enum.take(subjects, limit), &{:subject, &1}))
+    |> Kernel.++(if(more > 0, do: [more_text(more)], else: []))
   end
 
+  defp part_text({:kind, kind}), do: kind
   defp part_text({:subject, subject}), do: subject_words(subject)
   defp part_text(text), do: text
 
@@ -1640,12 +1657,12 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  # The parts of `about_line/2` as markup, each subject isolated (`subject_name/1`).
+  # The parts of `about_line/2` as markup, the kind and each subject isolated.
   attr :parts, :list, required: true
 
   defp about_words(assigns) do
     ~H"""
-    <span phx-no-format><%= for {part, index} <- Enum.with_index(@parts) do %>{if index > 0, do: " · "}<%= case part do %><% {:subject, subject} -> %><.subject_name subject={subject} /><% text -> %>{text}<% end %><% end %></span>
+    <span phx-no-format><%= for {part, index} <- Enum.with_index(@parts) do %>{if index > 0, do: " · "}<%= case part do %><% {:kind, kind} -> %><bdi>{kind}</bdi><% {:subject, subject} -> %><.subject_name subject={subject} /><% text -> %>{text}<% end %><% end %></span>
     """
   end
 
@@ -1682,7 +1699,7 @@ defmodule ApiaryWeb.RunComponents do
             class={["q-rowlink q-rl-title", !given_title(@run) && "q-rl-id"]}
             title={given_title(@run)}
           >
-            {given_title(@run) || short_id(@run.run_id)}
+            <.run_name run={@run} />
           </.link>
           <.target_name
             :if={@target && @run.target_system && @run.target_path}
@@ -1809,7 +1826,7 @@ defmodule ApiaryWeb.RunComponents do
             {gettext("Open run")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
           </.button>
         </div>
-        <h2 class="q-pv-t">{given_title(@preview.run) || short_id(@preview.run.run_id)}</h2>
+        <h2 class="q-pv-t"><.run_name run={@preview.run} /></h2>
         <p class="q-pv-m">
           <.target_name
             :if={@preview.run.target_system && @preview.run.target_path}
@@ -2310,7 +2327,7 @@ defmodule ApiaryWeb.RunComponents do
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
               <span class="truncate">
-                <b :if={given_title(hit.run)} class="font-medium">{given_title(hit.run)}</b>
+                <b :if={given_title(hit.run)} class="font-medium"><bdi>{given_title(hit.run)}</bdi></b>
                 <span class={["font-mono text-xs text-faint", given_title(hit.run) && "ml-1"]}>
                   {short_id(hit.run.run_id)}
                 </span>
