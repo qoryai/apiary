@@ -450,9 +450,10 @@ vendored byte for byte as `priv/contract/runtimes.json` at the commit in
 `.runner-contract-ref` (`Apiary.Kinds.Runtimes`). The runner generates it from its built-in
 descriptors; it is read at compile time, and a list missing from a runtime fails the
 compile. Services come from a service definition, the one source of a service's hosts,
-paths, auth and declared secrets, whose `auth` is the contract's `auth.schema.json`,
-vendored beside the catalogue, with its `secret` required and a username of at most 128
-characters: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,
+paths, auth and declared secrets, whose `auth` is Apiary's own: its `scheme`, `header`
+and `username` are the members of the contract's `auth.schema.json`, vendored beside the
+catalogue, with a username of at most 128 characters, and `secret` and `username_secret`
+are ids of secrets Qory Apiary stores for the definition, `secret` required: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,
 each checked in the test suite) or the workspace's own (`service_definitions`); a service
 connection names its definition and copies nothing of it, so a change to a definition
 reaches every connection that names it.

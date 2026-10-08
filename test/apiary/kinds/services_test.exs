@@ -77,7 +77,7 @@ defmodule Apiary.Kinds.ServicesTest do
                ServiceDefinition.validate(definition(%{"auth" => auth}))
     end
 
-    test "refuses a header the contract keeps for itself" do
+    test "refuses a header the list of refused headers holds" do
       for header <- ["Authorization", "x-forwarded-for", "Cookie", "qory-run", "accept-language"] do
         auth = %{"scheme" => "header", "header" => header, "secret" => "key"}
 
@@ -120,16 +120,62 @@ defmodule Apiary.Kinds.ServicesTest do
                )
     end
 
-    test "takes the contract's auth, with a username of at most 128 characters" do
+    test "takes Apiary's own auth: a scheme, the secret it sets, and the scheme's members" do
+      declares = [%{"id" => "key", "title" => "API key"}, %{"id" => "user", "title" => "User"}]
+
+      for auth <- [
+            %{"scheme" => "bearer", "secret" => "key"},
+            %{"scheme" => "header", "header" => "x-api-key", "secret" => "key"},
+            %{"scheme" => "basic", "username" => "dana", "secret" => "key"},
+            %{"scheme" => "basic", "username" => String.duplicate("a", 128), "secret" => "key"},
+            %{"scheme" => "basic", "username_secret" => "user", "secret" => "key"}
+          ] do
+        assert {:ok, _} =
+                 ServiceDefinition.validate(definition(%{"auth" => auth, "declares" => declares})),
+               inspect(auth)
+      end
+
       for auth <- [
             %{"scheme" => "bearer", "secret" => "key", "prefix" => "Token"},
             %{"scheme" => "bearer"},
-            %{"scheme" => "basic", "secret" => "key", "username" => String.duplicate("a", 129)}
+            %{"secret" => "key"},
+            %{"scheme" => "digest", "secret" => "key"},
+            %{"scheme" => "bearer", "secret" => "Key"},
+            %{"scheme" => "bearer", "username" => "dana", "secret" => "key"},
+            %{"scheme" => "bearer", "username_secret" => "user", "secret" => "key"},
+            %{"scheme" => "bearer", "header" => "x-api-key", "secret" => "key"},
+            %{"scheme" => "basic", "username" => "da:na", "secret" => "key"},
+            %{"scheme" => "basic", "username" => "", "secret" => "key"},
+            %{"scheme" => "basic", "secret" => "key", "username" => String.duplicate("a", 129)},
+            %{"scheme" => "header", "header" => "x api key", "secret" => "key"}
           ] do
         assert {:error, [{:definition_invalid, _}]} =
-                 ServiceDefinition.validate(definition(%{"auth" => auth})),
+                 ServiceDefinition.validate(definition(%{"auth" => auth, "declares" => declares})),
                inspect(auth)
       end
+    end
+
+    test "builds its auth on the schemes and members of the contract's auth" do
+      contract =
+        Application.app_dir(:apiary, ["priv", "contract", "auth.schema.json"])
+        |> File.read!()
+        |> Jason.decode!()
+
+      own =
+        Application.app_dir(:apiary, ["priv", "schemas", "service-definition.schema.json"])
+        |> File.read!()
+        |> Jason.decode!()
+        |> get_in(["properties", "auth"])
+
+      for member <- Map.keys(contract["properties"]) do
+        assert own["properties"][member]["$ref"] ==
+                 contract["$id"] <> "#/properties/" <> member,
+               member
+      end
+
+      assert Enum.at(contract["allOf"], 0)["then"] == %{"required" => ["header"]}
+      assert %{"$ref" => ref} = Enum.at(own["allOf"], 0)
+      assert ref == contract["$id"] <> "#/allOf/0"
     end
 
     test "has one canonical encoding, whatever the order of its members" do

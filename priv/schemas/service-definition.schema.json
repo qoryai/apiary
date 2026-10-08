@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/apiary/service-definition.schema.json",
   "title": "Service definition",
-  "description": "A static-key API a run may call with a stored secret: its hosts, the paths a value is set on, how the value is sent, and the secrets it needs. A service connection names its definition and links each declared secret; the run configuration's service item is rendered from the definition. Built-in definitions ship in priv/services; a workspace may write its own.",
+  "description": "A static-key API: its hosts, the paths a value is set on, how the value is sent, and the secrets it needs. A service connection names its definition and links each declared secret. Built-in definitions ship in priv/services; a workspace may write its own.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "key", "title", "hosts", "auth", "declares"],
@@ -32,10 +32,23 @@
       "items": {"type": "string", "maxLength": 512, "pattern": "^/[^*?#\\s]*\\*?$"}
     },
     "auth": {
-      "description": "How the value is sent: the runner contract's auth, in which a definition always names the secret it sets.",
-      "$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json",
-      "required": ["secret"],
-      "properties": {"username": {"maxLength": 128}}
+      "description": "How the value is sent: Apiary's own auth. Its scheme, header and username are the members of the runner contract's auth.schema.json, with a username of at most 128 characters, and a header only with the header scheme. secret and username_secret are ids of secrets Qory Apiary stores for the definition.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "secret"],
+      "properties": {
+        "scheme": {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/properties/scheme"},
+        "header": {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/properties/header"},
+        "username": {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/properties/username", "maxLength": 128},
+        "username_secret": {"$ref": "#/$defs/declared"},
+        "secret": {"$ref": "#/$defs/declared"}
+      },
+      "allOf": [
+        {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/allOf/0"},
+        {"if": {"properties": {"scheme": {"const": "basic"}}},
+         "then": {"oneOf": [{"required": ["username"]}, {"required": ["username_secret"]}]},
+         "else": {"not": {"anyOf": [{"required": ["username"]}, {"required": ["username_secret"]}]}}}
+      ]
     },
     "declares": {
       "description": "The secrets the service needs, each by an id the auth names, with a title for a form and, optionally, the variable that gets the placeholder.",
