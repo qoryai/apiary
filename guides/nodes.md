@@ -112,7 +112,7 @@ command is waiting to be run on build-01.", who got it and when, and until when 
 new command**. A lost command can't be shown again: cancel it and get a new one.
 
 A command works only while the person who got it is still an owner or an admin of the
-workspace: once they are not, it no longer connects the machine, and an owner or an admin
+workspace: once they are not, a machine that runs it is refused, and an owner or an admin
 gets a new command.
 
 The command carries the server's address, its `PUBLIC_URL`. When that is an address only
