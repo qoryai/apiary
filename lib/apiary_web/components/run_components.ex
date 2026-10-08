@@ -557,11 +557,15 @@ defmodule ApiaryWeb.RunComponents do
     more = length(subjects) - limit
 
     Enum.reject([Map.get(run, :about_kind)], &(&1 in [nil, ""])) ++
-      Enum.map(Enum.take(subjects, limit), &subject_text/1) ++
+      Enum.map(Enum.take(subjects, limit), &subject_words/1) ++
       if(more > 0, do: [more_text(more)], else: [])
   end
 
-  defp subject_text(subject), do: "#{subject["type"]} #{subject["ref"]}"
+  @doc """
+  A subject in words: its type and ref as given, "pull request #412". Apiary knows no
+  subject types, so neither is mapped or translated.
+  """
+  def subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
 
   defp more_text(n),
     do: ngettext("+%{number} more", "+%{number} more", n, number: Format.number(n))

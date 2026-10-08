@@ -31,7 +31,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, middle: 2]
+    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, middle: 2, subject_words: 1]
 
   alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
@@ -1610,8 +1610,6 @@ defmodule ApiaryWeb.RunPageComponents do
     </section>
     """
   end
-
-  defp subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
 
   @doc """
   The details as `{key, value}` rows, by key. A top-level member is a row; one that is a
