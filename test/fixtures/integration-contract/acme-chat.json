@@ -2,7 +2,7 @@
   "version": 1,
   "name": "acme-chat",
   "title": "Acme chat",
-  "description": "Messages of Acme chat: an access token for a run's channel.",
+  "description": "Messages of Acme chat: a token for a run's channel.",
   "domains": ["software", "marketing"],
   "program_version": "0.1.0",
   "settings": {"type": "object"},
