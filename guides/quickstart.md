@@ -210,8 +210,8 @@ machine's access key, checks the answer under the server's key it pinned, and se
 ping. If the server does not answer, or refuses the key, there is no run, and the error
 names the URL and the status. At the end of the run qory prints where its record is,
 `qory run: the record is in <folder>/<id>`. The record is written whatever the server
-does, under `$XDG_STATE_HOME/qory/runs/`, or `~/.local/state/qory/runs/` when
-`XDG_STATE_HOME` is not set, not in the directory.
+does, under `~/.local/state/qory/runs/`, or `$XDG_STATE_HOME/qory/runs/` when
+`XDG_STATE_HOME` is set to an absolute path, not in the directory.
 
 ## 7. See it
 
