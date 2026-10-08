@@ -45,7 +45,8 @@ walks through each step.
 - [Security policy](guides/security-policy.md): read it before your first change.
 - [Upgrading](guides/upgrading.md) and [backup](guides/backup.md).
 
-Every instance also serves its guides and module reference at `/docs`.
+Every instance also serves its guides and release notes at `/docs`, and an instance with
+every feature its module reference too.
 
 ## Contributing
 

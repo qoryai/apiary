@@ -318,9 +318,13 @@ the proof verifies under it. The answers, in order:
 | `409` `key_limit` | yes | the node holds two keys |
 | `201` | yes | the key is made, and active |
 
-The `201` carries the access key id, the node's id and kind, `stored_secrets` and
+The `201` carries, among its members, the access key id, the node's id and kind and
 `apiary_public_key`; each signed refusal lists `apiary_public_key` too, and an unsigned one
-none. A signed answer is signed under `qory-enrol-answer-ed25519-v1`, and its line 3 is
+none.
+<!-- feature: secrets -->
+The `201` also carries `stored_secrets`.
+<!-- /feature -->
+A signed answer is signed under `qory-enrol-answer-ed25519-v1`, and its line 3 is
 the request's `proof`. A refusal changes nothing, and the code stays outstanding. The same
 code, posted again with the same public key while its 15 minutes last and the key is not
 revoked, is the same `201` for the same key; any other key on a used code is `401`.
