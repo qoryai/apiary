@@ -2,7 +2,8 @@ defmodule Apiary.Contract.DemoRunsTest do
   @moduledoc """
   The recorded runs under `priv/demo`, which `mix apiary.demo` replays, are events of the
   server contract: every line validates against the contract's `event.schema.json` and
-  so against the data schema of its type, and a file reads as the record of one run.
+  so against the data schema of its type, `about` of `run.started` among it, and a file
+  reads as the record of one run.
   """
   use ExUnit.Case, async: true
 
@@ -45,6 +46,13 @@ defmodule Apiary.Contract.DemoRunsTest do
       for event <- events(@file_path) do
         assert :ok = ContractSchema.validate(schema, event),
                "sequence #{event["sequence"]} of #{@name}"
+      end
+    end
+
+    test "#{@name} says in its start what the run is about, with a title" do
+      case Enum.filter(events(@file_path), &(&1["type"] == "dev.qory.run.started")) do
+        [] -> assert @name == "ping-only"
+        [started] -> assert %{"title" => "" <> _} = started["data"]["about"]
       end
     end
 

@@ -78,6 +78,14 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.target_system == "codeberg.org"
       assert run.target_path == "acme/shop"
       assert run.labels["task"] == "checkout-redesign"
+
+      # Its title is the one its about gives; the task label is a label like any other.
+      assert {run.about_kind, run.about_title} ==
+               {"Implementation", "Redesign the checkout steps"}
+
+      assert Enum.map(run.about_subjects, &{&1["type"], &1["ref"]}) ==
+               [{"ticket", "SHOP-128"}, {"pull request", "#412"}]
+
       assert run.runner_version == "0.10.0"
       assert run.contract_version == 1
       assert run.heartbeat_interval_seconds == 60
