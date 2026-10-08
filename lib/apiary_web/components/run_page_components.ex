@@ -1557,7 +1557,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
     ~H"""
     <p :if={@run.about_kind || @subjects != []} id="run-about" class="q-run-about">
-      <span :if={@run.about_kind} id="run-about-kind">{@run.about_kind}</span>
+      <span :if={@run.about_kind} id="run-about-kind"><bdi>{@run.about_kind}</bdi></span>
       <span :for={subject <- @subjects}>
         <.external_link href={subject["url"]} title={subject_tip(subject)}>
           <.subject_name subject={subject} />
@@ -1595,7 +1595,7 @@ defmodule ApiaryWeb.RunPageComponents do
       <h3 id="rail-about">{gettext("About")}</h3>
       <dl :if={@run.about_kind || @subjects != []} id="run-about-facts" class="q-rail-kv q-rail-about">
         <dt :if={@run.about_kind}>{gettext("Kind")}</dt>
-        <dd :if={@run.about_kind}>{@run.about_kind}</dd>
+        <dd :if={@run.about_kind}><bdi>{@run.about_kind}</bdi></dd>
         <dt :if={@subjects != []}>{gettext("Subjects")}</dt>
         <dd :for={subject <- @subjects} class="q-rail-subj">
           <.external_link href={subject["url"]} title={subject_tip(subject)}>

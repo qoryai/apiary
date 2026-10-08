@@ -288,12 +288,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert text(view, "#{row(kind_only)} .q-rl-about") == "Demo recording"
       assert text(view, "#{row(subject_only)} .q-rl-about") == "ticket ENG-9"
-      # A subject's type and ref are each isolated, so a bidi override reorders nothing.
+      # A subject's type and ref are each isolated, so a bidi override reorders nothing; so
+      # are the run's title and kind.
       assert has_element?(view, "#{row(subject_only)} .q-rl-about bdi", "ENG-9")
       assert has_element?(view, "#{row(review)} .q-rl-about-wide bdi", "#418")
       refute has_element?(view, "#{row(subject_only)} .q-rl-about-phone")
       # Neither a kind nor a subject: no line.
       refute has_element?(view, "#{row(title_only)} .q-rl-about")
+    end
+
+    test "a run's title and kind are isolated, so a bidi override reorders nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      title = "Fix the login\u202Eredirect"
+      kind = "Implemen\u202Etation"
+      run = started_run(scope, shop(), about: %{"title" => title, "kind" => kind})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", title)
+      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="#{title}"]))
+      assert has_element?(view, "#{row(run)} .q-rl-about bdi", kind)
     end
 
     test "a run without a title is its id, a task an ordinary label; a pinged run is pending", %{

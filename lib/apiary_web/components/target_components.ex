@@ -232,7 +232,7 @@ defmodule ApiaryWeb.TargetComponents do
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
           class="q-tgt-title"
         >
-          {given_title(run) || short_id(run.run_id)}
+          <.run_name run={run} />
         </.link>
       </:col>
       <:col :let={run} label={gettext("Runtime")} kind="faint" from="md" class="whitespace-nowrap">

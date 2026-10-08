@@ -1319,7 +1319,11 @@ page has no breadcrumb of its own.
   they show, in the runs list, the header and the rail, so a bidirectional character in
   one reorders nothing around it; a subject's link has as its tooltip its title and the
   host its url parses to ("Login redirects to a blank page · tracker.example.com"), or
-  the host alone. Below 1440 px,
+  the host alone.
+- **A run's title and kind** are each isolated in a `<bdi>` wherever they show as markup
+  (the run page's `<h1>` and About, the runs list's row and preview, a target's runs, the
+  Overview, Network access's hits and ⌘K's results); a tooltip, the page's `<title>` and
+  an `aria-label` hold them as plain text. Below 1440 px,
   and from it when Terminal took the rail's room, the Details tab shows this same element
   in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.
