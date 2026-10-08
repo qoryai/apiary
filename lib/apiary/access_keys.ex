@@ -13,15 +13,14 @@ defmodule Apiary.AccessKeys do
       enrolment): the code is the approval, so the key is active as it is made, while
       the code's maker is still an owner or an admin of its workspace; the code is the
       authority, and the key itself the actor of its entry, `access_key.add`;
-    * a **pasted key** (`add_access_key/4`, `access_key.add`) is active as it is
-      entered; a key **made in a browser** is added the same way, by its public key
-      alone, marked `arrived_by: :browser`: its secret stayed in the browser that made
-      it, and Apiary never receives it;
+    * a key **made in a browser** (`add_access_key/3`, `access_key.add`) is added by its
+      public key alone, active as it is added, marked `arrived_by: :browser`: its secret
+      stayed in the browser that made it, and Apiary never receives it;
     * a key is **revoked** (`revoke_access_key/2`, `access_key.revoke`), and every key of
       a deleted node with it (`Apiary.Nodes.delete_node/2`).
 
-  A node holds at most two keys at a time: a paste or an enrolment is refused while it
-  holds two, `{:error, :key_limit}`. A key's label is unique among the node's keys in
+  A node holds at most two keys at a time: a key made in a browser or an enrolment is
+  refused while it holds two, `{:error, :key_limit}`. A key's label is unique among the node's keys in
   use. Its stored-secrets flag is fixed when it is made; there is no rotation of a key: to
   change the flag, or replace a lost key, a new key is added for the same node, and the
   old one revoked.
@@ -215,7 +214,8 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   key_limit/0 is how many keys a node holds at most at a time, not revoked:
-  #{@key_limit}. A paste and an enrolment (`enrol/2`) count them under the node's lock.
+  #{@key_limit}. A key made in a browser (`add_access_key/3`) and an enrolment (`enrol/2`)
+  count them under the node's lock.
   """
   @spec key_limit() :: pos_integer
   def key_limit, do: @key_limit
@@ -366,23 +366,18 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  change_new_key/1 is the changeset of a key to paste, for the form that adds one: its
-  label and stored-secrets flag.
+  change_new_key/1 is the changeset of a key to make in a browser, for the form that
+  makes one: its label and stored-secrets flag.
   """
   @spec change_new_key(map) :: Ecto.Changeset.t()
   def change_new_key(attrs \\ %{}), do: AccessKey.insert_changeset(%AccessKey{}, attrs)
 
   @doc """
-  add_access_key/4 adds a key to `node` by its public key (`access_key.add`, owners and
-  admins), active at once. `attrs`: `public_key`, the raw 32-byte Ed25519 public key in
-  base64url without padding, as `qory access-key create` prints it; `label`; and
-  `allow_secrets`, the stored-secrets flag, fixed from then on.
-
-  `opts`: `arrived_by`, how the key came, fixed with it and written in its entry:
-  `:paste` (the default), its public key pasted, the secret on the machine that made it;
-  or `:browser`, made in the reader's browser (the Access key tab's Generate a key),
-  which sent the public key alone and kept the secret. Either way Apiary receives the
-  public key, and the two are checked alike.
+  add_access_key/3 adds a key made in the reader's browser to `node` by its public key
+  (`access_key.add`, owners and admins), active at once, marked `arrived_by: :browser`:
+  the Access key tab's Generate a key, which sent the public key alone and kept the
+  secret. `attrs`: `public_key`, the raw 32-byte Ed25519 public key in base64url without
+  padding; `label`; and `allow_secrets`, the stored-secrets flag, fixed from then on.
 
   The key passes the key checks (`Apiary.Contract.Ed25519`) and is not in the ledger,
   whatever its state there, or the changeset says "this key cannot be used" of it,
@@ -390,18 +385,9 @@ defmodule Apiary.AccessKeys do
   the node holds two keys; `{:error, :forbidden}`; or `{:error, :not_found}` for a node
   deleted or not the workspace's.
   """
-  @spec add_access_key(Scope.t(), Node.t(), map, [{:arrived_by, :paste | :browser}]) ::
+  @spec add_access_key(Scope.t(), Node.t(), map) ::
           {:ok, AccessKey.t()} | {:error, Ecto.Changeset.t() | :key_limit | Access.reason()}
-  def add_access_key(%Scope{user: user} = scope, %Node{} = node, attrs, opts \\ []) do
-    arrived_by =
-      case Keyword.get(opts, :arrived_by, :paste) do
-        arrived_by when arrived_by in [:paste, :browser] ->
-          arrived_by
-
-        other ->
-          raise ArgumentError, "a key is added as :paste or :browser, not #{inspect(other)}"
-      end
-
+  def add_access_key(%Scope{user: user} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.add", node),
            {:ok, node} <- lock_node(scope, node.id),
@@ -415,7 +401,7 @@ defmodule Apiary.AccessKeys do
           node_id: node.id,
           key_id: AccessKey.generate_key_id(),
           created_by_id: user.id,
-          arrived_by: arrived_by,
+          arrived_by: :browser,
           received_at: now
         }
 
@@ -446,7 +432,7 @@ defmodule Apiary.AccessKeys do
     end)
   end
 
-  # The public key of a paste, checked: any refusal, a key the checks or the ledger
+  # The public key a browser sent, checked: any refusal, a key the checks or the ledger
   # refuse, is one error on the changeset, whatever the reason.
   defp received_key(changeset, value) do
     case Ed25519.decode_public_key(value) do
@@ -506,7 +492,7 @@ defmodule Apiary.AccessKeys do
   `{:error, {:rate_limited, retry_after_seconds}}`.
 
   **4. The key is new**: a public key in the ledger already, in any state, that of another
-  access key or a revoked one, is `{:error, :key_invalid}`, as a paste's is.
+  access key or a revoked one, is `{:error, :key_invalid}`, as a browser key's is.
 
   **5. The node has room**: a node that holds two keys is `{:error, :key_limit}`.
 
@@ -991,7 +977,8 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  # A paste or an enrolment is refused while the node holds two keys not revoked.
+  # A key made in a browser or an enrolment is refused while the node holds two keys not
+  # revoked.
   defp within_limit(%Node{id: node_id}) do
     held =
       Repo.one(

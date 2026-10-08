@@ -48,8 +48,8 @@ batches, the digests in the answers.
    `enforce` with nothing allowed (`Apiary.Policy.set_mode/2`, which is also what makes
    the workspace a managed one that serves a run configuration), and makes a node,
    `build-01` (`Apiary.Nodes.create_node/2`). It generates a fresh Ed25519 key and adds
-   its public key to the node the way the node's page takes a paste
-   (`Apiary.AccessKeys.add_access_key/3`), active as it is added, without stored
+   its public key to the node the way the node's Generate a key adds one made in a
+   browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added, without stored
    secrets. The key's `server` lines, `url`, `access_key_id` and the
    `apiary_public_key` pin (`Apiary.AccessKeys.runner_lines/3`, what the key's page
    shows), and the wall section become the node's `runner.yaml`. The key's secret, `qak_`

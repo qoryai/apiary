@@ -12,7 +12,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     do:
       "A node's or a pool's page, under Nodes: Overview, Runs, Access key and Settings. " <>
         "Access key holds its key: active or revoked, its fingerprint and stored secrets, " <>
-        "a new key by enrolment code or a pasted public key, active as soon as it arrives, " <>
+        "a new key by enrolment code or made in a browser, active as soon as it arrives, " <>
         "and a replacement beside the current key until that one is revoked."
 
   # The keys a node or pool holds at a time, as the limit line says: its current key and a
@@ -300,7 +300,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
         {if @node.kind == :pool,
           do: "The key the instances of #{@node.name} share to post their runs.",
-          else: "The key #{@node.name} posts its runs with."} A new key comes from an enrolment code or a public key you paste, and is active as soon as it arrives.
+          else: "The key #{@node.name} posts its runs with."} A new key comes from an enrolment code or is made in a browser, and is active as soon as it arrives.
       </p>
       <div :if={!@member && !@full} class="flex flex-none gap-2">
         <.button :if={@usable} id="enrol-replacement" href={@to.("key_enrol")}>
@@ -358,8 +358,8 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         <dd :if={@key.state == :active && @key.way == :code}>
           with an enrolment code {@key.by} made, {@key.on}
         </dd>
-        <dd :if={@key.state == :active && @key.way == :pasted}>
-          pasted by {@key.by}, {@key.on}
+        <dd :if={@key.state == :active && @key.way == :browser}>
+          made in a browser by {@key.by}, {@key.on}
         </dd>
         <dt :if={@key.state == :revoked} class="text-faint">Revoked</dt>
         <dd :if={@key.state == :revoked}>by {@key.by}, {@key.on}</dd>
@@ -426,24 +426,8 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
             {@node.name} makes its own key and sends the public half with the code. The code
             is valid for 15 minutes, for one key, and the key is active as soon as it arrives.
           </p>
-          <div>
-            <.button variant="primary" href={@to.("key_code")}>Create enrolment code</.button>
-          </div>
-        </SettingsComponents.part>
-
-        <SettingsComponents.part id="new-key-paste" title="Or paste a public key">
-          <.input
-            id="new-key-public"
-            name="public_key"
-            type="textarea"
-            label="Public key"
-            value=""
-            rows="3"
-            placeholder="The public key the node printed"
-            hint="Its fingerprint is shown before you add it. It is active as soon as you add it."
-          />
           <div class="flex flex-wrap gap-2">
-            <.button type="button">Add public key</.button>
+            <.button variant="primary" href={@to.("key_code")}>Create enrolment code</.button>
             <.button variant="ghost" href={@to.("key")}>Cancel</.button>
           </div>
         </SettingsComponents.part>

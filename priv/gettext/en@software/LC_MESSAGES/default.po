@@ -2088,11 +2088,6 @@ msgstr ""
 msgid "A key for %{name}, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made. For a machine of your own, enrolling it with qory keeps the secret off every screen."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "A key for %{name}. It is active as soon as you add it."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "A key nobody uses is a key to revoke."
@@ -2581,11 +2576,6 @@ msgstr ""
 msgid "Add a program its publisher releases on github.com, gitlab.com or codeberg.org."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Add a public key"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add a rule for this target"
@@ -2635,11 +2625,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add it"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Add key"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -2726,7 +2711,6 @@ msgid "Added:"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
-#: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Adding"
@@ -3003,11 +2987,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Also a tool (MCP), which no runner runs yet"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "An Ed25519 public key: its 32 bytes in base64url, without padding. qory access-key create prints it on the machine."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3712,11 +3691,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Command"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Compare it with the one on the machine before you add the key."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -8413,11 +8387,6 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Pasted by %{person}, %{date}"
-msgstr ""
-
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Path"
@@ -8646,11 +8615,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Public key"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -10546,7 +10510,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The key's secret is where %{create} put it: %{file}, or QORY_ACCESS_KEY_SECRET in CI."
+msgid "The key's secret is where %{enrol} put it: %{file}, or QORY_ACCESS_KEY_SECRET in CI."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

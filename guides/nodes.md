@@ -1,7 +1,7 @@
 # Nodes and their keys
 
 A machine posts its runs to a workspace with an access key of its own, and every access key
-belongs to a node of the workspace. This page says what a node is, the three ways a node
+belongs to a node of the workspace. This page says what a node is, the two ways a node
 gets its key, and what to do when a key has to go. The owners and admins of the
 organisation do all of it; everyone in the workspace reads the nodes and their keys.
 
@@ -33,19 +33,18 @@ time, so that a machine can move to a new key before the old one is revoked. Eac
 **Stored secrets** is fixed when it is made. A key is never rotated: a new one is made, and
 the old one revoked.
 
-There are three ways to give a node its key, each a button on the node's **Access key**
+There are two ways to give a node its key, each a button on the node's **Access key**
 tab, for owners and admins:
 
 - **New enrolment code**: `qory` makes the key on the machine with
   `qory access-key enrol`, and its secret never leaves the machine.
 - **Generate a key**: your browser makes the key, and shows you its secret once, for a
   CI's secret store.
-- **Add a public key**: paste the public key that `qory access-key create` printed.
 
 While the node holds no active key, the tab leads with the way that suits its kind. A node
 leads with **Enrol this machine with qory**, and **New enrolment code** first; a pool with
 **Generate a key for this pool**, and **Generate a key** first. Once it holds an active key,
-the three buttons stay, in the same order. A member sees the keys, and none of the
+the two buttons stay, in the same order. A member sees the keys, and none of the
 buttons.
 
 ### Enrol with a code
@@ -76,30 +75,23 @@ A code works only while the person who made it is still an owner or an admin of 
 workspace: once they are not, the machine's enrolment is refused, and an owner or an admin
 makes a new code.
 
-### Paste the public key
+### The runner file lines
 
-1. On the machine, `qory access-key create` makes the key, keeps its secret, and prints
-   the public key and its fingerprint. It does not write `runner.yaml`.
-2. On the node's **Access key** tab, select **Add a public key**, give it a **Label**,
-   paste the **Public key**, and check that the **Fingerprint** under it is the one the
-   machine printed. Select **Add key**: the key is active as soon as you add it.
-3. The page **Runner file for build-01** shows what the machine needs, none of it secret:
-   the lines to put in `~/.config/qory/runner.yaml` (`url`, `access_key_id` and
-   `apiary_public_key`), with **Copy lines**, and for a CI the same id and pin as two
-   variables, with **Copy variables**. **Runner file lines**, on an active key's card,
-   opens the page again whenever it is needed.
+**Runner file lines**, on an active key's card, opens the page **Runner file for
+build-01**, which shows what the machine needs, none of it secret: the lines to put in
+`~/.config/qory/runner.yaml` (`url`, `access_key_id` and `apiary_public_key`), with
+**Copy lines**, and for a CI the same id and pin as two variables, with **Copy
+variables**.
 
 ### For a CI
 
 A CI keeps the key in its own settings rather than in a machine's files. A pool's
-**Access key** tab leads with **Generate a key** for this. Both commands take `--print`
-too: they keep nothing on the machine and print the settings, one `NAME=value` line each.
+**Access key** tab leads with **Generate a key** for this. `qory access-key enrol` takes
+`--print` too: it keeps nothing on the machine and prints the settings, one `NAME=value`
+line each.
 
 - `qory access-key enrol --print <server> <code>` prints `QORY_ACCESS_KEY_ID`,
   `QORY_ACCESS_KEY_SECRET` and `QORY_APIARY_PUBLIC_KEY`. The key is active at once.
-- `qory access-key create --print` prints `QORY_ACCESS_KEY_SECRET`, and the public key
-  for pasting. After **Add key**, the id and the pin come from **Runner file for …**,
-  under "For CI".
 
 Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the id and the pin are
 plain settings, and the CI's `runner.yaml` then needs `server.url` alone.

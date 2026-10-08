@@ -565,7 +565,7 @@ defmodule ApiaryWeb.Storybook.Sample do
             :active,
             "Qa1Ws2Ed3Rf4Tg5Yh6Uj7I",
             stored_secrets: true,
-            way: :pasted,
+            way: :browser,
             by: "dana",
             on: "3 Sept 2026"
           )
@@ -589,7 +589,7 @@ defmodule ApiaryWeb.Storybook.Sample do
             :active,
             "Mn8Bv7Cx6Za5Sd4Fg3Hj2K",
             stored_secrets: false,
-            way: :pasted,
+            way: :browser,
             by: "lee",
             on: "14 Sept 2026"
           )
@@ -643,8 +643,8 @@ defmodule ApiaryWeb.Storybook.Sample do
     do: %{id: id, runs: runs, version: version, since: since}
 
   # A key is `:active` or `:revoked`. `way` is how an active one arrived, `:code` with an
-  # enrolment code or `:pasted`; `by` and `on` are who made its code or pasted it and when,
-  # or who revoked it and when for a revoked one.
+  # enrolment code or `:browser`, made in a browser; `by` and `on` are who made its code or
+  # the key and when, or who revoked it and when for a revoked one.
   defp key(id, state, fingerprint, opts) do
     Map.merge(%{id: id, state: state, fingerprint: fingerprint, way: nil}, Map.new(opts))
   end

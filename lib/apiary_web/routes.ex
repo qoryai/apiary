@@ -459,14 +459,12 @@ defmodule ApiaryWeb.Routes do
               live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
               live "/nodes/:node_id/settings", NodeLive.Show, :settings
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
-              # A node's Access key tab: its keys and its outstanding enrolment codes; adding
-              # a key by its public key, generating one in the browser and making a code,
-              # each a page of its own; and each act on a key or a code confirmed in place,
+              # A node's Access key tab: its keys and its outstanding enrolment codes;
+              # generating a key in the browser and making a code, each a page of its own; and each act on a key or a code confirmed in place,
               # at a path of its own; an active key's runner file, and the variables of a
               # key just made in the browser, each a page of its own. A key is named by its
               # key id (`ak_…`), a code by its row's id: never by the code, nor a secret.
               live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
-              live "/nodes/:node_id/access-key/add", NodeLive.AccessKey, :add_key
               live "/nodes/:node_id/access-key/generate", NodeLive.AccessKey, :generate
               live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
               live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke

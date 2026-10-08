@@ -241,13 +241,26 @@ defmodule ApiaryWeb.RefusalsRows do
 
       # A node's access keys and enrolment codes, its Access key tab. Without the page or
       # the confirmation open, from a member: refused, as the page offers them no button;
-      # a demoted admin's page or confirmation was open, and the context refuses them.
-      {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "add_key",
-       %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
-      {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key", "add_key",
-       %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
-      {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key/add",
-       "add_key", %{"key" => %{"label" => "sneaky", "public_key" => :public_key}}},
+      # a demoted admin's page or confirmation was open, and the context refuses them. A
+      # key made in a browser is sent from the tab here, where the page refuses it before
+      # the context: Generate a key's page holds the hook's notices, hidden by a class,
+      # which this case reads as alerts shown. The context's refusal of a demoted admin's
+      # key is the Access key tab's test "an admin made a member since Generate a key
+      # opened is refused by the context".
+      {:"access_key.add", :member, "/:org/:workspace/nodes/:node/access-key", "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+       }},
+      {:"access_key.add", :removed_member, "/:org/:workspace/nodes/:node/access-key",
+       "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+       }},
+      {:"access_key.add", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
+       "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+       }},
       {:"access_key.create_code", :member, "/:org/:workspace/nodes/:node/access-key",
        "create_code", %{"code" => %{}}},
       {:"access_key.create_code", :demoted_admin,
@@ -260,9 +273,11 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"access_key.cancel_code", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{}},
       # A node's page is its path: another organisation's node is a 404 as the page opens.
-      {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/add",
-       "add_key", %{"key" => %{"label" => "sneaky", "public_key" => :public_key}},
-       answer: :not_found_at_mount},
+      {:"access_key.add", :other_owner, "/:other_org/:other_ws/nodes/:node/access-key/generate",
+       "generate_key",
+       %{
+         "key" => %{"label" => "sneaky", "allow_secrets" => "false", "public_key" => :public_key}
+       }, answer: :not_found_at_mount},
       {:"access_key.create_code", :other_owner,
        "/:other_org/:other_ws/nodes/:node/access-key/new-code", "create_code", %{"code" => %{}},
        answer: :not_found_at_mount},
