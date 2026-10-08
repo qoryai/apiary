@@ -1,5 +1,5 @@
 # The commit of qoryai/runner the end to end job builds qory against (.qory-e2e-ref): the
 # runner's next, the one qory at .qory-e2e-ref names in its go.mod. The contract the tests
-# replay is pinned in .runner-contract-ref. The two name the same commit today, but each
-# is a pin of its own, kept apart so that the two can move separately.
+# replay is pinned in .runner-contract-ref, today a later commit of the runner's next than
+# this one. Each is a pin of its own, kept apart so that the two can move separately.
 c0a6c398e8cc1d30f6d0f7b88bd6facb21b47504
