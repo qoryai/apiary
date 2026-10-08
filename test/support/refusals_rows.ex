@@ -266,6 +266,9 @@ defmodule ApiaryWeb.RefusalsRows do
        "create_code", %{}},
       {:"access_key.create_code", :demoted_admin, "/:org/:workspace/nodes/:node/access-key",
        "create_code", %{}},
+      # Get the command, in the overview's first-run box, which a member is offered no
+      # button of: the page refuses them.
+      {:"access_key.create_code", :member, "/:org/:workspace", "get_command", %{}},
       {:"access_key.revoke", :member, "/:org/:workspace/nodes/:node/access-key", "revoke", %{}},
       {:"access_key.revoke", :demoted_admin,
        "/:org/:workspace/nodes/:node/access-key/keys/:node_key/revoke", "revoke", %{}},

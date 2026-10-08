@@ -47,6 +47,24 @@ defmodule ApiaryWeb.NodeLive.AccessKeyLogTest do
     refute log =~ String.slice(code, 4..-1//1)
   end
 
+  test "the overview's command is in no log line either", %{conn: conn, scope: scope} do
+    node_fixture(scope)
+
+    {code, log} =
+      with_log([level: :debug], fn ->
+        {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+        render_async(lv, 5_000)
+        lv |> element("#onboarding-enrol") |> render_click()
+        html = lv |> element("#onboarding-command") |> render()
+        [code] = Regex.run(~r/qec_[0-9A-Z]{26}/, html)
+        code
+      end)
+
+    assert log =~ "HANDLE EVENT \"get_command\""
+    refute log =~ code
+    refute log =~ String.slice(code, 4..-1//1)
+  end
+
   describe "a key generated in the browser" do
     @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
