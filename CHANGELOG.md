@@ -62,7 +62,7 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - Access keys, one kind: a node's or a node pool's, each with one Ed25519 public key. The
   server never holds a key's secret, only its public half, with the key's stored-secrets
   flag fixed when it is made. A key is active from the moment it arrives until it is
-  revoked. A node gets its key in one of three ways, all on its Access key tab, which
+  revoked. A node gets its key in one of two ways, both on its Access key tab, which
   leads owners and admins with the way that suits its kind while it holds no active key
   (a node, Enrol this machine with qory; a pool, Generate a key for this pool). New
   enrolment code: an owner or an admin makes a single-use code valid for 15 minutes,
@@ -77,11 +77,12 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   `QORY_ACCESS_KEY_SECRET` (`qak_` and the key's seed) and `QORY_APIARY_PUBLIC_KEY`,
   the secret once, from the browser's memory, and says that only the secret belongs in
   a CI's secret store and the runner file then needs only `url`; opened again, it says
-  the secret is gone. The key's card says "Made in a browser by …". Add a public key:
-  the public key `qory access-key create` printed, active as it is added and followed by
-  the page Runner file for the key, which shows the runner file's `server` lines (`url`,
-  `access_key_id`, `apiary_public_key`) and the same id and pin as `QORY_ACCESS_KEY_ID`
-  and `QORY_APIARY_PUBLIC_KEY` for a CI, and which an active key's card opens again.
+  the secret is gone. The key's card says "Made in a browser by …". An active key's card
+  opens the page Runner file for the key, which shows the runner file's `server` lines
+  (`url`, `access_key_id`, `apiary_public_key`) and the same id and pin as
+  `QORY_ACCESS_KEY_ID` and `QORY_APIARY_PUBLIC_KEY` for a CI. A public key pasted into a
+  node is no way to give it a key: the page that took one, Add a public key, was removed
+  before the release.
   Owners and admins make and revoke codes and add and revoke keys, each in the audit
   trail; a node holds at most two keys at a time, and deleting a node revokes its keys
   and codes. Enrolment is limited per address, 1 a second and 10 at once, and answers in
@@ -235,7 +236,7 @@ created concurrently.
 
 `access_keys` holds the keys of nodes: each row's node (`node_id`), Ed25519 public key
 (`public_key`), the time it was received (`received_at`) and how it arrived
-(`arrived_by`: `code`, with its `enrolment_code_id`, `paste` or `browser`), all NOT NULL,
+(`arrived_by`: `code`, with its `enrolment_code_id`, or `browser`), all NOT NULL,
 with `allow_secrets`, `rate`, `burst`, `revoked_by_id`, `integrity_code` and
 `integrity_key_id`, and no secret. The trigger `access_keys_fixed_at_insert` refuses a
 change of a key's node, public key, stored-secrets flag or arrival. New:
@@ -246,6 +247,9 @@ check and index, and the ledger's `pending` state and `rejected` reason; it dele
 node's key, with its deliveries, and every enrolment code, and makes every public key in
 the ledger a tombstone, so machines enrol again with a new key.
 `20261008090000_let_a_key_arrive_made_in_a_browser` lets a key arrive `browser`.
+`20261008120000_remove_the_pasted_key` removes the paste arrival: it deletes every key
+that arrived `paste`, with its deliveries, makes its public key a tombstone in the
+ledger, and leaves the check `browser`, or `code` with its enrolment code.
 
 ### Upgrading
 

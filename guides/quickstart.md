@@ -155,8 +155,8 @@ Here `qory` makes the key on the machine, and Qory keeps only its public half.
 
 1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
    `build-01` say, and select **Add node**. The node's **Access key** tab opens, led by
-   **Enrol this machine with qory**, with three buttons: **New enrolment code**,
-   **Generate a key** and **Add a public key**. (Back on the overview, step 2 now says
+   **Enrol this machine with qory**, with two buttons: **New enrolment code** and
+   **Generate a key**. (Back on the overview, step 2 now says
    "build-01 has no key yet." with **New enrolment code** and **Generate a key**, which
    open the same pages.)
 2. Select **New enrolment code**, leave **Stored secrets** at **Not allowed**, and select
@@ -184,27 +184,12 @@ start runs at once.
 The runner file belongs to the machine and to no repository.
 [The runner file's `server` section](runner-file.md) has the rest of it.
 
-## 6. Or paste the key
-
-Instead of a code, the machine can make its key on its own, and you paste the public key
-into the node:
-
-1. On the machine, `qory access-key create` makes the key, keeps its secret in
-   `~/.config/qory/access-key-secret`, and prints the public key and its fingerprint.
-2. On the node's **Access key** tab, select **Add a public key**, give it a **Label**,
-   paste the **Public key**, check that the **Fingerprint** under it is the one the
-   machine printed, and select **Add key**. The key is active as soon as you add it.
-3. The page **Runner file for build-01** shows the lines to put in
-   `~/.config/qory/runner.yaml`, with **Copy lines**, and for a CI the same id and pin as
-   variables. Nothing on it is secret, and an active key's **Runner file lines** opens it
-   again.
-
 For a CI or a node pool, **Generate a key** on the same tab makes the key in your browser
 and shows its secret once, with the variables the CI sets;
-[Nodes and their keys](nodes.md) says more about all three ways, node pools and revoking
-a key.
+[Nodes and their keys](nodes.md) says more about both ways, node pools and revoking a
+key.
 
-## 7. First run
+## 6. First run
 
 Write the command's hello example into an empty directory, compose its harness and start
 one headless turn:
@@ -228,7 +213,7 @@ names the URL and the status. At the end of the run qory prints where its record
 does, under `$XDG_STATE_HOME/qory/runs/`, or `~/.local/state/qory/runs/` when
 `XDG_STATE_HOME` is not set, not in the directory.
 
-## 8. See it
+## 7. See it
 
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,

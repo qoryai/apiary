@@ -841,16 +841,16 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   While the node holds no active key, owners and admins are led by the way that suits its
   kind (`#node-keys-lead`): a node by "Enrol this machine with qory" and "Make a code,
   then run `qory access-key enrol` with it on the machine. The machine makes its own key,
-  and the secret never shows on a screen.", with New enrolment code (primary), Generate a
-  key and Add a public key; a pool by "Generate a key for this pool" and "The pool's
+  and the secret never shows on a screen.", with New enrolment code (primary) and
+  Generate a key; a pool by "Generate a key for this pool" and "The pool's
   instances share one key. This browser makes it and shows you the secret once, for your
-  CI's secret store; Qory receives only the public half.", with Generate a key (primary),
-  New enrolment code and Add a public key. Once it holds an active key the heading and the
-  sentence go and the three buttons stay, plain, in the same order. A member sees none of
+  CI's secret store; Qory receives only the public half.", with Generate a key (primary)
+  and New enrolment code. Once it holds an active key the heading and the sentence go
+  and the two buttons stay, plain, in the same order. A member sees none of
   them, and with no key reads "No key yet." A key is Active from the moment it arrives,
-  enrolled with a code, pasted or made in a browser, until it is revoked: its card names
+  enrolled with a code or made in a browser, until it is revoked: its card names
   it Active or Revoked, says how it arrived ("With an enrolment code dana@example.com
-  made, …", "Pasted by …", "Made in a browser by …"), and an active key's Revoke… is
+  made, …", "Made in a browser by …"), and an active key's Revoke… is
   confirmed in place. A key whose record doesn't match its
   integrity code says so on its card: "… It can't be used." An active key's card links
   **Runner file lines**, for everyone who reads the node.
@@ -1107,7 +1107,7 @@ publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
 ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
 seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
 key with its New key and Enrolment code pages, Settings), its key active or revoked, a new
-one by enrolment code or a pasted public key, active as soon as it arrives, a node holding
+one by enrolment code or made in a browser, active as soon as it arrives, a node holding
 at most two keys at a time, and two variations: a replacement beside the current key, both
 active, and a member's view without the actions; Generate a key is drawn only by the page
 itself. They are drawn in a shell built from `Layouts.app/1`'s own classes

@@ -20,8 +20,8 @@ server:
 ```
 
 You rarely write it by hand. `qory access-key enrol <server> <code>` writes it when a
-machine enrols with a code, and a key pasted into a node leads to the page **Runner file
-for build-01**, which shows these lines with the values filled in
+machine enrols with a code, and an active key's **Runner file lines** opens the page
+**Runner file for build-01**, which shows these lines with the values filled in
 ([Nodes and their keys](nodes.md)). When the file exists already, add the `server`
 section to it. The file is read strictly: a key it does not know, or a key written twice,
 is refused with a message that names the file.
@@ -59,10 +59,10 @@ export QORY_APIARY_PUBLIC_KEY='[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmO
 ```
 
 The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs in a CI's
-secret store; `qory access-key enrol --print` and `qory access-key create --print` print it
-instead of keeping it on the machine, and **Generate a key** on the node's **Access key**
-tab shows it once, with the other two, on the page **Variables for …**. With the three
-variables set, the CI's `runner.yaml` needs `server.url` alone.
+secret store; `qory access-key enrol --print` prints it instead of keeping it on the
+machine, and **Generate a key** on the node's **Access key** tab shows it once, with the
+other two, on the page **Variables for …**. With the three variables set, the CI's
+`runner.yaml` needs `server.url` alone.
 
 The three stay the runner's. `qory` reads them when it starts and takes them out of its
 environment before it starts anything, so no session inherits them, and naming one in
@@ -71,7 +71,7 @@ environment before it starts anything, so no session inherits them, and naming o
 
 ### A new key, and revoking one
 
-A key is never rotated. To change a machine's key, enrol or paste a new one on the same
+A key is never rotated. To change a machine's key, enrol or generate a new one on the same
 node, and once the machine uses it, **Revoke…** the old one on the node's **Access key**
 tab. A node holds two keys at a time for this. A revoked key stops verifying at once: a
 machine still using it fails its next request, `401`, and starts no new run.
