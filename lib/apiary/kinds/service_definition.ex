@@ -6,15 +6,19 @@ defmodule Apiary.Kinds.ServiceDefinition do
   (`Apiary.Connections.ServiceDefinition`) are checked alike.
 
   A definition is valid when it passes `priv/schemas/service-definition.schema.json`,
-  whose `auth` is the runner contract's `auth.schema.json` (vendored under
-  `priv/contract/`) with its `secret` required and a username of at most 128 characters,
-  and whose grammar is the contract's for a service item, and the rules the schema cannot
-  say, each with the contract's code:
+  whose `auth` is Apiary's own: its `scheme`, `header` and `username` are the members of
+  the runner contract's `auth.schema.json` (vendored under `priv/contract/`), with a
+  username of at most 128 characters, and `secret` and `username_secret` are ids of
+  secrets Qory Apiary stores for the definition, `secret` required; and whose hosts,
+  paths, declared ids and names take the grammar the contract gives a runtime's
+  declarations, and the rules the schema cannot say, each with its code,
+  `placeholder_conflict` the contract's and the others Apiary's own:
 
     * every declared id is unique, and `auth.secret` and `auth.username_secret` are
       declared ids (`declaration_unknown`);
     * no host is a refused name, such as `localhost` (`connection_host_invalid`);
-    * `auth.header` is not a header the contract refuses (`connection_header_reserved`);
+    * `auth.header` is not a header `Apiary.Kinds.Headers` refuses
+      (`connection_header_reserved`);
     * no declaration's `name` is a variable a placeholder may not take
       (`placeholder_conflict`), and no two declarations name the same variable.
 
