@@ -443,7 +443,8 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   The runner refuses a run whose `about` breaks any of these; the fold drops the part that
   breaks one, for whatever reaches it. A type is shown as given: Qory Apiary knows no
   subject types. A later `run.started` replaces all of it, like every other field. A run's
-  title is its `about` title, else `Run` and its short id. Nothing of `about` is part of the
+  title is its `about` title; without one, the run page says `Run` and its short id, the
+  lists the short id, and the Overview its command line. Nothing of `about` is part of the
   run configuration request, which carries the labels alone, so it never decides a run's
   policy.
 - When the run configuration cannot be read the endpoint answers `503

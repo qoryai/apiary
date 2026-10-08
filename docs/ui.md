@@ -1288,12 +1288,12 @@ whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to t
 and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page has no breadcrumb of its own.
 
-- **The header** is the title (the one the run gave in its `about`, or the run's short id)
-  alone; then, when the run names a kind or subjects, one line of what it is about: the
-  kind, then at most three subjects, each its type and ref as given and a link out
-  (`<.external_link>`) with its title as the tooltip, then "+N more" (all of them are in
-  the rail's About); then one muted meta line that starts with the state as a dot and its word
-  (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
+- **The header** is the title (the one the run gave in its `about`, else "Run" and the
+  run's short id, `Run 0191f2a4`) alone; then, when the run names a kind or subjects, one
+  line of what it is about: the kind, then at most three subjects, each its type and ref
+  as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
+  more" (all of them are in the rail's About); then one muted meta line that starts with
+  the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
   alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
