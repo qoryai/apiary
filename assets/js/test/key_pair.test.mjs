@@ -1,7 +1,7 @@
 // The browser's access key (assets/js/hooks/key_pair.js), under Node's own WebCrypto:
 // `node --test assets/js/test/` (no npm). It proves the secret's form against the runner
-// contract, and that what the browser sends Qory is the label, the Stored secrets choice
-// and the public key, never the secret.
+// contract, and that what the browser sends Qory is the label and the public key, never
+// the secret.
 
 import {test} from "node:test"
 import assert from "node:assert/strict"
@@ -106,7 +106,7 @@ test("the contract's known answer: the fixture seed gives keys.json's secret, pu
   assert.deepEqual(Object.keys(key).sort(), ["publicKey", "secret"])
 })
 
-test("generate pushes generate_key once, with the label, the choice and the public key only", async () => {
+test("generate pushes generate_key once, with the label and the public key only", async () => {
   const pair = await pairFromSeed(FIXTURE.seed)
   const {calls, push, reply} = recordingPush()
 

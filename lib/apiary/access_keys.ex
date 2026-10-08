@@ -372,7 +372,7 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   change_new_key/1 is the changeset of a key to make in a browser, for the form that
-  makes one: its label and stored-secrets flag.
+  makes one: its label.
   """
   @spec change_new_key(map) :: Ecto.Changeset.t()
   def change_new_key(attrs \\ %{}), do: AccessKey.insert_changeset(%AccessKey{}, attrs)
