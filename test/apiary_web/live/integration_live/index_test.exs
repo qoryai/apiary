@@ -143,8 +143,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       for {id, heading, sentence} <- [
             {"add-group-agent", "Agent", nil},
             {"add-group-apis", "Outside APIs", nil},
-            {"add-group-programs", "Programs",
-             "Programs added from a release. A release is only read, never run."}
+            {"add-group-programs", "Programs", "Programs added from a release."}
           ] do
         assert has_element?(lv, "##{id} h3##{id}-title", heading)
 

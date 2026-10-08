@@ -217,7 +217,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
         <.add_group
           id="add-group-programs"
           title={gettext("Programs")}
-          about={gettext("Programs added from a release. A release is only read, never run.")}
+          about={gettext("Programs added from a release.")}
         >
           <.add_card
             :for={named <- @named}

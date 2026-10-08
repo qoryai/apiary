@@ -8706,7 +8706,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Programs added from a release. A release is only read, never run."
+msgid "Programs added from a release."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
