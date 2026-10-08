@@ -588,32 +588,51 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # A machine enrolled a key on this node: the keys and codes read again, under the
   # reader's own scope, and the command's page, if the key is the one its command brings,
-  # turns to say the machine is connected.
+  # turns to say the machine is connected. A confirmation of the code it used closes.
   def handle_info(
         {:key_enrolled, %{node_id: node_id}},
         %{assigns: %{node: %{id: node_id}}} = socket
       ),
-      do: {:noreply, load(socket)}
+      do: {:noreply, socket |> load() |> close_gone_confirmation()}
+
+  # A code of this node was cancelled, here or on another page: the codes read again. The
+  # command's page whose command it was leaves for the tab, saying it no longer works, and
+  # a confirmation of it closes.
+  def handle_info(
+        {:code_cancelled, %{node_id: node_id, code_id: code_id}},
+        %{assigns: %{node: %{id: node_id}}} = socket
+      ) do
+    case socket.assigns do
+      %{live_action: :new_code, issued: %{row: %{id: ^code_id}, arrived: nil}} ->
+        {:noreply, to_tab(socket, :error, outstanding_no_more())}
+
+      _other ->
+        {:noreply, socket |> load() |> close_gone_confirmation()}
+    end
+  end
 
   # A code expired (`schedule_expiry/1`): the codes read again, and a confirmation of the
   # code that expired closed, since there is nothing left to cancel. The timer the page
   # holds stays for `load/1` to cancel: a read in between may have set another while this
   # one's message waited.
-  def handle_info(:codes_expire, socket) do
-    socket = load(socket)
-
-    case socket.assigns do
-      %{code: %EnrolmentCode{id: id}, codes: codes} ->
-        if Enum.any?(codes, &(&1.id == id)),
-          do: {:noreply, socket},
-          else: {:noreply, to_tab(socket, :error, outstanding_no_more())}
-
-      _no_confirmation ->
-        {:noreply, socket}
-    end
-  end
+  def handle_info(:codes_expire, socket),
+    do: {:noreply, socket |> load() |> close_gone_confirmation()}
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # The confirmation of a code no longer outstanding (run, cancelled or expired) closes:
+  # there is nothing left to cancel, and the reader is told so on the tab.
+  defp close_gone_confirmation(socket) do
+    case socket.assigns do
+      %{live_action: :revoke_code, code: %EnrolmentCode{id: id}, codes: codes} ->
+        if Enum.any?(codes, &(&1.id == id)),
+          do: socket,
+          else: to_tab(socket, :error, outstanding_no_more())
+
+      _no_confirmation ->
+        socket
+    end
+  end
 
   ## A key made in a browser
 
@@ -1586,7 +1605,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         </SettingsComponents.part>
 
         <%!-- A key in use: the same ways, as rows, for moving to a new key; at the limit,
-             only the line that says to revoke one first. --%>
+             the line that says to revoke one first, and a command still waiting. --%>
         <SettingsComponents.part
           :if={@active > 0 and @ways != []}
           id="node-add"
@@ -1606,6 +1625,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   name: @node.name
                 )}
           </p>
+          <%!-- At the limit, no way is offered, but a command still waiting stays, with
+               its Cancel the command…: it can still be run, so it can still be
+               cancelled. --%>
+          <.waiting
+            :if={@full}
+            codes={@codes}
+            code={@code}
+            node={@node}
+            may={@may}
+            paths={@paths}
+          />
           <p :if={!@full} id="node-add-intro" class="text-[13px]/5 text-muted">
             {if @node.kind == :pool,
               do:

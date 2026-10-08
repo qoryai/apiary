@@ -955,4 +955,43 @@ defmodule Apiary.NodeAccessKeysTest do
       refute_received {:key_enrolled, _}
     end
   end
+
+  describe "a code cancelled is announced" do
+    test "on the node's topic, once the cancel committed, with the code's id and the node's alone",
+         ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, row, code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      :ok = AccessKeys.subscribe(scope, node)
+      watch_commits()
+
+      assert {:ok, cancelled} = AccessKeys.cancel_code(scope, row)
+      assert cancelled.cancelled_at
+
+      messages = mailbox()
+      announced = {:code_cancelled, %{code_id: row.id, node_id: node.id}}
+
+      assert Enum.count(messages, &match?({:code_cancelled, _}, &1)) == 1
+      {before, [^announced | after_]} = Enum.split_while(messages, &(&1 != announced))
+      assert {:repo, "commit"} in before
+      refute Enum.any?(after_, &match?({:repo, _}, &1))
+
+      # The ids alone: not the code, nor its hash.
+      text = inspect(announced, limit: :infinity, printable_limit: :infinity)
+      refute text =~ code
+      refute text =~ ~r/qec_/i
+      refute text =~ inspect(row.code_sha256)
+    end
+
+    test "a code already cancelled, expired or used announces nothing", ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, cancelled} = AccessKeys.cancel_code(scope, row)
+      %{code: used} = enrolled_key_fixture(scope, node)
+      :ok = AccessKeys.subscribe(scope, node)
+
+      assert {:ok, _} = AccessKeys.cancel_code(scope, cancelled)
+      assert AccessKeys.cancel_code(scope, used) == {:error, :used}
+      refute_received {:code_cancelled, _}
+    end
+  end
 end

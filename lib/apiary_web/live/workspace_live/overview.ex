@@ -25,8 +25,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   at the next navigation. Its "Get the command" makes the command that connects the box's
   node in place (`get_command`), as the node's Access key tab does: the code lives in the
   page's process alone, in a function, shown once in the box and in no path, flash, title
-  or log line, until the page goes, the command expires, or the machine runs it, which the
-  page hears on the node's topic (`Apiary.AccessKeys.subscribe/2`) and the box moves on.
+  or log line, until the page goes, the command expires, it is cancelled on the tab, or
+  the machine runs it. The page hears the last two on the node's topic
+  (`Apiary.AccessKeys.subscribe/2`): a cancel brings the question back, a run moves the box
+  on.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
   it belongs to `security`, and where that is off for the scope the page is one that never
@@ -748,6 +750,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     socket = assign(socket, :onboarding, read_onboarding(socket.assigns.current_scope))
     {:noreply, drop_command(socket)}
   end
+
+  # The box's command was cancelled, on the node's Access key tab: it is let go, and the
+  # box asks again.
+  def handle_info(
+        {:code_cancelled, %{code_id: code_id}},
+        %{assigns: %{command: %{code_id: code_id}}} = socket
+      ),
+      do: {:noreply, drop_command(socket)}
 
   # The box's command expired: it is let go, and the box asks again.
   def handle_info(

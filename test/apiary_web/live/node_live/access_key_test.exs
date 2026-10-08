@@ -658,7 +658,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute lv |> element("#flash-group") |> render() =~ code
       refute page_title(lv) =~ code
       refute log =~ code
-      refute inspect(:sys.get_state(lv.pid)) =~ code
+      deep = &inspect(&1, limit: :infinity, printable_limit: :infinity)
+      refute deep.(:sys.get_state(lv.pid)) =~ code
+      refute deep.(:sys.get_status(lv.pid)) =~ code
 
       # Done: back to the tab, where the command is not shown, nor ever again; it waits.
       lv |> element("#code-issued-done-button") |> render_click()
@@ -871,6 +873,104 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(lv, "#node-add #way-new_code #code-#{row.id}")
       assert has_element?(lv, "#node-add #code-new-button", "Get a new command")
+    end
+
+    test "a command cancelled elsewhere takes its page back to the tab, said to no longer work",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      code = get_command(lv, scope, node)
+      [row] = AccessKeys.list_enrolment_codes(scope, node)
+
+      # Another page, or another person, cancels it.
+      {:ok, _} = AccessKeys.cancel_code(scope, row)
+
+      assert_patch(lv, tab_path(scope, node))
+
+      assert words(lv, "#flash-group") =~
+               "That command no longer works: it was run, cancelled or expired."
+
+      refute has_element?(lv, "#code-issued")
+      refute has_element?(lv, "#code-#{row.id}")
+      refute render(lv) =~ code
+      assert has_element?(lv, "#code-new-button", "Get the command")
+    end
+
+    test "a command cancelled elsewhere leaves the tab, and closes its confirmation", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, other, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      {:ok, _} = AccessKeys.cancel_code(scope, row)
+      _ = render(lv)
+      refute has_element?(lv, "#code-#{row.id}")
+      assert has_element?(lv, "#code-#{other.id}")
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/codes/#{other.id}/revoke"))
+      {:ok, _} = AccessKeys.cancel_code(scope, other)
+      assert_patch(lv, tab_path(scope, node))
+      refute has_element?(lv, "#code-#{other.id}")
+
+      assert words(lv, "#flash-group") =~
+               "That command no longer works: it was run, cancelled or expired."
+    end
+
+    test "a machine running the command while its cancelling is asked closes the confirmation",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, row, code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/codes/#{row.id}/revoke"))
+      assert has_element?(lv, "#code-#{row.id}-confirm-button")
+
+      {:ok, key} =
+        AccessKeys.enrol(enrol_request(Enrolment.issued_code(code, SigningKey.fingerprint())))
+
+      assert_patch(lv, tab_path(scope, node))
+      refute has_element?(lv, "#code-#{row.id}")
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
+
+      assert words(lv, "#flash-group") =~
+               "That command no longer works: it was run, cancelled or expired."
+
+      assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
+    end
+
+    test "at two keys, a command still waiting is shown and can be cancelled, with no way offered",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      node_key_fixture(scope, node)
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      # A second key, generated meanwhile: the node is at its limit.
+      browser_key_fixture(scope, node)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert words(lv, "#node-add-full") ==
+               "build-01 holds two keys, the most a node can. Revoke the one it no longer uses to add another."
+
+      assert has_element?(
+               lv,
+               "#node-add #code-#{row.id}",
+               "A command is waiting to be run on build-01."
+             )
+
+      refute has_element?(lv, "#node-ways")
+      refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#key-generate-button")
+
+      lv |> element("#code-#{row.id}-revoke") |> render_click()
+      assert_patch(lv, tab_path(scope, node, "/codes/#{row.id}/revoke"))
+      assert has_element?(lv, "#code-#{row.id}-confirm-question")
+      lv |> element("#code-#{row.id}-confirm-button") |> render_click()
+
+      assert words(lv, "#flash-group") =~ "The command is cancelled. It no longer works."
+      assert Repo.get!(EnrolmentCode, row.id).cancelled_at
+      refute has_element?(lv, "#code-#{row.id}")
+      refute has_element?(lv, "#code-new-button")
     end
 
     test "a used command, cancelled, is said to have run", %{conn: conn, scope: scope} do

@@ -327,11 +327,21 @@ defmodule Apiary.AccessKeys do
   cancel_code/2 cancels an outstanding enrolment code (`access_key.cancel_code`, owners
   and admins): no machine enrols with it from then on. Cancelling a cancelled or expired
   code changes nothing; a used one is `{:error, :used}`. `{:error, :not_found}` for a code
-  of another workspace, or of a deleted node.
+  of another workspace, or of a deleted node. A code cancelled now is announced on its
+  node's `topic/2` once the transaction has committed.
   """
   @spec cancel_code(Scope.t(), EnrolmentCode.t()) ::
           {:ok, EnrolmentCode.t()} | {:error, :used | Access.reason()}
-  def cancel_code(%Scope{} = scope, %EnrolmentCode{id: id, node_id: node_id} = code) do
+  def cancel_code(%Scope{} = scope, %EnrolmentCode{} = code) do
+    with {:ok, {cancelled, row}} <- cancel_now(scope, code) do
+      # Announced once the transaction has committed, and only for a code cancelled now.
+      if cancelled, do: broadcast_cancelled(row)
+      {:ok, row}
+    end
+  end
+
+  # The cancel, in one transaction: whether it cancelled the code now, and the code.
+  defp cancel_now(scope, %EnrolmentCode{id: id, node_id: node_id} = code) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.cancel_code", code),
            {:ok, node} <- lock_node(scope, node_id),
@@ -346,7 +356,7 @@ defmodule Apiary.AccessKeys do
             {:error, :used}
 
           not EnrolmentCode.outstanding?(current, DateTime.utc_now()) ->
-            {:ok, current}
+            {:ok, {false, current}}
 
           true ->
             with {:ok, cancelled} <-
@@ -360,7 +370,7 @@ defmodule Apiary.AccessKeys do
                      after: %{cancelled_at: cancelled.cancelled_at},
                      details: %{code_id: cancelled.id}
                    }) do
-              {:ok, cancelled}
+              {:ok, {true, cancelled}}
             end
         end
       else
@@ -550,8 +560,10 @@ defmodule Apiary.AccessKeys do
   @doc """
   topic/2 is the topic of one node's keys, of its workspace: `{:key_enrolled, %{key_id:,
   node_id:}}` once a machine has enrolled a key on the node with a code (`enrol/2`), after
-  the enrolment's transaction committed. The message carries the key's id and the node's
-  alone, nothing secret: a subscriber reads the key again under its own scope.
+  the enrolment's transaction committed, and `{:code_cancelled, %{code_id:, node_id:}}`
+  once a code of the node was cancelled (`cancel_code/2`), after that transaction
+  committed. Each message carries ids alone, nothing secret: a subscriber reads the key
+  or the codes again under its own scope.
   """
   @spec topic(Ecto.UUID.t(), Ecto.UUID.t()) :: String.t()
   def topic(workspace_id, node_id), do: "access_keys:#{workspace_id}:#{node_id}"
@@ -568,6 +580,14 @@ defmodule Apiary.AccessKeys do
   @spec unsubscribe(Scope.t(), Node.t()) :: :ok
   def unsubscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Node{id: node_id}),
     do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id, node_id))
+
+  defp broadcast_cancelled(%EnrolmentCode{} = code) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      topic(code.workspace_id, code.node_id),
+      {:code_cancelled, %{code_id: code.id, node_id: code.node_id}}
+    )
+  end
 
   defp broadcast_enrolled(%AccessKey{} = key) do
     Phoenix.PubSub.broadcast(
