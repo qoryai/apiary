@@ -64,10 +64,12 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   flag fixed when it is made. A key is active from the moment it arrives until it is
   revoked. A node gets its key in one of two ways, both on its Access key tab, which
   asks owners and admins "How do you want to connect build-01?" while it holds no
-  active key, with a card for each way, its numbered steps, the server's public key and
-  address inside Generate a key's (a node lists Connect with a command first, a pool
-  Generate a key), and under Add a key, as two rows, once it holds one, with This
-  server, the server's public key and address, at the tab's foot for everyone. Every new
+  active key, with two equal options, each saying when to choose it, what happens and
+  the same four facts (Key made, Secret, By hand, Needs), with one button (a node lists
+  Connect with a command first, a pool Generate a key in the browser), and under Add a
+  key, as two rows, once it holds one, with Configure a machine at the tab's foot for
+  everyone: four steps, Qory Apiary's address and public key, the key's ID, and where
+  its secret belongs. Every new
   key, either way, gets the stored-secrets flag Not allowed, since runs don't receive
   secrets yet. Connect with a command: Get the command makes, in one click, a
   single-use code valid for 15 minutes, and the page Connect build-01 with a command
@@ -80,17 +82,17 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   the tab as "A command is waiting to be run on build-01.", with Cancel the command….
   The code is the approval: the key it brings is active at once, and the code is
   refused unless its maker is still an owner or an admin of the workspace when it is
-  redeemed. Generate a key: the browser makes the key (WebCrypto Ed25519, on a page
+  redeemed. Generate a key in the browser: the browser makes the key (WebCrypto Ed25519, on a page
   served over HTTPS) and sends Qory its name and its public half alone; the page Key
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
-  set `QORY_APIARY_PUBLIC_KEY`; point qory at the server, the runner file's
+  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the runner file's
   `server.url`. Opened again, it says the secret is gone, and offers nothing of it to
   copy. A key's card shows its
   Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
   browser by …") and where its secret is. An active key's card opens the page Runner
   file for the key: for a key connected with a command, the runner file's `server`
-  lines (`url`, `access_key_id`, `apiary_public_key`), each marked as this server's or
+  lines (`url`, `access_key_id`, `apiary_public_key`), each marked as Qory Apiary's or
   this key's; for a generated key, four numbered steps: where its secret belongs, then
   `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `server.url`. The server's address
   and public key are the instance's own, the same for every organisation, workspace and

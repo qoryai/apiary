@@ -1800,7 +1800,7 @@ defmodule ApiaryWeb.OverviewComponents do
         </p>
         <p :if={@current > 1} class="q-onb-lead">
           {gettext(
-            "A node or pool is connected once it has a key. Qory keeps only the key's public half."
+            "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
           )}
         </p>
         <.steps current={@current} class="my-5">
@@ -1888,7 +1888,7 @@ defmodule ApiaryWeb.OverviewComponents do
               <div class="flex gap-3">
                 <.icon name="hero-key" class="mt-0.5 size-4.5 flex-none text-muted" />
                 <p>
-                  <span class="font-medium">{gettext("Generate a key.")}</span>
+                  <span class="font-medium">{gettext("Generate a key in the browser.")}</span>
                   {pgettext(
                     "plain",
                     "For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system."
@@ -1999,7 +1999,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp way_icon(:generate), do: "hero-key"
 
   defp way_title(:enrol), do: gettext("Connect with a command")
-  defp way_title(:generate), do: gettext("Generate a key")
+  defp way_title(:generate), do: gettext("Generate a key in the browser")
 
   defp way_for(:enrol), do: gettext("For a laptop or a server you can open a terminal on.")
 

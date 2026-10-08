@@ -56,8 +56,8 @@ QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkde
 ```
 
 Those are the values **Runner file for spot-runners** shows for a generated key, as plain
-settings (the public key and the address are also under **This server** on the node's
-**Access key** tab), for a CI's variables or an env file, where a value is taken as written. In a
+settings (the public key and the address are also under **Configure a machine** on the
+node's **Access key** tab), for a CI's variables or an env file, where a value is taken as written. In a
 shell the JSON has brackets and double quotes the shell would read, so put the value in
 single quotes:
 
@@ -68,7 +68,7 @@ export QORY_APIARY_PUBLIC_KEY='[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmO
 
 The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs in a CI's
 secret store; `qory access-key enrol --print` prints it instead of keeping it on the
-machine, and **Generate a key** on the node's **Access key** tab shows it once, with the
+machine, and **Generate a key in the browser** on the node's **Access key** tab shows it once, with the
 other two, on the page **Key for …**. With the three variables set, the CI's
 `runner.yaml` needs `server.url` alone.
 

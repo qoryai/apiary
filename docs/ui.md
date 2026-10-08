@@ -710,10 +710,11 @@ what needs the reader, then what their agents did, and never grows with the data
   panel beside them. Step 2 is "Connect it" ("Run one command on the machine, or generate
   a key for a CI or another system."). While it is current, it names the newest node or
   pool with no active key, its name linking to that one's Access key tab. At step 1 the
-  panel explains "Two ways to connect a machine", Generate a key's line ending "… this
+  panel explains "Two ways to connect a machine", Generate a key in the browser's line ending "… this
   page shows the key's secret once, and you copy it into that system."; at step 2 it asks
   an owner or admin "How do you want to connect build-01?", with the two ways as rows,
-  Connect with a command and Generate a key, a pool's Generate a key first. Get the
+  Connect with a command and Generate a key in the browser, a pool's Generate a key in
+  the browser first, the buttons Get the command and Generate a key. Get the
   command there makes the command in place, as on the tab: the panel shows the real
   command with Copy, "It works once, until 14:32. This is the only time it is shown." and
   "Waiting for build-01 to run it.", with the notice when the server's address is a
@@ -846,26 +847,30 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   record. A node the workspace does not have, or a deleted one, is not found.
 - **Access key**, a node's tab. While the node holds no active key, owners and admins read
   "How do you want to connect build-01?", "build-01 needs a key before it can start runs.
-  Pick the way that fits the machine, then follow its steps." (a pool's: "… Its instances
-  share one key. Pick the way that fits where they run, then follow its steps."), and two
-  cards, aligned at the top, each its icon, title and "Pick it for …", then numbered steps
-  (`<ol class="q-steps">`, a disc with the number, a title ending in a period, what the
-  step needs inside it). **Connect with a command**: 1 "Get the command." ("It carries a
-  code that works once, for 15 minutes, and is shown once.", a waiting command, Get the
-  command), 2 "Run it on build-01." ("qory makes the key there and saves its secret,
-  which never leaves build-01. It also writes this server's address and public key into
-  the runner file on build-01. There is nothing to copy by hand."), 3 "See it connected." ("The
-  command's page shows build-01 connected, with the key's fingerprint to check against the
-  one qory printed."). **Generate a key**: 1 "Generate a key here." ("This browser makes it
-  and shows its ID and its secret once.", Generate a key), 2 "Set the key where build-01
-  runs." (`QORY_ACCESS_KEY_ID` as a plain setting, `QORY_ACCESS_KEY_SECRET` in that
-  system's secret store), 3 "Set this server's public key beside them." (the variable with
-  Copy variable, then "It belongs to this server, not to build-01: the same for every
-  machine connected to this Qory."), 4 "Point qory at this server." (`runner.yaml` with
-  Copy lines). A node lists the command first, its button primary; a pool lists
-  Generate a key first. A member reads, under "Connect build-01", "build-01 has no key
+  Choose one of two ways to give it one." (a pool's: "spot-runners needs a key before it
+  can start runs; its instances share one. Choose one of two ways to give it one."), and
+  two options of equal weight, side by side from `md`, stacked below it, of one height
+  (`items-stretch`), each its icon and title, "Choose it when …" in the body colour, what
+  happens in two muted sentences, then the same four facts in the same rows (a `dl` of two
+  columns, the labels faint: Key made, Secret, By hand, Needs), a waiting command where
+  it is the command's, and one button at the foot (`mt-auto`), so the buttons line up.
+  No steps, no code, no variable and no Copy. **Connect with a command**: "Choose it when
+  you can open a terminal on build-01: a laptop, or a server of your own.", "You get one
+  command to run on build-01. It carries a one-time code, not a key, which works once
+  within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public
+  half, and saves everything else there itself.", Key made "On build-01, by qory", Secret
+  "Stays on build-01; it is never shown", By hand "Nothing", Needs "A terminal on
+  build-01", then Get the command. **Generate a key in the browser**: "Choose it when
+  build-01 runs in a CI job, or on a machine you can't open a terminal on.", "This browser
+  makes the key, and Qory Apiary receives only its public half. The next page shows the
+  secret once, with everything else the machine needs, for you to set where build-01
+  runs.", Key made "In this browser", Secret "Shown to you once, for the machine's or the
+  CI's secret store", By hand "The key's ID, its secret, Qory Apiary's public key and
+  address", Needs "This page open over HTTPS", then Generate a key. A node lists the
+  command first, its button primary; a pool lists
+  Generate a key in the browser first. A member reads, under "Connect build-01", "build-01 has no key
   yet, so it can't start runs. An owner or admin connects it." A command not yet run shows
-  inside the command card's first step, or its row under Add a key: "A command is waiting to be run
+  in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
   on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
   shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
   confirmed in place ("Cancel the command from 14:17?", Yes, cancel it and Keep it); its
@@ -878,15 +883,23 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   confirmed in place. A key whose record doesn't match its integrity code says so on its
   card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add
   it either way and then revoke the old one, and offers the two ways as compact rows, in
-  the same order and words. At two keys, the most a node or a pool holds, it has no
+  the same order, each its title and its "Choose it when …" line, with its button. At two keys, the most a node or a pool holds, it has no
   buttons, only "build-01 holds two keys, the most a node can. Revoke the one it no longer
   uses to add another." A member sees the keys and none of the actions. At the foot, once
-  the node holds an active key, **This server**, for everyone, at the limit too: "They
-  belong to this server, not to build-01: the same for every machine connected to this
-  Qory. A machine connected with the command already has both. With a generated key, set
-  them beside the key's ID and secret.", "Public key, as a plain setting:" with
-  `QORY_APIARY_PUBLIC_KEY=…` and Copy variable, and "Address, in the runner file:" with
-  `runner.yaml` and Copy lines.
+  the node holds an active key, **Configure a machine** (`#node-configure`), for everyone,
+  at the limit too, at most 46rem wide: "A machine connected with the command needs
+  nothing more: qory saved all of this on it. Don't set these again there; qory refuses a
+  value set twice." and "With a generated key, set these where the machine runs qory.",
+  then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the runner
+  file. It is required: without it, qory ignores the three variables below.",
+  `runner.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
+  a plain setting. The same for every machine connected to this Qory Apiary.", the value
+  with Copy), 3 "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID, a plain
+  setting." and its ID with Copy; with two, "QORY_ACCESS_KEY_ID, a plain setting: the ID
+  of the key the machine uses, on its card above."), 4 "Keep the key's secret in a secret
+  store." ("QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is
+  never shown here. If it is lost, generate a new key and revoke the old one.", text
+  alone, never a value or a Copy).
 - **Connect build-01 with a command** (`/nodes/:node_id/access-key/new-code`, owners and
   admins; its crumb is Command) is where Get the command leads. The click makes the
   enrolment code at once, with defaults: Stored secrets Not allowed and no label hint, so
@@ -906,7 +919,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   admins; at the key limit it goes back to the tab with "build-01 holds two keys already.
   Revoke one before you add another.") is a form page: "This browser makes a key for
   build-01. You see its secret once, to copy into your CI's secret store, or the settings
-  of the system that runs it; Qory receives only the public half. The key's ID stays on
+  of the system that runs it; Qory Apiary receives only the public half. The key's ID stays on
   the Access key tab." (a pool's ends its first part "… or the settings of whatever runs
   the instances"), then one field, Name of the key, filled in with the node's name (then
   `-2` when a key has that name), its hint "Shown on the Access key tab, so you can tell
@@ -915,10 +928,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   secrets yet. The browser makes the Ed25519 key (the `GenerateKey` hook) and sends Qory
   the name and the public key alone; the form has no other field. Where the browser can't
   make one it says why and Generate key stays off: "This browser makes keys only on a page
-  served over HTTPS. Open Qory over HTTPS, or connect the machine with a command." or
+  served over HTTPS. Open Qory Apiary over HTTPS, or connect the machine with a command." or
   "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari,
   or connect the machine with a command."; a key lost on its way says "The connection to
-  Qory dropped before the key was confirmed, and its secret is gone. If a new key shows on
+  Qory Apiary dropped before the key was confirmed, and its secret is gone. If a new key shows on
   the Access key tab, revoke it, then generate another." Anything sent beyond the name and
   the public key, a name holding a secret, or a public key that does not decode as one,
   goes back to the tab with "The key wasn't added. Try again.", and nothing is added.
@@ -928,11 +941,11 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   steps, each value with Copy. 1 "Store the secret." ("In the secret store of the system
   that runs build-01, such as your CI's.", `QORY_ACCESS_KEY_SECRET`, tagged "secret ·
   shown once"), 2 "Set the key's ID." ("As a plain setting. It stays on the Access key
-  tab.", `QORY_ACCESS_KEY_ID`), 3 "Set this server's public key." ("As a plain setting.
-  It belongs to this server, not to build-01: the same for every machine connected to
-  this Qory. It stays on the Access key tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON),
-  4 "Point qory at this server." ("The runner file there needs only the server's
-  address.", the two lines `server:` and `url: https://apiary.example.com` with Copy
+  tab.", `QORY_ACCESS_KEY_ID`), 3 "Set Qory Apiary's public key." ("As a plain setting.
+  The same for every machine connected to this Qory Apiary. It stays on the Access key
+  tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point qory at Qory Apiary." ("In
+  the runner file. It is required: without it, qory ignores the three variables.", the
+  two lines `server:` and `url: https://apiary.example.com` with Copy
   lines). The server's address and public key are the instance's own, the same for every
   organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
   back to the tab ("Once you leave this page, the secret is not shown again."). The secret
@@ -950,23 +963,22 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   tab.
 - **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`, an
   active key's alone; a revoked one goes back to the tab with "build-01 is revoked.") is a
-  page, not a dialog, which an active key's card opens with **Runner file**: "The server
-  lines for this key. Nothing here is secret." (a generated key's: "What build-01 needs,
+  page, not a dialog, which an active key's card opens with **Runner file**: "The runner
+  file's lines for this key. Nothing here is secret." (a generated key's: "What build-01 needs,
   besides the secret. Nothing here is secret.") What follows depends on how the key came. A
   key connected with a command: the `runner.yaml` lines the command wrote (the `server`
-  section, each line marked: `url` `# this server`, `access_key_id` `# this key`,
-  `apiary_public_key` `# this server's public key`, the pin in YAML's flow form), "Only
-  the key ID is this key's. The address and the public key are this server's, the same for
+  section, each line marked: `url` `# Qory Apiary`, `access_key_id` `# this key`,
+  `apiary_public_key` `# Qory Apiary's public key`, the pin in YAML's flow form), "Only
+  the key ID is this key's. The address and the public key are Qory Apiary's, the same for
   every machine connected to it.", and "The key's secret is on build-01, in
   ~/.config/qory/access-key-secret, where the command saved it. It has never been on a
   screen." A generated key: four numbered steps. 1 "Keep the secret in a secret store."
   ("It was shown once, when the key was generated, and belongs in QORY_ACCESS_KEY_SECRET
   in the secret store of the system that runs qory. If it is lost, generate a new key and
   revoke this one."), 2 "Set the key's ID." ("As a plain setting.",
-  `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set this server's public key." ("As a
-  plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "It belongs to
-  this server, not to build-01: the same for every machine connected to this Qory."), 4
-  "Point qory at this server." (`server:` / `url:` with Copy lines). Done goes back to the
+  `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key." ("As a
+  plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every
+  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`server:` / `url:` with Copy lines). Done goes back to the
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at

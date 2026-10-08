@@ -138,7 +138,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect build-01?")
 
       assert words(lv, "#node-connect-intro") ==
-               "build-01 needs a key before it can start runs. Pick the way that fits the machine, then follow its steps."
+               "build-01 needs a key before it can start runs. Choose one of two ways to give it one."
 
       refute has_element?(lv, "#node-keys")
       refute has_element?(lv, "#node-codes")
@@ -189,7 +189,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-keys-title .q-part-n", "2")
 
       assert words(lv, "#node-keys-intro") ==
-               "build-01 signs every request with its key. Qory keeps only the public half."
+               "build-01 signs every request with its key. Qory Apiary keeps only the public half."
 
       assert has_element?(lv, "#key-#{made.key_id}-revoke", "Revoke…")
       # Each Revoke… is named for the key it revokes.
@@ -478,7 +478,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "current")
 
       assert words(lv, "#key-runner-file-header-description") ==
-               "The server lines for this key. Nothing here is secret."
+               "The runner file's lines for this key. Nothing here is secret."
 
       assert has_element?(
                lv,
@@ -497,16 +497,16 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert yaml ==
                """
                server:
-               #{String.pad_trailing(url, width)}# this server
+               #{String.pad_trailing(url, width)}# Qory Apiary
                #{String.pad_trailing(key_line, width)}# this key
-               #{String.pad_trailing("  apiary_public_key:", width)}# this server's public key
+               #{String.pad_trailing("  apiary_public_key:", width)}# Qory Apiary's public key
                #{yaml_pin}
                """
 
       assert has_element?(lv, "#key-runner-file-yaml-copy", "Copy lines")
 
       assert words(lv, "#key-runner-file-parts") ==
-               "Only the key ID is this key's. The address and the public key are this server's, the same for every machine connected to it."
+               "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
 
       assert words(lv, "#key-runner-file-secret") ==
                "The key's secret is on build-01, in ~/.config/qory/access-key-secret, where the command saved it. It has never been on a screen."
@@ -523,7 +523,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert id == "key-#{key.key_id}-runner-file"
     end
 
-    test "a generated key: four steps, the secret, its ID, this server's public key and address",
+    test "a generated key: four steps, the secret, its ID, Qory Apiary's public key and address",
          %{conn: conn, scope: scope} do
       pool = node_fixture(scope, name: "spot-runners", kind: "pool")
       %{access_key: key} = browser_key_fixture(scope, pool, %{label: "spot-runners"})
@@ -545,15 +545,15 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#key-runner-file-key-env-copy", "Copy variable")
 
       assert words(lv, "#key-runner-file-steps-3") =~
-               "3 Set this server's public key. As a plain setting."
+               "3 Set Qory Apiary's public key. As a plain setting."
 
       assert lv |> element("#key-runner-file-server-env") |> render() |> text() |> String.trim() ==
                env_pin
 
       assert words(lv, "#key-runner-file-belongs") ==
-               "It belongs to this server, not to spot-runners: the same for every machine connected to this Qory."
+               "The same for every machine connected to this Qory Apiary."
 
-      assert words(lv, "#key-runner-file-steps-4") =~ "4 Point qory at this server."
+      assert words(lv, "#key-runner-file-steps-4") =~ "4 Point qory at Qory Apiary."
 
       assert lv |> element("#key-runner-file-url") |> render() |> text() |> String.trim() ==
                "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
@@ -628,7 +628,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Command")
 
       assert words(lv, "#code-issued-header-description") ==
-               "The command connects build-01 by itself: it makes the machine's key there, saves it, and writes the server lines. The secret never leaves the machine."
+               "The command connects build-01 by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine."
 
       assert words(lv, "#code-issued-run") == "On build-01, run:"
       assert has_element?(lv, "#code-issued-command-copy", "Copy command")
@@ -781,7 +781,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert ApiaryWeb.NodeComponents.loopback?(server)
 
       assert words(lv, "#code-issued-unreachable") ==
-               "Machines can't reach this address. #{server} works only on the computer Qory runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
+               "Machines can't reach this address. #{server} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
     end
 
     test "loopback?/1 is localhost and the loopback addresses alone" do
@@ -1100,31 +1100,39 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(lv, "#way-new_code-title", "Connect with a command")
 
-      # Each card: its title, when to pick it, then numbered steps, the button in the first.
+      # Two equal options: when to choose it, what happens, the same four facts in the same
+      # rows, and one button at the foot. No steps, no code, no variable and nothing to copy.
       assert words(lv, "#way-new_code") ==
-               "Connect with a command Pick it for a laptop or a server you can open a terminal on. 1 Get the command. It carries a code that works once, for 15 minutes, and is shown once. Get the command 2 Run it on build-01. qory makes the key there and saves its secret, which never leaves build-01. It also writes this server's address and public key into the runner file on build-01. There is nothing to copy by hand. 3 See it connected. The command's page shows build-01 connected, with the key's fingerprint to check against the one qory printed."
+               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or a server of your own. You get one command to run on build-01. It carries a one-time code, not a key, which works once within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public half, and saves everything else there itself. Key made On build-01, by qory Secret Stays on build-01; it is never shown By hand Nothing Needs A terminal on build-01 Get the command"
 
-      assert has_element?(lv, "#way-new_code-steps-1 #code-new-button")
-      assert has_element?(lv, "#way-generate-steps-1 #key-generate-button")
-      {_yaml_pin, env_pin} = pin_lines()
+      assert has_element?(lv, "#way-generate-title", "Generate a key in the browser")
 
-      assert words(lv, "#way-generate") =~
-               "Generate a key Pick it for a CI job, a pool of short-lived machines, or a machine you can't type on. 1 Generate a key here. This browser makes it and shows its ID and its secret once. Generate a key 2 Set the key where build-01 runs. QORY_ACCESS_KEY_ID as a plain setting, QORY_ACCESS_KEY_SECRET in that system's secret store. 3 Set this server's public key beside them."
+      assert words(lv, "#way-generate") ==
+               "Generate a key in the browser Choose it when build-01 runs in a CI job, or on a machine you can't open a terminal on. This browser makes the key, and Qory Apiary receives only its public half. The next page shows the secret once, with everything else the machine needs, for you to set where build-01 runs. Key made In this browser Secret Shown to you once, for the machine's or the CI's secret store By hand The key's ID, its secret, Qory Apiary's public key and address Needs This page open over HTTPS Generate a key"
 
-      assert words(lv, "#way-generate-steps-3") =~
-               "It belongs to this server, not to build-01: the same for every machine connected to this Qory."
+      labels = fn way ->
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#way-#{way}-facts > dt")
+        |> Enum.map(&LazyHTML.text/1)
+      end
 
-      assert words(lv, "#way-generate-steps-4") =~ "4 Point qory at this server."
+      assert labels.(:new_code) == ["Key made", "Secret", "By hand", "Needs"]
+      assert labels.(:generate) == labels.(:new_code)
 
-      assert lv |> element("#way-generate-pin") |> render() |> text() |> String.trim() == env_pin
+      for way <- [:new_code, :generate] do
+        refute has_element?(lv, "#way-#{way} pre")
+        refute has_element?(lv, "#way-#{way} code")
+        refute has_element?(lv, "#way-#{way} .copy-btn")
+        refute has_element?(lv, "#way-#{way} ol")
+        refute render(lv |> element("#way-#{way}")) =~ "QORY_"
+      end
 
-      assert lv |> element("#way-generate-yaml") |> render() |> text() |> String.trim() ==
-               "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
-
-      assert has_element?(lv, "#way-generate-pin-copy", "Copy variable")
-      assert has_element?(lv, "#way-generate-yaml-copy", "Copy lines")
-      # No key yet: no "This server" part of its own; the generated key's steps hold it.
-      refute has_element?(lv, "#node-server")
+      assert has_element?(lv, "#node-ways.items-stretch.md\\:grid-cols-2")
+      assert has_element?(lv, "#way-new_code > div.mt-auto #code-new-button")
+      assert has_element?(lv, "#way-generate > div.mt-auto #key-generate-button")
+      refute has_element?(lv, "#node-configure")
 
       assert has_element?(
                lv,
@@ -1142,7 +1150,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#node-connect-title", "How do you want to connect spot-runners?")
 
       assert words(lv, "#node-connect-intro") ==
-               "spot-runners needs a key before it can start runs. Its instances share one key. Pick the way that fits where they run, then follow its steps."
+               "spot-runners needs a key before it can start runs; its instances share one. Choose one of two ways to give it one."
 
       assert ways(lv, "#node-ways") ==
                {~w(key-generate-button code-new-button), ["key-generate-button"]}
@@ -1165,7 +1173,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert ways(lv, "#node-ways") == {~w(code-new-button key-generate-button), []}
 
       assert words(lv, "#way-new_code") ==
-               "Connect with a command Pick it for a laptop or a server you can open a terminal on. Get the command"
+               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or a server of your own. Get the command"
+
+      assert words(lv, "#way-generate") ==
+               "Generate a key in the browser Choose it when build-01 runs in a CI job, or on a machine you can't open a terminal on. Generate a key"
 
       {:ok, lv, _html} = live(conn, tab_path(scope, pool))
       assert ways(lv, "#node-ways") == {~w(key-generate-button code-new-button), []}
@@ -1173,7 +1184,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert words(lv, "#node-add-intro") =~ "A node pool holds two keys at most."
 
       assert words(lv, "#node-keys-intro") ==
-               "The instances of spot-runners sign every request with the pool's key. Qory keeps only the public half."
+               "The instances of spot-runners sign every request with the pool's key. Qory Apiary keeps only the public half."
 
       {:ok, _} = AccessKeys.revoke_access_key(scope, key)
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
@@ -1183,41 +1194,76 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
     end
 
-    test "once a key is active, This server at the foot gives its public key and address, to everyone, at the limit too",
+    test "once a key is active, Configure a machine at the foot gives four steps, to everyone, at the limit too",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       pool = node_fixture(scope, name: "spot-runners", kind: "pool")
       %{access_key: key} = node_key_fixture(scope, node)
-      node_key_fixture(scope, pool)
-      node_key_fixture(scope, pool)
+      %{access_key: first} = node_key_fixture(scope, pool)
+      %{access_key: second} = node_key_fixture(scope, pool)
       {_yaml_pin, env_pin} = pin_lines()
+      pin = String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "") |> String.trim()
 
-      for {target, name, conn} <- [
-            {node, "build-01", conn},
-            {pool, "spot-runners", conn},
-            {node, "build-01", member_conn(scope)}
-          ] do
+      for {target, conn} <- [{node, conn}, {pool, conn}, {node, member_conn(scope)}] do
         {:ok, lv, _html} = live(conn, tab_path(scope, target))
 
-        assert has_element?(lv, "#node-server-title", "This server")
+        assert has_element?(lv, "#node-configure-title", "Configure a machine")
 
-        assert words(lv, "#node-server-note") ==
-                 "They belong to this server, not to #{name}: the same for every machine connected to this Qory. A machine connected with the command already has both. With a generated key, set them beside the key's ID and secret."
+        assert words(lv, "#node-configure-lead") ==
+                 "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice. With a generated key, set these where the machine runs qory."
 
-        assert has_element?(lv, "#node-server", "Public key, as a plain setting:")
-        assert has_element?(lv, "#node-server", "Address, in the runner file:")
+        assert words(lv, "#node-configure-steps-1") =~
+                 "1 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables below."
 
-        assert lv |> element("#node-server-pin") |> render() |> text() |> String.trim() ==
-                 env_pin
-
-        assert has_element?(lv, "#node-server-pin-copy", "Copy variable")
-
-        assert lv |> element("#node-server-yaml") |> render() |> text() |> String.trim() ==
+        assert lv |> element("#node-configure-yaml") |> render() |> text() |> String.trim() ==
                  "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
 
-        assert has_element?(lv, "#node-server-yaml-copy", "Copy lines")
-        refute lv |> element("#node-server") |> render() =~ ~r/ak_|qak_/i
+        assert has_element?(lv, "#node-configure-yaml-copy", "Copy lines")
+
+        assert words(lv, "#node-configure-steps-2") ==
+                 "2 Set Qory Apiary's public key. QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary. #{pin}"
+
+        assert lv |> element("#node-configure-pin") |> render() |> text() |> String.trim() == pin
+
+        assert has_element?(
+                 lv,
+                 ~s{#node-configure-pin-copy[aria-label="Copy QORY_APIARY_PUBLIC_KEY"]}
+               )
+
+        assert words(lv, "#node-configure-steps-4") ==
+                 "4 Keep the key's secret in a secret store. QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is never shown here. If it is lost, generate a new key and revoke the old one."
+
+        # The secret: text alone, never a value and never a Copy.
+        refute has_element?(lv, "#node-configure-steps-4 code")
+        refute has_element?(lv, "#node-configure-steps-4 .copy-btn")
+        refute lv |> element("#node-configure") |> render() =~ ~r/qak_/i
+        refute has_element?(lv, "#node-server")
       end
+
+      # One active key: its ID, with Copy.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert words(lv, "#node-configure-steps-3") ==
+               "3 Set the key's ID. QORY_ACCESS_KEY_ID, a plain setting. #{key.key_id}"
+
+      assert has_element?(lv, "#node-configure-key-id", key.key_id)
+
+      assert has_element?(
+               lv,
+               ~s{#node-configure-key-id-copy[aria-label="Copy QORY_ACCESS_KEY_ID"]}
+             )
+
+      refute has_element?(lv, "#node-configure-key-id-pointer")
+
+      # Two active keys: the pointer to the key's card, and no ID.
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool))
+
+      assert words(lv, "#node-configure-steps-3") ==
+               "3 Set the key's ID. QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above."
+
+      refute has_element?(lv, "#node-configure-key-id")
+      refute lv |> element("#node-configure") |> render() =~ first.key_id
+      refute lv |> element("#node-configure") |> render() =~ second.key_id
 
       # At the foot: after Keys, and after Add a key where it shows.
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
@@ -1226,15 +1272,15 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         lv
         |> render()
         |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#node-keys, #node-add, #node-server")
+        |> LazyHTML.query("#node-keys, #node-add, #node-configure")
         |> LazyHTML.attribute("id")
 
-      assert ids == ["node-keys", "node-add", "node-server"]
+      assert ids == ["node-keys", "node-add", "node-configure"]
 
       # A revoked key alone is no key: the ways ask again, and the part goes.
       {:ok, _} = AccessKeys.revoke_access_key(scope, key)
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      refute has_element?(lv, "#node-server")
+      refute has_element?(lv, "#node-configure")
     end
 
     test "at two keys, Add a key says to revoke one first, and offers no button", %{
@@ -1313,7 +1359,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     defp assert_reopened(lv, key) do
       assert_server_render(lv, key)
 
-      # The rest stays: the key's ID and this server's values.
+      # The rest stays: the key's ID and Qory Apiary's values.
       assert has_element?(lv, "#key-generated-id-copy")
       assert has_element?(lv, "#key-generated-pin-copy")
       assert has_element?(lv, "#key-generated-yaml-copy")
@@ -1353,7 +1399,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "h1#key-generate-header-title", "Generate a key for build-01")
 
       assert words(lv, "#key-generate-header-description") ==
-               "This browser makes a key for build-01. You see its secret once, to copy into your CI's secret store, or the settings of the system that runs it; Qory receives only the public half. The key's ID stays on the Access key tab."
+               "This browser makes a key for build-01. You see its secret once, to copy into your CI's secret store, or the settings of the system that runs it; Qory Apiary receives only the public half. The key's ID stays on the Access key tab."
 
       assert page_title(lv) =~ "Generate a key · build-01"
 
@@ -1395,11 +1441,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       for {id, words} <- [
             {"key-generate-insecure",
-             "This browser makes keys only on a page served over HTTPS. Open Qory over HTTPS, or connect the machine with a command."},
+             "This browser makes keys only on a page served over HTTPS. Open Qory Apiary over HTTPS, or connect the machine with a command."},
             {"key-generate-unsupported",
              "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or connect the machine with a command."},
             {"key-generate-lost",
-             "The connection to Qory dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."}
+             "The connection to Qory Apiary dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."}
           ] do
         assert has_element?(lv, "##{id}.hidden")
         refute has_element?(lv, "##{id}[hidden]")
@@ -1419,7 +1465,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/generate"))
 
       assert words(lv, "#key-generate-header-description") ==
-               "This browser makes a key for spot-runners. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory receives only the public half. The key's ID stays on the Access key tab."
+               "This browser makes a key for spot-runners. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory Apiary receives only the public half. The key's ID stays on the Access key tab."
 
       assert has_element?(
                lv,
@@ -1472,7 +1518,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "Do these where spot-runners runs. Only the secret can't be seen again."
 
       assert words(lv, "#key-generated-once") ==
-               "The secret is shown once. Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory never received it, and it can't be shown again."
+               "The secret is shown once. Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory Apiary never received it, and it can't be shown again."
 
       assert has_element?(lv, "#key-generated-once strong", "The secret is shown once.")
 
@@ -1486,11 +1532,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "2 Set the key's ID. As a plain setting. It stays on the Access key tab. QORY_ACCESS_KEY_ID plain setting #{added.key_id}"
 
       assert words(lv, "#key-generated-steps-3") ==
-               "3 Set this server's public key. As a plain setting. It belongs to this server, not to spot-runners: the same for every machine connected to this Qory. It stays on the Access key tab. QORY_APIARY_PUBLIC_KEY plain setting " <>
+               "3 Set Qory Apiary's public key. As a plain setting. The same for every machine connected to this Qory Apiary. It stays on the Access key tab. QORY_APIARY_PUBLIC_KEY plain setting " <>
                  String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "")
 
       assert words(lv, "#key-generated-steps-4") =~
-               "4 Point qory at this server. The runner file there needs only the server's address."
+               "4 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables."
 
       assert lv |> element("#key-generated-yaml") |> render() |> text() =~
                "server:\n  url: #{ApiaryWeb.Endpoint.url()}"

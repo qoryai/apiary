@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         "Access key holds its keys: with none, the two ways to connect it, its kind's way " <>
         "first, each as numbered steps; then each key, active or revoked, its ID and how it " <>
         "was added, Add a key, the same two ways, for a new key beside the current one " <>
-        "until that one is revoked, and This server, its public key and address."
+        "until that one is revoked, and Configure a machine, what a machine is set with."
 
   # The keys a node or pool holds at a time, as the limit line says: its current key and a
   # replacement.
@@ -309,11 +309,11 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <p class="text-[13px]/5 text-muted">
         {if @node.kind == :pool,
           do:
-            "#{@node.name} needs a key before it can start runs. Its instances share one key. Pick the way that fits where they run, then follow its steps.",
+            "#{@node.name} needs a key before it can start runs; its instances share one. Choose one of two ways to give it one.",
           else:
-            "#{@node.name} needs a key before it can start runs. Pick the way that fits the machine, then follow its steps."}
+            "#{@node.name} needs a key before it can start runs. Choose one of two ways to give it one."}
       </p>
-      <div class="grid items-start gap-3 md:grid-cols-2">
+      <div class="grid items-stretch gap-3 md:grid-cols-2">
         <.way_card
           :for={{way, index} <- Enum.with_index(@ways)}
           way={way}
@@ -345,8 +345,9 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <p class="text-[13px]/5 text-muted">
         {if @node.kind == :pool,
           do:
-            "The instances of #{@node.name} sign every request with the pool's key. Qory keeps only the public half.",
-          else: "#{@node.name} signs every request with its key. Qory keeps only the public half."}
+            "The instances of #{@node.name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
+          else:
+            "#{@node.name} signs every request with its key. Qory Apiary keeps only the public half."}
       </p>
       <Mockup.members_note :if={@member and @active > 0} id="key-members-note" />
       <.key_card :for={key <- @keys} key={key} node={@node} member={@member} to={@to} />
@@ -380,38 +381,77 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
           <.icon name={way_icon(way)} class="size-4.5 flex-none text-muted" />
           <div class="grid min-w-0 flex-1 gap-0.5">
             <p class="font-medium">{way_title(way)}</p>
-            <p class="text-muted">{way_pick(way)}</p>
+            <p class="text-muted">{way_when(way, @node)}</p>
           </div>
           <.button href={way_to(way, @to)} class="flex-none">{way_button(way)}</.button>
         </div>
       </div>
     </SettingsComponents.part>
 
-    <SettingsComponents.part :if={@active > 0} id="node-server" title="This server" level={:h2}>
-      <div class="grid gap-3 text-[13px]/5">
-        <p class="text-muted">
-          They belong to this server, not to {@node.name}: the same for every machine connected to this Qory. A machine connected with the command already has both. With a generated key, set them beside the key's ID and secret.
-        </p>
-        <div class="grid max-w-[46rem] gap-3">
-          <div class="grid gap-1.5">
-            <p>Public key, as a plain setting:</p>
-            <.code_block
-              id="node-server-pin"
-              code={@server_pin}
-              copy_label="Copy variable"
-              wrap
-            />
-          </div>
-          <div class="grid gap-1.5">
-            <p>Address, in the runner file:</p>
-            <.code_block
-              id="node-server-yaml"
-              label="runner.yaml"
-              code={@server_yaml}
-              copy_label="Copy lines"
-            />
-          </div>
+    <SettingsComponents.part
+      :if={@active > 0}
+      id="node-configure"
+      title="Configure a machine"
+      level={:h2}
+    >
+      <div class="grid max-w-[46rem] gap-4 text-[13px]/5">
+        <div class="grid gap-1 text-muted">
+          <p>
+            A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice.
+          </p>
+          <p>With a generated key, set these where the machine runs qory.</p>
         </div>
+        <ol class="q-steps">
+          <li>
+            <span class="q-step-disc" aria-hidden="true">1</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Point qory at Qory Apiary.</p>
+              <p class="text-muted">
+                In the runner file. It is required: without it, qory ignores the three variables below.
+              </p>
+              <.code_block
+                id="node-configure-yaml"
+                label="runner.yaml"
+                code={@server_yaml}
+                copy_label="Copy lines"
+              />
+            </div>
+          </li>
+          <li>
+            <span class="q-step-disc" aria-hidden="true">2</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Set Qory Apiary's public key.</p>
+              <p class="text-muted">
+                QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary.
+              </p>
+              <.value_field id="node-configure-pin" name="QORY_APIARY_PUBLIC_KEY" value={@server_pin} />
+            </div>
+          </li>
+          <li>
+            <span class="q-step-disc" aria-hidden="true">3</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Set the key's ID.</p>
+              <%= case Enum.filter(@keys, &(&1.state == :active)) do %>
+                <% [key] -> %>
+                  <p class="text-muted">QORY_ACCESS_KEY_ID, a plain setting.</p>
+                  <.value_field id="node-configure-key-id" name="QORY_ACCESS_KEY_ID" value={key.id} />
+                <% _keys -> %>
+                  <p class="text-muted">
+                    QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above.
+                  </p>
+              <% end %>
+            </div>
+          </li>
+          <li>
+            <span class="q-step-disc" aria-hidden="true">4</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Keep the key's secret in a secret store.</p>
+              <p class="text-muted">
+                QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is never shown here. If it is lost, generate a new key and revoke the old one.
+              </p>
+            </div>
+          </li>
+        </ol>
       </div>
     </SettingsComponents.part>
     """
@@ -422,87 +462,92 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   attr :node, :map, required: true
   attr :to, :any, required: true
 
-  # A way to connect the node, as a card: its title and when to pick it, then its numbered
-  # steps, its one button in the first.
+  # A way to connect the node, as one of two equal options: when to choose it, what
+  # happens, the same four facts as the other's, and one button at its foot.
   defp way_card(assigns) do
-    assigns = assign(assigns, server_pin: server_pin(), server_yaml: server_yaml())
-
     ~H"""
     <div class="flex min-w-0 flex-col gap-3 rounded-box border border-line bg-base-100 p-4 text-[13px]/5 shadow-xs">
       <div class="flex items-center gap-3">
         <span class="grid size-8 flex-none place-items-center rounded-field bg-base-200 text-muted">
           <.icon name={way_icon(@way)} class="size-4.5" />
         </span>
-        <div class="grid min-w-0">
-          <h3 class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
-          <p class="text-muted">{way_pick(@way)}</p>
-        </div>
+        <h3 class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
       </div>
-      <ol class="q-steps">
-        <li :for={{{title, body}, n} <- Enum.with_index(way_steps(@way, @node), 1)}>
-          <span class="q-step-disc" aria-hidden="true">{n}</span>
-          <div class="grid min-w-0 gap-2">
-            <p class="text-[13.5px]/6 font-medium">{title}</p>
-            <p :if={is_binary(body)} class="text-muted">{body}</p>
-            <div :if={n == 1}>
-              <.button
-                variant={if @primary, do: "primary", else: "default"}
-                href={way_to(@way, @to)}
-              >
-                {way_button(@way)}
-              </.button>
-            </div>
-            <%= case body do %>
-              <% :pin -> %>
-                <.code_block
-                  id={"way-#{@way}-pin"}
-                  code={@server_pin}
-                  copy_label="Copy variable"
-                  wrap
-                />
-                <p class="text-muted">
-                  It belongs to this server, not to {@node.name}: the same for every machine connected to this Qory.
-                </p>
-              <% :yaml -> %>
-                <.code_block
-                  id={"way-#{@way}-yaml"}
-                  label="runner.yaml"
-                  code={@server_yaml}
-                  copy_label="Copy lines"
-                />
-              <% _ -> %>
-            <% end %>
-          </div>
-        </li>
-      </ol>
+      <p>{way_when(@way, @node)}</p>
+      <p class="text-muted">{way_happens(@way, @node)}</p>
+      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+        <%= for {label, value} <- way_facts(@way, @node) do %>
+          <dt class="text-faint">{label}</dt>
+          <dd class="min-w-0">{value}</dd>
+        <% end %>
+      </dl>
+      <div class="mt-auto pt-1">
+        <.button variant={if @primary, do: "primary", else: "default"} href={way_to(@way, @to)}>
+          {way_button(@way)}
+        </.button>
+      </div>
     </div>
     """
   end
 
-  # A way's steps: each its title and what it says, or the server's value it holds.
-  defp way_steps(:command, node),
-    do: [
-      {"Get the command.",
-       "It carries a code that works once, for 15 minutes, and is shown once."},
-      {"Run it on #{node.name}.",
-       "qory makes the key there and saves its secret, which never leaves #{node.name}. It also writes this server's address and public key into the runner file on #{node.name}. There is nothing to copy by hand."},
-      {"See it connected.",
-       "The command's page shows #{node.name} connected, with the key's fingerprint to check against the one qory printed."}
-    ]
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, required: true
 
-  defp way_steps(:generate, node),
-    do: [
-      {"Generate a key here.", "This browser makes it and shows its ID and its secret once."},
-      {"Set the key where #{node.name} runs.",
-       "QORY_ACCESS_KEY_ID as a plain setting, QORY_ACCESS_KEY_SECRET in that system's secret store."},
-      {"Set this server's public key beside them.", :pin},
-      {"Point qory at this server.", :yaml}
-    ]
+  # A value alone, with Copy: its name is said in the line above it.
+  defp value_field(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2">
+      <code
+        id={@id}
+        class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
+      >{@value}</code>
+      <.copy_button
+        id={"#{@id}-copy"}
+        target={"##{@id}"}
+        label={"Copy #{@name}"}
+        placement="left"
+        icon_only
+      />
+    </div>
+    """
+  end
 
-  # This server's values, the same for every node: a sample public key and address.
-  defp server_pin,
+  defp way_when(:command, node),
     do:
-      ~s(QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"q3Vd9xGm2LkR7tYbW4nE8sJpZ1cH6uFaT0oKiNvXyBe"}]\n)
+      "Choose it when you can open a terminal on #{node.name}: a laptop, or a server of your own."
+
+  defp way_when(:generate, node),
+    do:
+      "Choose it when #{node.name} runs in a CI job, or on a machine you can't open a terminal on."
+
+  defp way_happens(:command, node),
+    do:
+      "You get one command to run on #{node.name}. It carries a one-time code, not a key, which works once within 15 minutes. qory makes the key on #{node.name}, sends Qory Apiary only its public half, and saves everything else there itself."
+
+  defp way_happens(:generate, node),
+    do:
+      "This browser makes the key, and Qory Apiary receives only its public half. The next page shows the secret once, with everything else the machine needs, for you to set where #{node.name} runs."
+
+  defp way_facts(:command, node),
+    do: [
+      {"Key made", "On #{node.name}, by qory"},
+      {"Secret", "Stays on #{node.name}; it is never shown"},
+      {"By hand", "Nothing"},
+      {"Needs", "A terminal on #{node.name}"}
+    ]
+
+  defp way_facts(:generate, _node),
+    do: [
+      {"Key made", "In this browser"},
+      {"Secret", "Shown to you once, for the machine's or the CI's secret store"},
+      {"By hand", "The key's ID, its secret, Qory Apiary's public key and address"},
+      {"Needs", "This page open over HTTPS"}
+    ]
+
+  # Qory Apiary's values, the same for every node: a sample public key and address.
+  defp server_pin,
+    do: ~s([{"alg":"ed25519","public_key":"q3Vd9xGm2LkR7tYbW4nE8sJpZ1cH6uFaT0oKiNvXyBe"}])
 
   defp server_yaml, do: "server:\n  url: https://apiary.example.com\n"
 
@@ -515,12 +560,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   defp way_icon(:generate), do: "hero-key"
 
   defp way_title(:command), do: "Connect with a command"
-  defp way_title(:generate), do: "Generate a key"
-
-  defp way_pick(:command), do: "Pick it for a laptop or a server you can open a terminal on."
-
-  defp way_pick(:generate),
-    do: "Pick it for a CI job, a pool of short-lived machines, or a machine you can't type on."
+  defp way_title(:generate), do: "Generate a key in the browser"
 
   defp way_button(:command), do: "Get the command"
   defp way_button(:generate), do: "Generate a key"
@@ -606,7 +646,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
                                                                                                                                           do:
                                                                                                                                             "whatever runs the instances",
                                                                                                                                           else:
-                                                                                                                                            "the system that runs it"}; Qory receives only the public half. The key's ID stays on the Access key tab.
+                                                                                                                                            "the system that runs it"}; Qory Apiary receives only the public half. The key's ID stays on the Access key tab.
         </p>
       </div>
 
@@ -647,7 +687,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <div class="grid gap-1">
         <h2 class="text-[15px]/6 font-semibold">Connect {@node.name} with a command</h2>
         <p class="text-[13px]/[18px] text-muted">
-          The command connects {@node.name} by itself: it makes the machine's own key there, saves it, and writes the server lines. The secret never leaves the machine.
+          The command connects {@node.name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine.
         </p>
       </div>
 

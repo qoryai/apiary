@@ -182,7 +182,7 @@ defmodule ApiaryWeb.NodeComponents do
       <.notice kind={:warning}>
         <strong>{gettext("Machines can't reach this address.")}</strong>
         {gettext(
-          "%{url} works only on the computer Qory runs on. Set PUBLIC_URL to the address machines use, and the command will carry it.",
+          "%{url} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it.",
           url: @url
         )}
       </.notice>

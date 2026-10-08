@@ -103,7 +103,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   describe "the empty workspace" do
     @step_2_text "Run one command on the machine, or generate a key for a CI or another system."
 
-    @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each node, once you have added it."
+    @two_ways "Two ways to connect a machine Connect with a command. For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine. Generate a key in the browser. For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system. You choose one for each node, once you have added it."
 
     # The ids of step 2's buttons, in their order, and those shown as primary.
     defp ways(view) do
@@ -219,7 +219,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#onboarding .q-step-current", "Connect it")
 
       assert text(view, "#onboarding") =~
-               "A node or pool is connected once it has a key. Qory keeps only the key's public half."
+               "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
 
       assert text(view, "#onboarding") =~ @step_2_text
 
@@ -235,7 +235,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
                "Connect with a command For a laptop or a server you can open a terminal on. Get the command"
 
       assert text(view, "#onboarding-way-generate") ==
-               "Generate a key For a CI job, a pool of short-lived machines, or a machine you can't type on. Generate a key"
+               "Generate a key in the browser For a CI job, a pool of short-lived machines, or a machine you can't type on. Generate a key"
 
       assert has_element?(
                view,

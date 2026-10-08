@@ -34,8 +34,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     id="key-generate">` lives through the patch, with no flash. It is four numbered steps:
     store the secret, its slot `phx-update="ignore"`, empty from the server, carrying the
     public key the server stored (`data-public-key`), its ids the key's, so that a patch to
-    another key's page replaces it; set the key's ID; set this server's public key; point
-    qory at this server, the runner file's address. The hook writes the secret into the
+    another key's page replaces it; set the key's ID; set Qory Apiary's public key; point
+    qory at Qory Apiary, the runner file's address. The hook writes the secret into the
     slot only beside its own public key, empties a slot that shows a secret for another
     public key, and empties it as the page goes. The server never has the secret: not in
     assigns, a render, a log line or the record. What the page says of the secret follows
@@ -49,12 +49,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     back to the tab.
 
   **The tab.** While the node holds no active key, owners and admins read "How do you want
-  to connect …?" and the two ways as cards, each its title, when to pick it, and its
-  numbered steps, each step's value to copy inside it (the generated key's steps hold this
-  server's public key and address); a member reads that an owner or admin connects it. A
-  command not yet run shows inside the command's first step, never as a list of codes:
-  who got it and when,
-  until when it works, and "Cancel the command…", confirmed in place
+  to connect …?" and the two ways as two equal options, side by side and of one height:
+  each its title, when to choose it, what happens, the same four facts in the same rows
+  (Key made, Secret, By hand, Needs), and one button at its foot; no steps and nothing to
+  copy, each way's detail being on the page it opens. A member reads that an owner or
+  admin connects it. A command not yet run shows in the command's option, above its
+  button, never as a list of codes: who got it and when, until when it works, and "Cancel the command…", confirmed in place
   (`…/access-key/codes/:code_id/revoke`, the code's row id, never the code); the button
   becomes "Get a new command". The page reads the codes again the moment the first of them
   expires, so an expired one leaves at once, with its confirmation.
@@ -69,22 +69,22 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   - **Add a key**, once the node holds an active key: the same two ways as rows, in the
     same order, for moving to a new key; at the limit, only the line that says to revoke
     one first, and a command still waiting, which can still be cancelled.
-  - **This server**, once the node holds an active key, for everyone, at the limit too:
-    the server's public key, as a plain setting, and its address, in the runner file, said
-    to belong to this server, not to the node.
+  - **Configure a machine**, once the node holds an active key, for everyone, at the limit
+    too: four numbered steps, point qory at Qory Apiary (the runner file's address), set
+    Qory Apiary's public key, set the key's ID (its value while one key is active, else a
+    pointer to the key's card), keep the key's secret in a secret store (never shown).
   - **Runner file for a key** (`…/access-key/keys/:key_id/runner-file`), a page of its own
     for an active key, linked from its card for everyone who reads the node, since nothing
     on it is secret. What it says follows how the key came: a key connected with a command
-    has the runner file's `server` lines the command wrote, each marked as this server's or
+    has the runner file's `server` lines the command wrote, each marked as Qory Apiary's or
     this key's; a generated key has four numbered steps: keep the secret in a secret
-    store, set its id, set this server's public key, point qory at this server. Either way
+    store, set its id, set Qory Apiary's public key, point qory at Qory Apiary. Either way
     it says truly where the key's secret is.
 
   **The server's part.** The address and `QORY_APIARY_PUBLIC_KEY`, the instance's own
-  signing key, are the same for every machine connected to this Qory, so the pages show
-  them apart from the key's own values, each time with the line that says they belong to
-  this server, not to the node, from `Apiary.AccessKeys.server_lines/2` and
-  `server_variable/1`, which ask for no key.
+  signing key, are Qory Apiary's, the same for every machine connected to it, so the pages
+  name them as Qory Apiary's, apart from the key's own values, from
+  `Apiary.AccessKeys.server_lines/2` and `server_variable/1`, which ask for no key.
 
   Leaving a page or a confirmation gives the focus back to the button that opened it, or,
   where the act took that button away, to the key's heading or to the command's button.
@@ -903,19 +903,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   #
   # The server's address and its public key, `QORY_APIARY_PUBLIC_KEY`, the instance's own
   # signing key (`Apiary.SigningKey`): the same for every machine connected to this Qory,
-  # never part of a node's key, and said so wherever they show (`belongs_note/1`).
+  # never part of a node's key, and said so wherever they show (`same_note/0`).
 
-  defp belongs_note(node) do
-    gettext(
-      "It belongs to this server, not to %{name}: the same for every machine connected to this Qory.",
-      name: node.name
-    )
-  end
+  defp same_note, do: gettext("The same for every machine connected to this Qory Apiary.")
 
   # A command key's runner file: which of its lines are the key's, which the server's.
   defp parts_note do
     gettext(
-      "Only the key ID is this key's. The address and the public key are this server's, the same for every machine connected to it."
+      "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
     )
   end
 
@@ -933,9 +928,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     %{url: url, public_key: [pin_head | pins]} = server_lines()
 
     marked = [
-      {url, "# this server"},
+      {url, "# Qory Apiary"},
       {AccessKeys.key_line(key), "# this key"},
-      {pin_head, "# this server's public key"}
+      {pin_head, "# Qory Apiary's public key"}
     ]
 
     width = marked |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
@@ -969,16 +964,63 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp way_icon(:generate), do: "hero-key"
 
   defp way_title(:new_code), do: gettext("Connect with a command")
-  defp way_title(:generate), do: gettext("Generate a key")
+  defp way_title(:generate), do: gettext("Generate a key in the browser")
 
-  defp way_pick(:new_code),
-    do: gettext("Pick it for a laptop or a server you can open a terminal on.")
-
-  defp way_pick(:generate),
+  # When to choose a way: first on its card and its row, since it is the goal.
+  defp way_when(:new_code, node),
     do:
       gettext(
-        "Pick it for a CI job, a pool of short-lived machines, or a machine you can't type on."
+        "Choose it when you can open a terminal on %{name}: a laptop, or a server of your own.",
+        name: node.name
       )
+
+  defp way_when(:generate, node),
+    do:
+      gettext(
+        "Choose it when %{name} runs in a CI job, or on a machine you can't open a terminal on.",
+        name: node.name
+      )
+
+  # What happens, in two sentences.
+  defp way_happens(:new_code, node),
+    do: [
+      gettext(
+        "You get one command to run on %{name}. It carries a one-time code, not a key, which works once within 15 minutes.",
+        name: node.name
+      ),
+      gettext(
+        "qory makes the key on %{name}, sends Qory Apiary only its public half, and saves everything else there itself.",
+        name: node.name
+      )
+    ]
+
+  defp way_happens(:generate, node),
+    do: [
+      gettext("This browser makes the key, and Qory Apiary receives only its public half."),
+      gettext(
+        "The next page shows the secret once, with everything else the machine needs, for you to set where %{name} runs.",
+        name: node.name
+      )
+    ]
+
+  # The same four facts for each way, in the same rows, so the two compare row by row.
+  defp way_facts(:new_code, node),
+    do: [
+      {gettext("Key made"), gettext("On %{name}, by qory", name: node.name)},
+      {gettext("Secret"), gettext("Stays on %{name}; it is never shown", name: node.name)},
+      {gettext("By hand"), gettext("Nothing")},
+      {gettext("Needs"), gettext("A terminal on %{name}", name: node.name)}
+    ]
+
+  defp way_facts(:generate, _node),
+    do: [
+      {gettext("Key made"), gettext("In this browser")},
+      {gettext("Secret"),
+       gettext("Shown to you once, for the machine's or the CI's secret store")},
+      {gettext("By hand"),
+       gettext("The key's ID, its secret, Qory Apiary's public key and address")},
+      {gettext("Needs"), gettext("This page open over HTTPS")}
+    ]
 
   defp way_button(:new_code, []), do: gettext("Get the command")
   defp way_button(:new_code, _waiting), do: gettext("Get a new command")
@@ -1016,7 +1058,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <.page_header id="code-issued-header" title={command_title(@node)}>
           <:description>
             {gettext(
-              "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes the server lines. The secret never leaves the machine.",
+              "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine.",
               name: @node.name
             )}
           </:description>
@@ -1145,13 +1187,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {if @node.kind == :pool,
               do:
                 gettext(
-                  "This browser makes a key for %{name}. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory receives only the public half. The key's ID stays on the Access key tab.",
+                  "This browser makes a key for %{name}. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory Apiary receives only the public half. The key's ID stays on the Access key tab.",
                   name: @node.name
                 ),
               else:
                 pgettext(
                   "plain",
-                  "This browser makes a key for %{name}. You see its secret once, to copy into your CI's secret store, or the settings of the system that runs it; Qory receives only the public half. The key's ID stays on the Access key tab.",
+                  "This browser makes a key for %{name}. You see its secret once, to copy into your CI's secret store, or the settings of the system that runs it; Qory Apiary receives only the public half. The key's ID stays on the Access key tab.",
                   name: @node.name
                 )}
           </:description>
@@ -1176,7 +1218,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             <div id="key-generate-insecure" class="hidden">
               <.notice kind={:warning}>
                 {gettext(
-                  "This browser makes keys only on a page served over HTTPS. Open Qory over HTTPS, or connect the machine with a command."
+                  "This browser makes keys only on a page served over HTTPS. Open Qory Apiary over HTTPS, or connect the machine with a command."
                 )}
               </.notice>
             </div>
@@ -1190,7 +1232,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             <div id="key-generate-lost" class="hidden">
               <.notice kind={:error}>
                 {gettext(
-                  "The connection to Qory dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."
+                  "The connection to Qory Apiary dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."
                 )}
               </.notice>
             </div>
@@ -1245,7 +1287,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             <.notice kind={:warning}>
               <strong>{gettext("The secret is shown once.")}</strong>
               {gettext(
-                "Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory never received it, and it can't be shown again."
+                "Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory Apiary never received it, and it can't be shown again."
               )}
             </.notice>
           </div>
@@ -1326,9 +1368,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
               </dl>
             </:step>
-            <:step title={gettext("Set this server's public key.")}>
+            <:step title={gettext("Set Qory Apiary's public key.")}>
               <p class="text-muted">
-                {gettext("As a plain setting.")} {belongs_note(@node)} {gettext(
+                {gettext("As a plain setting.")} {same_note()} {gettext(
                   "It stays on the Access key tab."
                 )}
               </p>
@@ -1340,9 +1382,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
               </dl>
             </:step>
-            <:step title={gettext("Point qory at this server.")}>
+            <:step title={gettext("Point qory at Qory Apiary.")}>
               <p class="text-muted">
-                {gettext("The runner file there needs only the server's address.")}
+                {gettext(
+                  "In the runner file. It is required: without it, qory ignores the three variables."
+                )}
               </p>
               <.code_block
                 id="key-generated-yaml"
@@ -1397,7 +1441,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <.page_header id="key-runner-file-header" title={runner_file_title(@key)}>
           <:description>
             {if @key.arrived_by == :code,
-              do: gettext("The server lines for this key. Nothing here is secret."),
+              do: gettext("The runner file's lines for this key. Nothing here is secret."),
               else:
                 gettext("What %{name} needs, besides the secret. Nothing here is secret.",
                   name: @node.name
@@ -1456,7 +1500,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   wrap
                 />
               </:step>
-              <:step title={gettext("Set this server's public key.")}>
+              <:step title={gettext("Set Qory Apiary's public key.")}>
                 <p class="text-muted">{gettext("As a plain setting.")}</p>
                 <.code_block
                   id="key-runner-file-server-env"
@@ -1464,9 +1508,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   copy_label={gettext("Copy variable")}
                   wrap
                 />
-                <p id="key-runner-file-belongs" class="text-muted">{belongs_note(@node)}</p>
+                <p id="key-runner-file-belongs" class="text-muted">{same_note()}</p>
               </:step>
-              <:step title={gettext("Point qory at this server.")}>
+              <:step title={gettext("Point qory at Qory Apiary.")}>
                 <.code_block
                   id="key-runner-file-url"
                   label="runner.yaml"
@@ -1527,18 +1571,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {if @node.kind == :pool,
               do:
                 gettext(
-                  "%{name} needs a key before it can start runs. Its instances share one key. Pick the way that fits where they run, then follow its steps.",
+                  "%{name} needs a key before it can start runs; its instances share one. Choose one of two ways to give it one.",
                   name: @node.name
                 ),
               else:
                 gettext(
-                  "%{name} needs a key before it can start runs. Pick the way that fits the machine, then follow its steps.",
+                  "%{name} needs a key before it can start runs. Choose one of two ways to give it one.",
                   name: @node.name
                 )}
           </p>
           <div
             id="node-ways"
-            class={["grid items-start gap-3", length(@ways) > 1 && "md:grid-cols-2"]}
+            class={["grid items-stretch gap-3", length(@ways) > 1 && "md:grid-cols-2"]}
           >
             <.way_card
               :for={{way, index} <- Enum.with_index(@ways)}
@@ -1577,12 +1621,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {if @node.kind == :pool,
               do:
                 gettext(
-                  "The instances of %{name} sign every request with the pool's key. Qory keeps only the public half.",
+                  "The instances of %{name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
                   name: @node.name
                 ),
               else:
                 gettext(
-                  "%{name} signs every request with its key. Qory keeps only the public half.",
+                  "%{name} signs every request with its key. Qory Apiary keeps only the public half.",
                   name: @node.name
                 )}
           </p>
@@ -1672,9 +1716,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           </div>
         </SettingsComponents.part>
 
-        <%!-- Once the node holds a key: the server's own values, for everyone, at the
-             limit too. --%>
-        <.server_part :if={@active > 0} id="node-server" node={@node} />
+        <%!-- Once the node holds a key: what a machine is configured with, for everyone,
+             at the limit too; nothing in it is secret. --%>
+        <.configure_part
+          :if={@active > 0}
+          id="node-configure"
+          keys={Enum.filter(@keys, &(state(&1) == :active))}
+        />
       </div>
     </Layouts.app>
     """
@@ -1688,8 +1736,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   attr :may, :map, required: true
   attr :paths, :map, required: true
 
-  # A way to connect the node, as a card: what it is and when to pick it, then its steps,
-  # each with what it needs inside it: the commands waiting and the button in the first.
+  # A way to connect the node, as one of two equal options: when to choose it, what
+  # happens, the same four facts as the other's, a command still waiting where it is the
+  # command's, and its one button at the foot. No steps and nothing to copy: each way's
+  # detail is on the page it opens.
   defp way_card(assigns) do
     ~H"""
     <div
@@ -1700,89 +1750,38 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <span class="grid size-8 flex-none place-items-center rounded-field bg-base-200 text-muted">
           <.icon name={way_icon(@way)} class="size-4.5" />
         </span>
-        <div class="grid min-w-0">
-          <h3 id={"way-#{@way}-title"} class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
-          <p class="text-muted">{way_pick(@way)}</p>
-        </div>
+        <h3 id={"way-#{@way}-title"} class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
       </div>
-      <.how_to :if={@way == :new_code} id="way-new_code-steps">
-        <:step title={gettext("Get the command.")}>
-          <p class="text-muted">
-            {gettext("It carries a code that works once, for 15 minutes, and is shown once.")}
-          </p>
-          <.waiting codes={@codes} code={@code} node={@node} may={@may} paths={@paths} />
-          <div>
-            <.way_button
-              way={@way}
-              primary={@primary}
-              codes={@codes}
-              paths={@paths}
-              class="max-[479px]:w-full"
-            />
-          </div>
-        </:step>
-        <:step title={gettext("Run it on %{name}.", name: @node.name)}>
-          <p class="text-muted">
-            {gettext(
-              "qory makes the key there and saves its secret, which never leaves %{name}. It also writes this server's address and public key into the runner file on %{name}. There is nothing to copy by hand.",
-              name: @node.name
-            )}
-          </p>
-        </:step>
-        <:step title={gettext("See it connected.")}>
-          <p class="text-muted">
-            {gettext(
-              "The command's page shows %{name} connected, with the key's fingerprint to check against the one qory printed.",
-              name: @node.name
-            )}
-          </p>
-        </:step>
-      </.how_to>
-      <.how_to :if={@way == :generate} id="way-generate-steps">
-        <:step title={gettext("Generate a key here.")}>
-          <p class="text-muted">
-            {gettext("This browser makes it and shows its ID and its secret once.")}
-          </p>
-          <div>
-            <.way_button
-              way={@way}
-              primary={@primary}
-              codes={@codes}
-              paths={@paths}
-              class="max-[479px]:w-full"
-            />
-          </div>
-        </:step>
-        <:step title={gettext("Set the key where %{name} runs.", name: @node.name)}>
-          <p class="text-muted">
-            <.rich text={
-              rich_pgettext(
-                "plain",
-                "%{id} as a plain setting, %{secret} in that system's secret store.",
-                id: {:m, "QORY_ACCESS_KEY_ID"},
-                secret: {:m, "QORY_ACCESS_KEY_SECRET"}
-              )
-            } />
-          </p>
-        </:step>
-        <:step title={gettext("Set this server's public key beside them.")}>
-          <.code_block
-            id="way-generate-pin"
-            code={variable_line(server_variable())}
-            copy_label={gettext("Copy variable")}
-            wrap
-          />
-          <p class="text-muted">{belongs_note(@node)}</p>
-        </:step>
-        <:step title={gettext("Point qory at this server.")}>
-          <.code_block
-            id="way-generate-yaml"
-            label="runner.yaml"
-            code={address_file()}
-            copy_label={gettext("Copy lines")}
-          />
-        </:step>
-      </.how_to>
+      <p id={"way-#{@way}-when"}>{way_when(@way, @node)}</p>
+      <p id={"way-#{@way}-happens"} class="text-muted">
+        {Enum.join(way_happens(@way, @node), " ")}
+      </p>
+      <dl
+        id={"way-#{@way}-facts"}
+        class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1"
+      >
+        <%= for {label, value} <- way_facts(@way, @node) do %>
+          <dt class="text-faint">{label}</dt>
+          <dd class="min-w-0">{value}</dd>
+        <% end %>
+      </dl>
+      <.waiting
+        :if={@way == :new_code}
+        codes={@codes}
+        code={@code}
+        node={@node}
+        may={@may}
+        paths={@paths}
+      />
+      <div class="mt-auto pt-1">
+        <.way_button
+          way={@way}
+          primary={@primary}
+          codes={@codes}
+          paths={@paths}
+          class="max-[479px]:w-full"
+        />
+      </div>
     </div>
     """
   end
@@ -1808,7 +1807,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <.icon name={way_icon(@way)} class="mt-0.5 size-4.5 flex-none text-muted" />
       <div class="grid min-w-0 flex-1 basis-64 gap-0.5">
         <h3 id={"way-#{@way}-title"} class="font-medium">{way_title(@way)}</h3>
-        <p class="text-muted">{way_pick(@way)}</p>
+        <p class="text-muted">{way_when(@way, @node)}</p>
         <.waiting
           :if={@way == :new_code}
           codes={@codes}
@@ -2002,43 +2001,95 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   end
 
   attr :id, :string, required: true
-  attr :node, Node, required: true
+  attr :keys, :list, required: true, doc: "the node's active keys"
 
-  # The server's part of the tab, once the node holds a key: its public key and its
-  # address, for everyone who reads the node, at the limit too, since nothing in it is
-  # secret.
-  defp server_part(assigns) do
+  # Configure a machine, once the node holds a key: what a machine with a generated key is
+  # set with, as four steps, each value with Copy but the secret, which is never shown
+  # here. The key's ID is given only while one key is active; with two, the step points
+  # to the key's card.
+  defp configure_part(assigns) do
+    {name, pin} = server_variable()
+    assigns = assign(assigns, pin: pin, pin_name: name)
+
     ~H"""
-    <SettingsComponents.part id={@id} title={gettext("This server")} level={:h2}>
-      <div class="grid gap-3 text-[13px]/5">
-        <p id={"#{@id}-note"} class="text-muted">
-          {gettext(
-            "They belong to this server, not to %{name}: the same for every machine connected to this Qory. A machine connected with the command already has both. With a generated key, set them beside the key's ID and secret.",
-            name: @node.name
-          )}
-        </p>
-        <div class="grid max-w-[46rem] gap-3">
-          <div class="grid gap-1.5">
-            <p>{gettext("Public key, as a plain setting:")}</p>
-            <.code_block
-              id={"#{@id}-pin"}
-              code={variable_line(server_variable())}
-              copy_label={gettext("Copy variable")}
-              wrap
-            />
-          </div>
-          <div class="grid gap-1.5">
-            <p>{gettext("Address, in the runner file:")}</p>
+    <SettingsComponents.part id={@id} title={gettext("Configure a machine")} level={:h2}>
+      <div class="grid max-w-[46rem] gap-4 text-[13px]/5">
+        <div id={"#{@id}-lead"} class="grid gap-1 text-muted">
+          <p>
+            {gettext(
+              "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a value set twice."
+            )}
+          </p>
+          <p>{gettext("With a generated key, set these where the machine runs qory.")}</p>
+        </div>
+        <.how_to id={"#{@id}-steps"}>
+          <:step title={gettext("Point qory at Qory Apiary.")}>
+            <p class="text-muted">
+              {gettext(
+                "In the runner file. It is required: without it, qory ignores the three variables below."
+              )}
+            </p>
             <.code_block
               id={"#{@id}-yaml"}
               label="runner.yaml"
               code={address_file()}
               copy_label={gettext("Copy lines")}
             />
-          </div>
-        </div>
+          </:step>
+          <:step title={gettext("Set Qory Apiary's public key.")}>
+            <p class="text-muted">
+              {gettext(
+                "QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary."
+              )}
+            </p>
+            <.value_field id={"#{@id}-pin"} name={@pin_name} value={@pin} />
+          </:step>
+          <:step title={gettext("Set the key's ID.")}>
+            <%= case @keys do %>
+              <% [key] -> %>
+                <p class="text-muted">{gettext("QORY_ACCESS_KEY_ID, a plain setting.")}</p>
+                <.value_field id={"#{@id}-key-id"} name="QORY_ACCESS_KEY_ID" value={key.key_id} />
+              <% _keys -> %>
+                <p id={"#{@id}-key-id-pointer"} class="text-muted">
+                  {gettext(
+                    "QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above."
+                  )}
+                </p>
+            <% end %>
+          </:step>
+          <:step title={gettext("Keep the key's secret in a secret store.")}>
+            <p class="text-muted">
+              {gettext(
+                "QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is never shown here. If it is lost, generate a new key and revoke the old one."
+              )}
+            </p>
+          </:step>
+        </.how_to>
       </div>
     </SettingsComponents.part>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, required: true
+
+  # A value alone, with Copy: its name is said in the line above it.
+  defp value_field(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2">
+      <code
+        id={@id}
+        class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
+      >{@value}</code>
+      <.copy_button
+        id={"#{@id}-copy"}
+        target={"##{@id}"}
+        label={gettext("Copy %{name}", name: @name)}
+        placement="left"
+        icon_only
+      />
+    </div>
     """
   end
 
