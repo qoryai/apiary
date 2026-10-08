@@ -423,6 +423,23 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   for byte after the query's percent-decoding; a parameter sent as anything but one string
   (`forge[]=`) names no repository, which is the baseline and not an error. Of a parameter
   sent twice the last is read. Nothing of the query is logged.
+- The run's other labels are kept as sent. A `task` label is an ordinary label, shown
+  under Labels with the others; it neither titles nor filters a run.
+- What a run is about is `about` of `dev.qory.run.started`, optional, read member by
+  member (`Apiary.Runs.Fold`). `kind` (1 to 64 bytes), `title` (1 to 256 bytes) and
+  `details` (a JSON object of at most 8 KiB encoded and at most 4 levels deep, `details`
+  itself the first and an array a level like an object) are each kept whole or dropped
+  whole when they break their bound. `subjects` is a list of `{type, ref, url?, title?}`: a
+  subject whose `type` does not match `^[a-z0-9]+([ _.-][a-z0-9]+)*$` in at most 64 bytes,
+  or whose `ref` is not 1 to 256 bytes, is dropped on its own; its `title` (1 to 256 bytes)
+  and `url` (at most 2048 bytes) are dropped from it alone when they break theirs. A `url`
+  is kept only when it is absolute `http` or `https` with a host and no user name or
+  password. Subjects are de-duplicated by type and ref, the first kept, and more than 16
+  are cut to the first 16. A type is shown as given: Qory Apiary knows no subject types. A
+  later `run.started` replaces all of it, like every other field. A run's title is its
+  `about` title, else `Run` and its short id. Nothing of `about` is part of the run
+  configuration request, which carries the labels alone, so it never decides a run's
+  policy.
 - When the run configuration cannot be read the endpoint answers `503
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.

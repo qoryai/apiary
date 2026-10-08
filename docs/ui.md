@@ -59,7 +59,7 @@ page, the one the person came from (Two levels, below).
   Settings and of the Instance, and Preferences' theme and shortcuts, each
   named by whose it is where two scopes share a name (Workspace overview, Organisation
   settings › People, Instance settings › Configuration; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
-  runs by id or task, places, what New offers and, for what is typed, the deletions the
+  runs by id or title, places, what New offers and, for what is typed, the deletions the
   reader may take. Every word of it comes from the server; a runner's words are written
   as text.
 - **New** offers only what the reader may do where the page is
@@ -565,11 +565,10 @@ version. Only the version in force is exported; another version's path sends on 
   no place otherwise, so a screen reader hears what a view, a filter or a search left; an
   empty list says its empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
-  (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`,
-  `denied:yes`; `decision:`, `tools:`, `seen:` on Network access) become the URL's
-  parameters and show as tokens, and the other words are the free text, `q`, matched as
-  text without regard to case (a run's id, task or target; a destination's host or
-  path). A word it cannot read is said in a notice, never dropped in silence. On Network
+  (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
+  `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
+  as tokens, and the other words are the free text, `q`, matched as text without regard to
+  case (a run's id, title or target; a destination's host or path). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
@@ -584,10 +583,14 @@ version. Only the version in force is exported; another version's path sends on 
   headings under an `<h2>` for a screen reader so the outline never skips a level.
   Choosing one sets the target; below 1280 px the Filter menu's Target section does it,
   never both.
-- **A run is one line** (`<.runs_table>`): its task, else its id, the only strong text; its
+- **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any.
+  when there are any. What the run says it is about is a muted line under them, only when
+  it names a kind or a subject: the kind, then up to two subjects, each its type and ref
+  as given ("pull request #412"), then "+N more", as text and never a link, since the
+  title's link covers the row. Below 640 px it names one subject, so the count stays in
+  sight; the whole line is its tooltip.
 - **A destination is one line** (`<.connections_table>`, `RunComponents.connection_row/1`):
   its host in mono, the port faint and the path muted, the only strong text; its runs and
   attempts muted numbers; allowed and denied a thin split with its two numbers, the denied
@@ -1064,6 +1067,12 @@ needs becomes a component, or an attribute of one, not a copy.
   made is the server's too. A whole number is a text field with `inputmode="numeric"`,
   not `type="number"`, whose value the browser empties when it is not a number.
   `test/apiary_web/novalidate_test.exs` fails for a form without the attribute.
+- **`<.external_link>`** is every link out of the console: it opens in a new tab, with
+  `rel="noopener noreferrer nofollow"`, an icon that shows it leaves and "(opens in a new
+  tab)" for a screen reader. A url is a link only when it is absolute `http` or `https`
+  with a host and no user name or password (`external_url?/1`); anything else, or none,
+  is the same words as text, so a url from a record is never a `javascript:`, `data:` or
+  relative link.
 - **`<.inline_confirm>`** is a confirmation in place (No modals, above): the question,
   one muted sentence of what happens, the act's button and Cancel, on one line that
   wraps. The group is named by its question and described by its sentence (`<id>-sub`),
@@ -1267,8 +1276,11 @@ on its own) sits beside it, on every tab but Terminal, which is wide and takes t
 whole width (`q-run-wide`). The top bar's breadcrumb ends with the run's target, a link to
 the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
 
-- **The header is two lines**: the title (the task, or the run's short id) alone, then
-  one muted meta line that starts with the state as a dot and its word
+- **The header** is the title (the one the run gave in its `about`, or the run's short id)
+  alone; then, when the run names a kind or subjects, one line of what it is about: the
+  kind, then at most three subjects, each its type and ref as given and a link out
+  (`<.external_link>`) with its title as the tooltip, then "+N more" (all of them are in
+  the rail's About); then one muted meta line that starts with the state as a dot and its word
   (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
   alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
@@ -1281,9 +1293,15 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal, Network access and Details (from 1440 px only on
   Terminal and on Details itself, where there is no rail), stick under the top bar; each is a live action of the one LiveView, so a tab is a patch.
-- **The Details rail** is key and value lines under small headings (Run, Labels, Command,
-  Record, Policy in force), no card and no chip; the run's labels are its own
-  identifiers, in mono, and one that names the target leads to its page. Below 1440 px,
+- **The Details rail** is key and value lines under small headings (About, Run, Labels,
+  Command, Record, Policy in force), no card and no chip; the run's labels are its own
+  identifiers, in mono, and one that names the target leads to its page.
+- **About** is the rail's first section, shown when the run names a kind, a subject or
+  details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
+  its title muted under it, cut to a line and whole on hover; then the details in mono, by
+  key, a row per member, a member that is a non-empty object a row per member of its own
+  keyed `outer.inner`, a string as given and anything else as compact JSON. The title is the
+  page's `<h1>` and is not repeated there. Below 1440 px,
   and from it when Terminal took the rail's room, the Details tab shows this same element
   in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.
