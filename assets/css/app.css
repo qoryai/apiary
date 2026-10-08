@@ -5473,6 +5473,35 @@
     letter-spacing: -0.005em;
     text-wrap: pretty;
   }
+  /* What the run says it is about, under the title: the kind, then the subjects, each
+     after a faint middle dot like the meta line's items; the dot before the first item of
+     each line is clipped, so a wrapped line starts clean. An item longer than the line
+     wraps within itself. */
+  .q-run-about {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 2px;
+    margin-top: 2px;
+    margin-left: -17px;
+    clip-path: inset(0 0 0 17px);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-run-about > * {
+    position: relative;
+    min-width: 0;
+    max-width: calc(100% - 17px);
+    margin-left: 17px;
+    overflow-wrap: anywhere;
+  }
+  .q-run-about > *::before {
+    content: "·";
+    position: absolute;
+    left: -11px;
+    color: var(--q-faint);
+  }
   .q-run-sub {
     display: flex;
     align-items: flex-start;
@@ -5679,6 +5708,14 @@
   .q-rail-kv-mono :is(dt, dd) {
     font-family: var(--font-mono);
     font-size: 0.75rem;
+  }
+  /* About: each subject a value of its own under Subjects, its title muted under it; a
+     details key breaks before a dot, or within a part too long for the column. */
+  .q-rail-about > dd {
+    grid-column: 2;
+  }
+  .q-rail-about-details dt {
+    overflow-wrap: break-word;
   }
   .q-rail-kv-mono dt {
     color: var(--q-faint);
@@ -6717,6 +6754,16 @@
   }
   .q-link:hover {
     text-decoration-color: currentColor;
+  }
+  /* A link out of the console (`external_link/1`): its words, then a faint icon. */
+  .q-ext-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .q-ext-icon {
+    flex: none;
+    color: var(--q-faint);
   }
 
   .q-rowbtn {

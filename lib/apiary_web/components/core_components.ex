@@ -1167,6 +1167,56 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
+  ## Links out
+
+  @doc """
+  A link to a page outside the console, which opens in a new tab: the icon shows that it
+  leaves, and a screen reader hears that it opens a new tab. `rel` keeps the console's
+  window and address from the page, and gives the link no weight. A url that is not
+  `external_url?/1` (one with a user name or password among them), or none, renders the content as plain text with the same `class` and
+  attributes, so a url from a record is never a `javascript:`, `data:` or relative link.
+  """
+  attr :href, :any, required: true, doc: "the url; nil, or one that may not be a link, for text"
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def external_link(assigns) do
+    assigns = assign(assigns, :link, external_url?(assigns.href))
+
+    ~H"""
+    <a
+      :if={@link}
+      href={@href}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      class={["q-link q-ext-link", @class]}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+      <.icon name="hero-arrow-top-right-on-square-micro" class="q-ext-icon size-3" />
+      <span class="sr-only">{gettext("(opens in a new tab)")}</span>
+    </a>
+    <span :if={!@link} class={@class} {@rest}>{render_slot(@inner_block)}</span>
+    """
+  end
+
+  @doc """
+  Whether `url` may be a link out: an absolute `http` or `https` url with a host, and with
+  no user name or password in it.
+  """
+  def external_url?(url) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host, userinfo: nil}} when scheme in ["http", "https"] ->
+        is_binary(host) and host != ""
+
+      _ ->
+        false
+    end
+  end
+
+  def external_url?(_url), do: false
+
   ## Tables
 
   @doc """

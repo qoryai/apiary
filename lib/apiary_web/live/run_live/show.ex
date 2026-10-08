@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.RunLive.Show do
   @moduledoc """
-  One run, read as a record, on a work surface: a header of two lines from `run.started`,
-  `run.exited` and the policy applied (the title; the state and the run's facts, with Close
-  run and the ⋯ menu), and four tabs that are four live actions of this one LiveView, so
+  One run, read as a record, on a work surface: a header from `run.started`, `run.exited`
+  and the policy applied (the title; what the run says it is about, when it says; the state
+  and the run's facts, with Close run and the ⋯ menu), and four tabs that are four live actions of this one LiveView, so
   that a tab is a `patch` and the header stays: Timeline, Terminal, Network access
   (`/runs/:run_id/network`, the live action `:connections`; the old `/connections` path
   sends on here), Details.
@@ -125,6 +125,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
               } />
             </h1>
+            <.about_header run={@run} />
             <div class="q-run-sub">
               <div class="q-run-meta-wrap">
                 <p id="run-meta" class="q-run-meta">
@@ -808,6 +809,8 @@ defmodule ApiaryWeb.RunLive.Show do
     ~H"""
     <aside id="run-details" class="q-run-rail" aria-label={gettext("Details")}>
       <h2 class="q-rail-title">{gettext("Details")}</h2>
+
+      <.about_section run={@run} />
 
       <section class="q-rail-sec" aria-labelledby="rail-run">
         <h3 id="rail-run">{gettext("Run")}</h3>
