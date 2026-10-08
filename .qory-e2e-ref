@@ -1,4 +1,5 @@
 # The commit of qoryai/qory the end to end job builds the node's command from, with the
 # runner at the ref in .runner-e2e-ref: a commit of qory's next branch, which signs every
-# request with the node's Ed25519 access key and verifies every answer under the pin.
-6dfed3bae978ceb5873b8ab3bd3397c75ee41f57
+# request with the node's Ed25519 access key, verifies every answer under the pin, and
+# keeps each run's record in its state directory on the node, outside the checkout.
+5462ec5686d193452cfacda4f60c09cdc3e97759
