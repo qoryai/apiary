@@ -107,6 +107,13 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert page_title(view) =~ "Audit log · #{scope.organisation.name}"
     end
 
+    test "the breadcrumb ends with Audit log, the page itself", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+
+      assert crumbs(view, :organisation) == [{"Audit log", nil}]
+      assert has_element?(view, "#breadcrumb [aria-current=page]", "Audit log")
+    end
+
     test "the Action filter's box narrows its options, keeping the chosen one",
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "?action=workspace.rename")

@@ -82,6 +82,8 @@ defmodule ApiaryWeb.RunLive.Index do
       width="work"
       narrowed={Layouts.narrowed(@filters.target, Narrowing.shared?(@narrowing))}
     >
+      <:crumb>{gettext("Runs")}</:crumb>
+
       <div id="runs-page" class={["q-lp", @preview_on && "q-lp-preview"]}>
         <.page_header title={gettext("Runs")}>
           <:description>

@@ -1234,6 +1234,15 @@
     color: var(--q-muted);
     font-weight: 400;
   }
+  /* The parent's back mark, shown on a phone only (below). */
+  .q-trail-back {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    margin-inline-end: -2px;
+    color: var(--q-faint);
+  }
   .q-trail-chev {
     display: grid;
     width: 1.5rem;
@@ -2652,6 +2661,16 @@
     .q-trail-lead,
     .q-collapse {
       display: none;
+    }
+    /* A page under a parent keeps the parent before it, a link back: "‹ Runs / Run …". */
+    .q-trail-lead.q-trail-up {
+      display: inline-flex;
+    }
+    .q-trail-up .q-trail-back {
+      display: inline-block;
+    }
+    .q-trail-up + .q-trail-item > .q-trail-sep {
+      display: inline;
     }
   }
 }

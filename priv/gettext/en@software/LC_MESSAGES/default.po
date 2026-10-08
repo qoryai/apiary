@@ -4978,6 +4978,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/policy_live/views.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Export"
 msgstr ""
@@ -8455,7 +8456,9 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/target_live/show.ex
+#: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Overview"
 msgstr ""
@@ -9532,6 +9535,7 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
@@ -10348,6 +10352,7 @@ msgstr "Repository policy"
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets"
 msgstr "Repositories"
@@ -11953,6 +11958,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version}"
 msgstr ""

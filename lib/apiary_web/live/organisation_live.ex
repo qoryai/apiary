@@ -33,6 +33,8 @@ defmodule ApiaryWeb.OrganisationLive do
       counts={@nav_counts}
       nav={:organisation_overview}
     >
+      <:crumb>{gettext("Overview")}</:crumb>
+
       <div :if={is_nil(@current_scope.workspace)} id="not-added">
         <.empty_state
           icon="hero-squares-2x2"

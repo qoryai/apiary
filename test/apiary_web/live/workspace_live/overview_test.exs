@@ -100,6 +100,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     assert has_element?(view, "#nav-network[href='#{workspace_path(scope, "/network")}']")
   end
 
+  test "the breadcrumb ends with Overview, the page itself", %{conn: conn, scope: scope} do
+    view = open(conn, scope)
+
+    assert crumbs(view) == [{"Overview", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Overview")
+  end
+
   describe "the empty workspace" do
     @step_2_text "Run one command on the machine, or generate a key for a CI or another system."
 

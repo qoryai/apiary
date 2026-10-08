@@ -676,10 +676,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
 
-      # The crumb and the header's link land on its page at its address.
+      # The header's link lands on its page at its address.
       page = workspace_path(scope, "/targets/github.example/acme/shop")
       assert has_element?(view, "#run-target[href='#{page}']")
-      assert has_element?(view, "#breadcrumb a[href='#{page}']")
 
       view |> element("#cx-#{id}-allow") |> render_click()
       assert text(view, "#rule-panel") =~ "This repository github.example/acme/shop"

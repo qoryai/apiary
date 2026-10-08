@@ -25,8 +25,14 @@ page, the one the person came from (Two levels, below).
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
   then the workspace, each a link to its home, and the page's own segments, a target or a
-  record, the last one the page with `aria-current="page"`; on a page of a level's
-  settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
+  record, the last one the page with `aria-current="page"`. A page of a workspace or an
+  organisation starts them with its section's name as the sidebar words it: a link to the
+  section's page on a page under it (`Acme / Main / Runs / Run 0191f2a4`, also where that
+  run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
+  itself on the section's own page (`Acme / Main / Runs`, `Acme / Main / Overview`,
+  `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
+  target, a node, a run, an integration) is the page itself on its first tab and a link
+  to it on the others; on a page of a level's settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows
   the section (`Acme / Main / Workspace settings / Secrets and variables / New secret`); on
@@ -90,8 +96,8 @@ page, the one the person came from (Two levels, below).
   parent of the page carries `aria-current="true"`: the sidebar's Workspace settings or
   Organisation settings while its sections are the second column, whose entry is the exact
   page, and a second column's section on a page under it, one that passes `crumb` segments
-  (Invite people, New secret), or on a tab of it other than the one its entry leads to
-  (`Layouts.app/1`'s `section_current="true"`).
+  (Invite people, New secret). A section's tabs are the section's own page: the column
+  marks it as the page on each.
 - **The sidebar's foot** holds the scope's settings, named after the level: **Workspace
   settings** (`#nav-settings`) or **Organisation settings** (`#nav-organisation`), never a
   bare Settings, and so its tooltip while folded; the current entry on every page of them
@@ -147,9 +153,12 @@ page, the one the person came from (Two levels, below).
   kept at the top, so on a short screen the foot never squeezes the main entries. It holds
   the sidebar alone; on a settings page the foot's Workspace settings is drawn lighter, the
   page's parent, while the disclosure under the bar (Two levels, above) names the level
-  and lists its sections. The bar names the last segment of the breadcrumb only; on a core
-  Instance page, which has one section and so no disclosure, it keeps both, `Instance
-  settings / Configuration`.
+  and lists its sections. The bar names the last segment of the breadcrumb only, and before
+  it, on a page under a parent, the parent as a link back, a chevron before its name
+  (`‹ Runs / Run 0191f2a4`, `‹ Secrets and variables / New secret`): the item of the one
+  breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail. A
+  section's own page shows its name alone. On a core Instance page, which has one section
+  and so no disclosure, it keeps both, `Instance settings / Configuration`.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
@@ -374,10 +383,10 @@ value, and filtered by its lock and by whether a repository sets it too; both or
 name or the latest change.
 
 - **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
-  both tabs (a tab is not a segment). The second column marks the section as the page on
-  Secrets, and as its parent (`aria-current="true"`) on Variables, where the tab is the
-  page. The browser's title names the tab: `Secrets and variables · Workspace settings ·
-  Main · Acme`, `Variables · Secrets and variables · Workspace settings · Main · Acme`.
+  both tabs (a tab is not a segment), the section the page (`aria-current="page"`), and
+  the second column marks the section as the page on both tabs too. The browser's title
+  names the tab: `Secrets and variables · Workspace settings · Main · Acme`,
+  `Variables · Secrets and variables · Workspace settings · Main · Acme`.
 - **One status line** (`#secrets-and-variables-status`, `role="status"`), there from the
   start and outside both tabs' parts, says out of sight the tab a switch led to and its
   count ("Variables, 7"), and under the filters what a search left ("1 secret matches").
@@ -759,7 +768,9 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   names the target as it is addressed (its path, its system before it only where two
   targets share the path) with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
-  the system is a host name; the breadcrumb's third segment is the target.
+  the system is a host name; the breadcrumb ends with the section, a link to the index,
+  and the target, then on a version of its policy `Version 3` and on its export
+  `Export`, as on the workspace's Policy.
   - **Overview**: two cards, each one list, the few with a link to the many (its last
     runs; the destinations it was denied in 14 days, each with a faint barred circle,
     never red), beside a plain About column (the
@@ -1273,8 +1284,9 @@ not fill fails until it is filled there.
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
 width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
 on its own) sits beside it, on every tab but Terminal, which is wide and takes the
-whole width (`q-run-wide`). The top bar's breadcrumb ends with the run's target, a link to
-the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
+whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to the list,
+and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
+page has no breadcrumb of its own.
 
 - **The header** is the title (the one the run gave in its `about`, or the run's short id)
   alone; then, when the run names a kind or subjects, one line of what it is about: the

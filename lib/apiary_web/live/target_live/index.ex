@@ -201,6 +201,8 @@ defmodule ApiaryWeb.TargetLive.Index do
       nav={:targets}
       width="list"
     >
+      <:crumb>{gettext("Targets")}</:crumb>
+
       <.page_header title={gettext("Targets")}>
         <:description>{gettext("The targets this workspace's runs have changed.")}</:description>
       </.page_header>
