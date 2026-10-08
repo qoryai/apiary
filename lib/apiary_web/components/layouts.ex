@@ -181,10 +181,10 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's: on a workspace's page a node, a node pool, an integration, a secret and a
-  variable, and everywhere an invitation; of them, only what the reader
-  may do there, each entry's action asked of the workspace or the organisation as its
-  `place` says.
+  then the core's: on a workspace's page a node, a node pool, and with the `secrets`
+  feature an integration, a secret and a variable, and everywhere an invitation; of them,
+  only what the reader may do there, each entry's action asked of the workspace or the
+  organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
@@ -205,30 +205,8 @@ defmodule ApiaryWeb.Layouts do
             icon: "hero-server-stack",
             path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
             action: :"node.create"
-          },
-          # Add integration leads to the cards of Integrations that add one.
-          %Entry{
-            key: :integration,
-            label: gettext("Add integration"),
-            icon: "hero-puzzle-piece",
-            path: ~p"/#{organisation}/#{workspace}/settings/integrations" <> "#add-part",
-            action: :"connection.write"
-          },
-          %Entry{
-            key: :secret,
-            label: gettext("New secret"),
-            icon: "hero-lock-closed",
-            path: ~p"/#{organisation}/#{workspace}/settings/secrets/new",
-            action: :"secret.write"
-          },
-          %Entry{
-            key: :variable,
-            label: gettext("New variable"),
-            icon: "hero-variable",
-            path: ~p"/#{organisation}/#{workspace}/settings/variables/new",
-            action: :"variable.edit"
           }
-        ]
+        ] ++ secrets_entries(scope, organisation, workspace)
       else
         []
       end
@@ -249,6 +227,39 @@ defmodule ApiaryWeb.Layouts do
   end
 
   def new_entries(_scope, _place), do: []
+
+  # New's entries of the `secrets` feature, which ask `on?(scope, :secrets)`: an
+  # integration, a secret and a variable.
+  defp secrets_entries(scope, organisation, workspace) do
+    if Apiary.Features.on?(scope, :secrets) do
+      [
+        # Add integration leads to the cards of Integrations that add one.
+        %Entry{
+          key: :integration,
+          label: gettext("Add integration"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/#{workspace}/settings/integrations" <> "#add-part",
+          action: :"connection.write"
+        },
+        %Entry{
+          key: :secret,
+          label: gettext("New secret"),
+          icon: "hero-lock-closed",
+          path: ~p"/#{organisation}/#{workspace}/settings/secrets/new",
+          action: :"secret.write"
+        },
+        %Entry{
+          key: :variable,
+          label: gettext("New variable"),
+          icon: "hero-variable",
+          path: ~p"/#{organisation}/#{workspace}/settings/variables/new",
+          action: :"variable.edit"
+        }
+      ]
+    else
+      []
+    end
+  end
 
   @doc """
   palette_entries/1 is where the palette's Go to leads in `scope`: every entry of the
@@ -1884,9 +1895,8 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-book-open" class="size-4" /> {gettext("Docs")}
           </.link>
         </li>
-        <%!-- The release notes name every feature, so only the documentation of an instance with
-             every one has them; the documentation is the instance's, and so is this check. --%>
-        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
+        <%!-- Every tree of the documentation has the release notes. --%>
+        <li role="none">
           <.link
             href={~p"/docs/changelog.html"}
             role="menuitem"

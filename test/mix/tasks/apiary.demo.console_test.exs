@@ -167,8 +167,8 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert Repo.exists?(from r in Run, where: r.node_id == ^dana.id and is_nil(r.instance_id))
     assert Repo.exists?(from i in Instance, where: i.node_id == ^dana.id and i.name == "dana-mbp")
 
-    # Secrets, variables and integrations are the security feature's.
-    if Apiary.Features.on?(:security) do
+    # Secrets, variables and integrations are the secrets feature's.
+    if Apiary.Features.on?(:secrets) do
       assert count(from s in Secret, where: s.workspace_id == ^main.id) == 4
       assert count(from v in Variable, where: v.workspace_id == ^main.id and v.locked) == 2
 
@@ -187,6 +187,25 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
       refute Repo.exists?(from s in Secret, where: s.workspace_id == ^main.id)
       refute Repo.exists?(from v in Variable, where: v.workspace_id == ^main.id)
       refute Repo.exists?(from c in Connection, where: c.workspace_id == ^main.id)
+    end
+  end
+
+  # Off, the `secrets` feature is absent from the fill too, the security policy kept.
+  @tag with_features: [:observability, :security]
+  @tag needs: :security
+  test "without the secrets feature the fill makes no secret, variable or integration" do
+    fill()
+
+    workspaces =
+      Repo.all(from w in Workspace, join: o in assoc(w, :organisation), where: o.slug == "acme")
+
+    assert workspaces != []
+
+    for workspace <- workspaces do
+      refute Repo.exists?(from s in Secret, where: s.workspace_id == ^workspace.id)
+      refute Repo.exists?(from v in Variable, where: v.workspace_id == ^workspace.id)
+      refute Repo.exists?(from c in Connection, where: c.workspace_id == ^workspace.id)
+      refute Repo.exists?(from r in Release, where: r.workspace_id == ^workspace.id)
     end
   end
 

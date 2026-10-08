@@ -27,8 +27,8 @@ the restart, for example to watch a long migration.
   and **Upgrading**, anything whoever runs the instance has to do or know.
 - Back up Postgres. It is the only state; a `pg_dump` of the database is a complete backup.
   `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE` are the other
-  three things to keep: without `APIARY_ENCRYPTION_SECRET` every stored secret is
-  unreadable, and without `APIARY_SIGNING_SECRET` every machine has to be pinned again. [Backup and restore](backup.md) has the commands.
+  three things to keep: without `APIARY_ENCRYPTION_SECRET` no access key is trusted,
+  and without `APIARY_SIGNING_SECRET` every machine has to be pinned again. [Backup and restore](backup.md) has the commands.
 
 ## How migrations are written
 

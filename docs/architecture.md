@@ -370,7 +370,8 @@ the instance (`c:Apiary.Edition.features_of/3`), and never adds to them: `of/2` 
 what the instance has, and a feature only with the features it needs. An edition's own
 features are listed after the core's (`c:Apiary.Edition.features/0`), and
 `Apiary.Features.built/0` names the ones a page of an edition may switch on or off for an
-organisation.
+organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on only
+where `QORY_FEATURES` lists it by name, and is never one of those.
 
 - **Absent, as off on the instance.** Every surface asks `Apiary.Features.on?/2` with its
   scope, which carries the answer (`Apiary.Accounts.Scope`, `features`): the feature

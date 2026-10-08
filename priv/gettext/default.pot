@@ -10189,6 +10189,11 @@ msgstr ""
 msgid "Stored secrets"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Stored secrets, variables and integrations, in each workspace's settings."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Stream"

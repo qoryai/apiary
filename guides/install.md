@@ -136,8 +136,14 @@ For example: ecto://USER:PASS@HOST/DATABASE
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `APIARY_ENCRYPTION_SECRET` | required | Encrypts what the database holds secret: the values of the workspaces' stored secrets, under keys derived from it, and keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key or a stored secret exists, or no access key verifies and every stored value becomes unreadable: losing it loses every stored value, for good. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
 | `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to runners with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the runner contract's published fixture seeds and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+<!-- feature: secrets -->
+
+`APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
+derived from it: it must never change once one exists, and losing it loses every stored
+value, for good.
+<!-- /feature -->
 
 ```text
 environment variable SECRET_KEY_BASE is missing.
@@ -278,12 +284,15 @@ QORY_FEATURES=all-security
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
+An opt-in feature is on only when a list names it: `all`, `all-…`, and a value that is not
+set or empty leave it off, with or without an upgrade.
+
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:
 
 ```text
 environment variable QORY_FEATURES is not valid: unknown feature obsevability; the Install guide at /docs lists the features.
-Leave it unset or set it to all for every feature, or name them, for example:
+Leave it unset or set it to all for the default features, or name them, for example:
 QORY_FEATURES=observability
 ```
 
@@ -326,7 +335,7 @@ since an address is not kept longer than its entry. The values are read at boot,
 change takes a restart. A shorter period deletes or clears what it no longer keeps at the
 next day's job; setting it longer again does not bring it back.
 
-<!-- feature: security -->
+<!-- feature: secrets -->
 ### Integrations
 
 | Variable | Required or default | Meaning and accepted values |

@@ -13,7 +13,7 @@ defmodule ApiaryWeb.SettingsComponents do
     sidebar (`ApiaryWeb.ActivityLive`).
   - A workspace's (`/:org/:workspace/settings/…`), in the map's order: General (its name,
     and deleting it), People (who reaches it, and at what level: read here, managed in the
-    organisation's People), with the `security` feature Integrations
+    organisation's People), with the `secrets` feature Integrations
     (`ApiaryWeb.IntegrationLive.Index`) and Secrets and variables
     (`ApiaryWeb.SecretLive.Index`), and Runs (how long it keeps runs, their events and
     their logs).
@@ -38,7 +38,7 @@ defmodule ApiaryWeb.SettingsComponents do
   """
   use ApiaryWeb, :html
 
-  alias Apiary.Access
+  alias Apiary.{Access, Features}
   alias Apiary.Accounts.Scope
   alias ApiaryWeb.Nav.Entry
 
@@ -87,6 +87,8 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
+    secrets? = Features.on?(scope, :secrets)
+
     [
       %Entry{
         section: :main,
@@ -102,7 +104,8 @@ defmodule ApiaryWeb.SettingsComponents do
         icon: "hero-users",
         path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
-      Access.can?(scope, :"connection.read", workspace) &&
+      # Integrations and Secrets and variables ask `on?(scope, :secrets)`.
+      secrets? && Access.can?(scope, :"connection.read", workspace) &&
         %Entry{
           section: :main,
           key: :integrations,
@@ -110,7 +113,7 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-puzzle-piece",
           path: ~p"/#{organisation}/#{workspace}/settings/integrations"
         },
-      Access.can?(scope, :"secret.read", workspace) &&
+      secrets? && Access.can?(scope, :"secret.read", workspace) &&
         %Entry{
           section: :main,
           key: :secrets,

@@ -31,9 +31,12 @@ organisation, workspace and node: the address is its `PUBLIC_URL`, and the key i
 from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the node's key.
 
 A key is active from the moment it arrives until it is revoked. A node holds two keys at a
-time, so that a machine can move to a new key before the old one is revoked. Each key's
-**Stored secrets** is fixed when it is made, and every new key, either way, gets **Not
-allowed**. A key is never rotated: a new one is made, and the old one revoked.
+time, so that a machine can move to a new key before the old one is revoked.
+<!-- feature: secrets -->
+Each key's **Stored secrets** is fixed when it is made, and every new key, either way,
+gets **Not allowed**.
+<!-- /feature -->
+A key is never rotated: a new one is made, and the old one revoked.
 
 There are two ways to connect a node's machine, both on the node's **Access key** tab, for
 owners and admins. While the node holds no active key, the tab asks "How do you want to
@@ -62,8 +65,11 @@ runs. An owner or admin connects it."
 Once the node holds a key, the tab lists it under **Keys**, one card per key, headed by
 its label and **Active**: its **Key ID**, with **Copy**, which can always be seen again;
 how it was added ("Connected with a command by …" or "Generated in a browser by …");
-where its secret is; when it was last used ("Not yet" while unused); its **Fingerprint**
-and its **Stored secrets**; with **Runner file** and **Revoke…**. Under the keys, **Add a
+where its secret is; when it was last used ("Not yet" while unused); its **Fingerprint**;
+<!-- feature: secrets -->
+its **Stored secrets**;
+<!-- /feature -->
+with **Runner file** and **Revoke…**. Under the keys, **Add a
 key** offers the same two ways, in the same order, to move the node to a new key: add it
 either way, then revoke the old one. At two keys it offers neither, and says "build-01
 holds two keys, the most a node can. Revoke the one it no longer uses to add another." A
@@ -87,7 +93,10 @@ where the machine runs qory." Then four numbered steps:
 ### Connect with a command
 
 1. On the node's **Access key** tab, select **Get the command**. There is nothing to fill
-   in: the key the command brings gets **Stored secrets** **Not allowed**.
+   in.
+   <!-- feature: secrets -->
+   The key the command brings gets **Stored secrets** **Not allowed**.
+   <!-- /feature -->
 2. The page **Connect build-01 with a command** shows the whole command to run on the
    machine, with Qory Apiary's address and a one-time code in it, and **Copy command**:
 
@@ -167,8 +176,11 @@ A fleet of short-lived CI runners is a node pool with one key.
    for spot-runners** has one field, **Name of the key**, filled in with the node's name
    (`spot-runners-2` when a key has that name already). Select **Generate key**.
 2. Your browser makes the Ed25519 key and sends Qory Apiary only its name and its public
-   half. The key gets **Stored secrets** **Not allowed**, and is active as soon as it
-   arrives.
+   half. The key
+   <!-- feature: secrets -->
+   gets **Stored secrets** **Not allowed**, and
+   <!-- /feature -->
+   is active as soon as it arrives.
 3. The page **Key for spot-runners** says "Do these where spot-runners runs. Only the
    secret can't be seen again." Under the notice "The secret is shown once.", four
    numbered steps, each value with **Copy**:

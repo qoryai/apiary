@@ -10,7 +10,7 @@ defmodule Apiary.IntegrationsTest do
   alias Apiary.Integrations.{FetchJob, Release}
   alias Apiary.Audit.Entry
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   @github %{source: "github.com/qoryai/qory-github", version: "0.1.0"}
   @base "/qoryai/qory-github/releases/download/v0.1.0/"

@@ -10,7 +10,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   alias Apiary.Audit.Entry
   alias Apiary.Runs.Target
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   # A value that must never come back to a browser: neither after its save, nor after a
   # refused one.

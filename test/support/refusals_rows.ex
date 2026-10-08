@@ -288,43 +288,48 @@ defmodule ApiaryWeb.RefusalsRows do
        "/:other_org/:other_ws/nodes/:node/access-key/codes/:code/revoke", "revoke_code", %{},
        answer: :not_found_at_mount},
 
-      # Stored secrets and variables, the workspace's settings' Secrets and variables. A
-      # member's page has no dialog to open, so the event reaches the context function, or
-      # the page refuses it for their role; a demoted admin's dialog was open.
+      # Stored secrets and variables, the workspace's settings' Secrets and variables, whose
+      # pages need the `secrets` feature beside their actions' `security`. A member's page
+      # has no dialog to open, so the event reaches the context function, or the page
+      # refuses it for their role; a demoted admin's dialog was open.
       {:"secret.write", :member, "/:org/:workspace/settings/secrets", "create_secret",
-       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
-      {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{}},
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
+      {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{},
+       needs: :secrets},
       {:"secret.write", :removed_member, "/:org/:workspace/settings/secrets", "create_secret",
-       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/new", "create_secret",
-       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/change-value",
-       "set_value", %{"secret_value" => %{"value" => "not-to-be-saved"}}},
+       "set_value", %{"secret_value" => %{"value" => "not-to-be-saved"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/add-value",
        "add_value",
-       %{"secret_value" => %{"first_value_id" => "a", "value_id" => "b", "value" => "c"}}},
+       %{"secret_value" => %{"first_value_id" => "a", "value_id" => "b", "value" => "c"}},
+       needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/edit",
-       "update_secret", %{"secret" => %{"name" => "SNEAKY"}}},
+       "update_secret", %{"secret" => %{"name" => "SNEAKY"}}, needs: :secrets},
       {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/delete",
-       "delete_secret", %{}},
+       "delete_secret", %{}, needs: :secrets},
       # This organisation's secret, in a dialog of another organisation's path: the dialog
       # does not open, and the page says the secret is not there.
       {:"secret.write", :other_owner, "/:other_org/:other_ws/settings/secrets/:secret/delete",
-       "delete_secret", %{}, answer: :refused_at_mount},
+       "delete_secret", %{}, answer: :refused_at_mount, needs: :secrets},
       {:"variable.edit", :member, "/:org/:workspace/settings/variables", "create_variable",
-       %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}},
-      {:"variable.edit", :member, "/:org/:workspace/settings/variables", "lock_variable", %{}},
+       %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}, needs: :secrets},
+      {:"variable.edit", :member, "/:org/:workspace/settings/variables", "lock_variable", %{},
+       needs: :secrets},
       {:"variable.edit", :removed_member, "/:org/:workspace/settings/variables",
-       "create_variable", %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}},
+       "create_variable", %{"variable" => %{"name" => "SNEAKY", "value" => "x"}},
+       needs: :secrets},
       {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/change",
-       "change_variable", %{"variable" => %{"value" => "changed"}}},
+       "change_variable", %{"variable" => %{"value" => "changed"}}, needs: :secrets},
       {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/lock",
-       "lock_variable", %{}},
+       "lock_variable", %{}, needs: :secrets},
       {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/delete",
-       "delete_variable", %{}},
+       "delete_variable", %{}, needs: :secrets},
       {:"variable.edit", :other_owner,
        "/:other_org/:other_ws/settings/variables/:variable/delete", "delete_variable", %{},
-       answer: :refused_at_mount},
+       answer: :refused_at_mount, needs: :secrets},
 
       # A run.
       {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},

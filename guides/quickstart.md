@@ -127,7 +127,7 @@ and an admin manages members only, not owners or other admins. A **member** work
 workspace and manages neither the members nor the settings. `http://localhost:4100/` and
 the log-in take you to the workspace.
 
-<!-- feature: security -->
+<!-- feature: secrets -->
 Secrets and variables are under **Workspace settings › Secrets and variables**,
 `/<organisation>/<workspace>/settings/secrets`, in two views; a run receives only its
 security policy. A **secret**, such as a token for a forge, holds one value or several,

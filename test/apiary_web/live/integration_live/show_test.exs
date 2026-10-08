@@ -10,7 +10,7 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
   alias Apiary.Connections.Connection
   alias Apiary.Integrations.Release
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   setup :register_and_log_in_user
 
