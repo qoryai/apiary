@@ -38,6 +38,35 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
     })
   end
 
+  test "the breadcrumb names the integration, the page on Overview and a link to it on its other tabs",
+       %{conn: conn, scope: scope} do
+    {:ok, runtime} = Connections.create_runtime(scope, %{runtime: "claude"})
+    integrations = workspace_path(scope, "/settings/integrations")
+    {:ok, lv, _html} = live(conn, ipath(scope, runtime))
+
+    assert crumbs(lv) == [
+             {"Workspace settings", workspace_path(scope, "/settings")},
+             {"Integrations", integrations},
+             {"Claude Code", nil}
+           ]
+
+    for rest <- ["/targets", "/settings", "/delete"] do
+      {:ok, lv, _html} = live(conn, ipath(scope, runtime, rest))
+
+      assert crumbs(lv) == [
+               {"Workspace settings", workspace_path(scope, "/settings")},
+               {"Integrations", integrations},
+               {"Claude Code", ipath(scope, runtime)}
+             ]
+
+      # A tab of the same page: the way back is a patch, as the tabs are.
+      assert has_element?(
+               lv,
+               "#breadcrumb a[href='#{ipath(scope, runtime)}'][data-phx-link=patch]"
+             )
+    end
+  end
+
   describe "Overview" do
     test "says what an agent is, its id, where it applies and the secrets it declares",
          %{conn: conn, scope: scope} do

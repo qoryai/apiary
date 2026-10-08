@@ -206,7 +206,9 @@ defmodule ApiaryWeb.IntegrationLive.Show do
       sections={@sections}
       section={:integrations}
     >
-      <:crumb>{elem(@names, 0)}</:crumb>
+      <:crumb patch={@tab != :overview && Common.connection_path(@current_scope, @connection)}>
+        {elem(@names, 0)}
+      </:crumb>
 
       <.settings_page
         section={:integrations}

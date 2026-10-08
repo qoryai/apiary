@@ -30,8 +30,9 @@ page, the one the person came from (Two levels, below).
   section's page on a page under it (`Acme / Main / Runs / Run 0191f2a4`, also where that
   run is not found, and `Acme / Main / Runs` where the address is no run's id), the page
   itself on the section's own page (`Acme / Main / Runs`, `Acme / Main / Overview`,
-  `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`); on a page of a level's
-  settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
+  `Acme / Main / Policy`, `Acme / Overview`, `Acme / Audit log`). A thing with tabs (a
+  target, a node, a run, an integration) is the page itself on its first tab and a link
+  to it on the others; on a page of a level's settings the frame writes the level (`#breadcrumb-settings`, "Workspace settings" or
   "Organisation settings", a link to its General) and the section (`#breadcrumb-section`,
   the page itself, or a link where segments follow it), so the page adds only what follows
   the section (`Acme / Main / Workspace settings / Secrets and variables / New secret`); on
@@ -382,9 +383,10 @@ value, and filtered by its lock and by whether a repository sets it too; both or
 name or the latest change.
 
 - **Where you are.** The breadcrumb ends `Workspace settings / Secrets and variables` on
-  both tabs (a tab is not a segment). The second column marks the section as the page on
-  Secrets, and as its parent (`aria-current="true"`) on Variables, where the tab is the
-  page. The browser's title names the tab: `Secrets and variables · Workspace settings ·
+  Secrets, the section the page, and `Workspace settings / Secrets and variables /
+  Variables` on Variables, where the section is a link to Secrets and the tab the page.
+  The second column marks the section the same way: the page on Secrets, its parent
+  (`aria-current="true"`) on Variables. The browser's title names the tab: `Secrets and variables · Workspace settings ·
   Main · Acme`, `Variables · Secrets and variables · Workspace settings · Main · Acme`.
 - **One status line** (`#secrets-and-variables-status`, `role="status"`), there from the
   start and outside both tabs' parts, says out of sight the tab a switch led to and its
@@ -1274,7 +1276,7 @@ A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column tak
 width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
 on its own) sits beside it, on every tab but Terminal, which is wide and takes the
 whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to the list,
-and `Run 0191f2a4`; the run's target is on its meta line, not in the breadcrumb, and the
+and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page has no breadcrumb of its own.
 
 - **The header is two lines**: the title (the task, or the run's short id) alone, then

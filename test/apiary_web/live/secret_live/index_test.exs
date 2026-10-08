@@ -133,7 +133,17 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(lv, "#secrets-tabs-variables[aria-current=page]")
       refute has_element?(lv, "#secrets-tabs-secrets[aria-current]")
       assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
-      assert has_element?(lv, "#breadcrumb-section[aria-current=page]", "Secrets and variables")
+
+      # The section is the tab's parent, a link to its first tab, and the tab the page, as
+      # the second column marks them.
+      assert crumbs(lv) == [
+               {"Workspace settings", workspace_path(scope, "/settings")},
+               {"Secrets and variables", secrets_path(scope)},
+               {"Variables", nil}
+             ]
+
+      refute has_element?(lv, "#breadcrumb-section[aria-current]")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Variables")
 
       assert page_title(lv) =~
                "Variables · Secrets and variables · Workspace settings · #{names}"
@@ -167,7 +177,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute has_element?(lv, "#secrets-and-variables-status")
       assert has_element?(lv, "#settings-tab-secrets[aria-current=true]")
 
-      # The tabs are not segments: the trail goes from the section to the page.
+      # A form's trail goes from the section, which leads to the form's tab, to the page.
       assert has_element?(lv, "#breadcrumb-settings", "Workspace settings")
 
       assert has_element?(

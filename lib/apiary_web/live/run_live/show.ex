@@ -103,7 +103,9 @@ defmodule ApiaryWeb.RunLive.Show do
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
         {gettext("Runs")}
       </:crumb>
-      <:crumb>{gettext("Run %{id}", id: short_id(@run.run_id))}</:crumb>
+      <:crumb patch={@live_action != :timeline && tab_path(@current_scope, @run, :timeline)}>
+        {gettext("Run %{id}", id: short_id(@run.run_id))}
+      </:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
       </div>

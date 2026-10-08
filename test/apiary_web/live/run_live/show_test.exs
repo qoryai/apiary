@@ -309,6 +309,25 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              ]
     end
 
+    test "the run's crumb is the page on the Timeline and a link to it on the other tabs", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data(%{"labels" => %{}})}])
+      timeline = workspace_path(scope, "/runs/#{run.run_id}")
+      short = "Run #{String.slice(run.run_id, 0, 8)}"
+
+      {:ok, lv, _html} = live(conn, timeline)
+      assert crumbs(lv) == [{"Runs", workspace_path(scope, "/runs")}, {short, nil}]
+
+      for tab <- ["/terminal", "/network", "/details"] do
+        {:ok, lv, _html} = live(conn, timeline <> tab)
+        assert crumbs(lv) == [{"Runs", workspace_path(scope, "/runs")}, {short, timeline}]
+        # A tab of the same page: the way back is a patch, as the tabs are.
+        assert has_element?(lv, "#breadcrumb a[href='#{timeline}'][data-phx-link=patch]")
+      end
+    end
+
     test "a pending run says Ping only and waits on every tab but Details", %{
       conn: conn,
       scope: scope
