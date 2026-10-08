@@ -159,10 +159,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - A run can say what it is about, in `about` of its `run.started`: a kind, a title,
   subjects (each a type and a ref, with a url and a title when given) and details. A
   run's title is its `about` title; without one, the run page and its tab say "Run" and
-  its short id, the lists show the short id, and the Overview its command line. The runs
-  list shows its kind and first subjects under the title; the run page shows them under
-  its heading, each subject a link that opens in a new tab, and the whole of it in an
-  About section of the Details rail. A `task` label is an ordinary label.
+  its short id, the lists show the short id, and the Overview its command line, else its
+  short id. The runs list shows its kind and first subjects under the title; the run page
+  shows them under its heading, each subject a link that opens in a new tab, and the whole
+  of it in an About section of the Details rail. A `task` label is an ordinary label.
 - Network access, in the sidebar's Guard beside the Policy (`/:org/:workspace/network`,
   and a tab of each run and each repository): every destination the runs reached, what
   decided it, and Allow or Deny from its row, narrowed the same way as the runs. Its
