@@ -2,8 +2,8 @@
 
 The control plane for coding agent runs.
 
-Every run reports to Qory Apiary: its session, terminal and every connection, with the
-decision and rule behind it. Qory Apiary is the server your machines report to and the
+Every run of a connected machine reports to Qory Apiary: its session, terminal and every
+connection, with the decision and rule behind it. Qory Apiary is the server your machines report to and the
 console you read. Open source, so you can check all of that.
 
 - **The record.** Every run in one place: the session as a timeline, the terminal output,

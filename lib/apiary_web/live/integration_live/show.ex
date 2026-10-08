@@ -397,7 +397,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
         :if={!@description || "credential" not in @description.ways}
         class="text-[13px]/5 text-muted"
       >
-        {gettext("Its description offers no way a runner runs.")}
+        {gettext("Its description offers no way Qory Apiary uses.")}
       </p>
     </SettingsComponents.part>
 

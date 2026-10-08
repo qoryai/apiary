@@ -25,8 +25,8 @@ defmodule ApiaryWeb.Lingo do
     language and the default domain;
   - no user (log-in, registration): the default locale, `en@software`;
   - a language without a catalogue any more (`Apiary.Accounts.Preferences.languages/0`)
-    reads English. A known language without a catalogue for the domain, such as
-    `de@software`, is looked up down the chain (`de`, then the source text).
+    reads English. A locale without a catalogue of its own is looked up down the chain
+    (`ApiaryWeb.Gettext.Fallback`), and at the end in the source text.
 
   This module sets the locale for a request (as a plug, after the scope is fetched) and
   for a LiveView (as an `on_mount` hook, which every LiveView runs after its

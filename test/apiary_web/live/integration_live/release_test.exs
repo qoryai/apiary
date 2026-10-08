@@ -172,6 +172,27 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(lv, "#release-setting-verbose-hint", "Logs every request it makes.")
   end
 
+  test "a release that is only a tool says Qory Apiary uses no way of it",
+       %{conn: conn, scope: scope} do
+    # The tracker's description without its credential role, and the settings only that
+    # role named.
+    description =
+      tracker_description(%{
+        "settings" => %{
+          "type" => "object",
+          "properties" => %{"url" => %{"title" => "Tracker", "type" => "string"}}
+        },
+        "roles" => Map.delete(tracker_description()["roles"], "credential")
+      })
+
+    release = ready_release!(scope, description, "github.com/acme/tracker")
+    {:ok, lv, _html} = live(conn, ipath(scope, release))
+
+    assert has_element?(lv, "#release-ways", "Also a tool (MCP), which Qory Apiary does not use")
+    assert has_element?(lv, "#release-ways", "No way Qory Apiary uses")
+    refute has_element?(lv, "#release-ways", "Calls its API")
+  end
+
   test "settings its description refuses are said, and nothing is added",
        %{conn: conn, scope: scope} do
     release = ready_release!(scope, github_description())

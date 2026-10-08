@@ -17,8 +17,9 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
   the terminal as it was written, every connection with the decision and the rule behind
   it, and how the run ended.
 - **The wall and the policy.** The runner's proxy records each connection and decides it
-  by the workspace's policy; behind a wall it is the session's only way out. The policy
-  observes or enforces, with rules per repository, locked rules and a history with a diff.
+  by the policy in force: the machine's own until its workspace's first change, then the
+  workspace's, narrowed by the machine's own; behind a wall it is the session's only way
+  out. The policy observes or enforces, with rules per repository, locked rules and a history with a diff.
 - **Nodes and their access keys.** A node is one machine, a node pool a fleet of
   short-lived instances. A machine makes its own Ed25519 key and enrols it with a code
   from its node, or an owner or admin generates a key in the browser; a key is active as

@@ -4900,7 +4900,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
+msgid "Every run of a connected machine reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it. Open source, so you can check all of that."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -6149,7 +6149,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Its description offers no way a runner runs."
+msgid "Its description offers no way Qory Apiary uses."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -7681,7 +7681,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
-msgid "No way a runner runs"
+msgid "No way Qory Apiary uses"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

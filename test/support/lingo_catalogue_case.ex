@@ -5,9 +5,9 @@ defmodule ApiaryWeb.LingoCatalogueCase do
   them in the domain's words. A source string that uses an engine word and has no
   translation in every domain's catalogue would reach the page as it is, so it fails here.
 
-  A language other than English has a catalogue of its own (`de`), which every domain of
-  that language falls back to (`ApiaryWeb.Gettext.Fallback`). English has none: the source
-  text is English already. A domain's catalogue holds only the sentences it says in its
+  A domain's catalogue falls back to its language's catalogue, then to the source text
+  (`ApiaryWeb.Gettext.Fallback`). English has no catalogue of its own: the source text is
+  English already, and the core's one catalogue is `en@software`. A domain's catalogue holds only the sentences it says in its
   own words, no catalogue holds a fuzzy entry, which Gettext would serve as it is, and no
   source string or catalogue shows a word such as apiary, hive or bee.
 

@@ -1368,7 +1368,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # The line under it, by the instance's features.
       assert response =~
-               "Every run reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it." ==
+               "Every run of a connected machine reports to Qory Apiary: its session, terminal and every connection, with the decision and rule behind it." ==
                Apiary.Features.on?(:security)
     end
   end

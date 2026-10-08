@@ -174,7 +174,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
             {gettext("Also a tool (MCP), which Qory Apiary does not use")}
           </span>
           <span :if={"credential" not in @description.ways} class="text-muted">
-            {gettext("No way a runner runs")}
+            {gettext("No way Qory Apiary uses")}
           </span>
         </dd>
         <dt class="text-faint">{gettext("Secrets")}</dt>
