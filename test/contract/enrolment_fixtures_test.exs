@@ -62,6 +62,9 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
 
   defp built("refusal-key-limit.json"), do: Enrolment.refusal_body(:key_limit, server_keys(:one))
 
+  defp built("refusal-rate-limited.json"),
+    do: Enrolment.refusal_body(:rate_limited, server_keys(:one))
+
   defp built("refusal-key-invalid-rotation.json"),
     do: Enrolment.refusal_body(:key_invalid, server_keys(:rotation))
 
@@ -70,7 +73,8 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
 
   @requests ~w(request.json request-two-fingerprints.json)
   @answers ~w(answer.json refusal-key-invalid.json refusal-key-limit.json
-              refusal-key-invalid-rotation.json refusal-key-limit-rotation.json)
+              refusal-rate-limited.json refusal-key-invalid-rotation.json
+              refusal-key-limit-rotation.json)
 
   defp schema, do: ContractSchema.schema!(contract_dir(), "enrolment.schema.json")
 

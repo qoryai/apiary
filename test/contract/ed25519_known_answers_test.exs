@@ -202,7 +202,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
         Enum.map(requests, & &1["signature"]) ++
           Enum.map(enrolments, &(&1["body"] |> body() |> Jason.decode!() |> Map.fetch!("proof")))
 
-      assert length(answers) == 7
+      assert length(answers) == 8
 
       for %{"lines" => lines, "length" => length, "signature" => signature} = answer <- answers do
         [domain, status, request_signature, hash, configuration, run] = lines
@@ -253,7 +253,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       signing_key = Ed25519.encode(fixture_key!("signing_key").public_key)
       next_signing_key = Ed25519.encode(fixture_key!("next_signing_key").public_key)
 
-      for name <- ~w(answer refusal-key-invalid refusal-key-limit) do
+      for name <- ~w(answer refusal-key-invalid refusal-key-limit refusal-rate-limited) do
         assert contract_json!("enrolment/#{name}.json")["apiary_public_key"] ==
                  [%{"alg" => "ed25519", "public_key" => signing_key}],
                name
