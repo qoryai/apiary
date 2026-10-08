@@ -270,11 +270,23 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       end
     end
 
-    test "say nothing of stored secrets in any guide" do
-      for path <- Path.wildcard("guides/*.md"), features <- [@off, [:observability]] do
-        file = Path.basename(path)
-        refute guide(file, features) =~ ~r/stored secret|stored value/i, "#{file}"
-      end
+    # The documentation an instance without the feature is served, and the README and
+    # EDITIONS.md beside it, with the markers resolved as `mix docs.all` resolves them.
+    test "say nothing that gives it away, in any guide, the release notes or the READMEs" do
+      giveaways =
+        ~r/stored.secret|stored value|allow_secrets|secret_values|workspace_data_keys|INTEGRATION_URL_SOURCES|Apiary\.Secrets|Apiary\.Connections|Secrets and variables/i
+
+      files = Path.wildcard("guides/*.md") ++ ["CHANGELOG.md", "README.md", "EDITIONS.md"]
+
+      caught =
+        for path <- files,
+            features <- [@off, [:observability]],
+            text = path |> File.read!() |> DocsAll.split!(path) |> DocsAll.join(features),
+            [word | _] <- Regex.scan(giveaways, text),
+            uniq: true,
+            do: "#{path}: #{word}"
+
+      assert caught == []
     end
 
     test "read on where a passage was left out" do
