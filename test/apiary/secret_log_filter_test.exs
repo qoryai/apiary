@@ -6,6 +6,12 @@ defmodule Apiary.SecretLogFilterTest do
   # The runner contract's fixture secret (keys.json), and one in capitals.
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
+  # An enrolment code as Apiary makes it, as the command carries it (the server key's
+  # fingerprint after it), and as a person may type it.
+  @code "qec_7K3M9P2Q4R6S8T0V1W5X3Y9Z2A"
+  @issued @code <> ".SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"
+  @typed "QEC_7k3m-9p2q-4r6s-8t0v-1w5x-3y9z-2a"
+
   defp event(msg), do: %{level: :debug, msg: msg, meta: %{}}
 
   test "is installed at boot, once" do
@@ -118,6 +124,67 @@ defmodule Apiary.SecretLogFilterTest do
 
     assert log =~ "a value: [FILTERED]."
     refute log =~ ~r/qak_/i
+  end
+
+  describe "an enrolment code" do
+    test "is replaced in a message, in any case and as typed, the fingerprint after it kept" do
+      for {code, after_} <- [{@code, ""}, {String.downcase(@code), ""}, {@typed, ""}] do
+        %{msg: {:string, text}} =
+          SecretLogFilter.filter(
+            event({:string, ["Parameters: ", inspect(%{"code" => code})]}),
+            nil
+          )
+
+        assert text == ~s(Parameters: %{"code" => "[FILTERED]#{after_}"})
+      end
+
+      %{msg: {:string, text}} =
+        SecretLogFilter.filter(event({~c"run ~s", ["qory access-key enrol #{@issued}"]}), nil)
+
+      assert text == "run qory access-key enrol [FILTERED].SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"
+    end
+
+    test "is replaced in a report's terms and in the metadata" do
+      report = %{last_message: {:value, @issued}, state: %{"code" => [~c"x #{@code}"]}}
+      %{msg: {:report, scrubbed}} = SecretLogFilter.filter(event({:report, report}), nil)
+
+      assert scrubbed == %{
+               last_message: {:value, "[FILTERED].SHA256:ZL8ipvzkSHdqzJf607icofxF23BESvl"},
+               state: %{"code" => [~c"x [FILTERED]"]}
+             }
+
+      meta = %{
+        crash_reason: {%FunctionClauseError{module: Acme, args: [@code]}, []},
+        request_path: "/x/" <> @typed
+      }
+
+      %{meta: scrubbed} = SecretLogFilter.filter(%{event({:string, "x"}) | meta: meta}, nil)
+
+      assert scrubbed == %{
+               crash_reason: {%FunctionClauseError{module: Acme, args: ["[FILTERED]"]}, []},
+               request_path: "/x/[FILTERED]"
+             }
+
+      refute inspect(scrubbed) =~ ~r/qec_/i
+    end
+
+    test "is kept out of a GenServer's crash report and a line Logger writes" do
+      log =
+        ExUnit.CaptureLog.capture_log([level: :warning], fn ->
+          {:ok, pid} = GenServer.start(Apiary.SecretLogFilterTest.Crashing, nil)
+          ref = Process.monitor(pid)
+          send(pid, {:value, @code})
+          assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+
+          require Logger
+          Logger.warning("a command: qory access-key enrol #{@issued}.")
+        end)
+
+      assert log =~ "Last message: {:value, \"[FILTERED]\"}"
+      assert log =~ "a command: qory access-key enrol [FILTERED].SHA256:"
+      refute log =~ ~r/qec_/i
+      refute log =~ "7K3M9P2Q4R6S8T0V1W5X3Y9Z2A"
+    end
   end
 
   defmodule Crashing do

@@ -135,7 +135,7 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       # The hour the scheduler starts at, and the hour within which it prunes.
       assert text(view, "#config-run-pruning-value") == "Every day, 23:00–00:00 UTC"
-      assert text(view, "#config-run-pruning") =~ "The server prunes each workspace's runs"
+      assert text(view, "#config-run-pruning") =~ "Qory Apiary prunes each workspace's runs"
 
       assert text(view, "#config-run-pruning-source") ==
                "Set in the application's configuration"
@@ -162,7 +162,8 @@ defmodule ApiaryWeb.InstanceLive.ConfigurationTest do
 
       {:ok, view, html} = live(conn, ~p"/instance/configuration")
 
-      assert html =~ "What whoever runs this server set for the whole instance, or the default"
+      assert html =~
+               "What whoever runs this Qory Apiary set for the whole instance, or the default"
 
       # Set to an empty or blank value: the default too, and said so.
       empty = ["config-audit-retention", "config-audit-address-retention"]

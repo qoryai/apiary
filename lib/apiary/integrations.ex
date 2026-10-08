@@ -34,7 +34,7 @@ defmodule Apiary.Integrations do
     * `description_invalid` and `placeholder_conflict`, from
       `Apiary.Integrations.Description.parse/1`.
 
-  Nothing of the release runs on the server: it is only read.
+  Nothing of the release runs on Qory Apiary: it is only read.
 
   ## Who
 

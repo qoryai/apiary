@@ -23,72 +23,135 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 
 A machine signs every request with its own key, an Ed25519 key. Made by `qory` on the
 machine, its secret stays there, in `~/.config/qory/access-key-secret`; made in a browser,
-it goes into a CI's secret store. Qory keeps only the public half, so nothing the server
-holds can sign for the machine. Every answer of the
-server is signed too, with the server's own key, which the machine pins as
-`apiary_public_key` and checks every answer under.
+it goes into a CI's secret store. Qory Apiary keeps only the public half, so nothing Qory
+Apiary holds can sign for the machine. Every answer of Qory Apiary is signed too, with
+Qory Apiary's own key, which the machine pins as `apiary_public_key` and checks every
+answer under. Qory Apiary's key and its address are the instance's own, the same for every
+organisation, workspace and node: the address is its `PUBLIC_URL`, and the key is made
+from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the node's key.
 
 A key is active from the moment it arrives until it is revoked. A node holds two keys at a
 time, so that a machine can move to a new key before the old one is revoked. Each key's
-**Stored secrets** is fixed when it is made. A key is never rotated: a new one is made, and
+**Stored secrets** is fixed when it is made, and every new key, either way, gets **Not
+allowed**: runs don't receive secrets yet. A key is never rotated: a new one is made, and
 the old one revoked.
 
-There are two ways to give a node its key, each a button on the node's **Access key**
-tab, for owners and admins:
+There are two ways to connect a node's machine, both on the node's **Access key** tab, for
+owners and admins. While the node holds no active key, the tab asks "How do you want to
+connect build-01?": "build-01 needs a key before it can start runs. Choose one of two ways
+to give it one." The two ways are two options side by side, each saying when to choose
+it, what happens, and the same four facts, with one button:
 
-- **New enrolment code**: `qory` makes the key on the machine with
-  `qory access-key enrol`, and its secret never leaves the machine.
-- **Generate a key**: your browser makes the key, and shows you its secret once, for a
-  CI's secret store.
+- **Connect with a command**: "Choose it when you can open a terminal on build-01: a
+  laptop, or a server of your own." You get one command to run on build-01. It carries a
+  one-time code, not a key, which works once within 15 minutes. `qory` makes the key on
+  build-01, sends Qory Apiary only its public half, and saves everything else there
+  itself. Key made: on build-01, by `qory`. Secret: stays on build-01; it is never shown.
+  By hand: nothing. Needs: a terminal on build-01. The button is **Get the command**.
+- **Generate a key in the browser**: "Choose it when build-01 runs in a CI job, or on a
+  machine you can't open a terminal on." This browser makes the key, and Qory Apiary
+  receives only its public half. The next page shows the secret once, with everything
+  else the machine needs, for you to set where build-01 runs. Key made: in this browser.
+  Secret: shown to you once, for the machine's or the CI's secret store. By hand: the
+  key's ID, its secret, Qory Apiary's public key and address. Needs: this page open over
+  HTTPS. The button is **Generate a key**.
 
-While the node holds no active key, the tab leads with the way that suits its kind. A node
-leads with **Enrol this machine with qory**, and **New enrolment code** first; a pool with
-**Generate a key for this pool**, and **Generate a key** first. Once it holds an active key,
-the two buttons stay, in the same order. A member sees the keys, and none of the
-buttons.
+A node lists **Connect with a command** first, its button primary; a pool lists **Generate
+a key in the browser** first. A member reads "build-01 has no key yet, so it can't start
+runs. An owner or admin connects it."
 
-### Enrol with a code
+Once the node holds a key, the tab lists it under **Keys**, one card per key, headed by
+its label and **Active**: its **Key ID**, with **Copy**, which can always be seen again;
+how it was added ("Connected with a command by …" or "Generated in a browser by …");
+where its secret is; when it was last used ("Not yet" while unused); its **Fingerprint**
+and its **Stored secrets**; with **Runner file** and **Revoke…**. Under the keys, **Add a
+key** offers the same two ways, in the same order, to move the node to a new key: add it
+either way, then revoke the old one. At two keys it offers neither, and says "build-01
+holds two keys, the most a node can. Revoke the one it no longer uses to add another." A
+member sees the keys and none of the buttons.
 
-1. On the node's **Access key** tab, select **New enrolment code**. Choose **Stored
-   secrets** for the key it brings, and, if you like, a **Label hint**, the label the key
-   starts from. Select **Make code**.
-2. The page shows the code once, and the command to run on the machine, with this server
-   and the code filled in:
+At the foot, **Configure a machine**, for everyone, at two keys too: "A machine connected
+with the command needs nothing more: qory saved all of this on it. Don't set these again
+there; qory refuses a key ID or a public key set twice. With a generated key, set these
+where the machine runs qory." Then four numbered steps:
+
+1. **Point qory at Qory Apiary.** In the runner file, with **Copy lines**. It is required:
+   without it, `qory` ignores the three variables below.
+2. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`, a plain setting, with
+   **Copy**. The same for every machine connected to this Qory Apiary.
+3. **Set the key's ID.** `QORY_ACCESS_KEY_ID`, a plain setting: with one active key, its
+   ID, with **Copy**; with two, the ID of the key the machine uses, on its card above.
+4. **Keep the key's secret in a secret store.** `QORY_ACCESS_KEY_SECRET`. It was shown
+   once, when the key was generated, and is never shown here. If it is lost, generate a
+   new key and revoke the old one.
+
+### Connect with a command
+
+1. On the node's **Access key** tab, select **Get the command**. There is nothing to fill
+   in: the key the command brings gets **Stored secrets** **Not allowed**.
+2. The page **Connect build-01 with a command** shows the whole command to run on the
+   machine, with Qory Apiary's address and a one-time code in it, and **Copy command**:
 
    ```sh
-   qory access-key enrol https://apiary.example qec_…
+   qory access-key enrol https://apiary.example.com qec_…
    ```
 
-   The code works once, for 15 minutes. Only a hash of it is kept, so it cannot be shown
-   again; **Revoke…** under **Enrolment codes** cancels one that is still outstanding.
+   It works once, for 15 minutes, and the page gives the time it stops working. This is
+   the only time it is shown: only a hash of the code is kept.
 3. On the machine, the command makes the key, keeps its secret and prints its fingerprint.
-   The code carries the fingerprint of the server's key, so `qory` checks the server's
+   The code carries the fingerprint of Qory Apiary's key, so `qory` checks Qory Apiary's
    signed answer against it and pins that key, and it writes the `server` section of
    `~/.config/qory/runner.yaml` itself: `url`, `access_key_id` and `apiary_public_key`.
-4. The key arrives on the node's **Access key** tab, **Active**, under the code's label
-   hint, else the machine's name (`-2`, `-3` and on when the node has a key of that label
-   already); reload the tab if it is not there yet. The code is the approval: the key
-   needs nothing more. Its **Fingerprint** is the one `qory` printed; if it is not,
-   select **Revoke…**.
+4. The page reads "Waiting for build-01 to run it." until the key arrives, then "build-01
+   is connected. Its key arrived at 14:20 and is active.", with the key and its
+   **Fingerprint**. The code is the approval: the key needs nothing more. Its fingerprint
+   is the one `qory` printed on the machine; if it is not, revoke the key on the **Access
+   key** tab. The key is named after the machine's host name (`-2`, `-3` and on when the
+   node has a key of that name already).
 
-A code works only while the person who made it is still an owner or an admin of the
-workspace: once they are not, the machine's enrolment is refused, and an owner or an admin
-makes a new code.
+A command not yet run shows on the tab, in the **Connect with a command** card's first step
+or row: "A
+command is waiting to be run on build-01.", who got it and when, and until when it works.
+**Cancel the command…** cancels it, confirmed in place, and the button then reads **Get a
+new command**. A lost command can't be shown again: cancel it and get a new one.
 
-### The runner file lines
+A command works only while the person who got it is still an owner or an admin of the
+workspace: once they are not, a machine that runs it is refused, and an owner or an admin
+gets a new command.
 
-**Runner file lines**, on an active key's card, opens the page **Runner file for
-build-01**, which shows what the machine needs, none of it secret: the lines to put in
-`~/.config/qory/runner.yaml` (`url`, `access_key_id` and `apiary_public_key`), with
-**Copy lines**, and for a CI the same id and pin as two variables, with **Copy
-variables**.
+The command carries Qory Apiary's address, its `PUBLIC_URL`. When that is an address only
+Qory Apiary's own computer reaches, such as `http://localhost:4100`, the page says
+"Machines can't reach this address." and asks you to set `PUBLIC_URL` to the address
+machines use.
+
+### The runner file
+
+**Runner file**, on an active key's card, opens the page **Runner file for build-01**:
+"The runner file's lines for this key. Nothing here is secret." (for a generated key, the
+description below). What it shows depends on how the key came:
+
+- A key connected with a command: the `server` lines the command wrote to
+  `~/.config/qory/runner.yaml`, each marked whose it is: `url` (`# Qory Apiary`),
+  `access_key_id` (`# this key`) and `apiary_public_key` (`# Qory Apiary's public key`).
+  Only the key ID is the key's; the address and the public key are Qory Apiary's, the
+  same for every machine connected to it. The page says the key's secret is on the
+  machine, in `~/.config/qory/access-key-secret`, where the command saved it. It has
+  never been on a screen.
+- A generated key: "What build-01 needs, besides the secret. Nothing here is secret." Four
+  numbered steps. **Keep the secret in a secret store**: it was shown once, when the key
+  was generated, and belongs in `QORY_ACCESS_KEY_SECRET` in the secret store of the
+  system that runs `qory`; if it is lost, generate a new key and revoke this one. **Set
+  the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set Qory Apiary's public
+  key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: the same for every machine
+  connected to this Qory Apiary. **Point qory at Qory Apiary**: the lines the runner
+  file needs, `server.url`.
 
 ### For a CI
 
-A CI keeps the key in its own settings rather than in a machine's files. A pool's
-**Access key** tab leads with **Generate a key** for this. `qory access-key enrol` takes
-`--print` too: it keeps nothing on the machine and prints the settings, one `NAME=value`
-line each.
+A CI keeps the key in its own settings rather than in a machine's files. **Generate a key
+in the browser** is the way for it, and a pool's **Access key** tab lists it first.
+`qory access-key enrol` takes `--print` too: it keeps nothing on the machine and prints
+the settings, one `NAME=value` line each.
 
 - `qory access-key enrol --print <server> <code>` prints `QORY_ACCESS_KEY_ID`,
   `QORY_ACCESS_KEY_SECRET` and `QORY_APIARY_PUBLIC_KEY`. The key is active at once.
@@ -101,25 +164,44 @@ A fleet of short-lived CI runners is a node pool with one key.
 
 #### Generate a key in the browser
 
-1. On the node's **Access key** tab, select **Generate a key**. Give the key a **Label**,
-   `spot-runners` say, choose **Stored secrets**, and select **Generate key**.
-2. Your browser makes the Ed25519 key and sends Qory only its label, its **Stored
-   secrets** and its public half. The key is active as soon as it arrives.
-3. The page **Variables for spot-runners** shows the three variables, each with a copy
-   button: `QORY_ACCESS_KEY_ID`, `QORY_ACCESS_KEY_SECRET`, which is `qak_` and the key's
-   secret, and `QORY_APIARY_PUBLIC_KEY`. The secret is shown once: it was made in your
-   browser, Qory never received it, and it can't be shown again. Copy it into the CI's
-   secret store before you select **Done**.
+1. On the node's **Access key** tab, select **Generate a key**. The page **Generate a key
+   for spot-runners** has one field, **Name of the key**, filled in with the node's name
+   (`spot-runners-2` when a key has that name already). Select **Generate key**.
+2. Your browser makes the Ed25519 key and sends Qory Apiary only its name and its public
+   half. The key gets **Stored secrets** **Not allowed**, and is active as soon as it
+   arrives.
+3. The page **Key for spot-runners** says "Do these where spot-runners runs. Only the
+   secret can't be seen again." Under the notice "The secret is shown once.", four
+   numbered steps, each value with **Copy**:
+   1. **Store the secret.** In the secret store of the system that runs spot-runners,
+      such as your CI's: `QORY_ACCESS_KEY_SECRET`, which is `qak_` and the key's secret,
+      tagged "secret · shown once".
+   2. **Set the key's ID.** As a plain setting: `QORY_ACCESS_KEY_ID`. It stays on the
+      **Access key** tab.
+   3. **Set Qory Apiary's public key.** As a plain setting: `QORY_APIARY_PUBLIC_KEY`. The
+      same for every machine connected to this Qory Apiary. It stays on the **Access
+      key** tab.
+   4. **Point qory at Qory Apiary.** In the runner file. It is required: without it,
+      `qory` ignores the three variables. With **Copy lines**:
 
-Opened again, the page still shows the id and the pin, and says the secret is not shown:
-only the page that made the key held it. If you didn't copy it, revoke the key and
-generate another. The key's card says **Made in a browser by** you, and when.
+      ```yaml
+      server:
+        url: https://apiary.example.com
+      ```
+
+   Only the secret is shown once: it was made in your browser, Qory Apiary never received
+   it, and it can't be shown again. Copy it into the secret store before you select
+   **Done**.
+
+Opened again, the page has no notice and nothing to copy for the secret: where it was, it
+says "Not shown: only the page that made the key held its secret, and this one was opened
+again. If you didn't copy it, revoke spot-runners and generate another key." The other
+steps stay. The key's card says **Generated in a browser by** you, and when.
 
 The browser makes keys only on a page served over HTTPS (a browser counts
 `http://localhost` as one too) and only if it can make an Ed25519 key: a current Chrome,
 Edge, Firefox or Safari. Where it can't, the page says why, and **Generate key** stays
-off; enrol the machine with `qory` instead. For a machine of your own, enrolling it with
-`qory` keeps the secret off every screen.
+off; connect the machine with a command instead.
 
 ## Instances and the instance limit
 
@@ -146,12 +228,12 @@ filter, or **Node** in the Filter menu, keeps a node's runs alone.
 
 **Revoke…** on an active key's card revokes it at once: the machine's next request is
 refused, `401`, and it starts no new run. Its public key can never be used again. To move a
-machine to a new key without a gap, give it the new key first, and revoke the old one once
-the machine uses the new one.
+machine to a new key without a gap, give it the new key first, under **Add a key**, and
+revoke the old one once the machine uses the new one.
 
-Deleting a node revokes its keys and its outstanding codes. Suspending a member revokes
-nothing: a key belongs to its node, not to the person who added it, so revoke the keys
-that should stop too.
+Deleting a node revokes its keys and cancels a command not yet run. Suspending a member
+revokes nothing: a key belongs to its node, not to the person who added it, so revoke the
+keys that should stop too.
 
 The workspace's overview lists, under **To review**, an active key nobody has used for
 30 days, with **Revoke** leading to its card. A key nobody uses is a key to revoke.

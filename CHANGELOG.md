@@ -63,30 +63,46 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   server never holds a key's secret, only its public half, with the key's stored-secrets
   flag fixed when it is made. A key is active from the moment it arrives until it is
   revoked. A node gets its key in one of two ways, both on its Access key tab, which
-  leads owners and admins with the way that suits its kind while it holds no active key
-  (a node, Enrol this machine with qory; a pool, Generate a key for this pool). New
-  enrolment code: an owner or an admin makes a single-use code valid for 15 minutes,
-  with the stored-secrets flag of the key it brings, and the page shows the command
-  `qory access-key enrol <server> <code>`; the machine makes its key, keeps its secret
-  and posts the code with the new public key to `POST /.well-known/qory-enrolment`,
-  which answers signed. The code is the approval: the key it brings is active at once,
-  and the code is refused unless its maker is still an owner or an admin of the
-  workspace when it is redeemed. Generate a key: the browser makes the key (WebCrypto
-  Ed25519, on a page served over HTTPS) and sends Qory its label, its flag and its
-  public half alone; the page Variables for the key then shows `QORY_ACCESS_KEY_ID`,
-  `QORY_ACCESS_KEY_SECRET` (`qak_` and the key's seed) and `QORY_APIARY_PUBLIC_KEY`,
-  the secret once, from the browser's memory, and says that only the secret belongs in
-  a CI's secret store and the runner file then needs only `url`; opened again, it says
-  the secret is gone. The key's card says "Made in a browser by …". An active key's card
-  opens the page Runner file for the key, which shows the runner file's `server` lines
-  (`url`, `access_key_id`, `apiary_public_key`) and the same id and pin as
-  `QORY_ACCESS_KEY_ID` and `QORY_APIARY_PUBLIC_KEY` for a CI. A public key pasted into a
-  node is no way to give it a key: the page that took one, Add a public key, was removed
-  before the release.
-  Owners and admins make and revoke codes and add and revoke keys, each in the audit
+  asks owners and admins "How do you want to connect build-01?" while it holds no
+  active key, with two equal options, each saying when to choose it, what happens and
+  the same four facts (Key made, Secret, By hand, Needs), with one button (a node lists
+  Connect with a command first, a pool Generate a key in the browser), and under Add a
+  key, as two rows, once it holds one, with Configure a machine at the tab's foot for
+  everyone: four steps, Qory Apiary's address and public key, the key's ID, and where
+  its secret belongs. Every new
+  key, either way, gets the stored-secrets flag Not allowed, since runs don't receive
+  secrets yet. Connect with a command: Get the command makes, in one click, a
+  single-use code valid for 15 minutes, and the page Connect build-01 with a command
+  shows it, once, only inside the command `qory access-key enrol <server> <code>`, with
+  the time it stops working; the machine makes its key, keeps its secret and posts the
+  code with the new public key to `POST /.well-known/qory-enrolment`, which answers
+  signed, and qory names the key after the machine's host name. The page turns, live,
+  to "build-01 is connected." with the key's fingerprint, and says when the server's
+  address is a loopback one that machines can't reach. A command not yet run shows on
+  the tab as "A command is waiting to be run on build-01.", with Cancel the command….
+  The code is the approval: the key it brings is active at once, and the code is
+  refused unless its maker is still an owner or an admin of the workspace when it is
+  redeemed. Generate a key in the browser: the browser makes the key (WebCrypto Ed25519, on a page
+  served over HTTPS) and sends Qory Apiary its name and its public half alone; the page Key
+  for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
+  and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
+  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the runner file's
+  `server.url`. Opened again, it says the secret is gone, and offers nothing of it to
+  copy. A key's card shows its
+  Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
+  browser by …") and where its secret is. An active key's card opens the page Runner
+  file for the key: for a key connected with a command, the runner file's `server`
+  lines (`url`, `access_key_id`, `apiary_public_key`), each marked as Qory Apiary's or
+  this key's; for a generated key, four numbered steps: where its secret belongs, then
+  `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `server.url`. The server's address
+  and public key are the instance's own, the same for every organisation, workspace and
+  node. A public key pasted into a node is no way to give it a key: the page that took
+  one, Add a public key, was removed before the release.
+  Owners and admins get and cancel commands and add and revoke keys, each in the audit
   trail; a node holds at most two keys at a time, and deleting a node revokes its keys
-  and codes. Enrolment is limited per address, 1 a second and 10 at once, and answers in
-  the runner contract's order: before the code is looked at, `413` for a body over 8 KiB,
+  and cancels its commands. Enrolment is limited per address, 1 a second and 10 at
+  once, and answers in the runner contract's order: before the code is looked at, `413`
+  for a body over 8 KiB,
   `415` `unsupported_media_type` for a `Content-Type` absent or not `application/json`,
   `400` `bad_request` for a `Content-Type` or `X-Qory-Contract-Version` sent twice, `429`
   over the address's limit, `400` `unsupported_contract_version` and `400`
@@ -99,7 +115,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - A node's instances: what a runner using the node's access key reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation. An
   instance runs while it has a run the lost-run check holds alive. The Nodes list says
-  each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"), with the
+  each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"; a pool
+  whose instances were pruned is last seen when its key was last used), with the
   views All, Running and Not running, Sort by name or last seen, and a pool's running
   instances under it; a node's Overview shows its instance or a pool's running
   instances, the starts refused at the limit, and its recent runs. Owners and admins
@@ -111,10 +128,11 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   ping of a new run from an instance beyond it is a signed `409` `instance_limit`, the run
   does not start and nothing is stored, and the node counts the starts refused.
 - A workspace no run has reached opens on one box, Send your first run: Add a node (a
-  node, or a node pool for a fleet that shares one key), Give it a key
-  (`qory access-key enrol` with a code from the node's page, or, for a CI or a pool, a
-  key generated in the browser on that page), and See runs here, with the command that
-  enrols a machine beside it.
+  node, or a node pool for a fleet that shares one key), Connect it (one command run on
+  the machine, or a key generated in the browser for a CI or another system), and See
+  runs here, with a panel beside it that explains the two ways, then asks "How do you
+  want to connect build-01?" and makes the real command in place, shown once, while it
+  waits for the machine.
   The first sign-in lands there. The overview's To review lists a node's active key
   nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who

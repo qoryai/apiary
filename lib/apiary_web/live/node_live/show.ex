@@ -547,15 +547,20 @@ defmodule ApiaryWeb.NodeLive.Show do
           id="node-instances-none"
           class="text-[13px]/5 text-muted"
         >
-          {if @node.kind == :pool,
-            do:
+          {cond do
+            @node.kind == :pool and NodeComponents.seen_at(@activity) != nil ->
+              gettext("No instance of this pool is running. An instance shows here while it runs.")
+
+            @node.kind == :pool ->
               gettext(
                 "No instance of this pool has reported yet. An instance shows here while it runs."
-              ),
-            else:
+              )
+
+            true ->
               gettext(
                 "No instance of this node has reported yet. It shows here once it runs, running or when it was last seen."
-              )}
+              )
+          end}
         </p>
         <p
           :if={@node.kind == :pool && @activity.running == [] && @activity.last}
@@ -888,7 +893,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         )}
         <:lost>
           {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys and its enrolment codes are revoked. Its runs stay in the record. This cannot be undone.",
+            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
             name: @node.name
           )}
         </:lost>

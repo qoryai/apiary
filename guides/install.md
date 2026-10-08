@@ -45,8 +45,8 @@ terminated by a reverse proxy in front of it.
 The console's pages are live over a WebSocket: let the proxy pass WebSocket upgrades
 through. Without them the pages fall back to long polling.
 
-Links in emails, the runner file lines and the enrolment command the console shows for a
-node's key, and the URLs in the discovery document are all built from `PUBLIC_URL`, never
+Links in emails, the runner file lines and the command the console shows to connect a
+machine, and the URLs in the discovery document are all built from `PUBLIC_URL`, never
 from the request's `Host` header. A `PUBLIC_URL` that is not the address runners and
 people use gives them links that do not work.
 
@@ -300,7 +300,7 @@ whole database schema whatever its features, so nothing is migrated.
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
 its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access
-key, or Qory itself for its own scheduled work), when, from which address and client, and
+key, or Qory Apiary itself for its own scheduled work), when, from which address and client, and
 what it changed. An entry never holds a secret, nor a person's name or email address: it
 names a person by their account, and the page looks the address up when it shows it.
 <!-- feature: security -->
@@ -333,7 +333,7 @@ next day's job; setting it longer again does not bring it back.
 |---|---|---|
 | `INTEGRATION_URL_SOURCES` | `true` | Whether an integration may be added from an https address of its `description.json`: `true`, `1` or `yes`, or `false`, `0` or `no`. Not set, or empty, is `true`. Any other value stops the boot. |
 
-When a workspace adds an integration from a release, Qory reads the release's
+When a workspace adds an integration from a release, Qory Apiary reads the release's
 `description.json` and `checksums.txt` from the forge or the address it names. A release
 is on `github.com`, `gitlab.com` or `codeberg.org`, found by the repository's path and
 the version at the download address that forge gives it (on GitLab, the API's download
@@ -341,7 +341,7 @@ route, `/api/v4/projects/…/releases/…/downloads/…`, which redirects to whe
 release's link points), or at an https address of its `description.json`. A repository
 on any other host is refused: self-hosted forges are not supported.
 
-Qory connects only to public addresses: it resolves the host, refuses the fetch when any
+Qory Apiary connects only to public addresses: it resolves the host, refuses the fetch when any
 address is private, loopback, link-local or a cloud metadata address, and connects to the
 address it checked, each redirect checked again, at most five, within 15 seconds and
 1 MiB. This holds for every host, and no setting allows a private address. A fetch that
@@ -352,11 +352,11 @@ An address of a `description.json` may be on any host, so an instance open to pe
 do not know, such as a cloud service, sets `INTEGRATION_URL_SOURCES=false`: integrations
 are then added from forges' releases alone. A workspace that asks for one from an address
 is told so, and a release already asked for from an address is not fetched, nor added.
-Even so, Qory follows a forge release's download links where they lead, to any public
+Even so, Qory Apiary follows a forge release's download links where they lead, to any public
 https host: on GitLab a release's links, and on Codeberg its attachments, may be addresses
 the release's author chose.
 
-Qory fetches every release without credentials, as anyone could: no request carries a
+Qory Apiary fetches every release without credentials, as anyone could: no request carries a
 token, so private releases are not supported.
 
 The value is read at boot, so a change takes a restart. A release asked for from an
@@ -465,7 +465,7 @@ adding it to the organisation when it is not there yet; the account must exist, 
 person signs up with an invitation first. The second makes an instance admin a member of
 the organisation: they stay in it, where an owner removes them if they should leave. It
 refuses the last instance admin: grant another first. Each is an entry in the
-organisation's activity, by Qory rather than by a person.
+organisation's activity, by Qory Apiary rather than by a person.
 
 **Suspending** a member pauses and removes nothing, and **Activate** undoes it; each is an
 entry in the activity. On the organisation's **Members** page an owner suspends an admin or

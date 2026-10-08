@@ -9,7 +9,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
   alias Apiary.{Audit, Organisations, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Membership, Workspace}
 
   defp open(conn, scope, query \\ "") do
     {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log#{query}")
@@ -194,6 +194,8 @@ defmodule ApiaryWeb.ActivityLiveTest do
       for option <- options do
         refute option =~ ~r/^[a-z_]+\.[a-z_]+$/, "#{option} is a code name"
       end
+
+      assert "Owner made on Qory Apiary" in options
     end
 
     test "filters by workspace", %{conn: conn, scope: scope} do
@@ -294,7 +296,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       view = open(conn, scope)
       assert text(view, "#entry-#{by_key.id}-actor") =~ "build-01"
       assert text(view, "#entry-#{by_key.id}-actor") =~ key.key_id
-      assert text(view, "#entry-#{pruned.id}-actor") =~ "Qory"
+      assert text(view, "#entry-#{pruned.id}-actor") =~ "Qory Apiary"
       assert text(view, "#entry-#{pruned.id}-change") =~ "1 entry older than 90 days"
     end
 
@@ -348,7 +350,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       [purged] = entries(scope, %{action: "workspace.purge"})
 
       view = open(conn, scope)
-      assert text(view, "#entry-#{purged.id}-actor") =~ "Qory"
+      assert text(view, "#entry-#{purged.id}-actor") =~ "Qory Apiary"
       assert text(view, "#entry-#{purged.id}-action") =~ "Purged a deleted workspace"
       assert text(view, "#entry-#{purged.id}-subject") =~ "A deleted workspace"
     end
@@ -400,6 +402,28 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert text(view, "#entry-#{added.id}-action") =~ "Added a policy rule"
       assert text(view, "#entry-#{added.id}-change") =~ "api.example"
       assert text(view, "#entry-#{added.id}-change") =~ "Now v1"
+    end
+
+    test "a load that fails says so, and where the reason is", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(m in Membership,
+            where: m.user_id == ^scope.user.id and m.organisation_id == ^scope.organisation.id
+          ),
+          set: [level: :member]
+        )
+
+      view
+      |> form("#filter-action-form")
+      |> render_change(%{"_filter" => "action", "action" => "workspace.rename"})
+
+      render_async(view)
+
+      assert String.trim(text(view, "#activity-error")) ==
+               "The audit log could not be loaded. Reload the page; if it keeps happening, " <>
+                 "Qory Apiary's log has the reason."
     end
 
     test "says so when nothing matches", %{conn: conn, scope: scope} do

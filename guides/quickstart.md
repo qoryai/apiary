@@ -98,7 +98,7 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your workspace. Until a run reaches it, the
-overview is one box, **Send your first run**: Add a node, Give it a key, See runs here.
+overview is one box, **Send your first run**: Add a node, Connect it, See runs here.
 Steps 5 to 8 below are those steps.
 
 Signing up created an organisation with the name you gave, one workspace in it named
@@ -146,22 +146,24 @@ organisation's. Mail to you, such as a log-in link, is written in your language.
 of the workspace's pages are its domain's, chosen when it was created: software, the one
 domain there is, which says repository, forge and pull request.
 
-## 5. Add a node, then enrol the machine
+## 5. Add a node, then connect it
 
 A machine posts its runs with an access key of its own, on a **node** of the workspace: a
 node is one permanent machine, a **node pool** a fleet of short-lived instances that share
-one key. These are the overview's first two steps, **Add a node** and **Give it a key**.
-Here `qory` makes the key on the machine, and Qory keeps only its public half.
+one key. These are the overview's first two steps, **Add a node** and **Connect it**.
+Here you connect the machine with a command: `qory` makes the key on the machine, and Qory
+Apiary keeps only its public half.
 
 1. Select **Nodes** in the sidebar, then **New node**. Name it after the machine,
-   `build-01` say, and select **Add node**. The node's **Access key** tab opens, led by
-   **Enrol this machine with qory**, with two buttons: **New enrolment code** and
-   **Generate a key**. (Back on the overview, step 2 now says
-   "build-01 has no key yet." with **New enrolment code** and **Generate a key**, which
-   open the same pages.)
-2. Select **New enrolment code**, leave **Stored secrets** at **Not allowed**, and select
-   **Make code**. The page shows the code once, and under "On the machine, run:" the
-   command with this server and the code filled in. Select **Copy command**.
+   `build-01` say, and select **Add node**. The node's **Access key** tab opens and asks
+   "How do you want to connect build-01?", with two ways: **Connect with a command**
+   first, and **Generate a key in the browser**. (Back on the overview, step 2 asks the
+   same, and **Get the command** there shows the command in place.)
+2. Under **Connect with a command**, select **Get the command**. The page **Connect
+   build-01 with a command** shows the command to run on the machine, with Qory Apiary's
+   address and a one-time code in it. Select **Copy command**. Since `PUBLIC_URL` is a
+   `localhost` address, the page also says machines can't reach it; that holds for other
+   machines, and this trial's machine is Qory Apiary's own, so the command works here.
 3. On the machine, run the command:
 
    ```sh
@@ -171,23 +173,24 @@ Here `qory` makes the key on the machine, and Qory keeps only its public half.
    `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable
    by you alone, and prints the key's fingerprint. It writes the `server` section into
    `~/.config/qory/runner.yaml`, `$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is
-   set: the server's `url`, the key's `access_key_id`, and `apiary_public_key`, the
-   server's key, which the code named and the server's signed answer confirmed. The code
-   works once, for 15 minutes.
-4. Select **Done**. Once the command has run, the node's **Access key** tab shows the key,
-   **Active**, under the machine's name; reload the tab if it is not there yet. Its
-   **Fingerprint** is the one `qory` printed; if it is not, select **Revoke…**.
+   set: Qory Apiary's `url`, the key's `access_key_id`, and `apiary_public_key`, Qory
+   Apiary's key, which the code named and Qory Apiary's signed answer confirmed. The
+   address and Qory Apiary's key are the same for every machine connected to this Qory
+   Apiary; only `access_key_id` is the machine's key's. The command works once, for 15
+   minutes.
+4. The page, which read "Waiting for build-01 to run it.", now says "build-01 is
+   connected." with the key and its **Fingerprint**. It is the one `qory` printed; if it
+   is not, revoke the key on the **Access key** tab. Select **Done**.
 
-The code is the approval: the key is active as soon as it arrives, and the machine can
-start runs at once.
+The command is the approval: the key is active as soon as it arrives, and the machine can
+start runs at once. On the **Access key** tab, the key's card says where its secret is.
 
 The runner file belongs to the machine and to no repository.
 [The runner file's `server` section](runner-file.md) has the rest of it.
 
-For a CI or a node pool, **Generate a key** on the same tab makes the key in your browser
-and shows its secret once, with the variables the CI sets;
-[Nodes and their keys](nodes.md) says more about both ways, node pools and revoking a
-key.
+For a CI or a node pool, **Generate a key in the browser** on the same tab makes the key
+in your browser and shows its secret once, with the other values the CI sets; [Nodes and
+their keys](nodes.md) says more about both ways, node pools and revoking a key.
 
 ## 6. First run
 

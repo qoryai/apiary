@@ -9155,15 +9155,6 @@
     color: var(--q-faint);
     font-size: 0.75rem;
   }
-  .q-onb-pre {
-    overflow-x: auto;
-    margin: 0;
-    padding: 12px 14px;
-    border-radius: var(--radius-field);
-    background-color: var(--q-code-bg);
-    font: 12.5px/20px var(--font-mono);
-    tab-size: 2;
-  }
   .q-onb-after {
     max-width: 1040px;
     margin-top: -8px;

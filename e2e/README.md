@@ -50,11 +50,11 @@ batches, the digests in the answers.
    `build-01` (`Apiary.Nodes.create_node/2`). It generates a fresh Ed25519 key and adds
    its public key to the node the way the node's Generate a key adds one made in a
    browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added, without stored
-   secrets. The key's `server` lines, `url`, `access_key_id` and the
-   `apiary_public_key` pin (`Apiary.AccessKeys.runner_lines/3`, what the key's page
-   shows), and the wall section become the node's `runner.yaml`. The key's secret, `qak_`
-   and its seed, goes into `access-key-secret` beside it, mode 0600, in a directory of
-   mode 0700; nothing prints it. `node/prepare.sh` copies the three files into a
+   secrets. The key's `server` lines, the server's `url` and `apiary_public_key` pin
+   (`Apiary.AccessKeys.server_lines/2`) and the key's `access_key_id`
+   (`Apiary.AccessKeys.key_line/1`), and the wall section become the node's
+   `runner.yaml`. The key's secret, `qak_` and its seed, goes into `access-key-secret`
+   beside it, mode 0600, in a directory of mode 0700; nothing prints it. `node/prepare.sh` copies the three files into a
    directory of the node's own, root's, mode 0700, each file mode 0600, since qory
    reads the secret only from a file its user owns, and keeps its instance id and locks
    beside it.

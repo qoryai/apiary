@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   @moduledoc """
-  A node's Access key tab (`ApiaryWeb.NodeLive.AccessKey`): its intro and the way a
-  machine gets a key, the keys and their acts confirmed in place, generating a key in the
-  browser and the variables page it leads to, an active key's runner file, an enrolment
-  code made and shown once with
-  the command that enrols the machine (redeemed as shown), the outstanding codes and their
-  revocation, and what a member, another organisation and a stale page are refused.
+  A node's Access key tab (`ApiaryWeb.NodeLive.AccessKey`): the two ways to connect a
+  node, ordered by its kind, the keys and their acts confirmed in place, Add a key,
+  generating a key in the browser and the key's page it leads to, an active key's runner
+  file as the key came, the command got in one click and shown once (redeemed as shown,
+  the page turning to "connected" as the key arrives), a command waiting and its
+  cancelling, and what a member, another organisation and a stale page are refused.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -19,7 +19,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode}
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
   alias Apiary.Repo
-  alias ApiaryWeb.{Format, NodeComponents}
+  alias ApiaryWeb.Format
 
   setup :register_and_log_in_user
 
@@ -75,6 +75,47 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
      ~s(QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"#{public_key}"}])}
   end
 
+  # The words of an element, its spaces made one.
+  defp words(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> String.replace(~r/<(p|div|h[1-6]|li|dt|dd)[\s>]/, " \\0")
+    |> text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
+  # Get the command on the tab: the command's page, and the code in its command.
+  defp get_command(lv, scope, node) do
+    lv |> element("#code-new-button") |> render_click()
+    assert_patch(lv, tab_path(scope, node, "/new-code"))
+    command = lv |> element("#code-issued-command") |> render() |> text() |> String.trim()
+    ["qory", "access-key", "enrol", _server, code] = String.split(command, " ")
+    code
+  end
+
+  # What a machine posts as `qory access-key enrol` with `code`: its new key, and the proof.
+  defp enrol_request(code, pair \\ ed25519_key_pair()) do
+    now = System.os_time(:second)
+    message = SignedMessage.enrolment(code, pair.encoded, "build-01", now)
+    proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+
+    {:ok, request} =
+      Enrolment.decode(
+        Jason.encode!(%{
+          "version" => 1,
+          "code" => code,
+          "name" => "build-01",
+          "public_key" => pair.encoded,
+          "timestamp" => now,
+          "proof" => Ed25519.encode(proof)
+        })
+      )
+
+    request
+  end
+
   describe "the tab" do
     test "is a tab of the node's page, with no line about a workspace's access keys",
          %{conn: conn, scope: scope} do
@@ -92,22 +133,19 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#not-on-runs")
       refute render(lv) =~ "workspace access key"
 
-      assert has_element?(
-               lv,
-               "#node-keys-intro",
-               "A machine signs every request with its own key. Qory keeps only the public half."
-             )
+      # With no key, the question and the two ways (the ways' own tests are below); no
+      # list of codes, no Keys part.
+      assert has_element?(lv, "#node-connect-title", "How do you want to connect build-01?")
 
-      # With no key, the way that suits a node leads (the ways' own tests are below).
-      assert has_element?(lv, "#node-keys-lead-title", "Enrol this machine with qory")
-      refute has_element?(lv, "#node-keys-none")
+      assert words(lv, "#node-connect-intro") ==
+               "build-01 needs a key before it can start runs. Choose one of two ways to give it one."
 
-      # Two keys at a time; none awaits anything.
-      assert render(lv) =~ "A node holds at most 2 keys at a time."
+      refute has_element?(lv, "#node-keys")
+      refute has_element?(lv, "#node-codes")
+      refute render(lv) =~ "Enrolment code"
       refute render(lv) =~ ~r/approv/i
 
-      assert has_element?(lv, "#node-codes-none", "No enrolment code is outstanding.")
-      assert has_element?(lv, "#code-new-button", "New enrolment code")
+      assert has_element?(lv, "#code-new-button", "Get the command")
       assert has_element?(lv, "#key-generate-button", "Generate a key")
       assert page_title(lv) =~ "Access key · build-01"
       refute_untrue(html)
@@ -120,16 +158,38 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       {:ok, lv, html} = live(conn, tab_path(scope, node))
 
-      # Each card's line is its heading, which takes the focus where an act took its button.
+      # Each card's line is its heading, which takes the focus where an act took its button:
+      # its label and its state; the key's ID is its first row, with Copy.
       assert has_element?(lv, ~s{h3#key-#{made.key_id}-title[tabindex="-1"]}, "current")
+      refute has_element?(lv, "h3#key-#{made.key_id}-title", made.key_id)
       assert has_element?(lv, "#key-#{made.key_id}-state", "Active")
+      assert has_element?(lv, "#key-#{made.key_id}-id", made.key_id)
+
+      assert has_element?(
+               lv,
+               ~s{#key-#{made.key_id}-id-copy[aria-label="Copy the key ID of current"][data-copy="#{made.key_id}"]}
+             )
+
       assert has_element?(lv, "#key-#{made.key_id}-fingerprint", AccessKey.fingerprint(made))
 
       assert has_element?(
                lv,
-               "#key-#{made.key_id}-arrived",
-               "Made in a browser by #{scope.user.email}"
+               "#key-#{made.key_id}-added",
+               "Generated in a browser by #{scope.user.email}, #{Format.datetime(made.received_at)}"
              )
+
+      assert has_element?(
+               lv,
+               "#key-#{made.key_id}-secret",
+               "Shown once when it was generated; kept where you put it, such as your CI's secret store"
+             )
+
+      assert has_element?(lv, "#key-#{made.key_id}-used", "Not yet")
+      assert has_element?(lv, "#node-keys-title", "Keys")
+      assert has_element?(lv, "#node-keys-title .q-part-n", "2")
+
+      assert words(lv, "#node-keys-intro") ==
+               "build-01 signs every request with its key. Qory Apiary keeps only the public half."
 
       assert has_element?(lv, "#key-#{made.key_id}-revoke", "Revoke…")
       # Each Revoke… is named for the key it revokes.
@@ -144,16 +204,28 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#key-#{made.key_id}-runner-file .sr-only",
-               "Runner file lines for current"
+               "Runner file for current"
              )
 
-      # A key a code brought is active as it arrives: the same state, and the same acts.
+      assert has_element?(
+               lv,
+               ~s{#key-#{made.key_id}-runner-file [aria-hidden="true"]},
+               "Runner file"
+             )
+
+      # A key a command brought is active as it arrives: the same state, and the same acts.
       assert has_element?(lv, "#key-#{enrolled.key_id}-state", "Active")
 
       assert has_element?(
                lv,
-               "#key-#{enrolled.key_id}-arrived",
-               "With an enrolment code #{scope.user.email} made"
+               "#key-#{enrolled.key_id}-added",
+               "Connected with a command by #{scope.user.email}"
+             )
+
+      assert has_element?(
+               lv,
+               "#key-#{enrolled.key_id}-secret",
+               "On build-01, saved there by the command"
              )
 
       assert has_element?(lv, "#key-#{enrolled.key_id}-revoke", "Revoke…")
@@ -303,15 +375,20 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              "That key or code is gone: this node&#39;s keys changed meanwhile."
   end
 
-  describe "the form pages" do
-    test "Cancel leads back to the tab, the focus on the button that opened the page",
+  describe "the pages a way opens" do
+    test "Cancel and Done lead back to the tab, the focus on the button that opened the page",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope)
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
-      lv |> element("#code-new-button") |> render_click()
-      assert_patch(lv, tab_path(scope, node, "/new-code"))
-      lv |> element("#code-new-save-cancel") |> render_click()
+      lv |> element("#key-generate-button") |> render_click()
+      assert_patch(lv, tab_path(scope, node, "/generate"))
+      lv |> element("#key-generate-save-cancel") |> render_click()
+      assert_patch(lv, tab_path(scope, node))
+      assert_push_event(lv, "run:focus", %{id: "key-generate-button"})
+
+      _code = get_command(lv, scope, node)
+      lv |> element("#code-issued-done-button") |> render_click()
       assert_patch(lv, tab_path(scope, node))
       assert_push_event(lv, "run:focus", %{id: "code-new-button"})
     end
@@ -321,8 +398,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       node = node_fixture(scope)
       tab = tab_path(scope, node)
 
-      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/new-code"))
-      refute has_element?(lv, "#code-new-back")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
+      refute has_element?(lv, "#key-generate-back")
 
       assert {:error, {:live_redirect, %{to: ^tab}}} =
                lv |> element("#breadcrumb a[href='#{tab}']", "Access key") |> render_click()
@@ -335,14 +412,15 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       node = node_fixture(scope)
 
       for {event, params} <- [
-            {"validate_code", %{"code" => "x"}},
-            {"validate_code", %{"code" => %{"label_hint" => %{"a" => 1}}}},
-            {"create_code", %{"code" => "x"}}
+            {"validate_generate", %{"key" => "x"}},
+            {"validate_generate", %{"key" => %{"label" => %{"a" => 1}}}},
+            {"validate_generate", %{"key" => %{"label" => "ci", "allow_secrets" => "true"}}}
           ] do
-        {:ok, lv, _html} = live(conn, tab_path(scope, node, "/new-code"))
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, "/generate"))
         render_hook(lv, event, params)
         assert Process.alive?(lv.pid), "#{event} #{inspect(params)}"
-        assert render(lv) =~ "id=\"code"
+        assert has_element?(lv, "#key-generate-form")
+        refute has_element?(lv, "#key-generate-form [name='key[allow_secrets]']")
       end
 
       assert AccessKeys.list_for_node(scope, node) == []
@@ -369,7 +447,6 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
             tab_path(scope, pool),
             tab_path(scope, node, "/generate"),
             tab_path(scope, pool, "/generate"),
-            tab_path(scope, node, "/new-code"),
             tab_path(scope, node, "/keys/#{key.key_id}/runner-file")
           ] do
         {:ok, lv, html} = live(conn, path)
@@ -386,11 +463,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   end
 
   describe "a key's runner file" do
-    test "is what the machine is given: the server section and, for CI, the variables",
+    test "a key connected with a command: the lines the command wrote, each marked whose",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
-      %{access_key: key} = node_key_fixture(scope, node, %{label: "current"})
-      {yaml_pin, env_pin} = pin_lines()
+      %{access_key: key} = enrolled_key_fixture(scope, node, %{label: "current"})
+      {yaml_pin, _env_pin} = pin_lines()
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
       lv |> element("#key-#{key.key_id}-runner-file") |> render_click()
@@ -400,47 +477,43 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert page_title(lv) =~ "Runner file for current · build-01"
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "current")
 
-      assert has_element?(
-               lv,
-               "#key-runner-file",
-               "For build-01. Nothing here is secret: the key's secret stays on the machine."
-             )
+      assert words(lv, "#key-runner-file-header-description") ==
+               "The runner file's lines for this key. Nothing here is secret."
 
       assert has_element?(
                lv,
                "#key-runner-file",
-               "Put these lines in ~/.config/qory/runner.yaml on the machine:"
+               "The command wrote these lines to ~/.config/qory/runner.yaml on build-01 when it connected. They are here to check, or to write the file again:"
              )
 
-      yaml = lv |> element("#key-runner-file-yaml") |> render() |> text()
+      yaml =
+        (lv |> element("#key-runner-file-yaml") |> render() |> text() |> String.trim_trailing()) <>
+          "\n"
+
+      url = "  url: #{ApiaryWeb.Endpoint.url()}"
+      key_line = "  access_key_id: #{key.key_id}"
+      width = Enum.max(Enum.map([url, key_line, "  apiary_public_key:"], &String.length/1)) + 2
 
       assert yaml ==
                """
                server:
-                 url: #{ApiaryWeb.Endpoint.url()}
-                 access_key_id: #{key.key_id}
-                 apiary_public_key:
-               #{yaml_pin}\
+               #{String.pad_trailing(url, width)}# Qory Apiary
+               #{String.pad_trailing(key_line, width)}# this key
+               #{String.pad_trailing("  apiary_public_key:", width)}# Qory Apiary's public key
+               #{yaml_pin}
                """
 
       assert has_element?(lv, "#key-runner-file-yaml-copy", "Copy lines")
 
-      assert has_element?(
-               lv,
-               "#key-runner-file",
-               "For CI, keep url in the file and set these instead of the other two lines:"
-             )
+      assert words(lv, "#key-runner-file-parts") ==
+               "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
 
-      env = lv |> element("#key-runner-file-env") |> render() |> text()
-      assert env == "QORY_ACCESS_KEY_ID=#{key.key_id}\n#{env_pin}"
-      assert has_element?(lv, "#key-runner-file-env-copy", "Copy variables")
+      assert words(lv, "#key-runner-file-secret") ==
+               "The key's secret is on build-01, in ~/.config/qory/access-key-secret, where the command saved it. It has never been on a screen."
 
-      assert has_element?(
-               lv,
-               "#key-runner-file-secret",
-               "The key's secret is where qory access-key enrol put it: ~/.config/qory/access-key-secret, or QORY_ACCESS_KEY_SECRET in CI."
-             )
-
+      refute has_element?(lv, "#key-runner-file-key")
+      refute has_element?(lv, "#key-runner-file-server")
+      refute render(lv) =~ "access-key create"
       refute_untrue(render(lv))
 
       # Done: back to the tab, the focus on the link that opened the page.
@@ -448,6 +521,47 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert_patch(lv, tab_path(scope, node))
       assert_push_event(lv, "run:focus", %{id: id})
       assert id == "key-#{key.key_id}-runner-file"
+    end
+
+    test "a generated key: four steps, the secret, its ID, Qory Apiary's public key and address",
+         %{conn: conn, scope: scope} do
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      %{access_key: key} = browser_key_fixture(scope, pool, %{label: "spot-runners"})
+      {_yaml_pin, env_pin} = pin_lines()
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/keys/#{key.key_id}/runner-file"))
+
+      assert words(lv, "#key-runner-file-header-description") ==
+               "What spot-runners needs, besides the secret. Nothing here is secret."
+
+      assert words(lv, "#key-runner-file-steps-1") ==
+               "1 Keep the secret in a secret store. It was shown once, when the key was generated, and belongs in QORY_ACCESS_KEY_SECRET in the secret store of the system that runs qory. If it is lost, generate a new key and revoke this one."
+
+      assert words(lv, "#key-runner-file-steps-2") =~ "2 Set the key's ID. As a plain setting."
+
+      assert lv |> element("#key-runner-file-key-env") |> render() |> text() |> String.trim() ==
+               "QORY_ACCESS_KEY_ID=#{key.key_id}"
+
+      assert has_element?(lv, "#key-runner-file-key-env-copy", "Copy variable")
+
+      assert words(lv, "#key-runner-file-steps-3") =~
+               "3 Set Qory Apiary's public key. As a plain setting."
+
+      assert lv |> element("#key-runner-file-server-env") |> render() |> text() |> String.trim() ==
+               env_pin
+
+      assert words(lv, "#key-runner-file-belongs") ==
+               "The same for every machine connected to this Qory Apiary."
+
+      assert words(lv, "#key-runner-file-steps-4") =~ "4 Point qory at Qory Apiary."
+
+      assert lv |> element("#key-runner-file-url") |> render() |> text() |> String.trim() ==
+               "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
+
+      # The key's id is in its own step alone: the server's steps name no key.
+      for n <- [3, 4], do: refute(words(lv, "#key-runner-file-steps-#{n}") =~ key.key_id)
+      refute has_element?(lv, "#key-runner-file-yaml")
+      refute render(lv) =~ "where the command saved it"
     end
 
     test "is an active key's alone", %{conn: conn, scope: scope} do
@@ -484,200 +598,402 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
-      assert has_element?(lv, "#key-runner-file-yaml", key.key_id)
+      assert has_element?(lv, "#key-runner-file-key-env", key.key_id)
     end
   end
 
-  describe "an enrolment code" do
-    test "is made on a page of its own and shown once, never in an address or a flash", %{
+  describe "a command" do
+    test "Get the command makes it in one click and shows it once, in no address, flash, title or log",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      server = ApiaryWeb.Endpoint.url()
+      fingerprint = SigningKey.fingerprint()
+
+      {code, log} = ExUnit.CaptureLog.with_log(fn -> get_command(lv, scope, node) end)
+
+      # The code as the machine sends it, the server key's fingerprint after it, inside
+      # the command alone.
+      assert code =~ ~r/\Aqec_[0-9A-Z]{26}\.#{Regex.escape(fingerprint)}\z/
+
+      assert lv |> element("#code-issued-command") |> render() |> text() |> String.trim() ==
+               "qory access-key enrol #{server} #{code}"
+
+      refute has_element?(lv, "#code-issued-value")
+      refute render(lv) =~ "Enrolment code"
+      refute render(lv) =~ "This code is shown once."
+
+      assert has_element?(lv, "#code-issued-header-title", "Connect build-01 with a command")
+      assert page_title(lv) == "Connect build-01 with a command"
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Command")
+
+      assert words(lv, "#code-issued-header-description") ==
+               "The command connects build-01 by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine."
+
+      assert words(lv, "#code-issued-run") == "On build-01, run:"
+      assert has_element?(lv, "#code-issued-command-copy", "Copy command")
+      # The command wraps, whole, instead of running off its box.
+      assert has_element?(lv, "#code-issued-command.whitespace-pre-wrap.break-all")
+
+      [row] = AccessKeys.list_enrolment_codes(scope, node)
+
+      assert words(lv, "#code-issued-waiting") ==
+               "Waiting for build-01 to run it. This page shows when it is connected."
+
+      assert words(lv, "#code-issued-works") ==
+               "It works once, until #{Format.time(row.expires_at)}, 15 minutes from when you got it. This is the only time it is shown."
+
+      assert words(lv, "#code-issued-done") ==
+               "Done Once you leave this page, the command is not shown again. Cancel it from the Access key tab if you won't run it."
+
+      refute has_element?(lv, "#code-issued-done-cancel")
+
+      # The defaults, no question asked: stored secrets not allowed, no label hint.
+      assert row.code_sha256 == EnrolmentCode.hash(hd(String.split(code, ".")))
+      refute row.allow_secrets
+      assert is_nil(row.label_hint)
+
+      # No address, flash, title or log line holds it, nor the page's state as inspected.
+      refute tab_path(scope, node, "/new-code") =~ code
+      refute lv |> element("#flash-group") |> render() =~ code
+      refute page_title(lv) =~ code
+      refute log =~ code
+      deep = &inspect(&1, limit: :infinity, printable_limit: :infinity)
+      refute deep.(:sys.get_state(lv.pid)) =~ code
+      refute deep.(:sys.get_status(lv.pid)) =~ code
+
+      # Done: back to the tab, where the command is not shown, nor ever again; it waits.
+      lv |> element("#code-issued-done-button") |> render_click()
+      assert_patch(lv, tab_path(scope, node))
+      refute render(lv) =~ code
+      assert has_element?(lv, "#code-#{row.id}", "A command is waiting to be run on build-01.")
+      assert has_element?(lv, "#code-new-button", "Get a new command")
+
+      {:ok, lv, html} =
+        live(conn, tab_path(scope, node, "/new-code"))
+        |> follow_redirect(conn, tab_path(scope, node))
+
+      refute html =~ code
+      refute has_element?(lv, "#code-issued")
+    end
+
+    test "a crafted Get the command asks nothing: stored secrets stay not allowed", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      render_hook(lv, "create_code", %{
+        "code" => %{"allow_secrets" => "true", "label_hint" => "build-01"},
+        "allow_secrets" => "true"
+      })
+
+      assert_patch(lv, tab_path(scope, node, "/new-code"))
+      assert [row] = AccessKeys.list_enrolment_codes(scope, node)
+      refute row.allow_secrets
+      assert is_nil(row.label_hint)
+    end
+
+    test "the command shown is the one an enrolment redeems, and the page says it connected",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      code = get_command(lv, scope, node)
+
+      request = enrol_request(code)
+      assert Enrolment.issued_under?(request, SigningKey.fingerprint())
+      assert {:ok, %AccessKey{} = key} = AccessKeys.enrol(request)
+      assert key.node_id == node.id
+      assert is_nil(key.revoked_at)
+      refute key.allow_secrets
+
+      # The page heard the key arrive.
+      assert words(lv, "#code-issued-connected") ==
+               "build-01 is connected. Its key arrived at #{Format.time(key.received_at)} and is active."
+
+      assert has_element?(lv, "#code-issued-connected .bg-success-soft")
+      assert words(lv, "#code-issued-key") == "#{key.label} #{key.key_id}"
+      assert has_element?(lv, "#code-issued-fingerprint", AccessKey.fingerprint(key))
+
+      assert words(lv, "#code-issued-check") ==
+               "qory printed a fingerprint on build-01 when it ran the command. If it isn't this one, revoke the key on the Access key tab."
+
+      # The command is spent: no longer shown, nor held, and Done stands alone.
+      refute has_element?(lv, "#code-issued-command")
+      refute has_element?(lv, "#code-issued-waiting")
+      refute render(lv) =~ code
+      assert is_nil(:sys.get_state(lv.pid).socket.assigns.issued.code)
+      assert words(lv, "#code-issued-done") == "Done"
+
+      lv |> element("#code-issued-done-button") |> render_click()
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
+      assert has_element?(lv, "#key-#{key.key_id}-added", "Connected with a command by")
+    end
+
+    test "a key another command brings, or another node's, leaves the page waiting", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope, name: "build-01")
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      _code = get_command(lv, scope, node)
 
-      lv |> element("#code-new-button") |> render_click()
-      assert_patch(lv, tab_path(scope, node, "/new-code"))
-      assert has_element?(lv, "#code-new-title", "New enrolment code")
-      assert has_element?(lv, "#code-new", "expires 15 minutes later")
-      # The page's heading takes the focus as it opens.
-      assert lv |> element("#code-new-form") |> render() =~ ~r/phx-mounted="[^"]*code-new-title/
+      enrolled_key_fixture(scope, node)
+      send(lv.pid, {:key_enrolled, %{key_id: "ak_x", node_id: node.id}})
+      other = node_fixture(scope)
+      send(lv.pid, {:key_enrolled, %{key_id: "ak_y", node_id: other.id}})
 
-      refute has_element?(lv, "#not-on-runs")
-
-      html =
-        lv
-        |> form("#code-new-form", code: %{allow_secrets: "true", label_hint: "build-01"})
-        |> render_submit()
-
-      refute_untrue(html)
-      fingerprint = SigningKey.fingerprint()
-
-      # The code as the machine sends it: the server key's fingerprint after it.
-      [code] =
-        Regex.run(
-          ~r/qec_[0-9A-Z]{26}(?=\.#{Regex.escape(fingerprint)}<)/,
-          lv |> element("#code-issued-value") |> render()
-        )
-
-      # The command that enrols the machine, with the address of this server and that code.
-      assert has_element?(lv, "#code-issued", "On the machine, run:")
-
-      assert lv |> element("#code-issued-command") |> render() |> text() ==
-               "qory access-key enrol #{ApiaryWeb.Endpoint.url()} #{code}.#{fingerprint}"
-
-      assert has_element?(lv, "#code-issued-command-copy", "Copy command")
-      assert has_element?(lv, "#code-issued-works", "It works once, for 15 minutes.")
-
-      assert has_element?(
-               lv,
-               "#code-issued-key",
-               "The key it brings is active as soon as it arrives here. If its fingerprint is not the one qory prints, revoke it."
-             )
-
-      refute render(lv) =~ ~r/approv/i
-
-      assert has_element?(lv, "#code-issued", "This code is shown once.")
-      assert has_element?(lv, "#code-issued-secrets", "Allowed")
-      assert has_element?(lv, "#code-issued-expires-label", "Expires")
-      assert has_element?(lv, "#code-issued-expires", "15 minutes after it was made")
-
-      # The page is named by its heading; the code is a group named "Enrolment code",
-      # described by its expiry and by the notice that it is shown once, and takes the
-      # focus as it shows.
-      assert has_element?(lv, ~s{#code-issued[aria-labelledby="code-issued-header-title"]})
-      assert has_element?(lv, "#code-issued-header-title", "New enrolment code")
-
-      assert has_element?(
-               lv,
-               ~s{#code-issued-code[role="group"][aria-labelledby="code-issued-label"]}
-             )
-
-      assert has_element?(lv, "#code-issued-label", "Enrolment code")
-
-      [described] =
-        Regex.run(~r/aria-describedby="([^"]+)"/, render(element(lv, "#code-issued-code")),
-          capture: :all_but_first
-        )
-
-      for id <- String.split(described) do
-        assert has_element?(lv, "##{id}")
-      end
-
-      assert has_element?(lv, "#code-issued-once", "This code is shown once.")
-      assert has_element?(lv, ~s{#code-issued-value[tabindex="-1"][phx-mounted]})
-
-      # Done alone: leaving the page cancels nothing.
-      assert has_element?(lv, "#code-issued-done-button", "Done")
-      refute has_element?(lv, "#code-issued-done-cancel")
-      refute lv |> element("#code-issued-done") |> render() =~ "Cancel"
-
-      # No flash holds the code, nor the page's title.
-      refute lv |> element("#flash-group") |> render() =~ code
-      refute page_title(lv) =~ code
-
-      [row] = AccessKeys.list_enrolment_codes(scope, node)
-      assert row.code_sha256 == EnrolmentCode.hash(code)
-      assert row.allow_secrets and row.label_hint == "build-01"
-
-      # Done: back to the tab, where the code is not shown, nor ever again, and the focus
-      # on New enrolment code.
-      lv |> element("#code-issued-done-button") |> render_click()
-      assert_patch(lv, tab_path(scope, node))
-      refute render(lv) =~ code
-      assert has_element?(lv, "#code-#{row.id}", "Allowed")
-      assert_push_event(lv, "run:focus", %{id: "code-new-button"})
-
-      {:ok, lv, html} = live(conn, tab_path(scope, node, "/new-code"))
-      refute html =~ code
-      refute has_element?(lv, "#code-issued")
+      assert has_element?(lv, "#code-issued-waiting")
+      refute has_element?(lv, "#code-issued-connected")
     end
 
-    test "the code shown, as the command has it, is the one an enrolment redeems", %{
+    test "a command that expires on its page says it no longer works", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope, name: "build-01")
-      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/new-code"))
-      lv |> form("#code-new-form", code: %{allow_secrets: "false"}) |> render_submit()
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      code = get_command(lv, scope, node)
+      [row] = AccessKeys.list_enrolment_codes(scope, node)
+      expire_in(row, -1_000)
 
-      server = ApiaryWeb.Endpoint.url()
+      send(lv.pid, :codes_expire)
 
-      ["qory", "access-key", "enrol", ^server, code] =
-        lv |> element("#code-issued-command") |> render() |> text() |> String.split(" ")
+      assert words(lv, "#code-issued-spent") ==
+               "That command no longer works: it was run, cancelled or expired."
 
-      assert lv |> element("#code-issued-value") |> render() |> text() == code
-
-      # A machine posts it as `qory access-key enrol` would: its new key, and the proof.
-      pair = ed25519_key_pair()
-      now = System.os_time(:second)
-      message = SignedMessage.enrolment(code, pair.encoded, "build-01", now)
-      proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
-
-      {:ok, request} =
-        Enrolment.decode(
-          Jason.encode!(%{
-            "version" => 1,
-            "code" => code,
-            "name" => "build-01",
-            "public_key" => pair.encoded,
-            "timestamp" => now,
-            "proof" => Ed25519.encode(proof)
-          })
-        )
-
-      assert Enrolment.issued_under?(request, SigningKey.fingerprint())
-      assert {:ok, %AccessKey{} = key} = AccessKeys.enrol(request)
-      assert key.node_id == node.id
-      assert key.public_key == pair.public_key
-      assert is_nil(key.revoked_at)
+      refute has_element?(lv, "#code-issued-command")
+      refute render(lv) =~ code
+      assert words(lv, "#code-issued-done") == "Done"
     end
 
-    test "an outstanding code is listed with its expiry, and revoked in place", %{
+    test "a server address only this computer reaches is said, with PUBLIC_URL", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      _code = get_command(lv, scope, node)
+      server = ApiaryWeb.Endpoint.url()
+
+      # The test endpoint is localhost.
+      assert ApiaryWeb.NodeComponents.loopback?(server)
+
+      assert words(lv, "#code-issued-unreachable") ==
+               "Machines can't reach this address. #{server} works only on the computer Qory Apiary runs on. Set PUBLIC_URL to the address machines use, and the command will carry it."
+    end
+
+    test "loopback?/1 is localhost and the loopback addresses alone" do
+      for url <- ~w(http://localhost:4200 http://LOCALHOST http://app.localhost:4000
+                    http://127.0.0.1:4000 http://127.8.9.1 http://[::1]:4000
+                    http://[::ffff:127.0.0.1]:4000 http://localhost.) do
+        assert ApiaryWeb.NodeComponents.loopback?(url), url
+      end
+
+      for url <- ~w(https://apiary.example.com http://10.0.0.5:4000 http://[::2]
+                    http://localhost.example.com http://128.0.0.1 not-a-url) do
+        refute ApiaryWeb.NodeComponents.loopback?(url), url
+      end
+    end
+
+    test "a command waiting is shown in the command's card, and cancelled in place", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      got = Format.time(row.inserted_at)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert has_element?(lv, "#way-new_code #code-#{row.id}")
+      refute has_element?(lv, "#node-codes")
+
+      assert words(lv, "#code-#{row.id}") =~
+               "A command is waiting to be run on build-01. #{scope.user.email} got it at #{got}. It works once, until #{Format.time(row.expires_at)}. It was shown once: if it's lost, cancel it and get a new one."
+
+      assert has_element?(lv, "#code-new-button", "Get a new command")
+
+      # Cancel the command… names the command it cancels, and so does its confirmation.
+      assert has_element?(
+               lv,
+               "#code-#{row.id}-revoke .sr-only",
+               "Cancel the command from #{got}"
+             )
+
+      assert has_element?(
+               lv,
+               ~s{#code-#{row.id}-revoke [aria-hidden="true"]},
+               "Cancel the command…"
+             )
+
+      lv |> element("#code-#{row.id}-revoke") |> render_click()
+      assert_patch(lv, tab_path(scope, node, "/codes/#{row.id}/revoke"))
+
+      assert has_element?(
+               lv,
+               "#code-#{row.id}-confirm-question",
+               "Cancel the command from #{got}?"
+             )
+
+      assert has_element?(
+               lv,
+               "#code-#{row.id}-confirm-sub",
+               "It stops working at once. A machine that runs it after this is refused."
+             )
+
+      assert has_element?(lv, "#code-#{row.id}-confirm-button", "Yes, cancel it")
+      assert has_element?(lv, "#code-#{row.id}-confirm-cancel", "Keep it")
+      refute has_element?(lv, "#code-#{row.id}-confirm-cancel", "Cancel")
+
+      # Keep it gives the focus back to its Cancel the command….
+      lv |> element("#code-#{row.id}-confirm-cancel") |> render_click()
+      assert_push_event(lv, "run:focus", %{id: id})
+      assert id == "code-#{row.id}-revoke"
+      assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
+
+      lv |> element("#code-#{row.id}-revoke") |> render_click()
+      lv |> element("#code-#{row.id}-confirm-button") |> render_click()
+      assert words(lv, "#flash-group") =~ "The command is cancelled. It no longer works."
+      assert Repo.get!(EnrolmentCode, row.id).cancelled_at
+      refute has_element?(lv, "#code-#{row.id}")
+      assert has_element?(lv, "#code-new-button", "Get the command")
+      # Its Cancel the command… is gone with it: the focus goes to Get the command.
+      assert_push_event(lv, "run:focus", %{id: "code-new-button"})
+    end
+
+    test "with a key, a command waiting is shown in Add a key's command row", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      node_key_fixture(scope, node)
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert has_element?(lv, "#node-add #way-new_code #code-#{row.id}")
+      assert has_element?(lv, "#node-add #code-new-button", "Get a new command")
+    end
+
+    test "a command cancelled elsewhere takes its page back to the tab, said to no longer work",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      code = get_command(lv, scope, node)
+      [row] = AccessKeys.list_enrolment_codes(scope, node)
+
+      # Another page, or another person, cancels it.
+      {:ok, _} = AccessKeys.cancel_code(scope, row)
+
+      assert_patch(lv, tab_path(scope, node))
+
+      assert words(lv, "#flash-group") =~
+               "That command no longer works: it was run, cancelled or expired."
+
+      refute has_element?(lv, "#code-issued")
+      refute has_element?(lv, "#code-#{row.id}")
+      refute render(lv) =~ code
+      assert has_element?(lv, "#code-new-button", "Get the command")
+    end
+
+    test "a command cancelled elsewhere leaves the tab, and closes its confirmation", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope)
       {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
-      made = Format.time(row.inserted_at)
+      {:ok, other, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      {:ok, _} = AccessKeys.cancel_code(scope, row)
+      _ = render(lv)
+      refute has_element?(lv, "#code-#{row.id}")
+      assert has_element?(lv, "#code-#{other.id}")
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/codes/#{other.id}/revoke"))
+      {:ok, _} = AccessKeys.cancel_code(scope, other)
+      assert_patch(lv, tab_path(scope, node))
+      refute has_element?(lv, "#code-#{other.id}")
+
+      assert words(lv, "#flash-group") =~
+               "That command no longer works: it was run, cancelled or expired."
+    end
+
+    test "a machine running the command while its cancelling is asked closes the confirmation",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, row, code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/codes/#{row.id}/revoke"))
+      assert has_element?(lv, "#code-#{row.id}-confirm-button")
+
+      {:ok, key} =
+        AccessKeys.enrol(enrol_request(Enrolment.issued_code(code, SigningKey.fingerprint())))
+
+      assert_patch(lv, tab_path(scope, node))
+      refute has_element?(lv, "#code-#{row.id}")
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
+
+      assert words(lv, "#flash-group") =~
+               "That command no longer works: it was run, cancelled or expired."
+
+      assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
+    end
+
+    test "at two keys, a command still waiting is shown and can be cancelled, with no way offered",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      node_key_fixture(scope, node)
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      # A second key, generated meanwhile: the node is at its limit.
+      browser_key_fixture(scope, node)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert words(lv, "#node-add-full") ==
+               "build-01 holds two keys, the most a node can. Revoke the one it no longer uses to add another."
 
       assert has_element?(
                lv,
-               "#node-codes",
-               "Listed here: the codes neither used, revoked nor expired."
+               "#node-add #code-#{row.id}",
+               "A command is waiting to be run on build-01."
              )
 
-      # When it expires, as the reader's clock writes it.
-      assert has_element?(lv, "#code-#{row.id}-expires-label", "Expires")
-      assert has_element?(lv, "#code-#{row.id}-expires", Format.datetime(row.expires_at))
-      refute has_element?(lv, "#code-#{row.id}-expires", "Just now")
+      refute has_element?(lv, "#node-ways")
+      refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#key-generate-button")
 
-      # Revoke… names the code it revokes, and so does its confirmation.
-      assert has_element?(lv, "#code-#{row.id}-revoke .sr-only", "Revoke the code made #{made}")
       lv |> element("#code-#{row.id}-revoke") |> render_click()
       assert_patch(lv, tab_path(scope, node, "/codes/#{row.id}/revoke"))
-      assert has_element?(lv, "#code-#{row.id}-confirm", "Revoke the code made #{made}?")
-      assert has_element?(lv, "#code-#{row.id}-confirm", "It is revoked at once.")
-
-      # Cancel gives the focus back to its Revoke….
-      lv |> element("#code-#{row.id}-confirm-cancel") |> render_click()
-      assert_push_event(lv, "run:focus", %{id: id})
-      assert id == "code-#{row.id}-revoke"
-
-      lv |> element("#code-#{row.id}-revoke") |> render_click()
+      assert has_element?(lv, "#code-#{row.id}-confirm-question")
       lv |> element("#code-#{row.id}-confirm-button") |> render_click()
-      assert render(lv) =~ "The enrolment code is revoked."
+
+      assert words(lv, "#flash-group") =~ "The command is cancelled. It no longer works."
       assert Repo.get!(EnrolmentCode, row.id).cancelled_at
-      assert has_element?(lv, "#node-codes-none")
-      # Its Revoke… is gone with it: the focus goes to New enrolment code.
-      assert_push_event(lv, "run:focus", %{id: "code-new-button"})
+      refute has_element?(lv, "#code-#{row.id}")
+      refute has_element?(lv, "#code-new-button")
     end
 
-    test "a code that expires while the tab is open leaves it, and its confirmation closes", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "a used command, cancelled, is said to have run", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/codes/#{row.id}/revoke"))
+
+      # Used meanwhile, before the page heard of it.
+      row
+      |> Ecto.Changeset.change(
+        used_at: DateTime.utc_now(),
+        used_by_key_id: AccessKey.generate_key_id(),
+        public_key: ed25519_key_pair().public_key
+      )
+      |> EnrolmentCode.put_integrity()
+      |> Repo.update!()
+
+      lv |> element("#code-#{row.id}-confirm-button") |> render_click()
+      assert lv |> element("#flash-group") |> render() =~ "That command was run already."
+    end
+
+    test "a command that expires while the tab is open leaves it, and its confirmation closes",
+         %{conn: conn, scope: scope} do
       node = node_fixture(scope)
       {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
       {:ok, other, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
@@ -693,12 +1009,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#code-#{other.id}")
 
       assert lv |> element("#flash-group") |> render() =~
-               "This enrolment code is no longer outstanding."
+               "That command no longer works: it was run, cancelled or expired."
 
       assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
     end
 
-    test "a code that expired before its revocation reached it is said to be no longer outstanding",
+    test "a command that expired before its cancelling reached it is said to no longer work",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope)
       {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
@@ -707,8 +1023,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       lv |> element("#code-#{row.id}-confirm-button") |> render_click()
       flash = lv |> element("#flash-group") |> render()
-      assert flash =~ "This enrolment code is no longer outstanding."
-      refute flash =~ "revoked"
+      assert flash =~ "That command no longer works: it was run, cancelled or expired."
+      refute flash =~ "is cancelled"
       assert is_nil(Repo.get!(EnrolmentCode, row.id).cancelled_at)
       refute has_element?(lv, "#code-#{row.id}")
     end
@@ -730,72 +1046,117 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert is_integer(Process.read_timer(expiry_timer(lv)))
     end
 
-    test "its expiry says Expired once it is past" do
-      now = DateTime.utc_now()
+    test "Get the command once the command is shown, or off the tab, makes none", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope)
+      %{access_key: key} = node_key_fixture(scope, node)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
-      for {at, word} <- [{DateTime.add(now, 60), "Expires"}, {DateTime.add(now, -1), "Expired"}] do
-        html = render_component(&NodeComponents.code_expiry/1, id: "c", at: at, now: now)
-        assert html =~ ~r{<dt[^>]* id="c-label"[^>]*>\s*#{word}\s*</dt>}
-        assert html =~ Format.datetime(at)
+      code = get_command(lv, scope, node)
+      render_hook(lv, "create_code", %{})
+      assert render(lv) =~ code
+      assert length(AccessKeys.list_enrolment_codes(scope, node)) == 1
+
+      for rest <- ["/generate", "/keys/#{key.key_id}/runner-file"] do
+        {:ok, lv, _html} = live(conn, tab_path(scope, node, rest))
+        render_hook(lv, "create_code", %{})
       end
+
+      assert length(AccessKeys.list_enrolment_codes(scope, node)) == 1
     end
 
-    test "a second Make code once the code is shown makes none", %{conn: conn, scope: scope} do
-      node = node_fixture(scope)
-      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/new-code"))
+    test "at two keys, Get the command is refused with what to do", %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      node_key_fixture(scope, node)
+      node_key_fixture(scope, node)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
-      lv |> form("#code-new-form", code: %{}) |> render_submit()
-      render_hook(lv, "create_code", %{"code" => %{}})
-      assert length(AccessKeys.list_enrolment_codes(scope, node)) == 1
+      render_hook(lv, "create_code", %{})
+      assert lv |> element("#flash-group") |> render() =~ "build-01 holds two keys already."
+      assert AccessKeys.list_enrolment_codes(scope, node) == []
     end
   end
 
-  describe "the ways to give a node its key" do
-    # The ids of the row's buttons, in their order, and those shown as primary.
-    defp ways(lv) do
-      doc = lv |> element("#node-keys-ways") |> render() |> LazyHTML.from_fragment()
+  describe "the two ways" do
+    # The ids of the ways' buttons, in their order, and those shown as primary.
+    defp ways(lv, within) do
+      doc = lv |> element(within) |> render() |> LazyHTML.from_fragment()
 
       {doc |> LazyHTML.query("[id$=-button]") |> LazyHTML.attribute("id"),
        doc |> LazyHTML.query(".btn-primary") |> LazyHTML.attribute("id")}
     end
 
-    test "a node with no active key leads with enrolling the machine with qory", %{
+    test "a node with no active key asks how, the command first and primary", %{
       conn: conn,
       scope: scope
     } do
       node = node_fixture(scope, name: "build-01")
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
 
-      assert has_element?(lv, "h3#node-keys-lead-title", "Enrol this machine with qory")
+      assert ways(lv, "#node-ways") ==
+               {~w(code-new-button key-generate-button), ["code-new-button"]}
 
-      assert lv |> element("#node-keys-lead p") |> render() |> text() |> String.trim() ==
-               "Make a code, then run qory access-key enrol with it on the machine. The machine makes its own key, and the secret never shows on a screen."
+      assert has_element?(lv, "#way-new_code-title", "Connect with a command")
 
-      assert has_element?(lv, "#node-keys-lead p .font-mono", "qory access-key enrol")
+      # Two equal options: when to choose it, what happens, the same four facts in the same
+      # rows, and one button at the foot. No steps, no code, no variable and nothing to copy.
+      assert words(lv, "#way-new_code") ==
+               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or a server of your own. You get one command to run on build-01. It carries a one-time code, not a key, which works once within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public half, and saves everything else there itself. Key made On build-01, by qory Secret Stays on build-01; it is never shown By hand Nothing Needs A terminal on build-01 Get the command"
 
-      assert ways(lv) == {~w(code-new-button key-generate-button), ["code-new-button"]}
+      assert has_element?(lv, "#way-generate-title", "Generate a key in the browser")
+
+      assert words(lv, "#way-generate") ==
+               "Generate a key in the browser Choose it when build-01 runs in a CI job, or on a machine you can't open a terminal on. This browser makes the key, and Qory Apiary receives only its public half. The next page shows the secret once, with everything else the machine needs, for you to set where build-01 runs. Key made In this browser Secret Shown to you once, for the machine's or the CI's secret store By hand The key's ID, its secret, Qory Apiary's public key and address Needs This page open over HTTPS Generate a key"
+
+      labels = fn way ->
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#way-#{way}-facts > dt")
+        |> Enum.map(&LazyHTML.text/1)
+      end
+
+      assert labels.(:new_code) == ["Key made", "Secret", "By hand", "Needs"]
+      assert labels.(:generate) == labels.(:new_code)
+
+      for way <- [:new_code, :generate] do
+        refute has_element?(lv, "#way-#{way} pre")
+        refute has_element?(lv, "#way-#{way} code")
+        refute has_element?(lv, "#way-#{way} .copy-btn")
+        refute has_element?(lv, "#way-#{way} ol")
+        refute render(lv |> element("#way-#{way}")) =~ "QORY_"
+      end
+
+      assert has_element?(lv, "#node-ways.items-stretch.md\\:grid-cols-2")
+      assert has_element?(lv, "#way-new_code > div.mt-auto #code-new-button")
+      assert has_element?(lv, "#way-generate > div.mt-auto #key-generate-button")
+      refute has_element?(lv, "#node-configure")
 
       assert has_element?(
                lv,
                ~s{#key-generate-button[href="#{tab_path(scope, node, "/generate")}"]}
              )
 
-      refute has_element?(lv, "#node-keys-none")
+      assert has_element?(lv, ~s{#code-new-button[phx-click="create_code"]})
+      refute has_element?(lv, "#node-add")
     end
 
     test "a pool with no active key leads with generating a key", %{conn: conn, scope: scope} do
       pool = node_fixture(scope, name: "spot-runners", kind: "pool")
       {:ok, lv, _html} = live(conn, tab_path(scope, pool))
 
-      assert has_element?(lv, "h3#node-keys-lead-title", "Generate a key for this pool")
+      assert has_element?(lv, "#node-connect-title", "How do you want to connect spot-runners?")
 
-      assert lv |> element("#node-keys-lead p") |> render() |> text() |> String.trim() ==
-               "The pool's instances share one key. This browser makes it and shows you the secret once, for your CI's secret store; Qory receives only the public half."
+      assert words(lv, "#node-connect-intro") ==
+               "spot-runners needs a key before it can start runs; its instances share one. Choose one of two ways to give it one."
 
-      assert ways(lv) == {~w(key-generate-button code-new-button), ["key-generate-button"]}
+      assert ways(lv, "#node-ways") ==
+               {~w(key-generate-button code-new-button), ["key-generate-button"]}
     end
 
-    test "once a key is active, the two stay, plain, the kind's way first; a revoked one leads again",
+    test "once a key is active, Add a key offers the two as rows, plain, the kind's way first; a revoked one asks again",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       pool = node_fixture(scope, name: "spot-runners", kind: "pool")
@@ -803,17 +1164,146 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       node_key_fixture(scope, pool)
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      refute has_element?(lv, "#node-keys-lead")
-      assert ways(lv) == {~w(code-new-button key-generate-button), []}
+      refute has_element?(lv, "#node-connect")
+      assert has_element?(lv, "#node-add-title", "Add a key")
+
+      assert words(lv, "#node-add-intro") ==
+               "To move build-01 to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A node holds two keys at most."
+
+      assert ways(lv, "#node-ways") == {~w(code-new-button key-generate-button), []}
+
+      assert words(lv, "#way-new_code") ==
+               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or a server of your own. Get the command"
+
+      assert words(lv, "#way-generate") ==
+               "Generate a key in the browser Choose it when build-01 runs in a CI job, or on a machine you can't open a terminal on. Generate a key"
 
       {:ok, lv, _html} = live(conn, tab_path(scope, pool))
-      refute has_element?(lv, "#node-keys-lead")
-      assert ways(lv) == {~w(key-generate-button code-new-button), []}
+      assert ways(lv, "#node-ways") == {~w(key-generate-button code-new-button), []}
+
+      assert words(lv, "#node-add-intro") =~ "A node pool holds two keys at most."
+
+      assert words(lv, "#node-keys-intro") ==
+               "The instances of spot-runners sign every request with the pool's key. Qory Apiary keeps only the public half."
 
       {:ok, _} = AccessKeys.revoke_access_key(scope, key)
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      assert has_element?(lv, "#node-keys-lead-title", "Enrol this machine with qory")
-      refute has_element?(lv, "#node-keys-none")
+      assert has_element?(lv, "#node-connect-title", "How do you want to connect build-01?")
+      refute has_element?(lv, "#node-add")
+      # The revoked key is still listed, under Keys.
+      assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
+    end
+
+    test "once a key is active, Configure a machine at the foot gives four steps, to everyone, at the limit too",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      %{access_key: key} = node_key_fixture(scope, node)
+      %{access_key: first} = node_key_fixture(scope, pool)
+      %{access_key: second} = node_key_fixture(scope, pool)
+      {_yaml_pin, env_pin} = pin_lines()
+      pin = String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "") |> String.trim()
+
+      for {target, conn} <- [{node, conn}, {pool, conn}, {node, member_conn(scope)}] do
+        {:ok, lv, _html} = live(conn, tab_path(scope, target))
+
+        assert has_element?(lv, "#node-configure-title", "Configure a machine")
+
+        assert words(lv, "#node-configure-lead") ==
+                 "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice. With a generated key, set these where the machine runs qory."
+
+        assert words(lv, "#node-configure-steps-1") =~
+                 "1 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables below."
+
+        assert lv |> element("#node-configure-yaml") |> render() |> text() |> String.trim() ==
+                 "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
+
+        assert has_element?(lv, "#node-configure-yaml-copy", "Copy lines")
+
+        assert words(lv, "#node-configure-steps-2") ==
+                 "2 Set Qory Apiary's public key. QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary. #{pin}"
+
+        assert lv |> element("#node-configure-pin") |> render() |> text() |> String.trim() == pin
+
+        assert has_element?(
+                 lv,
+                 ~s{#node-configure-pin-copy[aria-label="Copy QORY_APIARY_PUBLIC_KEY"]}
+               )
+
+        assert words(lv, "#node-configure-steps-4") ==
+                 "4 Keep the key's secret in a secret store. QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is never shown here. If it is lost, generate a new key and revoke the old one."
+
+        # The secret: text alone, never a value and never a Copy.
+        refute has_element?(lv, "#node-configure-steps-4 code")
+        refute has_element?(lv, "#node-configure-steps-4 .copy-btn")
+        refute lv |> element("#node-configure") |> render() =~ ~r/qak_/i
+        refute has_element?(lv, "#node-server")
+      end
+
+      # One active key: its ID, with Copy.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert words(lv, "#node-configure-steps-3") ==
+               "3 Set the key's ID. QORY_ACCESS_KEY_ID, a plain setting. #{key.key_id}"
+
+      assert has_element?(lv, "#node-configure-key-id", key.key_id)
+
+      assert has_element?(
+               lv,
+               ~s{#node-configure-key-id-copy[aria-label="Copy QORY_ACCESS_KEY_ID"]}
+             )
+
+      refute has_element?(lv, "#node-configure-key-id-pointer")
+
+      # Two active keys: the pointer to the key's card, and no ID.
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool))
+
+      assert words(lv, "#node-configure-steps-3") ==
+               "3 Set the key's ID. QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above."
+
+      refute has_element?(lv, "#node-configure-key-id")
+      refute lv |> element("#node-configure") |> render() =~ first.key_id
+      refute lv |> element("#node-configure") |> render() =~ second.key_id
+
+      # At the foot: after Keys, and after Add a key where it shows.
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      ids =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#node-keys, #node-add, #node-configure")
+        |> LazyHTML.attribute("id")
+
+      assert ids == ["node-keys", "node-add", "node-configure"]
+
+      # A revoked key alone is no key: the ways ask again, and the part goes.
+      {:ok, _} = AccessKeys.revoke_access_key(scope, key)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+      refute has_element?(lv, "#node-configure")
+    end
+
+    test "at two keys, Add a key says to revoke one first, and offers no button", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, name: "build-01")
+      pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+
+      for target <- [node, pool], _ <- 1..2, do: node_key_fixture(scope, target)
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, node))
+
+      assert words(lv, "#node-add-full") ==
+               "build-01 holds two keys, the most a node can. Revoke the one it no longer uses to add another."
+
+      refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#key-generate-button")
+
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool))
+
+      assert words(lv, "#node-add-full") ==
+               "spot-runners holds two keys, the most a node pool can. Revoke the one it no longer uses to add another."
     end
   end
 
@@ -821,17 +1311,67 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     defp generated_path(scope, node, key_id),
       do: tab_path(scope, node, "/keys/#{key_id}/generated")
 
+    # A key's page as the server renders it, the same whether the page made the key, was
+    # opened again or joined again: what says the secret is shown once (the notice, the
+    # secret's Copy, the note beside Done) hidden, for the hook to show while the slot
+    # shows the secret; the "Not shown" line hidden inside the slot, for the hook to show
+    # while it holds nothing for the key; the slot empty. Nothing of it shows without the
+    # hook, and the server never says the secret is gone beside it.
+    defp assert_server_render(lv, key) do
+      slot = "#key-generated-secret-#{key.key_id}"
+
+      assert has_element?(lv, "#key-generated-once[data-secret-shown].hidden")
+
+      assert has_element?(
+               lv,
+               "#key-generated-secret-copy-shown[data-secret-shown].hidden #key-generated-secret-copy[data-copy-target=\"#{slot}-value\"]"
+             )
+
+      assert has_element?(
+               lv,
+               "#key-generated-done #key-generated-done-note[data-secret-shown].hidden",
+               "Once you leave this page, the secret is not shown again."
+             )
+
+      shown =
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[data-secret-shown]")
+        |> LazyHTML.attribute("id")
+
+      assert shown ==
+               [
+                 "key-generated-once",
+                 "key-generated-secret-copy-shown",
+                 "key-generated-done-note"
+               ]
+
+      assert has_element?(lv, ~s{#{slot}[data-secret-slot][phx-update="ignore"]})
+      assert has_element?(lv, "#{slot} #{slot}-gone[data-secret-gone].hidden.text-muted")
+      assert lv |> element("#{slot}-value") |> render() =~ ~r{>\s*</code>}
+
+      assert words(lv, "#{slot}-gone") ==
+               "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke #{key.label} and generate another key."
+    end
+
+    # A key's page opened again: the server's render, as on the page that made it.
+    defp assert_reopened(lv, key) do
+      assert_server_render(lv, key)
+
+      # The rest stays: the key's ID and Qory Apiary's values.
+      assert has_element?(lv, "#key-generated-id-copy")
+      assert has_element?(lv, "#key-generated-pin-copy")
+      assert has_element?(lv, "#key-generated-yaml-copy")
+    end
+
     defp push_key(lv, key) do
       render_hook(lv, "generate_key", %{"key" => key})
     end
 
     defp browser_key(attrs \\ %{}) do
       Map.merge(
-        %{
-          "label" => "spot-runners",
-          "allow_secrets" => "false",
-          "public_key" => ed25519_key_pair().encoded
-        },
+        %{"label" => "spot-runners", "public_key" => ed25519_key_pair().encoded},
         attrs
       )
     end
@@ -845,7 +1385,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       )
     end
 
-    test "is a form page whose form holds the label and the flag alone, and no submit event", %{
+    test "is a form page whose form holds the key's name alone, and no submit event", %{
       conn: conn,
       scope: scope
     } do
@@ -856,14 +1396,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert_patch(lv, tab_path(scope, node, "/generate"))
 
       assert has_element?(lv, ~s{section#key-generate[phx-hook="GenerateKey"]})
-      assert has_element?(lv, "h1#key-generate-header-title", "Generate a key")
+      assert has_element?(lv, "h1#key-generate-header-title", "Generate a key for build-01")
 
-      assert lv
-             |> element("#key-generate-header-description")
-             |> render()
-             |> text()
-             |> String.trim() ==
-               "A key for build-01, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made. For a machine of your own, enrolling it with qory keeps the secret off every screen."
+      assert words(lv, "#key-generate-header-description") ==
+               "This browser makes a key for build-01. You see its secret once, to copy into your CI's secret store, or the settings of the system that runs it; Qory Apiary receives only the public half. The key's ID stays on the Access key tab."
 
       assert page_title(lv) =~ "Generate a key · build-01"
 
@@ -881,19 +1417,20 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         |> Enum.uniq()
         |> Enum.sort()
 
-      assert names == ["_csrf_token", "key[allow_secrets]", "key[label]"]
-
-      refute has_element?(
-               lv,
-               "#key-generate-form [name*=secret]:not([name='key[allow_secrets]'])"
-             )
-
+      # The name alone: no stored-secrets question.
+      assert names == ["_csrf_token", "key[label]"]
+      refute form =~ "stored secrets"
       refute has_element?(lv, "#key-generate-form textarea")
       refute has_element?(lv, "#key-generate-form [name*=public_key]")
 
+      # Prefilled with the node's name, labelled as the key's name.
+      assert has_element?(lv, ~s{#key-generate-form input[name="key[label]"][value="build-01"]})
+      assert has_element?(lv, "#key-generate-form label", "Name of the key")
+
       assert has_element?(
                lv,
-               ~s{#key-generate-form input[name="key[label]"][placeholder="build-01"]}
+               "#key-generate-form",
+               "Shown on the Access key tab, so you can tell its keys apart."
              )
 
       assert has_element?(lv, ~s{#key-generate-submit[type="submit"]}, "Generate key")
@@ -904,11 +1441,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       for {id, words} <- [
             {"key-generate-insecure",
-             "This browser makes keys only on a page served over HTTPS. Open Qory over HTTPS, or enrol the machine with qory."},
+             "This browser makes keys only on a page served over HTTPS. Open Qory Apiary over HTTPS, or connect the machine with a command."},
             {"key-generate-unsupported",
-             "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or enrol the machine with qory."},
+             "This browser can't make an Ed25519 key. Use a current Chrome, Edge, Firefox or Safari, or connect the machine with a command."},
             {"key-generate-lost",
-             "The connection to Qory dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."}
+             "The connection to Qory Apiary dropped before the key was confirmed, and its secret is gone. If a new key shows on the Access key tab, revoke it, then generate another."}
           ] do
         assert has_element?(lv, "##{id}.hidden")
         refute has_element?(lv, "##{id}[hidden]")
@@ -921,20 +1458,18 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert AccessKeys.list_for_node(scope, node) == []
     end
 
-    test "for a pool, says so without the line for a machine", %{conn: conn, scope: scope} do
+    test "for a pool, says where its instances run; a second key's name is the next free one",
+         %{conn: conn, scope: scope} do
       pool = node_fixture(scope, name: "spot-runners", kind: "pool")
+      browser_key_fixture(scope, pool, %{label: "spot-runners"})
       {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/generate"))
 
-      assert lv
-             |> element("#key-generate-header-description")
-             |> render()
-             |> text()
-             |> String.trim() ==
-               "A key for spot-runners, made in this browser. Only its public half is sent to Qory, and you see the secret once, as soon as it is made."
+      assert words(lv, "#key-generate-header-description") ==
+               "This browser makes a key for spot-runners. You see its secret once, to copy into your CI's secret store, or the settings of whatever runs the instances; Qory Apiary receives only the public half. The key's ID stays on the Access key tab."
 
       assert has_element?(
                lv,
-               ~s{#key-generate-form input[name="key[label]"][placeholder="spot-runners"]}
+               ~s{#key-generate-form input[name="key[label]"][value="spot-runners-2"]}
              )
     end
 
@@ -947,11 +1482,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert_push_event(lv, "run:focus", %{id: "key-generate-button"})
     end
 
-    test "the key the browser made is added by its public half, and its variables shown with an empty slot",
+    test "the key the browser made is added by its public half, and its page is four steps, with no flash",
          %{conn: conn, scope: scope} do
       pool = node_fixture(scope, name: "spot-runners", kind: "pool")
       {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/generate"))
-      key = browser_key(%{"allow_secrets" => "true"})
+      key = browser_key()
 
       push_key(lv, key)
 
@@ -962,43 +1497,58 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert added.arrived_by == :browser
       assert AccessKey.status(added) == :active
-      assert added.allow_secrets
+      # No question, and stored secrets not allowed.
+      refute added.allow_secrets
       assert added.created_by_id == scope.user.id
       assert Base.url_encode64(added.public_key, padding: false) == key["public_key"]
       assert [entry] = add_entries(pool)
       assert entry.after["arrived_by"] == "browser"
 
       html = render(lv)
-      assert lv |> element("#flash-group") |> render() =~ "spot-runners is added."
+      # No flash: the page itself says what is next.
+      refute lv |> element("#flash-group") |> render() =~ "is added"
 
-      # The same section, now the variables.
+      # The same section, now the values.
       assert has_element?(lv, ~s{section#key-generate[phx-hook="GenerateKey"]})
       refute has_element?(lv, "#key-generate-form")
-      assert has_element?(lv, "h1#key-generated-header-title", "Variables for spot-runners")
-      assert page_title(lv) =~ "Variables for spot-runners · spot-runners"
+      assert has_element?(lv, "h1#key-generated-header-title", "Key for spot-runners")
+      assert page_title(lv) == "Key for spot-runners"
 
-      assert lv
-             |> element("#key-generated-header-description")
-             |> render()
-             |> text()
-             |> String.trim() ==
-               "For spot-runners. Set these three variables where the runner starts."
+      assert words(lv, "#key-generated-header-description") ==
+               "Do these where spot-runners runs. Only the secret can't be seen again."
 
-      assert lv
-             |> element("#key-generated-once")
-             |> render()
-             |> text()
-             |> String.split()
-             |> Enum.join(" ") ==
-               "The secret is shown once. Copy it now: it was made in this browser, Qory never received it, and it can't be shown again."
+      assert words(lv, "#key-generated-once") ==
+               "The secret is shown once. Copy QORY_ACCESS_KEY_SECRET now: it was made in this browser, Qory Apiary never received it, and it can't be shown again."
 
       assert has_element?(lv, "#key-generated-once strong", "The secret is shown once.")
 
-      [{"QORY_ACCESS_KEY_ID", id}, {"QORY_APIARY_PUBLIC_KEY", pin}] = AccessKeys.variables(added)
-      assert has_element?(lv, "#key-generated-id", id)
-      assert lv |> element("#key-generated-pin") |> render() |> text() == pin
+      # Four numbered steps, the secret first, since it is shown once.
       {_yaml, env_pin} = pin_lines()
-      assert "QORY_APIARY_PUBLIC_KEY=" <> pin == env_pin
+
+      assert words(lv, "#key-generated-steps-1") =~
+               "1 Store the secret. In the secret store of the system that runs spot-runners, such as your CI's. QORY_ACCESS_KEY_SECRET secret · shown once"
+
+      assert words(lv, "#key-generated-steps-2") ==
+               "2 Set the key's ID. As a plain setting. It stays on the Access key tab. QORY_ACCESS_KEY_ID plain setting #{added.key_id}"
+
+      assert words(lv, "#key-generated-steps-3") ==
+               "3 Set Qory Apiary's public key. As a plain setting. The same for every machine connected to this Qory Apiary. It stays on the Access key tab. QORY_APIARY_PUBLIC_KEY plain setting " <>
+                 String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "")
+
+      assert words(lv, "#key-generated-steps-4") =~
+               "4 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables."
+
+      assert lv |> element("#key-generated-yaml") |> render() |> text() =~
+               "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
+
+      assert has_element?(lv, "#key-generated-id", added.key_id)
+
+      assert "QORY_APIARY_PUBLIC_KEY=" <>
+               (lv |> element("#key-generated-pin") |> render() |> text()) ==
+               env_pin
+
+      refute has_element?(lv, "#key-generated-key")
+      refute has_element?(lv, "#key-generated-server")
 
       # The slot: the key's own, ignored by LiveView, the stored public key on it, its
       # value empty.
@@ -1030,14 +1580,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                )
       end
 
-      assert lv |> element("#key-generated-where") |> render() |> text() |> String.trim() ==
-               "Only QORY_ACCESS_KEY_SECRET belongs in your CI's secret store; the other two are plain settings. The runner file then needs only url."
-
-      assert has_element?(
-               lv,
-               "#key-generated-done",
-               "Once you leave this page, the secret is not shown again."
-             )
+      # The page that made the key renders as one opened again: the hook, which holds the
+      # secret, shows what says it is shown once.
+      assert_server_render(lv, added)
 
       # Nothing secret anywhere, and no form at all.
       refute html =~ ~r/qak_/i
@@ -1052,9 +1597,14 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       assert has_element?(
                lv,
-               "#key-#{added.key_id}-arrived",
-               "Made in a browser by #{scope.user.email}, #{Format.datetime(added.received_at)}"
+               "#key-#{added.key_id}-added",
+               "Generated in a browser by #{scope.user.email}, #{Format.datetime(added.received_at)}"
              )
+
+      # Back to the key's page: opened again, nothing says the secret is shown, or offers
+      # it to copy; the gone line is where it was.
+      render_patch(lv, generated_path(scope, pool, added.key_id))
+      assert_reopened(lv, added)
     end
 
     test "opened again, the page shows the id and the pin, and holds no secret", %{
@@ -1066,9 +1616,10 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       {:ok, lv, html} = live(conn, generated_path(scope, node, key.key_id))
 
-      assert has_element?(lv, "h1#key-generated-header-title", "Variables for ci")
+      assert has_element?(lv, "h1#key-generated-header-title", "Key for build-01")
       assert has_element?(lv, "#key-generated-id", key.key_id)
-      assert has_element?(lv, "#key-generated-secret-#{key.key_id}-gone.hidden")
+      assert has_element?(lv, "#key-generated-pin")
+      assert_reopened(lv, key)
       refute html =~ ~r/qak_/i
     end
 
@@ -1117,10 +1668,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              |> text()
              |> String.trim() =~ "revoke ci and generate another key."
 
-      assert has_element?(
-               lv,
-               ~s{#key-generated-secret-copy[data-copy-target="#key-generated-secret-#{a.key_id}-value"]}
-             )
+      # A's page renders as any: what says the secret is shown once hidden, and the gone
+      # line hidden in A's slot, for the hook to choose between.
+      assert_server_render(lv, a)
     end
 
     test "a crafted event is refused before anything is stored", %{conn: conn, scope: scope} do
@@ -1131,7 +1681,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
             Map.put(browser_key(), "other", "x"),
             browser_key(%{"label" => "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"}),
             browser_key(%{"label" => "ci QAK_x"}),
-            browser_key(%{"allow_secrets" => "Qak_"}),
+            # Stored secrets are no choice: the flag is refused, whatever it says.
+            browser_key(%{"allow_secrets" => "true"}),
+            browser_key(%{"allow_secrets" => "false"}),
             browser_key(%{"public_key" => "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"}),
             browser_key(%{"public_key" => "not-a-key"}),
             browser_key(%{"public_key" => @fixture_public_key}),
@@ -1255,7 +1807,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       node = node_fixture(scope)
       %{access_key: key} = browser_key_fixture(scope, node)
 
-      for rest <- ["", "/new-code", "/keys/#{key.key_id}/generated"] do
+      for rest <- ["", "/keys/#{key.key_id}/runner-file", "/keys/#{key.key_id}/generated"] do
         {:ok, lv, _html} = live(conn, tab_path(scope, node, rest))
         push_key(lv, browser_key())
         assert_reply(lv, reply)
@@ -1308,7 +1860,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert length(AccessKeys.list_for_node(scope, node)) == 2
     end
 
-    test "the variables' address is for an active key the reader made in a browser alone", %{
+    test "the key's page is for an active key the reader made in a browser alone", %{
       conn: conn,
       scope: scope
     } do
@@ -1380,28 +1932,30 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   end
 
   describe "a member" do
-    test "with no key, reads that there is none, not how to make one; an admin is led",
+    test "with no key, reads that an owner or admin connects it, and no way; an admin is asked",
          %{scope: scope} do
       node = node_fixture(scope, name: "build-01")
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
 
       {:ok, lv, _html} = live(member_conn(scope), tab_path(scope, node))
 
-      assert lv |> element("#node-keys-none") |> render() |> text() |> String.trim() ==
-               "No key yet."
+      assert has_element?(lv, "#node-connect-title", "Connect build-01")
 
-      refute has_element?(lv, "#node-keys-none", "enrolment code")
-      refute has_element?(lv, "#node-keys-none .font-mono")
+      assert words(lv, "#node-keys-members") ==
+               "build-01 has no key yet, so it can't start runs. An owner or admin connects it."
 
-      refute has_element?(lv, "#node-keys-lead")
-      refute has_element?(lv, "#node-keys-ways")
+      refute has_element?(lv, "#node-ways")
+      refute has_element?(lv, "#code-#{row.id}")
+      refute has_element?(lv, "#code-new-button")
+      refute has_element?(lv, "#key-generate-button")
 
       {:ok, lv, _html} = live(member_conn(scope, :admin), tab_path(scope, node))
-
-      assert has_element?(lv, "#node-keys-lead-title", "Enrol this machine with qory")
-      refute has_element?(lv, "#node-keys-none")
+      assert has_element?(lv, "#node-connect-title", "How do you want to connect build-01?")
+      assert has_element?(lv, "#code-#{row.id}")
+      refute has_element?(lv, "#node-keys-members")
     end
 
-    test "reads the keys and the codes, with no act", %{scope: scope} do
+    test "reads the keys, with no act", %{scope: scope} do
       node = node_fixture(scope)
       %{access_key: key} = node_key_fixture(scope, node)
       {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
@@ -1416,11 +1970,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              )
 
       assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
-      assert has_element?(lv, "#code-#{row.id}")
+      refute has_element?(lv, "#node-add")
+      refute has_element?(lv, "#code-#{row.id}")
       refute has_element?(lv, "#code-new-button")
       refute has_element?(lv, "#key-generate-button")
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
-      refute has_element?(lv, "#code-#{row.id}-revoke")
+      assert has_element?(lv, "#key-#{key.key_id}-runner-file")
     end
 
     test "is refused every act's path and event, and nothing changes", %{scope: scope} do
@@ -1431,7 +1986,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       for {rest, words} <- [
             {"/generate", "Only owners and admins add a node's keys."},
-            {"/new-code", "Only owners and admins make enrolment codes."},
+            {"/new-code", "Only owners and admins connect a node."},
             {"/keys/#{key.key_id}/revoke", "Only owners and admins manage a node's keys."},
             {"/codes/#{row.id}/revoke", "Only owners and admins manage a node's keys."}
           ] do
@@ -1442,15 +1997,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       end
 
       for {event, params} <- [
-            {"create_code", %{"code" => %{}}},
+            {"create_code", %{}},
             {"generate_key",
-             %{
-               "key" => %{
-                 "label" => "x",
-                 "allow_secrets" => "false",
-                 "public_key" => ed25519_key_pair().encoded
-               }
-             }},
+             %{"key" => %{"label" => "x", "public_key" => ed25519_key_pair().encoded}}},
             {"revoke", %{}},
             {"revoke_code", %{}}
           ] do

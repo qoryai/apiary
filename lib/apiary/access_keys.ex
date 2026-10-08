@@ -42,6 +42,9 @@ defmodule Apiary.AccessKeys do
   Every change of a key leaves an audit entry (`Apiary.Audit`) in its transaction: its
   arrival and revocation, with its fingerprint; a code's making and cancelling, on its
   node. Never a secret, nor a code.
+
+  **A key enrolled is announced** on its node's topic (`topic/2`), once its transaction
+  has committed, so that the page that showed the command sees the machine connect.
   """
 
   import Ecto.Query, warn: false
@@ -160,56 +163,58 @@ defmodule Apiary.AccessKeys do
   def code_ttl_minutes, do: @code_ttl_minutes
 
   @doc """
-  variables/2 is the variables a runner is given in place of the runner file's `server`
-  lines, nothing of them secret, in their order: `QORY_ACCESS_KEY_ID`, the key's id, and
-  `QORY_APIARY_PUBLIC_KEY`, the pin as JSON. `pin` is the server's `apiary_public_key`
-  list (`Apiary.SigningKey.apiary_public_key/0`). The key's secret, the third variable a
-  runner needs, `QORY_ACCESS_KEY_SECRET`, is not Apiary's to give.
+  key_variable/1 is the variable that names `key` to a runner that is given its key in
+  variables rather than in the runner file: `QORY_ACCESS_KEY_ID`, the key's id. It is the
+  key's part of what a runner is given, and nothing of it is secret. The key's secret,
+  `QORY_ACCESS_KEY_SECRET`, is not Apiary's to give; the server's part is
+  `server_variable/1`.
   """
-  @spec variables(AccessKey.t(), [%{required(String.t()) => String.t()}, ...]) ::
-          [{String.t(), String.t()}]
-  def variables(%AccessKey{key_id: key_id}, pin \\ Apiary.SigningKey.apiary_public_key())
-      when is_binary(key_id) do
+  @spec key_variable(AccessKey.t()) :: {String.t(), String.t()}
+  def key_variable(%AccessKey{key_id: key_id}) when is_binary(key_id),
+    do: {"QORY_ACCESS_KEY_ID", key_id}
+
+  @doc """
+  server_variable/1 is the server's part of a runner's variables, the same for every key,
+  node, workspace and organisation of the instance: `QORY_APIARY_PUBLIC_KEY`, the pin as
+  JSON. `pin` is the server's `apiary_public_key` list
+  (`Apiary.SigningKey.apiary_public_key/0`), the instance's own signing key: no key is
+  asked for.
+  """
+  @spec server_variable([%{required(String.t()) => String.t()}, ...]) :: {String.t(), String.t()}
+  def server_variable(pin \\ Apiary.SigningKey.apiary_public_key()) do
     json =
       Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
         Jason.OrderedObject.new([{"alg", alg}, {"public_key", public_key}])
       end)
 
-    [{"QORY_ACCESS_KEY_ID", key_id}, {"QORY_APIARY_PUBLIC_KEY", Jason.encode!(json)}]
+    {"QORY_APIARY_PUBLIC_KEY", Jason.encode!(json)}
   end
 
   @doc """
-  runner_lines/3 is what a machine holding `key` is given, nothing of it secret: `file`,
-  the runner file's `server` section, `url` (`base_url`), `access_key_id` and
-  `apiary_public_key`, the pin, in YAML's flow form, one line per key; and `env`, the same
-  id and pin as the variables CI sets instead (`variables/2`), one `NAME=value` line each.
-  `pin` is the server's `apiary_public_key` list (`Apiary.SigningKey.apiary_public_key/0`).
-  The key's secret is the machine's alone.
+  key_line/1 is `key`'s line of the runner file's `server` section, `access_key_id`,
+  indented as it sits under `server:`. The key's secret is the machine's alone.
   """
-  @spec runner_lines(AccessKey.t(), String.t(), [%{required(String.t()) => String.t()}, ...]) ::
-          %{file: String.t(), env: String.t()}
-  def runner_lines(
-        %AccessKey{key_id: key_id} = key,
-        base_url,
-        pin \\ Apiary.SigningKey.apiary_public_key()
-      )
-      when is_binary(key_id) and is_binary(base_url) do
+  @spec key_line(AccessKey.t()) :: String.t()
+  def key_line(%AccessKey{key_id: key_id}) when is_binary(key_id),
+    do: "  access_key_id: #{key_id}"
+
+  @doc """
+  server_lines/2 is the server's lines of the runner file's `server` section, the same for
+  every key of the instance, each indented as it sits under `server:`: `url`, the line of
+  `base_url`, the address machines reach the server at; and `public_key`, the lines of
+  `apiary_public_key`, the pin, in YAML's flow form, one line per key. `pin` is
+  `Apiary.SigningKey.apiary_public_key/0`'s list: no key is asked for.
+  """
+  @spec server_lines(String.t(), [%{required(String.t()) => String.t()}, ...]) ::
+          %{url: String.t(), public_key: [String.t(), ...]}
+  def server_lines(base_url, pin \\ Apiary.SigningKey.apiary_public_key())
+      when is_binary(base_url) do
     pins =
       Enum.map(pin, fn %{"alg" => alg, "public_key" => public_key} ->
-        "    - {alg: #{alg}, public_key: #{public_key}}\n"
+        "    - {alg: #{alg}, public_key: #{public_key}}"
       end)
 
-    %{
-      file:
-        IO.iodata_to_binary([
-          "server:\n",
-          "  url: #{base_url}\n",
-          "  access_key_id: #{key_id}\n",
-          "  apiary_public_key:\n",
-          pins
-        ]),
-      env: Enum.map_join(variables(key, pin), fn {name, value} -> "#{name}=#{value}\n" end)
-    }
+    %{url: "  url: #{base_url}", public_key: ["  apiary_public_key:" | pins]}
   end
 
   @doc """
@@ -322,11 +327,21 @@ defmodule Apiary.AccessKeys do
   cancel_code/2 cancels an outstanding enrolment code (`access_key.cancel_code`, owners
   and admins): no machine enrols with it from then on. Cancelling a cancelled or expired
   code changes nothing; a used one is `{:error, :used}`. `{:error, :not_found}` for a code
-  of another workspace, or of a deleted node.
+  of another workspace, or of a deleted node. A code cancelled now is announced on its
+  node's `topic/2` once the transaction has committed.
   """
   @spec cancel_code(Scope.t(), EnrolmentCode.t()) ::
           {:ok, EnrolmentCode.t()} | {:error, :used | Access.reason()}
-  def cancel_code(%Scope{} = scope, %EnrolmentCode{id: id, node_id: node_id} = code) do
+  def cancel_code(%Scope{} = scope, %EnrolmentCode{} = code) do
+    with {:ok, {cancelled, row}} <- cancel_now(scope, code) do
+      # Announced once the transaction has committed, and only for a code cancelled now.
+      if cancelled, do: broadcast_cancelled(row)
+      {:ok, row}
+    end
+  end
+
+  # The cancel, in one transaction: whether it cancelled the code now, and the code.
+  defp cancel_now(scope, %EnrolmentCode{id: id, node_id: node_id} = code) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.cancel_code", code),
            {:ok, node} <- lock_node(scope, node_id),
@@ -341,7 +356,7 @@ defmodule Apiary.AccessKeys do
             {:error, :used}
 
           not EnrolmentCode.outstanding?(current, DateTime.utc_now()) ->
-            {:ok, current}
+            {:ok, {false, current}}
 
           true ->
             with {:ok, cancelled} <-
@@ -355,7 +370,7 @@ defmodule Apiary.AccessKeys do
                      after: %{cancelled_at: cancelled.cancelled_at},
                      details: %{code_id: cancelled.id}
                    }) do
-              {:ok, cancelled}
+              {:ok, {true, cancelled}}
             end
         end
       else
@@ -367,7 +382,7 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   change_new_key/1 is the changeset of a key to make in a browser, for the form that
-  makes one: its label and stored-secrets flag.
+  makes one: its label.
   """
   @spec change_new_key(map) :: Ecto.Changeset.t()
   def change_new_key(attrs \\ %{}), do: AccessKey.insert_changeset(%AccessKey{}, attrs)
@@ -530,11 +545,56 @@ defmodule Apiary.AccessKeys do
 
     with true <- Enrolment.fresh?(request, now) || {:error, :unauthorized},
          true <- Enrolment.issued_under?(request, fingerprint) || {:error, :unauthorized},
-         %EnrolmentCode{} = found <- find_code(request.code_head) || {:error, :unauthorized} do
-      Repo.transact(fn ->
-        redeem(found, request, now, Keyword.get(opts, :origin), code_limit)
-      end)
+         %EnrolmentCode{} = found <- find_code(request.code_head) || {:error, :unauthorized},
+         {:ok, {made, key}} <-
+           Repo.transact(fn ->
+             redeem(found, request, now, Keyword.get(opts, :origin), code_limit)
+           end) do
+      # Announced once the transaction has committed, never from inside it, and only for a
+      # key made now: a repeat changes nothing, so it says nothing new.
+      if made == :new, do: broadcast_enrolled(key)
+      {:ok, key}
     end
+  end
+
+  @doc """
+  topic/2 is the topic of one node's keys, of its workspace: `{:key_enrolled, %{key_id:,
+  node_id:}}` once a machine has enrolled a key on the node with a code (`enrol/2`), after
+  the enrolment's transaction committed, and `{:code_cancelled, %{code_id:, node_id:}}`
+  once a code of the node was cancelled (`cancel_code/2`), after that transaction
+  committed. Each message carries ids alone, nothing secret: a subscriber reads the key
+  or the codes again under its own scope.
+  """
+  @spec topic(Ecto.UUID.t(), Ecto.UUID.t()) :: String.t()
+  def topic(workspace_id, node_id), do: "access_keys:#{workspace_id}:#{node_id}"
+
+  @doc "subscribe/2 subscribes the caller to `topic/2` of `node`, a node of the scope's workspace."
+  @spec subscribe(Scope.t(), Node.t()) :: :ok | {:error, term}
+  def subscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Node{
+        id: node_id,
+        workspace_id: workspace_id
+      }),
+      do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id, node_id))
+
+  @doc "unsubscribe/2 undoes `subscribe/2`."
+  @spec unsubscribe(Scope.t(), Node.t()) :: :ok
+  def unsubscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Node{id: node_id}),
+    do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id, node_id))
+
+  defp broadcast_cancelled(%EnrolmentCode{} = code) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      topic(code.workspace_id, code.node_id),
+      {:code_cancelled, %{code_id: code.id, node_id: code.node_id}}
+    )
+  end
+
+  defp broadcast_enrolled(%AccessKey{} = key) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      topic(key.workspace_id, key.node_id),
+      {:key_enrolled, %{key_id: key.key_id, node_id: key.node_id}}
+    )
   end
 
   # The code by its SHA-256, of a workspace and an organisation in use, read without a
@@ -560,8 +620,12 @@ defmodule Apiary.AccessKeys do
          {:ok, public_key} <- proven(request),
          :ok <- within_code_limit(code, code_limit) do
       case state do
-        :outstanding -> enrol_new(code, node, request, public_key, now, origin)
-        {:used, key} -> {:ok, key}
+        :outstanding ->
+          with {:ok, key} <- enrol_new(code, node, request, public_key, now, origin),
+               do: {:ok, {:new, key}}
+
+        {:used, key} ->
+          {:ok, {:repeat, key}}
       end
     end
   end

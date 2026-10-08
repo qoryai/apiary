@@ -8,7 +8,7 @@
 // key Qory stores is the JWK's `x`, the 32 raw bytes in base64url. Neither is re-encoded.
 //
 // Only the public key ever leaves this file: `generate` pushes the one event
-// `generate_key` with `{key: {label, allow_secrets, public_key}}`, and hands the secret
+// `generate_key` with `{key: {label, public_key}}`, and hands the secret
 // back to its caller alone, which shows it once and drops it. Nothing here logs, stores
 // or puts a value in an error: a failure is a `KeyPairError` whose `kind` says which, and
 // it carries no other value (no `cause`).
@@ -98,16 +98,15 @@ async function encode(subtle) {
 }
 
 // Makes a key and pushes the one event that registers it, `push(EVENT, {key: {label,
-// allow_secrets, public_key}})`, exactly once, with strings only. Answers `{secret,
+// public_key}})`, exactly once, with strings only. Answers `{secret,
 // publicKey, reply}`, `reply` being what `push` returned (LiveView's promise of the
 // server's reply), not awaited: the caller holds the secret before any reply can arrive.
 // A key that cannot be made is KeyPairError("unsupported"), and nothing is pushed.
-export async function generate({subtle, label, allowSecrets, push}) {
+export async function generate({subtle, label, push}) {
   const {secret, publicKey} = await makeKey(subtle)
   const reply = push(EVENT, {
     key: {
       label: String(label ?? ""),
-      allow_secrets: String(allowSecrets ?? ""),
       public_key: publicKey,
     },
   })
@@ -156,10 +155,20 @@ function equalBytes(a, b) {
 //   it); empty it, drop anything held, and say the secret is gone.
 // - "gone": the slot is empty and nothing held is for it; drop anything held, and say the
 //   secret is gone.
-// - "keep": the slot shows this key's secret; leave it.
+// - "keep": the slot shows this key's secret, as after a patch or a reconnect; leave it.
 export function slotStep({held, filled, slotKey, shown}) {
   if (held && typeof slotKey === "string" && held.publicKey === slotKey) return "fill"
   if (shown && filled !== slotKey) return "wipe"
   if (!shown) return "gone"
   return "keep"
+}
+
+// What the page says of the secret after `step` (`slotStep`): `secret`, whether the slot
+// shows it, and with it what says it is shown once (the notice, its Copy, the note beside
+// Done, `[data-secret-shown]`); `gone`, whether the slot says it is not shown. Never both:
+// a page joined again after a dropped connection keeps the secret its slot shows ("keep"),
+// and says so, and a page that holds nothing for its key says only that it is gone.
+export function slotShows(step) {
+  const secret = step === "fill" || step === "keep"
+  return {secret, gone: !secret}
 }

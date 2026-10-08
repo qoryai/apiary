@@ -130,7 +130,7 @@ defmodule ApiaryWeb.IntegrationLive.ReleaseTest do
     assert has_element?(
              lv,
              "#release-found",
-             "The release is only read; nothing of it runs on the server."
+             "The release is only read; nothing of it runs on Qory Apiary."
            )
 
     assert has_element?(lv, "#release-setting-app_id")

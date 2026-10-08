@@ -99,7 +99,7 @@ curl http://localhost:4100/health
 ```
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
-enrolled on one of the workspace's nodes: if it appears, the keys' integrity codes
+connected to one of the workspace's nodes: if it appears, the keys' integrity codes
 verified, which means `APIARY_ENCRYPTION_SECRET` is the right one, and the machine took
 the server's signed answers, which means `APIARY_SIGNING_SECRET` is.
 

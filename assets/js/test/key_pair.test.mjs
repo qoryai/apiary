@@ -1,7 +1,7 @@
 // The browser's access key (assets/js/hooks/key_pair.js), under Node's own WebCrypto:
 // `node --test assets/js/test/` (no npm). It proves the secret's form against the runner
-// contract, and that what the browser sends Qory is the label, the Stored secrets choice
-// and the public key, never the secret.
+// contract, and that what the browser sends Qory is the label and the public key, never
+// the secret.
 
 import {test} from "node:test"
 import assert from "node:assert/strict"
@@ -17,6 +17,7 @@ import {
   encodeBase64url,
   generate,
   makeKey,
+  slotShows,
   slotStep,
 } from "../hooks/key_pair.js"
 
@@ -106,14 +107,13 @@ test("the contract's known answer: the fixture seed gives keys.json's secret, pu
   assert.deepEqual(Object.keys(key).sort(), ["publicKey", "secret"])
 })
 
-test("generate pushes generate_key once, with the label, the choice and the public key only", async () => {
+test("generate pushes generate_key once, with the label and the public key only", async () => {
   const pair = await pairFromSeed(FIXTURE.seed)
   const {calls, push, reply} = recordingPush()
 
   const made = await generate({
     subtle: subtleWith({generateKey: async () => pair}),
     label: "build-01",
-    allowSecrets: "false",
     push,
   })
 
@@ -122,10 +122,9 @@ test("generate pushes generate_key once, with the label, the choice and the publ
   assert.equal(event, "generate_key")
   assert.equal(EVENT, "generate_key")
   assert.deepEqual(Object.keys(payload), ["key"])
-  assert.deepEqual(Object.keys(payload.key).sort(), ["allow_secrets", "label", "public_key"])
+  assert.deepEqual(Object.keys(payload.key).sort(), ["label", "public_key"])
   assert.deepEqual(payload.key, {
     label: "build-01",
-    allow_secrets: "false",
     public_key: FIXTURE.public_key,
   })
   for (const value of Object.values(payload.key)) assert.equal(typeof value, "string")
@@ -145,12 +144,11 @@ test("generate pushes generate_key once, with the label, the choice and the publ
 test("generate sends no secret for fresh keys either, and strings for whatever it is given", async () => {
   for (let i = 0; i < 10; i++) {
     const {calls, push} = recordingPush()
-    const made = await generate({subtle, label: "spot-runners", allowSecrets: true, push})
+    const made = await generate({subtle, label: "spot-runners", push})
 
     assert.equal(calls.length, 1)
     assert.deepEqual(calls[0].payload.key, {
       label: "spot-runners",
-      allow_secrets: "true",
       public_key: made.publicKey,
     })
     const seed = decodeBase64url(made.secret.slice("qak_".length))
@@ -256,7 +254,7 @@ test("a browser whose key fails a check is unsupported, says no value, and pushe
 
     const {calls, push} = recordingPush()
     await assert.rejects(
-      generate({subtle: brokenSubtle, label: "build-01", allowSecrets: "false", push}),
+      generate({subtle: brokenSubtle, label: "build-01", push}),
       KeyPairError,
     )
     assert.equal(calls.length, 0, why)
@@ -292,6 +290,61 @@ test("the secret's slot shows only the secret of its own key", () => {
   assert.equal(slotStep({held: null, filled: null, slotKey: a, shown: true}), "wipe")
   // A slot with no public key is filled by nothing.
   assert.equal(slotStep({held: heldA, filled: null, slotKey: null, shown: false}), "gone")
+})
+
+test("the page never says the secret is not shown beside it, and a reconnect keeps it", () => {
+  const a = "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
+  const b = "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+  const heldA = {secret: "qak_a", publicKey: a}
+  const says = state => slotShows(slotStep(state))
+
+  // Made here: the secret, the notice, its Copy and the note beside Done; not the gone line.
+  assert.deepEqual(says({held: heldA, filled: null, slotKey: a, shown: false}), {
+    secret: true,
+    gone: false,
+  })
+  // Joined again after a dropped connection: the slot kept the secret the hook wrote, so
+  // the page still shows it, says it is shown once, and does not say it is gone.
+  assert.deepEqual(says({held: null, filled: a, slotKey: a, shown: true}), {
+    secret: true,
+    gone: false,
+  })
+  // Opened again, or reloaded: nothing held for this key, the gone line alone.
+  assert.deepEqual(says({held: null, filled: null, slotKey: a, shown: false}), {
+    secret: false,
+    gone: true,
+  })
+  // Another key's secret under this key's slot, or one the hook never wrote: gone alone.
+  assert.deepEqual(says({held: null, filled: b, slotKey: a, shown: true}), {
+    secret: false,
+    gone: true,
+  })
+  assert.deepEqual(says({held: null, filled: null, slotKey: a, shown: true}), {
+    secret: false,
+    gone: true,
+  })
+
+  // Never both, whatever the step.
+  for (const step of ["fill", "keep", "wipe", "gone"]) {
+    const {secret, gone} = slotShows(step)
+    assert.notEqual(secret, gone, step)
+  }
+})
+
+test("the hook leaves the slot alone on a reconnect, and says again what it shows", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("../hooks/generate_key.js", import.meta.url)),
+    "utf8",
+  )
+  const body = name => {
+    const start = source.indexOf(`  ${name}() {`)
+    assert.notEqual(start, -1, name)
+    return source.slice(start, source.indexOf("\n  },", start))
+  }
+  // A dropped connection loses only a key still on its way, never the shown secret.
+  assert.doesNotMatch(body("disconnected"), /clear\(|textContent/)
+  assert.doesNotMatch(body("reconnected"), /clear\(|textContent/)
+  assert.match(body("reconnected"), /this\.fill\(\)/)
 })
 
 test("the hook logs nothing, stores nothing and writes the secret as text only", () => {

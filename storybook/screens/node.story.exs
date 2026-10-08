@@ -11,9 +11,10 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   def doc,
     do:
       "A node's or a pool's page, under Nodes: Overview, Runs, Access key and Settings. " <>
-        "Access key holds its key: active or revoked, its fingerprint and stored secrets, " <>
-        "a new key by enrolment code or made in a browser, active as soon as it arrives, " <>
-        "and a replacement beside the current key until that one is revoked."
+        "Access key holds its keys: with none, the two ways to connect it, its kind's way " <>
+        "first, each as numbered steps; then each key, active or revoked, its ID and how it " <>
+        "was added, Add a key, the same two ways, for a new key beside the current one " <>
+        "until that one is revoked, and Configure a machine, what a machine is set with."
 
   # The keys a node or pool holds at a time, as the limit line says: its current key and a
   # replacement.
@@ -24,8 +25,8 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     {nil, ""},
     {"runs", " › Runs"},
     {"key", " › Access key"},
-    {"key_enrol", " › Access key › New key"},
-    {"key_code", " › Access key › Enrolment code"},
+    {"key_generate", " › Access key › Generate a key"},
+    {"key_command", " › Access key › Command"},
     {"settings", " › Settings"}
   ]
 
@@ -109,7 +110,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
         <:tab
           id="node-tab-key"
           navigate={@to.("key")}
-          current={@view in [:key, :enrol, :code]}
+          current={@view in [:key, :generate, :command]}
           icon="hero-key"
         >
           Access key
@@ -127,8 +128,8 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       <.overview :if={@view == :overview} {assigns} />
       <.runs :if={@view == :runs} {assigns} />
       <.key :if={@view == :key} {assigns} />
-      <.enrol :if={@view == :enrol} {assigns} />
-      <.code :if={@view == :code} {assigns} />
+      <.generate :if={@view == :generate} {assigns} />
+      <.command :if={@view == :command} {assigns} />
       <.settings :if={@view == :settings} {assigns} />
     </Mockup.shell>
     """
@@ -151,7 +152,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     <.notice :if={!@key} kind={:warning}>
       <strong>{@node.name} has no key it may use.</strong>
       Its key is revoked, so it cannot post runs until it has a new one.
-      <a :if={!@member} href={@to.("key_enrol")} class="font-medium underline">Add key</a>
+      <a :if={!@member} href={@to.("key")} class="font-medium underline">Connect it</a>
     </.notice>
 
     <SettingsComponents.part id="node-about" title="About">
@@ -281,63 +282,299 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   ## Access key
 
   defp key(assigns) do
-    keys = assigns.node.keys
+    keys = Enum.with_index(assigns.node.keys, &Map.put(&1, :label, label(assigns.node, &2)))
+    active = Enum.count(keys, &(&1.state == :active))
 
     assigns =
       assign(assigns,
         keys: keys,
-        usable: Enum.any?(keys, &(&1.state == :active)),
-        full: Enum.count(keys, &(&1.state == :active)) >= @key_limit
+        active: active,
+        full: active >= @key_limit,
+        ways: ways(assigns.node),
+        server_pin: server_pin(),
+        server_yaml: server_yaml()
       )
 
     ~H"""
     <.notice :if={@variant == :replacement}>
-      <strong>The replacement is active.</strong>
-      Revoke the old key once {@node.name} posts with the new one.
+      <strong>The new key is active.</strong> Revoke the old one once {@node.name} uses the new one.
     </.notice>
 
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
+    <SettingsComponents.part
+      :if={@active == 0 and !@member}
+      id="node-connect"
+      title={"How do you want to connect #{@node.name}?"}
+      level={:h2}
+    >
+      <p class="text-[13px]/5 text-muted">
         {if @node.kind == :pool,
-          do: "The key the instances of #{@node.name} share to post their runs.",
-          else: "The key #{@node.name} posts its runs with."} A new key comes from an enrolment code or is made in a browser, and is active as soon as it arrives.
+          do:
+            "#{@node.name} needs a key before it can start runs; its instances share one. Choose one of two ways to give it one.",
+          else:
+            "#{@node.name} needs a key before it can start runs. Choose one of two ways to give it one."}
       </p>
-      <div :if={!@member && !@full} class="flex flex-none gap-2">
-        <.button :if={@usable} id="enrol-replacement" href={@to.("key_enrol")}>
-          Enrol a replacement
-        </.button>
-        <.button :if={!@usable} id="add-key" variant="primary" href={@to.("key_enrol")}>
-          <.icon name="hero-plus-micro" class="size-4" />Add key
+      <div class="grid items-stretch gap-3 md:grid-cols-2">
+        <.way_card
+          :for={{way, index} <- Enum.with_index(@ways)}
+          way={way}
+          primary={index == 0}
+          node={@node}
+          to={@to}
+        />
+      </div>
+    </SettingsComponents.part>
+
+    <SettingsComponents.part
+      :if={@active == 0 and @member}
+      id="node-connect"
+      title={"Connect #{@node.name}"}
+      level={:h2}
+    >
+      <p class="text-[13px]/5 text-muted">
+        {@node.name} has no key yet, so it can't start runs. An owner or admin connects it.
+      </p>
+    </SettingsComponents.part>
+
+    <SettingsComponents.part
+      :if={@keys != []}
+      id="node-keys"
+      title="Keys"
+      count={length(@keys)}
+      level={:h2}
+    >
+      <p class="text-[13px]/5 text-muted">
+        {if @node.kind == :pool,
+          do:
+            "The instances of #{@node.name} sign every request with the pool's key. Qory Apiary keeps only the public half.",
+          else:
+            "#{@node.name} signs every request with its key. Qory Apiary keeps only the public half."}
+      </p>
+      <Mockup.members_note :if={@member and @active > 0} id="key-members-note" />
+      <.key_card :for={key <- @keys} key={key} node={@node} member={@member} to={@to} />
+    </SettingsComponents.part>
+
+    <SettingsComponents.part
+      :if={@active > 0 and !@member}
+      id="node-add"
+      title="Add a key"
+      level={:h2}
+    >
+      <p :if={@full} class="text-[13px]/5 text-muted">
+        {@node.name} holds two keys, the most a {if @node.kind == :pool, do: "node pool", else: "node"} can. Revoke the one it no longer uses to add another.
+      </p>
+      <p :if={!@full} class="text-[13px]/5 text-muted">
+        To move {@node.name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A {if @node.kind ==
+                                                                                                                                                           :pool,
+                                                                                                                                                         do:
+                                                                                                                                                           "node pool",
+                                                                                                                                                         else:
+                                                                                                                                                           "node"} holds two keys at most.
+      </p>
+      <div
+        :if={!@full}
+        class="grid rounded-box border border-line bg-base-100 text-[13px]/5 shadow-xs"
+      >
+        <div
+          :for={{way, index} <- Enum.with_index(@ways)}
+          class={["flex items-center gap-3 px-4 py-3", index > 0 && "border-t border-line"]}
+        >
+          <.icon name={way_icon(way)} class="size-4.5 flex-none text-muted" />
+          <div class="grid min-w-0 flex-1 gap-0.5">
+            <p class="font-medium">{way_title(way)}</p>
+            <p class="text-muted">{way_when(way, @node)}</p>
+          </div>
+          <.button href={way_to(way, @to)} class="flex-none">{way_button(way)}</.button>
+        </div>
+      </div>
+    </SettingsComponents.part>
+
+    <SettingsComponents.part
+      :if={@active > 0}
+      id="node-configure"
+      title="Configure a machine"
+      level={:h2}
+    >
+      <div class="grid max-w-[46rem] gap-4 text-[13px]/5">
+        <div class="grid gap-1 text-muted">
+          <p>
+            A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice.
+          </p>
+          <p>With a generated key, set these where the machine runs qory.</p>
+        </div>
+        <ol class="q-steps">
+          <li>
+            <span class="q-step-disc" aria-hidden="true">1</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Point qory at Qory Apiary.</p>
+              <p class="text-muted">
+                In the runner file. It is required: without it, qory ignores the three variables below.
+              </p>
+              <.code_block
+                id="node-configure-yaml"
+                label="runner.yaml"
+                code={@server_yaml}
+                copy_label="Copy lines"
+              />
+            </div>
+          </li>
+          <li>
+            <span class="q-step-disc" aria-hidden="true">2</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Set Qory Apiary's public key.</p>
+              <p class="text-muted">
+                QORY_APIARY_PUBLIC_KEY, a plain setting. The same for every machine connected to this Qory Apiary.
+              </p>
+              <.value_field id="node-configure-pin" name="QORY_APIARY_PUBLIC_KEY" value={@server_pin} />
+            </div>
+          </li>
+          <li>
+            <span class="q-step-disc" aria-hidden="true">3</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Set the key's ID.</p>
+              <%= case Enum.filter(@keys, &(&1.state == :active)) do %>
+                <% [key] -> %>
+                  <p class="text-muted">QORY_ACCESS_KEY_ID, a plain setting.</p>
+                  <.value_field id="node-configure-key-id" name="QORY_ACCESS_KEY_ID" value={key.id} />
+                <% _keys -> %>
+                  <p class="text-muted">
+                    QORY_ACCESS_KEY_ID, a plain setting: the ID of the key the machine uses, on its card above.
+                  </p>
+              <% end %>
+            </div>
+          </li>
+          <li>
+            <span class="q-step-disc" aria-hidden="true">4</span>
+            <div class="grid min-w-0 gap-2">
+              <p class="text-[13.5px]/6 font-medium">Keep the key's secret in a secret store.</p>
+              <p class="text-muted">
+                QORY_ACCESS_KEY_SECRET. It was shown once, when the key was generated, and is never shown here. If it is lost, generate a new key and revoke the old one.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </SettingsComponents.part>
+    """
+  end
+
+  attr :way, :atom, required: true
+  attr :primary, :boolean, required: true
+  attr :node, :map, required: true
+  attr :to, :any, required: true
+
+  # A way to connect the node, as one of two equal options: when to choose it, what
+  # happens, the same four facts as the other's, and one button at its foot.
+  defp way_card(assigns) do
+    ~H"""
+    <div class="flex min-w-0 flex-col gap-3 rounded-box border border-line bg-base-100 p-4 text-[13px]/5 shadow-xs">
+      <div class="flex items-center gap-3">
+        <span class="grid size-8 flex-none place-items-center rounded-field bg-base-200 text-muted">
+          <.icon name={way_icon(@way)} class="size-4.5" />
+        </span>
+        <h3 class="text-[14px]/5 font-medium">{way_title(@way)}</h3>
+      </div>
+      <p>{way_when(@way, @node)}</p>
+      <p class="text-muted">{way_happens(@way, @node)}</p>
+      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
+        <%= for {label, value} <- way_facts(@way, @node) do %>
+          <dt class="text-faint">{label}</dt>
+          <dd class="min-w-0">{value}</dd>
+        <% end %>
+      </dl>
+      <div class="mt-auto pt-1">
+        <.button variant={if @primary, do: "primary", else: "default"} href={way_to(@way, @to)}>
+          {way_button(@way)}
         </.button>
       </div>
     </div>
-
-    <p :if={@keys == []} id="node-no-key" class="text-[13px]/5 text-muted">
-      No key. {@node.name} cannot post runs until it has one.
-    </p>
-
-    <.key_card
-      :for={key <- @keys}
-      key={key}
-      node={@node}
-      member={@member}
-      label={label(key, @keys)}
-    />
-
-    <p id="key-limit" class="text-[12.5px]/[18px] text-faint">
-      A node holds at most 2 keys at a time.
-    </p>
-    <Mockup.members_note :if={@member} id="key-members-note" />
     """
   end
+
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :value, :string, required: true
+
+  # A value alone, with Copy: its name is said in the line above it.
+  defp value_field(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2">
+      <code
+        id={@id}
+        class="block min-w-0 flex-1 select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5"
+      >{@value}</code>
+      <.copy_button
+        id={"#{@id}-copy"}
+        target={"##{@id}"}
+        label={"Copy #{@name}"}
+        placement="left"
+        icon_only
+      />
+    </div>
+    """
+  end
+
+  defp way_when(:command, node),
+    do:
+      "Choose it when you can open a terminal on #{node.name}: a laptop, or a server of your own."
+
+  defp way_when(:generate, node),
+    do:
+      "Choose it when #{node.name} runs in a CI job, or on a machine you can't open a terminal on."
+
+  defp way_happens(:command, node),
+    do:
+      "You get one command to run on #{node.name}. It carries a one-time code, not a key, which works once within 15 minutes. qory makes the key on #{node.name}, sends Qory Apiary only its public half, and saves everything else there itself."
+
+  defp way_happens(:generate, node),
+    do:
+      "This browser makes the key, and Qory Apiary receives only its public half. The next page shows the secret once, with everything else the machine needs, for you to set where #{node.name} runs."
+
+  defp way_facts(:command, node),
+    do: [
+      {"Key made", "On #{node.name}, by qory"},
+      {"Secret", "Stays on #{node.name}; it is never shown"},
+      {"By hand", "Nothing"},
+      {"Needs", "A terminal on #{node.name}"}
+    ]
+
+  defp way_facts(:generate, _node),
+    do: [
+      {"Key made", "In this browser"},
+      {"Secret", "Shown to you once, for the machine's or the CI's secret store"},
+      {"By hand", "The key's ID, its secret, Qory Apiary's public key and address"},
+      {"Needs", "This page open over HTTPS"}
+    ]
+
+  # Qory Apiary's values, the same for every node: a sample public key and address.
+  defp server_pin,
+    do: ~s([{"alg":"ed25519","public_key":"q3Vd9xGm2LkR7tYbW4nE8sJpZ1cH6uFaT0oKiNvXyBe"}])
+
+  defp server_yaml, do: "server:\n  url: https://apiary.example.com\n"
+
+  # The two ways, the kind's own first: a machine runs a command, a pool's shared key is
+  # generated in the browser.
+  defp ways(%{kind: :pool}), do: [:generate, :command]
+  defp ways(_node), do: [:command, :generate]
+
+  defp way_icon(:command), do: "hero-command-line"
+  defp way_icon(:generate), do: "hero-key"
+
+  defp way_title(:command), do: "Connect with a command"
+  defp way_title(:generate), do: "Generate a key in the browser"
+
+  defp way_button(:command), do: "Get the command"
+  defp way_button(:generate), do: "Generate a key"
+
+  defp way_to(:command, to), do: to.("key_command")
+  defp way_to(:generate, to), do: to.("key_generate")
 
   attr :key, :map, required: true
   attr :node, :map, required: true
   attr :member, :boolean, required: true
-  attr :label, :string, default: nil, doc: "Current key or Replacement, beside another"
+  attr :to, :any, required: true
 
-  # A key: its id and state, its fingerprint, how it arrived and who revoked it, and its
-  # stored secrets, a fact fixed when it was made; then Revoke… while it is active.
+  # A key: its name and state, its ID with Copy, how it was added and where its secret is,
+  # who revoked it, its fingerprint and stored secrets; then Revoke… while it is active.
   defp key_card(assigns) do
     ~H"""
     <section
@@ -345,103 +582,98 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
       class="grid gap-3 rounded-box border border-line bg-base-100 p-4"
       aria-labelledby={"key-#{@key.id}-title"}
     >
-      <h3 id={"key-#{@key.id}-title"} class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span :if={@label} class="text-[13px]/5 font-medium">{@label}</span>
-        <span class="q-mono text-[13.5px]/5 font-medium">{@key.id}</span>
+      <h3 id={"key-#{@key.id}-title"} class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span class="text-[13.5px]/5 font-medium">{@key.label}</span>
+        <span class="text-faint" aria-hidden="true">·</span>
         <Mockup.key_state key={@key} id={"key-#{@key.id}-state"} />
       </h3>
 
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
-        <dt class="text-faint">Fingerprint</dt>
-        <dd class="q-mono break-all">{@key.fingerprint}</dd>
-        <dt :if={@key.state == :active} class="text-faint">Arrived</dt>
+        <dt class="text-faint">Key ID</dt>
+        <dd class="flex min-w-0 items-center gap-2">
+          <span class="q-mono break-all">{@key.id}</span>
+          <.copy_button
+            id={"key-#{@key.id}-id-copy"}
+            text={@key.id}
+            label={"Copy the key ID of #{@key.label}"}
+            icon_only
+          />
+        </dd>
+        <dt :if={@key.state == :active} class="text-faint">Added</dt>
         <dd :if={@key.state == :active && @key.way == :code}>
-          with an enrolment code {@key.by} made, {@key.on}
+          Connected with a command by {@key.by}, {@key.on}
         </dd>
         <dd :if={@key.state == :active && @key.way == :browser}>
-          made in a browser by {@key.by}, {@key.on}
+          Generated in a browser by {@key.by}, {@key.on}
+        </dd>
+        <dt :if={@key.state == :active} class="text-faint">Secret</dt>
+        <dd :if={@key.state == :active && @key.way == :code}>
+          On {@node.name}, saved there by the command
+        </dd>
+        <dd :if={@key.state == :active && @key.way == :browser}>
+          Shown once when it was generated; kept where you put it, such as your CI's secret store
         </dd>
         <dt :if={@key.state == :revoked} class="text-faint">Revoked</dt>
         <dd :if={@key.state == :revoked}>by {@key.by}, {@key.on}</dd>
+        <dt class="text-faint">Fingerprint</dt>
+        <dd class="q-mono break-all">{@key.fingerprint}</dd>
         <dt class="text-faint">Stored secrets</dt>
-        <dd>
-          {if @key.stored_secrets, do: "Allowed", else: "Not allowed"}
-          <span class="text-muted">
-            · fixed when the key was created; changing it means enrolling a new key.
-          </span>
-        </dd>
+        <dd>{if @key.stored_secrets, do: "Allowed", else: "Not allowed"}</dd>
       </dl>
 
-      <div :if={@key.state == :active && !@member}>
-        <.button href="#" aria-label={"Revoke #{@key.id}"}>Revoke…</.button>
+      <div :if={@key.state == :active} class="flex flex-wrap gap-2">
+        <.button href="#">Runner file</.button>
+        <.button :if={!@member} href="#" aria-label={"Revoke #{@key.label}"}>Revoke…</.button>
       </div>
     </section>
     """
   end
 
-  # Beside another key, which is the current one and which replaces it.
-  defp label(key, keys) do
-    cond do
-      length(keys) < 2 -> nil
-      key == hd(keys) -> "Current key"
-      true -> "Replacement"
-    end
-  end
+  # A key's name: the node's for the first, then the node's with -2, -3 and on.
+  defp label(node, 0), do: node.name
+  defp label(node, index), do: "#{node.name}-#{index + 1}"
 
-  ## Enrol
+  ## Generate a key
 
-  defp enrol(assigns) do
-    assigns = assign(assigns, :replacing, current_key(assigns.node) != nil)
-
+  defp generate(assigns) do
     ~H"""
     <div class="grid max-w-[45rem] gap-5">
       <div class="grid gap-1">
-        <h2 class="text-[15px]/6 font-semibold">
-          {if @replacing, do: "Enrol a replacement", else: "Add key"}
-        </h2>
+        <h2 class="text-[15px]/6 font-semibold">Generate a key for {@node.name}</h2>
         <p class="text-[13px]/[18px] text-muted">
-          {if @replacing,
-            do:
-              "A new key for #{@node.name}. Its current key keeps working until you revoke it, so its runs go on meanwhile.",
-            else: "A key for #{@node.name}, so it can post runs."}
+          This browser makes a key for {@node.name}. You see its secret once, to copy into your CI's secret store, or the settings of {if @node.kind ==
+                                                                                                                                            :pool,
+                                                                                                                                          do:
+                                                                                                                                            "whatever runs the instances",
+                                                                                                                                          else:
+                                                                                                                                            "the system that runs it"}; Qory Apiary receives only the public half. The key's ID stays on the Access key tab.
         </p>
       </div>
 
       <form id="new-key" class="grid gap-5" novalidate>
         <.input
-          id="new-key-stored-secrets"
-          name="stored_secrets"
-          type="radio"
-          label="Stored secrets"
-          options={[
-            {"Allowed: its runs receive the workspace's secrets", "allowed"},
-            {"Not allowed: its runs get only what needs no secret", "none"}
-          ]}
-          value="allowed"
-          hint="Fixed for the key it enrols; changing it later means enrolling a new key."
+          id="new-key-label"
+          name="label"
+          label="Name of the key"
+          value={@node.name}
+          hint="Shown on the Access key tab, so you can tell its keys apart."
         />
-
-        <SettingsComponents.part id="new-key-code" title="With an enrolment code">
-          <p class="text-[13px]/[18px] text-muted">
-            {@node.name} makes its own key and sends the public half with the code. The code
-            is valid for 15 minutes, for one key, and the key is active as soon as it arrives.
-          </p>
-          <div class="flex flex-wrap gap-2">
-            <.button variant="primary" href={@to.("key_code")}>Create enrolment code</.button>
-            <.button variant="ghost" href={@to.("key")}>Cancel</.button>
-          </div>
-        </SettingsComponents.part>
+        <div class="flex flex-wrap gap-2">
+          <.button variant="primary" href={@to.("key")}>Generate key</.button>
+          <.button variant="ghost" href={@to.("key")}>Cancel</.button>
+        </div>
       </form>
     </div>
     """
   end
 
-  ## Enrolment code
+  ## The command
 
-  defp code(assigns) do
+  defp command(assigns) do
     assigns =
       assign(assigns,
-        code: "qec_" <> code_of(assigns.node.id),
+        command:
+          "qory access-key enrol https://apiary.example.com qec_" <> code_of(assigns.node.id),
         until: DateTime.add(DateTime.utc_now(), 15 * 60),
         next:
           if(assigns.node.id == "build_01",
@@ -452,36 +684,37 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
 
     ~H"""
     <div class="grid max-w-[45rem] gap-4">
-      <.notice kind={:warning}>
-        <strong>This code is shown once.</strong>
-        Copy it now. It is valid for 15 minutes, for one key.
-      </.notice>
+      <div class="grid gap-1">
+        <h2 class="text-[15px]/6 font-semibold">Connect {@node.name} with a command</h2>
+        <p class="text-[13px]/[18px] text-muted">
+          The command connects {@node.name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine.
+        </p>
+      </div>
 
-      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-[13px]/5">
-        <dt class="text-faint">Enrolment code</dt>
-        <dd class="flex min-w-0 items-center gap-2">
-          <code class="block select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5">
-            {@code}
-          </code>
-          <.copy_button id="copy-enrolment-code" text={@code} label="Copy code" icon_only />
-        </dd>
-        <dt class="text-faint">Valid</dt>
-        <dd>for 15 minutes, until {ApiaryWeb.Format.time(@until)}</dd>
-        <dt class="text-faint">Stored secrets</dt>
-        <dd>Allowed, for the key it enrols</dd>
-      </dl>
-
-      <p id="code-issued-key" class="text-[13px]/[18px] text-muted">
-        On {@node.name}, enrol with this code. The key it brings is active as soon as it
-        arrives here. If its fingerprint is not the one qory prints, revoke it.
+      <p class="text-[13px]/5">On {@node.name}, run:</p>
+      <.code_block id="command" code={@command} copy_label="Copy command" wrap />
+      <.listening id="command-waiting">
+        Waiting for {@node.name} to run it. This page shows when it is connected.
+      </.listening>
+      <p class="text-[13px]/5 text-muted">
+        It works once, until {ApiaryWeb.Format.time(@until)}, 15 minutes from when you got it. This is the only time it is shown.
       </p>
-      <div><.button href={@next}>Done</.button></div>
+      <div class="flex flex-wrap items-center gap-3">
+        <.button variant="primary" href={@next}>Done</.button>
+        <span class="text-[12.5px]/[18px] text-muted">
+          Once you leave this page, the command is not shown again. Cancel it from the Access key tab if you won't run it.
+        </span>
+      </div>
     </div>
     """
   end
 
   defp code_of(id),
-    do: :crypto.hash(:sha256, id) |> Base.encode32(padding: false) |> binary_part(0, 16)
+    do:
+      :crypto.hash(:sha256, id)
+      |> Base.encode32(padding: false)
+      |> binary_part(0, 26)
+      |> String.replace(~r/[ILOU]/, "X")
 
   ## Settings
 
@@ -560,8 +793,8 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
   defp view("member"), do: {:overview, :member}
   defp view("runs"), do: {:runs, nil}
   defp view("key"), do: {:key, nil}
-  defp view("key_enrol"), do: {:enrol, nil}
-  defp view("key_code"), do: {:code, nil}
+  defp view("key_generate"), do: {:generate, nil}
+  defp view("key_command"), do: {:command, nil}
   defp view("settings"), do: {:settings, nil}
   defp view("key_replacement"), do: {:key, :replacement}
   defp view("key_member"), do: {:key, :member}

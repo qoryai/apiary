@@ -949,7 +949,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   name of the level above the workspace, for a change of it (`above_changed`), or nil.
   """
   def change_sentence(change, who, above \\ nil) do
-    who = {:b, who || gettext("Qory")}
+    who = {:b, who || gettext("Qory Apiary")}
     diff = Policy.diff(change)
 
     case {change.action, diff} do

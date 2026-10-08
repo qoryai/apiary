@@ -70,10 +70,16 @@ defmodule E2E do
     :active = AccessKey.status(access_key)
     write_secret(Path.dirname(runner_file), secret)
 
-    File.write!(
-      runner_file,
-      AccessKeys.runner_lines(access_key, ApiaryWeb.Endpoint.url()).file <> runner_tail
-    )
+    # The key's server lines: the server's address, the key's id and the server's pin.
+    server = AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
+
+    server_section =
+      Enum.map_join(
+        ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key],
+        &(&1 <> "\n")
+      )
+
+    File.write!(runner_file, server_section <> runner_tail)
 
     say(
       "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, active; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"

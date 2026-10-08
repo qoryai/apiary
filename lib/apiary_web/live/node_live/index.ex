@@ -150,9 +150,17 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp sorted(nodes, activity, :seen) do
     Enum.sort_by(nodes, fn node ->
       case activity[node.id] do
-        %{running: [_ | _]} -> {0, 0, node.name}
-        %{last: %{last_seen_at: at}} -> {1, -DateTime.to_unix(at, :microsecond), node.name}
-        _never -> {2, 0, node.name}
+        %{running: [_ | _]} ->
+          {0, 0, node.name}
+
+        %{} = activity ->
+          case NodeComponents.seen_at(activity) do
+            nil -> {2, 0, node.name}
+            at -> {1, -DateTime.to_unix(at, :microsecond), node.name}
+          end
+
+        nil ->
+          {2, 0, node.name}
       end
     end)
   end

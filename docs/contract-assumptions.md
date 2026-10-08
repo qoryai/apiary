@@ -361,7 +361,7 @@ No header value makes the endpoint answer `500`.
 
 ## Assumed
 
-The contract has not fixed these; Apiary chose, and the runner should match:
+The contract has not fixed these; Qory Apiary chose, and the runner should match:
 
 - The signature is decoded strictly: base64url without padding, 86 characters for 64
   bytes. Padding, the standard alphabet or another length is `401`, like a signature that

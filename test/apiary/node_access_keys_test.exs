@@ -9,6 +9,7 @@ defmodule Apiary.NodeAccessKeysTest do
   alias Apiary.{AccessKeys, Nodes}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Audit.Entry
+  alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
 
   @small_order "xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA3o"
   @torsion_key "KH9r2npX9PKHPzv_Xl6pwmCmpjQ73zfHq800btWQTBE"
@@ -796,67 +797,201 @@ defmodule Apiary.NodeAccessKeysTest do
     end
   end
 
-  describe "variables/2" do
-    test "is the key id and the pin as JSON, in that order, nothing secret", ctx do
+  describe "the key's part and the server's part" do
+    @pin [
+      %{"alg" => "ed25519", "public_key" => "current-key"},
+      %{"alg" => "ed25519", "public_key" => "next-key"}
+    ]
+
+    test "the key's part is its id alone, nothing secret", ctx do
       %{scope: scope, node: node} = ctx
       %{access_key: key} = browser_key_fixture(scope, node)
 
-      pin = [
-        %{"alg" => "ed25519", "public_key" => "current-key"},
-        %{"alg" => "ed25519", "public_key" => "next-key"}
-      ]
+      assert AccessKeys.key_variable(key) == {"QORY_ACCESS_KEY_ID", key.key_id}
+      assert AccessKeys.key_line(key) == "  access_key_id: #{key.key_id}"
+    end
 
-      assert AccessKeys.variables(key, pin) == [
-               {"QORY_ACCESS_KEY_ID", key.key_id},
+    test "the server's part is the pin and the address, and asks for no key" do
+      assert AccessKeys.server_variable(@pin) ==
                {"QORY_APIARY_PUBLIC_KEY",
                 ~s([{"alg":"ed25519","public_key":"current-key"},{"alg":"ed25519","public_key":"next-key"}])}
-             ]
 
-      # The server's own pin by default, which the JSON reads back as.
-      assert [{"QORY_ACCESS_KEY_ID", _}, {"QORY_APIARY_PUBLIC_KEY", json}] =
-               AccessKeys.variables(key)
+      assert AccessKeys.server_lines("https://apiary.example", @pin) == %{
+               url: "  url: https://apiary.example",
+               public_key: [
+                 "  apiary_public_key:",
+                 "    - {alg: ed25519, public_key: current-key}",
+                 "    - {alg: ed25519, public_key: next-key}"
+               ]
+             }
 
+      # The server's own pin by default, which the JSON reads back as, and the same lines.
+      assert {"QORY_APIARY_PUBLIC_KEY", json} = AccessKeys.server_variable()
       assert Jason.decode!(json) == Apiary.SigningKey.apiary_public_key()
 
-      # The runner file's variables are these, one line each.
-      %{env: env} = AccessKeys.runner_lines(key, "https://apiary.example", pin)
-
-      assert env ==
-               Enum.map_join(AccessKeys.variables(key, pin), fn {name, value} ->
-                 "#{name}=#{value}\n"
-               end)
+      assert AccessKeys.server_lines("https://apiary.example") ==
+               AccessKeys.server_lines(
+                 "https://apiary.example",
+                 Apiary.SigningKey.apiary_public_key()
+               )
     end
   end
 
-  describe "runner_lines/3" do
-    test "is the runner file's server section and the CI variables, the pin in each", ctx do
+  describe "a key enrolled is announced" do
+    # A machine's enrolment with `code`, as `qory access-key enrol` posts it.
+    defp enrol_request(code, pair) do
+      now = System.os_time(:second)
+      message = SignedMessage.enrolment(code, pair.encoded, "build-01", now)
+      proof = :crypto.sign(:eddsa, :none, message, [pair.secret, :ed25519])
+
+      {:ok, request} =
+        Enrolment.decode(
+          Jason.encode!(%{
+            "version" => 1,
+            "code" => code,
+            "name" => "build-01",
+            "public_key" => pair.encoded,
+            "timestamp" => now,
+            "proof" => Ed25519.encode(proof)
+          })
+        )
+
+      request
+    end
+
+    defp issued(scope, node) do
+      {:ok, row, code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {row, Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())}
+    end
+
+    # Every transaction's end, as the repo reports it, sent here in the order it happens.
+    defp watch_commits do
+      handler = "enrol-commits-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if self() == parent and meta.query in ["commit", "rollback"],
+            do: send(parent, {:repo, meta.query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+    end
+
+    defp mailbox(acc \\ []) do
+      receive do
+        message -> mailbox([message | acc])
+      after
+        0 -> Enum.reverse(acc)
+      end
+    end
+
+    test "on the node's topic, once the enrolment committed, with the key's id and the node's alone",
+         ctx do
       %{scope: scope, node: node} = ctx
-      {:ok, key} = add(scope, node)
+      other = node_fixture(scope, %{name: "build-02"})
+      {_row, code} = issued(scope, node)
+      pair = ed25519_key_pair()
 
-      pin = [
-        %{"alg" => "ed25519", "public_key" => "current-key"},
-        %{"alg" => "ed25519", "public_key" => "next-key"}
-      ]
+      :ok = AccessKeys.subscribe(scope, node)
+      :ok = AccessKeys.subscribe(scope, other)
+      watch_commits()
 
-      assert AccessKeys.runner_lines(key, "https://apiary.example", pin) == %{
-               file: """
-               server:
-                 url: https://apiary.example
-                 access_key_id: #{key.key_id}
-                 apiary_public_key:
-                   - {alg: ed25519, public_key: current-key}
-                   - {alg: ed25519, public_key: next-key}
-               """,
-               env: """
-               QORY_ACCESS_KEY_ID=#{key.key_id}
-               QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"current-key"},{"alg":"ed25519","public_key":"next-key"}]
-               """
-             }
+      assert {:ok, %AccessKey{} = key} = AccessKeys.enrol(enrol_request(code, pair))
 
-      # The pin is the server's own by default, and the JSON line reads back as it.
-      %{env: env} = AccessKeys.runner_lines(key, "https://apiary.example")
-      [_id, "QORY_APIARY_PUBLIC_KEY=" <> json] = String.split(env, "\n", trim: true)
-      assert Jason.decode!(json) == Apiary.SigningKey.apiary_public_key()
+      messages = mailbox()
+      announced = {:key_enrolled, %{key_id: key.key_id, node_id: node.id}}
+
+      # One announcement, on this node's topic alone.
+      assert Enum.count(messages, &match?({:key_enrolled, _}, &1)) == 1
+      assert announced in messages
+
+      # The enrolment's transaction ended with its commit before the announcement: no
+      # commit or rollback comes after it.
+      {before, [^announced | after_]} = Enum.split_while(messages, &(&1 != announced))
+      assert {:repo, "commit"} in before
+      refute Enum.any?(after_, &match?({:repo, _}, &1))
+
+      # Nothing secret: not the code, nor the public key, nor any secret.
+      text = inspect(announced)
+      refute text =~ code
+      refute text =~ pair.encoded
+      refute text =~ ~r/qak_|qec_/i
+      assert AccessKeys.topic(scope.workspace.id, node.id) =~ node.id
+    end
+
+    test "a repeat of a used code announces nothing new; a refused enrolment nothing", ctx do
+      %{scope: scope, node: node} = ctx
+      {_row, code} = issued(scope, node)
+      pair = ed25519_key_pair()
+      :ok = AccessKeys.subscribe(scope, node)
+
+      assert {:ok, key} = AccessKeys.enrol(enrol_request(code, pair))
+      assert_received {:key_enrolled, %{key_id: key_id}}
+      assert key_id == key.key_id
+
+      # The same machine asks again, its answer lost: the same key, and no announcement.
+      assert {:ok, again} = AccessKeys.enrol(enrol_request(code, pair))
+      assert again.id == key.id
+      refute_received {:key_enrolled, _}
+
+      # The node full: the enrolment is refused and undone, and nothing is announced.
+      browser_key_fixture(scope, node)
+      {_row, full} = issued(scope, node)
+
+      assert AccessKeys.enrol(enrol_request(full, ed25519_key_pair())) ==
+               {:error, :key_limit}
+
+      refute_received {:key_enrolled, _}
+
+      # Another key on the used code: refused, nothing announced.
+      assert AccessKeys.enrol(enrol_request(code, ed25519_key_pair())) ==
+               {:error, :unauthorized}
+
+      refute_received {:key_enrolled, _}
+    end
+  end
+
+  describe "a code cancelled is announced" do
+    test "on the node's topic, once the cancel committed, with the code's id and the node's alone",
+         ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, row, code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      :ok = AccessKeys.subscribe(scope, node)
+      watch_commits()
+
+      assert {:ok, cancelled} = AccessKeys.cancel_code(scope, row)
+      assert cancelled.cancelled_at
+
+      messages = mailbox()
+      announced = {:code_cancelled, %{code_id: row.id, node_id: node.id}}
+
+      assert Enum.count(messages, &match?({:code_cancelled, _}, &1)) == 1
+      {before, [^announced | after_]} = Enum.split_while(messages, &(&1 != announced))
+      assert {:repo, "commit"} in before
+      refute Enum.any?(after_, &match?({:repo, _}, &1))
+
+      # The ids alone: not the code, nor its hash.
+      text = inspect(announced, limit: :infinity, printable_limit: :infinity)
+      refute text =~ code
+      refute text =~ ~r/qec_/i
+      refute text =~ inspect(row.code_sha256)
+    end
+
+    test "a code already cancelled, expired or used announces nothing", ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+      {:ok, cancelled} = AccessKeys.cancel_code(scope, row)
+      %{code: used} = enrolled_key_fixture(scope, node)
+      :ok = AccessKeys.subscribe(scope, node)
+
+      assert {:ok, _} = AccessKeys.cancel_code(scope, cancelled)
+      assert AccessKeys.cancel_code(scope, used) == {:error, :used}
+      refute_received {:code_cancelled, _}
     end
   end
 end

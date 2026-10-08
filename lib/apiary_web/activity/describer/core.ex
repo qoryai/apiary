@@ -28,8 +28,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.remove"), do: gettext("Member removed")
   def label(:"invitation.revoke"), do: gettext("Invitation revoked")
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
-  def label(:"instance_admin.grant"), do: gettext("Owner made on the server")
-  def label(:"instance_admin.revoke"), do: gettext("Owner made a member on the server")
+  def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
+  def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -38,8 +38,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"workspace.delete"), do: gettext("Workspace deleted")
   def label(:"workspace.restore"), do: gettext("Workspace's deletion cancelled")
   def label(:"workspace.purge"), do: gettext("Workspace purged")
-  def label(:"access_key.create_code"), do: gettext("Enrolment code created")
-  def label(:"access_key.cancel_code"), do: gettext("Enrolment code cancelled")
+  def label(:"access_key.create_code"), do: gettext("Command made")
+  def label(:"access_key.cancel_code"), do: gettext("Command cancelled")
   def label(:"access_key.add"), do: gettext("Access key added")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
   def label(:"node.create"), do: gettext("Node created")
@@ -117,10 +117,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"invitation.accept", _details, _actor), do: gettext("Accepted an invitation")
 
   defp said(:"instance_admin.grant", _details, _actor),
-    do: gettext("Made a person an owner, by a command run on the server")
+    do: gettext("Made a person an owner, by a command run on Qory Apiary")
 
   defp said(:"instance_admin.revoke", _details, _actor),
-    do: gettext("Made an owner a member, by a command run on the server")
+    do: gettext("Made an owner a member, by a command run on Qory Apiary")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -141,10 +141,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Purged a deleted workspace and everything in it")
 
   defp said(:"access_key.create_code", _details, _actor),
-    do: gettext("Created an enrolment code for a node")
+    do: gettext("Made a command to connect a node")
 
   defp said(:"access_key.cancel_code", _details, _actor),
-    do: gettext("Cancelled a node's enrolment code")
+    do: gettext("Cancelled a command to connect a node")
 
   defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
 

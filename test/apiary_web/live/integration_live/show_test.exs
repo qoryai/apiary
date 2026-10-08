@@ -70,14 +70,13 @@ defmodule ApiaryWeb.IntegrationLive.ShowTest do
       assert has_element?(lv, "#connection-secrets", "It needs one of: api_key, oauth_token.")
       assert has_element?(lv, "#connection-secrets-unlinked", "can't be linked to it yet")
       section = lv |> element("#settings-section-integrations") |> render()
-      # Qory is named only in the not-yet line.
-      refute section =~ "Qory Apiary"
-      refute String.replace(section, "today Qory sends a run", "") =~ "Qory"
+      # Qory Apiary is named only in the not-yet line.
+      refute String.replace(section, "today Qory Apiary sends a run", "") =~ "Qory"
 
       assert has_element?(
                lv,
                "#not-on-runs",
-               "Runs don't use any of this yet: today Qory sends a run only its security policy."
+               "Runs don't use any of this yet: today Qory Apiary sends a run only its security policy."
              )
 
       refute html =~ "runs receive"

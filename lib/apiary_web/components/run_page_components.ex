@@ -1008,7 +1008,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp reload_sentence(%{source: "fetched", digest: digest, previous_digest: previous})
        when is_binary(digest) and digest != previous do
     gettext(
-      "The runner fetched a new run configuration after the server's answer named a new digest."
+      "The runner fetched a new run configuration after Qory Apiary's answer named a new digest."
     )
   end
 
