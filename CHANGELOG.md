@@ -49,8 +49,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   hosts; the pages list its rules first and link to where it is changed
   (`c:ApiaryWeb.Edition.above_policy_link/1`), and a change of it renders every
   workspace again (`Apiary.Policy.rerender_in/3`, an `above_changed` change in each
-  workspace's history); one that carries variables only (`policy: false`) is no level
-  of the policy.
+  workspace's history).
 - Nodes and node pools, the places a workspace's runs run: a node is one permanent
   machine that runs one instance at a time, a node pool a fleet of short-lived instances
   up to its instance limit, or any number without one; the kind is fixed when one is
@@ -60,18 +59,16 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
 - Access keys, one kind: a node's or a node pool's, each with one Ed25519 public key. The
-  server never holds a key's secret, only its public half, with the key's stored-secrets
-  flag fixed when it is made. A key is active from the moment it arrives until it is
-  revoked. A node gets its key in one of two ways, both on its Access key tab, which
+  server never holds a key's secret, only its public half. A key is active from the
+  moment it arrives until it is revoked. A node gets its key in one of two ways, both on its Access key tab, which
   asks owners and admins "How do you want to connect build-01?" while it holds no
   active key, with two equal options, each saying when to choose it, what happens and
   the same four facts (Key made, Secret, By hand, Needs), with one button (a node lists
   Connect with a command first, a pool Generate a key in the browser), and under Add a
   key, as two rows, once it holds one, with Configure a machine at the tab's foot for
   everyone: four steps, Qory Apiary's address and public key, the key's ID, and where
-  its secret belongs. Every new key, either way, gets the stored-secrets flag Not
-  allowed. Connect with a command: Get the command makes, in one click, a single-use
-  code valid for 15 minutes, and the page Connect build-01 with a command shows it,
+  its secret belongs. Connect with a command: Get the command makes, in one click, a
+  single-use code valid for 15 minutes, and the page Connect build-01 with a command shows it,
   once, only inside the command `qory access-key enrol <server> <code>`, with
   `--replace` for a node that has or had a key, saying it moves the node to a new key,
   and the time it stops working; the machine makes its key, keeps its secret and posts the
@@ -178,57 +175,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`. An opt-in feature is on only when
   the list names it: `all`, `all-…`, and a value that is not set or empty leave it off.
-- A workspace's stored secrets and variables: its secrets (`Apiary.Secrets`), each with
-  one value or several, each of those with a value ID, written once and never shown
-  again; and the variables of the workspace and of each repository (`Apiary.Variables`),
-  which the workspace may lock against its repositories, with names compared without
-  case, names beginning `QORY_` refused, and at most 128 names and 64 KiB for each
-  repository, the limits an edition checks a change of the level above's variables
-  against (`Apiary.Variables.check_above/2`). Who may read and change them are the actions
-  `secret.read`, `secret.write`, `secret.use`, `variable.read` and `variable.edit`, and
-  every change is in the audit trail by name, never by value.
-- The workspace's settings have **Secrets and variables**: a view of the secrets, by
-  name, value ID, who changed each value and when, never a value, with New secret, Add
-  value, Change value, Rename value, Delete value and Delete secret; and a view of the
-  variables, each with its value, its lock and the repositories that
-  set their own, with New variable, Change value, Lock, Unlock and Delete variable.
-  Members read them; owners and admins change them. A parameter named `value` is
-  filtered out of the logs, a LiveView event's included.
-- `APIARY_ENCRYPTION_SECRET`, 32 bytes, encrypts what the database holds secret: each
-  workspace's stored values under a data key of its own, with AES-256-GCM, wrapped by a
-  key derived from it. Losing it loses every stored value. Integrity codes for stored
-  rows are keyed from it as well.
+- `APIARY_ENCRYPTION_SECRET`, required, 32 bytes: the integrity codes of stored rows are
+  keyed from it.
 - `APIARY_SIGNING_SECRET`, required, 32 bytes of its own, never derived from
   `APIARY_ENCRYPTION_SECRET`: the seed of the Ed25519 key the server signs its answers
   to runners with. The boot refuses it when it is missing, of another length, the same
   as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
   development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.
-- Runtimes, integrations and services a workspace sets up, under Workspace settings ›
-  Integrations (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
-  catalogue, its `runtimes.json` as the runner ships it; an integration added from a
-  release on GitHub, GitLab or Codeberg, or at an
-  https address of its `description.json`, which a job fetches and checks against the
-  release's `checksums.txt` and the integrations contract (on GitLab through the API's
-  download route, `/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, which
-  redirects to where a release's link points, where the web route answers a link to
-  another host with a page); a service from a built-in
-  definition or one the workspace writes. An integration keeps its plain settings, every
-  top-level setting of its description that is neither a secret nor a secret's
-  `<name>_file`, and an argument its credential role's pattern matches; a role Qory Apiary
-  does not know is shown as given. Each applies to every repository or to chosen ones,
-  and two that would collide on a repository are refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,
-  whose host gives its kind of forge, never the request, or at an https address of its
-  `description.json`; a forge path on any other host is refused, since self-hosted forges
-  are not supported. `INTEGRATION_URL_SOURCES=false` turns off integrations from an
-  address, for an instance such as a cloud one: neither added nor fetched, though a forge
-  release's download links, which its author chooses, are still followed to any public
-  https host. A wrong value stops the boot. The fetch connects only to public addresses,
-  for every host and with no setting to allow a private one, checked again on every
-  redirect, within size and time limits. A release is always fetched without
-  credentials, so private releases are not supported. Who may read and
-  change them are the actions `connection.read` and `connection.write`, every change is in
-  the audit trail, and each row carries an integrity code.
 - A `Content-Security-Policy` on every page of the console, the storybook and the
   documentation: only the console's own scripts run, and a script injected into a page,
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
@@ -240,9 +194,7 @@ The baseline, on an empty database: the accounts and their tokens (`users`,
 `users_tokens`), `organisations`, `workspaces`, `memberships`, `invitations`,
 `access_keys`, `targets`, `runs`, the record (`events`, `log_chunks`, `connections`,
 `deliveries`), the security policy (`policy_rules`, `run_configurations`),
-`retention_runs`, `audit_entries`, the stored secrets (`workspace_data_keys`, `secrets`,
-`secret_values`), `variables`, the connections (`integration_releases`,
-`service_definitions`, `workspace_connections`, `connection_targets`), the instance's own tables (`purged_organisations`,
+`retention_runs`, `audit_entries`, the instance's own tables (`purged_organisations`,
 `instance_settings`) and Oban's.
 
 `nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
@@ -258,7 +210,7 @@ created concurrently.
 (`arrived_by`: `code`, with its `enrolment_code_id`, or `browser`), all NOT NULL,
 with `allow_secrets`, `rate`, `burst`, `revoked_by_id`, `integrity_code` and
 `integrity_key_id`, and no secret. The trigger `access_keys_fixed_at_insert` refuses a
-change of a key's node, public key, stored-secrets flag or arrival. New:
+change of a key's node, public key, `allow_secrets` or arrival. New:
 `access_key_enrolment_codes`, a node's enrolment codes, and `access_key_public_keys`, the
 instance's ledger of public keys. `20261007210000_make_an_enrolled_key_active_at_once`
 drops the approval's columns (`approved_at`, `approved_by_id`, `last_pending_at`), their
@@ -269,13 +221,6 @@ the ledger a tombstone, so machines enrol again with a new key.
 `20261008120000_remove_the_pasted_key` removes the paste arrival: it deletes every key
 that arrived `paste`, with its deliveries, makes its public key a tombstone in the
 ledger, and leaves the check `browser`, or `code` with its enrolment code.
-
-`20261008150000_remove_the_publisher_and_ways` drops a release's publisher
-(`integration_releases.publisher_name` and `publisher_url`, and the ready check's clause
-that required one) and a connection target's ways (`connection_targets.ways` and its
-check). A ready release's integrity code covered its publisher, so it deletes every ready
-release, with the integration connections added from it and their targets; workspaces add
-their programs again.
 
 ### Upgrading
 
