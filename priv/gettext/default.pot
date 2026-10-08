@@ -1962,6 +1962,11 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
+msgid "(opens in a new tab)"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
 msgid "(optional)"
 msgstr ""
 

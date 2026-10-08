@@ -6696,6 +6696,16 @@
   .q-link:hover {
     text-decoration-color: currentColor;
   }
+  /* A link out of the console (`external_link/1`): its words, then a faint icon. */
+  .q-ext-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .q-ext-icon {
+    flex: none;
+    color: var(--q-faint);
+  }
 
   .q-rowbtn {
     --size: 24px;
