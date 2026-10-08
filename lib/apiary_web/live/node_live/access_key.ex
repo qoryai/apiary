@@ -1588,12 +1588,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {if @node.kind == :pool,
               do:
                 gettext(
-                  "%{name} needs a key before it can start runs; its instances share one. Choose one of two ways to give it one.",
+                  "%{name} connects to Qory with a key; its instances share one. Choose one of two ways to give it one.",
                   name: @node.name
                 ),
               else:
                 gettext(
-                  "%{name} needs a key before it can start runs. Choose one of two ways to give it one.",
+                  "%{name} connects to Qory with a key. Choose one of two ways to give it one.",
                   name: @node.name
                 )}
           </p>
@@ -1621,7 +1621,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           level={:h2}
         >
           <p id="node-keys-members" class="text-[13px]/5 text-muted">
-            {gettext("%{name} has no key yet, so it can't start runs. An owner or admin connects it.",
+            {gettext(
+              "%{name} has no key yet, so it isn't connected to Qory. An owner or admin connects it.",
               name: @node.name
             )}
           </p>
