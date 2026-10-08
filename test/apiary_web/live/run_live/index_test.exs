@@ -54,7 +54,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "h2", "No runs yet")
 
       assert text(view, "#main") =~
-               "A run appears here when a machine enrolled on a node of this workspace starts one."
+               "A run appears here when a machine connected to a node of this workspace starts one."
+
+      assert text(view, "#main") =~ "Add a node, connect a machine to it, and start a run."
 
       assert has_element?(
                view,
@@ -83,7 +85,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs, a node exists: go to the nodes, and listen", %{conn: conn, scope: scope} do
       Apiary.NodesFixtures.pool_fixture(scope)
       view = open(conn, scope)
-      assert text(view, "#main") =~ "A machine posts once it is enrolled on a node."
+      assert text(view, "#main") =~ "A machine posts once it is connected to a node."
 
       assert has_element?(
                view,

@@ -481,9 +481,9 @@ defmodule ApiaryWeb.RunLive.Index do
         <div :if={!@load_error && first_run?(@listing, @filters)} class="grid gap-4">
           <.empty_state :if={!@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext(
-              "A run appears here when a machine enrolled on a node of this workspace starts one."
+              "A run appears here when a machine connected to a node of this workspace starts one."
             )}
-            {gettext("Add a node, enrol the machine on it, and start a run.")}
+            {gettext("Add a node, connect a machine to it, and start a run.")}
             <p :if={!@may_add_node}>{gettext("An owner or admin adds nodes.")}</p>
             <:actions>
               <.button
@@ -505,7 +505,7 @@ defmodule ApiaryWeb.RunLive.Index do
           </.empty_state>
           <.empty_state :if={@has_nodes} icon="hero-play-circle" title={gettext("No runs yet")}>
             {gettext("No machine has posted a run to this workspace yet.")}
-            {gettext("A machine posts once it is enrolled on a node.")}
+            {gettext("A machine posts once it is connected to a node.")}
             <:actions>
               <.button
                 id="runs-go-to-nodes"
