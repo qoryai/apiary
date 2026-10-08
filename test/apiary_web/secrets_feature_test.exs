@@ -243,6 +243,26 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       end
     end
 
+    # The documentation's configuration, as `mix docs.all` reads it: the release notes
+    # need no feature, the module reference every feature, and a default instance is
+    # served a tree without `secrets`.
+    test "a default instance's /docs has the release notes and no module reference" do
+      docs = Mix.Project.config()[:docs]
+      docs = if is_function(docs, 0), do: docs.(), else: docs
+      owned = Keyword.fetch!(docs, :features)
+
+      assert "CHANGELOG.md" in Enum.map(docs[:extras], &to_string/1)
+
+      for {_feature, owns} <- owned do
+        refute "CHANGELOG.md" in Enum.map(Keyword.get(owns, :extras, []), &to_string/1)
+      end
+
+      assert [_ | _] = owned |> Keyword.fetch!(:all) |> Keyword.fetch!(:modules)
+
+      {:ok, default} = Apiary.Features.parse(nil)
+      refute Apiary.Features.all() -- default == []
+    end
+
     test "leave out each passage of it" do
       for {file, words} <- @gated_passages do
         refute guide(file, @off) =~ words, "#{file}: #{words}"

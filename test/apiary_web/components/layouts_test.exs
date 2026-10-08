@@ -274,9 +274,8 @@ defmodule ApiaryWeb.LayoutsTest do
       # Instance settings is only for whoever may open a section of the Instance level.
       refute has_element?(view, "#brand-menu-instance")
 
-      # The release notes name every feature: only an instance with every one links them.
-      assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']") ==
-               (Apiary.Features.enabled() == Apiary.Features.all())
+      # Every instance's documentation has the release notes.
+      assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']")
 
       assert has_element?(
                view,

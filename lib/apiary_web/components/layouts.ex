@@ -1895,9 +1895,8 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-book-open" class="size-4" /> {gettext("Docs")}
           </.link>
         </li>
-        <%!-- The release notes name every feature, so only the documentation of an instance with
-             every one has them; the documentation is the instance's, and so is this check. --%>
-        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
+        <%!-- Every tree of the documentation has the release notes. --%>
+        <li role="none">
           <.link
             href={~p"/docs/changelog.html"}
             role="menuitem"
