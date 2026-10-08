@@ -841,9 +841,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
   record. A node the workspace does not have, or a deleted one, is not found.
 - **Access key**, a node's tab. While the node holds no active key, owners and admins read
-  "How do you want to connect build-01?", "build-01 needs a key before it can start runs.
-  Choose one of two ways to give it one." (a pool's: "spot-runners needs a key before it
-  can start runs; its instances share one. Choose one of two ways to give it one."), and
+  "How do you want to connect build-01?", "build-01 connects to Qory with a key. Choose
+  one of two ways to give it one." (a pool's: "spot-runners connects to Qory with a key;
+  its instances share one. Choose one of two ways to give it one."), and
   two options of equal weight, side by side from `md`, stacked below it, of one height
   (`items-stretch`), each its icon and title, "Choose it when …" in the body colour, what
   happens in two muted sentences, then the same four facts in the same rows (a `dl` of two
@@ -862,9 +862,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   runs.", Key made "In this browser", Secret "Shown to you once, for the machine's or the
   CI's secret store", By hand "The key's ID, its secret, Qory Apiary's public key and
   address", Needs "This page open over HTTPS", then Generate a key. A node lists the
-  command first, its button primary; a pool lists
-  Generate a key in the browser first. A member reads, under "Connect build-01", "build-01 has no key
-  yet, so it can't start runs. An owner or admin connects it." A command not yet run shows
+  command first, its button primary; a pool lists Generate a key in the browser first. A
+  member reads, under "Connect build-01", "build-01 has no key yet, so it isn't connected
+  to Qory. An owner or admin connects it." A command not yet run shows
   in the command's option, above its button, or its row under Add a key: "A command is waiting to be run
   on build-01.", "dana@example.com got it at 14:17. It works once, until 14:32. It was
   shown once: if it's lost, cancel it and get a new one." and Cancel the command…,
