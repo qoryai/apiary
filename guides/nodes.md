@@ -24,10 +24,9 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 A machine signs every request with its own key, an Ed25519 key. Made by `qory` on the
 machine, its secret stays there, in `~/.config/qory/access-key-secret`; made in a browser,
 it goes into a CI's secret store. Qory Apiary keeps only the public half, so nothing Qory
-Apiary holds can sign for the machine. Every answer of the
-server is signed too, with the server's own key, which the machine pins as
-`apiary_public_key` and checks every answer under. The server's key and its address are
-the instance's own, the same for every organisation, workspace and node: the address is
+Apiary holds can sign for the machine. Every answer of Qory Apiary is signed too, with
+Qory Apiary's own key, which the machine pins as `apiary_public_key` and checks every
+answer under. Qory Apiary's key and its address are the instance's own, the same for every organisation, workspace and node: the address is
 its `PUBLIC_URL`, and the key is made from its `APIARY_SIGNING_SECRET`. Only a key's ID
 and its secret belong to the node's key.
 

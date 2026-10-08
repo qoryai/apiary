@@ -278,7 +278,7 @@ rendered for a request, so the digest is of exactly what is sent. It is the conf
 of the key's workspace for the repository the two labels name; a repository the workspace
 has not seen, one with no rules of its own, and a request that names none, or one label of
 the two, get the workspace's baseline. The labels are compared to the stored ones byte for
-byte after the query's percent-decoding. The server does not answer `400` to a query the
+byte after the query's percent-decoding. Qory Apiary does not answer `400` to a query the
 contract's rules for labels refuse, as the reference receiver does: a `forge` or
 `repository` that cannot be a label names no repository, and of a parameter sent twice the
 last is read.
