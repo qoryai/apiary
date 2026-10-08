@@ -198,6 +198,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#onboarding-new-node")
       refute has_element?(view, "#onboarding-new-pool")
       refute has_element?(view, "#onboarding-members-key")
+
+      # The two ways are explained, but "you" choose nothing: an owner or admin does.
+      assert text(view, "#onboarding-panel") =~ "Two ways to connect a machine"
+      refute has_element?(view, "#onboarding-choose")
+      refute text(view, "#onboarding") =~ "You choose one for each node"
     end
 
     test "a node, no key: step 2 current, both ways for the newest node, the command first", %{
@@ -292,7 +297,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute view |> element("#flash-group") |> render() =~ code
       refute page_title(view) =~ code
       refute log =~ code
-      refute inspect(:sys.get_state(view.pid)) =~ code
+      deep = &inspect(&1, limit: :infinity, printable_limit: :infinity)
+      refute deep.(:sys.get_state(view.pid)) =~ code
+      refute deep.(:sys.get_status(view.pid)) =~ code
 
       # A second click makes no second command.
       render_hook(view, "get_command", %{"allow_secrets" => "true"})
@@ -323,6 +330,25 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#onboarding-command")
       refute render(view) =~ code
       assert is_nil(:sys.get_state(view.pid).socket.assigns.command)
+    end
+
+    test "a command cancelled on the node's tab is let go, and the box asks again", %{
+      conn: conn,
+      scope: scope
+    } do
+      node = node_fixture(scope, %{name: "build-01"})
+      view = open(conn, scope)
+      view |> element("#onboarding-enrol") |> render_click()
+      code = text(view, "#onboarding-command") |> String.split(" ") |> List.last()
+      [row] = AccessKeys.list_enrolment_codes(scope, node)
+
+      {:ok, _} = AccessKeys.cancel_code(scope, row)
+
+      refute has_element?(view, "#onboarding-command")
+      refute has_element?(view, "#onboarding-waiting")
+      refute render(view) =~ code
+      assert is_nil(:sys.get_state(view.pid).socket.assigns.command)
+      assert has_element?(view, "#onboarding-enrol", "Get the command")
     end
 
     test "a command that expires is let go, and the box asks again", %{
@@ -413,6 +439,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#onboarding-enrol")
       refute has_element?(view, "#onboarding-generate")
       refute has_element?(view, "#onboarding a[href*='/access-key']")
+      refute text(view, "#onboarding") =~ "You choose one for each node"
     end
 
     test "a node whose only key is revoked has no key: step 2, named", %{

@@ -1895,7 +1895,8 @@ defmodule ApiaryWeb.OverviewComponents do
                   )}
                 </p>
               </div>
-              <p class="text-muted">
+              <%!-- Said only to one who may add a node and connect it. --%>
+              <p :if={@may_add} id={"#{@id}-choose"} class="text-muted">
                 {gettext("You choose one for each node, once you have added it.")}
               </p>
             </div>
