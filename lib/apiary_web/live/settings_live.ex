@@ -445,8 +445,8 @@ defmodule ApiaryWeb.SettingsLive do
       </ul>
       <p :if={@retention_runs != []} id="retention-runs-note" class="q-foot-note">
         {ngettext(
-          "The pruning job's last pass. It is also a line in the server's log.",
-          "The pruning job's last %{number} passes. Each is also a line in the server's log.",
+          "The pruning job's last pass. It is also a line in Qory Apiary's log.",
+          "The pruning job's last %{number} passes. Each is also a line in Qory Apiary's log.",
           length(@retention_runs),
           number: Format.number(length(@retention_runs))
         )}

@@ -141,7 +141,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(view, "#nav-policy[aria-current=page]")
       refute has_element?(view, "#nav-policy-mode")
-      assert has_element?(view, "h2", "Qory serves no policy yet")
+      assert has_element?(view, "h2", "Qory Apiary serves no policy yet")
 
       assert text(view, "#policy-unmanaged") =~
                "Until the first change here, every machine of this workspace runs under its own policy"

@@ -14,7 +14,7 @@ contract takes the same runners.
 The contract is not in this repository. It is the `contracts/runner/v1` directory of the
 runner's repository: a README that defines every document and header, one JSON schema per
 document, and fixtures, among them signed requests with the status a receiver has to answer.
-This server implements version 1, revision 1, tool invocations included: the `tools` of
+Qory Apiary implements version 1, revision 1, tool invocations included: the `tools` of
 `dev.qory.run.policy_applied`, and the `tool`, `request_id` and `status` of
 `dev.qory.run.egress`.
 <!-- feature: security -->

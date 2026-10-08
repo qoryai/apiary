@@ -32,7 +32,7 @@ beside it:
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
 - `Apiary.AccessKeys`: the access keys of a workspace's nodes, and the lookup a signed
-  request verifies against. Each key has one Ed25519 public key, and Apiary holds no
+  request verifies against. Each key has one Ed25519 public key, and Qory Apiary holds no
   secret of it; it belongs to one node or node pool: enrolment codes
   (`access_key_enrolment_codes`, kept as their SHA-256), the code being the approval of
   the key it brings while its maker is still an owner or an admin, a key made in a
@@ -228,7 +228,7 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   is never deleted nor purged (`:instance_organisation`), so an instance never loses it:
   without one, the next sign-up would create it.
 - **Invitations, bounded.** An invitation is an address, and its email names the
-  organisation only inside a sentence Qory writes, never in the subject, a heading or the
+  organisation only inside a sentence Qory Apiary writes, never in the subject, a heading or the
   text of a link, and names nobody else: not the inviter, whose address's local part is
   theirs to choose. An organisation's name carries no web address (`://`, `www.`), no
   double quotation mark or lookalike, and no Unicode format character but the join

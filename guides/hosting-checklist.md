@@ -36,7 +36,7 @@ being one. Every variable named here is described in [Install and configure](ins
 <!-- feature: security -->
 - **Where integrations come from.** A workspace adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
-  `description.json`, which may be on any host; Qory fetches it from public addresses
+  `description.json`, which may be on any host; Qory Apiary fetches it from public addresses
   only. On an instance open to people you do not know, set
   `INTEGRATION_URL_SOURCES=false` so that they are added from forges' releases alone; a
   release's download links, which its author chooses on GitLab and Codeberg, are still

@@ -41,7 +41,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
       <.settings_page section={:configuration} title={gettext("Configuration")}>
         <:subtitle>
           {gettext(
-            "What whoever runs this server set for the whole instance, or the default, as the server read it when it started. Nothing here changes it."
+            "What whoever runs this Qory Apiary set for the whole instance, or the default, as Qory Apiary read it when it started. Nothing here changes it."
           )}
         </:subtitle>
 
@@ -112,11 +112,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
               {if @pruning,
                 do:
                   gettext(
-                    "The server prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
+                    "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
                   ),
                 else:
                   gettext(
-                    "The server does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
+                    "Qory Apiary does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
                   )}
             </.setting>
           </dl>
@@ -152,7 +152,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
         <p id="config-note" class="q-foot-note">
           {gettext(
-            "To change a value, whoever runs the server changes the setting named beside it and starts the server again."
+            "To change a value, whoever runs Qory Apiary changes the setting named beside it and starts it again."
           )}
         </p>
       </.settings_page>
@@ -237,7 +237,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   defp description(:security),
     do:
       gettext(
-        "The security policy, which Qory serves to a workspace's runs once it has a rule or a mode set."
+        "The security policy, which Qory Apiary serves to a workspace's runs once it has a rule or a mode set."
       )
 
   defp description(_feature), do: nil

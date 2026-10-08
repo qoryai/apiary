@@ -23,8 +23,8 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 
 A machine signs every request with its own key, an Ed25519 key. Made by `qory` on the
 machine, its secret stays there, in `~/.config/qory/access-key-secret`; made in a browser,
-it goes into a CI's secret store. Qory Apiary keeps only the public half, so nothing the server
-holds can sign for the machine. Every answer of the
+it goes into a CI's secret store. Qory Apiary keeps only the public half, so nothing Qory
+Apiary holds can sign for the machine. Every answer of the
 server is signed too, with the server's own key, which the machine pins as
 `apiary_public_key` and checks every answer under. The server's key and its address are
 the instance's own, the same for every organisation, workspace and node: the address is
@@ -168,7 +168,7 @@ A fleet of short-lived CI runners is a node pool with one key.
 1. On the node's **Access key** tab, select **Generate a key**. The page **Generate a key
    for spot-runners** has one field, **Name of the key**, filled in with the node's name
    (`spot-runners-2` when a key has that name already). Select **Generate key**.
-2. Your browser makes the Ed25519 key and sends Qory only its name and its public half.
+2. Your browser makes the Ed25519 key and sends Qory Apiary only its name and its public half.
    The key gets **Stored secrets** **Not allowed**, and is active as soon as it arrives.
 3. The page **Key for spot-runners** says "Do these where spot-runners runs. Only the
    secret can't be seen again." Under the notice "The secret is shown once.", four

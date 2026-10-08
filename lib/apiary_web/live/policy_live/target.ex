@@ -1012,7 +1012,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp first_change,
     do:
       gettext(
-        "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
+        "This is the workspace's first change: it renders version 1, and machines take their policy from Qory Apiary from then on."
       )
 
   defp whose_words("follow", _mode),

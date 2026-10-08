@@ -1004,7 +1004,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       started_run(scope, shop())
       view = open(conn, scope)
 
-      assert text(view, "#att-policy-unmanaged") =~ "Qory serves no policy yet"
+      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves no policy yet"
 
       assert text(view, "#att-policy-unmanaged") =~ "1 run under the machines' policies"
 
@@ -1016,7 +1016,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       render_async(view, 5_000)
-      assert text(view, "#att-policy-unmanaged") =~ "Qory serves the policy now."
+      assert text(view, "#att-policy-unmanaged") =~ "Qory Apiary serves the policy now."
       assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
       assert text(view, "#att-policy-enforce") =~ "Observe is the workspace's default"

@@ -495,7 +495,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_subject(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <span class="q-ar-t">{gettext("Qory serves no policy yet")}</span>
+    <span class="q-ar-t">{gettext("Qory Apiary serves no policy yet")}</span>
     """
   end
 
@@ -1717,7 +1717,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp not_loaded,
     do:
       gettext(
-        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+        "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
   ## The empty workspace

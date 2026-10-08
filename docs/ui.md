@@ -205,7 +205,7 @@ replaces the navigation it is in.
   only, on the row spec of the organisation's People, the edition's `:member_access`
   beside each name; no suspended membership, which reaches nothing), Integrations
   (`/settings/integrations`, `ApiaryWeb.IntegrationLive.Index`: what the runs of the
-  workspace use, never Qory's own settings, as its subtitle says; one list, Set up in
+  workspace use, never Qory Apiary's own settings, as its subtitle says; one list, Set up in
   this workspace, in the groups' order, each row its name, its kind, Agent, API or Program
   (one added from a release), a program's version and For runs in, where it applies; then,
   for whoever may change it, Add an integration, a card for each thing to add by name, its
@@ -269,7 +269,7 @@ replaces the navigation it is in.
   itself does: the edition's sections
   (`ApiaryWeb.Edition.instance_sections/1`), then, for the instance's admins, the core's
   Configuration (`/instance/configuration`, `ApiaryWeb.InstanceLive.Configuration`, its
-  `<h1>` Configuration), read only: what whoever runs the server set, as the server read it
+  `<h1>` Configuration), read only: what whoever runs Qory Apiary set, as Qory Apiary read it
   when it started, each value with the setting it is set by. Anyone else is answered not
   found. The sidebar stays the one the person came from. In the core Configuration is the
   one section, so there is no second column; an edition's sections add to it, and with two
@@ -925,7 +925,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   `-2` when a key has that name), its hint "Shown on the Access key tab, so you can tell
   its keys apart.", and Generate key ("Generating") with Cancel. There is no Stored
   secrets choice: every new key, either way, is Not allowed, since runs don't receive
-  secrets yet. The browser makes the Ed25519 key (the `GenerateKey` hook) and sends Qory
+  secrets yet. The browser makes the Ed25519 key (the `GenerateKey` hook) and sends Qory Apiary
   the name and the public key alone; the form has no other field. Where the browser can't
   make one it says why and Generate key stays off: "This browser makes keys only on a page
   served over HTTPS. Open Qory Apiary over HTTPS, or connect the machine with a command." or
@@ -1176,7 +1176,7 @@ Runs, Integrations, Secrets and variables; Runs is Retention renamed, and Access
 gone; a secret holds one value or several, each under a value ID, and a variable is set for
 the workspace or for one repository); 3. Integrations, by role, with the ways each connects
 (API, MCP), the tools under Services, and each one's source: Built in for the LLM providers
-and services that ship inside Apiary, else the publisher's repository and version of its
+and services that ship inside Qory Apiary, else the publisher's repository and version of its
 release; 4. An integration (Overview, Secrets and Settings, which ask for each setting it
 declares, secret or plain, a secret one linked to a workspace secret and, where it holds
 several values, to one by its value ID); 5. Add integration, built in or from a release on

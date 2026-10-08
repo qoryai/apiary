@@ -28,8 +28,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.remove"), do: gettext("Member removed")
   def label(:"invitation.revoke"), do: gettext("Invitation revoked")
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
-  def label(:"instance_admin.grant"), do: gettext("Owner made on the server")
-  def label(:"instance_admin.revoke"), do: gettext("Owner made a member on the server")
+  def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
+  def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -117,10 +117,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"invitation.accept", _details, _actor), do: gettext("Accepted an invitation")
 
   defp said(:"instance_admin.grant", _details, _actor),
-    do: gettext("Made a person an owner, by a command run on the server")
+    do: gettext("Made a person an owner, by a command run on Qory Apiary")
 
   defp said(:"instance_admin.revoke", _details, _actor),
-    do: gettext("Made an owner a member, by a command run on the server")
+    do: gettext("Made an owner a member, by a command run on Qory Apiary")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")

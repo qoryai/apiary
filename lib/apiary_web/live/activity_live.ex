@@ -95,7 +95,7 @@ defmodule ApiaryWeb.ActivityLive do
           <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
             <span id="activity-error">
               {gettext(
-                "The audit log could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+                "The audit log could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
               )}
             </span>
           </.notice>
@@ -462,5 +462,5 @@ defmodule ApiaryWeb.ActivityLive do
   end
 
   defp actor_of(%{actor_kind: :instance}, _names, _scope),
-    do: %{kind: :instance, text: gettext("Qory")}
+    do: %{kind: :instance, text: gettext("Qory Apiary")}
 end

@@ -379,7 +379,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
              )
 
       assert text(view, "#e-30-reload") =~
-               "The runner fetched a new run configuration after the server's answer named a new digest."
+               "The runner fetched a new run configuration after Qory Apiary's answer named a new digest."
 
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 

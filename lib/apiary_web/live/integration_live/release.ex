@@ -207,7 +207,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
       </dl>
       <p class="text-[12.5px]/[18px] text-faint">
         {gettext(
-          "Nothing verifies the publisher's name: check the source. The release is only read; nothing of it runs on the server."
+          "Nothing verifies the publisher's name: check the source. The release is only read; nothing of it runs on Qory Apiary."
         )}
       </p>
     </SettingsComponents.part>

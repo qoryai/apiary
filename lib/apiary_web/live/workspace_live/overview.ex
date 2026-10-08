@@ -1547,7 +1547,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: gettext("Qory serves the policy now."), done: nil}
+    do: %{mark: :resolved, what: gettext("Qory Apiary serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
     what =
@@ -1725,7 +1725,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp not_loaded,
     do:
       gettext(
-        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+        "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
   # What became of a run that ended while it was on the list.
