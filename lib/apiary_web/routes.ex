@@ -502,7 +502,7 @@ defmodule ApiaryWeb.Routes do
               live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
               # The stored secrets and the variables, one section of two views, with the
-              # `security` feature; each form a page and each confirmation on its row, at
+              # `secrets` feature; each form a page and each confirmation on its row, at
               # a path of its own. A secret is named by its public id (`sec_…`), a value by
               # its value id; the one value without a value id is the secret's
               # `change-value`.
@@ -533,7 +533,7 @@ defmodule ApiaryWeb.Routes do
               live "/settings/variables/:id/delete", SecretLive.Index, :delete_variable
               live "/settings/variables/:id/targets", SecretLive.Index, :variable_targets
               # The runtimes, integrations and services set up in the workspace, and its
-              # own service definitions, with the `security` feature: the list and its
+              # own service definitions, with the `secrets` feature: the list and its
               # forms; a release asked for, by its id, before it is added; a service
               # definition by its public id (`svc_…`); and one runtime, integration or
               # service by its public id (`con_…`), its tabs and acts after it. The fixed

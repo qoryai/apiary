@@ -4,6 +4,9 @@ defmodule Apiary.Integrations.FetchJob do
   (`Apiary.Integrations.fetch_release/2`), as the person who asked, whose
   `connection.write` is asked again. Unique per release while it waits, runs or is
   retried. Run twice, the second finds the release no longer pending and does nothing.
+
+  It asks `Apiary.Features.on?/2` with its scope first: where the `secrets` feature is off,
+  it fetches nothing and is cancelled as `:not_found`, not retried.
   """
   use Apiary.Job,
     queue: :default,
@@ -19,6 +22,12 @@ defmodule Apiary.Integrations.FetchJob do
 
   @impl Apiary.Job
   def perform(%Scope{} = scope, %Oban.Job{args: %{"release_id" => release_id}}) do
+    if Apiary.Features.on?(scope, :secrets),
+      do: fetch(scope, release_id),
+      else: {:cancel, :not_found}
+  end
+
+  defp fetch(scope, release_id) do
     case Apiary.Integrations.fetch_release(scope, release_id) do
       {:ok, _release} -> :ok
       {:error, reason} when reason in [:not_found, :forbidden] -> {:cancel, reason}

@@ -48,11 +48,11 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert nodes["href"] == workspace_path(scope, "/nodes")
 
     # nothing else is listed for nothing typed but what New offers; Add integration,
-    # secrets and variables with the `security` feature, whose they are
+    # secrets and variables with the `secrets` feature, whose they are
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
 
     security =
-      if Apiary.Features.on?(:security),
+      if Apiary.Features.on?(:secrets),
         do: ["Add integration", "New secret", "New variable"],
         else: []
 

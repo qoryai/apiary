@@ -412,11 +412,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
       {:ok, lv, _html} = live(conn, base <> "/runs")
 
-      security? = Apiary.Features.on?(:security)
+      secrets? = Apiary.Features.on?(:secrets)
 
       sections =
         [general: base, people: base <> "/people"] ++
-          if(security?,
+          if(secrets?,
             do: [integrations: base <> "/integrations", secrets: base <> "/secrets"],
             else: []
           ) ++

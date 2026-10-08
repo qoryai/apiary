@@ -3,7 +3,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   One agent (a runtime), API (a service) or program (an integration added from a release)
   of the workspace, under Workspace settings › Integrations
   (`/:org/:workspace/settings/integrations/:id`, `:id` its public id, `con_…`), with the
-  `security` feature. Under its title, its kind. Three tabs, each an address:
+  `secrets` feature. Under its title, its kind. Three tabs, each an address:
 
     * **Overview** (`:overview`): what it is, its id, its source, version and roles (a
       program's), the API it is set up from, built in or a custom API (an API's), or its
@@ -24,7 +24,7 @@ defmodule ApiaryWeb.IntegrationLive.Show do
   run receives only its security policy.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   import Ecto.Query, only: [from: 2]

@@ -8,7 +8,7 @@ defmodule ApiaryWeb.SecretLive.InUseTest do
   alias Apiary.Secrets
   alias Apiary.Secrets.Usage
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   setup :register_and_log_in_user
 

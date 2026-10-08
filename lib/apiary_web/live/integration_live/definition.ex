@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.IntegrationLive.Definition do
   @moduledoc """
   The workspace's own custom APIs, its service definitions in `Apiary.Connections`' words,
-  under Workspace settings › Integrations, with the `security` feature: New custom API
+  under Workspace settings › Integrations, with the `secrets` feature: New custom API
   (`…/definitions/new`), one custom API (`…/definitions/:id`, its public id `svc_…`) with
   where it is set up, the APIs set up from it, its edit (`…/edit`), a page, and its
   deletion (`…/delete`), confirmed in place in its danger zone and refused while an API is
@@ -14,7 +14,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
   The page says once that a run receives only its security policy.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.Connections

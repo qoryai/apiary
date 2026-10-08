@@ -18,8 +18,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         always: [MyEditionWeb.SomeLive]
 
   and gets the tests: every route of the router is decided, no module listed as one every
-  instance has declares a feature, and the security policy's pages and endpoint belong to
-  `security`. `routes/1` is the router's routes, for a test of the edition's own features.
+  instance has declares a feature, the security policy's pages and endpoint belong to
+  `security`, and the stored secrets', variables' and integrations' pages to `secrets`. `routes/1` is the router's routes, for a test of the edition's own features.
   """
 
   use ExUnit.CaseTemplate
@@ -95,6 +95,20 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         end
 
         assert ApiaryWeb.Contract.RunConfigurationController.__feature__() == :security
+      end
+
+      test "the stored secrets', variables' and integrations' pages belong to secrets" do
+        pages =
+          for {_verb, "/:org/:workspace/settings/" <> rest, module} <-
+                ApiaryWeb.RoutesFeaturesCase.routes(@router),
+              Enum.any?(~w(secrets variables integrations), &String.starts_with?(rest, &1)),
+              do: module
+
+        assert pages != []
+
+        for module <- pages do
+          assert module.__feature__() == :secrets, inspect(module)
+        end
       end
     end
   end

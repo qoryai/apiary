@@ -6,7 +6,7 @@ defmodule ApiaryWeb.SecretLive.LogTest do
   import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
 
-  @moduletag needs: :security
+  @moduletag needs: :secrets
 
   @value "ghp_exampleTokenValue0123456789"
 

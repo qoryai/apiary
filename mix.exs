@@ -211,11 +211,17 @@ defmodule Apiary.MixProject do
           extras: ["guides/security-policy.md"],
           modules: [
             ~r/^Apiary\.Policy/,
-            ~r/^Apiary\.Secrets/,
-            ~r/^Apiary\.Variables/,
             ~r/^ApiaryWeb\.Policy/,
             ApiaryWeb.ConnectionLive.Rules,
             Mix.Tasks.Apiary.Policy.Rerender
+          ]
+        ],
+        secrets: [
+          modules: [
+            ~r/^Apiary\.Secrets/,
+            ~r/^Apiary\.Variables/,
+            ~r/^Apiary\.Connections/,
+            ~r/^Apiary\.Integrations/
           ]
         ],
         # The release notes and the module reference name every feature, the prose of a

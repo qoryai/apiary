@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.SecretLive.Index do
   @moduledoc """
   The workspace's Secrets and variables, a section of its settings
-  (`ApiaryWeb.SettingsComponents`, the frame's second column) with the `security` feature:
+  (`ApiaryWeb.SettingsComponents`, the frame's second column) with the `secrets` feature:
   two tabs under the section's title (`ApiaryWeb.PageComponents.page_tabs/1`, links, each
   with its count), Secrets (`/:org/:workspace/settings/secrets`) and Variables
   (`…/settings/variables`). Each tab's panel holds its New and its list on the list pattern
@@ -43,7 +43,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   context functions ask again.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"secret.read"}
 
   alias Apiary.{Access, Organisations, Secrets, Variables}

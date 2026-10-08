@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.IntegrationLive.Index do
   @moduledoc """
   Workspace settings › Integrations (`/:org/:workspace/settings/integrations`), with the
-  `security` feature, in two parts:
+  `secrets` feature, in two parts:
 
     * **Set up in this workspace**: one list of what the workspace sets up, which
       `Apiary.Connections` calls connections, in the order of the groups below, each row
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   functions ask again.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.{Connections, Integrations}

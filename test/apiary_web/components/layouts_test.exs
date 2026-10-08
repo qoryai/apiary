@@ -116,7 +116,7 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       # A workspace's things, for an owner: a node, a node pool, a secret and a variable
-      # (with the security feature), each its own form page.
+      # (with the secrets feature), each its own form page.
       assert has_element?(view, "#new-menu-node[href='#{workspace_path(scope, "/nodes/new")}']")
 
       assert has_element?(
@@ -127,12 +127,12 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(
                view,
                "#new-menu-secret[href='#{workspace_path(scope, "/settings/secrets/new")}']"
-             ) == Apiary.Features.on?(:security)
+             ) == Apiary.Features.on?(:secrets)
 
       assert has_element?(
                view,
                "#new-menu-variable[href='#{workspace_path(scope, "/settings/variables/new")}']"
-             ) == Apiary.Features.on?(:security)
+             ) == Apiary.Features.on?(:secrets)
 
       assert before?(render(view), ~s(id="new-menu-node"), ~s(id="new-menu-invite"))
 

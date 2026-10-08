@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.IntegrationLive.Release do
   @moduledoc """
   A release of an integration the workspace asked for, before it is added
-  (`/:org/:workspace/settings/integrations/releases/:release_id`), with the `security`
+  (`/:org/:workspace/settings/integrations/releases/:release_id`), with the `secrets`
   feature: the second step of Add from a release, after `ApiaryWeb.IntegrationLive.Index`
   asked for it (`Apiary.Integrations.request_release/2`).
 
@@ -21,7 +21,7 @@ defmodule ApiaryWeb.IntegrationLive.Release do
   run receives only its security policy.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
+  use ApiaryWeb.Features, :secrets
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.{Connections, Integrations}

@@ -176,7 +176,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   the browser's own bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
-  module reference every instance serves at `/docs`.
+  module reference every instance serves at `/docs`. An opt-in feature is on only when
+  the list names it: `all`, `all-…`, and a value that is not set or empty leave it off.
 - A workspace's stored secrets and variables: its secrets (`Apiary.Secrets`), each with
   one value or several, each of those with a value ID, written once and never shown
   again; and the variables of the workspace and of each repository (`Apiary.Variables`),
@@ -186,10 +187,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   against (`Apiary.Variables.check_above/2`). Who may read and change them are the actions
   `secret.read`, `secret.write`, `secret.use`, `variable.read` and `variable.edit`, and
   every change is in the audit trail by name, never by value.
-- The workspace's settings have **Secrets and variables**, with the security feature: a
-  view of the secrets, by name, value ID, who changed each value and when, never a value,
-  with New secret, Add value, Change value, Rename value, Delete value and Delete secret;
-  and a view of the variables, each with its value, its lock and the repositories that
+- The workspace's settings have **Secrets and variables**: a view of the secrets, by
+  name, value ID, who changed each value and when, never a value, with New secret, Add
+  value, Change value, Rename value, Delete value and Delete secret; and a view of the
+  variables, each with its value, its lock and the repositories that
   set their own, with New variable, Change value, Lock, Unlock and Delete variable.
   Members read them; owners and admins change them. A parameter named `value` is
   filtered out of the logs, a LiveView event's included.

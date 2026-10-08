@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.SecretLive.WithoutSecurityTest do
-  # Secrets and variables belong to the security feature: without it the section is absent
-  # from the workspace's settings and its paths are not found. Runs in every mode: the
-  # test sets the instance's features itself, so it is not async.
+  # Secrets and variables belong to the secrets feature, which needs security: without
+  # security the section is absent from the workspace's settings and its paths are not
+  # found. Runs in every mode: the test sets the instance's features itself, so it is not
+  # async.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
