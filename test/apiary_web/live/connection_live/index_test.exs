@@ -215,7 +215,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     setup %{scope: scope} do
       %{
         a:
-          started_run(scope, Map.put(shop(), "task", "checkout-tax"),
+          started_run(scope, shop(),
+            about: %{"title" => "checkout-tax"},
             ago: 600,
             egress: [@registry, @denied, @denied]
           ),

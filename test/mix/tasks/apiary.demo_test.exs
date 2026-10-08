@@ -77,7 +77,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.wall == "docker"
       assert run.target_system == "codeberg.org"
       assert run.target_path == "acme/shop"
-      assert run.task == "checkout-redesign"
+      assert run.labels["task"] == "checkout-redesign"
       assert run.runner_version == "0.10.0"
       assert run.contract_version == 1
       assert run.heartbeat_interval_seconds == 60
@@ -127,7 +127,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.state == "failed"
       assert run.exit_code == 2
 
-      assert {run.target_system, run.target_path, run.task} ==
+      assert {run.target_system, run.target_path, run.labels["task"]} ==
                {"github.com", "acme/api", "checkout-redesign"}
 
       assert lanes(events(run)) == []
@@ -183,7 +183,9 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
 
       assert run.state == "succeeded"
-      assert {run.target_system, run.target_path, run.task, run.wall} == {nil, nil, nil, nil}
+
+      assert {run.target_system, run.target_path, run.labels["task"], run.wall} ==
+               {nil, nil, nil, nil}
 
       assert [%{last_rule: "", last_mode: "observe", last_decision: "allowed"}, _telemetry] =
                Repo.all(from c in Connection, where: c.run_id == ^run.id, order_by: c.host)

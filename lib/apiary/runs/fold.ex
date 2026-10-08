@@ -159,7 +159,6 @@ defmodule Apiary.Runs.Fold do
         wall: string(data, "wall"),
         image: string(data, "image"),
         labels: labels,
-        task: labels["task"],
         target_system: target && target.system,
         target_path: target && target.path,
         started_at: event.time

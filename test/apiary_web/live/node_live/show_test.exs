@@ -299,7 +299,9 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
     test "a node's running instance, its run, and Clear instance", %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
-      run = node_run_fixture(node, "i_1", %{task: "Fix the build"})
+
+      run =
+        node_run_fixture(node, "i_1", %{about_title: "Fix the build"})
 
       {:ok, lv, _html} = live(conn, node_path(scope, node))
 
@@ -318,7 +320,8 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       refute render(lv) =~ "Once runners use"
 
       render_async(lv)
-      assert has_element?(lv, "#node-runs-table #run-#{run.run_id}", "Fix the build")
+      assert has_element?(lv, "#node-runs-table #run-#{run.run_id} .q-rowlink", "Fix the build")
+
       assert has_element?(lv, ~s{#node-runs-all[href*="node=#{node.public_id}"]})
 
       lv |> element("#node-instance-clear") |> render_click()

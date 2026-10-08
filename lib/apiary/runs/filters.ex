@@ -24,10 +24,10 @@ defmodule Apiary.Runs.Filters do
   and a `target` without a `system` is that path on every system the workspace has it on.
   `target_params/2` writes them, for every link to a filtered page.
 
-  `q` is the free text of the query: the runs whose id starts with it, or whose task or
+  `q` is the free text of the query: the runs whose id starts with it, or whose title or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
-  `target:`, `state:`, `task:`, `runtime:`, `host:`, `node:`, `started:` and
+  `target:`, `state:`, `runtime:`, `host:`, `node:`, `started:` and
   `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
   the other words are `q`. A value in double quotes may hold spaces. A word whose qualifier
   the page does not know is free text; a qualifier it knows with a value it cannot read is
@@ -77,7 +77,6 @@ defmodule Apiary.Runs.Filters do
       "repository" => :target,
       "target" => :target,
       "state" => :state,
-      "task" => :task,
       "runtime" => :runtime,
       "host" => :host,
       "node" => :node,
@@ -100,7 +99,6 @@ defmodule Apiary.Runs.Filters do
   defstruct kind: :runs,
             states: [],
             target: nil,
-            task: nil,
             runtime: nil,
             host: nil,
             node: nil,
@@ -122,7 +120,6 @@ defmodule Apiary.Runs.Filters do
           kind: :runs | :connections,
           states: [String.t()],
           target: target(),
-          task: nil | :none | String.t(),
           runtime: nil | String.t(),
           host: nil | String.t(),
           node: nil | String.t(),
@@ -232,21 +229,19 @@ defmodule Apiary.Runs.Filters do
     case kind do
       :runs ->
         {states, d9} = states(params)
-        {task, d10} = read(params, "task", &none_or_text/1)
-        {runtime, d11} = read(params, "runtime", &text/1)
-        {denials, d12} = read(params, "denials", &if(&1 == "1", do: true))
-        {per, d13} = read(params, "per", &per/1)
-        {node, d14} = read(params, "node", &text/1)
+        {runtime, d10} = read(params, "runtime", &text/1)
+        {denials, d11} = read(params, "denials", &if(&1 == "1", do: true))
+        {per, d12} = read(params, "per", &per/1)
+        {node, d13} = read(params, "node", &text/1)
 
         %{
           filters
           | states: states,
-            task: task,
             runtime: runtime,
             denials: denials == true,
             node: node,
             per: per || @default_per,
-            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14
+            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13
         }
 
       :connections ->
@@ -284,7 +279,6 @@ defmodule Apiary.Runs.Filters do
       {"state", f.states != [] && Enum.join(f.states, ",")},
       {"system", system_param(f.target)},
       {"target", target_param(f.target)},
-      {"task", if(f.task == :none, do: "none", else: f.task)},
       {"runtime", f.runtime},
       {"host", f.host},
       {"node", f.node},
@@ -308,9 +302,9 @@ defmodule Apiary.Runs.Filters do
   order and the page size narrow nothing.
   """
   def any?(%__MODULE__{kind: kind} = f) do
-    f.states != [] or f.target != nil or f.task != nil or f.runtime != nil or f.host != nil or
-      f.node != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
-      f.decision != nil or f.tools
+    f.states != [] or f.target != nil or f.runtime != nil or f.host != nil or f.node != nil or
+      f.q != nil or f.since != @default_since[kind] or f.denials or f.decision != nil or
+      f.tools
   end
 
   @doc "Whether the range is one the reader set: not the page's default window."
@@ -371,7 +365,7 @@ defmodule Apiary.Runs.Filters do
           |> Map.drop(["system", "target"])
           |> Map.merge(target_from_value(form["target"]))
 
-        name when name in ~w(task runtime host node) ->
+        name when name in ~w(runtime host node) ->
           Map.merge(current, Map.take(form, [name]))
 
         name when name in ~w(denials tools) ->
@@ -442,7 +436,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   # The words of a query: runs of anything but white space, a stretch in double quotes kept
-  # whole, so `task:"Fix the build"` is one word.
+  # whole, so `"Fix the build"` is one word.
   defp words(text) do
     ~r/(?:"[^"]*"?|[^\s"])+/u
     |> Regex.scan(String.slice(text, 0, 2048))
@@ -488,14 +482,6 @@ defmodule Apiary.Runs.Filters do
 
     if states != [] and Enum.all?(states),
       do: {:ok, ["state"], %{"state" => states |> List.flatten() |> Enum.uniq() |> order()}},
-      else: :error
-  end
-
-  defp query_params(:task, value, _kind, _resolve) do
-    if String.downcase(value) == "none" or text(value),
-      do:
-        {:ok, ["task"],
-         %{"task" => if(String.downcase(value) == "none", do: "none", else: value)}},
       else: :error
   end
 
@@ -602,7 +588,7 @@ defmodule Apiary.Runs.Filters do
 
   @doc """
   The filters as the query writes them, one token each, in the order the page shows them:
-  `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`, `:task`,
+  `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`,
   `:runtime`, `:host`, `:node`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
   follows it (quoted when it holds a space), `without` the filters with it removed, nil
   for the connections' widest window, which cannot be. The free text is not a token, nor
@@ -618,7 +604,6 @@ defmodule Apiary.Runs.Filters do
     [
       {:target, f.target && target_text.(f.target), [target: nil]},
       {:state, f.states != [] && states_text(f.states), [states: []]},
-      {:task, f.task && if(f.task == :none, do: "none", else: f.task), [task: nil]},
       {:runtime, f.runtime, [runtime: nil]},
       {:host, f.host, [host: nil]},
       {:node, f.node, [node: nil]},
@@ -888,9 +873,6 @@ defmodule Apiary.Runs.Filters do
 
   defp one_of(value, allowed) when is_binary(value), do: if(value in allowed, do: value)
   defp one_of(_value, _allowed), do: nil
-
-  defp none_or_text("none"), do: :none
-  defp none_or_text(value), do: text(value)
 
   defp text(value) when is_binary(value) do
     if value != "" and fits?(value), do: value

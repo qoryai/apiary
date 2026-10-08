@@ -34,7 +34,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
 
     run_fixture(scope, %{
       state: "lost",
-      task: "nightly-mirror",
+      about_title: "nightly-mirror",
       started_at: DateTime.add(now, -7200, :second),
       last_heartbeat_at: DateTime.add(now, -3600, :second),
       lost_at: DateTime.add(now, -3000, :second),

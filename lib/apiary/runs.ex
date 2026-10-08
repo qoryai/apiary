@@ -424,8 +424,7 @@ defmodule Apiary.Runs do
   @doc """
   The options of each section of the runs list's Filter menu, counted from the data: every
   facet is counted under the other filters and the range, not under itself, so a section
-  shows what choosing another value would give. `%{state:, target:, task:, runtime:, host:,
-  node:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
+  shows what choosing another value would give. `%{state:, target:, runtime:, host:, node:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
   #{@facet_size} of them unless `limits:` maps the facet's name to more, and the chosen one,
   with how many values there are. `narrow:` maps a facet's name to what the reader typed in
   its section, matched anywhere in the value, case-insensitively, as text and never as a
@@ -446,11 +445,8 @@ defmodule Apiary.Runs do
           narrow["target"],
           limit.("target")
         ),
-      task:
-        text_facet(scope, filters, now, :task, gettext("No task"), narrow["task"], limit.("task")),
-      runtime:
-        text_facet(scope, filters, now, :runtime, nil, narrow["runtime"], limit.("runtime")),
-      host: text_facet(scope, filters, now, :host, nil, narrow["host"], limit.("host")),
+      runtime: text_facet(scope, filters, now, :runtime, narrow["runtime"], limit.("runtime")),
+      host: text_facet(scope, filters, now, :host, narrow["host"], limit.("host")),
       node: node_facet(scope, filters, now, narrow["node"], limit.("node"))
     }
   end
@@ -510,7 +506,7 @@ defmodule Apiary.Runs do
   defp target_text({nil, _path}, path), do: path
   defp target_text({system, _path}, path), do: "#{system}/#{path}"
 
-  defp text_facet(scope, filters, now, field, none_label, narrow, limit) do
+  defp text_facet(scope, filters, now, field, narrow, limit) do
     chosen = Map.fetch!(filters, field)
     base = filtered(scope, Map.put(filters, field, nil), now)
     pattern = like(narrow)
@@ -533,9 +529,7 @@ defmodule Apiary.Runs do
         do: Repo.one(from g in subquery(select(grouped, [r], field(r, ^field))), select: count()),
         else: length(rows)
 
-    # A label that reads "none" cannot be told from the absence of one in the URL.
-    options =
-      for {value, n} <- Enum.take(rows, limit), value != "none", do: {value, value, n}
+    options = for {value, n} <- Enum.take(rows, limit), do: {value, value, n}
 
     options =
       if is_binary(chosen) and not Enum.any?(options, &(elem(&1, 1) == chosen)) do
@@ -545,14 +539,7 @@ defmodule Apiary.Runs do
         options
       end
 
-    none =
-      if none_label && is_nil(pattern),
-        do: Repo.aggregate(from(r in base, where: is_nil(field(r, ^field))), :count),
-        else: 0
-
-    options = if none > 0, do: options ++ [{none_label, "none", none}], else: options
-
-    %{options: options, total: total + if(none > 0, do: 1, else: 0)}
+    %{options: options, total: total}
   end
 
   # The nodes the runs ran on, a pool for its instances' runs, deleted ones included. A node
@@ -647,7 +634,6 @@ defmodule Apiary.Runs do
     in_scope(scope)
     |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
     |> where_target(f.target)
-    |> where_text(:task, f.task)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
     |> where_node(scope, f.node)
@@ -671,7 +657,6 @@ defmodule Apiary.Runs do
     do: where(query, [run: r], r.target_system == ^system and r.target_path == ^path)
 
   defp where_text(query, _field, nil), do: query
-  defp where_text(query, field, :none), do: where(query, [r], is_nil(field(r, ^field)))
   defp where_text(query, field, value), do: where(query, [r], field(r, ^field) == ^value)
 
   # A node by its public id, or by the name of a node in use: a deleted node's runs are
@@ -690,7 +675,7 @@ defmodule Apiary.Runs do
   end
 
   # The free text: the start of the run's id (four hexadecimal characters at least, or a
-  # run page's address), or its task or its target, `system/path`, holding it anywhere.
+  # run page's address), or its title or its target, `system/path`, holding it anywhere.
   defp where_query(query, nil), do: query
 
   defp where_query(query, q) do
@@ -702,7 +687,7 @@ defmodule Apiary.Runs do
         text =
           dynamic(
             [r],
-            ilike(r.task, ^pattern) or
+            ilike(r.about_title, ^pattern) or
               ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^pattern)
           )
 
@@ -1660,7 +1645,7 @@ defmodule Apiary.Runs do
   @doc """
   search_runs/3 is the workspace's runs that `text` names: by the start of their id, as
   the runner prints it (four hexadecimal characters at least, a whole id or the address
-  of a run's page too), or by their task, which holds it anywhere; newest first, at most
+  of a run's page too), or by their title, which holds it anywhere; newest first, at most
   `limit`. What the palette finds (`ApiaryWeb.JumpController`).
   """
   @spec search_runs(Scope.t(), String.t(), pos_integer) :: [Run.t()]
@@ -1674,13 +1659,16 @@ defmodule Apiary.Runs do
           nil
 
         {nil, pattern} ->
-          dynamic([r], ilike(r.task, ^pattern))
+          dynamic([r], ilike(r.about_title, ^pattern))
 
         {prefix, nil} ->
           dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix))
 
         {prefix, pattern} ->
-          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.task, ^pattern))
+          dynamic(
+            [r],
+            fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.about_title, ^pattern)
+          )
       end
 
     if condition do

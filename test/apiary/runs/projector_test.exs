@@ -95,7 +95,6 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projected.runtime == "claude"
       assert projected.args == ["-p", "fix the build"]
       assert projected.host == "dev-laptop"
-      assert projected.task == "issue-12"
       assert projected.target_system == "git.example.com"
       assert projected.target_path == "acme/shop"
       assert projected.labels["repository"] == "acme/shop"

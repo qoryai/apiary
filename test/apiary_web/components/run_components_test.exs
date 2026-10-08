@@ -712,14 +712,35 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.middle(value, 32) |> String.length() == 32
     end
 
-    test "labels come with the target's, by the workspace's domain, and task first" do
-      labels = %{"a" => "1", "task" => "t", "forge" => "f", "repository" => "r"}
+    test "labels come with the target's first, by the workspace's domain, then by name" do
+      labels = %{"zone" => "1", "task" => "t", "forge" => "f", "repository" => "r"}
 
       assert RunComponents.ordered_labels(labels, nil) ==
-               [{"forge", "f"}, {"repository", "r"}, {"task", "t"}, {"a", "1"}]
+               [{"forge", "f"}, {"repository", "r"}, {"task", "t"}, {"zone", "1"}]
 
+      # A task is an ordinary label, sorted with the rest.
       assert RunComponents.ordered_labels(%{"a" => "1", "task" => "t", "forge" => "f"}, nil) ==
-               [{"forge", "f"}, {"task", "t"}, {"a", "1"}]
+               [{"forge", "f"}, {"a", "1"}, {"task", "t"}]
+    end
+  end
+
+  describe "a run's title" do
+    @run_id "7f3e9b20-5b1d-4c7e-9a10-2f6d0c4b7e11"
+
+    test "the title is the one the run gave, else Run and its short id" do
+      titled = %{run_id: @run_id, about_title: "Fix the login redirect"}
+      assert RunComponents.run_title(titled) == "Fix the login redirect"
+      assert RunComponents.given_title(titled) == "Fix the login redirect"
+
+      for untitled <- [
+            %{run_id: @run_id, about_title: nil},
+            %{run_id: @run_id, about_title: ""},
+            # A task is an ordinary label, never the title.
+            %{run_id: @run_id, about_title: nil, labels: %{"task" => "fix-login"}}
+          ] do
+        assert RunComponents.run_title(untitled) == "Run 7f3e9b20"
+        assert RunComponents.given_title(untitled) == nil
+      end
     end
 
     test "the pill hides at zero and counts in words" do

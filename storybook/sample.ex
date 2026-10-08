@@ -106,7 +106,7 @@ defmodule ApiaryWeb.Storybook.Sample do
     ]
   end
 
-  defp run(n, state, task, now, offset, opts) do
+  defp run(n, state, title, now, offset, opts) do
     at = DateTime.add(now, offset)
 
     Map.merge(
@@ -114,7 +114,7 @@ defmodule ApiaryWeb.Storybook.Sample do
         id: n,
         run_id: "8f3c2a#{n}e0-5b1d-4c7e-9a10-2f6d0c4b7e1#{n}",
         state: state,
-        task: task,
+        about_title: title,
         target_system: "git.example.com",
         target_path: if(rem(n, 2) == 0, do: "acme/shared-ui", else: "acme/shop"),
         runtime: "claude",

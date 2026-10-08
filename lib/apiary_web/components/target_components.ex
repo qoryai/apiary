@@ -205,8 +205,9 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   A target's runs, one line each on the row spec (`<.table>`): the state's dot, the title
-  (the task, or the run's id), the runtime and the host, faint, when it started, how long
-  it took and its denied attempts. The target is the page's, so the row leaves it out.
+  (`ApiaryWeb.RunComponents.given_title/1`, else the run's short id), the runtime and the
+  host, faint, when it started, how long it took and its denied attempts. The target is
+  the page's, so the row leaves it out.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -231,7 +232,7 @@ defmodule ApiaryWeb.TargetComponents do
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
           class="q-tgt-title"
         >
-          {run.task || short_id(run.run_id)}
+          {given_title(run) || short_id(run.run_id)}
         </.link>
       </:col>
       <:col :let={run} label={gettext("Runtime")} kind="faint" from="md" class="whitespace-nowrap">

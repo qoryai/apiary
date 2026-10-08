@@ -499,11 +499,10 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A run's labels in the record's order: first the labels that name a target in the
-  workspace's domain (`Apiary.Lingo.Domain.target_labels/1`), then the task, then the rest
-  by name.
+  workspace's domain (`Apiary.Lingo.Domain.target_labels/1`), then the rest by name.
   """
   def ordered_labels(%{} = labels, workspace) do
-    keys = Apiary.Lingo.Domain.target_labels(workspace) ++ ["task"]
+    keys = Apiary.Lingo.Domain.target_labels(workspace)
     first = for key <- keys, value = labels[key], do: {key, value}
     first ++ (labels |> Map.drop(keys) |> Enum.sort())
   end
@@ -526,6 +525,19 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The first eight characters of a run id, as the runner prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
+
+  ## A run's title
+
+  @doc """
+  A run's title: the one it gave in its `about` (`about_title`), else "Run" and its short
+  id. Every page that names a run calls it this; a row that shows the short id alone when
+  there is no title asks `given_title/1`.
+  """
+  def run_title(run), do: given_title(run) || gettext("Run %{id}", id: short_id(run.run_id))
+
+  @doc "The title a run gave in its `about`, or nil when it gave none."
+  def given_title(%{about_title: title}) when is_binary(title) and title != "", do: title
+  def given_title(_run), do: nil
 
   ## Alive indicator
 
@@ -1435,10 +1447,10 @@ defmodule ApiaryWeb.RunComponents do
   def exit_note(_run), do: nil
 
   @doc """
-  The runs of a list, one line each: the state as a mark, the run's title (its task, else
-  its id) the only strong text, its target after it until the table is 1000 px wide and
-  then in a column of its own, the runtime and the host faint from 1150 px, when it
-  started, how long it ran from 720 px, and its denials, red when there are any. The
+  The runs of a list, one line each: the state as a mark, the run's title (`given_title/1`,
+  else its short id) the only strong text, its target after it until the table is 1000 px
+  wide and then in a column of its own, the runtime and the host faint from 1150 px, when
+  it started, how long it ran from 720 px, and its denials, red when there are any. The
   columns join by the table's own width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
 
@@ -1565,10 +1577,10 @@ defmodule ApiaryWeb.RunComponents do
         <span class="q-rl-tt">
           <.link
             navigate={run_page(@scope, @run)}
-            class={["q-rowlink q-rl-title", !@run.task && "q-rl-id"]}
-            title={@run.task}
+            class={["q-rowlink q-rl-title", !given_title(@run) && "q-rl-id"]}
+            title={given_title(@run)}
           >
-            {@run.task || short_id(@run.run_id)}
+            {given_title(@run) || short_id(@run.run_id)}
           </.link>
           <.target_name
             :if={@target && @run.target_system && @run.target_path}
@@ -1694,7 +1706,7 @@ defmodule ApiaryWeb.RunComponents do
             {gettext("Open run")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
           </.button>
         </div>
-        <h2 class="q-pv-t">{@preview.run.task || short_id(@preview.run.run_id)}</h2>
+        <h2 class="q-pv-t">{given_title(@preview.run) || short_id(@preview.run.run_id)}</h2>
         <p class="q-pv-m">
           <.target_name
             :if={@preview.run.target_system && @preview.run.target_path}
@@ -2195,8 +2207,8 @@ defmodule ApiaryWeb.RunComponents do
             >
               <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
               <span class="truncate">
-                <b :if={hit.run.task} class="font-medium">{hit.run.task}</b>
-                <span class={["font-mono text-xs text-faint", hit.run.task && "ml-1"]}>
+                <b :if={given_title(hit.run)} class="font-medium">{given_title(hit.run)}</b>
+                <span class={["font-mono text-xs text-faint", given_title(hit.run) && "ml-1"]}>
                   {short_id(hit.run.run_id)}
                 </span>
               </span>
