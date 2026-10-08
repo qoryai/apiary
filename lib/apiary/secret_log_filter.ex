@@ -1,9 +1,10 @@
 defmodule Apiary.SecretLogFilter do
   @moduledoc """
-  SecretLogFilter keeps an access key's secret out of what a log handler writes: a primary
-  filter of Erlang's `:logger`, installed at boot (`install/0`), which replaces each run of
-  `qak_` (in any case) and the base64url characters after it with `[FILTERED]`, in a log
-  event's message and in its metadata, before any handler sees the event.
+  SecretLogFilter keeps an access key's secret, and an enrolment code, out of what a log
+  handler writes: a primary filter of Erlang's `:logger`, installed at boot (`install/0`),
+  which replaces each run of `qak_` or `qec_` (in any case) and the base64url characters
+  after it with `[FILTERED]`, in a log event's message and in its metadata, before any
+  handler sees the event.
 
   Apiary never has a key's secret: a key made in a browser sends its public half alone
   (`ApiaryWeb.NodeLive.AccessKey`). But an event can still carry what a client sent: the
@@ -13,6 +14,13 @@ defmodule Apiary.SecretLogFilter do
   names (`:filter_parameters`), not by their values, so this filter takes the value: the
   runner contract's secret format, `qak_` and the 32-byte seed in base64url, the same rule
   the page refuses by.
+
+  An enrolment code (`qec_` and 26 characters of Crockford base32, which a person may type
+  in groups split by `-`) is a credential too, for the 15 minutes it works: a machine that
+  sends it gets a key on the node. Apiary shows it once, inside the command, and logs it
+  nowhere; the filter takes it as it takes a secret, should a client send it back in an
+  event's parameters, or a crash print it. The fingerprint after it in the command (`.`
+  and the server key's fingerprint) is public, and stays.
 
   It runs before Elixir's `:logger_translator`, which turns a report (a crash report among
   them) into text and puts the crash in the `:crash_reason` metadata: `:logger` runs the
@@ -36,16 +44,21 @@ defmodule Apiary.SecretLogFilter do
 
   What it does not cover: a secret split across the parts of a term (two binaries, or an
   iolist's pieces inside a report or inside a message that cannot be read as text, each
-  holding part of `qak_`); a secret in an atom, a
+  holding part of `qak_` or `qec_`); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
   standard output or standard error). A public key whose base64url happens to hold `qak_`
-  is filtered from a log line as a secret would be.
+  or `qec_` is filtered from a log line as a secret would be.
   """
 
   @id :apiary_access_key_secrets
 
-  # `qak_` in any case: what `:binary.match/2` looks for, before the regex replaces.
-  @prefixes for q <- ~w(q Q), a <- ~w(a A), k <- ~w(k K), do: q <> a <> k <> "_"
+  # `qak_` and `qec_` in any case: what `:binary.match/2` looks for, before the regex
+  # replaces.
+  @prefixes for q <- ~w(q Q),
+                {seconds, thirds} <- [{~w(a A), ~w(k K)}, {~w(e E), ~w(c C)}],
+                a <- seconds,
+                k <- thirds,
+                do: q <> a <> k <> "_"
 
   @doc """
   install/0 adds the filter to `:logger`'s primary filters, once: installing it again
@@ -162,5 +175,6 @@ defmodule Apiary.SecretLogFilter do
 
   defp secret?(binary), do: :binary.match(binary, @prefixes) != :nomatch
 
-  defp replace(binary), do: Regex.replace(~r/qak_[A-Za-z0-9_-]*/i, binary, "[FILTERED]")
+  defp replace(binary),
+    do: Regex.replace(~r/q(ak|ec)_[A-Za-z0-9_-]*/i, binary, "[FILTERED]")
 end
