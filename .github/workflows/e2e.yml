@@ -9,9 +9,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push to a pull request cancels its run in progress. A push to next or main, and a
+# manual run, are each a group of their own, the run's, so no later push cancels its run,
+# in progress or waiting, and the head of every push to them is checked.
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   live-reload:
