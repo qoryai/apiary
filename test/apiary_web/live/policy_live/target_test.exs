@@ -987,8 +987,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "h2#policy-version-h[tabindex='-1']", "Version 1")
     assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
-    # The Document view has Copy and Download in the document's bar, and no Export; the
-    # file is the export page's.
+    # The Document view has Copy and Download in the document's bar, and no Export;
+    # Download saves the target's own version as served.
     refute has_element?(view, "#version-export")
     refute has_element?(view, "#policy-export-button")
     bar = "#version-doc .q-docwell-bar"
@@ -996,8 +996,11 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     assert has_element?(
              view,
-             "#{bar} a#version-download[aria-label=Download][download='acme-shop-policy.yaml'][href^='data:text/yaml']"
+             "#{bar} a#version-download[aria-label=Download][download='run-configuration.json']"
            )
+
+    {:ok, own} = Policy.get_configuration(scope, target, 1)
+    assert downloaded(view) == own.document
 
     # The version's own page keeps its Export.
     view = open(conn, path <> "/versions/1")
@@ -1039,22 +1042,31 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#policy-page") =~ "This repository has no versions of its own"
   end
 
-  test "a target served the baseline downloads the workspace's policy file, paths and all",
+  test "a target served the baseline downloads the workspace's version in force, as served",
        %{conn: conn, path: path, scope: scope} do
-    {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
+    # Hosts alone, then a rule with paths: the document shown, each time.
     view = open(conn, path <> "/document")
+    {:ok, workspace} = Policy.get_configuration(scope, nil, 4)
+
+    assert has_element?(
+             view,
+             "#version-doc .q-docwell-bar a#version-download[download='run-configuration.json']"
+           )
+
+    assert downloaded(view) == workspace.document
+
+    {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
+    _ = render(view)
     assert has_element?(view, "h2#policy-version-h", "Version 5")
+    {:ok, workspace} = Policy.get_configuration(scope, nil, 5)
+    assert downloaded(view) == workspace.document
+    assert downloaded(view) =~ "/acme/*"
+  end
 
-    # The file the workspace's export page downloads, under the target's card.
-    export = open(conn, workspace_path(scope, "/policy/versions/5/export"))
-
-    for attribute <- ~w(href download) do
-      assert attribute(view, "#version-doc .q-docwell-bar #version-download", attribute) ==
-               attribute(export, "#export-download", attribute)
-    end
-
-    assert attribute(view, "#version-download", "download") =~ ~r/-policy\.yaml$/
-    assert URI.decode(attribute(view, "#version-download", "href")) =~ "/acme/*"
+  # What the Document view's Download saves: the bytes its data URI carries.
+  defp downloaded(view) do
+    "data:application/json;base64," <> data = attribute(view, "#version-download", "href")
+    Base.decode64!(data)
   end
 
   defp attribute(view, selector, name) do
