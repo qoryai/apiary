@@ -502,7 +502,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
         {gettext("Keep a policy file outside the checkout.")}
         {pgettext(
           "plain",
-          "Deny rules and locks are already applied: the text lists what remains allowed."
+          "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
         )}
       </p>
 

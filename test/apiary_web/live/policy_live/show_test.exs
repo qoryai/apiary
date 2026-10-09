@@ -1600,7 +1600,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "#export-download[download$='-policy.yaml'][href^='data:text/yaml']"
              )
 
-      assert text(view, "#policy-export") =~ "Deny rules and locks are already applied"
+      assert text(view, "#policy-export") =~
+               "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 
       # The page's h1 takes the focus it is sent, as the page header's does.
       assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")

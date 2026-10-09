@@ -4463,7 +4463,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Deny rules and locks are already applied: the text lists what remains allowed."
+msgid "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
