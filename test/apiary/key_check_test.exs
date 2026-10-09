@@ -15,6 +15,7 @@ defmodule Apiary.KeyCheckTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{KeyCheck, KeyDerivation, Release, SigningKey}
+  alias Apiary.AccessKeys.AccessKey
 
   setup do
     derivation = Application.get_env(:apiary, KeyDerivation)
@@ -217,6 +218,18 @@ defmodule Apiary.KeyCheckTest do
       encryption_secret(:crypto.strong_rand_bytes(32))
       %{scope: scope} = sign_up_fixture()
       access_key_fixture(scope)
+
+      assert KeyCheck.check() == :ok
+      assert recorded() == current()
+    end
+
+    test "booted with the right secret and a changed newest key, records", %{key: key} do
+      # A changed row under the secret's own key id: the secret is right.
+      Repo.query!("UPDATE access_keys SET rate = 10 WHERE id = $1", [
+        Ecto.UUID.dump!(key.id)
+      ])
+
+      assert AccessKey.verify_integrity(Repo.get!(AccessKey, key.id)) == {:error, :mismatch}
 
       assert KeyCheck.check() == :ok
       assert recorded() == current()

@@ -22,12 +22,12 @@ defmodule Apiary.KeyCheck do
   `MIGRATE_ON_BOOT=false` too, where `bin/migrate` has run before the start. A value the
   row does not hold yet is recorded, so the first boot records both. Before the check
   value is recorded on a database that has access keys, the newest key's integrity code
-  must verify under the secret (`Apiary.AccessKeys.AccessKey.verify_integrity/1`), so a
-  wrong secret is never recorded as the right one. Then each recorded value is compared
-  with the current one, and a mismatch stops the boot with a message in the log for each
-  key that does not match (`encryption_message/0`, `signing_message/2`). A message names
-  the variable and, for the signing key, the two fingerprints; never a secret, a key or
-  the check value.
+  must be under the secret's key id (`Apiary.AccessKeys.AccessKey.verify_integrity/1`),
+  so a wrong secret is never recorded as the right one. Then each recorded value is
+  compared with the current one, and a mismatch stops the boot with a message in the log
+  for each key that does not match (`encryption_message/0`, `signing_message/2`). A
+  message names the variable and, for the signing key, the two fingerprints; never a
+  secret, a key or the check value.
 
   The recording is one statement that keeps a value the row holds already, and answers
   the values the row holds after it: two instances booting at once on an empty row record
@@ -203,12 +203,14 @@ defmodule Apiary.KeyCheck do
 
   # The newest access key, revoked or not, is the one most likely made under the secret
   # the instance runs with now. None at all is a database nothing can be checked against.
+  # Only a key id that is not the secret's is a wrong secret: a mismatch under the row's
+  # own key id proves the secret, and the request path still refuses that one key.
   defp newest_access_key_verifies? do
     query = from(k in AccessKey, order_by: [desc: k.inserted_at, desc: k.id], limit: 1)
 
     case Repo.one(query) do
       nil -> true
-      key -> AccessKey.verify_integrity(key) == :ok
+      key -> AccessKey.verify_integrity(key) != {:error, :unknown_key}
     end
   end
 

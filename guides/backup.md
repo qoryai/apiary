@@ -147,11 +147,11 @@ pins that key's public half. It encrypts nothing and keys nothing in the databas
 not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, on its own.
 
 **Losing or changing `APIARY_SIGNING_SECRET` means pinning every machine again.** The
-instance does not start with another key than the one it recorded at its first start: the
-log names the new key's fingerprint and the pinned one. To change it on purpose,
-`bin/apiary eval 'Apiary.Release.accept_signing_key()'`, in a one-off container of the
-release, makes the new key the instance's; each machine then refuses its answers until it
-pins the new public key. Nothing in the database is lost.
+instance does not start with another key than the one it recorded at its first start or
+accepted since: the log names the new key's fingerprint and the pinned one. To change it
+on purpose, `bin/apiary eval 'Apiary.Release.accept_signing_key()'`, in a one-off
+container of the release, makes the new key the instance's; each machine then refuses its
+answers until it pins the new public key. Nothing in the database is lost.
 
 ### `SECRET_KEY_BASE`
 
