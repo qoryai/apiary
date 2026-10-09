@@ -1115,7 +1115,8 @@ defmodule Apiary.Runs.FoldTest do
 
     test "one rule, the first step that applies, the same for a session's run and a gateway's" do
       for {data, state} <- [
-            # 1. A stop an older gateway wrote as failed is cancelled.
+            # 1. A stop an older Forager wrote as failed is cancelled.
+            {%{"state" => "failed", "reason" => "timeout"}, "cancelled"},
             {%{"state" => "failed", "reason" => "credential_expired"}, "cancelled"},
             {%{"state" => "failed", "reason" => "run_ended_at_issuer"}, "cancelled"},
             # 2. Nobody knows how it ended.
@@ -1169,6 +1170,22 @@ defmodule Apiary.Runs.FoldTest do
       for data <- [quiet, Map.put(quiet, "state", "cancelled")] do
         %{session: session, gateway: gateway} = both(data)
         assert {session.state, gateway.state} == {"cancelled", "cancelled"}
+      end
+    end
+
+    # A rebuild folds the stored exit again from the start, as here.
+    test "an older Forager's failed exit at its time limit or for no activity is cancelled" do
+      for data <- [
+            %{"state" => "failed", "reason" => "timeout"},
+            %{"state" => "failed", "reason" => "quiet", "quiet_seconds" => 1800}
+          ] do
+        %{session: session, gateway: gateway} = both(data)
+
+        for {kind, run} <- [session: session, gateway: gateway] do
+          assert {run.state, run.reason} == {"cancelled", data["reason"]}, inspect({kind, data})
+          assert run.exited_at == at(18)
+          assert run.lost_at == nil
+        end
       end
     end
 

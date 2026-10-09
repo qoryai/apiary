@@ -149,10 +149,11 @@ defmodule Apiary.Runs.Fold do
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
-  # The reasons a gateway under the contract before the outcome gave the failed exit it
-  # wrote when it stopped a session's run: its run credential expired, or its starter ended
-  # it. Such an exit is stored, and a rebuild folds it again.
-  @stopped_reasons ~w(credential_expired run_ended_at_issuer)
+  # The reasons of the failed exit an older Forager, under the contract before the outcome,
+  # wrote when it stopped a run itself, a session's run or a gateway's: its time limit, no
+  # activity, its run credential expired, or its starter ended it. Such an exit is stored,
+  # and a rebuild folds it again.
+  @stopped_reasons ~w(timeout quiet credential_expired run_ended_at_issuer)
   # The reasons of an exit without a state, stored under that contract, that cancel the run:
   # its time limit, no activity, its run credential expired, or its starter ended it.
   @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
@@ -435,8 +436,9 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies, whoever opened the run:
 
-    1. `failed` with `credential_expired` or `run_ended_at_issuer` is cancelled: the exit a
-       gateway under the contract before the outcome wrote when it stopped a session's run.
+    1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
+       cancelled: the exit an older Forager, under the contract before the outcome, wrote
+       when it stopped a run itself.
     2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
     3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
     4. Without a state, as an older Forager wrote a gateway's exit, the reason decides:
