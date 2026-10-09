@@ -8,6 +8,7 @@ defmodule Apiary.KeyDerivation do
   |---|---|---|
   | `:values` | `"apiary values v1"` | wraps each workspace's data key, which encrypts the workspace's stored secret values (`Apiary.Secrets`) |
   | `:integrity` | `"apiary integrity v1"` | keys the integrity codes of stored rows (`Apiary.Integrity`) |
+  | `:check` | `"apiary check v1"` | keys the check value of the secret the instance records at its first boot and compares at every boot (`Apiary.KeyCheck`) |
 
   Each derived key has a **key id**: the first 8 bytes of SHA-256 over
   `"apiary key id v1"` and the key, as 16 lowercase hexadecimal characters. It names the
@@ -33,13 +34,14 @@ defmodule Apiary.KeyDerivation do
   @salt "apiary/kdf/v1"
   @infos %{
     values: "apiary values v1",
-    integrity: "apiary integrity v1"
+    integrity: "apiary integrity v1",
+    check: "apiary check v1"
   }
   @key_id_label "apiary key id v1"
   @hash_len 32
 
   @typedoc "A purpose a key is derived for."
-  @type purpose :: :values | :integrity
+  @type purpose :: :values | :integrity | :check
 
   @typedoc "A key id: 16 lowercase hexadecimal characters."
   @type key_id :: String.t()

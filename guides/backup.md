@@ -123,10 +123,10 @@ secrets, from wherever it came from.
 <!-- /feature -->
 
 Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, no access key's integrity
-code verifies, so the instance trusts none of them: every signed request of a gateway is
-answered `401`, no machine starts a run against this server and no events arrive. For each
-request the log has `access key row does not match its integrity code key_id=ak_…`. Put the
-right `APIARY_ENCRYPTION_SECRET` back and every key verifies again.
+code would verify, so the instance does not start: at every start it checks the secret
+against the check value it recorded at its first start, and the log says
+`APIARY_ENCRYPTION_SECRET is not the one this instance first started with.` Put the right
+`APIARY_ENCRYPTION_SECRET` back and it starts, and every key verifies again.
 
 Everything else survives: accounts, organisations, workspaces and memberships, runs,
 events, logs, connections, and the access keys' own rows with their labels and key ids.
@@ -147,8 +147,11 @@ pins that key's public half. It encrypts nothing and keys nothing in the databas
 not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, on its own.
 
 **Losing or changing `APIARY_SIGNING_SECRET` means pinning every machine again.** The
-instance then signs under another key, and each machine refuses its answers until it pins
-the new public key. Nothing in the database is lost.
+instance does not start with another key than the one it recorded at its first start: the
+log names the new key's fingerprint and the pinned one. To change it on purpose,
+`bin/apiary eval 'Apiary.Release.accept_signing_key()'`, in a one-off container of the
+release, makes the new key the instance's; each machine then refuses its answers until it
+pins the new public key. Nothing in the database is lost.
 
 ### `SECRET_KEY_BASE`
 

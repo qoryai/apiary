@@ -59,6 +59,7 @@ defmodule Apiary.Application do
         Apiary.Nodes.Throttle
       ] ++
         migrator() ++
+        key_check() ++
         [
           # The job queue, after the migrator so its tables exist when it
           # starts. `Apiary.Job` is what every job runs inside.
@@ -109,6 +110,13 @@ defmodule Apiary.Application do
     else
       []
     end
+  end
+
+  # The check that the instance runs with the keys it first started with, after the
+  # migrator so the columns it reads exist, and before anything serves. It runs with
+  # MIGRATE_ON_BOOT=false too. Off in test, where the tests call `Apiary.KeyCheck.check/0`.
+  defp key_check do
+    if Apiary.KeyCheck.enabled?(), do: [Apiary.KeyCheck], else: []
   end
 
   # The lost-run check, after the migrator so it never reads a schema it does not know.
