@@ -1363,8 +1363,9 @@ page has no breadcrumb of its own.
   Completed · all checks passed), the runtime's exit for a session's run that failed with
   no words ("exit 1", "SIGKILL"), how alive the run is while it runs, the target (its
   page), the runtime, the host, when it
-  started, how long it took and its denials, in red, which lead to its denied
-  connections. At the right: the ⋯ menu (Copy run id, Raw log, Download log), and no
+  started, how long it took (left out for a run that did not start, which never ran) and
+  its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
+  (Copy run id, Raw log, Download log), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
@@ -1414,7 +1415,8 @@ page has no breadcrumb of its own.
   "stopped, no outcome given", "stopped responding", "end not recorded", "events
   refused", "couldn't check whether the run may go on: no answer", "couldn't check
   whether the run may go on: unreadable answer", and for a run that did not start "did
-  not start" with the refusal's code ("did not start: image_unknown"). None names who or
+  not start" with the refusal's code in mono ("did not start: image_unknown"), in the
+  meta line and the rail as in the timeline's item. None names who or
   what ended the run. Any other code is the run's starter's, shown as given with spaces
   for underscores: "no longer needed". The quiet period reads in whole hours, else whole
   minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
@@ -1425,7 +1427,7 @@ page has no breadcrumb of its own.
   the placeholder of an exit that holds no exit status of the runtime's.
 - **The timeline's last item** is one kind for every end: "Run ended", then the end
   reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
-  a signal), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
+  a signal, nor for an exit with no code at all), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
   Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
   not start ends on "Run did not start" and the refusal's code in mono, with the red
   x-mark.

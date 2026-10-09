@@ -755,6 +755,68 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "No session events arrived."
     end
 
+    test "a running run with no session events, heard of over a minute ago: the hooks sentence",
+         %{conn: conn, scope: scope} do
+      ago = DateTime.add(DateTime.utc_now(), -120, :second)
+      run = projected(scope, [{1, "run.started", started_data(), time: ago}])
+      Apiary.Repo.update_all(Apiary.Runs.Run, set: [inserted_at: ago, last_event_at: ago])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state", "Running")
+      assert html =~ "No session events arrived."
+      assert has_element?(lv, "#run-meta #run-duration-line")
+    end
+
+    test "a run that did not start: no sentence on session events, and no n/a for its duration",
+         %{conn: conn, scope: scope} do
+      for started <- [started_data(), gateway_started_data()] do
+        run =
+          projected(scope, [
+            {1, "run.started", started},
+            {2, "run.refused", %{"code" => "image_unknown"}}
+          ])
+
+        {:ok, lv, html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state", "Failed")
+        refute html =~ "No session events arrived."
+        refute has_element?(lv, ".q-limits")
+        refute has_element?(lv, "#run-meta #run-duration-line")
+        refute has_element?(lv, "#run-meta", "n/a")
+        refute "Duration" in run_terms(lv)
+      end
+    end
+
+    test "the rail's Duration stays for a running run and for one Apiary marked lost", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+      started = DateTime.add(now, -4000, :second)
+      heard = DateTime.add(now, -3000, :second)
+
+      silent =
+        projected(scope, [
+          {1, "run.started", started_data(), time: started},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 1000, "interval_seconds" => 30},
+           time: heard, received_at: heard}
+        ])
+
+      Apiary.Runs.Liveness.check()
+      running = projected(scope, [{1, "run.started", started_data(), time: now}])
+
+      for {run, state} <- [{silent, "Lost"}, {running, "Running"}] do
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state", state)
+        assert "Duration" in run_terms(lv)
+      end
+    end
+
     test "a young live run has no limits sentence yet, only the live end", %{
       conn: conn,
       scope: scope
@@ -2613,6 +2675,23 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "a gateway's run with no reason and no exit code: Run ended and how long, no n/a",
+         %{conn: conn, scope: scope} do
+      for {exit, says} <- [
+            {%{"state" => "failed", "duration_ms" => 720_000}, "12 m 00 s"},
+            {%{"state" => "failed"}, ""}
+          ] do
+        run = gateway_run(scope, exit)
+        {:ok, lv, _html} = run_page(conn, scope, run)
+        case_ = inspect(exit)
+
+        assert words_of(lv, "#e-3 .q-k") == "Run ended", case_
+        assert words_of(lv, "#e-3 .q-s") == says, case_
+        refute has_element?(lv, "#e-3", "n/a"), case_
+        assert has_element?(lv, "#e-3 #{@marks["Failed"]}"), case_
+      end
+    end
+
     test "a run that did not start: Failed, why after it and under it, no Exit row, and its item",
          %{conn: conn, scope: scope} do
       for started <- [started_data(), gateway_started_data()] do
@@ -2627,6 +2706,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert words_of(lv, "#run-meta #run-state") == "Failed"
         assert words_of(lv, "#run-meta #run-reason") == "did not start: image_unknown"
         assert words_of(lv, "#run-facts #rail-reason") == "did not start: image_unknown"
+        # the code in mono, as the timeline's item has it; the words around it are not
+        for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
+          assert words_of(lv, "#{reason} .font-mono") == "image_unknown"
+        end
+
         refute exit_row(lv)
         refute "Exit" in run_terms(lv)
         refute words_of(lv, "#run-meta") =~ "exit"

@@ -160,6 +160,15 @@ defmodule Apiary.Runs.Run do
   """
   def lost_days, do: 7
 
+  @doc """
+  Whether the run was refused at its start and never started: failed with no exit time, as
+  the fold stores a `dev.qory.run.refused` (`Apiary.Runs.Fold`), its `reason` the refusal's
+  code, if it gave one. An exit decides over a refusal, so a run with an exit time is not.
+  """
+  @spec refused?(t() | map()) :: boolean()
+  def refused?(%{state: "failed", exited_at: nil}), do: true
+  def refused?(_run), do: false
+
   @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
   @spec no_session?(t() | map()) :: boolean()
   def no_session?(%{opened_by: "gateway"}), do: true
