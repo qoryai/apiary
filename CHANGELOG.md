@@ -60,7 +60,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
   the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
-  0d0f104.
+  04545d3.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
