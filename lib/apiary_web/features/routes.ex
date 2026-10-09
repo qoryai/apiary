@@ -6,7 +6,7 @@ defmodule ApiaryWeb.Features.Routes do
   It sits in the endpoint just before the router, and finds the route in the one the
   endpoint dispatches to (`ApiaryWeb.Edition.router/0`) unless given one. Behind it the
   pipelines would answer first, and differently from an unknown path: an anonymous
-  visitor redirected to sign in, an unsigned runner told `401`, a JSON error where the
+  visitor redirected to sign in, an unsigned gateway told `401`, a JSON error where the
   unknown path gets text, the browser's security headers set. Each is a sign the route
   exists. Raising `Phoenix.Router.NoRouteError` here makes the answer the router's own.
 

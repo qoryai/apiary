@@ -10,7 +10,7 @@ defmodule ApiaryWeb.RunLive.Show do
   that shows the same element in the column (`docs/ui.md`, The run page). The Terminal tab
   is wide (`q-run-wide`): at every width the rail folds away there and Details is a tab.
 
-  `:run_id` in the URL is the run's subject, the id the runner prints. A run that is not
+  `:run_id` in the URL is the run's subject, the id Forager prints. A run that is not
   in the caller's workspace renders the not-found state, whatever else it may be.
 
   The timeline is a stream over a window of the run's items (300 on mount, 200 more at
@@ -22,7 +22,7 @@ defmodule ApiaryWeb.RunLive.Show do
   `/:org/:workspace/runs/:run_id/log`, and the LiveView only says how far the log has
   advanced.
 
-  The run, its terminal, its timeline and its connections as the runner reported them are
+  The run, its terminal, its timeline and its connections as Forager reported them are
   the record (`observability`). What the policy made of it is `security`'s, and an
   instance without it shows none of it: no policy in the header or on Details, no drift,
   no version, no policy applied on the timeline, no reason by rule or mode, no Allow or
@@ -935,7 +935,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.terminal_cols} class="font-mono">
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
-          <dt>{gettext("Runner")}</dt>
+          <dt>{gettext("Forager")}</dt>
           <dd class="font-mono">
             {@run.forager_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
               "contract %{version}",
@@ -1082,7 +1082,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <% is_integer(@run.duration_ms) -> %>
         <.duration ms={@run.duration_ms} />
       <% @run.state == "running" and not @quiet -> %>
-        <%!-- The runner's own elapsed seconds plus this server's time since they were true. --%>
+        <%!-- Forager's own elapsed seconds plus this server's time since they were true. --%>
         <.duration
           id={@id}
           elapsed_seconds={elem(elapsed(@run), 0)}
@@ -1101,7 +1101,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # exact version, then its digest; the drift mark takes the digest's place while the run
   # is behind.
   attr :policy, :any, required: true
-  attr :digest, :string, default: nil, doc: "the runner's own digest of its policy document"
+  attr :digest, :string, default: nil, doc: "Forager's own digest of its policy document"
   attr :tips, :map, required: true
 
   attr :version, :any,
@@ -1175,10 +1175,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # The tips of the page's terms, in the domain's words.
   defp tips do
     %{
-      wall:
-        gettext(
-          "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
-        ),
+      wall: gettext("The enclosure the agent runs in. Its only route out leads to the gateway."),
       no_wall: gettext("This run had no wall. A program that ignores the proxy is not seen."),
       mode:
         gettext(
@@ -1194,7 +1191,7 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       tools:
         gettext(
-          "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
+          "Programs on Forager's machine that serve hosts. The gateway hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
         ),
       lane:
         gettext(
@@ -1598,7 +1595,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The version each policy applied names, where this workspace rendered it. The run's own
   # are held already; any other digest costs one indexed read, and a build asks for at
-  # most #{@max_versions}, whatever a runner put in its events. Without security the index
+  # most #{@max_versions}, whatever Forager put in its events. Without security the index
   # holds no policy applied, and nothing is asked.
   defp with_versions(items, %{assigns: %{security: false}}), do: items
 
@@ -1755,7 +1752,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 
   defp limit_reason(%Run{} = run, index) do
-    # By this server's clock, from when it first heard of the run: never the runner's.
+    # By this server's clock, from when it first heard of the run: never Forager's.
     settled? = not alive?(run) or older_than?(run.inserted_at, 60)
 
     cond do

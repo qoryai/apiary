@@ -20,8 +20,8 @@ defmodule Apiary.Variables do
     * a name that breaks the rule, `^[A-Za-z_][A-Za-z0-9_]{0,127}$`, or a value over 4096
       bytes, or with a NUL, a carriage return or a line feed;
     * a name beginning `QORY_`, whatever its case, at every level: "names beginning QORY_
-      are the runner's own" (`Apiary.Variables.Denied.refused?/1`); any other name on the
-      runner's deny list is saved, and the page warns (`Apiary.Variables.Denied.denied?/1`);
+      are Forager's own" (`Apiary.Variables.Denied.refused?/1`); any other name on
+      Forager's deny list is saved, and the page warns (`Apiary.Variables.Denied.denied?/1`);
     * a name the level already sets, compared without case;
     * a name a level above locks;
     * a name that differs only in case from one set elsewhere in a chain it is in: for a
@@ -428,7 +428,7 @@ defmodule Apiary.Variables do
   repository sets is no error: their values are set aside, as under a workspace's lock.
   What a variable must be on its own is not checked here: a name's rule
   (`Apiary.Variables.Variable.name_format/0`), a value's size
-  (`Apiary.Variables.Variable.value_max/0`) and the runner's names
+  (`Apiary.Variables.Variable.value_max/0`) and Forager's names
   (`Apiary.Variables.Denied`) are the edition's to check of each.
 
   It only reads, and takes no lock: the caller holds the rows, in one transaction, in
@@ -469,7 +469,7 @@ defmodule Apiary.Variables do
 
   ## The checks
 
-  # What the changeset alone cannot see: the runner's names, the other levels' names and
+  # What the changeset alone cannot see: Forager's names, the other levels' names and
   # locks, compared without case. Run only on a valid changeset.
   defp check(_scope, _workspace, %Ecto.Changeset{valid?: false} = changeset),
     do: {:error, changeset}
@@ -485,7 +485,7 @@ defmodule Apiary.Variables do
         refuse(
           changeset,
           :name,
-          dgettext_noop("errors", "names beginning QORY_ are the runner's own")
+          dgettext_noop("errors", "names beginning QORY_ are Forager's own")
         )
 
       locked_above?(above, scope, target_id, name) ->

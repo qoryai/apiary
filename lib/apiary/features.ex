@@ -5,7 +5,7 @@ defmodule Apiary.Features do
   | Feature | Covers | Needs |
   |---|---|---|
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
-  | `security` | the security policy and the run configuration served to runners | `observability` |
+  | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
 
   An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each

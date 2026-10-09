@@ -37,7 +37,7 @@ defmodule ApiaryWeb.JumpController do
   the organisation's and the person's, never a workspace's, though the scope carries the
   one opened last. Targets and runs are listed only to a reader of the record
   (`run.read`). The palette belongs to the console's record, `observability`, which every
-  instance has. What a runner reported (a path, a title) is text in
+  instance has. What Forager reported (a path, a title) is text in
   the JSON and the hook writes it as text.
   """
   use ApiaryWeb, :controller

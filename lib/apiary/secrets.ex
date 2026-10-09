@@ -12,7 +12,7 @@ defmodule Apiary.Secrets do
   ## Write-only
 
   No function of this module returns a value, but `reveal_for_sealing/3`, which the
-  secrets endpoint calls to seal a value to a runner, and only that. A listing loads the
+  secrets endpoint calls to seal a value to the gateway, and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value.
 
@@ -587,7 +587,7 @@ defmodule Apiary.Secrets do
 
   @doc """
   reveal_for_sealing/3 is the plaintext of a stored value, for the secrets endpoint to seal
-  to a runner's key, and for nothing else: the one function that returns a value. The
+  to the gateway's key, and for nothing else: the one function that returns a value. The
   value is `workspace`'s secret with the public id `secret_id`, and its value with
   `value_id`, nil for a secret's one value without one.
 
@@ -599,7 +599,7 @@ defmodule Apiary.Secrets do
 
   It asks nothing of `Apiary.Access`, and is the one function of this module that does
   not: it is the server's own sealing path, called by the secrets endpoint once it has
-  verified the runner's signed request and decided what that runner may receive, with no
+  verified the gateway's signed request and decided what that gateway may receive, with no
   person's scope to ask about. The plaintext goes into the seal and nowhere else: not
   into a log, an assign, a process's state or an error.
   """

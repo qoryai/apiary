@@ -23,7 +23,7 @@ defmodule Apiary.Runs.Record.Timeline do
   exits: from there on a connection is an item of its own. Heartbeats, log chunks, the
   ping and types this module has not heard of are not items.
 
-  Everything that comes out of an event is the runner's input and is treated as such:
+  Everything that comes out of an event is Forager's input and is treated as such:
   strings are bounded, what one item loads is bounded (#{100} connections inside a call),
   every pass is linear in the events whatever ids they carry, nothing becomes an atom,
   and nothing here is marked safe.
@@ -54,7 +54,7 @@ defmodule Apiary.Runs.Record.Timeline do
     "session.ended" => :session_ended
   }
 
-  # The runner reads this one from the runtime's output; every other session event comes
+  # The session reads this one from the runtime's output; every other session event comes
   # from a hook.
   @not_from_a_hook "session.result"
 
@@ -128,7 +128,7 @@ defmodule Apiary.Runs.Record.Timeline do
       started_seq, finished_seq}`, main first; `:lane_count` says how many there are, and
       `lane/2` finds any of them;
     * `:rails`: how many rails the gutter needs, one to four;
-    * `:session_items`: how many items are the session's (not the runner's, not egress);
+    * `:session_items`: how many items are the session's (not Forager's, not egress);
     * `:hook_events`: how many session events came from the runtime's hooks;
     * `:background`: `%{tasks: [...], count: n}`, the tasks of the last list the runtime
       gave, each with the sequence it was first listed at;
@@ -375,7 +375,7 @@ defmodule Apiary.Runs.Record.Timeline do
         finished_seq: nil
       }
 
-      # Past a thousand open agents a runner is not describing a session: the lane is
+      # Past a thousand open agents Forager is not describing a session: the lane is
       # known by its id, and its items say who in words.
       tracked? = map_size(state.open_lanes) < @max_open_lanes
 
@@ -1140,7 +1140,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   ## Reading untrusted data
 
-  # The allow or deny list of a policy applied event, bounded like everything a runner sends.
+  # The allow or deny list of a policy applied event, bounded like everything Forager sends.
   defp hosts(list) when is_list(list) do
     # Cut as the query cuts them (`left(v, 255)`), so a delta is the same either way.
     list

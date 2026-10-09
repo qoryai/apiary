@@ -35,7 +35,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   had a policy: no policy lines, no policy read and no subscription to it, no item about
   the mode or the version in force, no denied destination offered for an allow (that act
   is a rule), nothing that links to the policy. The summary still counts the denied
-  attempts and their destinations: the runner reported them, they are the record's.
+  attempts and their destinations: Forager reported them, they are the record's.
 
   `thresholds/0` holds the design's choices in one place.
   """

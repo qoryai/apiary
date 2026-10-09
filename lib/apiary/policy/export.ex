@@ -2,7 +2,7 @@ defmodule Apiary.Policy.Export do
   @moduledoc """
   An effective policy as the text a node without a server is given.
 
-  The runner file, `~/.config/qory/runner.yaml`, holds the machine's policy inline as its
+  The Forager file, `~/.config/qory/forager.yaml`, holds the machine's policy inline as its
   `egress` section, which says a mode, the hosts allowed, the hosts denied and nothing
   else. Paths are said by a policy document, the contract's own format, given to one run
   with `qory run --policy <file>`; it narrows the machine's section and never widens it,
@@ -21,15 +21,15 @@ defmodule Apiary.Policy.Export do
     narrowed = map_size(effective.paths) > 0
 
     %{
-      runner_file: runner_file(effective),
+      forager_file: forager_file(effective),
       policy_file: if(narrowed, do: policy_file(effective)),
       notes: notes(effective, narrowed)
     }
   end
 
-  defp runner_file(effective) do
+  defp forager_file(effective) do
     IO.iodata_to_binary([
-      "# ~/.config/qory/runner.yaml\n",
+      "# ~/.config/qory/forager.yaml\n",
       "egress:\n",
       egress(effective, "  ", false)
     ])
@@ -96,9 +96,9 @@ defmodule Apiary.Policy.Export do
       if(narrowed,
         do: [
           gettext(
-            "The runner file's egress section says a mode and hosts only. The paths are in the policy file, given to a run with --policy; it narrows the runner file's section."
+            "The Forager file's egress section says a mode and hosts only. The paths are in the policy file, given to a run with --policy; it narrows the Forager file's section."
           ),
-          gettext("Paths need a wall: without one the runner refuses to start the run.")
+          gettext("Paths need a wall: without one Forager refuses to start the run.")
         ],
         else: []
       )

@@ -4,7 +4,7 @@ defmodule Apiary.Policy.Suggestions do
 
   A run's `dev.qory.run.policy_applied` events report `harness_hosts`, the hosts the
   harness's modules declared; they decide nothing. Read here from the target's newest
-  runs, bounded at every step: the events are a runner's, so a host that is not in the
+  runs, bounded at every step: the events are Forager's, so a host that is not in the
   contract's grammar is left out and nothing becomes an atom.
 
   Each suggestion is shown against the record: the attempts to the host that the
@@ -73,7 +73,7 @@ defmodule Apiary.Policy.Suggestions do
     covered =
       covered
       |> Enum.map(fn {host, _seen} ->
-        # The entry a runner would report: the first of `allow`, names before suffixes.
+        # The entry the gateway would report: the first of `allow`, names before suffixes.
         by = Enum.find(allow, &Grammar.covers?(&1, host))
         entry = sources[by]
         %{host: host, by: by, source: entry && entry.source, rule_id: entry && entry.rule.id}

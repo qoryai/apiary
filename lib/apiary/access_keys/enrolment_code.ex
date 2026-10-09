@@ -51,7 +51,7 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
 
   @doc """
   settings_changeset/2 is the changeset of a new code's settings: the stored-secrets flag,
-  off unless set, and a label hint, empty or a name a runner would send
+  off unless set, and a label hint, empty or a name Forager would send
   (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`).
   """
   @spec settings_changeset(t, map) :: Ecto.Changeset.t()

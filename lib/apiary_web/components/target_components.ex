@@ -20,7 +20,7 @@ defmodule ApiaryWeb.TargetComponents do
   timed out, lost and pending say so; a run that ended well, or was closed, is the dot
   alone, its word for a screen reader. Never a pill.
 
-  What a runner reported is untrusted: it is interpolated, never passed to `raw/1`.
+  What Forager reported is untrusted: it is interpolated, never passed to `raw/1`.
   """
   use ApiaryWeb, :html
 

@@ -2,7 +2,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   @moduledoc """
   A node's Access key tab (`ApiaryWeb.NodeLive.AccessKey`): the two ways to connect a
   node, ordered by its kind, the keys and their acts confirmed in place, Add a key,
-  generating a key in the browser and the key's page it leads to, an active key's runner
+  generating a key in the browser and the key's page it leads to, an active key's Forager
   file as the key came, the command got in one click and shown once (redeemed as shown,
   the page turning to "connected" as the key arrives), a command waiting and its
   cancelling, and what a member, another organisation and a stale page are refused.
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
   setup :register_and_log_in_user
 
-  # The runner contract's fixture access key (keys.json): refused everywhere.
+  # The Forager contract's fixture access key (keys.json): refused everywhere.
   @fixture_public_key "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
 
   defp tab_path(scope, node, rest \\ ""),
@@ -54,8 +54,8 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
   # The timer of the next expiry the page holds (`schedule_expiry/1`).
   defp expiry_timer(lv), do: :sys.get_state(lv.pid).socket.assigns.expiry_timer
 
-  # Not one line says runners can't use a node's keys yet, nor names a workspace's keys
-  # or their secrets in the runner file.
+  # Not one line says Forager can't use a node's keys yet, nor names a workspace's keys
+  # or their secrets in the Forager file.
   defp refute_untrue(html) do
     refute html =~ "keys yet"
     refute html =~ "Once runners use"
@@ -196,22 +196,22 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       # Each Revoke… is named for the key it revokes.
       assert has_element?(lv, "#key-#{made.key_id}-revoke .sr-only", "Revoke current")
       assert has_element?(lv, ~s{#key-#{made.key_id}-revoke [aria-hidden="true"]}, "Revoke…")
-      # An active key's card leads to its runner file, named for the key.
+      # An active key's card leads to its Forager file, named for the key.
       assert has_element?(
                lv,
-               ~s{#key-#{made.key_id}-runner-file[href="#{tab_path(scope, node, "/keys/#{made.key_id}/runner-file")}"]}
+               ~s{#key-#{made.key_id}-forager-file[href="#{tab_path(scope, node, "/keys/#{made.key_id}/forager-file")}"]}
              )
 
       assert has_element?(
                lv,
-               "#key-#{made.key_id}-runner-file .sr-only",
-               "Runner file for current"
+               "#key-#{made.key_id}-forager-file .sr-only",
+               "Forager file for current"
              )
 
       assert has_element?(
                lv,
-               ~s{#key-#{made.key_id}-runner-file [aria-hidden="true"]},
-               "Runner file"
+               ~s{#key-#{made.key_id}-forager-file [aria-hidden="true"]},
+               "Forager file"
              )
 
       # A key a command brought is active as it arrives: the same state, and the same acts.
@@ -230,7 +230,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
              )
 
       assert has_element?(lv, "#key-#{enrolled.key_id}-revoke", "Revoke…")
-      assert has_element?(lv, "#key-#{enrolled.key_id}-runner-file")
+      assert has_element?(lv, "#key-#{enrolled.key_id}-forager-file")
 
       # Nothing awaits approval, and no card offers one.
       for key <- [made, enrolled], act <- ~w(approve reject guidance) do
@@ -253,7 +253,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#key-#{key.key_id}-state", "Revoked")
       assert has_element?(lv, "#key-#{key.key_id}", "by #{scope.user.email}")
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
-      refute has_element?(lv, "#key-#{key.key_id}-runner-file")
+      refute has_element?(lv, "#key-#{key.key_id}-forager-file")
     end
   end
 
@@ -448,7 +448,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
             tab_path(scope, pool),
             tab_path(scope, node, "/generate"),
             tab_path(scope, pool, "/generate"),
-            tab_path(scope, node, "/keys/#{key.key_id}/runner-file")
+            tab_path(scope, node, "/keys/#{key.key_id}/forager-file")
           ] do
         {:ok, lv, html} = live(conn, path)
         refute has_element?(lv, "#key-add-button")
@@ -463,7 +463,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     end
   end
 
-  describe "a key's runner file" do
+  describe "a key's Forager file" do
     test "a key connected with a command: the lines the command wrote, each marked whose",
          %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
@@ -471,24 +471,24 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {yaml_pin, _env_pin} = pin_lines()
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      lv |> element("#key-#{key.key_id}-runner-file") |> render_click()
-      assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+      lv |> element("#key-#{key.key_id}-forager-file") |> render_click()
+      assert_patch(lv, tab_path(scope, node, "/keys/#{key.key_id}/forager-file"))
 
-      assert has_element?(lv, "#key-runner-file-header-title", "Runner file for current")
-      assert page_title(lv) =~ "Runner file for current · build-01"
+      assert has_element?(lv, "#key-forager-file-header-title", "Forager file for current")
+      assert page_title(lv) =~ "Forager file for current · build-01"
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "current")
 
-      assert words(lv, "#key-runner-file-header-description") ==
-               "The runner file's lines for this key. Nothing here is secret."
+      assert words(lv, "#key-forager-file-header-description") ==
+               "The Forager file's lines for this key. Nothing here is secret."
 
       assert has_element?(
                lv,
-               "#key-runner-file",
-               "The command wrote these lines to ~/.config/qory/runner.yaml on build-01 when it connected. They are here to check, or to write the file again:"
+               "#key-forager-file",
+               "The command wrote these lines to ~/.config/qory/forager.yaml on build-01 when it connected. They are here to check, or to write the file again:"
              )
 
       yaml =
-        (lv |> element("#key-runner-file-yaml") |> render() |> text() |> String.trim_trailing()) <>
+        (lv |> element("#key-forager-file-yaml") |> render() |> text() |> String.trim_trailing()) <>
           "\n"
 
       url = "  url: #{ApiaryWeb.Endpoint.url()}"
@@ -504,24 +504,24 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                #{yaml_pin}
                """
 
-      assert has_element?(lv, "#key-runner-file-yaml-copy", "Copy lines")
+      assert has_element?(lv, "#key-forager-file-yaml-copy", "Copy lines")
 
-      assert words(lv, "#key-runner-file-parts") ==
+      assert words(lv, "#key-forager-file-parts") ==
                "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
 
-      assert words(lv, "#key-runner-file-secret") ==
+      assert words(lv, "#key-forager-file-secret") ==
                "The key's secret is on build-01, in ~/.config/qory/access-key-secret, where the command saved it. It has never been on a screen."
 
-      refute has_element?(lv, "#key-runner-file-key")
-      refute has_element?(lv, "#key-runner-file-server")
+      refute has_element?(lv, "#key-forager-file-key")
+      refute has_element?(lv, "#key-forager-file-server")
       refute render(lv) =~ "access-key create"
       refute_untrue(render(lv))
 
       # Done: back to the tab, the focus on the link that opened the page.
-      lv |> element("#key-runner-file-done-button", "Done") |> render_click()
+      lv |> element("#key-forager-file-done-button", "Done") |> render_click()
       assert_patch(lv, tab_path(scope, node))
       assert_push_event(lv, "run:focus", %{id: id})
-      assert id == "key-#{key.key_id}-runner-file"
+      assert id == "key-#{key.key_id}-forager-file"
     end
 
     test "a generated key: four steps, the secret, its ID, Qory Apiary's public key and address",
@@ -530,38 +530,38 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       %{access_key: key} = browser_key_fixture(scope, pool, %{label: "spot-runners"})
       {_yaml_pin, env_pin} = pin_lines()
 
-      {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/keys/#{key.key_id}/runner-file"))
+      {:ok, lv, _html} = live(conn, tab_path(scope, pool, "/keys/#{key.key_id}/forager-file"))
 
-      assert words(lv, "#key-runner-file-header-description") ==
+      assert words(lv, "#key-forager-file-header-description") ==
                "What spot-runners needs, besides the secret. Nothing here is secret."
 
-      assert words(lv, "#key-runner-file-steps-1") ==
+      assert words(lv, "#key-forager-file-steps-1") ==
                "1 Keep the secret in a secret store. It was shown once, when the key was generated, and belongs in QORY_ACCESS_KEY_SECRET in the secret store of the system that runs qory. If it is lost, generate a new key and revoke this one."
 
-      assert words(lv, "#key-runner-file-steps-2") =~ "2 Set the key's ID. As a plain setting."
+      assert words(lv, "#key-forager-file-steps-2") =~ "2 Set the key's ID. As a plain setting."
 
-      assert lv |> element("#key-runner-file-key-env") |> render() |> text() |> String.trim() ==
+      assert lv |> element("#key-forager-file-key-env") |> render() |> text() |> String.trim() ==
                "QORY_ACCESS_KEY_ID=#{key.key_id}"
 
-      assert has_element?(lv, "#key-runner-file-key-env-copy", "Copy variable")
+      assert has_element?(lv, "#key-forager-file-key-env-copy", "Copy variable")
 
-      assert words(lv, "#key-runner-file-steps-3") =~
+      assert words(lv, "#key-forager-file-steps-3") =~
                "3 Set Qory Apiary's public key. As a plain setting."
 
-      assert lv |> element("#key-runner-file-server-env") |> render() |> text() |> String.trim() ==
+      assert lv |> element("#key-forager-file-server-env") |> render() |> text() |> String.trim() ==
                env_pin
 
-      assert words(lv, "#key-runner-file-belongs") ==
+      assert words(lv, "#key-forager-file-belongs") ==
                "The same for every machine connected to this Qory Apiary."
 
-      assert words(lv, "#key-runner-file-steps-4") =~ "4 Point qory at Qory Apiary."
+      assert words(lv, "#key-forager-file-steps-4") =~ "4 Point qory at Qory Apiary."
 
-      assert lv |> element("#key-runner-file-url") |> render() |> text() |> String.trim() ==
+      assert lv |> element("#key-forager-file-url") |> render() |> text() |> String.trim() ==
                "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
 
       # The key's id is in its own step alone: the server's steps name no key.
-      for n <- [3, 4], do: refute(words(lv, "#key-runner-file-steps-#{n}") =~ key.key_id)
-      refute has_element?(lv, "#key-runner-file-yaml")
+      for n <- [3, 4], do: refute(words(lv, "#key-forager-file-steps-#{n}") =~ key.key_id)
+      refute has_element?(lv, "#key-forager-file-yaml")
       refute render(lv) =~ "where the command saved it"
     end
 
@@ -571,22 +571,22 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       {:ok, _revoked} = AccessKeys.revoke_access_key(scope, revoked)
 
       for {rest, words} <- [
-            {"/keys/#{revoked.key_id}/runner-file", "old is revoked."},
-            {"/keys/ak_0000000000000000/runner-file", "This node has no such key."}
+            {"/keys/#{revoked.key_id}/forager-file", "old is revoked."},
+            {"/keys/ak_0000000000000000/forager-file", "This node has no such key."}
           ] do
         {:ok, lv, html} =
           live(conn, tab_path(scope, node, rest)) |> follow_redirect(conn, tab_path(scope, node))
 
         assert html =~ words
-        refute has_element?(lv, "#key-runner-file")
+        refute has_element?(lv, "#key-forager-file")
       end
 
       # From the tab, the same.
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      render_patch(lv, tab_path(scope, node, "/keys/#{revoked.key_id}/runner-file"))
+      render_patch(lv, tab_path(scope, node, "/keys/#{revoked.key_id}/forager-file"))
       assert_patch(lv, tab_path(scope, node))
       assert render(lv) =~ "old is revoked."
-      refute has_element?(lv, "#key-runner-file")
+      refute has_element?(lv, "#key-forager-file")
     end
 
     test "a member reads it too: nothing on it is secret", %{scope: scope} do
@@ -595,11 +595,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       conn = member_conn(scope)
 
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
-      assert has_element?(lv, "#key-#{key.key_id}-runner-file")
+      assert has_element?(lv, "#key-#{key.key_id}-forager-file")
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
 
-      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
-      assert has_element?(lv, "#key-runner-file-key-env", key.key_id)
+      {:ok, lv, _html} = live(conn, tab_path(scope, node, "/keys/#{key.key_id}/forager-file"))
+      assert has_element?(lv, "#key-forager-file-key-env", key.key_id)
     end
   end
 
@@ -629,7 +629,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Command")
 
       assert words(lv, "#code-issued-header-description") ==
-               "The command connects build-01 by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine."
+               "The command connects build-01 by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 
       assert words(lv, "#code-issued-run") == "On build-01, run:"
       assert has_element?(lv, "#code-issued-command-copy", "Copy command")
@@ -1098,7 +1098,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert render(lv) =~ code
       assert length(AccessKeys.list_enrolment_codes(scope, node)) == 1
 
-      for rest <- ["/generate", "/keys/#{key.key_id}/runner-file"] do
+      for rest <- ["/generate", "/keys/#{key.key_id}/forager-file"] do
         {:ok, lv, _html} = live(conn, tab_path(scope, node, rest))
         render_hook(lv, "create_code", %{})
       end
@@ -1252,7 +1252,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                  "A machine connected with the command needs nothing more: qory saved all of this on it. Don't set these again there; qory refuses a key ID or a public key set twice. With a generated key, set these where the machine runs qory."
 
         assert words(lv, "#node-configure-steps-1") =~
-                 "1 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables below."
+                 "1 Point qory at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables below."
 
         assert lv |> element("#node-configure-yaml") |> render() |> text() |> String.trim() ==
                  "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
@@ -1575,7 +1575,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                  String.replace_prefix(env_pin, "QORY_APIARY_PUBLIC_KEY=", "")
 
       assert words(lv, "#key-generated-steps-4") =~
-               "4 Point qory at Qory Apiary. In the runner file. It is required: without it, qory ignores the three variables."
+               "4 Point qory at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."
 
       assert lv |> element("#key-generated-yaml") |> render() |> text() =~
                "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
@@ -1846,7 +1846,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       node = node_fixture(scope)
       %{access_key: key} = browser_key_fixture(scope, node)
 
-      for rest <- ["", "/keys/#{key.key_id}/runner-file", "/keys/#{key.key_id}/generated"] do
+      for rest <- ["", "/keys/#{key.key_id}/forager-file", "/keys/#{key.key_id}/generated"] do
         {:ok, lv, _html} = live(conn, tab_path(scope, node, rest))
         push_key(lv, browser_key())
         assert_reply(lv, reply)
@@ -1908,13 +1908,13 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       %{access_key: others} = browser_key_fixture(admin, node, %{label: "others"})
       %{access_key: enrolled} = enrolled_key_fixture(scope, node, %{label: "enrolled"})
 
-      # Another person's browser key, and one a code brought: their runner file, no flash.
+      # Another person's browser key, and one a code brought: their Forager file, no flash.
       for key <- [others, enrolled] do
         {:ok, lv, _html} =
           live(conn, generated_path(scope, node, key.key_id))
-          |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+          |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/forager-file"))
 
-        assert has_element?(lv, "#key-runner-file")
+        assert has_element?(lv, "#key-forager-file")
         refute has_element?(lv, "[data-secret-slot]")
       end
 
@@ -1955,7 +1955,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert add_entries(node) == []
     end
 
-    test "an admin's own key goes to its runner file once they are a member", %{scope: scope} do
+    test "an admin's own key goes to its Forager file once they are a member", %{scope: scope} do
       node = node_fixture(scope)
       %{scope: admin, user: user, membership: membership} = member_fixture(scope, :admin)
       %{access_key: key} = browser_key_fixture(admin, node)
@@ -1964,9 +1964,9 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
 
       {:ok, lv, _html} =
         live(conn, generated_path(scope, node, key.key_id))
-        |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/runner-file"))
+        |> follow_redirect(conn, tab_path(scope, node, "/keys/#{key.key_id}/forager-file"))
 
-      assert has_element?(lv, "#key-runner-file")
+      assert has_element?(lv, "#key-forager-file")
     end
   end
 
@@ -2014,7 +2014,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       refute has_element?(lv, "#code-new-button")
       refute has_element?(lv, "#key-generate-button")
       refute has_element?(lv, "#key-#{key.key_id}-revoke")
-      assert has_element?(lv, "#key-#{key.key_id}-runner-file")
+      assert has_element?(lv, "#key-#{key.key_id}-forager-file")
     end
 
     test "is refused every act's path and event, and nothing changes", %{scope: scope} do

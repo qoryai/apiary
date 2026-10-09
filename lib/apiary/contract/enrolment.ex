@@ -1,6 +1,6 @@
 defmodule Apiary.Contract.Enrolment do
   @moduledoc """
-  Enrolment's wire, the runner contract's `enrolment.schema.json`: the request a machine
+  Enrolment's wire, the Forager contract's `enrolment.schema.json`: the request a machine
   posts to `/.well-known/qory-enrolment`, read strictly (`decode/1`), the checks of its
   code's fingerprints and of its proof, and the bodies of the `201` answer and the signed
   `409` refusals, byte for byte as the contract's fixtures (`fixtures/enrolment/`) have
