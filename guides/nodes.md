@@ -69,7 +69,7 @@ where its secret is; when it was last used ("Not yet" while unused); its **Finge
 <!-- feature: secrets -->
 its **Stored secrets**;
 <!-- /feature -->
-with **Runner file** and **Revoke…**. Under the keys, **Add a
+with **Forager file** and **Revoke…**. Under the keys, **Add a
 key** offers the same two ways, in the same order, to move the node to a new key: add it
 either way, then revoke the old one. At two keys it offers neither, and says "build-01
 holds two keys, the most a node can. Revoke the one it no longer uses to add another." A
@@ -80,7 +80,7 @@ with the command needs nothing more: qory saved all of this on it. Don't set the
 there; qory refuses a key ID or a public key set twice. With a generated key, set these
 where the machine runs qory." Then four numbered steps:
 
-1. **Point qory at Qory Apiary.** In the runner file, with **Copy lines**. It is required:
+1. **Point qory at Qory Apiary.** In the Forager file, with **Copy lines**. It is required:
    without it, `qory` ignores the three variables below.
 2. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`, a plain setting, with
    **Copy**. The same for every machine connected to this Qory Apiary.
@@ -109,7 +109,7 @@ where the machine runs qory." Then four numbered steps:
 3. On the machine, the command makes the key, keeps its secret and prints its fingerprint.
    The code carries the fingerprint of Qory Apiary's key, so `qory` checks Qory Apiary's
    signed answer against it and pins that key, and it writes the `server` section of
-   `~/.config/qory/runner.yaml` itself: `url`, `access_key_id` and `apiary_public_key`.
+   `~/.config/qory/forager.yaml` itself: `url`, `access_key_id` and `apiary_public_key`.
 4. The page reads "Waiting for build-01 to run it." until the key arrives, then "build-01
    is connected. Its key arrived at 14:20 and is active.", with the key and its
    **Fingerprint**. The code is the approval: the key needs nothing more. Its fingerprint
@@ -132,14 +132,14 @@ Qory Apiary's own computer reaches, such as `http://localhost:4100`, the page sa
 "Machines can't reach this address." and asks you to set `PUBLIC_URL` to the address
 machines use.
 
-### The runner file
+### The Forager file
 
-**Runner file**, on an active key's card, opens the page **Runner file for build-01**:
-"The runner file's lines for this key. Nothing here is secret." (for a generated key, the
+**Forager file**, on an active key's card, opens the page **Forager file for build-01**:
+"The Forager file's lines for this key. Nothing here is secret." (for a generated key, the
 description below). What it shows depends on how the key came:
 
 - A key connected with a command: the `server` lines the command wrote to
-  `~/.config/qory/runner.yaml`, each marked whose it is: `url` (`# Qory Apiary`),
+  `~/.config/qory/forager.yaml`, each marked whose it is: `url` (`# Qory Apiary`),
   `access_key_id` (`# this key`) and `apiary_public_key` (`# Qory Apiary's public key`).
   Only the key ID is the key's; the address and the public key are Qory Apiary's, the
   same for every machine connected to it. The page says the key's secret is on the
@@ -151,7 +151,7 @@ description below). What it shows depends on how the key came:
   system that runs `qory`; if it is lost, generate a new key and revoke this one. **Set
   the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set Qory Apiary's public
   key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: the same for every machine
-  connected to this Qory Apiary. **Point qory at Qory Apiary**: the lines the runner
+  connected to this Qory Apiary. **Point qory at Qory Apiary**: the lines the Forager
   file needs, `server.url`.
 
 ### For a CI
@@ -165,9 +165,9 @@ the settings, one `NAME=value` line each.
   `QORY_ACCESS_KEY_SECRET` and `QORY_APIARY_PUBLIC_KEY`. The key is active at once.
 
 Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the id and the pin are
-plain settings, and the CI's `runner.yaml` then needs `server.url` alone.
+plain settings, and the CI's `forager.yaml` then needs `server.url` alone.
 `QORY_APIARY_PUBLIC_KEY` is JSON: in a shell, put its value in single quotes
-([The runner file's `server` section](runner-file.md#the-id-and-the-pin-in-the-environment)).
+([The Forager file's `server` section](forager-file.md#the-id-and-the-pin-in-the-environment)).
 A fleet of short-lived CI runners is a node pool with one key.
 
 #### Generate a key in the browser
@@ -192,7 +192,7 @@ A fleet of short-lived CI runners is a node pool with one key.
    3. **Set Qory Apiary's public key.** As a plain setting: `QORY_APIARY_PUBLIC_KEY`. The
       same for every machine connected to this Qory Apiary. It stays on the **Access
       key** tab.
-   4. **Point qory at Qory Apiary.** In the runner file. It is required: without it,
+   4. **Point qory at Qory Apiary.** In the Forager file. It is required: without it,
       `qory` ignores the three variables. With **Copy lines**:
 
       ```yaml
@@ -217,9 +217,10 @@ off; connect the machine with a command instead.
 ## Instances and the instance limit
 
 Each running copy of `qory` with a node's key is an **instance** of that node. `qory` keeps
-its id in the file `instance-id` beside `runner.yaml`, and its name is `instance.name` in
-`runner.yaml`, else the host name. The instance is a claim, for display, the audit and the
-instance limit: what a request is allowed rests on the key alone.
+its id in the file `instance-id` beside `forager.yaml`, and its name is
+`session.instance.name` in `forager.yaml`, else the host name. The instance is a claim,
+for display, the audit and the instance limit: what a request is allowed rests on the key
+alone.
 
 An instance counts as running while one of its runs is alive. A node runs one at a time,
 and a pool up to its limit: the ping that starts a run, from an instance beyond the limit,

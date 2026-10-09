@@ -25,11 +25,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   per organisation, which in the core is the one the organisation was made with, and
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
-- The record of every run, reported by the runner over the server contract (version 1,
+- The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, events, the run configuration and enrolment): the session as a
   timeline, the terminal, every connection with its decision and rule, and how the run
   ended.
-- Signed requests and signed answers. Every request a runner makes names a node's access
+- Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
   clock for a GET; every answer to a verified request is signed with the server's own
@@ -38,7 +38,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   refusals come in the contract's order, coded: a header sent twice or an instance id
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.runner-contract-ref` pins.
+  the contract's own fixtures at the commit `.forager-contract-ref` pins.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
@@ -83,12 +83,12 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   served over HTTPS) and sends Qory Apiary its name and its public half alone; the page Key
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
-  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the runner file's
+  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the Forager file's
   `server.url`. Opened again, it says the secret is gone, and offers nothing of it to
   copy. A key's card shows its
   Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
-  browser by …") and where its secret is. An active key's card opens the page Runner
-  file for the key: for a key connected with a command, the runner file's `server`
+  browser by …") and where its secret is. An active key's card opens the page Forager
+  file for the key: for a key connected with a command, the Forager file's `server`
   lines (`url`, `access_key_id`, `apiary_public_key`), each marked as Qory Apiary's or
   this key's; for a generated key, four numbered steps: where its secret belongs, then
   `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `server.url`. The server's address
@@ -98,7 +98,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   Owners and admins get and cancel commands and add and revoke keys, each in the audit
   trail; a node holds at most two keys at a time, and deleting a node revokes its keys
   and cancels its commands. Enrolment is limited per address, 1 a second and 10 at
-  once, and answers in the runner contract's order: before the code is looked at, `413`
+  once, and answers in the contract's order: before the code is looked at, `413`
   for a body over 8 KiB,
   `415` `unsupported_media_type` for a `Content-Type` absent or not `application/json`,
   `400` `bad_request` for a `Content-Type` or `X-Qory-Contract-Version` sent twice, `429`
@@ -109,7 +109,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   for a public key used before, `409` `key_limit` and `201`. Every public key received
   passes the contract's key checks, and a public key serves one access key, ever, on the
   instance. Each key's row carries an integrity code, checked before the key is trusted.
-- A node's instances: what a runner using the node's access key reports itself as, a
+- A node's instances: what Forager, run with the node's access key, reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation. An
   instance runs while it has a run the lost-run check holds alive. The Nodes list says
   each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"; a pool
@@ -188,7 +188,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   keyed from it.
 - `APIARY_SIGNING_SECRET`, required, 32 bytes of its own, never derived from
   `APIARY_ENCRYPTION_SECRET`: the seed of the Ed25519 key the server signs its answers
-  to runners with. The boot refuses it when it is missing, of another length, the same
+  to gateways with. The boot refuses it when it is missing, of another length, the same
   as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
   development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.

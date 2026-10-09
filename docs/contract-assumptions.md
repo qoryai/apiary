@@ -1,7 +1,7 @@
 # The server contract as the apiary implements it
 
 What discovery, the events endpoint, the run configuration and enrolment expect and
-return. The contract is `contracts/runner/v1` of the `qoryai/runner` repository, revision
+return. The contract is `contracts/forager/v1` of the `qoryai/forager` repository, revision
 1; this page is the apiary's reading of it, and where the two disagree the contract wins.
 Anything the contract has not fixed is listed under "Assumed" at the end.
 
@@ -16,9 +16,9 @@ of (`ApiaryWeb.Contract.SignedRequest`). The headers on every request:
 | `X-Qory-Access-Key-Id` | the key id, `ak_` and 16 lowercase Crockford base32 characters |
 | `X-Qory-Instance-Id` | the instance id, `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$` |
 | `X-Qory-Instance-Name` | the instance's display name, unsigned, kept for display |
-| `X-Qory-Contract-Version` | `1`, the revision the runner sends on every request |
+| `X-Qory-Contract-Version` | `1`, the revision Forager sends on every request |
 | `X-Qory-Signature-Ed25519` | the Ed25519 signature of the request string, 64 bytes in base64url without padding |
-| `User-Agent` | `qory-runner/<version>`; the version is recorded on the key |
+| `User-Agent` | `qory-forager/<version>`; the version is recorded on the key |
 
 A GET carries `X-Qory-Timestamp` beside them, the Unix time in seconds, UTC, as a decimal
 integer with no fraction.
@@ -57,7 +57,7 @@ served. One check decides it for the three (`ApiaryWeb.Contract.ContractVersion`
 the signature: a request that does not verify is `401` whatever the header says.
 
 A request that verifies records its instance as seen on the key's node
-(`Apiary.Nodes.seen/3`), with its name, the runner version and the contract version, once
+(`Apiary.Nodes.seen/3`), with its name, the Forager version and the contract version, once
 the instance id passes and, on a GET, only when its timestamp is within the window: a GET
 outside it, stale or replayed after the window closes, records nothing before its `401`.
 
@@ -98,7 +98,7 @@ other than `1`:
 `<public host>` is the application's public base URL (`PUBLIC_URL`). `node_id` is the
 public id of the key's node or node pool. The `events` URL is the events endpoint below,
 and the `run` URL the run configuration endpoint after it. `apiary_public_key` lists the
-server's signing key, for information: a runner verifies answers under the key it pinned.
+server's signing key, for information: the gateway verifies answers under the key it pinned.
 The members are in the contract's order (`ApiaryWeb.Contract.Configuration`).
 
 The `run` section is there only for a workspace whose policy somebody has made: a
@@ -107,7 +107,7 @@ rule or the first change of mode, in the workspace or in any one repository: the
 change anywhere starts serving every repository of the workspace, the others the
 workspace's baseline. A
 workspace nobody has given a policy is answered the document without `run`, and its
-machines run under the policy of their own `runner.yaml`, as the contract has it for a
+machines run under the policy of their own `forager.yaml`, as the contract has it for a
 server that names no section. So an upgrade, or a workspace nobody has looked at, never
 replaces a machine's own enforcement with an empty policy. The document therefore differs
 by node, and for a node is one of two, by its workspace, and so is its digest, here and in
@@ -115,7 +115,7 @@ every answer to a batch. The first
 change of a workspace's policy changes that digest: a run in flight fetches the document
 again, finds the section, fetches its run configuration and applies it, narrowed by the
 machine's own policy. It does not go back: a workspace whose rules were all
-removed again still serves its (empty) policy. Sections a runner does not know are to be
+removed again still serves its (empty) policy. Sections the gateway does not know are to be
 ignored.
 
 ## Signed POST: the events endpoint
@@ -163,14 +163,14 @@ carries it. No error body repeats anything that was sent. The ping is a batch li
 other: a `2xx` lets the run start, and a revoked key, a bad signature, an instance beyond the
 limit or an unsupported version does not.
 
-A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
+A batch is a non-empty JSON array of at most 1000 objects (the gateway cuts a batch at a
 hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev.qory.`),
 `sequence` (ten digits, from `0000000001`: `0000000000` is no sequence), `source`
 (`urn:qory:run:` and the subject), `time` (RFC 3339, in the years 1970 to 9999) and `data`
 (an object, nested no deeper than 64 levels), all of one subject. The limits are what the
 tables hold: what passes them is stored, and no batch is answered `500`. Only this envelope is
 checked: `data` is not validated against the schema of its type, and a type this release does
-not know is stored like any other, so a newer runner's events are kept until a release reads
+not know is stored like any other, so a newer Forager's events are kept until a release reads
 them. A type outside `dev.qory.` fails the envelope, and the batch is answered
 `400 invalid_request`. A ping (`dev.qory.ping`) carries `interval_seconds`, the heartbeat
 interval of its run, an integer from 1 to 300 (`Apiary.Runs.Batch`).
@@ -211,10 +211,10 @@ What is stored, in one transaction, before the answer:
 - on the run: the count of events, when the last one was received, and the last
   `X-Qory-Run-Configuration` that had the shape `sha256=` and 64 lowercase hex digits.
 
-After the commit, and never failing the request: the key records the time, and the runner
+After the commit, and never failing the request: the key records the time, and the Forager
 version and the contract version when the request named them (a request that names none
 leaves what is recorded); when the batch held a heartbeat that was new, the key records when
-the server received it, by the server's clock and never the runner's. A repeated delivery
+the server received it, by the server's clock and never Forager's. A repeated delivery
 records nothing on the key. The run's events are projected into the run, its connections and its log, on the server's own
 time. Nothing of a request's headers beyond the above is stored, and neither the signature nor
 the body is logged.
@@ -222,7 +222,7 @@ the body is logged.
 ## Signed GET: the run configuration
 
 `GET /v1/run-configuration?<label>=<value>&…`, signed like discovery, the query signed as
-sent. Every query parameter is read as one of the run's labels, and the runner sends every
+sent. Every query parameter is read as one of the run's labels, and the gateway sends every
 label of the run. The workspace's domain (`Apiary.Lingo.Domain`) says which labels name
 the target; the software domain's are `forge` and `repository`. It answers `200`,
 `Content-Type: application/json`, with `X-Qory-Run-Configuration: sha256=<lowercase hex>`,
@@ -233,7 +233,7 @@ the target; the software domain's are `forge` and `repository`. It answers `200`
 {"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
 ```
 
-With deny rules the `egress` section carries `deny` after `allow`, the hosts a runner denies
+With deny rules the `egress` section carries `deny` after `allow`, the hosts the gateway denies
 before it consults `allow` or the mode:
 
 ```json
@@ -249,18 +249,18 @@ the repository has set its own, `observe` or `enforce`; a repository that has no
 the workspace, later changes of the workspace's mode included, and a repository the
 workspace has not seen gets the workspace's. The rules resolve the same under either mode:
 a locked rule of the workspace holds in a repository's document whatever its mode, and a
-deny holds in either mode, since `egress.deny` is decided first: under `observe` a runner
+deny holds in either mode, since `egress.deny` is decided first: under `observe` the gateway
 denies what `deny` names and nothing else, and `allow` says what `enforce` would reach. A
 workspace whose policy nobody has made serves none: `404` `{"error":"not_found"}`, nothing
-rendered; discovery named it no `run` section, so a runner does not ask. The endpoint
+rendered; discovery named it no `run` section, so the gateway does not ask. The endpoint
 spends a token of the key's rate limit, the events endpoint's bucket:
-`429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no run
+`429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to the gateway is no run
 or a reload that failed and is tried again on the next answer. After the `429`, as on the
 events endpoint, a contract version other than `1` is `400 unsupported_contract_version`,
 and nothing is read.
 
 Rendering is canonical: members in a fixed order (`mode`, `allow`, `deny`, `paths`), no
-whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule a runner
+whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule the gateway
 reports for a connection is the most exact one), `paths` by host with each list sorted;
 `allow` is always present, `deny` and `paths` only when they hold something, so a policy
 without a deny renders the bytes it always did. The document never has `credentials`: the
@@ -269,7 +269,7 @@ same rules give the same bytes and the same digest, a change that renders the sa
 document is validated against the contract's `run-configuration.schema.json` and
 `policy.schema.json` (vendored under `priv/contract/`) before it is stored: a change whose
 render the schema refuses is not made, and neither is one whose render is over 1 MiB, the
-most a runner reads of a document (`MaxDocument`). A list holds at most 500 rules and a rule
+most the gateway reads of a document (`MaxDocument`). A list holds at most 500 rules and a rule
 at most 100 paths.
 
 ## Enrolment
@@ -305,7 +305,7 @@ unsigned answer lists no key. A refusal changes nothing: the code stays outstand
 `dev.qory.run.log` is stored like any event and its bytes, decoded, are the run's
 `log_chunks`, one row a chunk, keyed by the event's sequence; `output.log` is their
 concatenation in sequence order, which is what the log endpoint of the console streams. How
-the runner cuts the chunks is its own affair and the apiary reads nothing into a boundary:
+the session cuts the chunks is its own affair and the apiary reads nothing into a boundary:
 on pipes a chunk is one line or 4096 bytes and may end inside a multibyte character, on a
 pseudo-terminal it is one redraw, 4096 bytes or a quiet gap of 50 ms after the runtime's
 last write, never inside a character. The terminal of the run page hands the bytes to
@@ -348,12 +348,12 @@ never says which. A request under a key id the server does not hold is verified 
 fixed public key all the same, so that it costs what a known one does. Nothing about the
 request's headers is logged.
 
-On a GET that verifies, the key records the time, the runner version from `User-Agent` (when
-it is of the form `qory-runner/<version>`) and the contract version from
+On a GET that verifies, the key records the time, the Forager version from `User-Agent` (when
+it is of the form `qory-forager/<version>`) and the contract version from
 `X-Qory-Contract-Version` when it is `1`; a request with any other is refused and leaves the
-recorded contract version as it is. The runner version never decides the answer:
+recorded contract version as it is. The Forager version never decides the answer:
 
-- the runner version is kept to its first 80 characters; a `User-Agent` that is not valid
+- the Forager version is kept to its first 80 characters; a `User-Agent` that is not valid
   UTF-8, or a version with non-printable characters, records no version;
 - if recording the use fails, the request still succeeds.
 
@@ -361,7 +361,7 @@ No header value makes the endpoint answer `500`.
 
 ## Assumed
 
-The contract has not fixed these; Qory Apiary chose, and the runner should match:
+The contract has not fixed these; Qory Apiary chose, and Forager should match:
 
 - The signature is decoded strictly: base64url without padding, 86 characters for 64
   bytes. Padding, the standard alphabet or another length is `401`, like a signature that
@@ -370,7 +370,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   sign differently.
 - `X-Qory-Instance-Name` is kept as the instance's display name and decides nothing; the
   instance id is a signed line, and authorisation rests on the access key alone.
-- `User-Agent` that is not `qory-runner/<version>` is accepted; only the recorded runner
+- `User-Agent` that is not `qory-forager/<version>` is accepted; only the recorded Forager
   version is left empty. The same holds for a version that is not printable text, and a
   version longer than 80 characters is recorded truncated.
 - The discovery path is `/.well-known/qory-configuration`, without a trailing slash, and
@@ -383,7 +383,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   enrolment the header is read before the code, unsigned: sent twice it is `400`
   `bad_request`, and any other value that is not `1` is `400` with the versions served,
   after the per-address `429`.
-- The body limit is 2 MiB, twice the mebibyte a runner cuts a batch at, and it is checked
+- The body limit is 2 MiB, twice the mebibyte the gateway cuts a batch at, and it is checked
   before the signature.
 - The rate limit is per access key and per node: 50 batches a second, 100 at once
   (`config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100`). Every request that passed
@@ -405,12 +405,12 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   POST's timestamp is not read.
 - A `POST` answers `503 {"error":"unavailable"}` when the database refuses the batch or
   cannot be reached: the transaction is rolled back, the log names the kind of the failure and
-  nothing of the batch, and no `X-Qory-Configuration` is sent. A runner retries anything that
+  nothing of the batch, and no `X-Qory-Configuration` is sent. The gateway retries anything that
   is not `2xx` or `410`.
 - The path is matched after percent-decoding, as the router matches it: `/v1/%65vents` is the
   events endpoint, signed and verified like it.
-- The run configuration endpoint never answers `304`, whatever `If-None-Match` says: to a
-  runner anything but `200` is no run. The `ETag` is there for a person with `curl`.
+- The run configuration endpoint never answers `304`, whatever `If-None-Match` says: to the
+  gateway anything but `200` is no run. The `ETag` is there for a person with `curl`.
 - A `forge` or a `repository` label names a repository when it is a string of valid UTF-8,
   not empty, at most 256 bytes, with no control character: C0, DEL, C1 (U+0085 among them),
   U+2028 and U+2029, anything that ends a line somewhere. A label that fails this is neither
@@ -433,14 +433,14 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   `<`, `>` and `&` written as `\u003c`, `\u003e` and `\u0026`), at most 4 levels deep
   (`details` itself the first, an array a level like an object), each key at any level 1 to
   64 bytes; one bad key or string anywhere drops it whole. A member name given twice in
-  `details` cannot be seen once the event is decoded, which keeps the last: the runner
+  `details` cannot be seen once the event is decoded, which keeps the last: Forager
   refuses it. `subjects` is a list of `{type, ref, url?, title?}`: a subject whose `type`
   does not match `^[a-z0-9]+([ _.-][a-z0-9]+)*$` in at most 64 bytes, or whose `ref` is not
   1 to 256 bytes, is dropped on its own; its `title` (1 to 256 bytes) and `url` (at most
   2048 bytes) are dropped from it alone when they break theirs. A `url` is kept only when it
   is absolute `http` or `https` with a host and no user name or password. Subjects are
   de-duplicated by type and ref, the first kept, and more than 16 are cut to the first 16.
-  The runner refuses a run whose `about` breaks any of these; the fold drops the part that
+  Forager refuses a run whose `about` breaks any of these; the fold drops the part that
   breaks one, for whatever reaches it. A type is shown as given: Qory Apiary knows no
   subject types. A later `run.started` replaces all of it, like every other field. A run's
   title is its `about` title; without one, the run page says `Run` and its short id, the
@@ -456,7 +456,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   read of an index), and the baseline's after it when the repository has none of its own;
   while the run's repository is not known yet, a lookup of the repository by its labels or
   of the reported digest comes before. Three to four small reads, not one. If a read fails
-  the header it decides is absent, which means nothing to a runner, and the delivery is
+  the header it decides is absent, which means nothing to the gateway, and the delivery is
   still `202`.
 - A run's repository is known to the server once its `run.started` is projected, which is
   after the receiver answers. Until then the answer's digest is, in this order: that of the
@@ -464,7 +464,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   `X-Qory-Run-Configuration` is a digest in force in the workspace (the baseline's newest,
   or any repository's newest), that digest; else the baseline's. So the ping of a run that
   fetched its repository's configuration a moment ago is not answered the baseline's
-  digest and sent to fetch again. A runner told a digest it does not hold fetches once and
+  digest and sent to fetch again. A gateway told a digest it does not hold fetches once and
   remembers the answer it tried, so the worst case is one fetch that changes nothing.
 - The `cost_usd` of `dev.qory.session.result` is the runtime's own total for the session:
   what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
@@ -505,8 +505,8 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   policy schema at the pinned ref also lets a policy select `tools` and an `image`, which
   the apiary does not render; the tests of tool invocations and of arguments use fixtures
   of their own beside the contract's.
-- What the runner's proxy does with the policy document, read from `internal/proxy`,
-  `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
+- What the gateway does with the policy document, read from `gateway/internal/proxy`,
+  `policy` and `session` of Forager at the pinned ref, and what the apiary
   renders for it:
   - A connection is decided by `egress.deny` first (`Proxy.decide`), in either mode and
     with the first matching deny entry as the rule, then by `egress.allow` and the mode,
@@ -523,7 +523,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
     suffix that is free of paths is fine and rendered.
   - `deny` beats `allow` whatever the shapes, so a deny of a host below an allowed `*.`
     suffix is said as it is: `allow: ["*.example"]`, `deny: ["tracker.example"]`. A `*.`
-    deny still takes the allow entries it covers out of `allow` (the runner would deny
+    deny still takes the allow entries it covers out of `allow` (the gateway would deny
     those hosts by the deny anyway), so the document lists what is reachable and nothing
     else, and a policy's count of hosts allowed is the truth. The one shape the document
     cannot say is a `*.` deny with an allow below it that outranks the deny (the workspace's
@@ -534,7 +534,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
     reached and recorded with no rule (`Apiary.Policy.Resolution`). Nothing is ever
     rendered that allows more than the page shows, or denies what the page says is
     allowed.
-  - A policy with `paths` or `credentials` needs a wall: without one the runner refuses to
+  - A policy with `paths` or `credentials` needs a wall: without one Forager refuses to
     start the run, in either mode, and on a reload it takes the hosts held to paths out of
     `allow` and refuses a configuration that selects credentials. The apiary renders what
     the rules say and selects no credential; the page and the export say that paths need
@@ -550,7 +550,7 @@ The contract has not fixed these; Qory Apiary chose, and the runner should match
   fingerprint; a code that carries two, or another, is `401`.
 - Enrolment: the key's label is the code's label hint, else the name the machine sent,
   with `-2`, `-3` and on when a key of the node in use has it already.
-- Enrolment: the contract names no content type for the request; the runner sends
+- Enrolment: the contract names no content type for the request; Forager sends
   `application/json`, so that is the one accepted: the media type, whatever its case and
   whatever parameters follow, in each value sent. The contract's `400` `bad_request` for "a header
   sent twice" names no headers at enrolment, and the four it names for a signed request are

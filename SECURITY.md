@@ -42,9 +42,9 @@ earlier one.
   request's nonce, an `on…=` attribute or a `javascript:` address, while the page's
   `Content-Security-Policy` header reaches the browser as the release sent it.
 
-The wall, the proxy and the signed delivery on the machine are the
-[runner](https://github.com/qoryai/runner)'s, and so is its
-[security policy](https://github.com/qoryai/runner/blob/main/SECURITY.md). Reports about
+The wall, the gateway and the signed delivery on the machine are
+[Forager](https://github.com/qoryai/forager)'s, and so is its
+[security policy](https://github.com/qoryai/forager/blob/main/SECURITY.md). Reports about
 them come to the same address.
 
 If you are not sure whether something counts, write anyway.

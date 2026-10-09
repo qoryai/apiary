@@ -45,9 +45,9 @@ terminated by a reverse proxy in front of it.
 The console's pages are live over a WebSocket: let the proxy pass WebSocket upgrades
 through. Without them the pages fall back to long polling.
 
-Links in emails, the runner file lines and the command the console shows to connect a
+Links in emails, the Forager file lines and the command the console shows to connect a
 machine, and the URLs in the discovery document are all built from `PUBLIC_URL`, never
-from the request's `Host` header. A `PUBLIC_URL` that is not the address runners and
+from the request's `Host` header. A `PUBLIC_URL` that is not the address machines and
 people use gives them links that do not work.
 
 The audit trail records the address each change came from. Behind a proxy that is the
@@ -91,11 +91,11 @@ they are.
 
 A line written while the apiary works for an organisation carries its id as
 `metadata.organisation_id`, and `metadata.workspace_id` when the work is in a workspace: a
-page under `/:org/…` and its reads, a runner's request, the projection of a run's events,
+page under `/:org/…` and its reads, a gateway's request, the projection of a run's events,
 a background job, and the line that says a job failed, was cancelled or was discarded. A
 line written for a signed-in person carries their id as `metadata.user_id`: every page
 they open, and a job their action enqueued. A person's own pages, their account settings
-and their organisations page, carry `user_id` and no organisation or workspace. A runner's
+and their organisations page, carry `user_id` and no organisation or workspace. A gateway's
 request is an access key's and carries no `user_id`.
 
 The ids are never a name, a slug or an email address, so a search by any of them finds
@@ -104,7 +104,7 @@ everything that happened for it without the log holding a customer's or a person
 the job, its attempt and the kind of error, never its arguments or the error's message.
 
 A request line's duration is `metadata.duration_us`, in microseconds. No header and no
-body is ever logged, and neither is anything a runner signed or sent. Four routes carry a
+body is ever logged, and neither is anything a gateway signed or sent. Four routes carry a
 secret in their path, an invitation, its continuation, a log-in link and an email change;
 their secret segment is logged as `:token`, so a reader of the log cannot sign in or join
 an organisation with what it finds there.
@@ -137,7 +137,7 @@ For example: ecto://USER:PASS@HOST/DATABASE
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
 | `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
-| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to runners with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the runner contract's published fixture seeds and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
 <!-- feature: secrets -->
 
 `APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
@@ -189,7 +189,7 @@ APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, 
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `PUBLIC_URL` | required | The address people and runners use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because a runner refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. A runner accepts plain `http` only to an address of its own machine, so for runners on other machines the public URL is `https`. |
+| `PUBLIC_URL` | required | The address people and machines use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because Forager refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. Forager accepts plain `http` only to an address of its own machine, so for other machines the public URL is `https`. |
 | `PHX_HOST` | none | Read only when `PUBLIC_URL` is not set: the public address is then `https://` and this host. `.env.example` does not list it; set `PUBLIC_URL`. |
 | `PORT` | `4100` | The port the release listens on inside the container. An integer. The compose file publishes 4100, so change both or neither. |
 | `PHX_SERVER` | set by `bin/server` | Any value makes the release serve HTTP. `bin/server` sets it; whoever starts `bin/apiary start` directly sets it too. |
@@ -252,7 +252,7 @@ environment variable SMTP_TLS must be always, if_available or never
 - `observability`: the record, the runs with their terminals and timelines, the
   connections, and retention. Every instance has it, and every other feature needs it.
 <!-- feature: security -->
-- `security`: the security policy, and the run configuration served to runners. Needs
+- `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.
 <!-- /feature -->
 
