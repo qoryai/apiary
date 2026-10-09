@@ -2711,6 +2711,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           assert words_of(lv, "#{reason} .font-mono") == "image_unknown"
         end
 
+        # the rail's reason line wraps rather than being cut, unlike its other muted lines
+        assert has_element?(lv, "#rail-reason.q-rail-sub.q-rail-sub-wrap")
+
         refute exit_row(lv)
         refute "Exit" in run_terms(lv)
         refute words_of(lv, "#run-meta") =~ "exit"
