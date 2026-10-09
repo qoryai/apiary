@@ -279,9 +279,6 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `verify-full` checks the server's certificate and host name, `require` encrypts without
   checking and says so at boot, and any other `sslmode` stops the boot. `DATABASE_PASSWORD`
   is the password when the URL has none.
-- The certificate authorities of Amazon RDS in the image, at
-  `/app/certs/rds-global-bundle.pem`, pinned by checksum, for a `DATABASE_URL` with
-  `sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem`.
 - A `Content-Security-Policy` on every page of the console, the storybook and the
   documentation: only the console's own scripts run, and a script injected into a page,
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
