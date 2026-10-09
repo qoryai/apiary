@@ -559,13 +559,20 @@ menu's acts, the workspace's are read there and lead to the workspace's page. A 
 the level above the workspace has that level's tile in its Source, which says whose it is;
 the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
 The mode is a card above the tabs, the same on the workspace's Policy page, on each of
-its tabs, and on a target's Policy tab, above its views (`PolicyComponents.mode_card/1`);
-a version and its export, which state their own mode, have none. It states the mode in
+its tabs, the Document tab included, and on a target's Policy tab, above each of its
+views (`PolicyComponents.mode_card/1`); a version opened from the History (the one in
+force too) and the export, which state their own mode, have none. It states the mode in
 force: a honey tile with the mode's icon (a lock where a level above requires enforce),
 "Mode: Enforce" as its heading, whose it is as a badge (Workspace default; Follows the
 workspace, by its name, or Its own; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
+The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
+in force under the card and the tabs: its version's number, In force, Export and the
+version's views, which stay on the tab. A change that makes a new version, Enforce or
+Observe among them, shows the new version, its number and its mode there in place. A
+target served the workspace's policy shows the workspace's version, its links the
+workspace's.
 
 The policy pages confirm in place, never over the page:
 

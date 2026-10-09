@@ -215,8 +215,11 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert_patch(view, base <> "/history")
     assert page_title(view) =~ "History · github.example/acme/shop · Policy"
 
-    assert {:error, {:live_redirect, %{to: to}}} = live(conn, base <> "/document")
-    assert to == base <> "/versions/2"
+    view |> element("#policy-tabs a", "Document") |> render_click()
+    assert_patch(view, base <> "/document")
+    assert has_element?(view, "h2#policy-version-h", "Version 2")
+    assert page_title(view) =~ "Version 2 · github.example/acme/shop · Policy"
+    assert has_element?(view, "#version-export[href='#{base}/versions/2/export']")
 
     # A version and its export continue the breadcrumb as on the workspace's Policy.
     page = workspace_path(scope, "/targets/github.example/acme/shop")
@@ -522,7 +525,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
                "It follows #{scope.workspace.name}, which observes. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
       # The card is above the views, on each of them, and not on a version or its export.
-      for rest <- ["", "/history"] do
+      for rest <- ["", "/history", "/document"] do
         view = open(conn, path <> rest)
         html = render(view)
         {card, _} = :binary.match(html, ~s(id="policy-mode"))
@@ -616,6 +619,45 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       assert text(view, "#policy-mode-effect") =~
                "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
+    end
+
+    test "the Document view is the document in force under the card, and follows the mode in place",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      # Served the workspace's: its version in force, the workspace's mode.
+      view = open(conn, path <> "/document")
+      html = render(view)
+      {card, _} = :binary.match(html, ~s(id="policy-mode"))
+      {views, _} = :binary.match(html, ~s(id="policy-tabs"))
+      {version, _} = :binary.match(html, ~s(id="policy-version-h"))
+      assert card < views and views < version
+      assert has_element?(view, "h2#policy-version-h", "Version 4")
+      assert text(view, "#version-strip") =~ "Mode observe"
+
+      # Enforce, its own: its first version of its own, in place, with its mode.
+      pick_mode(view, "enforce")
+      set_mode(view)
+
+      assert has_element?(view, "#policy-mode")
+      assert text(view, "#policy-mode-value") == "Enforce"
+      assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
+      assert has_element?(view, "h2#policy-version-h", "Version 1")
+      assert text(view, "#version-strip") =~ "Mode enforce"
+      assert has_element?(view, "#ver-1[href='#{path}/versions/1'][aria-current=page]")
+      assert has_element?(view, "#version-export[href='#{path}/versions/1/export']")
+      assert page_title(view) =~ "Version 1 · acme/shop · Policy"
+
+      # A rule of its own, from elsewhere: the next version, in place.
+      {:ok, _} = Policy.allow(scope, target, %{host: "a.example"})
+      _ = render(view)
+      assert has_element?(view, "h2#policy-version-h", "Version 2")
+      assert text(view, "#version-strip") =~ "Mode enforce"
+
+      # A version opened from the history states its own mode: no card, an older one or
+      # the one in force.
+
+      for rest <- ["/versions/1", "/versions/2", "/versions/2/export"] do
+        refute has_element?(open(conn, path <> rest), "#policy-mode"), rest
+      end
     end
 
     test "to observe names the locked denies that still hold, and the card keeps saying so",
@@ -904,8 +946,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#chg-#{change.id}-diff") =~ "Added: Deny gitlab.example"
     assert text(view, "#history-foot") =~ "are in the workspace's history"
 
-    assert {:error, {:live_redirect, %{to: to}}} = live(conn, path <> "/document")
-    assert to == path <> "/versions/1"
+    view = open(conn, path <> "/document")
+    assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
+    assert has_element?(view, "h2#policy-version-h", "Version 1")
+    assert has_element?(view, "#ver-1[href='#{path}/versions/1']")
 
     view = open(conn, path <> "/versions/1")
     assert has_element?(view, "h2", "Version 1")
@@ -950,8 +994,22 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   test "a target served the baseline has no versions of its own: Document is the workspace's",
        %{conn: conn, path: path, scope: scope} do
-    assert {:error, {:live_redirect, %{to: to}}} = live(conn, path <> "/document")
-    assert String.starts_with?(to, workspace_path(scope, "/policy/versions/"))
+    # The workspace's version in force, in place under the target's card, its links the
+    # workspace's.
+    view = open(conn, path <> "/document")
+    assert has_element?(view, "#policy-mode")
+    assert text(view, "#policy-mode-source") == "Follows #{scope.workspace.name}"
+    assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
+    assert has_element?(view, "h2#policy-version-h", "Version 4")
+    assert has_element?(view, "#ver-4[href='#{workspace_path(scope, "/policy/versions/4")}']")
+
+    assert has_element?(
+             view,
+             "#version-export[href='#{workspace_path(scope, "/policy/versions/4/export")}']"
+           )
+
+    view |> element("#version-view button", "As served") |> render_click()
+    assert_patch(view, path <> "/document?view=served")
 
     view = open(conn, path <> "/versions/1")
     assert text(view, "#policy-page") =~ "This repository has no versions of its own"
