@@ -8,9 +8,12 @@ permissions:
   contents: read
 
 # A tag vX.Y.Z publishes the image ghcr.io/qoryai/apiary as X.Y.Z, X.Y and latest, for
-# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml and .env.example
-# attached, the latter naming X.Y.Z in APIARY_VERSION. The image's build is ci.yml's: the
-# same labels, build argument and cache. Nothing else publishes an image.
+# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml and env.example
+# attached, the latter a copy of .env.example naming X.Y.Z in APIARY_VERSION. The image's
+# build is ci.yml's: the same labels, build argument and cache. Nothing else publishes an
+# image.
+#
+# env.example has no leading period: GitHub renames asset names with a leading period.
 jobs:
   check:
     name: Check the tag
@@ -36,12 +39,12 @@ jobs:
         run: scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" release-notes.md
 
       - name: Check the files the release attaches
-        # The copy of .env.example the release attaches names the version, in the one
-        # APIARY_VERSION= line the repository's copy leaves empty.
+        # The release attaches a copy of .env.example as env.example, naming the version in
+        # the one APIARY_VERSION= line the repository's .env.example leaves empty.
         run: |
           test -f compose.yaml || { echo "compose.yaml is missing" >&2; exit 1; }
           [ "$(grep -cx 'APIARY_VERSION=' .env.example)" = 1 ] || {
-            echo ".env.example has no single empty APIARY_VERSION= line" >&2; exit 1; }
+            echo ".env.example has no single empty APIARY_VERSION= line to write env.example from" >&2; exit 1; }
 
   # Each platform on a runner of its own architecture, pushed by digest alone: no tag
   # names an image until both are built.
@@ -151,8 +154,8 @@ jobs:
         run: |
           mkdir dist
           cp compose.yaml dist/compose.yaml
-          sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/.env.example
-          grep -qx "APIARY_VERSION=$VERSION" dist/.env.example
+          sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/env.example
+          grep -qx "APIARY_VERSION=$VERSION" dist/env.example
 
       - name: Publish the release
         uses: softprops/action-gh-release@v3
@@ -160,4 +163,4 @@ jobs:
           body_path: release-notes.md
           files: |
             dist/compose.yaml
-            dist/.env.example
+            dist/env.example
