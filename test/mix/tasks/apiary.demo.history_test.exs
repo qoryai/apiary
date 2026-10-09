@@ -72,20 +72,9 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
 
   test "the runs end completed, failed, cancelled and lost, by the contract's exits and generic reasons",
        %{scope: scope} do
-    # Cancelled and lost runs are a few in a hundred: a larger history holds every kind.
-    History.run([
-      "--workspace",
-      "#{scope.organisation.slug}/#{scope.workspace.slug}",
-      "--runs",
-      "1000",
-      "--repositories",
-      "12",
-      "--days",
-      "20",
-      "--concurrency",
-      "1",
-      "--skip-members"
-    ])
+    # Cancelled and lost runs are a few in a hundred. This seed and this end give a small
+    # history that holds every kind, the same on any day.
+    fill(scope, ["--skip-members", "--seed", "1", "--until", "2026-06-01T12:00:00Z"])
 
     runs = runs(scope)
     by_state = Enum.group_by(runs, & &1.state)
@@ -106,7 +95,8 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
     end
 
     assert nil in reasons.("lost")
-    assert Enum.any?(reasons.("lost"), &(&1 in ~w(session_lost gateway_lost)))
+    assert "session_lost" in reasons.("lost")
+    assert "gateway_lost" in reasons.("lost")
 
     for run <- by_state["lost"], run.reason do
       assert run.reason in ~w(session_lost gateway_lost)
@@ -134,6 +124,23 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
 
     for {_run, "dev.qory.run.exited", data} <- events do
       assert data["state"] in ~w(succeeded failed cancelled)
+    end
+
+    # Each reason comes with its own state, and every stop and loss with exit -1: no exit
+    # status of the runtime's ended those.
+    exits = %{
+      "all_checks_passed" => {"succeeded", 0},
+      "checks_failed" => {"failed", :any},
+      "timeout" => {"cancelled", -1},
+      "no_longer_needed" => {"cancelled", -1},
+      "session_lost" => {"failed", -1},
+      "gateway_lost" => {"failed", -1}
+    }
+
+    for {_run, "dev.qory.run.exited", %{"reason" => reason} = data} <- events do
+      {state, code} = Map.fetch!(exits, reason)
+      assert data["state"] == state, reason
+      assert code == :any or data["exit_code"] == code, reason
     end
 
     started = for {run, "dev.qory.run.started", data} <- events, into: %{}, do: {run, data}
