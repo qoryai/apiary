@@ -44,8 +44,10 @@ defmodule ApiaryWeb.Edition do
     changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
     core's (`ApiaryWeb.ReservedSlugs`).
-  - **Words**: `c:gettext_backend/0`, the Gettext backend of the edition's own sentences,
-    beside the core's (`ApiaryWeb.Gettext.Backends`).
+  - **Words**: `c:product_name/0`, the product's name on the button of the Qory Apiary
+    menu and as the menu's name (`ApiaryWeb.Layouts.brand_menu/1`);
+    `c:gettext_backend/0`, the Gettext backend of the edition's own sentences, beside the
+    core's (`ApiaryWeb.Gettext.Backends`).
   """
 
   alias Apiary.Accounts.Scope
@@ -186,6 +188,14 @@ defmodule ApiaryWeb.Edition do
             }
 
   @doc """
+  The product's name, as the edition names it: the button of the Qory Apiary menu and the
+  menu's name (`ApiaryWeb.Layouts.brand_menu/1`), "Qory Apiary" in the core's. A name, not
+  a sentence: it is not translated. The log-in pages, the page titles and the emails keep
+  "Qory Apiary".
+  """
+  @callback product_name() :: String.t()
+
+  @doc """
   The edition's Gettext backend, whose catalogues hold the sentences of the edition's own
   modules, or nil when the edition has none beyond the core's `ApiaryWeb.Gettext`. It is
   built as the core's is (`docs/lingo.md`), with a catalogue for every locale of the
@@ -213,6 +223,7 @@ defmodule ApiaryWeb.Edition do
     activity_describer: 0,
     above_policy_link: 1,
     reserved_slugs: 0,
+    product_name: 0,
     gettext_backend: 0
   ]
 

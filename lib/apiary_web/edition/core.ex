@@ -5,7 +5,8 @@ defmodule ApiaryWeb.Edition.Core do
   entry of the organisation menu or the workspace menu, account menu entry, Instance section, group of places or place, or
   settings tab beyond the core's, every slot empty, no words for a reader, a
   refusal or actions beyond the core's, no level above a workspace's policy to link to,
-  no reserved name beyond the core's, and no Gettext backend beside the core's own.
+  no reserved name beyond the core's, the product named Qory Apiary, and no Gettext
+  backend beside the core's own.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
   callback it does not override.
@@ -63,6 +64,9 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def reserved_slugs, do: %{}
+
+  @impl true
+  def product_name, do: "Qory Apiary"
 
   @impl true
   def gettext_backend, do: nil

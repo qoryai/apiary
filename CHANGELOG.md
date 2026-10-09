@@ -190,10 +190,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   pages, repositories, runs and places, New, which offers a workspace's page a new
   node and an organisation's an invitation, and a sidebar of the page's workspace,
   organisation or account, which folds to icons, with the Qory Apiary menu (docs,
-  changelog, source, version) at its foot. A workspace's settings, an organisation's and
-  your own are each a place of their own with their own sections, GitHub's way, and
-  deleting a workspace, an organisation or your account is the danger zone at the end of
-  its General page or Profile.
+  the changelog with the version, source) at its foot. A workspace's settings, an
+  organisation's and your own are each a place of their own with their own sections,
+  GitHub's way, and deleting a workspace, an organisation or your account is the danger
+  zone at the end of its General page or Profile.
   Pages start at one left edge and use the width of the screen: lists up to 1680 px, a
   run's page all of it, forms 720 px.
   Each name in the top bar's path is cut short with an ellipsis where it does not fit; on
