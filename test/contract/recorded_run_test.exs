@@ -61,14 +61,15 @@ defmodule Apiary.Contract.RecordedRunTest do
       run:
         run
         |> Map.from_struct()
-        # The last two are dated by the receiver's clock, when the events arrived.
+        # The last three are by the receiver's clock, when the events arrived.
         |> Map.drop([
           :__meta__,
           :id,
           :inserted_at,
           :updated_at,
           :last_event_at,
-          :last_heartbeat_at
+          :last_heartbeat_at,
+          :clock_offset_ms
         ])
         |> Map.reject(fn {_field, value} -> match?(%Ecto.Association.NotLoaded{}, value) end),
       connections:

@@ -62,9 +62,14 @@ defmodule Apiary.Runs.Run do
     field :duration_ms, :integer
 
     field :last_event_at, :utc_datetime_usec
+    # When the last heartbeat counts as heard, by its own time and the clock offset below
+    # (`Apiary.Runs.Liveness.heard_at/3`).
     field :last_heartbeat_at, :utc_datetime_usec
     field :elapsed_seconds, :integer
     field :heartbeat_interval_seconds, :integer
+    # The smallest arrival less own time over the run's heartbeats, and for a run a gateway
+    # opened its ping's, in milliseconds (`Apiary.Runs.Fold`); nil until the first.
+    field :clock_offset_ms, :integer
 
     field :policy_digest, :string
     field :run_configuration_digest, :string

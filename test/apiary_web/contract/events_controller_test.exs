@@ -85,8 +85,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert run.state == "pending"
     end
 
-    test "a heartbeat is recorded on the key by the server's clock, not Forager's",
-         %{key: key, secret: secret} do
+    test "a heartbeat is recorded on the key as its run counts it, never after its arrival",
+         %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
       # Forager on a machine whose clock is a century ahead does not pin the key's heartbeat.
@@ -98,17 +98,54 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       assert DateTime.compare(first, before) != :lt
       assert DateTime.diff(first, before) < 60
+      assert first == run!(scope, subject).last_heartbeat_at
 
       # The same heartbeat delivered again is not a new heartbeat.
       assert build_conn() |> signed_post(key.key_id, secret, [future]) |> response(202)
       assert Repo.get!(AccessKey, key.id).last_heartbeat_at == first
 
-      # A new one moves it on.
-      next = wire_event(subject, 2, "run.heartbeat", beat, time: "1999-01-01T00:00:00Z")
+      # A new one on the same clock moves it on.
+      next = wire_event(subject, 2, "run.heartbeat", beat, time: "2126-01-01T00:00:30Z")
       assert build_conn() |> signed_post(key.key_id, secret, [next]) |> response(202)
+      moved = Repo.get!(AccessKey, key.id).last_heartbeat_at
+      assert DateTime.compare(moved, first) == :gt
+      assert moved == run!(scope, subject).last_heartbeat_at
 
-      assert DateTime.compare(Repo.get!(AccessKey, key.id).last_heartbeat_at, first) !=
-               :lt
+      # One recorded long before, sent now, counts by its own time and never moves it back.
+      old = wire_event(subject, 3, "run.heartbeat", beat, time: "2125-12-31T23:00:00Z")
+      assert build_conn() |> signed_post(key.key_id, secret, [old]) |> response(202)
+      assert DateTime.diff(moved, run!(scope, subject).last_heartbeat_at) > 3000
+      assert Repo.get!(AccessKey, key.id).last_heartbeat_at == moved
+    end
+
+    test "a key whose run's heartbeats arrive late records when they were recorded, corrected",
+         %{scope: scope, key: key, secret: secret} do
+      {subject, [ping, started]} = first_events()
+      now = DateTime.utc_now()
+      stamp = &(&1 |> DateTime.add(&2, :second) |> DateTime.to_iso8601())
+      ping = %{ping | "time" => stamp.(now, 0)}
+
+      started = %{
+        started
+        | "time" => stamp.(now, 0),
+          "data" => %{
+            "opened_by" => "gateway",
+            "credential" => "issuer",
+            "forager_version" => "0.4.0"
+          }
+      }
+
+      # A run a gateway opened, its ping on time; its first heartbeat recorded an hour ago.
+      assert build_conn() |> signed_post(key.key_id, secret, [ping, started]) |> response(202)
+
+      data = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
+      beat = wire_event(subject, 3, "run.heartbeat", data, time: stamp.(now, -3600))
+
+      assert build_conn() |> signed_post(key.key_id, secret, [beat]) |> response(202)
+
+      heard = Repo.get!(AccessKey, key.id).last_heartbeat_at
+      assert heard == run!(scope, subject).last_heartbeat_at
+      assert DateTime.diff(now, heard) in 3200..3400
     end
 
     test "a delivery whose User-Agent names no Forager version leaves the one the key has recorded",

@@ -64,7 +64,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
   the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
-  04545d3.
+  6cd1448.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint and the run configuration each spend a bucket of their own, 50
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
@@ -174,6 +174,13 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   organisation, marked first and purged after a grace period.
 - Retention prunes nothing of a lost run until 7 days after it was lost, however short the
   workspace's settings, so a gateway's record sent after a shorter outage is stored.
+- A heartbeat counts by its own time, corrected by its run's clock offset, within 300
+  seconds and never after its arrival, so a gateway's record sent after an outage revives
+  no lost run and holds no instance slot: the run stays lost until its exit arrives, and
+  the access key's Last heartbeat says when its heartbeats were recorded. Two limits stay,
+  both brief: after an outage shorter than about 6½ minutes, a run can still look alive
+  for a moment; and a session's run whose heartbeats all arrive late, because the outage
+  began before its first one, still comes back for a few minutes.
 - The console's shell: a top bar that says where a page is, the organisation first, and
   switches to any organisation or workspace with a search, Search or jump to (⌘K) for
   pages, repositories, runs and places, New, which offers a workspace's page a new

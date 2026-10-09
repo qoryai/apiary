@@ -238,7 +238,7 @@ defmodule ApiaryWeb.RunComponents do
   The seconds a running run has been quiet for, or nil: set once the workspace has heard
   no heartbeat for more than one interval. The server decides this, never the browser, and
   by the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from
-  when the last heartbeat was received, or, for a run that has not beaten yet, from when
+  when the last heartbeat counts as heard, or, for a run that has not beaten yet, from when
   the workspace first heard of it; a run that announced no valid interval is held to 30
   seconds.
   """
@@ -270,7 +270,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: Forager's own
-  `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
+  `elapsed_seconds` of its last heartbeat and the server time that heartbeat counts as heard;
   before the first heartbeat, zero at the moment the workspace first heard of the run.
   Never Forager's `started_at`: its clock may be anywhere.
   """
