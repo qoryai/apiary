@@ -177,14 +177,20 @@ if config_env() == :prod do
     System.get_env("DATABASE_URL") ||
       raise """
       environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
+      For example: postgres://USER:PASS@HOST/DATABASE
       """
+
+  # The password when DATABASE_URL carries none.
+  database_password = System.get_env("DATABASE_PASSWORD")
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  # The URL, TLS as its sslmode and sslrootcert say, and the password (Apiary.DatabaseUrl).
+  repo_options = Apiary.DatabaseUrl.repo_options(database_url, database_password)
+
+  config :apiary, Apiary.Repo, repo_options
+
   config :apiary, Apiary.Repo,
-    # ssl: true,
-    url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,

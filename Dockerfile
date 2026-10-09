@@ -97,6 +97,21 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
+# The certificate authorities of Amazon RDS, which Debian's store does not hold, for a
+# DATABASE_URL with sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem. The
+# checksum pins the bundle: when Amazon changes it, the build stops until this line names
+# the new one. The directory is made first, with the usual mode: a directory ADD makes
+# takes the file's mode, 0644, which only root could enter.
+RUN mkdir -p /app/certs
+ADD --checksum=sha256:fe45bbebf92ad3e27a583bbb2ddd1553c521ed4d49af5514dc0a40372ea5395c --chmod=0644 \
+  https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /app/certs/rds-global-bundle.pem
+
+# The keys generated at first start, in APIARY_KEYS_DIR. The directory belongs to nobody,
+# so a new volume mounted on it takes that owner and the release can write to it.
+RUN mkdir -p /var/lib/apiary/keys \
+  && chown nobody /var/lib/apiary/keys
+ENV APIARY_KEYS_DIR=/var/lib/apiary/keys
+
 WORKDIR "/app"
 RUN chown nobody /app
 
@@ -105,6 +120,14 @@ ENV MIX_ENV="prod"
 
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/apiary ./
+
+# The commit the image is built from, written into the release as the file REVISION, which
+# the release reads at boot and GET /health reports as its revision. A file, so no setting
+# can change it. A build without the argument writes none, and the revision is null.
+ARG APIARY_REVISION
+RUN if [ -n "$APIARY_REVISION" ]; then printf '%s\n' "$APIARY_REVISION" > /app/REVISION; fi
+
+EXPOSE 4100
 
 USER nobody
 

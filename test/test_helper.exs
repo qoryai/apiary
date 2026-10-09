@@ -48,6 +48,10 @@ exclude =
 # the sandbox: they run only when asked for, with `mix test --only load`.
 exclude = exclude ++ [:load]
 
+# The tests tagged :database_tls connect to a Postgres that serves TLS, which CI's job
+# "Database over TLS" starts: they run only when asked for, with `mix test --only database_tls`.
+exclude = exclude ++ [:database_tls]
+
 ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
 
 # The instance has had its first sign-up, committed before the sandbox takes over: a

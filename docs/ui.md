@@ -1030,7 +1030,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
   build-01? Clear this instance if it stopped without saying so. Another instance can then
   start at once." with Yes, clear and Cancel; an instance that does not run now confirms at
-  the top of the instances. Its open runs are marked lost, which is not final: a heartbeat brings a run back.
+  the top of the instances. Its open runs are marked lost, which is not final: a heartbeat
+  that counts within three intervals of its arrival brings a run back.
 - **Live**: the list and the page read again on `{:nodes_touched, workspace_id}`
   (`Apiary.Nodes.topic/1`) and on a `{:run_changed, run}` of a run on a node, at most
   every 250 ms, and every 15 seconds, since an instance stops running without an event.

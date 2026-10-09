@@ -12,10 +12,10 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Two jobs side by side: Checks, the checks that do not depend on the features, run once;
-# and the tests, under each set of features.
+# Four jobs side by side: Checks, the checks that do not depend on the features, run once;
+# the tests, under each set of features; the image, on each platform; and Database over TLS.
 #
-# A pull request whose head is next, of this repository, skips both: the push to next runs
+# A pull request whose head is next, of this repository, skips them: the push to next runs
 # them on the same commit, the pull request's head. GitHub does not evaluate the name of a
 # job its if skips: the skipped job's check shows its name: expression as written, which is
 # never a required check's name, so a required check is answered only by the push run's job
@@ -163,3 +163,162 @@ jobs:
             deps
             _build/test
           key: ${{ steps.restore.outputs.cache-primary-key }}
+
+  # The image, from the Dockerfile, for each platform a release publishes, each built on a
+  # runner of its own architecture: built and checked, and pushed to no registry. Only
+  # release.yml publishes an image, at a release, with the same build: the same labels,
+  # build argument and cache.
+  image:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Image · checked by the push run' || format('Image ({0})', matrix.platform) }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Loaded into the runner's Docker for the checks below, under a name that is not the
+      # package's. The cache is the platform's own, which release.yml builds on too.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: apiary:ci
+          build-args: |
+            APIARY_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+
+      # The keys directory belongs to nobody, the release carries the commit it was built
+      # from, and RDS's certificate bundle is the one the Dockerfile pins.
+      - name: Check the image
+        run: |
+          docker run --rm apiary:ci ls -ld /var/lib/apiary/keys
+          owner="$(docker run --rm apiary:ci stat -c %U /var/lib/apiary/keys)"
+          [ "$owner" = nobody ] || {
+            echo "/var/lib/apiary/keys belongs to $owner, not nobody" >&2; exit 1; }
+
+          revision="$(docker run --rm apiary:ci cat /app/REVISION)"
+          [ "$revision" = "$GITHUB_SHA" ] || {
+            echo "/app/REVISION holds $revision, not $GITHUB_SHA" >&2; exit 1; }
+
+          pinned="$(grep -o 'checksum=sha256:[0-9a-f]*' Dockerfile | cut -d: -f2)"
+          [ -n "$pinned" ] || { echo "the Dockerfile pins no checksum" >&2; exit 1; }
+          echo "$pinned  /app/certs/rds-global-bundle.pem" |
+            docker run --rm -i apiary:ci sha256sum -c -
+
+  # DATABASE_URL's sslmode and sslrootcert (Apiary.DatabaseUrl) against a Postgres 18 that
+  # serves TLS: a CA and a certificate for localhost are made for the run, in the runner's
+  # temporary directory, and the CAs' keys deleted once the certificate is signed.
+  # verify-full with sslrootcert naming that CA connects over TLS; another CA, another host
+  # name and the system's CAs are refused; require connects without checking; disable
+  # connects without TLS. The tests' own database is the service, as in the tests' job.
+  database-tls:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Database over TLS · checked by the push run' || 'Database over TLS' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TLS_CONTAINER: apiary-database-tls-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain pinned in mise.toml
+        uses: jdx/mise-action@v3
+
+      # The tests' cache, read only: the tests' job saves it.
+      - name: Restore dependencies and build
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            deps
+            _build/test
+          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          restore-keys: |
+            mix-test-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Make a CA, another CA and a certificate for localhost
+        run: |
+          tls_dir="$RUNNER_TEMP/database-tls"
+          mkdir -p "$tls_dir" && cd "$tls_dir"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Apiary test CA" \
+            -keyout ca.key -out ca.pem
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Apiary other CA" \
+            -keyout wrong-ca.key -out wrong-ca.pem
+          openssl req -newkey rsa:2048 -nodes -subj "/CN=localhost" \
+            -keyout server.key -out server.csr
+          printf '%s\n' "subjectAltName=DNS:localhost" "basicConstraints=CA:FALSE" \
+            "extendedKeyUsage=serverAuth" > server.ext
+          openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 1 \
+            -extfile server.ext -out server.crt
+          rm ca.key wrong-ca.key server.csr
+          echo "DATABASE_TLS_CA=$tls_dir/ca.pem" >> "$GITHUB_ENV"
+          echo "DATABASE_TLS_WRONG_CA=$tls_dir/wrong-ca.pem" >> "$GITHUB_ENV"
+
+      # Postgres reads its key only when the key is its own and private, so the container
+      # copies the mounted files to where they are before Postgres starts. The password is
+      # the run's own, and reaches the tests in DATABASE_PASSWORD's place.
+      - name: Start Postgres 18 with TLS
+        run: |
+          tls_dir="$RUNNER_TEMP/database-tls"
+          password=$(openssl rand -hex 16)
+          echo "::add-mask::$password"
+          echo "DATABASE_TLS_PASSWORD=$password" >> "$GITHUB_ENV"
+          docker run -d --name "$TLS_CONTAINER" -e POSTGRES_PASSWORD="$password" \
+            -p 127.0.0.1::5432 \
+            -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
+            postgres:18 bash -c '
+              install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
+              install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
+              exec docker-entrypoint.sh postgres -c ssl=on \
+                -c ssl_cert_file=/etc/postgresql-tls/server.crt \
+                -c ssl_key_file=/etc/postgresql-tls/server.key'
+          echo "DATABASE_TLS_PORT=$(docker port "$TLS_CONTAINER" 5432/tcp | head -n 1 | cut -d: -f2)" >> "$GITHUB_ENV"
+          for _ in $(seq 60); do
+            docker exec "$TLS_CONTAINER" pg_isready -U postgres -h localhost && break
+            sleep 1
+          done
+          docker exec "$TLS_CONTAINER" psql -U postgres -tAc 'SHOW ssl' | grep -qx on
+
+      - name: Test
+        env:
+          MIX_ENV: test
+        run: mix test --only database_tls
+
+      - name: Remove the Postgres with TLS
+        if: always()
+        run: docker rm -f "$TLS_CONTAINER"

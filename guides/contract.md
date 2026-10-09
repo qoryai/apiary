@@ -214,7 +214,10 @@ this order, and the first refusal that applies is the answer:
 To the gateway a `2xx` means accepted, `410` means send nothing more for this run, and anything
 else is retried with backoff until the run ends. The ping that opens a run is a batch like
 any other: a `202` lets the run start, and a revoked key, a bad signature, an instance
-beyond the limit or an unsupported version does not.
+beyond the limit or an unsupported version does not. The gateway tries it up to 3 times,
+1 second and then 2 seconds after the try before ends, none more than 6 seconds after the
+run was asked for: again after no answer, a `5xx` or a signed `429`, whose `Retry-After`
+it does not read. A run whose ping is refused on every try does not open.
 
 - **The envelope is checked, the data is not.** Each event has `id` and `subject` (lower-case
   UUIDs), `type` (beginning `dev.qory.`), `sequence` (ten digits, from `0000000001`),
@@ -240,7 +243,8 @@ beyond the limit or an unsupported version does not.
   alone.
 - **The rate** is per access key and per server node: 50 batches a second, 100 at once.
   Every request that passed the `413`, the `415` and the `401` spends one, whatever it is
-  answered after that.
+  answered after that. The ping is a batch and spends one too, so while a gateway flushes
+  a backlog on the same key, a new run's ping can be refused `429`, and is sent again.
 - **The digests.** Every `202` and `410` carries `X-Qory-Configuration`. A gateway that
   holds another digest fetches the document again; nothing in an answer's body is read.
   <!-- feature: security -->
@@ -271,8 +275,10 @@ baseline.
 | `429` | the key's rate for the run configuration is spent: 50 requests a second, 100 at once, per server node, from a bucket of its own, so events the gateway delivers never spend it; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
-To the gateway anything but `200` is no run, or a reload that failed and is tried again on the
-next answer. The endpoint never answers `304`.
+As a run opens, the gateway tries the run configuration up to 3 times, as it tries the
+ping: again after no answer, a `5xx` or a signed `429`. Any other answer but `200` is no
+run, and so is the last try's. During a run, any answer but `200` is a reload that
+failed, tried again on the next answer. The endpoint never answers `304`.
 
 A `200` carries `X-Qory-Run-Configuration: sha256=<hex>`, `ETag` with the same string
 quoted, `X-Qory-Configuration` and `Cache-Control: no-store, no-transform`:
