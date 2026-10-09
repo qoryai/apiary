@@ -24,6 +24,10 @@ defmodule Apiary.Runs.Projector do
   `projected_sequence` is the highest sequence up to which every event has been
   projected: it stops before the first gap and moves on when the gap fills.
 
+  Once its passes have committed, a projection records the run's `last_heartbeat_at` as
+  its access key's last heartbeat when it is later than the key's
+  (`Apiary.AccessKeys.touch_heartbeat/2`), so the key's is the latest of its runs'.
+
   Event data is never logged from here: a failure is logged with the run's id and the
   kind of the error, nothing more, and every query that carries event data as a parameter
   is kept out of the query log (`log: false`), which at debug level prints parameters.
@@ -33,10 +37,11 @@ defmodule Apiary.Runs.Projector do
 
   require Logger
 
+  alias Apiary.AccessKeys
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
+  alias Apiary.Runs.{Connection, Event, Fold, Liveness, LogChunk, Run, Target}
 
   # What the fold may change on the run's row.
   @folded_fields ~w(
@@ -45,6 +50,7 @@ defmodule Apiary.Runs.Projector do
     about_kind about_title about_subjects about_details
     target_system target_path started_at exited_at exit_code
     signal reason quiet_seconds duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
+    clock_offset_ms
     policy_digest run_configuration_digest lost_at cost_usd
   )a
 
@@ -65,6 +71,7 @@ defmodule Apiary.Runs.Projector do
         {:ok, run}
 
       {:ok, run, {first, last}} ->
+        touch_heartbeat(run)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
 
@@ -277,7 +284,14 @@ defmodule Apiary.Runs.Projector do
       # The fold reads no database: the workspace it names the target by comes with the
       # run, carrying the domain whose labelling rule names it.
       workspace = %Workspace{id: run.workspace_id, domain: domain}
-      fold = fold_module().fold(%{run | workspace: workspace}, events, latest(id, events))
+
+      fold =
+        fold_module().fold(
+          %{run | workspace: workspace},
+          events,
+          latest(id, events),
+          ping_offset(id, events)
+        )
 
       run =
         run
@@ -359,6 +373,27 @@ defmodule Apiary.Runs.Projector do
       {rank, sequence}
     end
   end
+
+  # The smallest clock offset of the run's pings already projected, for a pass that holds
+  # its `run.started` (`Apiary.Runs.Fold`); nil for any other pass, and for none.
+  defp ping_offset(id, events) do
+    if Enum.any?(events, &(&1.type == "dev.qory.run.started")) do
+      Repo.all(
+        from e in Event,
+          where: e.run_id == ^id and e.type == "dev.qory.ping" and not is_nil(e.projected_at),
+          select: {e.received_at, e.time}
+      )
+      |> Enum.map(fn {received_at, time} -> Liveness.clock_offset(received_at, time) end)
+      |> Enum.min(fn -> nil end)
+    end
+  end
+
+  # One `UPDATE` by the key's id, which changes nothing when the key holds a later one.
+  defp touch_heartbeat(%Run{access_key_id: key_id, last_heartbeat_at: %DateTime{} = at})
+       when is_binary(key_id),
+       do: AccessKeys.touch_heartbeat(key_id, at)
+
+  defp touch_heartbeat(_run), do: :ok
 
   defp last_projected(id, types) do
     Repo.one(

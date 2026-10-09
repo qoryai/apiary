@@ -174,6 +174,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   organisation, marked first and purged after a grace period.
 - Retention prunes nothing of a lost run until 7 days after it was lost, however short the
   workspace's settings, so a gateway's record sent after a shorter outage is stored.
+- A heartbeat counts by its own time, corrected by its run's clock offset, within 300
+  seconds and never after its arrival, so a gateway's record sent after an outage revives
+  no lost run and holds no instance slot: the run stays lost until its exit arrives, and
+  the access key's Last heartbeat says when its heartbeats were recorded.
 - The console's shell: a top bar that says where a page is, the organisation first, and
   switches to any organisation or workspace with a search, Search or jump to (⌘K) for
   pages, repositories, runs and places, New, which offers a workspace's page a new

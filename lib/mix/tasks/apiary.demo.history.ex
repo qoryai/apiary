@@ -1787,9 +1787,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         AccessKeys.touch_delivery(key, %{
           last_used_at: at,
           last_forager_version: version,
-          last_contract_version: 1,
-          last_heartbeat_at: at
+          last_contract_version: 1
         })
+
+        AccessKeys.touch_heartbeat(key.id, at)
       end
     end
 

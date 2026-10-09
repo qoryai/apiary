@@ -1071,10 +1071,9 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  Records a delivery to the events endpoint: `last_used_at`, Forager's and the
+  Records a delivery to the events endpoint: `last_used_at`, and Forager's and the
   contract's versions when the request named them (a request that named none
-  leaves what is recorded), and `last_heartbeat_at` when the delivery held a new
-  heartbeat, never moving it backwards. One `UPDATE`, without reading the row.
+  leaves what is recorded). One `UPDATE`, without reading the row.
   """
   def touch_delivery(%AccessKey{id: id}, attrs) do
     set =
@@ -1085,25 +1084,24 @@ defmodule Apiary.AccessKeys do
       ]
       |> Enum.reject(fn {_field, value} -> is_nil(value) end)
 
-    query = from(k in AccessKey, where: k.id == ^id)
+    Repo.update_all(from(k in AccessKey, where: k.id == ^id), set: set)
+    :ok
+  end
 
-    query =
-      case attrs[:last_heartbeat_at] do
-        %DateTime{} = at ->
-          # GREATEST ignores a null: the first heartbeat sets the column.
-          from k in query,
-            update: [
-              set: [
-                last_heartbeat_at:
-                  fragment("GREATEST(?, ?)", k.last_heartbeat_at, type(^at, :utc_datetime_usec))
-              ]
-            ]
+  @doc """
+  Records `at` as the key's `last_heartbeat_at` when the key has none or an earlier one:
+  the time a run of the key's last heartbeat counts as heard (`Apiary.Runs.Projector`),
+  never moving it backwards. One `UPDATE`, without reading the row.
+  """
+  def touch_heartbeat(key_id, %DateTime{} = at) do
+    Repo.update_all(
+      from(k in AccessKey,
+        where: k.id == ^key_id,
+        where: is_nil(k.last_heartbeat_at) or k.last_heartbeat_at < ^at
+      ),
+      set: [last_heartbeat_at: at]
+    )
 
-        _ ->
-          query
-      end
-
-    Repo.update_all(query, set: set)
     :ok
   end
 end

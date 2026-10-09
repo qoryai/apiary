@@ -1144,6 +1144,44 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Open #{title}"]))
     end
 
+    test "a lost run whose heartbeats are sent late keeps its row until its exit arrives",
+         %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+      # Its heartbeats had set its clock offset, a second behind, before it was lost.
+      lost = lost_run(scope, %{clock_offset_ms: 1000})
+      view = open(conn, scope)
+      assert has_element?(view, "#att-run-#{lost.run_id}[data-kind=lost]", "Lost")
+
+      # The heartbeats of the hour it was lost for, sent now.
+      for k <- 1..20 do
+        event_fixture(
+          lost,
+          10 + k,
+          "run.heartbeat",
+          %{"elapsed_seconds" => 510 + 30 * k, "interval_seconds" => 30},
+          time: DateTime.add(now, -3600 + 30 * k, :second),
+          received_at: now
+        )
+      end
+
+      assert {:ok, %Run{state: "lost"}} = Projector.project(lost)
+      render_async(view, 5_000)
+      assert has_element?(view, "#att-run-#{lost.run_id}[data-kind=lost]", "Lost")
+      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
+
+      event_fixture(
+        lost,
+        31,
+        "run.exited",
+        %{"state" => "failed", "exit_code" => -1, "reason" => "gateway_lost", "duration_ms" => 1},
+        time: DateTime.add(now, -2900, :second),
+        received_at: now
+      )
+
+      assert {:ok, %Run{state: "failed"}} = Projector.project(lost)
+      refute has_element?(open(conn, scope), "#att-run-#{lost.run_id}")
+    end
+
     @tag needs: :security
     test "allow a denied destination here: the panel in place, the rule, the struck row", %{
       conn: conn,
