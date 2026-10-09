@@ -2672,6 +2672,13 @@
     .q-trail-up + .q-trail-item > .q-trail-sep {
       display: inline;
     }
+    /* The parent keeps its name, up to 8rem; the page's own name is cut short first. */
+    .q-trail-up {
+      flex-shrink: 0;
+    }
+    .q-trail-up .q-trail-link {
+      max-width: 8rem;
+    }
   }
 }
 
