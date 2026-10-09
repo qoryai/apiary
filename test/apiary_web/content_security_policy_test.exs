@@ -476,14 +476,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     login_token =
       extract_user_token(fn url -> Accounts.deliver_login_instructions(user, url) end)
 
-    stories =
-      for entry <- ApiaryWeb.Storybook.leaves(), do: String.trim_leading(entry.path, "/")
-
-    component_stories =
-      for path <- stories,
-          {:ok, story} = ApiaryWeb.Storybook.load_story(path),
-          story.storybook_type() == :component,
-          do: path
+    {stories, component_stories} = stories()
 
     base = %{
       org: scope.organisation.slug,
@@ -504,6 +497,26 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     }
 
     Map.merge(base, security_params(scope, target))
+  end
+
+  # The storybook's stories, and those of them that are a component's. The storybook is
+  # compiled in the core's checkout alone (storybook_test.exs): an edition that runs this
+  # test has neither the stories nor their routes.
+  if Code.ensure_loaded?(ApiaryWeb.Storybook) do
+    defp stories do
+      stories =
+        for entry <- ApiaryWeb.Storybook.leaves(), do: String.trim_leading(entry.path, "/")
+
+      component_stories =
+        for path <- stories,
+            {:ok, story} = ApiaryWeb.Storybook.load_story(path),
+            story.storybook_type() == :component,
+            do: path
+
+      {stories, component_stories}
+    end
+  else
+    defp stories, do: {[], []}
   end
 
   # The records of the `security` feature; placeholders where the instance has not got
