@@ -5880,6 +5880,12 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The end reason under State wraps: it is the one line that says how the run ended, and
+     a refusal's code or a starter's reason is not to be cut. */
+  .q-rail-sub.q-rail-sub-wrap {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
   .q-rail-kv .q-rule {
     overflow-wrap: anywhere;
     white-space: normal;
