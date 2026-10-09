@@ -1357,9 +1357,10 @@ not fill fails until it is filled there.
 ## The run page
 
 A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
-width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
-on its own) sits beside it, on every tab but Terminal, which is wide and takes the
-whole width (`q-run-wide`). The top bar's breadcrumb ends with Runs, a link to the list,
+width, and from 1280 px the **Details rail** (280 px, sticky under the top bar, scrolling
+on its own) sits beside it on every tab, Terminal too; below 1280 px Details is a button
+under the header. The terminal takes the whole window through Focus (The terminal,
+below). The top bar's breadcrumb ends with Runs, a link to the list,
 and `Run 0191f2a4`, a link to the Timeline on the other tabs; the run's target is on its meta line, not in the breadcrumb, and the
 page has no breadcrumb of its own.
 
@@ -1373,17 +1374,30 @@ page has no breadcrumb of its own.
   Completed · all checks passed), the runtime's exit for a session's run that failed with
   no words ("exit 1", "SIGKILL"), how alive the run is while it runs, the target (its
   page), the runtime, the host, when it
-  started, how long it took and its denials, in red, which lead to its denied
-  connections. At the right: the ⋯ menu (Copy run id, Raw log, Download log), and no
+  started, how long it took (left out for a run that did not start, which never ran) and
+  its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
+  (Copy run id, Raw log, Download log), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
   meta line, in one cut line whole on hover: the last result of its timeline that was no
   success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
-- **The tabs**, Timeline, Terminal, Network access and Details (from 1440 px only on
-  Terminal and on Details itself, where there is no rail), stick under the top bar; each is a live action of the one LiveView, so a tab is a patch.
+- **The tabs**, Timeline, Terminal and Network access, stick under the top bar; each is a
+  live action of the one LiveView, so a tab is a patch. An old link to a run's Details
+  tab (`/runs/:run_id/details`) lands on the Timeline with Details open, and the address
+  becomes the Timeline's.
+- **Details is one element** (`#run-details`), after the header and before the tabs at
+  every width, so the two places never disagree and no id is drawn twice; its reading and
+  keyboard order is the header, Details, the tabs, then the tab's content. From 1280 px it
+  is the right column, level with the header, beside every tab. Below 1280 px it is a
+  **Details button** under the header (`#run-details-toggle`, a disclosure with
+  `aria-expanded` and `aria-controls`, as the settings' section button): closed when the
+  page opens, it opens the same element in place above the tabs, its sections as cards,
+  pushing the tabs down; not sticky, not a modal. It stays as the reader left it across
+  the tabs; Escape on it closes it and keeps the focus on it. The Record's Session is read
+  again when the session starts, whatever the tab.
 - **The Details rail** is key and value lines under small headings (About, Run, Labels,
-  Command, Record, Policy in force), no card and no chip; the run's labels are its own
+  Command, Record, Policy in force), no chip, and no card in the right column; the run's labels are its own
   identifiers, in mono, and one that names the target leads to its page.
 - **About** is the rail's first section, shown when the run names a kind, a subject or
   details: Kind; Subjects, each its type and ref, a link out when its url may be one, with
@@ -1400,10 +1414,7 @@ page has no breadcrumb of its own.
   (the run page's `<h1>` and About, the runs list's row and preview, a target's runs, the
   Overview's rows, Network access's hits and ⌘K's results), in a
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
-  an `aria-label` and an announcement hold them as plain text. Below 1440 px,
-  and from it when Terminal took the rail's room, the Details tab shows this same element
-  in the column, its sections as cards
-  (`q-run-on-details`), so the two never disagree and no id is drawn twice.
+  an `aria-label` and an announcement hold them as plain text.
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
@@ -1415,7 +1426,8 @@ page has no breadcrumb of its own.
   "stopped, no outcome given", "stopped responding", "end not recorded", "events
   refused", "couldn't check whether the run may go on: no answer", "couldn't check
   whether the run may go on: unreadable answer", and for a run that did not start "did
-  not start" with the refusal's code ("did not start: image_unknown"). None names who or
+  not start" with the refusal's code in mono ("did not start: image_unknown"), in the
+  meta line and the rail as in the timeline's item. None names who or
   what ended the run. Any other code is the run's starter's, shown as given with spaces
   for underscores: "no longer needed". The quiet period reads in whole hours, else whole
   minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
@@ -1426,7 +1438,7 @@ page has no breadcrumb of its own.
   the placeholder of an exit that holds no exit status of the runtime's.
 - **The timeline's last item** is one kind for every end: "Run ended", then the end
   reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
-  a signal), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
+  a signal, nor for an exit with no code at all), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
   Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
   not start ends on "Run did not start" and the refusal's code in mono, with the red
   x-mark.
@@ -1443,7 +1455,7 @@ page has no breadcrumb of its own.
   the record lacks left out. Its header says its state and the end reason's words after
   it, as any run's does (Cancelled · no activity for 30 minutes), with no runtime, no
   host and no exit. The tabs are as on any run: Timeline,
-  Terminal, Network access and Details.
+  Terminal and Network access, with Details beside them.
   - **Terminal** is the terminal itself, as on a session's run, its bar, its dark screen
     and its foot (Ended · 0 B), empty, with a note in the middle of the screen in the
     terminal's own message style: "**No session.** A gateway opened this run for a

@@ -149,7 +149,10 @@ else compares a level for it.
 Granting and revoking an instance admin (`instance_admin.grant`, `instance_admin.revoke`,
 `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1`) are release
 commands, taken on the strength of a shell on the release, which no role has. Revoking
-the last owner who may act is refused, `{:error, :last_owner}`.
+the last owner who may act is refused, `{:error, :last_owner}`. The claim of an instance
+nobody has signed up to at its first start (`FIRST_ADMIN_EMAIL`, `Apiary.FirstAdmin`) is
+taken on the strength of the release's environment, likewise beyond any role, and acts on
+no instance that has its organisation.
 
 The instance's own organisation is never deleted nor purged: an instance without it would
 give its next sign-up the instance. `Apiary.Deletion` refuses to mark or purge it,

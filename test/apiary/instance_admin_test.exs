@@ -158,5 +158,18 @@ defmodule Apiary.InstanceAdminTest do
 
       assert instance_organisation() == nil
     end
+
+    test "an address an account has already is refused with the sign-up's message" do
+      # An account in no organisation, as one left after its own was deleted.
+      existing = Apiary.AccountsFixtures.user_fixture()
+
+      output =
+        capture_io(fn ->
+          assert {:error, :invalid} = Release.grant_instance_admin(existing.email, "Acme")
+        end)
+
+      assert output == "Not created: email has already been taken.\n"
+      assert instance_organisation() == nil
+    end
   end
 end

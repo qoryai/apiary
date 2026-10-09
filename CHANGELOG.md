@@ -9,7 +9,7 @@ restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
-The first release of the open core of Qory Apiary: the free edition, complete for one
+The first release of the open core of Qory Apiary: Apiary Community, complete for one
 team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Added
@@ -19,6 +19,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
   `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
   instance and change its admins.
+- `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, both optional and empty in
+  `.env.example`, claim a new instance at its first start, before it serves a page: the
+  instance's first sign-up, as `grant_instance_admin/2` makes it, which emails the log-in
+  link, and claims the instance even when the email does not go out. On an instance that
+  has its organisation, a restored one included, the boot ignores them: it checks neither,
+  creates and grants nothing, and sends no email. One set and the other empty, or a value
+  the sign-up refuses, stops the boot of an instance nobody has signed up to with a
+  message naming the variable.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces
@@ -268,8 +276,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `APIARY_ENCRYPTION_SECRET`, which tells nothing of it, and its signing key's
   fingerprint, and a later boot with another of either stops with a message that says
   which, where it served before with no access key verifying or every machine refusing its
-  answers. `Apiary.Release.accept_signing_key/0`, run in a one-off container, makes a new
-  signing key the instance's on purpose.
+  answers. `APIARY_ACCEPT_SIGNING_FINGERPRINT`, set to the fingerprint the refusal names,
+  makes a new signing key the instance's on purpose at the next boot; any other value
+  changes nothing, and it never accepts another `APIARY_ENCRYPTION_SECRET`.
+  `Apiary.Release.accept_signing_key/0` does the same in a one-off container.
 - The image, `ghcr.io/qoryai/apiary`, from the `Dockerfile`: CI builds it on every pull
   request and push, for `linux/amd64` and `linux/arm64`, and publishes nothing; only a
   release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the
@@ -284,6 +294,29 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `.env.example` holds no secret, and no `POSTGRES_PASSWORD`. CI runs it as a person
   does: the install, a restart, the upgrade from the base commit's image, the path from a
   checkout, and an external Postgres over TLS.
+- The AWS template, `deploy/aws/apiary.yaml`: Qory Apiary on ECS Fargate behind an
+  Application Load Balancer, with RDS for PostgreSQL 18 and its keys in Secrets Manager,
+  installed from the AWS console's form and upgraded with its Update, with no command. A
+  release attaches it as `apiary.yaml` with the release's version written in
+  (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
+  template, `VersionOverride` left empty. The form asks for the edition, Apiary Community
+  or Apiary Pro; Apiary Pro's download key, which the stack keeps as a secret of its own,
+  deleted with the stack, for the image's pull alone; the first administrator's email
+  address and organisation's name, which the task gets as `FIRST_ADMIN_EMAIL` and
+  `FIRST_ORGANISATION_NAME`; the domain, with a Route 53 hosted zone, or without one, the
+  stack then making the certificate and waiting for its validation record; and the mail
+  relay. Rules refuse Apiary Pro without its download key, on ARM64, or with no version to
+  install. Under Recovery, `AcceptSigningKey` is passed as
+  `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and `DatabaseDeletionProtection` turns the
+  database's deletion protection off before a delete. The stack sets its own stack policy
+  at creation, refusing any update that would replace or delete the database or a key's
+  secret; the five secrets are kept when the stack is deleted, and the database leaves a
+  final snapshot. The outputs are the address, the load balancer's DNS name, the edition
+  and the version the stack runs, the key secrets' names, and links into the console: the
+  logs, the service, the key secrets and the database snapshots. CI lints the template
+  with cfn-lint, and two copies a release would write, one with Apiary Community first and
+  one with Apiary Pro first, and checks the stack policy, that no output is a command,
+  which secrets the stack keeps, and the mappings' keys.
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps

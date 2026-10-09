@@ -187,17 +187,21 @@ defmodule ApiaryWeb.RunComponents do
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one: "did not start: image_unknown".
-  A run the fold stored as refused, failed with no exit and the refusal's code as its
-  reason, reads the same.
+  A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
+  the refusal's code as its reason, reads the same.
 
   Nil when there is no reason, for `run_closed`, for `quiet` without its period, and for a
   value that is no code.
   """
   @spec reason_words(map()) :: String.t() | nil
-  def reason_words(%Run{state: "failed", exited_at: nil, reason: code}),
-    do: reason_words(%{refused: code})
+  def reason_words(%Run{} = run) do
+    if Run.refused?(run), do: refusal_words(run.reason), else: given_words(run)
+  end
 
-  def reason_words(%{refused: code}) do
+  def reason_words(%{refused: code}), do: refusal_words(code)
+  def reason_words(run), do: given_words(run)
+
+  defp refusal_words(code) do
     case refusal_code(code) do
       nil -> gettext("did not start")
       code -> gettext("did not start: %{code}", code: code)
@@ -206,13 +210,40 @@ defmodule ApiaryWeb.RunComponents do
 
   # The starter's end under the earlier name came with no outcome, whatever the state the
   # exit said.
-  def reason_words(%{reason: "run_ended_at_issuer"}), do: gettext("stopped, no outcome given")
+  defp given_words(%{reason: "run_ended_at_issuer"}), do: gettext("stopped, no outcome given")
 
-  def reason_words(%{reason: reason} = run) when is_binary(reason) do
+  defp given_words(%{reason: reason} = run) when is_binary(reason) do
     if reason =~ @reason_code, do: words_of(Map.get(@earlier_reasons, reason, reason), run)
   end
 
-  def reason_words(_run), do: nil
+  defp given_words(_run), do: nil
+
+  @doc """
+  A run's end reason as the run page's header and rail show it, `reason_words/1` in a span,
+  with the refusal's code of a run that did not start in mono, as the timeline's item has
+  it: "did not start: `image_unknown`". Nothing when there is no reason.
+  """
+  attr :run, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+
+  def end_reason(assigns) do
+    code = if Run.refused?(assigns.run), do: refusal_code(assigns.run.reason)
+
+    {before, rest} =
+      if code,
+        do: split_at_hole(gettext("did not start: %{code}", code: hole())),
+        else: {reason_words(assigns.run), ""}
+
+    assigns = assign(assigns, before: before, code: code, rest: rest)
+
+    ~H"""
+    <span :if={@before} id={@id} class={@class}>{@before}<span
+      :if={@code}
+      class="font-mono"
+    >{@code}</span>{@rest}</span>
+    """
+  end
 
   @doc """
   The code of a `dev.qory.run.refused` as the run page shows it, an earlier name read as the
@@ -288,15 +319,17 @@ defmodule ApiaryWeb.RunComponents do
   slot :inner_block, required: true
 
   defp spliced(assigns) do
-    {before, rest} =
-      case String.split(assigns.text, @hole, parts: 2) do
-        [before, rest] -> {before, rest}
-        [before] -> {before, ""}
-      end
-
+    {before, rest} = split_at_hole(assigns.text)
     assigns = assign(assigns, before: before, rest: rest)
 
     ~H"{@before}{render_slot(@inner_block)}{@rest}"
+  end
+
+  defp split_at_hole(text) do
+    case String.split(text, @hole, parts: 2) do
+      [before, rest] -> {before, rest}
+      [before] -> {before, ""}
+    end
   end
 
   defp hole, do: @hole
@@ -1850,7 +1883,7 @@ defmodule ApiaryWeb.RunComponents do
         <.relative_time at={@run.started_at || @run.inserted_at} />
       </td>
       <td class="q-rl-c2 q-rl-dur q-num" role="cell">
-        <.run_length run={@run} quiet={@quiet} />
+        <.run_length :if={!Run.refused?(@run)} run={@run} quiet={@quiet} />
       </td>
       <td class="q-rl-den q-num" role="cell">
         <span :if={@run.denied_count > 0} class="q-rl-denied">
@@ -1866,12 +1899,21 @@ defmodule ApiaryWeb.RunComponents do
   attr :quiet, :boolean, required: true
 
   @doc """
-  How long a run ran, as its row and its preview say it: the duration its exit gave; for a
-  running run the time since it started, ticking; for a quiet or lost one "at
-  least" what it last reported; nothing for a run that has only pinged.
+  How long a run ran, as its row and its preview say it: the duration its exit gave, as the
+  run page says it, also for a run its exit said was lost; for a running run the time since
+  it started, ticking; for a quiet one, or one Apiary marked lost, "at least" what it last
+  reported; nothing for a run that has only pinged. A run that did not start
+  (`Apiary.Runs.Run.refused?/1`) never ran: the row leaves its cell empty and the preview
+  leaves out its Duration.
   """
   def run_length(%{run: %{state: state}} = assigns)
       when state in ~w(succeeded completed ended failed timed_out cancelled) do
+    ~H"""
+    <.duration ms={@run.duration_ms} />
+    """
+  end
+
+  def run_length(%{run: %{state: "lost", duration_ms: ms}} = assigns) when is_integer(ms) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """
@@ -1962,8 +2004,10 @@ defmodule ApiaryWeb.RunComponents do
               at={@preview.run.started_at || @preview.run.inserted_at}
             />
           </dd>
-          <dt>{gettext("Duration")}</dt>
-          <dd class="tabular-nums"><.run_length run={@preview.run} quiet={@preview.quiet} /></dd>
+          <dt :if={!Run.refused?(@preview.run)}>{gettext("Duration")}</dt>
+          <dd :if={!Run.refused?(@preview.run)} class="tabular-nums">
+            <.run_length run={@preview.run} quiet={@preview.quiet} />
+          </dd>
           <dt :if={@preview.run.denied_count > 0}>{gettext("Denied")}</dt>
           <dd :if={@preview.run.denied_count > 0} id={"#{@id}-denials"}>
             <span class="q-rl-denied">

@@ -3835,6 +3835,7 @@ msgstr ""
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copied"
