@@ -21,6 +21,10 @@ defmodule ApiaryWeb.SecretsFeatureTest do
   @off [:observability, :security]
   @on [:observability, :security, :secrets]
 
+  # The core's checkout, whose guides these are, wherever the suite runs from: an edition
+  # runs these tests from its own (its test_paths).
+  @root Path.expand("../..", __DIR__)
+
   # The routes whose page or endpoint belongs to `secrets`, each `{verb, path}`.
   defp secrets_routes do
     for {verb, path, module} <- ApiaryWeb.RoutesFeaturesCase.routes(ApiaryWeb.Router),
@@ -87,9 +91,19 @@ defmodule ApiaryWeb.SecretsFeatureTest do
   @secrets_actions ~w(secret.write variable.edit connection.write)
 
   # The text of `guide` as the tree with `features` has it.
-  defp guide(guide, features) do
-    path = Path.join("guides", guide)
-    path |> File.read!() |> DocsAll.split!(path) |> DocsAll.join(features)
+  defp guide(guide, features), do: resolved(Path.join("guides", guide), features)
+
+  # The text of `path`, under the core's checkout, as the tree with `features` has it.
+  defp resolved(path, features) do
+    @root |> Path.join(path) |> File.read!() |> DocsAll.split!(path) |> DocsAll.join(features)
+  end
+
+  # The paths of the documentation's extras, each a path or `{path, options}`.
+  defp extra_paths(extras) do
+    Enum.map(extras, fn
+      {path, _opts} -> to_string(path)
+      path -> to_string(path)
+    end)
   end
 
   @gated_passages [
@@ -252,10 +266,10 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       docs = if is_function(docs, 0), do: docs.(), else: docs
       owned = Keyword.fetch!(docs, :features)
 
-      assert "CHANGELOG.md" in Enum.map(docs[:extras], &to_string/1)
+      assert "CHANGELOG.md" in extra_paths(docs[:extras])
 
       for {_feature, owns} <- owned do
-        refute "CHANGELOG.md" in Enum.map(Keyword.get(owns, :extras, []), &to_string/1)
+        refute "CHANGELOG.md" in extra_paths(Keyword.get(owns, :extras, []))
       end
 
       assert [_ | _] = owned |> Keyword.fetch!(:all) |> Keyword.fetch!(:modules)
@@ -277,12 +291,16 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       giveaways =
         ~r/stored.secret|stored value|allow_secrets|secret_values|workspace_data_keys|INTEGRATION_URL_SOURCES|Apiary\.Secrets|Apiary\.Connections|Secrets and variables/i
 
-      files = Path.wildcard("guides/*.md") ++ ["CHANGELOG.md", "README.md", "EDITIONS.md"]
+      guides =
+        for path <- Path.wildcard(Path.join(@root, "guides/*.md")),
+            do: Path.relative_to(path, @root)
+
+      files = guides ++ ["CHANGELOG.md", "README.md", "EDITIONS.md"]
 
       caught =
         for path <- files,
             features <- [@off, [:observability]],
-            text = path |> File.read!() |> DocsAll.split!(path) |> DocsAll.join(features),
+            text = resolved(path, features),
             [word | _] <- Regex.scan(giveaways, text),
             uniq: true,
             do: "#{path}: #{word}"
