@@ -887,7 +887,7 @@ Outputs:
       - !Join [",", [!Ref SecretKeyBase, !Ref EncryptionSecret, !Ref SigningSecret, !Ref DatabasePassword]]
       - !Sub ${KeysFromStack}/secret-key-base,${KeysFromStack}/encryption-secret,${KeysFromStack}/signing-secret,${KeysFromStack}/database-password
   KeysSecretsLink:
-    Description: "Secrets Manager, searched for the key secrets' name prefix: the key secrets are among what it lists."
+    Description: The keys needed to restore this instance's data, in AWS Secrets Manager.
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/secretsmanager/listsecrets?region=${AWS::Region}&search=all%3D${Prefix}%2F
       - Prefix: !If [CreateSecrets, !Ref AWS::StackName, !Ref KeysFromStack]
