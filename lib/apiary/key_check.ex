@@ -40,10 +40,18 @@ defmodule Apiary.KeyCheck do
   without the two columns, the migration of this release not yet run, the check records
   and compares nothing.
 
-  **A change on purpose.** A new signing key means pinning every machine again;
-  `Apiary.Release.accept_signing_key/0` records its fingerprint (`accept_signing_key/0`),
-  in a one-off container of the release, since a refused boot leaves none running. The
-  encryption secret has no such command: it never changes once an access key exists.
+  **A change on purpose.** A new signing key means pinning every machine again. Its
+  fingerprint, the one the refusal names as the key's, set in
+  `APIARY_ACCEPT_SIGNING_FINGERPRINT` (read by `config/runtime.exs`, trimmed) makes it the
+  instance's at the next boot: where the recorded fingerprint is another and the variable
+  equals the current key's, compared in constant time, the boot records it, logs
+  `accepted_message/1` and goes on. Any other value changes nothing, and the boot stops as
+  without it; the value is never written out. It names one key, so a value left set
+  accepts no later key, and needs no reset. It is read only while the encryption secret's
+  check value matches: it never takes a boot past that check, nor records a fingerprint on
+  a boot that check refuses. The encryption secret has no such variable: it never changes
+  once an access key exists. `Apiary.Release.accept_signing_key/0` records the current
+  fingerprint too (`accept_signing_key/0`), in a one-off container of the release.
 
   Off in test (`config :apiary, Apiary.KeyCheck, enabled: false`), where the tests call
   `check/0`.
@@ -136,13 +144,16 @@ defmodule Apiary.KeyCheck do
 
         cond do
           is_binary(recorded_check) and is_binary(recorded_fingerprint) ->
-            compare(recorded, check, fingerprint)
+            recorded |> accept_named(check, fingerprint) |> compare(check, fingerprint)
 
           is_nil(recorded_check) and not oldest_data_under_secret?() ->
             {:error, [encryption_message()]}
 
           true ->
-            compare(record(check, fingerprint), check, fingerprint)
+            check
+            |> record(fingerprint)
+            |> accept_named(check, fingerprint)
+            |> compare(check, fingerprint)
         end
     end
   end
@@ -180,6 +191,17 @@ defmodule Apiary.KeyCheck do
     fingerprint
   end
 
+  @doc """
+  accepted_message/1 is what the log says when `APIARY_ACCEPT_SIGNING_FINGERPRINT` made the
+  signing key with `fingerprint` the instance's, as `Apiary.Release.accept_signing_key/0`
+  says it.
+  """
+  @spec accepted_message(String.t()) :: String.t()
+  def accepted_message(fingerprint) do
+    "The signing key with fingerprint #{fingerprint} is now the instance's. " <>
+      "Pin it on every machine again."
+  end
+
   @doc "encryption_message/0 is what the log says when `APIARY_ENCRYPTION_SECRET` does not match."
   @spec encryption_message() :: String.t()
   def encryption_message do
@@ -197,7 +219,7 @@ defmodule Apiary.KeyCheck do
   def signing_message(fingerprint, recorded) do
     """
     APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is #{fingerprint}, the pinned one is #{recorded}.
-    Put back the value kept with your backups. To change it on purpose, and pin every machine again, run in a one-off container of this release: bin/apiary eval 'Apiary.Release.accept_signing_key()'\
+    Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=#{fingerprint} and start Qory Apiary again.\
     """
   end
 
@@ -256,6 +278,34 @@ defmodule Apiary.KeyCheck do
       )
 
     for {inserted_at, key_id} <- Repo.all(query), do: {inserted_at, key_id, purpose}
+  end
+
+  # The signing key `APIARY_ACCEPT_SIGNING_FINGERPRINT` names, recorded as the instance's
+  # when it is the current key and the recorded fingerprint is another: the pair the row
+  # holds after. Only while the encryption secret's check value matches, so the variable
+  # never takes a boot past that check, nor records a fingerprint on a boot it refuses.
+  # The value is compared with the current fingerprint alone, in constant time, and never
+  # written out: should it hold a secret by mistake, the log does not carry it.
+  defp accept_named({recorded_check, recorded_fingerprint} = recorded, check, fingerprint) do
+    if recorded_fingerprint != fingerprint and same_check?(recorded_check, check) and
+         named?(fingerprint) do
+      Repo.query!(@accept, [fingerprint, NaiveDateTime.utc_now()])
+      Logger.warning(accepted_message(fingerprint))
+      {recorded_check, fingerprint}
+    else
+      recorded
+    end
+  end
+
+  defp named?(fingerprint) do
+    case Application.get_env(:apiary, :accept_signing_fingerprint_setting) do
+      value when is_binary(value) ->
+        named = String.trim(value)
+        byte_size(named) == byte_size(fingerprint) and :crypto.hash_equals(named, fingerprint)
+
+      _unset ->
+        false
+    end
   end
 
   defp compare({recorded_check, recorded_fingerprint}, check, fingerprint) do

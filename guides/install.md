@@ -197,6 +197,7 @@ value set in the environment always wins. A variable left blank counts as not se
 | `SECRET_KEY_BASE` | required; with `compose.yaml`, generated at first start | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
 | `APIARY_ENCRYPTION_SECRET` | required; with `compose.yaml`, generated at first start | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
 | `APIARY_SIGNING_SECRET` | required; with `compose.yaml`, generated at first start | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `APIARY_ACCEPT_SIGNING_FINGERPRINT` | none | Empty, except to change the signing key on purpose: the fingerprint the key check names as the new key's, which the next boot records as the instance's ([The keys generated at first start](#the-keys-generated-at-first-start)). Any other value changes nothing. A fingerprint is public, not a secret. |
 <!-- feature: secrets -->
 
 `APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
@@ -321,23 +322,30 @@ every machine pins.
 
 ```text
 APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is <new>, the pinned one is <recorded>.
-Put back the value kept with your backups. To change it on purpose, and pin every machine again, run in a one-off container of this release: bin/apiary eval 'Apiary.Release.accept_signing_key()'
+Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=<new> and start Qory Apiary again.
 ```
 
-To change the signing key on purpose, which means pinning every machine again, record the
-new key's fingerprint as the instance's. A refused boot leaves no running container to run
-a command in, so with `compose.yaml` it runs in a one-off container of the same release:
+To change the signing key on purpose, which means pinning every machine again, set
+`APIARY_ACCEPT_SIGNING_FINGERPRINT` to the new key's fingerprint, the `<new>` the message
+names. With `compose.yaml`, put it in `.env`, then:
 
 ```sh
-docker compose run --rm apiary bin/apiary eval 'Apiary.Release.accept_signing_key()'
+docker compose up -d
 ```
+
+The boot records the new key's fingerprint as the instance's, says so in the log, and
+starts:
 
 ```text
 The signing key with fingerprint <new> is now the instance's. Pin it on every machine again.
 ```
 
-The next boot starts. `APIARY_ENCRYPTION_SECRET` has no such command: it never changes
-once an access key exists.
+Any other value changes nothing, and the boot stops as before. The variable names one key,
+so it needs no reset: left set, it matches the key it named, and should the key change
+again, the boot stops again with the next fingerprint. Taking the line out of `.env` later
+is tidy, not required. The boot reads it only once `APIARY_ENCRYPTION_SECRET` is the one
+the instance first started with. `APIARY_ENCRYPTION_SECRET` has no such variable: it never
+changes once an access key exists.
 
 ### Public address and port
 
@@ -532,12 +540,16 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation sends in 24 hours: a whole number from `1`. Not set, or empty, is `20`. |
+| `FIRST_ADMIN_EMAIL` | none | Optional. The first admin's address, used once, at the instance's first start, with `FIRST_ORGANISATION_NAME` ([The instance admins](#the-instance-admins)). Not set, or empty, with `FIRST_ORGANISATION_NAME` empty too, leaves the first sign-up to the web. |
+| `FIRST_ORGANISATION_NAME` | none | Optional. The name of the instance's organisation, created with the first admin at the first start; the same rules as an organisation's name on the sign-up page. |
 
 The first person who signs up on a new instance creates its organisation, with its
 workspace **Main**, and is its owner. The instance has that one organisation and that one
 workspace. The organisation is the instance's own, and its owners are the instance's
 **instance admins** ([The instance admins](#the-instance-admins)); to everyone in it, it
-is an organisation like any other. The first sign-up is always offered.
+is an organisation like any other. The first sign-up is always offered, until someone has
+signed up; with `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` set, the first start
+makes it before the instance serves a page ([The instance admins](#the-instance-admins)).
 
 After the first, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
@@ -600,15 +612,48 @@ the organisation's only owner: make another member an owner first.
 The instance admins are the owners of the instance's organisation, the one the instance's
 first user signed up with. Inside the organisation they act at their level, as any owner
 does. Two commands, for whoever has a shell on the release, make an account one and take
-it away, for an install that is scripted and for recovery when no admin is left:
+it away, for an install that is scripted and for recovery when no admin is left; for the
+first admin of a new instance, `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, below,
+are simpler, as they need no shell:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com")'
 bin/apiary eval 'Apiary.Release.revoke_instance_admin("dana@example.com")'
 ```
 
-**Claim a fresh instance before its address is public** with the first, given the name of
-your organisation too:
+**Claim a fresh instance at its first start** with `FIRST_ADMIN_EMAIL` and
+`FIRST_ORGANISATION_NAME`, both optional. With `compose.yaml`, set them in `.env` before
+the first `docker compose up -d`:
+
+```sh
+FIRST_ADMIN_EMAIL=you@example.com
+FIRST_ORGANISATION_NAME=Acme
+```
+
+On an instance nobody has signed up to, the first start claims it before it serves a
+page, so no sign-up on the web can come first: it is the instance's first sign-up, as the
+command below makes it, and emails you your log-in link. Should the email not go out, the
+instance is claimed all the same, and the log says to ask for a link at `/users/log-in`
+once the mail settings work. The boot's own lines never carry the address or the link;
+with `MAIL_TO_LOG=true`, though, the email itself, its log-in link included, is written to
+the log, as every email is. On an instance that has its organisation, a restored one
+included, the boot ignores the two: it checks neither, creates and grants nothing, sends no
+email and writes no line, so changing them later changes nothing, and later admins are
+invited in Qory. Of two starts at once, one claims and the other starts as on any
+instance. Both empty, the first sign-up is the web's. On an instance nobody has signed up
+to, one set and the other empty, or a value the sign-up page would refuse, stops the boot
+with a message that names the variable and not the value:
+
+```text
+environment variable FIRST_ORGANISATION_NAME is empty, and FIRST_ADMIN_EMAIL is set. Set both to claim this instance at its first start, or neither.
+```
+
+```text
+environment variable FIRST_ADMIN_EMAIL is not valid: must have the @ sign and no spaces.
+```
+
+**Claim a fresh instance before its address is public** with the first command too, given
+the name of your organisation:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'

@@ -19,6 +19,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
   `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
   instance and change its admins.
+- `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, both optional and empty in
+  `.env.example`, claim a new instance at its first start, before it serves a page: the
+  instance's first sign-up, as `grant_instance_admin/2` makes it, which emails the log-in
+  link, and claims the instance even when the email does not go out. On an instance that
+  has its organisation, a restored one included, the boot ignores them: it checks neither,
+  creates and grants nothing, and sends no email. One set and the other empty, or a value
+  the sign-up refuses, stops the boot of an instance nobody has signed up to with a
+  message naming the variable.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces
@@ -268,8 +276,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `APIARY_ENCRYPTION_SECRET`, which tells nothing of it, and its signing key's
   fingerprint, and a later boot with another of either stops with a message that says
   which, where it served before with no access key verifying or every machine refusing its
-  answers. `Apiary.Release.accept_signing_key/0`, run in a one-off container, makes a new
-  signing key the instance's on purpose.
+  answers. `APIARY_ACCEPT_SIGNING_FINGERPRINT`, set to the fingerprint the refusal names,
+  makes a new signing key the instance's on purpose at the next boot; any other value
+  changes nothing, and it never accepts another `APIARY_ENCRYPTION_SECRET`.
+  `Apiary.Release.accept_signing_key/0` does the same in a one-off container.
 - The image, `ghcr.io/qoryai/apiary`, from the `Dockerfile`: CI builds it on every pull
   request and push, for `linux/amd64` and `linux/arm64`, and publishes nothing; only a
   release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the

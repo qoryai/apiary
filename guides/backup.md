@@ -182,9 +182,10 @@ not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, on its own.
 **Losing or changing `APIARY_SIGNING_SECRET` means pinning every machine again.** The
 instance does not start with another key than the one it recorded at its first start or
 accepted since: the log names the new key's fingerprint and the pinned one. To change it
-on purpose, `bin/apiary eval 'Apiary.Release.accept_signing_key()'`, in a one-off
-container of the release, makes the new key the instance's; each machine then refuses its
-answers until it pins the new public key. Nothing in the database is lost.
+on purpose, set `APIARY_ACCEPT_SIGNING_FINGERPRINT` to the new key's fingerprint in `.env`,
+then `docker compose up -d`: the boot makes the new key the instance's
+([Install and configure](install.md#the-keys-generated-at-first-start)); each machine then
+refuses its answers until it pins the new public key. Nothing in the database is lost.
 
 ### `SECRET_KEY_BASE`
 
