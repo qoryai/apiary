@@ -1,12 +1,12 @@
 # Editions
 
-Qory Apiary comes in a free edition, which is this repository, and in paid editions, which
-8wonders GmbH, the company behind Qory, licenses. Every paid edition is the same Qory
-Apiary: the free edition's code, with more added to it, in one image.
+Qory Apiary comes as Apiary Community, which is this repository, and as Apiary Pro, which
+8wonders GmbH, the company behind Qory, licenses. Apiary Pro is the same Qory Apiary:
+Apiary Community's code, with more added to it, in one image.
 
-**Nothing in the free edition will ever move to a paid one.**
+**Nothing in Apiary Community will ever move to Apiary Pro.**
 
-## The free edition
+## Apiary Community
 
 Apache License 2.0, this repository, self-hosted. It is complete for one team:
 
@@ -34,9 +34,9 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
 - **The docs.** The guides and the release notes, served by every instance at `/docs`, and
   the module reference, served by an instance with every feature.
 
-## Pro
+## Apiary Pro
 
-Pro adds, for a company that runs Qory Apiary for more than one team:
+Apiary Pro adds, for a company that runs Qory Apiary for more than one team:
 
 - more organisations and more workspaces;
 - per-member workspace access: a member reaches the workspaces they are added to;
@@ -44,7 +44,7 @@ Pro adds, for a company that runs Qory Apiary for more than one team:
 - the Admin area, where the instance's admins manage the organisations, accounts and
   features of the instance.
 
-## Operator
+### Operator
 
 Operator adds, for a company that provides a harness its clients run on Qory Apiary:
 

@@ -4,15 +4,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
   place and are saved by one button, Network access (the
   hosts and paths allowed and denied, with the composer that reads a rule back before it
   is saved, and a link to the Network access page, what the runs reached), the targets
-  and their policy, the history with diffs, one version with its
-  document, and the export. The Network access page's rule links (`?rule=`) lead to the
-  rule in that section.
+  and their policy, the history with diffs, the document in force (the Document tab, which
+  shows the new version in place after a change), one version with its document, and the
+  export. The Network access page's rule links (`?rule=`) lead to the rule in that
+  section.
 
-  One LiveView, five live actions, so a tab is a patch. A version and its export name
-  themselves in the frame's breadcrumb, after Policy. Filters, the opened change, the
-  compared version and the export page are in the URL. The page calls `Apiary.Policy`
-  and nothing under it, except the contract's grammar for the reading line. It follows
-  `policy:<workspace>` and reads again at most once per 250 ms.
+  One LiveView, six live actions, so a tab is a patch. A version and its export name
+  themselves in the frame's breadcrumb, after Policy, and have no mode card: they state
+  their own mode. Filters, the opened change, the compared version and the export page
+  are in the URL. The page calls `Apiary.Policy` and nothing under it, except the
+  contract's grammar for the reading line. It follows `policy:<workspace>` and reads
+  again at most once per 250 ms.
 
   A workspace nobody has changed yet is not served a policy by Qory: its machines use
   their own until the first change here, and the page says so.
@@ -95,6 +97,26 @@ defmodule ApiaryWeb.PolicyLive.Show do
       )
     end)
     |> load_record()
+    |> follow_document()
+  end
+
+  # The Document tab shows the version in force: after a change, read again with the page,
+  # it shows the new one in place.
+  defp follow_document(%{assigns: %{loaded: true, live_action: :document}} = socket),
+    do: document(socket)
+
+  defp follow_document(socket), do: socket
+
+  defp document(socket) do
+    with %{version: n} <- socket.assigns.version,
+         {:ok, v} <- Common.version(socket, n, socket.assigns.params) do
+      assign(socket,
+        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
+        page_title: gettext("Version %{version} · Policy", version: n)
+      )
+    else
+      _ -> socket
+    end
   end
 
   # What the level above the workspace fixes: the mode, when it requires enforce.
@@ -226,15 +248,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
     assign(socket, history: history, open_change: open, diff: diff, summary: summary(socket))
   end
 
+  # The document in force, under the card and the tabs; with none yet, the page.
   defp apply_action(socket, :document, _params) do
     scope = socket.assigns.current_scope
 
     case socket.assigns.version do
-      %{version: n} ->
-        push_navigate(socket,
-          to: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}",
-          replace: true
-        )
+      %{version: _} ->
+        socket |> assign(:v, nil) |> document()
 
       _ ->
         push_navigate(socket,
@@ -1053,7 +1073,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
           summary={@summary}
           now={@now}
         />
-        <.version_view :if={@live_action == :version && @v} v={@v} base={@base} now={@now} />
+        <.version_head
+          :if={@live_action == :document && @v}
+          v={@v}
+          base={@base}
+          heading="h2"
+        />
+        <.version_view
+          :if={@live_action in [:version, :document] && @v}
+          v={@v}
+          base={@base}
+          now={@now}
+        />
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
@@ -1099,7 +1130,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :heading, :string,
     default: "h1",
     values: ~w(h1 h2),
-    doc: "h2 under a page's own title, as a target's Policy tab has"
+    doc: "h2 under a page's own title, as a target's Policy tab and the Document tab have"
+
+  attr :away, :boolean,
+    default: false,
+    doc: "the version is another page's (the workspace's, on a target served it): Export leaves"
 
   # The heading takes the focus a page sends it (`policy-version-h`) when the version is
   # reached by a patch, as Done from its export is.
@@ -1130,7 +1165,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </span>
       </div>
       <div class="q-head-side">
-        <.button id="version-export" patch={"#{@base}/versions/#{@v.latest}/export"}>
+        <.button
+          id="version-export"
+          patch={!@away && "#{@base}/versions/#{@v.latest}/export"}
+          navigate={@away && "#{@base}/versions/#{@v.latest}/export"}
+        >
           <.icon name="hero-arrow-up-tray" class="size-4" />{if @v.current?,
             do: gettext("Export"),
             else: gettext("Export the version in force")}
@@ -1200,7 +1239,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     """
   end
 
-  # The tab a live action is under: a version and its export are the Document's.
+  # The tab a live action is under: a version and its export are the Document's too.
   defp tab_key(action) when action in [:version, :export, :document], do: :document
   defp tab_key(action), do: action
 

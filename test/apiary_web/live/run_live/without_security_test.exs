@@ -167,7 +167,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       refute_policy(render(lv))
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       html = render(lv)
       refute_policy(html)
