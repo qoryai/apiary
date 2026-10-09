@@ -103,7 +103,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       # the meta line: the state as a dot and its word, the target's page, runtime, host,
       # when it started, how long it took, its denials, which lead to its connections
-      assert has_element?(lv, "#run-meta #run-state.q-sdot-completed", "Succeeded")
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-completed", "Completed")
       assert has_element?(lv, ~s(#run-meta a#run-target[href="#{target}"]), "acme/shop")
       # one system has acme/shop: the path is written alone
       refute has_element?(lv, "#run-target .q-tname-sys")
@@ -1360,7 +1360,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         |> html_response(200)
 
       assert html =~ "#{ApiaryWeb.RunComponents.run_title(run)} · Runs"
-      assert html =~ "Succeeded"
+      assert html =~ "Completed"
       assert html =~ ~s(id="run-loading")
       refute html =~ ~s(id="timeline")
       refute html =~ "package.json"
@@ -1963,7 +1963,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       assert has_element?(lv, "#run-meta #run-state.q-sdot-cancelled", "Cancelled")
-      assert has_element?(lv, "#run-meta #run-state + #run-reason", "quiet for 10 minutes")
+      assert has_element?(lv, "#run-meta #run-state + #run-reason", "no activity for 10 minutes")
       refute has_element?(lv, "#run-runtime")
       refute has_element?(lv, "#run-host")
       refute has_element?(lv, "#run-meta", "exit")
@@ -1988,7 +1988,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ "without a wall"
 
       assert has_element?(lv, "#e-10", "Run ended")
-      assert has_element?(lv, "#e-10", "quiet for 10 minutes")
+      assert has_element?(lv, "#e-10", "no activity for 10 minutes")
       assert has_element?(lv, "#e-10", "10 m 35 s")
       assert has_element?(lv, "#e-10 .hero-stop-micro")
       refute has_element?(lv, "#e-10 .hero-x-mark-micro")
@@ -2058,7 +2058,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
       assert has_element?(lv, "#run-facts .q-sdot-cancelled", "Cancelled")
-      assert has_element?(lv, "#run-facts #rail-reason", "quiet for 10 minutes")
+      assert has_element?(lv, "#run-facts #rail-reason", "no activity for 10 minutes")
       assert has_element?(lv, "#run-opened-by", "gateway (no session)")
       assert has_element?(lv, "#run-forager", "0.10.0 · contract 1")
 
@@ -2083,18 +2083,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ ~r{<dt>Session</dt>\s*<dd class="font-mono">\s*none\s*</dd>}
     end
 
-    test "every reason in words: the header leaves out those that repeat the state", %{
+    test "every reason in words, after the state and under it", %{
       conn: conn,
       scope: scope
     } do
-      for {exit, state, header, rail} <- [
-            {%{"reason" => "credential_expired"}, "cancelled", "run credential expired",
-             "run credential expired"},
-            {%{"reason" => "run_ended_at_issuer"}, "cancelled",
-             "the issuer reported the run ended", "the issuer reported the run ended"},
-            {%{"reason" => "gateway_lost"}, "lost", "gateway lost", "gateway lost"},
-            {%{"reason" => "session_lost"}, "lost", "session lost", "session lost"},
-            {%{"reason" => "timeout"}, "cancelled", "timed out", "timed out"}
+      for {exit, state, words} <- [
+            {%{"reason" => "credential_expired"}, "cancelled", "permission to run expired"},
+            {%{"reason" => "run_ended_at_issuer"}, "cancelled", "stopped, no outcome given"},
+            {%{"reason" => "gateway_lost"}, "lost", "end not recorded"},
+            {%{"reason" => "session_lost"}, "lost", "stopped responding"},
+            {%{"reason" => "timeout"}, "cancelled", "time limit reached"}
           ] do
         run = gateway_run(scope, exit)
 
@@ -2102,12 +2100,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
         assert has_element?(lv, "#run-meta #run-state.q-sdot-#{state}")
-
-        if header,
-          do: assert(has_element?(lv, "#run-reason", header)),
-          else: refute(has_element?(lv, "#run-reason"))
-
-        assert has_element?(lv, "#rail-reason", rail)
+        assert has_element?(lv, "#run-reason", words)
+        assert has_element?(lv, "#rail-reason", words)
         # a run with no session has no exit to show
         refute has_element?(lv, "#run-meta", "exit")
         refute "Exit" in run_terms(lv)
@@ -2128,16 +2122,37 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#rail-reason")
     end
 
+    test "a run refused at its start: Failed, it did not start and its code, after the state and under it",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", gateway_started_data()},
+          {2, "run.refused", %{"code" => "image_unknown"}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-failed", "Failed")
+
+      assert has_element?(
+               lv,
+               "#run-meta #run-state + #run-reason",
+               "did not start: image_unknown"
+             )
+
+      assert has_element?(lv, "#run-facts #rail-reason", "did not start: image_unknown")
+    end
+
     test "the timeline's last item: Run ended for an end that is no failure, Run exited else", %{
       conn: conn,
       scope: scope
     } do
       for {reason, kind, words, glyph} <- [
-            {"credential_expired", "Run ended", "run credential expired", "hero-stop-micro"},
-            {"run_ended_at_issuer", "Run ended", "the issuer reported the run ended",
-             "hero-stop-micro"},
-            {"gateway_lost", "Run exited", "gateway lost", "hero-x-mark-micro"},
-            {"timeout", "Run exited", "timeout", "hero-x-mark-micro"}
+            {"credential_expired", "Run ended", "permission to run expired", "hero-stop-micro"},
+            {"run_ended_at_issuer", "Run ended", "stopped, no outcome given", "hero-stop-micro"},
+            {"gateway_lost", "Run exited", "end not recorded", "hero-x-mark-micro"},
+            {"timeout", "Run exited", "time limit reached", "hero-x-mark-micro"}
           ] do
         run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 95_000})
 
@@ -2151,11 +2166,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
-    test "the issuer unreachable or its answer invalid: Failed, and why after it, under it and in the timeline",
+    test "a run credential that could not be checked: Failed, and why after it, under it and in the timeline",
          %{conn: conn, scope: scope} do
       for {reason, words} <- [
-            {"issuer_unreachable", "issuer unreachable"},
-            {"issuer_answer_invalid", "issuer answer invalid"}
+            {"issuer_unreachable", "couldn't check whether the run may go on: no answer"},
+            {"issuer_answer_invalid",
+             "couldn't check whether the run may go on: unreadable answer"}
           ] do
         run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 130_000})
         assert run.state == "failed"
@@ -2187,10 +2203,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      # cancelled at its time limit: the words stand after the state and under it in the rail
+      # cancelled at its time limit: the words after the state on the meta line and under it in
+      # the rail, and no exit beside them
       assert has_element?(lv, "#run-meta #run-state.q-sdot-cancelled", "Cancelled")
-      assert has_element?(lv, "#run-reason", "timed out")
-      assert has_element?(lv, "#run-facts #rail-reason", "timed out")
+      assert has_element?(lv, "#run-meta #run-state + #run-reason", "time limit reached")
+      refute has_element?(lv, "#run-meta", "exit")
+      assert has_element?(lv, "#run-facts #rail-reason", "time limit reached")
       assert has_element?(lv, "#run-runtime")
       assert html =~ "Run exited"
       refute html =~ "by a gateway with no session"
@@ -2225,9 +2243,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       assert has_element?(lv, "#run-meta #run-state", "Lost")
-      assert has_element?(lv, "#run-reason", "gateway lost")
-      refute has_element?(lv, "#run-meta", "exit gateway lost")
-      assert has_element?(lv, "#rail-reason", "gateway lost")
+      assert has_element?(lv, "#run-reason", "end not recorded")
+      refute has_element?(lv, "#run-meta", "exit")
+      assert has_element?(lv, "#rail-reason", "end not recorded")
       assert "Exit" in run_terms(lv)
       refute has_element?(lv, "#run-opened-by")
       assert has_element?(lv, ".q-run-rail", "n/a")
@@ -2252,21 +2270,22 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       assert has_element?(lv, "#run-meta #run-state", "Lost")
-      assert has_element?(lv, "#run-reason", "session lost")
+      assert has_element?(lv, "#run-reason", "stopped responding")
       refute has_element?(lv, "#run-meta", "exit")
-      assert has_element?(lv, "#rail-reason", "session lost")
+      assert has_element?(lv, "#rail-reason", "stopped responding")
       assert "Exit" in run_terms(lv)
       assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*session lost\s*</dd>}
       assert has_element?(lv, "#e-2", "Run exited")
-      assert has_element?(lv, "#e-2", "session lost")
+      assert has_element?(lv, "#e-2", "stopped responding")
       refute html =~ "exit -1"
     end
 
-    test "an expired run credential or the issuer's end is said as a session run's exit too",
+    test "an expired run credential or the starter's end is said after the state, under it and in the timeline",
          %{conn: conn, scope: scope} do
-      for {reason, words} <- [
-            {"credential_expired", "run credential expired"},
-            {"run_ended_at_issuer", "the issuer reported the run ended"}
+      for {reason, words, exit_row} <- [
+            {"credential_expired", "permission to run expired", "run credential expired"},
+            {"run_ended_at_issuer", "stopped, no outcome given",
+             "the issuer reported the run ended"}
           ] do
         run =
           projected(scope, [
@@ -2282,18 +2301,21 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#rail-reason", words)
         assert "Exit" in run_terms(lv)
-        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{words}\s*</dd>}
+        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{exit_row}\s*</dd>}
         assert has_element?(lv, "#e-2", "Run ended")
         assert has_element?(lv, "#e-2", words)
         refute html =~ "exit -1"
       end
     end
 
-    test "the issuer unreachable or its answer invalid is said as a session run's exit, and it is Failed",
+    test "a run credential that could not be checked is said after the state, under it and in the timeline, and it is Failed",
          %{conn: conn, scope: scope} do
-      for {reason, words} <- [
-            {"issuer_unreachable", "issuer unreachable"},
-            {"issuer_answer_invalid", "issuer answer invalid"}
+      for {reason, words, exit_row} <- [
+            {"issuer_unreachable", "couldn't check whether the run may go on: no answer",
+             "issuer unreachable"},
+            {"issuer_answer_invalid",
+             "couldn't check whether the run may go on: unreadable answer",
+             "issuer answer invalid"}
           ] do
         exit = %{
           "state" => "failed",
@@ -2314,7 +2336,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#run-facts #rail-reason", words)
         assert "Exit" in run_terms(lv)
-        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{words}\s*</dd>}
+        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{exit_row}\s*</dd>}
         assert has_element?(lv, "#e-2", "Run exited")
         assert has_element?(lv, "#e-2", words)
         assert has_element?(lv, "#e-2", "2 m 10 s")

@@ -227,7 +227,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), exit: %{"state" => "succeeded", "exit_code" => 0})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-st-completed .q-st-w.sr-only", "Succeeded")
+      assert has_element?(view, "#{row(run)} .q-st-completed .q-st-w.sr-only", "Completed")
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
@@ -263,7 +263,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
 
       assert text(view, "#filter-state-form") =~
-               "Ended well Succeeded Cancelled Cancelled 1 Ended badly Failed 1"
+               "Ended well Completed Cancelled Cancelled 1 Ended badly Failed 1"
 
       view = open(conn, runs(scope, "?state=cancelled"))
       assert has_element?(view, row(ended))
@@ -696,7 +696,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Pending Running 1 Ended well Succeeded Cancelled Cancelled Ended badly Failed 1 Lost"
+               "Alive Pending Running 1 Ended well Completed Cancelled Cancelled Ended badly Failed 1 Lost"
 
       refute has_element?(view, "#{form} input[name='state[]'][value=closed]")
 
@@ -1668,7 +1668,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       {:ok, _} = Projector.project(run)
 
-      assert text(view, row(run)) =~ "Succeeded"
+      assert text(view, row(run)) =~ "Completed"
       assert text(view, row(run)) =~ "30 s"
       render_async(view)
       assert text(view, "#runs-view-alive") == "Alive 0"

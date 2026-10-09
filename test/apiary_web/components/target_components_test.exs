@@ -25,7 +25,7 @@ defmodule ApiaryWeb.TargetComponentsTest do
 
     # The word only where it is asked for, as a header does
     html = render_component(&TargetComponents.state_mark/1, state: "ended", word: true)
-    assert html =~ ">Ended</span>"
+    assert html =~ ">Cancelled</span>"
     refute html =~ "sr-only"
 
     html = render_component(&TargetComponents.state_mark/1, state: "failed")
