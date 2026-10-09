@@ -63,6 +63,86 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
     assert DateTime.diff(DateTime.utc_now(), oldest, :day) >= 5
   end
 
+  # The starter's reasons the history gives, generic, and Forager's own codes; never the old
+  # names of the contract before the starter.
+  @starter_reasons ~w(all_checks_passed checks_failed no_longer_needed)
+  @forager_reasons ~w(timeout quiet credential_expired stopped session_lost gateway_lost
+                      batch_refused credential_check_unreachable credential_check_invalid
+                      run_closed)
+
+  test "the runs end completed, failed, cancelled and lost, by the contract's exits and generic reasons",
+       %{scope: scope} do
+    # Cancelled and lost runs are a few in a hundred: a larger history holds every kind.
+    History.run([
+      "--workspace",
+      "#{scope.organisation.slug}/#{scope.workspace.slug}",
+      "--runs",
+      "1000",
+      "--repositories",
+      "12",
+      "--days",
+      "20",
+      "--concurrency",
+      "1",
+      "--skip-members"
+    ])
+
+    runs = runs(scope)
+    by_state = Enum.group_by(runs, & &1.state)
+
+    # Every run is stored under a state of today's names; none under an older one.
+    assert Enum.all?(runs, &(&1.state in Run.states()))
+    for state <- ~w(completed failed cancelled lost), do: assert(by_state[state], state)
+
+    # Cancelled at the time limit, after its hour, and by the starter; lost by silence, and
+    # by an exit that says how, at the exit's time.
+    reasons = fn state -> by_state[state] |> Enum.map(& &1.reason) |> Enum.uniq() end
+    assert "timeout" in reasons.("cancelled")
+    assert "no_longer_needed" in reasons.("cancelled")
+    assert Enum.all?(by_state["cancelled"], &(&1.reason in ~w(timeout no_longer_needed)))
+
+    for run <- by_state["cancelled"], run.reason == "timeout" do
+      assert run.duration_ms == 3_600_000
+    end
+
+    assert nil in reasons.("lost")
+    assert Enum.any?(reasons.("lost"), &(&1 in ~w(session_lost gateway_lost)))
+
+    for run <- by_state["lost"], run.reason do
+      assert run.reason in ~w(session_lost gateway_lost)
+      assert run.lost_at == run.exited_at
+    end
+
+    assert "all_checks_passed" in reasons.("completed")
+    assert "checks_failed" in reasons.("failed")
+
+    # No end reason outside the starter's generic codes and Forager's own.
+    for run <- runs, run.reason do
+      assert run.reason in @starter_reasons or run.reason in @forager_reasons, run.reason
+    end
+
+    # Every exit says its state in the contract's names, and a starter's reason comes only
+    # on a run whose starter gave it its run credential.
+    events =
+      Repo.all(
+        from e in Event,
+          where:
+            e.workspace_id == ^scope.workspace.id and
+              e.type in ["dev.qory.run.exited", "dev.qory.run.started"],
+          select: {e.run_id, e.type, e.data}
+      )
+
+    for {_run, "dev.qory.run.exited", data} <- events do
+      assert data["state"] in ~w(succeeded failed cancelled)
+    end
+
+    started = for {run, "dev.qory.run.started", data} <- events, into: %{}, do: {run, data}
+
+    for run <- runs, run.reason in @starter_reasons do
+      assert started[run.id]["credential"] == "starter"
+    end
+  end
+
   test "the runs say what they are about, as a caller would, on hosts under example.com",
        %{scope: scope} do
     fill(scope, ["--skip-members"])
