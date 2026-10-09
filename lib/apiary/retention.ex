@@ -17,6 +17,12 @@ defmodule Apiary.Retention do
     * Past the events cut-off, all the run's `events`, its `log_chunks` and its
       `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is set.
 
+  A `lost` run is not due in either phase until #{Apiary.Runs.Run.lost_days()} days after it
+  was lost (`Apiary.Runs.Run.lost_days/0`, the days the Overview lists it): a gateway
+  that kept the run's record through a shorter outage still finds it whole. The loss is
+  `runs.lost_at`; a lost run without one, which no code writes, counts as lost from its
+  `last_event_at` (or `inserted_at`).
+
   The tables of each phase are deleted in the order the purge of a deleted workspace or
   organisation deletes them too (`Apiary.Deletion.Tables`): a run's log chunks, then its
   events, then its deliveries.
@@ -212,6 +218,8 @@ defmodule Apiary.Retention do
 
     events_cutoff = cutoff(now, workspace.events_retention_days)
     log_cutoff = cutoff(now, workspace.log_retention_days)
+    # A run lost after this is due in neither phase.
+    opts = Keyword.put(opts, :lost_before, DateTime.add(now, -Run.lost_days(), :day))
 
     {events_counts, events_complete?} = phase(workspace, :events, events_cutoff, opts)
     # The runs past the events cut-off are the first phase's, whether or not it got to them.
@@ -254,7 +262,16 @@ defmodule Apiary.Retention do
             r.last_event_at,
             r.inserted_at,
             h.events_retention_days
-          )
+          ),
+        where:
+          r.state != "lost" or
+            fragment(
+              "COALESCE(?, ?, ?) < now() - make_interval(days => ?)",
+              r.lost_at,
+              r.last_event_at,
+              r.inserted_at,
+              ^Run.lost_days()
+            )
     )
   end
 
@@ -307,7 +324,7 @@ defmodule Apiary.Retention do
   end
 
   # Read through the partial index of the phase: the workspace, the age, the id, and only
-  # the runs the phase has not pruned.
+  # the runs the phase has not pruned. A run lost after `:lost_before` is not due.
   defp due(
          %Workspace{id: workspace_id, organisation_id: organisation_id},
          kind,
@@ -316,11 +333,22 @@ defmodule Apiary.Retention do
          after_key,
          limit
        ) do
+    lost_before = Keyword.fetch!(opts, :lost_before)
+
     query =
       from r in Run,
         where: r.workspace_id == ^workspace_id and r.organisation_id == ^organisation_id,
         where: fragment("COALESCE(?, ?) < ?", r.last_event_at, r.inserted_at, ^cutoff),
         where: r.state not in ^Run.alive_states(),
+        where:
+          r.state != "lost" or
+            fragment(
+              "COALESCE(?, ?, ?) < ?",
+              r.lost_at,
+              r.last_event_at,
+              r.inserted_at,
+              ^lost_before
+            ),
         order_by: [asc: fragment("COALESCE(?, ?)", r.last_event_at, r.inserted_at), asc: r.id],
         limit: ^limit,
         select: %{

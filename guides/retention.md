@@ -33,7 +33,9 @@ Retention works on whole runs, so a timeline is never half there.
 A run is due when it is not alive (it succeeded, ended, failed, timed out or was lost) and
 the server last received an event of it before the cut-off. Only the server's
 clock is compared, never the time Forager wrote into an event. A run that is still running
-is never pruned, however long it has run.
+is never pruned, however long it has run. A run that was lost is not due until 7 days after
+it was lost, the days the Overview lists it, however short the settings: a gateway that kept
+the run's record through a shorter outage sends it afterwards, and the run takes it.
 
 - **Past the days for log output** the run loses its log: the terminal tab says *Log output
   pruned* and the date. The timeline, the connections and the details are whole.
