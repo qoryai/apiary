@@ -13,15 +13,25 @@ console you read. Open source, so you can check all of that.
 - **The policy.** What runs may reach, versioned and edited in one place. A change reaches
   the runs in flight within about 30 seconds.
 
-## Try it
+## Run it from a checkout (for development)
 
-You need Docker with `docker compose`, `git` and `openssl`.
+You need Docker with `docker compose`, and `git`. This builds the image from the checkout
+and runs it with the repository's `compose.yaml`: Postgres, the keys generated at first
+start, and the server on port 4100 of `127.0.0.1`.
 
 ```sh
 git clone https://github.com/qoryai/apiary.git && cd apiary
-cp .env.example .env         # fill in the values it marks as required
-docker compose up --build    # Postgres, then the server on port 4100
+docker build -t apiary:dev .
+cp .env.example .env && echo MAIL_TO_LOG=true >> .env
+APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
+curl http://localhost:4100/health
 ```
+
+`APIARY_IMAGE` and `APIARY_VERSION` name the image built here, `apiary:dev`, in place of
+`ghcr.io/qoryai/apiary`, which a release publishes. Every later `docker compose` command reads them too,
+`docker compose logs` included, so set them in the shell for those first:
+`export APIARY_IMAGE=apiary APIARY_VERSION=dev`. `/health` answers once the migrations have
+run, a few seconds after the start.
 
 Sign up at `http://localhost:4100/users/register`; the trial writes the log-in link to
 `docker compose logs apiary`. The first person to sign up creates the organisation and runs

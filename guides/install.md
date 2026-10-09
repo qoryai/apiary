@@ -10,23 +10,33 @@ page is the reference for an installation that stays.
 
 ## The pieces
 
-- **The image** is built from the `Dockerfile` of the repository. It holds the release and
-  nothing else, runs as the user `nobody`, and its command is `bin/server`, which migrates
-  and serves. `bin/migrate` runs the same migrations by hand, and `bin/apiary version`
-  prints the release's version.
-- **Postgres.** The `docker-compose.yml` of the repository starts Postgres 18 with the role
-  `apiary`, the database `apiary` and the volume `postgres-data`, and starts the `apiary`
-  service once the database is healthy, publishing port 4100. An external Postgres is one
-  `DATABASE_URL` away; the role needs the right to create and alter tables in its
-  database, since the release migrates it.
+- **The image**, `ghcr.io/qoryai/apiary`, is built from the `Dockerfile` of the repository.
+  CI builds it on every pull request and push and publishes nothing; only a release
+  publishes it, tagged with its version without the `v` (`X.Y.Z`), `X.Y` and `latest`, for
+  `linux/amd64` and `linux/arm64`. It holds the release and nothing else, runs as the user
+  `nobody`, listens on port 4100, and its command is `bin/server`, which migrates and
+  serves. `bin/migrate` runs the same migrations by hand, `bin/apiary version` prints the
+  release's version, and `bin/keys` generates the keys
+  ([The keys generated at first start](#the-keys-generated-at-first-start)). The commit it
+  was built from is its label `org.opencontainers.image.revision` and `revision` at
+  [`GET /health`](#health).
+- **`compose.yaml`** of the repository runs it as three services. `keys` runs once at every
+  start and exits: it generates the keys the volume `keys` does not hold yet. `postgres`,
+  in the profile `postgres` that `.env` turns on with `COMPOSE_PROFILES=postgres`, is
+  Postgres 18 with the role `apiary`, the database `apiary` and the volume `postgres-data`.
+  `apiary` starts once `keys` has finished and the database is healthy, and publishes port
+  4100 on `127.0.0.1` only. An external Postgres is one `DATABASE_URL` away, with the line
+  `COMPOSE_PROFILES=postgres` taken out of `.env`
+  ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
+  tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay.** People sign in with a link sent by email and are invited by email, so
   the release does not boot without a way to deliver mail.
 
-```sh
-cp .env.example .env    # fill in the values
-docker compose up --build -d
-```
+With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
+three services, and `docker compose logs apiary` shows the boot.
+[From nothing to a first run](quickstart.md) runs them from a checkout, with an image built
+on the machine.
 
 ## TLS and the reverse proxy
 
@@ -121,7 +131,8 @@ without it and exits with the message shown.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `DATABASE_URL` | required | The connection URL, `ecto://USER:PASS@HOST/DATABASE`. With the compose file the host is `postgres` and the role and database are `apiary`. A password with characters that mean something in a URL has to be percent-encoded. |
+| `DATABASE_URL` | required; with `compose.yaml`, `postgres://apiary@postgres/apiary` | The connection URL, `postgres://USER:PASS@HOST/DATABASE` (`postgresql://` and `ecto://` work as well), with TLS as its `sslmode` says ([Postgres over TLS](#postgres-over-tls)). `compose.yaml` gives the bundled Postgres's URL unless `.env` sets another; a `DATABASE_URL` set in the shell that runs `docker compose` wins over `.env`'s. A password with characters that mean something in a URL has to be percent-encoded. |
+| `DATABASE_PASSWORD` | none; with `compose.yaml`, generated at first start | The password when `DATABASE_URL` carries none; an empty one in the URL counts as none. Passed as it is, so it needs no percent-encoding. With `compose.yaml` the service `keys` generates it, and the bundled Postgres takes it as the password of the role `apiary` ([The keys generated at first start](#the-keys-generated-at-first-start)). |
 | `POOL_SIZE` | `10` | Connections in the pool. An integer. |
 | `ECTO_IPV6` | off | `true` or `1` connects to the database over IPv6. Anything else is off. |
 | `MIGRATE_ON_BOOT` | `true` | `false`, `0` or `no` leaves pending migrations to `bin/migrate`. Anything else runs them at boot. |
@@ -131,13 +142,61 @@ environment variable DATABASE_URL is missing.
 For example: postgres://USER:PASS@HOST/DATABASE
 ```
 
+### Postgres over TLS
+
+`DATABASE_URL` takes libpq's `sslmode` and `sslrootcert`, as managed Postgres services
+print them, so a pasted URL connects with TLS as it says:
+
+```text
+postgres://USER:PASS@HOST:5432/DATABASE?sslmode=verify-full
+```
+
+| `sslmode` | The connection |
+|---|---|
+| none | Not encrypted, unless Ecto's own `ssl=true` asks for TLS, checked against the system's CAs. |
+| `disable` | Not encrypted. |
+| `verify-full` | Encrypted; the server's certificate and host name are checked, against the system's CAs, or against the file `sslrootcert=/path/to/ca.pem` names. `sslrootcert=system` is the system's CAs. |
+| `require` | Encrypted; the server's certificate is not checked, with or without `sslrootcert`. Said once at boot, as a warning. |
+
+Two differences from libpq. An `sslrootcert` without an `sslmode` is not read here, and
+the connection is as with no `sslmode` (the first row above), where libpq takes
+`sslrootcert=system` alone as `verify-full`. And `require` with an `sslrootcert` checks
+nothing here, where libpq checks the certificate against that file. Write
+`sslmode=verify-full` for a checked connection.
+
+A CA your provider does not publish to the system's store is a file you mount into the
+container, with a `compose.override.yaml` beside `compose.yaml`, and name with
+`sslrootcert`. Written as `postgres://`, the same URL serves `pg_dump` and `psql` too
+([Backup and restore](backup.md)).
+
+```text
+The database connection is encrypted, and the server's certificate is not checked (sslmode=require).
+```
+
+Any other `sslmode`, `prefer`, `allow` and `verify-ca` among them, stops the boot, and so
+does an `sslrootcert` file that cannot be read under `verify-full`:
+
+```text
+environment variable DATABASE_URL asks sslmode=prefer, which Qory does not take.
+Use sslmode=verify-full, which checks the server's certificate, or sslmode=require, which encrypts without checking it.
+```
+
+```text
+environment variable DATABASE_URL names sslrootcert=/certs/ca.pem, which cannot be read.
+```
+
 ### Secrets
+
+With `compose.yaml` the service `keys` generates the three at first start, with
+`DATABASE_PASSWORD` ([The keys generated at first start](#the-keys-generated-at-first-start)).
+Set one in `.env` only for a value of your own, such as one restored from a backup: a
+value set in the environment always wins. A variable left blank counts as not set.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
-| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `SECRET_KEY_BASE` | required; with `compose.yaml`, generated at first start | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
+| `APIARY_ENCRYPTION_SECRET` | required; with `compose.yaml`, generated at first start | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required; with `compose.yaml`, generated at first start | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
 <!-- feature: secrets -->
 
 `APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
@@ -188,13 +247,104 @@ Generate one with: openssl rand -base64 32
 APIARY_SIGNING_SECRET is a value the Forager contract publishes in its fixtures, so anyone could sign as this instance. Generate one with: openssl rand -base64 32
 ```
 
+### The keys generated at first start
+
+`bin/keys`, which the service `keys` of `compose.yaml` runs at every start before Postgres
+and the server, keeps the instance's keys in the volume `keys`, in the file
+`/var/lib/apiary/keys/apiary.env`: `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`,
+`APIARY_SIGNING_SECRET` and `DATABASE_PASSWORD`, one `NAME=value` line each, mode 0600,
+owned by `nobody`. For each name:
+
+- set in the environment, that is in `.env`: it is not generated, and the file does not
+  keep it;
+- held by the file: it is kept, never changed;
+- else: it is generated with `openssl`, `SECRET_KEY_BASE` from 48 random bytes, each of the
+  two 32-byte keys from 32 bytes of its own, in base64, and the database password from 24
+  bytes, in hex.
+
+It also writes the database password to `/var/lib/apiary/keys/postgres-password`, mode
+0644, which the bundled Postgres reads as `POSTGRES_PASSWORD_FILE`. Postgres sets it when
+its volume is first created. Each file is written whole to a temporary file and renamed,
+so a crash leaves no half file. `bin/keys` prints names and paths, never a value:
+
+```text
+Generated SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and DATABASE_PASSWORD in /var/lib/apiary/keys/apiary.env.
+Keep a copy apart from the database backups: without APIARY_ENCRYPTION_SECRET no access key is trusted. To print the file: docker compose exec apiary cat /var/lib/apiary/keys/apiary.env
+```
+
+```text
+The keys in /var/lib/apiary/keys/apiary.env are kept; none was generated.
+```
+
+A name set in the environment, which the file does not hold, and one the file holds:
+
+```text
+APIARY_SIGNING_SECRET is set in the environment: not generated, not kept here.
+```
+
+```text
+APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its own.
+```
+
+When it cannot write, it exits non-zero, and nothing that depends on it starts:
+
+```text
+Cannot write /var/lib/apiary/keys: Permission denied. The volume keys has to be writable by the user nobody.
+```
+
+The release reads the file at boot, from the directory `APIARY_KEYS_DIR` names, which the
+image sets to `/var/lib/apiary/keys`, for each of the four names the environment does not
+set: the environment always wins. The two 32-byte keys may be in base64 (44 characters)
+or in hex (64 characters, either case); both are decoded to the same bytes.
+
+Keep a copy of the keys apart from the database backups ([Backup and restore](backup.md)).
+`docker compose down --volumes` deletes the volume `keys` with the database's: with the
+bundled Postgres the two go together. With an external Postgres, a start on a new volume
+generates new keys against the old database, and the key check below stops it.
+
+**The key check at boot.** At its first boot the instance records a check value of
+`APIARY_ENCRYPTION_SECRET`, which tells nothing of the secret, and the fingerprint of its
+signing key, in its own row of `instance_settings`. At every boot, once the migrations
+have run and before it serves, it compares both with the keys it runs with; before it
+records the check value on a database that has access keys, the newest one must verify
+under the secret, so a wrong secret is never recorded as the right one. A boot with
+another `APIARY_ENCRYPTION_SECRET` stops, and the log says first:
+
+```text
+APIARY_ENCRYPTION_SECRET is not the one this instance first started with.
+```
+
+and then to put back the value kept with your backups. A boot with another
+`APIARY_SIGNING_SECRET` stops with both fingerprints, which are public: they are what
+every machine pins.
+
+```text
+APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is <new>, the pinned one is <recorded>.
+Put back the value kept with your backups. To change it on purpose, and pin every machine again, run in a one-off container of this release: bin/apiary eval 'Apiary.Release.accept_signing_key()'
+```
+
+To change the signing key on purpose, which means pinning every machine again, record the
+new key's fingerprint as the instance's. A refused boot leaves no running container to run
+a command in, so with `compose.yaml` it runs in a one-off container of the same release:
+
+```sh
+docker compose run --rm apiary bin/apiary eval 'Apiary.Release.accept_signing_key()'
+```
+
+```text
+The signing key with fingerprint <new> is now the instance's. Pin it on every machine again.
+```
+
+The next boot starts. `APIARY_ENCRYPTION_SECRET` has no such command: it never changes
+once an access key exists.
+
 ### Public address and port
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `PUBLIC_URL` | required | The address people and machines use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because Forager refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. Forager accepts plain `http` only to an address of its own machine, so for other machines the public URL is `https`. |
 | `PHX_HOST` | none | Read only when `PUBLIC_URL` is not set: the public address is then `https://` and this host. `.env.example` does not list it; set `PUBLIC_URL`. |
-| `PORT` | `4100` | The port the release listens on inside the container. An integer. The compose file publishes 4100, so change both or neither. |
+| `PORT` | `4100` | The port the release listens on inside the container. An integer. `compose.yaml` publishes 4100, on `127.0.0.1`, so change both or neither. |
 | `PHX_SERVER` | set by `bin/server` | Any value makes the release serve HTTP. `bin/server` sets it; whoever starts `bin/apiary start` directly sets it too. |
 
 ```text
@@ -493,9 +643,26 @@ back.
 
 ### Compose only
 
+`docker compose` reads these, and the release does not. Compose takes a variable from the
+shell that runs it before `.env`: a value exported in the shell wins over the line in
+`.env`.
+
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `POSTGRES_PASSWORD` | required by `docker compose` | The password of the role `apiary` in the bundled Postgres. The release never reads it: it is for the `postgres` service, and the password inside `DATABASE_URL` has to match it. Compose refuses to start without it and says `set POSTGRES_PASSWORD in .env`. Postgres applies it when the volume is first created; changing the variable later does not change the role's password. |
+| `APIARY_VERSION` | required by `docker compose` | The tag of the image to run: a release's version, without the `v`. `.env.example` leaves it empty, and compose refuses to start without it and says `set APIARY_VERSION in .env`. |
+| `APIARY_IMAGE` | `ghcr.io/qoryai/apiary` | The image, without its tag. |
+| `COMPOSE_PROFILES` | `postgres` in `.env.example` | `postgres` runs the bundled Postgres. Take the line out, or leave it empty, with an external Postgres in `DATABASE_URL`. |
+
+`compose.yaml` publishes the release's port on `127.0.0.1:4100` only, for a reverse proxy
+on the same machine. For a proxy elsewhere, a `compose.override.yaml` beside it publishes
+the port on an address that proxy reaches, as well:
+
+```yaml
+services:
+  apiary:
+    ports:
+      - "10.0.0.5:4100:4100"
+```
 
 `POOL_SIZE`, `PORT` and `SMTP_PORT` have to be integers. A value that is not one stops the
 boot with an error that does not name the variable.
@@ -504,9 +671,9 @@ boot with an error that does not name the variable.
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
 three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
-`SECRET_KEY_BASE`.
-[Backup and restore](backup.md) has the commands for the compose installation and for an
-external Postgres, what is lost without each key, and a restore drill. A deleted account
+`SECRET_KEY_BASE`, which `compose.yaml` keeps in the volume `keys`.
+[Backup and restore](backup.md) has the commands for the compose installation, its keys
+and an external Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so
 how long you keep dumps bounds how long a deletion takes to be complete. What the server
 deletes with age, and how to keep less or more, is in [Retention](retention.md).
