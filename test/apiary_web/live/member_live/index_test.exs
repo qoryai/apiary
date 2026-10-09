@@ -19,13 +19,17 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       # A member changes the policy's rules only where there is a policy: with `security`.
       if Apiary.Features.on?(:security) do
         assert html =~
-                 "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy&#39;s rules that are not locked."
+                 "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy&#39;s rules that are not locked."
       else
         assert html =~
-                 "The people in this organisation. Owners and admins manage members and settings; members manage access keys and see the runs."
+                 "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
 
         refute html =~ "policy"
       end
+
+      # Only owners and admins add a node's key: a member manages no keys.
+      refute html =~ "manage access keys"
+      refute html =~ "Manages access keys"
 
       assert has_element?(lv, "#member-#{scope.membership.id}")
       # The only owner, reading: the last-owner rule is theirs to hear.
@@ -62,6 +66,34 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       lv |> element("#invite-people") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/people/invite")
 
+      # A form page of the section, not a dialog over the list: the section's list beside
+      # it, People its parent, the breadcrumb ending with People and the page, Cancel to
+      # People, and no bare Back.
+      people = ~p"/#{scope.organisation}/settings/people"
+      refute has_element?(lv, "#invite-member")
+      refute has_element?(lv, "#members")
+      assert has_element?(lv, "#settings-tab-people[aria-current=true]")
+      refute has_element?(lv, "[aria-current=page]:not(#breadcrumb *)")
+      assert has_element?(lv, "h1#invite-title", "Invite people")
+      refute has_element?(lv, "#invite-back")
+      assert has_element?(lv, "#breadcrumb a[href='#{people}']", "People")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Invite people")
+      assert has_element?(lv, "#invitation-form input[type=email][phx-mounted]")
+      assert has_element?(lv, "#invitation-save button[type=submit]", "Send invitation")
+      assert has_element?(lv, "#invitation-save-cancel[href='#{people}']", "Cancel")
+      assert page_title(lv) =~ "Invite people"
+
+      # Cancel goes back to People, sending nothing.
+      lv |> element("#invitation-save-cancel") |> render_click()
+      assert_patch(lv, people)
+      assert has_element?(lv, "#members")
+      assert page_title(lv) =~ "People"
+      refute page_title(lv) =~ "Invite"
+      assert Organisations.list_invitations(scope) == []
+
+      lv |> element("#invite-people") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people/invite")
+
       lv
       |> form("#invitation-form", invitation: %{email: "bee@example.com"})
       |> render_submit()
@@ -71,6 +103,9 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       html = render(lv)
       assert html =~ "Invitation sent to bee@example.com"
       assert html =~ "Pending invitations"
+      # A part of the page under its h1, People.
+      assert has_element?(lv, "h2", "Pending invitations")
+      refute has_element?(lv, "h3", "Pending invitations")
       assert [invitation] = Organisations.list_invitations(scope)
       assert has_element?(lv, "#invitation-#{invitation.id}", "bee@example.com")
 
@@ -87,8 +122,10 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
         |> form("#invitation-form", invitation: %{email: user.email})
         |> render_submit()
 
+      # A refused invitation stays on the page, the error under its field.
       assert html =~ "already a member"
       assert has_element?(lv, "#invitation-form")
+      assert has_element?(lv, "#invite-title", "Invite people")
       assert Organisations.list_invitations(scope) == []
     end
 
@@ -99,6 +136,16 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       %{membership: membership, user: member} = member_fixture(scope, :member)
 
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      # Each level says what it may do: owners and admins manage the nodes and their keys.
+      assert has_element?(
+               lv,
+               "#member-#{membership.id}-level-admin",
+               "Manages members, workspaces, nodes and settings"
+             )
+
+      assert has_element?(lv, "#member-#{membership.id}-level-member", "Sees the runs")
+      refute render(lv) =~ "Manages access keys"
 
       html = lv |> element("#member-#{membership.id}-level-owner") |> render_click()
       assert html =~ "#{member.email} is now an owner."
@@ -121,12 +168,36 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
-      lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/settings/people/#{membership.id}/remove")
-      assert has_element?(lv, "#remove-member")
+      people = ~p"/#{scope.organisation}/settings/people"
+      remove = ~p"/#{scope.organisation}/settings/people/#{membership.id}/remove"
+      confirm = "#member-#{membership.id}-remove-confirm"
 
-      lv |> element("#remove-member button", "Remove member") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/settings/people")
+      lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
+      assert_patch(lv, remove)
+
+      # Confirmed in place: the member's row asks, no dialog over the list.
+      refute has_element?(lv, "#remove-member")
+      assert has_element?(lv, "#member-#{membership.id}.q-confirming #{confirm}")
+      assert has_element?(lv, confirm, "Remove #{member.email}?")
+      assert has_element?(lv, confirm, "Their account stays")
+      refute has_element?(lv, "#member-#{scope.membership.id}.q-confirming")
+
+      # Cancel, and Escape, go back to People, removing no one.
+      lv |> element("#{confirm}-cancel") |> render_click()
+      assert_patch(lv, people)
+      refute has_element?(lv, "#member-#{membership.id}.q-confirming")
+      assert has_element?(lv, "#member-#{membership.id}-menu")
+
+      lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
+      assert_patch(lv, remove)
+      lv |> element(confirm) |> render_keydown(%{"key" => "Escape"})
+      assert_patch(lv, people)
+      assert Repo.get(Membership, membership.id)
+
+      lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
+      assert_patch(lv, remove)
+      lv |> element("#{confirm} #remove-confirm", "Yes, remove") |> render_click()
+      assert_patch(lv, people)
 
       html = render(lv)
       assert html =~ "#{member.email} is removed"
@@ -134,7 +205,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       own = scope.membership
       lv |> element("#member-#{own.id}-remove", "Leave") |> render_click()
-      assert has_element?(lv, "#remove-member #leave-confirm")
+
+      assert has_element?(
+               lv,
+               "#member-#{own.id}-remove-confirm",
+               "Leave #{scope.organisation.name}?"
+             )
+
+      assert has_element?(lv, "#member-#{own.id}.q-confirming #leave-confirm", "Yes, leave")
 
       lv |> element("#leave-confirm") |> render_click()
       assert render(lv) =~ "The last owner cannot be removed or demoted"
@@ -341,7 +419,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute has_element?(lv, "[phx-click=set_level]")
     end
 
-    test "cannot open the invite or remove dialogs", %{conn: conn, owner: owner, scope: scope} do
+    test "cannot open the invite page or a removal", %{conn: conn, owner: owner, scope: scope} do
       members = ~p"/#{scope.organisation}/settings/people"
 
       assert {:error, {_, %{to: ^members}}} =
@@ -388,9 +466,20 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       lv |> element("#member-#{member.membership.id}-suspend") |> render_click()
       assert_patch(lv, ~p"/#{owner.organisation}/settings/people/#{member.membership.id}/suspend")
-      assert has_element?(lv, "#suspend-member", "until an owner or an admin activates them")
+      confirm = "#member-#{member.membership.id}-suspend-confirm"
+      refute has_element?(lv, "#suspend-member")
+      assert has_element?(lv, "#member-#{member.membership.id}.q-confirming #{confirm}")
+      assert has_element?(lv, confirm, "Suspend #{member.user.email}?")
+      assert has_element?(lv, confirm, "until an owner or an admin activates them")
 
-      lv |> element("#suspend-confirm") |> render_click()
+      # Cancel goes back to People, suspending no one.
+      lv |> element("#{confirm}-cancel") |> render_click()
+      assert_patch(lv, ~p"/#{owner.organisation}/settings/people")
+      refute has_element?(lv, confirm)
+      refute Repo.get!(Membership, member.membership.id).suspended_at
+
+      lv |> element("#member-#{member.membership.id}-suspend") |> render_click()
+      lv |> element("#{confirm} #suspend-confirm", "Yes, suspend") |> render_click()
       assert_patch(lv, ~p"/#{owner.organisation}/settings/people")
       assert render(lv) =~ "#{member.user.email} is suspended."
       assert has_element?(lv, "#member-#{member.membership.id}-suspended", "Suspended")

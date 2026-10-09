@@ -65,6 +65,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "the breadcrumb leads to Runs, then names the run asked for when its id is a run's",
+         %{conn: conn, scope: scope} do
+      runs = workspace_path(scope, "/runs")
+      id = Ecto.UUID.generate()
+
+      {:ok, lv, _html} = live(conn, "#{runs}/#{id}")
+      assert crumbs(lv) == [{"Runs", runs}, {"Run #{String.slice(id, 0, 8)}", nil}]
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Run #{String.slice(id, 0, 8)}")
+
+      # An address that is no run's id names no run.
+      {:ok, lv, _html} = live(conn, "#{runs}/0191f2a4")
+      assert crumbs(lv) == [{"Runs", runs}]
+    end
+
     test "signed out, the page redirects to the log-in page", %{scope: scope} do
       conn = build_conn()
 
@@ -79,13 +93,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      target = ApiaryWeb.TargetComponents.target_path(scope, "git.example.com", "acme/shop")
+      target = workspace_path(scope, "/targets/acme/shop")
 
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       # the title alone on its line
-      assert has_element?(lv, "h1#run-title", run.task)
+      assert has_element?(lv, "h1#run-title", ApiaryWeb.RunComponents.run_title(run))
 
       # the meta line: the state as a dot and its word, the target's page, runtime, host,
       # when it started, how long it took, its denials, which lead to its connections
@@ -93,6 +107,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, ~s(#run-meta a#run-target[href="#{target}"]), "acme/shop")
       # one system has acme/shop: the path is written alone
       refute has_element?(lv, "#run-target .q-tname-sys")
+      # a long name is cut on the meta line (`.q-run-meta > #run-target`), whole in its title
+      assert has_element?(lv, ~s(#run-meta > #run-target > .q-tname[title="acme/shop"]))
       assert has_element?(lv, "#run-runtime", "claude 2.1.273")
       assert has_element?(lv, "#run-host", run.host)
       assert has_element?(lv, "#run-meta time#run-started[datetime]")
@@ -109,8 +125,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ ~s(aria-label="Breadcrumb")
       refute has_element?(lv, ".q-kvs")
 
-      # the top bar's segments: the target's page, then this run
-      assert has_element?(lv, ~s(#breadcrumb a[href="#{target}"]), "acme/shop")
+      # the top bar's segments: Runs, a link to the list, then this run; the target is on
+      # the meta line, not in the breadcrumb
+      assert crumbs(lv) == [
+               {"Runs", workspace_path(scope, "/runs")},
+               {"Run #{String.slice(run.run_id, 0, 8)}", nil}
+             ]
 
       assert has_element?(
                lv,
@@ -135,8 +155,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#policy-unrendered")
       end
 
-      # labels are key and value lines, in the record's order with forge, repository and
-      # task first; a label that names the target leads to its page
+      # labels are key and value lines, in the record's order: forge and repository first,
+      # then by name; a label that names the target leads to its page, and a task is an
+      # ordinary label
       assert html
              |> LazyHTML.from_document()
              |> LazyHTML.query("#run-labels dt")
@@ -145,19 +166,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                ~w(forge repository task)
 
       assert has_element?(lv, ~s(#run-labels a[href="#{target}"]), "acme/shop")
+      refute has_element?(lv, ~s(#run-labels a[href*="task="]))
       refute has_element?(lv, ".q-label")
 
-      # tabs with their counts; Details is the rail's, a tab only below 1440 px
-      assert has_element?(lv, "#run-tabs a#run-tab-timeline[aria-current='page']", "Timeline")
+      # tabs with their counts; Details is the rail's, a tab below 1440 px and on Terminal
+      assert has_element?(lv, "#run-tab a#run-tab-timeline[aria-current='page']", "Timeline")
 
       assert has_element?(
                lv,
-               "#run-tabs a .q-tabs-n",
+               "#run-tab a .q-tabs-n",
                "#{Apiary.Runs.Record.timeline(scope, run).session_items}"
              )
 
-      assert has_element?(lv, "#run-tabs a .q-tabs-n.q-tabs-bad", "2 denied")
-      assert has_element?(lv, "#run-tabs a#run-tab-details", "Details")
+      assert has_element?(lv, "#run-tab a .q-tabs-n.q-tabs-bad", "2 denied")
+      assert has_element?(lv, "#run-tab a#run-tab-details", "Details")
     end
 
     test "the more menu copies the id and offers the log, to a reader of the log", %{
@@ -183,6 +205,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#close-run-button")
     end
 
+    test "the Terminal tab is wide: the rail folds away and Details is a tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
+
+      # what the page's CSS keys on from 1440 px: no rail beside the column, and the
+      # Details tab shown; the rail is still the one element, for the Details tab
+      {:ok, lv, _html} = live(conn, path <> "/terminal")
+      assert has_element?(lv, "#run-page.q-run-wide #run-tab a#run-tab-details", "Details")
+      assert has_element?(lv, "#run-page.q-run-wide #run-details")
+      refute has_element?(lv, "#run-page.q-run-on-details")
+
+      # a patch to another tab brings the rail back beside it
+      lv |> element("#run-tab-timeline") |> render_click()
+      assert has_element?(lv, "#run-tab-timeline[aria-current='page']")
+      refute has_element?(lv, "#run-page.q-run-wide")
+
+      for tab <- ["", "/network", "/details"] do
+        {:ok, lv, _html} = live(conn, path <> tab)
+        assert has_element?(lv, "#run-page #run-details")
+        refute has_element?(lv, "#run-page.q-run-wide")
+      end
+    end
+
     test "the Details tab is the rail, in the column", %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
 
@@ -198,6 +246,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#run-id", run.run_id)
       # one element: the rail is not drawn a second time
       refute has_element?(lv, "#run-timeline")
+    end
+
+    test "a run's page ends a narrowing: the sidebar's Runs and Network access lead plainly", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+
+      for tab <- ["", "/terminal", "/network", "/details"] do
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}" <> tab)
+
+        assert has_element?(lv, ~s(#nav-runs[href="#{workspace_path(scope, "/runs")}"]))
+        assert has_element?(lv, ~s(#nav-network[href="#{workspace_path(scope, "/network")}"]))
+        refute has_element?(lv, "#nav-runs[aria-label]")
+        # the run's tabs are a thing's tabs, named for the run
+        assert has_element?(lv, "nav#run-tab.q-tabs[aria-label=Run]")
+      end
     end
 
     test "a shared path is written with its system, in the meta line and the top bar", %{
@@ -218,10 +284,44 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{other.run_id}")
 
       assert has_element?(lv, "#run-target .q-tname-sys", "github.example")
-      assert has_element?(lv, "#breadcrumb .q-tname-sys", "github.example")
+
+      # Its link lands on its page at its address, which keeps the system.
+      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      assert has_element?(lv, "#run-target[href='#{page}']")
     end
 
-    test "a run without a task is titled by its short id, and one without a wall says None", %{
+    test "the title is the one the run gave; a task is an ordinary label, never the title", %{
+      conn: conn,
+      scope: scope
+    } do
+      labels = %{"task" => "fix-login", "team" => "web"}
+
+      titled =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"about" => %{"title" => "Fix the login redirect"}, "labels" => labels})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{titled.run_id}")
+
+      assert has_element?(lv, "h1#run-title", "Fix the login redirect")
+      assert page_title(lv) == "Fix the login redirect · Runs · Qory Apiary"
+      assert has_element?(lv, "#run-labels dd", "fix-login")
+      refute has_element?(lv, "#run-labels a")
+
+      untitled = projected(scope, [{1, "run.started", started_data(%{"labels" => labels})}])
+      short = String.slice(untitled.run_id, 0, 8)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{untitled.run_id}/details")
+
+      assert has_element?(lv, "h1#run-title", "Run #{short}")
+      refute has_element?(lv, "h1#run-title", "fix-login")
+      assert page_title(lv) == "Details · Run #{short} · Runs · Qory Apiary"
+    end
+
+    test "a run without a title is titled by its short id, and one without a wall says None", %{
       conn: conn,
       scope: scope
     } do
@@ -233,9 +333,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
       assert html =~ "This run had no wall"
       refute has_element?(lv, "#run-labels")
-      # unassigned: neither the meta line nor the breadcrumb names a target
+      # unassigned: the meta line names no target, and the breadcrumb is Runs and the run
       refute has_element?(lv, "#run-target")
-      refute has_element?(lv, "#breadcrumb a[href*='/targets/']")
+
+      assert crumbs(lv) == [
+               {"Runs", workspace_path(scope, "/runs")},
+               {"Run #{String.slice(run.run_id, 0, 8)}", nil}
+             ]
+    end
+
+    test "the run's crumb is the page on the Timeline and a link to it on the other tabs", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data(%{"labels" => %{}})}])
+      timeline = workspace_path(scope, "/runs/#{run.run_id}")
+      short = "Run #{String.slice(run.run_id, 0, 8)}"
+
+      {:ok, lv, _html} = live(conn, timeline)
+      assert crumbs(lv) == [{"Runs", workspace_path(scope, "/runs")}, {short, nil}]
+
+      for tab <- ["/terminal", "/network", "/details"] do
+        {:ok, lv, _html} = live(conn, timeline <> tab)
+        assert crumbs(lv) == [{"Runs", workspace_path(scope, "/runs")}, {short, timeline}]
+        # A tab of the same page: the way back is a patch, as the tabs are.
+        assert has_element?(lv, "#breadcrumb a[href='#{timeline}'][data-phx-link=patch]")
+      end
     end
 
     test "a pending run says Ping only and waits on every tab but Details", %{
@@ -1112,7 +1235,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       if security?() do
         assert html =~ "Policy in force"
         assert html =~ run.policy_digest
-        assert html =~ "api.llm.example, git.example.com"
+        assert html =~ "api.llm.example, codeberg.org"
         assert html =~ "forge-token"
       else
         refute html =~ "Policy in force"
@@ -1126,7 +1249,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ "close-run-button"
     end
 
-    test "a member closes a quiet run after confirming in a modal", %{conn: conn, scope: scope} do
+    test "a member closes a quiet run after confirming in place", %{conn: conn, scope: scope} do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
@@ -1138,14 +1261,27 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       refute has_element?(lv, "#close-run")
       lv |> element("#close-run-button") |> render_click()
-      assert has_element?(lv, "#close-run", "A close is final")
 
-      lv |> element("#close-run button", "Cancel") |> render_click()
+      # The button turns into the question in place, with its act and Cancel: no modal.
+      assert has_element?(lv, ".q-run-actions #close-run.q-confirm", "Close this run?")
+      assert has_element?(lv, "#close-run", "A close is final")
+      refute has_element?(lv, "dialog#close-run")
+      refute has_element?(lv, "#close-run-button")
+      assert has_element?(lv, "#close-run-cancel[phx-mounted]")
+
+      lv |> element("#close-run-cancel") |> render_click()
       refute has_element?(lv, "#close-run")
+      assert has_element?(lv, "#close-run-button[phx-hook=FocusOn]")
+      assert_push_event(lv, "run:focus", %{id: "close-run-button"})
       assert Runs.get_run!(scope, run.id).state == "running"
 
+      # Escape takes the question back too.
       lv |> element("#close-run-button") |> render_click()
-      html = lv |> element("#close-run button", "Close run") |> render_click()
+      render_keydown(lv, "close_cancel", %{"key" => "Escape"})
+      refute has_element?(lv, "#close-run")
+
+      lv |> element("#close-run-button") |> render_click()
+      html = lv |> element("#close-run-confirm", "Yes, close") |> render_click()
 
       assert Runs.get_run!(scope, run.id).state == "closed"
       assert html =~ "Closed"
@@ -1267,7 +1403,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         |> get(~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
         |> html_response(200)
 
-      assert html =~ run.task
+      assert html =~ "#{ApiaryWeb.RunComponents.run_title(run)} · Runs"
       assert html =~ "Succeeded"
       assert html =~ ~s(id="run-loading")
       refute html =~ ~s(id="timeline")
@@ -1564,7 +1700,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
       lv |> element("#close-run-button") |> render_click()
-      lv |> element("#close-run button", "Close run") |> render_click()
+      lv |> element("#close-run-confirm", "Yes, close") |> render_click()
 
       assert_push_event(lv, "run:focus", %{id: "run-title"})
       assert has_element?(lv, "h1#run-title[tabindex='-1'][phx-hook='FocusOn']")
@@ -1853,6 +1989,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       assert has_element?(lv, "#run-why", "I could not finish: the tests still fail.")
+      # one cut line in the meta lines' box, which takes the column's width on a phone
+      assert has_element?(lv, ".q-run-sub > .q-run-meta-wrap > #run-why > .q-run-why-t[title]")
 
       jump = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=2"
       assert has_element?(lv, ~s(#run-why-jump[href="#{jump}"]), "Jump to it")

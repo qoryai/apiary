@@ -3,14 +3,17 @@ defmodule ApiaryWeb.MovedController do
   The paths of pages that moved, sent on to where the page is now, with whatever followed
   the moved part and the query. Pages that moved under the settings
   (`ApiaryWeb.SettingsComponents`): an organisation's members, `/:org/members/…`, are its
-  people, `/:org/settings/people/…`, and a workspace's access keys,
-  `/:org/:workspace/keys/…`, are `/:org/:workspace/settings/keys/…`, and its Activity,
-  `/:org/activity`, is the Audit log of its settings, `/:org/settings/audit-log`. A page that took a new
-  name, for good: the workspace's connections, `/:org/:workspace/connections`, are its
-  Network access, `/:org/:workspace/network`, and a run's Connections tab,
-  `/runs/:run_id/connections`, is `/runs/:run_id/network`; those answer 301, moved
-  permanently. A bookmark, a link in an old message and a page of a browser's history still
-  land; the router answers the new paths only.
+  people, `/:org/settings/people/…`. A page that moved out of the settings: the
+  organisation's Audit log, `/:org/settings/audit-log`, is a page of its sidebar,
+  `/:org/audit-log`, and so is its Activity before it, `/:org/activity`. A section of the
+  settings that took a new name: a workspace's Retention,
+  `/:org/:workspace/settings/retention`, is its Runs, `/:org/:workspace/settings/runs`.
+  Those answer 302, found. A page that took a new name, for good: the workspace's
+  connections, `/:org/:workspace/connections`, are its Network access,
+  `/:org/:workspace/network`, and a run's Connections tab, `/runs/:run_id/connections`, is
+  `/runs/:run_id/network`; those answer 301, moved permanently. A bookmark, a link in an
+  old message and a page of a browser's history still land; the router answers the new
+  paths only.
   """
   use ApiaryWeb, :controller
 
@@ -18,13 +21,16 @@ defmodule ApiaryWeb.MovedController do
     {status, segments} =
       case conn.path_info do
         [organisation, "activity"] ->
-          {:found, [organisation, "settings", "audit-log"]}
+          {:found, [organisation, "audit-log"]}
+
+        [organisation, "settings", "audit-log"] ->
+          {:found, [organisation, "audit-log"]}
 
         [organisation, "members" | rest] ->
           {:found, [organisation, "settings", "people" | rest]}
 
-        [organisation, workspace, "keys" | rest] ->
-          {:found, [organisation, workspace, "settings", "keys" | rest]}
+        [organisation, workspace, "settings", "retention"] ->
+          {:found, [organisation, workspace, "settings", "runs"]}
 
         [organisation, workspace, "connections"] ->
           {:moved_permanently, [organisation, workspace, "network"]}

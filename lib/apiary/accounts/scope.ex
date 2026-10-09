@@ -87,12 +87,11 @@ defmodule Apiary.Accounts.Scope do
   The scope of a runner at the server contract: the access key it signed with, verified,
   and the key's workspace. The key must carry its workspace loaded, as a verified key does
   (`Apiary.AccessKeys.fetch_for_verification/1`); a caller holding one without it preloads
-  it first (`Apiary.Runs.Ingest.ingest/3` and `Apiary.Policy.Serving.managed?/1` do). The
-  key's secrets stay out of it.
+  it first (`Apiary.Runs.Ingest.ingest/3` and `Apiary.Policy.Serving.managed?/1` do).
   """
   @spec for_access_key(AccessKey.t()) :: t
   def for_access_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
-    %__MODULE__{access_key: AccessKey.without_secrets(access_key), workspace: workspace}
+    %__MODULE__{access_key: access_key, workspace: workspace}
   end
 
   @doc """

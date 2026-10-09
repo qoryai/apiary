@@ -1,6 +1,7 @@
 defmodule Apiary.Runs.ProjectorGuardTest do
-  # Not async: both tests change something global, the projector's fold and the logger's
-  # level, for their duration.
+  # Not async: these tests change something global for their duration, the projector's
+  # fold or the logger's level, or refute what the log holds, and a log captured beside
+  # async tests holds their lines too, example data such as acme/shop among them.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -84,6 +85,19 @@ defmodule Apiary.Runs.ProjectorGuardTest do
     end
   end
 
+  describe "project_async/1" do
+    test "never raises into the caller, and logs no event data", %{run: run} do
+      events_fixture(run, record())
+      Repo.delete!(run)
+
+      log = capture_log(fn -> assert :ok = Projector.project_async(run) end)
+
+      assert log =~ "projection failed run=#{run.id}"
+      refute log =~ "acme/shop"
+      assert :ok = Projector.project_async(nil)
+    end
+  end
+
   describe "the query log at debug level" do
     # Raised after the events are stored: the fixture's own inserts are not the subject.
     defp debug_level do
@@ -97,6 +111,7 @@ defmodule Apiary.Runs.ProjectorGuardTest do
         {1, "run.started",
          started_data(%{
            "args" => ["--prompt", "marker-in-an-arg"],
+           "about" => %{"title" => "marker-in-a-title"},
            "labels" => %{
              "forge" => "git.example.com",
              "repository" => "acme/shop",
@@ -111,7 +126,10 @@ defmodule Apiary.Runs.ProjectorGuardTest do
 
       log =
         capture_log([level: :debug], fn ->
-          assert {:ok, %Run{task: "marker-in-a-label"}} = Projector.project(run)
+          assert {:ok,
+                  %Run{about_title: "marker-in-a-title", labels: %{"task" => "marker-in-a-label"}}} =
+                   Projector.project(run)
+
           assert {:ok, %Run{}} = Projector.rebuild(run)
         end)
 

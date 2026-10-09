@@ -31,8 +31,6 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
         kind: "host",
         action: "allow",
         host: nil,
-        name: nil,
-        argument: nil,
         paths: nil,
         locked: false,
         by: "beekeeper",
@@ -196,21 +194,5 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              reading = read(%{"host" => "github.example", "action" => "deny"}, context)
 
     assert flat(reading.text) == "Only an owner can lock, unlock or change a locked rule."
-  end
-
-  test "a credential: its name, its argument, one already named" do
-    assert %{kind: :hint} = Reading.credential(%{"name" => ""}, [])
-
-    assert %{kind: :ok} =
-             Reading.credential(%{"name" => "forge-token", "argument" => "acme/shop"}, [])
-
-    assert %{kind: :error, invalid: [:name]} = Reading.credential(%{"name" => "Forge"}, [])
-
-    assert %{kind: :error, invalid: [:argument]} =
-             Reading.credential(%{"name" => "k", "argument" => String.duplicate("a", 257)}, [])
-
-    named = [own(kind: "credential", name: "model-key")]
-    assert %{kind: :error} = Reading.credential(%{"name" => "model-key"}, named)
-    assert %{kind: :note} = Reading.credential(%{"name" => "model-key", "argument" => "x"}, named)
   end
 end

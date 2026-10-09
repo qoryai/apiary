@@ -4,7 +4,6 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
   # The security policy: left out of a run without the security feature.
   @moduletag needs: :security
 
-  import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
 
@@ -18,7 +17,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{access_key: key, secret: secret} = access_key_fixture(scope)
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
     %{scope: scope, key: key, secret: secret}
   end
 
@@ -45,6 +44,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     for query <- ["", "forge=github.example&repository=acme%2Fsite"] do
       conn = fetch(ctx, query)
       assert json_response(conn, 404) == %{"error" => "not_found"}
+      assert signed_answer?(conn)
       assert get_resp_header(conn, "x-qory-run-configuration") == []
       assert get_resp_header(conn, "etag") == []
     end
@@ -74,7 +74,13 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     [digest] = get_resp_header(conn, "x-qory-run-configuration")
     assert digest == Render.digest(conn.resp_body)
     assert get_resp_header(conn, "etag") == [~s("#{digest}")]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+
+    assert get_resp_header(conn, "x-qory-configuration") == [
+             Configuration.digest(ctx.key.node, true)
+           ]
+
+    assert signed_answer?(conn)
+    assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
     assert [%RunConfiguration{version: 1, target_id: nil}] = Repo.all(RunConfiguration)
   end
 
@@ -91,6 +97,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
     conn = fetch(ctx, "")
     assert json_response(conn, 429) == %{"error" => "rate_limited"}
+    assert signed_answer?(conn)
     assert [seconds] = get_resp_header(conn, "retry-after")
     assert String.to_integer(seconds) >= 1
     assert get_resp_header(conn, "x-qory-run-configuration") == []
@@ -202,7 +209,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     {:ok, _} = Policy.allow(ctx.scope, shop, %{host: "mcp.example"})
 
     %{scope: other} = sign_up_fixture()
-    %{access_key: key, secret: secret} = access_key_fixture(other)
+    %{access_key: key, secret: secret} = contract_key_fixture(other)
     query = "forge=github.example&repository=acme%2Fsite"
 
     # Managed is the workspace's own, too: this
@@ -220,7 +227,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     count = Repo.aggregate(RunConfiguration, :count)
 
     for conn <- [
-          fetch(ctx, "", signature: "sha256=" <> String.duplicate("0", 64)),
+          fetch(ctx, "", signature: String.duplicate("A", 86)),
           fetch(ctx, "", timestamp: System.os_time(:second) - 301),
           get(build_conn(), @path)
         ] do
@@ -265,7 +272,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
     # A request that does not verify is 401 first, whatever its contract version.
     conn =
-      fetch(ctx, query, contract_version: "2", signature: "sha256=" <> String.duplicate("0", 64))
+      fetch(ctx, query, contract_version: "2", signature: String.duplicate("A", 86))
 
     assert json_response(conn, 401) == %{"error" => "unauthorized"}
   end
@@ -283,11 +290,12 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
         assert :ok = Schema.validate(File.read!(file)), Path.basename(file)
       end
 
-      assert {:error, _} =
-               dir
-               |> Path.join("fixtures/invalid/run-configuration-no-policy.json")
-               |> File.read!()
-               |> Schema.validate()
+      invalid = dir |> Path.join("fixtures/invalid/run-configuration-*.json") |> Path.wildcard()
+      assert invalid != []
+
+      for file <- invalid do
+        assert {:error, _} = file |> File.read!() |> Schema.validate(), Path.basename(file)
+      end
 
       # The enforce fixture's policy, said as rules, is served in the fixture's shape: a
       # deny below the allowed suffix stands beside it in the deny list.

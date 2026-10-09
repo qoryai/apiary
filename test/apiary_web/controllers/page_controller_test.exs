@@ -14,7 +14,10 @@ defmodule ApiaryWeb.PageControllerTest do
     offered? = Apiary.Organisations.sign_up_offered?()
     assert response =~ "Create an account" == offered?
     assert response =~ ~p"/users/register" == offered?
-    assert response =~ "Give your workspace an access key"
+    assert response =~ "Add your machines as nodes, connect each with a key of its own"
+    # The documentation, which the sidebar's product menu opens once signed in.
+    assert response =~ ~r{<a[^>]*id="home-docs"[^>]*>|<a[^>]*href="/docs"[^>]*id="home-docs"}
+    assert response =~ ~s(href="/docs")
     refute response =~ ~r/\b(hive|apiary)\b/
   end
 

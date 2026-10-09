@@ -1,7 +1,7 @@
 defmodule Apiary.Deletion.Tables do
   @moduledoc """
   Every table that holds an organisation's rows, in the order the purge of an organisation
-  or a workspace deletes them (`Apiary.Deletion`), and that an export will take.
+  or a workspace deletes them (`Apiary.Deletion`).
 
   A table is on the list when it has an `organisation_id` column, and every one that has
   is; the test compares the list with the database's schema (`Apiary.Deletion.TablesCase`),
@@ -24,7 +24,8 @@ defmodule Apiary.Deletion.Tables do
   only their access to it goes with it. `organisations` itself is not on the list: its row
   is deleted last, after them all. Nor are the instance's own tables, `users` and
   `users_tokens` (an account belongs to no organisation), `purged_organisations` (what the
-  instance keeps of a purged organisation) and Oban's.
+  instance keeps of a purged organisation), `access_key_public_keys` (the ledger of public
+  keys, which outlives the keys, `Apiary.AccessKeys.PublicKey`) and Oban's.
   """
 
   @typedoc "What a table holds: an organisation's own rows, or a workspace's too."
@@ -32,7 +33,10 @@ defmodule Apiary.Deletion.Tables do
 
   # Children first: a run's events, log and connections before the run; the deliveries
   # before the access keys they name; the run configurations and the policy's rules before
-  # the targets, and so are the pins; everything of a workspace before the workspace.
+  # the targets, and so are the pins; a node's instances before the access keys they name;
+  # the access keys before the enrolment codes they arrived by, and the keys, the codes,
+  # the runs and the instances before the nodes they name; everything of a workspace
+  # before the workspace.
   @tables [
     {"log_chunks", :workspace},
     {"events", :workspace},
@@ -42,9 +46,20 @@ defmodule Apiary.Deletion.Tables do
     {"runs", :workspace},
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
+    {"connection_targets", :workspace},
+    {"workspace_connections", :workspace},
+    {"service_definitions", :workspace},
+    {"integration_releases", :workspace},
+    {"variables", :workspace},
+    {"secret_values", :workspace},
+    {"secrets", :workspace},
+    {"workspace_data_keys", :workspace},
     {"target_pins", :workspace},
     {"targets", :workspace},
+    {"node_instances", :workspace},
     {"access_keys", :workspace},
+    {"access_key_enrolment_codes", :workspace},
+    {"nodes", :workspace},
     {"invitations", :workspace},
     {"memberships", :organisation},
     {"audit_entries", :workspace},

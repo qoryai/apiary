@@ -5,9 +5,9 @@ defmodule Apiary.Policy.Render do
 
   Deterministic: members in a fixed order, lists sorted by `Apiary.Policy.Resolution`, no
   insignificant whitespace, so the same rules give the same bytes and the same digest.
-  `allow` is always written, empty when nothing is allowed; `deny`, `paths` and
-  `credentials` only when they hold something, so a policy without a deny renders the
-  bytes it always did.
+  `allow` is always written, empty when nothing is allowed; `deny` and `paths` only when
+  they hold something, so a policy without a deny renders the bytes it always did. The
+  document selects no credential: the contract's `credentials` member is never written.
   """
 
   alias Apiary.Policy.Effective
@@ -39,18 +39,7 @@ defmodule Apiary.Policy.Render do
           else: []
         )
 
-    credentials =
-      for credential <- effective.credentials do
-        ordered(
-          [name: credential.name] ++
-            if(credential[:argument], do: [argument: credential.argument], else: [])
-        )
-      end
-
-    ordered(
-      [version: @version, egress: ordered(egress)] ++
-        if(credentials != [], do: [credentials: credentials], else: [])
-    )
+    ordered(version: @version, egress: ordered(egress))
   end
 
   defp ordered(pairs), do: Jason.OrderedObject.new(pairs)

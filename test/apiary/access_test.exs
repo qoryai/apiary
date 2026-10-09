@@ -6,6 +6,7 @@ defmodule Apiary.AccessTest do
   use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core
 
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
@@ -113,10 +114,10 @@ defmodule Apiary.AccessTest do
     test "can?/3 answers from the marks the scope carries, without a read", ctx do
       {:ok, _} = Apiary.Deletion.delete_organisation(ctx.owner, ctx.organisation.slug)
       stale = ctx.scopes.owner
-      assert Access.can?(stale, :"access_key.create", stale.workspace)
+      assert Access.can?(stale, :"node.read", stale.workspace)
 
       fresh = Access.reload(stale)
-      refute Access.can?(fresh, :"access_key.create", fresh.workspace)
+      refute Access.can?(fresh, :"node.read", fresh.workspace)
       assert Access.can?(fresh, :"organisation.restore", fresh.organisation)
     end
   end
@@ -129,21 +130,21 @@ defmodule Apiary.AccessTest do
 
     test "answers as no membership", ctx do
       scope = ctx.member.scope
-      assert Access.authorize(scope, :"access_key.create", scope.workspace) == :ok
+      assert Access.authorize(scope, :"node.read", scope.workspace) == :ok
 
       {:ok, _} = Apiary.Organisations.suspend_member(ctx.owner, ctx.member.membership.id)
 
       assert Access.reload(scope).membership == nil
 
-      assert Access.authorize(scope, :"access_key.create", scope.workspace) ==
+      assert Access.authorize(scope, :"node.read", scope.workspace) ==
                {:error, :forbidden}
 
       assert Access.authorize(scope, :"run.read", scope.workspace) == {:error, :forbidden}
       # The scope as loaded still carries it: a page follows by the broadcast.
-      assert Access.can?(scope, :"access_key.create", scope.workspace)
+      assert Access.can?(scope, :"node.read", scope.workspace)
 
       {:ok, _} = Apiary.Organisations.activate_member(ctx.owner, ctx.member.membership.id)
-      assert Access.authorize(scope, :"access_key.create", scope.workspace) == :ok
+      assert Access.authorize(scope, :"node.read", scope.workspace) == :ok
     end
   end
 
@@ -153,7 +154,9 @@ defmodule Apiary.AccessTest do
     @rows [
       {:run, [:"run.read", :"run.read_log", :"run.close"]},
       {:rule, [:"security_policy.edit", :"security_policy.lock"]},
-      {:access_key, [:"access_key.rotate", :"access_key.revoke"]},
+      {:node, [:"access_key.create_code", :"access_key.add"]},
+      {:node_key, [:"access_key.revoke"]},
+      {:code, [:"access_key.cancel_code"]},
       {:membership, [:"member.change_level", :"member.remove"]},
       {:invitation, [:"invitation.revoke"]}
     ]
@@ -162,6 +165,8 @@ defmodule Apiary.AccessTest do
       %{scope: owner} = sign_up_fixture()
       %{scope: other} = sign_up_fixture()
       {:ok, rule} = Apiary.Policy.allow(other, nil, %{host: "api.example"})
+      node = node_fixture(other)
+      {:ok, code, _} = Apiary.AccessKeys.create_enrolment_code(other, node, %{})
 
       %{
         owner: owner,
@@ -169,7 +174,9 @@ defmodule Apiary.AccessTest do
         rows: %{
           run: run_fixture(other),
           rule: rule,
-          access_key: access_key_fixture(other).access_key,
+          node: node,
+          node_key: enrolled_key_fixture(other, node).access_key,
+          code: code,
           membership: member_fixture(other).membership,
           invitation: invitation_fixture(other).invitation
         }
@@ -324,7 +331,7 @@ defmodule Apiary.AccessTest do
         scope = workspace_scope(user, ctx.second)
         assert Access.reaches_every_workspace?(scope.membership.level)
         assert Access.authorize(scope, :"run.read", ctx.second) == :ok
-        assert Access.authorize(scope, :"access_key.create", ctx.second) == :ok
+        assert Access.authorize(scope, :"node.read", ctx.second) == :ok
       end
     end
   end
@@ -338,11 +345,11 @@ defmodule Apiary.AccessTest do
 
       assert Access.can?(stale, :"workspace.rename", stale.workspace)
       assert Access.authorize(stale, :"workspace.rename", stale.workspace) == {:error, :forbidden}
-      assert Access.authorize(stale, :"access_key.create", stale.workspace) == :ok
+      assert Access.authorize(stale, :"node.read", stale.workspace) == :ok
 
       {:ok, _} = Apiary.Organisations.remove_member(owner, membership.id)
 
-      assert Access.authorize(stale, :"access_key.create", stale.workspace) ==
+      assert Access.authorize(stale, :"node.read", stale.workspace) ==
                {:error, :forbidden}
     end
 
@@ -354,7 +361,7 @@ defmodule Apiary.AccessTest do
       fresh = Access.reload(stale)
       assert fresh.membership.level == :member
       assert Access.check(fresh, :"workspace.rename", fresh.workspace) == {:error, :forbidden}
-      assert Access.check(fresh, :"access_key.create", fresh.workspace) == :ok
+      assert Access.check(fresh, :"node.read", fresh.workspace) == :ok
     end
 
     test "a scope without a user reads no membership and may nothing a role allows" do
@@ -366,7 +373,7 @@ defmodule Apiary.AccessTest do
       assert Access.authorize(userless, :"workspace.rename", userless.workspace) ==
                {:error, :forbidden}
 
-      assert Access.authorize(userless, :"access_key.create", userless.workspace) ==
+      assert Access.authorize(userless, :"node.read", userless.workspace) ==
                {:error, :forbidden}
     end
 

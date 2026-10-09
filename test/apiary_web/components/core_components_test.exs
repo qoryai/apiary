@@ -6,6 +6,32 @@ defmodule ApiaryWeb.CoreComponentsTest do
 
   alias ApiaryWeb.CoreComponents
 
+  @endpoint ApiaryWeb.Endpoint
+
+  defmodule RowMenuLive do
+    use Phoenix.LiveView
+
+    alias ApiaryWeb.CoreComponents
+
+    def mount(_params, _session, socket), do: {:ok, assign(socket, show: false, name: "Rename")}
+
+    def handle_event("set", params, socket) do
+      {:noreply,
+       assign(
+         socket,
+         Enum.map(params, fn {key, value} -> {String.to_existing_atom(key), value} end)
+       )}
+    end
+
+    def render(assigns) do
+      ~H"""
+      <CoreComponents.row_menu id="row" label="Actions for build-01">
+        <CoreComponents.menu_item :if={@show} phx-click="noop">{@name}</CoreComponents.menu_item>
+      </CoreComponents.row_menu>
+      """
+    end
+  end
+
   describe "an input with a prefix" do
     test "shows the prefix before the value as one field, read with it" do
       form = Phoenix.Component.to_form(%{"slug" => "data"}, as: :workspace)
@@ -82,6 +108,74 @@ defmodule ApiaryWeb.CoreComponentsTest do
       items = html |> LazyHTML.from_fragment() |> LazyHTML.query("[role=menuitem]")
       assert Enum.count(items) == 2
       assert LazyHTML.attribute(items, "tabindex") == ["-1", "-1"]
+    end
+  end
+
+  describe "a row's menu" do
+    test "with no slot shows no trigger and no list" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.row_menu id="row" label="Actions for build-01" />
+        """)
+
+      assert String.trim(html) == ""
+    end
+
+    test "whose items are each left out shows no trigger and no list" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.row_menu id="row" label="Actions for build-01">
+          <CoreComponents.menu_item :if={false} patch="/keys/1/rotate">Rotate</CoreComponents.menu_item>
+          <CoreComponents.menu_divider :if={false} />
+          <CoreComponents.menu_item :if={false} phx-click="copy">Copy</CoreComponents.menu_item>
+        </CoreComponents.row_menu>
+        """)
+
+      assert String.trim(html) == ""
+    end
+
+    test "with an item shows its trigger and the item" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.row_menu id="row" label="Actions for build-01">
+          <CoreComponents.menu_item :if={false} phx-click="copy">Copy</CoreComponents.menu_item>
+          <CoreComponents.menu_item patch="/keys/1/rotate">Rotate</CoreComponents.menu_item>
+        </CoreComponents.row_menu>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert doc |> LazyHTML.query("#row > button#row-button") |> LazyHTML.attribute("aria-label") ==
+               ["Actions for build-01"]
+
+      items = LazyHTML.query(doc, "#row > ul[role=menu] [role=menuitem]")
+      assert items |> Enum.map(&LazyHTML.text/1) |> Enum.map(&String.trim/1) == ["Rotate"]
+    end
+
+    test "gains and loses its trigger as its items come and go in a live view" do
+      {:ok, view, html} =
+        live_isolated(Phoenix.ConnTest.build_conn(), __MODULE__.RowMenuLive)
+
+      refute html =~ "row-button"
+      refute has_element?(view, "#row")
+
+      render_click(view, "set", %{"show" => true})
+      assert has_element?(view, "#row > button#row-button")
+      assert has_element?(view, "#row [role=menuitem]", "Rename")
+
+      render_click(view, "set", %{"name" => "Rotate"})
+      assert has_element?(view, "#row [role=menuitem]", "Rotate")
+      refute has_element?(view, "#row [role=menuitem]", "Rename")
+
+      render_click(view, "set", %{"show" => false})
+      refute has_element?(view, "#row")
+      refute has_element?(view, "#row-button")
     end
   end
 
@@ -172,6 +266,330 @@ defmodule ApiaryWeb.CoreComponentsTest do
              ]
 
       assert doc |> LazyHTML.query("th .sr-only") |> LazyHTML.text() == "Pinned"
+    end
+
+    # A table wider than its box scrolls sideways: the confirmation is one cell across the
+    # row, its content in the block the stylesheet keeps in the box's view (`q-confirm-view`,
+    # sticky), so the question and its buttons are never off to one side.
+    test "shows a row's confirmation in one cell across its columns, kept in view" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}, %{id: 2, name: "build-02"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table
+          id="keys"
+          label="Access keys"
+          rows={@rows}
+          row_id={&"key-#{&1.id}"}
+          confirming="key-2"
+        >
+          <:col :let={row} label="Name" kind="title">{row.name}</:col>
+          <:col label="Added by" from="sm">dana</:col>
+          <:action :let={row}>
+            <CoreComponents.row_menu id={"key-#{row.id}-menu"} label={"Actions for #{row.name}"} />
+          </:action>
+          <:confirm :let={row}>
+            <CoreComponents.inline_confirm
+              id={"key-#{row.id}-confirm"}
+              question={"Revoke #{row.name}?"}
+              cancel="/acme/shop/settings/secrets"
+            >
+              Runs that use it are refused from their next request.
+              <:action>
+                <CoreComponents.button variant="danger" size="xs">Yes, revoke</CoreComponents.button>
+              </:action>
+            </CoreComponents.inline_confirm>
+          </:confirm>
+        </CoreComponents.table>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert [cell] = doc |> LazyHTML.query("tr#key-2.q-confirming > td") |> Enum.to_list()
+      assert LazyHTML.attribute(cell, "class") == ["q-confirm-cell"]
+      assert LazyHTML.attribute(cell, "colspan") == ["3"]
+
+      view = LazyHTML.query(cell, "td > .q-confirm-view > #key-2-confirm.q-confirm")
+      assert [_] = Enum.to_list(view)
+      assert view |> LazyHTML.query(".q-confirm-q") |> LazyHTML.text() == "Revoke build-02?"
+
+      assert view |> LazyHTML.query(".q-confirm-sub") |> LazyHTML.text() =~
+               "refused from their next request"
+
+      assert view
+             |> LazyHTML.query(".q-confirm-act button")
+             |> Enum.map(&LazyHTML.text/1)
+             |> Enum.map(&String.trim/1) ==
+               ["Yes, revoke", "Cancel"]
+
+      # The other rows keep their cells.
+      assert doc |> LazyHTML.query("tr#key-1 > td") |> Enum.count() == 3
+      assert doc |> LazyHTML.query("tr#key-1 .q-confirm-view") |> Enum.to_list() == []
+    end
+  end
+
+  describe "a menu's trigger, as the Menu hook finds it" do
+    # The selector the hook (assets/js/hooks/menu.js) finds a menu's trigger by.
+    defp menu_trigger do
+      js = File.read!(Path.expand("../../../assets/js/hooks/menu.js", __DIR__))
+      [_, selector] = Regex.run(~r/export const TRIGGER = "([^"]+)"/, js)
+      selector
+    end
+
+    # Each Menu of the markup, and the id of the first element in it the hook takes for
+    # its trigger.
+    defp menu_triggers(html) do
+      doc = LazyHTML.from_fragment(html)
+
+      for menu <- LazyHTML.query(doc, "[phx-hook=Menu]") do
+        trigger = menu |> LazyHTML.query(menu_trigger()) |> Enum.take(1)
+
+        {menu |> LazyHTML.attribute("id") |> hd(),
+         Enum.flat_map(trigger, &LazyHTML.attribute(&1, "id"))}
+      end
+    end
+
+    test "is a menu button, or a disclosure's button: a filter chip, Filter, Sort, a row's ⋯" do
+      assert menu_trigger() == "[aria-haspopup], [aria-controls][aria-expanded]"
+
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <ApiaryWeb.RunComponents.filter
+          id="filter-action"
+          name="action"
+          label="Action"
+          value="workspace.rename"
+          options={[{"Workspace renamed", "workspace.rename", nil}]}
+          remove="/acme/audit-log"
+        />
+        <CoreComponents.filter_menu id="runs-filter" count={1}>
+          <:section key="state" label="State" icon="hero-check-circle" value="Failed">
+            <p>options</p>
+          </:section>
+        </CoreComponents.filter_menu>
+        <CoreComponents.filter_menu id="network-filter">
+          <CoreComponents.menu_item checked={false}>Denied</CoreComponents.menu_item>
+        </CoreComponents.filter_menu>
+        <CoreComponents.sort_menu id="sort" current="Newest first">
+          <CoreComponents.menu_item checked={true}>Newest first</CoreComponents.menu_item>
+        </CoreComponents.sort_menu>
+        <CoreComponents.row_menu id="row-1-menu" label="Actions for build-01">
+          <CoreComponents.menu_item>Rename</CoreComponents.menu_item>
+        </CoreComponents.row_menu>
+        """)
+
+      assert menu_triggers(html) == [
+               {"filter-action", ["filter-action-button"]},
+               {"runs-filter", ["runs-filter-button"]},
+               {"network-filter", ["network-filter-button"]},
+               {"sort", ["sort-button"]},
+               {"row-1-menu", ["row-1-menu-button"]}
+             ]
+
+      # The chip and the sections' Filter are disclosures: no aria-haspopup, which
+      # the hook found them by alone before.
+      doc = LazyHTML.from_fragment(html)
+
+      for id <- ~w(filter-action-button runs-filter-button) do
+        assert [_] =
+                 doc
+                 |> LazyHTML.query("##{id}[aria-controls][aria-expanded=false]")
+                 |> Enum.to_list()
+
+        assert [] = doc |> LazyHTML.query("##{id}[aria-haspopup]") |> Enum.to_list()
+      end
+    end
+  end
+
+  describe "an inline confirmation" do
+    test "is named by its question and described by what happens" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.inline_confirm
+          id="secret-1-confirm"
+          question="Delete FORGE_TOKEN?"
+          cancel="/acme/shop/settings/secrets"
+        >
+          The secret and its value are deleted. This cannot be undone.
+          <:action>
+            <CoreComponents.button variant="danger" size="xs">Yes, delete</CoreComponents.button>
+          </:action>
+        </CoreComponents.inline_confirm>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      [group] = doc |> LazyHTML.query("#secret-1-confirm[role=group]") |> Enum.to_list()
+      assert LazyHTML.attribute(group, "aria-labelledby") == ["secret-1-confirm-question"]
+      assert LazyHTML.attribute(group, "aria-describedby") == ["secret-1-confirm-sub"]
+
+      assert doc |> LazyHTML.query("#secret-1-confirm-sub") |> LazyHTML.text() =~
+               "This cannot be undone."
+    end
+  end
+
+  describe "an empty state" do
+    test "as the page's h1 it takes the focus after a navigation; as an h2 it does not" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.empty_state title="No nodes yet" heading="h1">
+          A node runs runs.
+        </CoreComponents.empty_state>
+        <CoreComponents.empty_state title="No runs match">Clear the filters.</CoreComponents.empty_state>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      assert doc |> LazyHTML.query("h1[tabindex='-1']") |> LazyHTML.text() =~ "No nodes yet"
+      assert [_] = doc |> LazyHTML.query("h2:not([tabindex])") |> Enum.to_list()
+    end
+  end
+
+  describe "an input described by the page too" do
+    test "keeps its own description, its hint or its errors, and adds the page's" do
+      form = Phoenix.Component.to_form(%{"name" => ""}, as: :variable)
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:name],
+          label: "Name",
+          hint: "Letters, digits and underscores.",
+          "aria-describedby": "variable_name-rules"
+        )
+
+      doc = LazyHTML.from_fragment(html)
+      [input] = doc |> LazyHTML.query("input#variable_name") |> Enum.to_list()
+
+      assert LazyHTML.attribute(input, "aria-describedby") == [
+               "variable_name-hint variable_name-rules"
+             ]
+
+      # Once, not twice: the page's is merged, not written again after the input's own.
+      refute html =~ ~r/aria-describedby="[^"]*"[^>]*aria-describedby=/
+
+      form =
+        Phoenix.Component.to_form(%{"name" => ""},
+          as: :variable,
+          errors: [name: {"can't be blank", []}],
+          action: :insert
+        )
+
+      html =
+        render_component(&CoreComponents.input/1,
+          field: form[:name],
+          label: "Name",
+          "aria-describedby": "variable_name-rules"
+        )
+
+      [input] =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("input#variable_name")
+        |> Enum.to_list()
+
+      assert LazyHTML.attribute(input, "aria-describedby") == [
+               "variable_name-error variable_name-rules"
+             ]
+
+      # A select, a text area and a field with a prefix merge it the same way.
+      for type <- ~w(select textarea) do
+        html =
+          render_component(&CoreComponents.input/1,
+            name: "kind",
+            id: "kind",
+            type: type,
+            value: "a",
+            options: [{"A", "a"}],
+            "aria-describedby": "kind-rules"
+          )
+
+        assert html =~ ~s(aria-describedby="kind-rules"), type
+      end
+
+      html =
+        render_component(&CoreComponents.input/1,
+          name: "slug",
+          id: "slug",
+          value: "shop",
+          prefix: "qory.example/acme/",
+          "aria-describedby": "slug-rules"
+        )
+
+      assert html =~ ~s(aria-describedby="slug-prefix slug-rules")
+    end
+  end
+
+  describe "a link out" do
+    defp link_out(href, text \\ "pull request #412", title \\ nil) do
+      assigns = %{href: href, text: text, title: title}
+
+      rendered_to_string(~H"""
+      <CoreComponents.external_link href={@href} title={@title}>{@text}</CoreComponents.external_link>
+      """)
+    end
+
+    test "opens in a new tab, keeps the console from the page, and says so" do
+      doc = LazyHTML.from_fragment(link_out("https://git.example.com/acme/shop/pull/412"))
+
+      [a] = doc |> LazyHTML.query("a") |> Enum.to_list()
+      assert LazyHTML.attribute(a, "href") == ["https://git.example.com/acme/shop/pull/412"]
+      assert LazyHTML.attribute(a, "target") == ["_blank"]
+      assert LazyHTML.attribute(a, "rel") == ["noopener noreferrer nofollow"]
+      assert a |> LazyHTML.query(".hero-arrow-top-right-on-square-micro") |> Enum.count() == 1
+      assert a |> LazyHTML.query(".sr-only") |> LazyHTML.text() == "(opens in a new tab)"
+      assert LazyHTML.text(a) =~ "pull request #412"
+    end
+
+    test "is plain text for a url that may not be a link, or none" do
+      for href <- [
+            "javascript:alert(1)",
+            "JAVASCRIPT:alert(1)",
+            "data:text/html,<b>hi</b>",
+            "ftp://files.example.com/a",
+            "/acme/shop/pull/412",
+            "//git.example.com/acme/shop",
+            "https://",
+            "https:git.example.com",
+            "https://exa mple.com/",
+            "https://user@git.example.com/acme/shop/pull/412",
+            "https://user:secret@git.example.com/acme/shop/pull/412",
+            "",
+            nil
+          ] do
+        html = link_out(href)
+        doc = LazyHTML.from_fragment(html)
+        assert doc |> LazyHTML.query("a, [href], [target]") |> Enum.to_list() == [], inspect(href)
+        assert doc |> LazyHTML.text() |> String.trim() == "pull request #412", inspect(href)
+        refute html =~ "opens in a new tab"
+        refute html =~ "hero-arrow-top-right-on-square-micro"
+      end
+    end
+
+    test "escapes its words and its title, as a link and as text" do
+      for href <- ["https://git.example.com/acme/shop/pull/412", nil] do
+        html = link_out(href, "<b>#412</b>", ~s[Fix "it" <script>alert(1)</script>])
+
+        refute html =~ "<b>"
+        refute html =~ "<script>"
+        assert html =~ "&lt;b&gt;#412&lt;/b&gt;"
+        assert html =~ ~s[title="Fix &quot;it&quot; &lt;script&gt;alert(1)&lt;/script&gt;"]
+      end
+    end
+
+    test "may be a link only when absolute http or https with a host" do
+      assert CoreComponents.external_url?("https://tracker.example.com/browse/ENG-17")
+      assert CoreComponents.external_url?("http://git.example.com")
+      refute CoreComponents.external_url?("javascript:alert(1)")
+      refute CoreComponents.external_url?("mailto:someone@example.com")
+      refute CoreComponents.external_url?("https://user@git.example.com/x")
+      refute CoreComponents.external_url?("https://user:pass@git.example.com/x")
+      refute CoreComponents.external_url?("tracker.example.com/browse/ENG-17")
+      refute CoreComponents.external_url?(nil)
+      refute CoreComponents.external_url?(412)
     end
   end
 end

@@ -28,8 +28,9 @@ defmodule Apiary.Audit do
   the instance (`Apiary.Accounts.Scope.for_instance/2`), for a job no person enqueued.
   **The action** is one of `Apiary.Access.actions/0`. **The subject** is the row acted
   on, of a kind the trail knows (`subject_kinds/0`): an organisation, a workspace, a
-  membership, an invitation, an access key, a run, a target or a rule, and the rows of
-  the edition's own kinds (`c:Apiary.Edition.subject_kinds/0`). It gives
+  membership, an invitation, an access key, a node, a run, a target, a rule, a stored
+  secret or a variable, and the rows of the edition's own kinds
+  (`c:Apiary.Edition.subject_kinds/0`). It gives
   the entry its organisation and workspace: none for what the organisation itself owns, a
   membership among it. **From
   where** is the scope's `origin`: the request's address and client, or the job's
@@ -88,9 +89,14 @@ defmodule Apiary.Audit do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Policy.Rule
   alias Apiary.Runs.{Run, Target}
+  alias Apiary.Connections.{Connection, ServiceDefinition}
+  alias Apiary.Integrations.Release
+  alias Apiary.Secrets.Secret
+  alias Apiary.Variables.Variable
 
   @subject_kinds %{
     Organisation => "organisation",
@@ -98,9 +104,15 @@ defmodule Apiary.Audit do
     Membership => "membership",
     Invitation => "invitation",
     AccessKey => "access_key",
+    Node => "node",
     Run => "run",
     Target => "target",
-    Rule => "rule"
+    Rule => "rule",
+    Secret => "secret",
+    Variable => "variable",
+    Connection => "connection",
+    ServiceDefinition => "service_definition",
+    Release => "integration_release"
   }
 
   @default_retention_days 90
@@ -442,6 +454,7 @@ defmodule Apiary.Audit do
   @type names :: %{
           users: %{Ecto.UUID.t() => String.t()},
           access_keys: %{Ecto.UUID.t() => %{label: String.t() | nil, key_id: String.t()}},
+          nodes: %{Ecto.UUID.t() => String.t()},
           workspaces: %{Ecto.UUID.t() => String.t()},
           targets: %{Ecto.UUID.t() => String.t()},
           runs: %{Ecto.UUID.t() => Ecto.UUID.t()},
@@ -452,8 +465,8 @@ defmodule Apiary.Audit do
   names/2 looks up the names of the actors and the subjects of `entries`, as they are now,
   in one query per kind: the email address of each person (the person named as actor, or
   in `details` as `user_id`), the label and key id of each access key, the name of each
-  workspace (an entry's, or its subject), `system/path` of each target, and the run id of
-  each run, and the name of each other organisation an entry names by id, under a key
+  node, a deleted one's too, the name of each workspace (an entry's, or its subject),
+  `system/path` of each target, and the run id of each run, and the name of each other organisation an entry names by id, under a key
   that ends in `_id` in its `details`, `before` or `after`: the other side of a change
   that concerns two organisations, which an edition records. Only what the scope's
   organisation holds is looked up, people and those organisations aside. A person whose account is deleted, a key or a row
@@ -481,6 +494,7 @@ defmodule Apiary.Audit do
     workspaces =
       ids.(&[&1.workspace_id, if(&1.subject_kind == "workspace", do: &1.subject_id)])
 
+    nodes = ids.(&[if(&1.subject_kind == "node", do: &1.subject_id)])
     targets = ids.(&[if(&1.subject_kind == "target", do: &1.subject_id)])
     runs = ids.(&[if(&1.subject_kind == "run", do: &1.subject_id)])
 
@@ -501,6 +515,11 @@ defmodule Apiary.Audit do
             where: k.organisation_id == ^organisation_id,
             select: {k.id, %{label: k.label, key_id: k.key_id}}
           )
+        ),
+      nodes:
+        lookup(
+          nodes,
+          from(n in Node, where: n.organisation_id == ^organisation_id, select: {n.id, n.name})
         ),
       workspaces:
         lookup(

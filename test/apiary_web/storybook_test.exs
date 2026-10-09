@@ -26,8 +26,9 @@ if Mix.Project.config()[:app] == :apiary do
     test "the storybook holds the stories" do
       paths = Enum.map(stories(), &elem(&1, 0))
 
-      for path <- ~w(foundations/icons core/button lists/list_pattern policy/rule_mark
-                     policy/rule_line policy/rule_list),
+      for path <- ~w(foundations/icons core/button lists/list_pattern lists/row_confirm
+                     policy/rule_mark policy/rule_line policy/rule_list page/page_header
+                     page/page_tabs page/settings_page page/page_form page/not_on_runs),
           do: assert(path in paths, "#{path} is not in the storybook")
     end
 
@@ -46,18 +47,19 @@ if Mix.Project.config()[:app] == :apiary do
 
     test "every page story renders, in each theme and on each tab" do
       for {path, story} <- stories(), story.storybook_type() == :page do
-        tabs =
-          case story.navigation() do
-            [] -> [nil]
-            navigation -> Enum.map(navigation, &elem(&1, 0))
-          end
-
-        for tab <- tabs, theme <- @themes do
+        for tab <- tabs(story), theme <- @themes do
           html =
             %{__changed__: %{}, tab: tab, theme: theme} |> story.render() |> rendered_to_string()
 
           assert html =~ ~r/\S/, "#{path} renders nothing"
         end
+      end
+    end
+
+    defp tabs(story) do
+      case story.navigation() do
+        [] -> [nil]
+        navigation -> Enum.map(navigation, &elem(&1, 0))
       end
     end
 

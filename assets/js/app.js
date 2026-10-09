@@ -49,8 +49,12 @@ window.addEventListener("DOMContentLoaded", () => {
   })
 })
 
+// The first invalid field of a form: a field, or the first radio of an invalid group.
+const INVALID =
+  "[aria-invalid=true]:not(fieldset), fieldset[aria-invalid=true] input:not([type=hidden])"
+
 // Buttons with a gerund (`data-busy`) show it while their form submits. The
-// button may sit outside the form (a modal footer), so the form's loading
+// button may sit outside the form (its `form` attribute), so the form's loading
 // class cannot reach it from CSS.
 const busyButtons = form => {
   const inside = [...form.querySelectorAll(".btn[data-busy]:not([type=button])")]
@@ -73,8 +77,9 @@ document.addEventListener("submit", e => {
       b.classList.remove("is-busy")
       b.removeAttribute("aria-busy")
     })
-    // A failed submit puts the caret in the first invalid field.
-    setTimeout(() => form.isConnected && form.querySelector("[aria-invalid=true]")?.focus(), 0)
+    // A failed submit puts the caret in the first invalid field; a group of radios with
+    // an error marks its fieldset, which takes no focus, so its first radio does.
+    setTimeout(() => form.isConnected && form.querySelector(INVALID)?.focus(), 0)
   }
   let seen = false
   const watch = new MutationObserver(() => {
@@ -164,6 +169,25 @@ window.addEventListener("phx:page-loading-start", _info => {
 })
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
+// The page's title, where focus goes when the page changed under the reader: a settings
+// section's own (the page's h1, or a node's settings' h2 under the node's), else the
+// page's h1. The
+// notices above it (an edition's, `#shell-notices`) describe it, so a screen reader says
+// them too: they sit before the title, where reading on from it never comes.
+const focusTitle = () => {
+  const title =
+    document.querySelector("main #settings-section-title[tabindex]") ||
+    document.querySelector("main h1[tabindex]")
+  if (!title) return
+  const notices = document.getElementById("shell-notices")
+  if (notices && notices.textContent.trim() !== "") {
+    const ids = (title.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean)
+    if (!ids.includes(notices.id)) title.setAttribute("aria-describedby", [notices.id, ...ids].join(" "))
+  }
+  title.focus({preventScroll: true})
+}
+const focusFell = () => !document.activeElement || document.activeElement === document.body
+
 // A live navigation replaces the page under the reader: give focus to its title, so a
 // screen reader says where they are and the keyboard goes on from there, unless the
 // new page put focus somewhere itself (a dialog's first field, say).
@@ -172,8 +196,24 @@ window.addEventListener("phx:page-loading-stop", ({detail}) => {
   setTimeout(() => {
     const now = document.activeElement
     if (now && now !== document.body && now.isConnected) return
-    document.querySelector("main h1[tabindex]")?.focus({preventScroll: true})
+    focusTitle()
   }, 0)
+})
+
+// An update that removes the control that had focus (Cancel, Save, an inline
+// confirmation's buttons, a ×, Show all, a page of a list) drops focus to the body: give
+// it to the title. Only then: a page that moves focus itself (the FocusOn hook,
+// `phx-mounted` or `JS.focus`) has done so by the time this looks, after the update's
+// events and the frame they asked for.
+let lastFocus = null
+document.addEventListener("focusin", e => (lastFocus = e.target))
+document.addEventListener("phx:update", () => {
+  const lost = lastFocus
+  if (!lost || lost.isConnected) return
+  setTimeout(() => requestAnimationFrame(() => {
+    if (lastFocus !== lost || lost.isConnected || !focusFell()) return
+    focusTitle()
+  }), 0)
 })
 
 // connect if there are any LiveViews on the page

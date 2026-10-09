@@ -58,7 +58,7 @@ end
 
 # QORY_FEATURES names the features this instance has: all (the default when unset or
 # blank), all- and the features left out (all-security), or the features on
-# (observability,security).
+# (observability,security). An opt-in feature is on only when a list names it.
 # Read in every environment, so the test suite runs under the value CI gives it.
 # `Apiary.Features` checks it at boot and says what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")
@@ -93,6 +93,27 @@ end
 # for a request's address: addresses or CIDR ranges separated by commas, none when unset.
 # `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.
 config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
+
+# An integration is added from a release on github.com, gitlab.com or codeberg.org, or
+# from an https address of its description.json; a forge path on any other host is
+# refused, since self-hosted forges are not supported. Every fetch of a release, each
+# redirect included, reaches public addresses only: a private, loopback, link-local or
+# cloud metadata address is refused for every host, and no setting allows one.
+#
+# INTEGRATION_URL_SOURCES says whether an integration may be added from an https address
+# of its description.json, which may be on any host: true (1, yes), the default, or false
+# (0, no). An instance open to people the operator does not know, such as a cloud one,
+# turns it off, so that integrations are added from forges' releases alone; the server
+# still follows a release's download links, which its author chooses on GitLab and
+# Codeberg, to any public https host. Off, a release already asked for from an address is
+# not fetched.
+#
+# `Apiary.Integrations.Source.boot!/0` checks it at boot and stops a boot it refuses.
+# Not read under test: the suite runs with the default, whatever the shell running it has
+# set.
+if config_env() != :test do
+  config :apiary, :integration_url_sources_setting, System.get_env("INTEGRATION_URL_SOURCES")
+end
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
@@ -167,13 +188,14 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  # CLOAK_KEY encrypts secrets at rest (access key secrets). Changing it makes every
-  # stored secret unreadable, so keep it with the database backups.
-  cloak_key =
-    case System.get_env("CLOAK_KEY") do
+  # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
+  # (Apiary.KeyDerivation): the stored values' and the integrity codes'. Changing it makes every stored secret unreadable, so keep
+  # it with the database backups.
+  encryption_secret =
+    case System.get_env("APIARY_ENCRYPTION_SECRET") do
       nil ->
         raise """
-        environment variable CLOAK_KEY is missing.
+        environment variable APIARY_ENCRYPTION_SECRET is missing.
         It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
         """
 
@@ -184,16 +206,69 @@ if config_env() == :prod do
 
           _ ->
             raise """
-            environment variable CLOAK_KEY is not 32 bytes in base64 (44 characters).
+            environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
             Generate one with: openssl rand -base64 32
             """
         end
     end
 
-  config :apiary, Apiary.Vault,
-    ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: cloak_key}
-    ]
+  config :apiary, Apiary.KeyDerivation, secret: encryption_secret
+
+  # APIARY_SIGNING_SECRET is the seed of the instance's own Ed25519 signing key
+  # (Apiary.SigningKey): it signs every answer to a runner, and every machine pins its
+  # public key as apiary_public_key. It is a secret of its own, never derived from
+  # APIARY_ENCRYPTION_SECRET, and has no fallback. Changing it means pinning every machine
+  # again, so keep it with APIARY_ENCRYPTION_SECRET. Refused here: the same bytes as
+  # APIARY_ENCRYPTION_SECRET, and the dev and test seeds config/dev.exs and
+  # config/test.exs publish; `Apiary.SigningKey.boot!/0` refuses the runner contract's
+  # fixture seeds. Every comparison is in constant time, and no message here carries a
+  # value.
+  signing_seed =
+    case System.get_env("APIARY_SIGNING_SECRET") do
+      blank when blank in [nil, ""] ->
+        raise """
+        environment variable APIARY_SIGNING_SECRET is missing.
+        It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
+        Generate one with: openssl rand -base64 32
+        """
+
+      value ->
+        case Base.decode64(value) do
+          {:ok, seed} when byte_size(seed) == 32 ->
+            seed
+
+          _ ->
+            raise """
+            environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+            Generate one with: openssl rand -base64 32
+            """
+        end
+    end
+
+  if :crypto.hash_equals(signing_seed, encryption_secret) do
+    raise """
+    environment variable APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET.
+    It is a secret of its own, generated apart. Generate one with: openssl rand -base64 32
+    """
+  end
+
+  # The seeds config/dev.exs and config/test.exs set, public in this repository. Every
+  # comparison runs, so the time taken says nothing about which one matched.
+  published_seed? =
+    Enum.reduce(
+      ["qory apiary dev signing seed 001", "qory apiary test signing seed 01"],
+      false,
+      fn published, matched -> :crypto.hash_equals(signing_seed, published) or matched end
+    )
+
+  if published_seed? do
+    raise """
+    environment variable APIARY_SIGNING_SECRET is the development or test seed this repository publishes.
+    Generate one with: openssl rand -base64 32
+    """
+  end
+
+  config :apiary, Apiary.SigningKey, seed: signing_seed
 
   # ## Public address and HTTP
 

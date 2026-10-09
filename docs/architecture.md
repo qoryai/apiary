@@ -31,8 +31,35 @@ beside it:
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
-- `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
-  `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.AccessKeys`: the access keys of a workspace's nodes, and the lookup a signed
+  request verifies against. Each key has one Ed25519 public key, and Qory Apiary holds no
+  secret of it; it belongs to one node or node pool: enrolment codes
+  (`access_key_enrolment_codes`, kept as their SHA-256), the code being the approval of
+  the key it brings while its maker is still an owner or an admin, a key made in a
+  browser active at once, revocation, at most two keys at a time per node, and the ledger of public keys
+  (`access_key_public_keys`), one public key for one access key, ever, whose tombstones
+  outlive the purge. `Apiary.Contract.Ed25519`
+  holds the checks every public key received passes, the fingerprint and cofactorless
+  verification.
+- `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
+  a node is one permanent machine, a pool a fleet of short-lived instances up to its
+  instance limit or none; the kind is fixed when one is made, and a deleted one is gone
+  from every read but keeps its row until its workspace is purged. Its instances
+  (`node_instances`) are claims a runner makes under the node's key, recorded by
+  `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
+  run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
+  the node's row lock (`check_instance_limit/3`, `admit/4`).
+- `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
+  with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
+  answers what uses one before a deletion: nothing links a secret, so the answer is
+  empty, but in a test that sets one (Secrets at rest and integrity codes, below).
+- `Apiary.Variables`: a workspace's variables and its repositories' own, with the
+  workspace's locks, resolved per holder down the chain from the level above the
+  workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
+  about (`Apiary.Variables.Denied`). An edition that writes the level above's variables
+  checks the change against its workspaces with `check_above/2`, under its own locks.
+- `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
+  `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
   bounded by fourteen days and a target's page, and the targets a person pinned
   (`target_pins`), their own reading preference, which leaves no audit entry.
@@ -50,10 +77,13 @@ The web side is under `lib/apiary_web/`:
   the contract's endpoints: `ConfigurationController` for the discovery document,
   `EventsController` for the events, whose body `RawBody` keeps as it was sent,
   `RunConfigurationController` for the run configuration. Each of them refuses a
-  contract revision it does not serve through `ContractVersion`.
+  contract revision it does not serve through `ContractVersion`. `EnrolmentController`
+  answers enrolment, beside them and outside `SignedRequest`: a machine with no access
+  key yet enrols one with a code (`Apiary.AccessKeys.enrol/2`), its body kept by `RawBody`
+  too, and its answers signed with the instance's key.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
-  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`,
-  `access_key_live`, `invitation_live`, and `user_live`, a person's own pages, their
+  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`, `node_live`,
+  `invitation_live`, and `user_live`, a person's own pages, their
   account and their organisations), `settings_live.ex`, the organisation's settings,
   `activity_live.ex`, the organisation's audit trail, whose words for each action are
   `ApiaryWeb.Activity.Describer`'s, the edition's first, then the core's, and
@@ -83,6 +113,14 @@ The web side is under `lib/apiary_web/`:
   reach, or none. The names a slug can never be are in `reserved_slugs.ex`, with the
   edition's, and a new top-level path or organisation page is added there in the same
   change.
+- `content_security_policy.ex`: the `content-security-policy` the endpoint puts on every
+  answer of the router and on `/docs`, with a fresh nonce per request (`@csp_nonce`):
+  only the console's own bundles and scripts that carry the nonce run, and no page writes
+  an `on…=` attribute or a `javascript:` address. A reverse proxy must pass the header on,
+  neither stripping nor replacing it. `ApiaryWeb.ContentSecurityPolicyTest` requests
+  every GET route and checks each page's markup, its dead render and a LiveView's
+  connected one, without a browser: the header, and nothing in the markup the policy
+  would refuse.
 
 Migrations are under `priv/repo/migrations/`, one per change; an edition's are in a
 folder of its own, run with the core's as one sequence by version
@@ -103,7 +141,8 @@ creates one the product's way, and the core's edition allows one in use.
 Each organisation's data is kept apart by the schema, not by the pages:
 
 - Every table except the account tables (`users`, `users_tokens`) and the instance's own
-  (`purged_organisations`, `instance_settings`, Oban's) carries `organisation_id`, and
+  (`purged_organisations`, `instance_settings`, the ledger of access keys' public keys
+  `access_key_public_keys`, Oban's) carries `organisation_id`, and
   every table that belongs to a workspace carries `workspace_id` beside it with the
   composite foreign key `(organisation_id, workspace_id)` against `workspaces`, so no row
   can name a workspace of another organisation. Both come in the table's first migration;
@@ -114,8 +153,9 @@ Each organisation's data is kept apart by the schema, not by the pages:
   fails until it is there.
 - A unique constraint is scoped by the organisation: `(organisation_id, name)` on
   workspaces, `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on
-  pending invitations, `(organisation_id, workspace_id, label)` on active access keys. A
-  name is unique inside an organisation, never across them.
+  pending invitations, `(organisation_id, workspace_id, label)` on today's active access
+  keys, `(node_id, label)` on a node's keys in use. A name is unique inside an
+  organisation, never across them; a public key is unique on the instance, by the ledger.
 - Every context function that reads or writes an organisation's data takes an
   `Apiary.Accounts.Scope` as its first argument and filters by its organisation and
   workspace, and by nothing else the caller passes. The exceptions are the entry points
@@ -188,7 +228,7 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   is never deleted nor purged (`:instance_organisation`), so an instance never loses it:
   without one, the next sign-up would create it.
 - **Invitations, bounded.** An invitation is an address, and its email names the
-  organisation only inside a sentence Qory writes, never in the subject, a heading or the
+  organisation only inside a sentence Qory Apiary writes, never in the subject, a heading or the
   text of a link, and names nobody else: not the inviter, whose address's local part is
   theirs to choose. An organisation's name carries no web address (`://`, `www.`), no
   double quotation mark or lookalike, and no Unicode format character but the join
@@ -277,15 +317,18 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   organisations page (`places/1`).
 - **Policy**: keep a level above a workspace's security policy
   (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, whether
-  the workspace may allow hosts of its own). The core reads it once per operation of
-  `Apiary.Policy`, resolves it with the workspace's and a target's rules
-  (`Apiary.Policy.Resolution`: its deny above everything, its allow narrowed by a lower
-  deny and never widened), renders it into every document, counts it in the record, and
-  draws its rows and lines on the policy pages and Network access, saying the level's
-  `name` and nothing of its own about it. A change of the level renders every workspace
-  again through `Apiary.Policy.rerender_in/3`, inside the edition's transaction, each
-  holder whose bytes change getting an `above_changed` change. The web side names where
-  the level is read and changed (`above_policy_link/1`).
+  the workspace may allow hosts of its own, and variables). The core asks for it in the
+  reads and writes of `Apiary.Policy` that need it, resolves it with the workspace's and
+  a target's rules (`Apiary.Policy.Resolution`: its deny above everything, its allow
+  narrowed by a lower deny and never widened), renders it into every document, counts it
+  in the record, and draws its rows and lines on the policy pages and Network access,
+  saying the level's `name` and nothing of its own about it. A change of the level
+  renders every workspace again through `Apiary.Policy.rerender_in/3`, inside the
+  edition's transaction, each holder whose bytes change getting an `above_changed`
+  change. The web side names where
+  the level is read and changed (`above_policy_link/1`). A level with variables and no
+  policy says `policy: false`: the policy, its record and its pages take it as nil, and
+  only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
   hear of a change of a level or the end of a suspension (`membership_changed/5`).
@@ -326,7 +369,9 @@ features, in every organisation and workspace alike. An edition may narrow them 
 the instance (`c:Apiary.Edition.features_of/3`), and never adds to them: `of/2` keeps only
 what the instance has, and a feature only with the features it needs. An edition's own
 features are listed after the core's (`c:Apiary.Edition.features/0`), and
-`Apiary.Features.built/0` says which features are built so far.
+`Apiary.Features.built/0` names the ones a page of an edition may switch on or off for an
+organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) is on only
+where `QORY_FEATURES` lists it by name, and is never one of those.
 
 - **Absent, as off on the instance.** Every surface asks `Apiary.Features.on?/2` with its
   scope, which carries the answer (`Apiary.Accounts.Scope`, `features`): the feature
@@ -338,6 +383,130 @@ features are listed after the core's (`c:Apiary.Edition.features/0`), and
 - **Read again under the locks.** `Apiary.Access.reload/2` reads the features after its
   locks, so what an edition changes of them under the organisation's or the workspace's
   lock is waited for by a change that asked, or seen by it.
+
+## Secrets at rest and integrity codes
+
+`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the key the instance encrypts and codes
+with, and nothing is encrypted or keyed under its own bytes: every key is derived from it
+with HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per
+purpose: `apiary values v1` for stored values and `apiary integrity v1` for integrity
+codes. Each derived key
+has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
+rotation of the secret can keep the previous one to read with and tell the two apart.
+
+The key that signs the instance's answers to runners, which every machine pins as
+`apiary_public_key`, is not derived from it: its Ed25519 seed is a secret of its own,
+`APIARY_SIGNING_SECRET`, 32 random bytes with no fallback in production, so that the pin
+does not change with the encryption secret (`Apiary.SigningKey`). The instance refuses at
+boot the runner contract's published fixture seeds and, in production, a seed equal to the
+encryption secret and the development and test seeds `config/` publishes, and holds the key
+in a struct whose `inspect` shows its fingerprint alone.
+
+**Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
+made with its first secret, kept only wrapped (`workspace_data_keys`): AES-256-GCM under
+the values key, with associated data that names its organisation and workspace, and with
+the values key's id. Each value is AES-256-GCM under the data key (`:crypto`, not Cloak,
+whose associated data is fixed), with a fresh 96-bit nonce and the associated data
+
+    lp("qory-secret-v1") ‖ lp(workspace id) ‖ lp(secret id) ‖ lp(value id, or "")
+
+where `lp` is a big-endian 16-bit length, then the bytes (`Apiary.Secrets.Cipher`). A
+row copied to another workspace, secret or value id does not decrypt there, and a
+renamed value id is encrypted again. A value is write-only: a listing never loads the
+ciphertext, the schemas redact it from `inspect` and leave it out of JSON, the audit
+trail names secrets and value ids, and `Apiary.Secrets.reveal_for_sealing/3` is the one
+function that returns a plaintext, for sealing to a runner. A value that does not decrypt
+is `unavailable`, with a log line that names the secret, never wrong.
+
+**Integrity codes** (`Apiary.Integrity`) find a row changed outside the application by
+someone who can write to the database but does not hold the secret: an HMAC-SHA256 under
+the integrity key over a canonical encoding of a kind, a version and the fields the caller
+chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
+constant time. A caller codes what routes a secret or grants access, a node's access key
+rows (their node, public key, stored-secrets flag, arrival and revocation), what
+links a stored secret to the runs, and the enrolment codes, and checks the code where it
+trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
+does not match, before any signature is checked;
+the per-request columns stay outside it. Variables and policy rules carry no code: they
+route no stored value, and the runner bounds what a variable can do.
+
+## Integrations, services and runtimes
+
+What a workspace sets up is a **connection** in the contract's words and an
+integration on its pages (`Apiary.Connections`): a runtime, an integration or a service,
+which the pages call a Runtime, a Program and an API (a workspace's own service definition
+is a Custom API there), in `workspace_connections` (the record's `connections` are the
+hosts a run reached), with a public id, `con_` and 16 characters. Each applies to every repository of the workspace or to the ones
+`connection_targets` names. Two connections
+that would give a repository the same runtime, the same integration, or a value on the
+same host (one host pattern covering another) are refused on save. A connection holds no
+secret: the links to stored secrets are the linking piece's.
+
+**The kinds.** Runtimes come from the runner contract's `contracts/runner/v1/runtimes.json`,
+vendored byte for byte as `priv/contract/runtimes.json` at the commit in
+`.runner-contract-ref` (`Apiary.Kinds.Runtimes`). The runner generates it from its built-in
+descriptors; it is read at compile time, and a list missing from a runtime fails the
+compile. Services come from a service definition, the one source of a service's hosts,
+paths, auth and declared secrets, whose `auth` is Apiary's own: its `scheme`, `header`
+and `username` are the members of the contract's `auth.schema.json`, vendored beside the
+catalogue, with a username of at most 128 characters, and `secret` and `username_secret`
+are ids of secrets Qory Apiary stores for the definition, `secret` required: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,
+each checked in the test suite) or the workspace's own (`service_definitions`); a service
+connection names its definition and copies nothing of it, so a change to a definition
+reaches every connection that names it.
+Integrations come from a release (`Apiary.Integrations`): a `source`, a forge path or an
+https URL of a `description.json`, and an exact version. A forge path is on `github.com`,
+`gitlab.com` or `codeberg.org` (`Apiary.Integrations.Source`), whose host alone gives the
+`forge_kind` (`github`, `gitlab`, `forgejo`) the release and its connection record, never a
+request; a forge path on any other host is refused, since self-hosted forges are not
+supported. A URL source is accepted while `INTEGRATION_URL_SOURCES` is on, the default
+(read and checked at boot); off, it is refused, and a release already asked for from one
+fails with `integration_source_refused` when its fetch comes, and is not added as a
+connection. A request records
+a pending `integration_releases` row and enqueues `Apiary.Integrations.FetchJob`, which
+reads the release's `description.json` and `checksums.txt` where the integrations contract
+puts them
+(`releases/download/vX.Y.Z/<file>` on GitHub and Codeberg; on GitLab the API's route,
+`/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, the project its path with each
+`/` written `%2F`, kept so through every hop, since the web route answers a link to another
+host with a page instead of a redirect; the URL's directory for a URL source), and records
+it ready, byte for byte with
+its digest, or failed with a code. An integration connection is added from a ready
+release, takes its name, source, version and description digest, and stores its plain
+settings as canonical JSON, checked against the description: its plain settings are every
+top-level setting that is neither a secret nor a secret's `<name>_file`, each checked
+against its own property's schema, and its argument must match its credential role's
+pattern. A description is validated with JSV against the
+integrations contract's `description.schema.json` (vendored under
+`priv/contract/integration/`, at the commit in `.integration-contract-ref`), and by the rules
+the schema cannot say: a secret has its `<name>_file` beside it and is never nested, and
+the credential role's `argument` compiles. A role other than `credential` is kept as it is
+and shown among the roles. The vendored schema and
+the contract's fixtures (`test/fixtures/integration-contract/`) are pinned to a commit on
+the integrations' `next` branch, by its id. The contracts' patterns are
+compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor written
+`\z` (`Apiary.Kinds.Pattern`), so a value with a trailing newline never passes.
+
+**The fetch guards** (`Apiary.Integrations.Fetch`): the host is resolved, and the fetch is
+refused unless every address is public (`Apiary.Integrations.Fetch.Address`), for every
+host and with no setting to allow a private one; the request connects to the address it
+checked, the host name kept for `Host`, SNI and the certificate's check; every redirect is
+followed by hand and checked the same way, https on port 443 to a host name, at most five;
+the body is capped at 1 MiB (256 KiB for a description), counted as it arrives, and the
+whole fetch at 15 seconds. A release is always fetched without credentials, in every
+edition: no request carries an `Authorization` header or a token of any kind, so private
+releases are not supported. Every failure is one `fetch_failed`, the reason only in the
+log. What came is checked against `checksums.txt`, the version asked for, and any earlier
+release of the same source and version the workspace found: `integration_source_mismatch`
+when they differ.
+
+**Integrity.** A connection, a release and a custom definition each carry an integrity
+code (`Apiary.Kinds.Coded`), a connection's over its kind, name, where it applies, its
+settings and argument, and what it names; a release's over its source, state and
+description digest (version 2; version 1 also covered a publisher, and a release of version
+1 that recorded none still verifies), and the description's bytes are checked against the digest. A page
+reads each connection marked `intact`, and `Apiary.Connections.list_for_rendering/1`
+refuses all the workspace's connections when one fails. The targets carry no code.
 
 ## The audit trail
 
@@ -358,7 +527,8 @@ events a runner posts are the record and leave no entry.
   workspace; inviting, changing the level of and removing a member; revoking and
   accepting an invitation; suspending and activating a member (`member.suspend`,
   `member.activate`); granting and revoking an instance admin, by a release command;
-  creating, rotating (and retiring the previous secret of) and revoking an access key;
+  an access key's arrival on a node and its revocation, and making
+  and cancelling an enrolment code;
   closing a run; the retention settings; every write of the security policy, whose
   history is the trail's entries of the policy's actions; and the trail's own retention.
   What the application removes of its own accord is recorded as the action that removes
@@ -437,7 +607,10 @@ but a person's account, which leaves a tombstone.
   workspaces in use, its URLs answer not found, `Apiary.Access` answers not found to
   anything asked of it but cancelling and the purge, a page opened before the marking
   included, its access keys answer the contract as a revoked key does, its invitations
-  accept no one, and retention leaves it alone; nothing is removed. The organisation's
+  accept no one, and retention leaves it alone; nothing is removed. Its nodes' keys are
+  hidden so, not revoked, and come back with a cancelled deletion; the purge makes their
+  public keys tombstones in the ledger, `workspace_deleted` for an organisation's purge
+  too, before it deletes them. The organisation's
   last workspace in use is not deleted on its own, `{:error, :last_workspace}`: the
   organisation is. A workspace's members stay in the organisation; only their access to
   it goes, with the workspace. An owner or an admin cancels a workspace's deletion on the
@@ -470,7 +643,7 @@ but a person's account, which leaves a tombstone.
   foreign key to: the edition's tables (`c:Apiary.Edition.deletion_tables/0`), in the
   edition's order, then the core's, in theirs. The edition's go first because a key only
   ever points from an edition's table to a core table, never back, so that order is
-  always valid. The purge walks it, and an export will; retention deletes a run's log
+  always valid. The purge walks it; retention deletes a run's log
   chunks, events and deliveries in the same order. Its test
   (`Apiary.Deletion.TablesCase`) compares it with the schema.
 - **The edition's part.** The edition refuses what it will not let go

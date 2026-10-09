@@ -2,7 +2,6 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
@@ -46,15 +45,38 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}/runs")
   end
 
+  test "the breadcrumb ends with Runs, the page itself, whether the list is narrowed or not",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop())
+
+    view = open(conn, scope)
+    assert crumbs(view) == [{"Runs", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Runs")
+
+    assert crumbs(open(conn, runs(scope, "?target=acme%2Fshop"))) == [{"Runs", nil}]
+  end
+
   describe "empty states" do
-    test "no runs and no keys: create a key", %{conn: conn, scope: scope} do
+    test "no runs and no node: add a node, or, for a member, go to the nodes", %{
+      conn: conn,
+      scope: scope
+    } do
       view = open(conn, scope)
       assert has_element?(view, "h2", "No runs yet")
 
+      assert text(view, "#main") =~
+               "A run appears here when a machine connected to a node of this workspace starts one."
+
+      assert text(view, "#main") =~ "Add a node, connect a machine to it, and start a run."
+
       assert has_element?(
                view,
-               "#runs-create-key[href='#{workspace_path(scope)}/settings/keys/new']"
+               "#runs-new-node[href='#{workspace_path(scope)}/nodes/new']",
+               "New node"
              )
+
+      refute has_element?(view, "#runs-go-to-nodes")
+      refute render(view) =~ "settings/keys"
 
       refute has_element?(view, "#runs")
       refute has_element?(view, "#runs-views")
@@ -62,10 +84,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#nav-runs-alive")
     end
 
-    test "no runs, keys exist: go to the keys, and listen", %{conn: conn, scope: scope} do
-      access_key_fixture(scope)
+    test "no runs and no node, for a member: an owner or admin adds nodes", %{scope: scope} do
+      %{user: member} = member_fixture(scope, :member)
+      view = open(log_in_user(build_conn(), member), scope)
+
+      refute has_element?(view, "#runs-new-node")
+      assert has_element?(view, "#main", "An owner or admin adds nodes.")
+      assert has_element?(view, "#runs-go-to-nodes[href='#{workspace_path(scope)}/nodes']")
+    end
+
+    test "no runs, a node exists: go to the nodes, and listen", %{conn: conn, scope: scope} do
+      Apiary.NodesFixtures.pool_fixture(scope)
       view = open(conn, scope)
-      assert has_element?(view, "#runs-go-to-keys[href='#{workspace_path(scope)}/settings/keys']")
+      assert text(view, "#main") =~ "A machine posts once it is connected to a node."
+
+      assert has_element?(
+               view,
+               "#runs-go-to-nodes[href='#{workspace_path(scope)}/nodes']",
+               "Go to nodes"
+             )
+
+      refute has_element?(view, "#runs-new-node")
       assert render(view) =~ "Listening for the first run."
     end
 
@@ -137,7 +176,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "one line per run: its state, its title, its target, runtime, host, started, duration and denials",
          %{conn: conn, scope: scope} do
       run =
-        started_run(scope, Map.put(shop(), "task", "checkout-tax"),
+        started_run(scope, shop(),
+          about: %{"title" => "checkout-tax"},
           ago: 125,
           egress: [%{"decision" => "denied", "rule" => ""}, %{}],
           exit: %{"state" => "failed", "exit_code" => 1, "duration_ms" => 411_000}
@@ -185,16 +225,112 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run without a task is its id; a pinged run is pending", %{
+    test "under its title, what a run is about: its kind and two subjects as text, then how many more",
+         %{conn: conn, scope: scope} do
+      subject = fn type, ref -> %{"type" => type, "ref" => ref} end
+
+      review =
+        started_run(scope, shop(),
+          about: %{
+            "kind" => "Review",
+            "title" => "Review the payment retry change",
+            "subjects" => [
+              Map.put(subject.("pull request", "#418"), "url", "https://git.example.com/pr/418"),
+              Map.put(subject.("ticket", "ENG-21"), "url", "https://tracker.example.com/ENG-21"),
+              subject.("incident", "INC-5")
+            ]
+          }
+        )
+
+      untitled =
+        started_run(scope, shop(),
+          about: %{
+            "kind" => "Implementation",
+            "subjects" => [subject.("pull request", "#412"), subject.("ticket", "ENG-17")]
+          }
+        )
+
+      kind_only =
+        started_run(scope, shop(),
+          about: %{"kind" => "Demo recording", "title" => "Record the onboarding walkthrough"}
+        )
+
+      subject_only =
+        started_run(scope, shop(), about: %{"subjects" => [subject.("ticket", "ENG-9")]})
+
+      title_only = started_run(scope, shop(), about: %{"title" => "Fix the login redirect"})
+      view = open(conn, scope)
+
+      assert text(view, "#{row(review)} .q-rowlink") == "Review the payment retry change"
+      line = "Review · pull request #418 · ticket ENG-21 · +1 more"
+      assert text(view, "#{row(review)} .q-rl-about-wide") == line
+      assert has_element?(view, ~s(#{row(review)} .q-rl-about-wide[title="#{line}"]))
+      # Below 640 px one subject, so the count is not cut off.
+      assert text(view, "#{row(review)} .q-rl-about-phone") ==
+               "Review · pull request #418 · +2 more"
+
+      # Text, never a link: the title's link covers the row.
+      refute has_element?(view, "#{row(review)} .q-rl-about a")
+      refute render(view) =~ "tracker.example.com"
+
+      # No title: the short id, in mono, and the line under it.
+      assert has_element?(
+               view,
+               "#{row(untitled)} .q-rowlink.q-rl-id",
+               String.slice(untitled.run_id, 0, 8)
+             )
+
+      assert text(view, "#{row(untitled)} .q-rl-about-wide") ==
+               "Implementation · pull request #412 · ticket ENG-17"
+
+      assert text(view, "#{row(untitled)} .q-rl-about-phone") ==
+               "Implementation · pull request #412 · +1 more"
+
+      assert text(view, "#{row(kind_only)} .q-rl-about") == "Demo recording"
+      assert text(view, "#{row(subject_only)} .q-rl-about") == "ticket ENG-9"
+      # A subject's type and ref are each isolated, so a bidi override reorders nothing; so
+      # are the run's title and kind.
+      assert has_element?(view, "#{row(subject_only)} .q-rl-about bdi", "ENG-9")
+      assert has_element?(view, "#{row(review)} .q-rl-about-wide bdi", "#418")
+      refute has_element?(view, "#{row(subject_only)} .q-rl-about-phone")
+      # Neither a kind nor a subject: no line.
+      refute has_element?(view, "#{row(title_only)} .q-rl-about")
+    end
+
+    test "a run's title and kind are isolated, so a bidi override reorders nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      title = "Fix the login\u202Eredirect"
+      kind = "Implemen\u202Etation"
+      run = started_run(scope, shop(), about: %{"title" => title, "kind" => kind})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(run)} .q-rowlink > bdi", title)
+      assert has_element?(view, ~s(#{row(run)} .q-rowlink[title="#{title}"]))
+      assert has_element?(view, "#{row(run)} .q-rl-about bdi", kind)
+    end
+
+    test "a run without a title is its id, a task an ordinary label; a pinged run is pending", %{
       conn: conn,
       scope: scope
     } do
       plain = started_run(scope, %{})
+      task = started_run(scope, Map.put(shop(), "task", "Update the billing copy"))
       pending = run_fixture(scope)
       view = open(conn, scope)
 
       assert text(view, "#{row(plain)} .q-rowlink") == String.slice(plain.run_id, 0, 8)
       assert has_element?(view, "#{row(plain)} .q-rl-c3", "n/a")
+
+      assert has_element?(
+               view,
+               "#{row(task)} .q-rowlink.q-rl-id",
+               String.slice(task.run_id, 0, 8)
+             )
+
+      refute has_element?(view, "#{row(task)} .q-rl-about")
+      refute render(view) =~ "Update the billing copy"
 
       cells = text(view, row(pending))
       assert cells =~ "Pending"
@@ -237,7 +373,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{row(live_run)} time[data-tick=duration][data-base='90'][data-now]"
              )
 
-      assert has_element?(view, "#{row(quiet)} .q-st-quiet")
+      # the note is the state's, in its cell, where the list puts it under the word; the
+      # target follows the title in the run's cell, where it gives way before the title
+      assert has_element?(view, "#{row(quiet)} td.q-rl-st .q-st-quiet > .q-quiet")
+      assert has_element?(view, "#{row(quiet)} td.q-rl-run .q-rl-title + .q-rl-inl")
 
       assert text(view, "#{row(quiet)} .q-quiet") =~
                ~r/^No heartbeat for \d\d s \. Heartbeats are due every 30 s\./
@@ -294,14 +433,15 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     setup %{scope: scope} do
       %{
         failed:
-          started_run(scope, Map.put(shop(), "task", "fix-cart"),
+          started_run(scope, shop(),
+            about: %{"title" => "fix-cart"},
             ago: 300,
             host: "build-02",
             egress: [%{"decision" => "denied", "rule" => ""}],
             exit: %{"state" => "failed", "exit_code" => 1}
           ),
         running:
-          started_run(scope, Map.put(shop("gitlab.example"), "task", "mirror-sync"), ago: 100)
+          started_run(scope, shop("gitlab.example"), about: %{"title" => "mirror-sync"}, ago: 100)
       }
     end
 
@@ -340,7 +480,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
           conn,
           runs(
             scope,
-            "?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+            "?state=failed&system=github.example&target=acme/shop&runtime=claude&host=build-02&denials=1&since=24h"
           )
         )
 
@@ -350,7 +490,6 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       # acme/shop is on two systems here: its token names the system.
       assert token(view, "target") == "repo:github.example/acme/shop"
       assert token(view, "state") == "state:failed"
-      assert token(view, "task") == "task:fix-cart"
       assert token(view, "started") == "started:24h"
       assert token(view, "denied") == "denied:yes"
       assert has_element?(view, "#runs-token-runtime a[aria-label='Remove runtime:claude']")
@@ -389,7 +528,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view |> element("#runs-token-state a") |> render_click()
       assert_patch(view, runs(scope, "?q=fix&target=acme%2Fshop"))
 
-      # The free text alone: a run's task, id or target.
+      # The free text alone: a run's title, id or target.
       view |> form("#runs-query", %{"q" => "mirror"}) |> render_submit()
       assert_patch(view, runs(scope, "?q=mirror&target=acme%2Fshop"))
       render_async(view)
@@ -426,16 +565,21 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "#runs-filter-button[aria-haspopup=dialog][aria-controls=runs-filter-panel]",
+               "#runs-filter-button[aria-controls=runs-filter-panel]",
                "Filter"
              )
 
-      assert has_element?(view, "#runs-filter-panel[role=dialog]")
+      assert has_element?(view, "#runs-filter-panel[role=group]")
 
-      for key <- ~w(target state task runtime host key since denials) do
+      for key <- ~w(target state runtime host node since denials) do
         assert has_element?(view, "#runs-filter-open-#{key}")
         assert has_element?(view, "#runs-filter-section-#{key}[role=group]")
       end
+
+      # A task is an ordinary label: no section, and no "No task".
+      refute has_element?(view, "#runs-filter-open-task")
+      refute has_element?(view, "#runs-filter-section-task")
+      refute render(view) =~ "No task"
 
       # The rail does the Target section's work from 1280 px.
       assert has_element?(view, "#runs-filter-open-target.q-norail")
@@ -450,17 +594,37 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert has_element?(view, row(running))
 
-      view |> form("#filter-task-form") |> render_change(%{"task" => "mirror-sync"})
-      assert_patch(view, runs(scope, "?state=running&task=mirror-sync"))
+      view |> form("#filter-host-form") |> render_change(%{"host" => "build-02"})
+      assert_patch(view, runs(scope, "?host=build-02&state=running"))
 
       view |> form("#filter-denials-form") |> render_change(%{"denials" => "1"})
-      assert_patch(view, runs(scope, "?denials=1&state=running&task=mirror-sync"))
+      assert_patch(view, runs(scope, "?denials=1&host=build-02&state=running"))
 
       # Nothing matches: the empty state clears them, and the line that counts is not there.
       render_async(view)
       refute has_element?(view, "#runs-summary")
       view |> element("#runs-clear") |> render_click()
       assert_patch(view, runs(scope))
+    end
+
+    test "the Node section: the nodes the runs ran on, by name, in place of the access key",
+         %{conn: conn, running: running, scope: scope} do
+      node = Apiary.NodesFixtures.node_fixture(scope, %{name: "build-01"})
+
+      Apiary.Runs.Run
+      |> Apiary.Repo.get!(running.id)
+      |> Ecto.Changeset.change(node_id: node.id)
+      |> Apiary.Repo.update!()
+
+      view = open(conn, scope)
+      assert has_element?(view, "#runs-filter-open-node", "Node")
+      refute has_element?(view, "#runs-filter-open-key")
+      assert text(view, "#filter-node-form") =~ "build-01 1"
+
+      view |> form("#filter-node-form") |> render_change(%{"node" => "build-01"})
+      assert_patch(view, runs(scope, "?node=build-01"))
+      render_async(view)
+      assert has_element?(view, row(running))
     end
 
     test "the State section reads as three families, each heading a checkbox over its states",
@@ -682,13 +846,38 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert to == runs(scope, "?state=failed")
     end
 
+    test "an old link's task is dropped quietly: a task is an ordinary label, no filter", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, Map.put(shop(), "task", "fix-cart"))
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, runs(scope, "?task=fix-cart&state=running"))
+
+      assert to == runs(scope, "?state=running")
+
+      view = open(conn, to)
+      assert has_element?(view, row(run))
+      refute has_element?(view, "#runs-dropped")
+      refute has_element?(view, "#runs-token-task")
+
+      # Typed, `task:` is no qualifier: the words are the free text, which no title holds.
+      view |> form("#runs-query", %{"q" => "task:fix-cart"}) |> render_submit()
+      assert_patch(view, runs(scope, "?q=task%3Afix-cart&state=running"))
+      render_async(view)
+      refute has_element?(view, "#runs-dropped")
+      refute has_element?(view, "#runs-token-task")
+      refute has_element?(view, row(run))
+    end
+
     test "a refused value is said, never silently an unfiltered list", %{conn: conn, scope: scope} do
       started_run(scope, shop())
 
       assert {:error, {:live_redirect, %{to: to}}} =
                live(
                  conn,
-                 ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"task" => <<0>>}}"
+                 ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"runtime" => <<0>>}}"
                )
 
       assert to == ~p"/#{scope.organisation}/#{scope.workspace}/runs"
@@ -732,11 +921,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   describe "the rail, and targets and sections at any size" do
     test "the rail lists the targets with their runs under the other filters; one is a link that sets it",
          %{conn: conn, scope: scope} do
-      shop_run = started_run(scope, Map.put(shop(), "task", "a"))
-      started_run(scope, Map.put(shop(), "task", "b"))
+      shop_run = started_run(scope, shop(), about: %{"title" => "first-title"})
+      started_run(scope, shop(), about: %{"title" => "second-title"})
       api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
       started_run(scope, %{})
-      view = open(conn, runs(scope, "?task=a"))
+      view = open(conn, runs(scope, "?q=first-title"))
 
       assert has_element?(view, "nav#runs-rail[aria-label=Repositories]")
       # The rail's headings sit under a heading of its own, so the outline never skips.
@@ -751,8 +940,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       shop_link = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/shop"})}"
       assert text(view, shop_link) == "acme/shop 2"
 
+      # A path no other system has is written alone, as its address is.
       view |> element(shop_link) |> render_click()
-      assert_patch(view, runs(scope, "?system=github.example&target=acme%2Fshop"))
+      assert_patch(view, runs(scope, "?target=acme%2Fshop"))
       render_async(view)
       assert has_element?(view, row(shop_run))
       refute has_element?(view, row(api))
@@ -849,24 +1039,398 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       scope: scope
     } do
       for n <- 1..60 do
-        run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: DateTime.utc_now()})
+        run_fixture(scope, %{state: "running", host: "host-#{n}", started_at: DateTime.utc_now()})
       end
 
       view = open(conn, scope)
-      assert text(view, "#filter-task-more") == "Showing 50 of 60: type to narrow"
+      assert text(view, "#filter-host-more") == "Showing 50 of 60: type to narrow"
 
-      view |> element("#filter-task-show-more") |> render_click()
+      view |> element("#filter-host-show-more") |> render_click()
       render_async(view)
-      refute has_element?(view, "#filter-task-more")
-      refute has_element?(view, "#filter-task-show-more")
+      refute has_element?(view, "#filter-host-more")
+      refute has_element?(view, "#filter-host-show-more")
 
-      view |> form("#filter-task-narrow") |> render_change(%{"q" => "task-6"})
+      view |> form("#filter-host-narrow") |> render_change(%{"q" => "host-6"})
       render_async(view)
-      assert text(view, "#filter-task-form") == "task-6 1 task-60 1"
+      assert text(view, "#filter-host-form") == "host-6 1 host-60 1"
 
-      view |> form("#filter-task-narrow") |> render_change(%{"q" => "%"})
+      view |> form("#filter-host-narrow") |> render_change(%{"q" => "%"})
       render_async(view)
-      assert text(view, "#filter-task-form") == "Nothing matches"
+      assert text(view, "#filter-host-form") == "Nothing matches"
+    end
+  end
+
+  describe "narrowed to a target (the narrowing ruling)" do
+    # A target's page, or a tab of it, as its address is written: the path alone, unless
+    # `system` is given for a path two systems share.
+    defp target_page(scope, system \\ nil, rest \\ []) do
+      tab = if rest == [], do: "", else: "/-/" <> Enum.join(rest, "/")
+
+      workspace_path(
+        scope,
+        "/targets/" <> if(system, do: system <> "/", else: "") <> "acme/shop" <> tab
+      )
+    end
+
+    defp href(view, selector, href), do: has_element?(view, ~s(#{selector}[href="#{href}"]))
+
+    # Every entry of the sidebar but Runs and Network access leads plainly, and so do
+    # those two on a list that is not narrowed to a target.
+    defp plain_sidebar?(view, scope, carried \\ false) do
+      plain =
+        [overview: "", targets: "/targets", nodes: "/nodes", settings: "/settings"] ++
+          if(Apiary.Features.on?(:security), do: [policy: "/policy"], else: []) ++
+          if(carried, do: [], else: [runs: "/runs", network: "/network"])
+
+      Enum.all?(plain, fn {key, path} ->
+        href(view, "#nav-#{key}", workspace_path(scope, path))
+      end)
+    end
+
+    test "the line says so, leads to the target, its Network access and its policy, and back to every run",
+         %{conn: conn, scope: scope} do
+      shop_run = started_run(scope, shop())
+      api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      assert has_element?(view, row(shop_run))
+      refute has_element?(view, row(api))
+      assert has_element?(view, "#page-header #runs-narrowed")
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/shop only."
+      assert href(view, "a#runs-narrowed-name", target_page(scope))
+
+      assert href(
+               view,
+               "#runs-narrowed-network",
+               workspace_path(scope, "/network?target=acme%2Fshop")
+             )
+
+      assert text(view, "#runs-narrowed-network") == "Network access"
+
+      # Out of the sentence, each link is named by it.
+      assert has_element?(
+               view,
+               ~s(#runs-narrowed-network[aria-label="Network access, narrowed to acme/shop"])
+             )
+
+      if Apiary.Features.on?(:security) do
+        assert href(view, "#runs-narrowed-policy", target_page(scope, nil, ["policy"]))
+        assert text(view, "#runs-narrowed-policy") == "Its policy"
+        assert has_element?(view, "#runs-narrowed-policy[aria-describedby=runs-narrowed-what]")
+      else
+        refute has_element?(view, "#runs-narrowed-policy")
+      end
+
+      assert href(view, "#runs-narrowed-all", runs(scope))
+      assert text(view, "#runs-narrowed-all") == "Show all runs"
+      assert has_element?(view, "#runs-narrowed-all[aria-describedby=runs-narrowed-what]")
+
+      # Its links differ from the text by more than their hue, and when "Show all runs"
+      # takes the line away, focus goes from it to the page's title.
+      assert has_element?(view, "#runs-narrowed a.q-link")
+      assert has_element?(view, "#runs-narrowed[phx-remove]")
+      assert has_element?(view, "#page-header-title[tabindex='-1']")
+
+      # The sidebar's Runs and Network access carry the target; nothing else does.
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+      assert href(view, "#nav-runs", workspace_path(scope, "/runs?target=acme%2Fshop"))
+
+      assert has_element?(
+               view,
+               ~s(#nav-network[aria-label="Network access, narrowed to acme/shop"])
+             )
+
+      assert plain_sidebar?(view, scope, true)
+
+      # The existing parts stay, in the software domain's words.
+      assert token(view, "target") == "repo:acme/shop"
+      assert text(view, "#runs-rail-all") =~ "All repositories"
+    end
+
+    test "a list not narrowed has no line, and its sidebar leads plainly", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+
+      for query <- ["", "?state=failed", "?target=none"] do
+        view = open(conn, runs(scope, query))
+        refute has_element?(view, "#runs-narrowed")
+        assert plain_sidebar?(view, scope), query
+      end
+    end
+
+    test "only the target carries: the state stays on Runs, and Show all runs keeps it", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      view = open(conn, runs(scope, "?state=failed&target=acme/shop"))
+
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+      assert href(view, "#nav-runs", workspace_path(scope, "/runs?target=acme%2Fshop"))
+
+      assert href(
+               view,
+               "#runs-narrowed-network",
+               workspace_path(scope, "/network?target=acme%2Fshop")
+             )
+
+      assert href(view, "#runs-narrowed-all", runs(scope, "?state=failed"))
+    end
+
+    test "the system is carried only where two systems share the path", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, runs(scope, "?system=gitlab.example&target=acme/shop"))
+      carried = workspace_path(scope, "/network?system=gitlab.example&target=acme%2Fshop")
+
+      # The system is a faint part of the name, before its path.
+      assert view |> text("#runs-narrowed-what") |> String.replace(" / ", "/") ==
+               "Showing the runs of gitlab.example/acme/shop only."
+
+      assert href(view, "a#runs-narrowed-name", target_page(scope, "gitlab.example"))
+
+      if Apiary.Features.on?(:security),
+        do:
+          assert(
+            href(view, "#runs-narrowed-policy", target_page(scope, "gitlab.example", ["policy"]))
+          )
+
+      assert href(view, "#runs-narrowed-network", carried)
+      assert href(view, "#nav-network", carried)
+
+      assert has_element?(
+               view,
+               ~s(#runs-narrowed-network[aria-label="Network access, narrowed to gitlab.example/acme/shop"])
+             )
+    end
+
+    test "a path on two systems given alone covers both, and names each system's runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, runs(scope, "?state=failed&target=acme/shop"))
+
+      # The words of the sentence, a link's full stop after it.
+      what = fn -> view |> text("#runs-narrowed-what") |> String.replace(" .", ".") end
+      assert what.() == "Showing acme/shop only, on github.example and gitlab.example."
+
+      # Each system leads to the runs of its own target, the other filters kept.
+      for system <- ["github.example", "gitlab.example"] do
+        assert href(
+                 view,
+                 "#runs-narrowed-what a[data-phx-link=patch]",
+                 runs(scope, "?state=failed&system=#{system}&target=acme%2Fshop")
+               ),
+               system
+      end
+
+      # No one target: no name to lead to, no one policy.
+      refute has_element?(view, "a#runs-narrowed-name")
+      refute has_element?(view, "#runs-narrowed-policy")
+      refute has_element?(view, "#runs-rail [aria-current=true]")
+
+      # The path is carried as it was given.
+      assert href(
+               view,
+               "#runs-narrowed-network",
+               workspace_path(scope, "/network?target=acme%2Fshop")
+             )
+
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fshop"))
+
+      # Three systems: "a, b, and c".
+      started_run(scope, shop("codeberg.example"))
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      assert view |> text("#runs-narrowed-what") |> String.replace(~r/ ([.,])/, "\\1") ==
+               "Showing acme/shop only, on codeberg.example, github.example, and gitlab.example."
+
+      # Following one narrows to its target.
+      view
+      |> element(
+        "#runs-narrowed-what a[href='#{runs(scope, "?system=gitlab.example&target=acme%2Fshop")}']"
+      )
+      |> render_click()
+
+      assert_patch(view, runs(scope, "?system=gitlab.example&target=acme%2Fshop"))
+      render_async(view)
+
+      assert view |> text("#runs-narrowed-what") |> String.replace(" / ", "/") ==
+               "Showing the runs of gitlab.example/acme/shop only."
+    end
+
+    test "the line is whole from the first render, before the list lands", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, shop("gitlab.example"))
+
+      {:ok, _view, html} = live(conn, runs(scope, "?system=gitlab.example&target=acme/shop"))
+      first = LazyHTML.from_document(html)
+
+      attribute = fn selector ->
+        first |> LazyHTML.query(selector) |> LazyHTML.attribute("href") |> List.first()
+      end
+
+      # The list is still its skeleton; the line, its links and the carry are not.
+      assert html =~ "runs-loading"
+      assert attribute.("a#runs-narrowed-name") == target_page(scope, "gitlab.example")
+
+      assert attribute.("#nav-network") ==
+               workspace_path(scope, "/network?system=gitlab.example&target=acme%2Fshop")
+
+      if Apiary.Features.on?(:security),
+        do:
+          assert(
+            attribute.("#runs-narrowed-policy") ==
+              target_page(scope, "gitlab.example", ["policy"])
+          )
+    end
+
+    test "a patch to another target names it at once, and to a missing one leads nowhere", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      view = open(conn, runs(scope, "?target=acme/shop"))
+      assert href(view, "a#runs-narrowed-name", target_page(scope))
+
+      render_patch(view, runs(scope, "?target=acme/api"))
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/api only."
+      assert href(view, "a#runs-narrowed-name", workspace_path(scope, "/targets/acme/api"))
+
+      if Apiary.Features.on?(:security),
+        do:
+          assert(
+            href(
+              view,
+              "#runs-narrowed-policy",
+              workspace_path(scope, "/targets/acme/api/-/policy")
+            )
+          )
+
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fapi"))
+
+      render_patch(view, runs(scope, "?target=acme/nowhere"))
+      assert text(view, "#runs-narrowed-what") == "Showing the runs of acme/nowhere only."
+      refute has_element?(view, "a#runs-narrowed-name")
+      refute has_element?(view, "#runs-narrowed-policy")
+      assert href(view, "#nav-network", workspace_path(scope, "/network?target=acme%2Fnowhere"))
+    end
+
+    test "the rail, the Filter menu and a typed repo: match the short address and write it", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      shop_link = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/shop"})}"
+      view = open(conn, runs(scope, "?target=acme/shop"))
+
+      # The rail marks the one target of the path, and writes the path alone.
+      assert has_element?(view, "#{shop_link}[aria-current=true]")
+      refute has_element?(view, "#runs-rail-all[aria-current]")
+      assert href(view, shop_link, runs(scope, "?target=acme%2Fshop"))
+
+      # The Filter menu holds it once, chosen.
+      options =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#filter-target-form input[name=target]")
+
+      values = LazyHTML.attribute(options, "value")
+      shop_value = Apiary.Runs.Filters.target_value({nil, "acme/shop"})
+      assert Enum.count(values, &(&1 == shop_value)) == 1
+      refute Apiary.Runs.Filters.target_value({"github.example", "acme/shop"}) in values
+
+      assert has_element?(
+               view,
+               ~s(#filter-target-form input[name=target][value='#{shop_value}'][checked])
+             )
+
+      # Choosing in the menu writes the path alone.
+      api_value = Apiary.Runs.Filters.target_value({nil, "acme/api"})
+      view |> form("#filter-target-form") |> render_change(%{"target" => api_value})
+      assert_patch(view, runs(scope, "?target=acme%2Fapi"))
+
+      # And so does typing it, with or without its system.
+      for typed <- ["repo:acme/shop", "repo:github.example/acme/shop", "target:ACME/shop"] do
+        render_patch(view, runs(scope, "?target=acme/api"))
+        view |> form("#runs-query", %{"q" => typed}) |> render_submit()
+        assert_patch(view, runs(scope, "?target=acme%2Fshop"))
+      end
+
+      # Where the path is shared, every one of them writes the system.
+      started_run(scope, shop("gitlab.example"))
+      view = open(conn, runs(scope, "?system=gitlab.example&target=acme/shop"))
+      gitlab_link = "#runs-rail-t-#{RunComponents.dom_token({"gitlab.example", "acme/shop"})}"
+      assert has_element?(view, "#{gitlab_link}[aria-current=true]")
+      assert href(view, shop_link, runs(scope, "?system=github.example&target=acme%2Fshop"))
+
+      view |> form("#runs-query", %{"q" => "repo:github.example/acme/shop"}) |> render_submit()
+      assert_patch(view, runs(scope, "?system=github.example&target=acme%2Fshop"))
+    end
+
+    test "with many targets, the chosen one missing from the rail comes first, with its count",
+         %{conn: conn, scope: scope} do
+      for n <- 1..21 do
+        started_run(scope, %{"forge" => "github.example", "repository" => "acme/r#{n}"})
+        started_run(scope, %{"forge" => "github.example", "repository" => "acme/r#{n}"})
+      end
+
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/quiet"})
+      quiet = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/quiet"})}"
+
+      view = open(conn, scope)
+      refute has_element?(view, quiet)
+      assert text(view, "#runs-rail-more") == "2 more"
+
+      view = open(conn, runs(scope, "?target=acme/quiet"))
+      assert text(view, quiet) == "acme/quiet 1"
+      assert has_element?(view, "#{quiet}[aria-current=true]")
+
+      # Right under every run, before the busiest; one fewer behind the button.
+      [_all, first | _] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs-rail a")
+        |> LazyHTML.attribute("id")
+
+      assert "##{first}" == quiet
+      assert text(view, "#runs-rail-more") == "1 more"
+    end
+
+    test "Show all runs, the token's ×, the rail's All targets and Clear each drop the target, in a new history entry",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+      narrowed = runs(scope, "?state=failed&target=acme/shop")
+
+      for {selector, to} <- [
+            {"#runs-narrowed-all", runs(scope, "?state=failed")},
+            {"#runs-token-target a", runs(scope, "?state=failed")},
+            {"#runs-rail-all", runs(scope, "?state=failed")},
+            {"#runs-tokens-clear", runs(scope)}
+          ] do
+        view = open(conn, narrowed)
+        assert has_element?(view, "#{selector}[data-phx-link=patch][data-phx-link-state=push]")
+        view |> element(selector) |> render_click()
+        assert_patch(view, to)
+        render_async(view)
+
+        refute has_element?(view, "#runs-narrowed"), selector
+        assert plain_sidebar?(view, scope), selector
+      end
     end
   end
 
@@ -874,12 +1438,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     setup %{scope: scope} do
       %{
         older:
-          started_run(scope, Map.put(shop(), "task", "older"),
+          started_run(scope, shop(),
+            about: %{"title" => "older"},
             ago: 300,
             egress: [%{"decision" => "denied", "rule" => "", "host" => "files.cdn.example"}],
             exit: %{"state" => "failed", "exit_code" => 1, "duration_ms" => 12_000}
           ),
-        newer: started_run(scope, Map.put(shop(), "task", "newer"), ago: 100)
+        newer: started_run(scope, shop(), about: %{"title" => "newer"}, ago: 100)
       }
     end
 
@@ -962,7 +1527,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, "#runs-query[role=search] label", "Filter runs")
       assert has_element?(view, "#runs-query-input[name=q]")
-      assert has_element?(view, "#runs-filter-panel[role=dialog][aria-label=Filter]")
+      assert has_element?(view, "#runs-filter-panel[role=group][aria-label=Filter]")
       assert has_element?(view, "#runs-sort-button[aria-haspopup=menu]")
       assert has_element?(view, "#runs-per button[type=button][aria-pressed=true]", "50")
 
@@ -1117,9 +1682,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
 
     test "a new run the filters do not return is not announced", %{conn: conn, scope: scope} do
-      started_run(scope, Map.put(shop(), "task", "a"), ago: 30)
-      view = open(conn, runs(scope, "?task=a"))
-      started_run(scope, Map.put(shop(), "task", "b"), ago: 1)
+      started_run(scope, shop(), about: %{"title" => "first-title"}, ago: 30)
+      view = open(conn, runs(scope, "?q=first-title"))
+      started_run(scope, shop(), about: %{"title" => "second-title"}, ago: 1)
       refute has_element?(view, "#runs-new")
     end
 

@@ -1,11 +1,13 @@
 import Config
 
-# Configure your database
+# Configure your database. APIARY_DEV_DATABASE names another one, such as the database a
+# demo is filled in (`mix apiary.demo.console`); apiary_dev when unset. A DATABASE_URL
+# (config/runtime.exs) replaces either: unset it to use this one.
 config :apiary, Apiary.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "apiary_dev",
+  database: System.get_env("APIARY_DEV_DATABASE") || "apiary_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
@@ -101,10 +103,12 @@ config :phoenix_live_view,
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
-# The encryption key for secrets at rest in dev. Not a secret: local databases only.
-config :apiary, Apiary.Vault,
-  ciphers: [
-    default:
-      {Cloak.Ciphers.AES.GCM,
-       tag: "AES.GCM.V1", key: Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")}
-  ]
+# APIARY_ENCRYPTION_SECRET in dev: every key the instance uses is derived from it
+# (Apiary.KeyDerivation). Not a secret: local databases only.
+config :apiary, Apiary.KeyDerivation,
+  secret: Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+
+# APIARY_SIGNING_SECRET in dev: the seed of the instance's own signing key
+# (Apiary.SigningKey), which a machine pins as apiary_public_key. A fixed 32 bytes of its
+# own, never derived from the encryption secret above. Not a secret: local instances only.
+config :apiary, Apiary.SigningKey, seed: "qory apiary dev signing seed 001"

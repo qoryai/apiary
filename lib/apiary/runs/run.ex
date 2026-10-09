@@ -23,8 +23,14 @@ defmodule Apiary.Runs.Run do
     # path, kept on the run beside `target_id`, both nil when the labels name none.
     field :target_system, :string
     field :target_path, :string
-    field :task, :string
     field :labels, :map, default: %{}
+    # What the run said it is about: `about` of `run.started`, each member as the fold
+    # kept it (`Apiary.Runs.Fold`), nil or empty when it said none. A subject is a map
+    # with "type" and "ref", and "url" and "title" only when it carried them.
+    field :about_kind, :string
+    field :about_title, :string
+    field :about_subjects, {:array, :map}, default: []
+    field :about_details, :map
     field :runtime, :string
     field :runtime_version, :string
     field :runner_version, :string
@@ -76,6 +82,10 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
+    # The node of the key the run's ping came with, and the instance id that ping claimed:
+    # copied when the run is created and never moved, both nil for a key that names no node.
+    belongs_to :node, Apiary.Nodes.Node
+    field :instance_id, :string
     belongs_to :target, Apiary.Runs.Target
     belongs_to :closed_by, Apiary.Accounts.User
 

@@ -42,13 +42,6 @@ defmodule ApiaryWeb.Endpoint do
     only: ApiaryWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
-  # The documentation, from the tree built for the instance's features: `priv/static/docs`
-  # holds one per set of features, and `dir/0` names the one to read.
-  plug Plug.Static,
-    at: "/docs",
-    from: {ApiaryWeb.DocsController, :dir, []},
-    gzip: not code_reloading?
-
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
@@ -57,6 +50,18 @@ defmodule ApiaryWeb.Endpoint do
     plug Phoenix.CodeReloader
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :apiary
   end
+
+  # The content security policy and its nonce (`ApiaryWeb.ContentSecurityPolicy`), on the
+  # documentation and on every answer of the router, error pages included. After the code
+  # reloader, whose live-reload frame and compile error page are development tools' own.
+  plug ApiaryWeb.ContentSecurityPolicy
+
+  # The documentation, from the tree built for the instance's features: `priv/static/docs`
+  # holds one per set of features, and `dir/0` names the one to read.
+  plug Plug.Static,
+    at: "/docs",
+    from: {ApiaryWeb.DocsController, :dir, []},
+    gzip: not code_reloading?
 
   plug Phoenix.LiveDashboard.RequestLogger,
     param_key: "request_logger",

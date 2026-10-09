@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "key": "sentry",
+  "title": "Sentry",
+  "description": "Sentry's web API on sentry.io, with an auth token sent as a bearer token.",
+  "hosts": ["sentry.io"],
+  "paths": ["/api/0/*"],
+  "auth": {"scheme": "bearer", "secret": "auth_token"},
+  "declares": [
+    {"id": "auth_token", "title": "Sentry auth token", "name": "SENTRY_AUTH_TOKEN"}
+  ]
+}

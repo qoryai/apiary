@@ -2,41 +2,54 @@ defmodule ApiaryWeb.SettingsComponents do
   @moduledoc """
   The settings of an organisation and of a workspace, GitHub's way: each kind its own
   place, reached from its own scope, one section a page with the list of that kind's
-  sections beside it (`layout/1`), while the sidebar stays the scope's, its Settings the
-  current entry. Configuration lives here, set up once and changed rarely; the sidebar
+  sections beside it (`layout/1`), while the sidebar stays the scope's, its Organisation
+  settings or Workspace settings the current entry. Configuration lives here, set up once and changed rarely; the sidebar
   holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
-    it), People (its members, invitations and suspended memberships), Workspaces, Audit log
-    (`ApiaryWeb.ActivityLive`), then the edition's sections
-    (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
-  - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
-    Access keys, Retention.
+    it), People (its members, invitations and suspended memberships), Workspaces, then the
+    edition's sections (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the
+    edition's own. Its audit log is a record, not a setting: a page of the organisation's
+    sidebar (`ApiaryWeb.ActivityLive`).
+  - A workspace's (`/:org/:workspace/settings/…`), in the map's order: General (its name,
+    and deleting it), People (who reaches it, and at what level: read here, managed in the
+    organisation's People), with the `secrets` feature Integrations
+    (`ApiaryWeb.IntegrationLive.Index`) and Secrets and variables
+    (`ApiaryWeb.SecretLive.Index`), and Runs (how long it keeps runs, their events and
+    their logs).
+  - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
+    (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
+    it).
 
-  A person's own settings are the person's pages, and their sidebar is their list
-  (`ApiaryWeb.Layouts`). A list holds its kind's sections only: no other kind's, no link
+  A person's own settings are the person's pages: the frame lists them as the second
+  column beside the sidebar the person came from, or alone in the person's own sidebar
+  where they have no workspace (`ApiaryWeb.Layouts`). A list holds its kind's sections
+  only: no other kind's, no link
   across. A section the reader may not open is absent from it, as a navigation entry is;
   its page still refuses them. What cannot be undone is never an entry: it is the danger
-  zone at the end of its scope's General page, or of Profile (`danger_zone/1`), and its
-  confirm dialog is at a path of its own over that page.
+  zone at the end of its scope's General page, or of Account (`danger_zone/1`), and its
+  confirmation expands in place there, at a path of its own (`danger_action/1`).
 
   A page of the settings reads its sections when it mounts, and again when the reader's
   membership changes (`sections/2`), since an edition's section may ask the database
-  whether it has anything for the reader; it renders them with `layout/1`, its own marked
-  current.
+  whether it has anything for the reader, and passes them to the frame, which lists them
+  as its second column, its own marked current (`ApiaryWeb.Layouts.app/1`'s `sections`
+  and `section`); a node's settings list theirs in the page (`layout/1`).
   """
   use ApiaryWeb, :html
 
-  alias Apiary.Access
+  alias Apiary.{Access, Features}
   alias Apiary.Accounts.Scope
   alias ApiaryWeb.Nav.Entry
 
   @doc """
-  sections/2 is the sections of the organisation's (`:organisation`) or the workspace's
-  (`:workspace`) settings the reader of `scope` may open, as `ApiaryWeb.Nav.Entry` values,
-  in the list's order; each entry's `section` is `:main`, or `:edition` for the edition's.
+  sections/2 is the sections of the organisation's (`:organisation`), the workspace's
+  (`:workspace`) or a node's (`{:node, node}`) settings the reader of `scope` may open, as
+  `ApiaryWeb.Nav.Entry` values, in the list's order; each entry's `section` is `:main`, or
+  `:edition` for the edition's.
   """
-  @spec sections(Scope.t(), :organisation | :workspace) :: [Entry.t()]
+  @spec sections(Scope.t(), :organisation | :workspace | {:node, Apiary.Nodes.Node.t()}) ::
+          [Entry.t()]
   def sections(%Scope{organisation: organisation} = scope, :organisation) do
     main = [
       %Entry{
@@ -64,15 +77,6 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
           place: :organisation
-        },
-      can?(scope, :"audit.read") &&
-        %Entry{
-          section: :main,
-          key: :audit_log,
-          label: gettext("Audit log"),
-          icon: "hero-clipboard-document-list",
-          path: ~p"/#{organisation}/settings/audit-log",
-          place: :organisation
         }
     ]
 
@@ -82,7 +86,9 @@ defmodule ApiaryWeb.SettingsComponents do
     Enum.filter(main ++ edition, & &1)
   end
 
-  def sections(%Scope{organisation: organisation, workspace: workspace}, :workspace) do
+  def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
+    secrets? = Features.on?(scope, :secrets)
+
     [
       %Entry{
         section: :main,
@@ -93,40 +99,105 @@ defmodule ApiaryWeb.SettingsComponents do
       },
       %Entry{
         section: :main,
-        key: :keys,
-        label: gettext("Access keys"),
-        icon: "hero-key",
-        path: ~p"/#{organisation}/#{workspace}/settings/keys",
-        count: :keys
+        key: :people,
+        label: gettext("People"),
+        icon: "hero-users",
+        path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
+      # Integrations and Secrets and variables ask `on?(scope, :secrets)`.
+      secrets? && Access.can?(scope, :"connection.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :integrations,
+          label: gettext("Integrations"),
+          icon: "hero-puzzle-piece",
+          path: ~p"/#{organisation}/#{workspace}/settings/integrations"
+        },
+      secrets? && Access.can?(scope, :"secret.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :secrets,
+          label: gettext("Secrets and variables"),
+          icon: "hero-lock-closed",
+          path: ~p"/#{organisation}/#{workspace}/settings/secrets"
+        },
       %Entry{
         section: :main,
-        key: :retention,
-        label: gettext("Retention"),
+        key: :runs,
+        label: gettext("Runs"),
         icon: "hero-archive-box",
-        path: ~p"/#{organisation}/#{workspace}/settings/retention"
+        path: ~p"/#{organisation}/#{workspace}/settings/runs"
+      }
+    ]
+    |> Enum.filter(& &1)
+  end
+
+  def sections(%Scope{organisation: organisation, workspace: workspace}, {:node, node}) do
+    [
+      %Entry{
+        section: :main,
+        key: :general,
+        label: gettext("General"),
+        icon: "hero-adjustments-horizontal",
+        path: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings"
       }
     ]
   end
 
+  @doc """
+  page_title/3 is the browser title of a page of a level's settings, the most specific
+  first: the page's own words (`parts`: the section, or a form's act and the section, or
+  a tab and the section), the level's settings, then, for a workspace's, the workspace's
+  name and the organisation's, and for an organisation's, the organisation's; the root
+  layout adds Qory Apiary. So two workspaces' settings in two browser tabs never share a
+  title: "Secrets and variables · Workspace settings · Main · Acme".
+  """
+  @spec page_title(
+          Scope.t() | nil,
+          :workspace | :organisation | :person | :instance,
+          [String.t()]
+        ) :: String.t()
+  def page_title(scope, level, parts) do
+    Enum.join(parts ++ title_level(scope, level), " · ")
+  end
+
+  defp title_level(%Scope{organisation: organisation, workspace: workspace}, :workspace),
+    do: [gettext("Workspace settings"), workspace.name, organisation.name]
+
+  defp title_level(%Scope{organisation: organisation}, :organisation),
+    do: [gettext("Organisation settings"), organisation.name]
+
+  defp title_level(_scope, :person), do: [gettext("Your settings")]
+  defp title_level(_scope, :instance), do: [gettext("Instance settings")]
+
   # The settings' actions are asked of the organisation: listing its workspaces, whose
-  # deletion is its, and reading the audit trail.
+  # deletion is its.
   defp can?(%Scope{organisation: organisation} = scope, action),
     do: Access.can?(scope, action, organisation)
 
   @doc """
-  layout/1 is a page of the settings: the settings' heading, "Organisation settings" or
-  "Workspace settings", the list of the sections beside the section (`sections/2`),
-  `current` marked, and the section itself, its title, what it is for and its actions
-  above its content. From 1024 px the list is a column at the page's left edge; below, it
-  is a row of links above the section.
+  layout/1 is a page of the settings: the section, its title, what it is for and its
+  actions above its content. The section's title is the page's `<h1>`: the frame names the
+  level, "Organisation settings" or "Workspace settings", in the second column's heading,
+  the breadcrumb and the browser title. A node's settings, a tab of its page, sit under the
+  page's own `<h1>`, so there the section's title is an `<h2>`.
+
+  The list of the sections is the frame's second column: the page passes its sections
+  (`sections/2`) to `ApiaryWeb.Layouts.app/1` as `sections`, its own as `section`, and
+  none here (`ApiaryWeb.PageComponents.settings_page/1` is this page without the list).
+  Given `sections` here, as a node's settings do, the list is in the page, beside the
+  section from 1024 px and a row of links above it below.
 
   A section of forms keeps a 720 px column (`measure="read"`); one that is a list, such
   as the people or the access keys, a 960 px one (`measure="list"`).
   """
   attr :scope, :any, required: true
-  attr :kind, :atom, required: true, values: [:organisation, :workspace]
-  attr :sections, :list, required: true, doc: "the sections, as `sections/2` gives them"
+  attr :kind, :atom, required: true, values: [:organisation, :workspace, :node]
+
+  attr :sections, :list,
+    default: nil,
+    doc:
+      "the sections, as `sections/2` gives them, for a list in the page; none where the frame's second column lists them"
 
   attr :counts, :map,
     default: nil,
@@ -134,21 +205,24 @@ defmodule ApiaryWeb.SettingsComponents do
 
   attr :current, :atom, required: true, doc: "the key of the section of the page"
   attr :measure, :string, default: "read", values: ~w(read list)
-  attr :title, :string, required: true, doc: "the section's title"
+
+  attr :title, :string,
+    required: true,
+    doc: "the section's title: the page's h1, a node's settings' h2"
+
   slot :subtitle, doc: "one sentence: what the section is for"
   slot :actions, doc: "at most one primary and one default action"
   slot :inner_block, required: true
 
   def layout(assigns) do
     ~H"""
-    <div class="q-settings">
-      <h1 class="q-settings-title outline-none" tabindex="-1">
-        {if @kind == :organisation,
-          do: gettext("Organisation settings"),
-          else: gettext("Workspace settings")}
-      </h1>
-
-      <nav id="settings-tabs" class="q-settings-nav" aria-label={gettext("Settings")}>
+    <div class={["q-settings", !@sections && "q-settings-solo"]}>
+      <nav
+        :if={@sections}
+        id="settings-tabs"
+        class="q-settings-nav"
+        aria-label={gettext("Settings")}
+      >
         <.link
           :for={entry <- @sections}
           id={"settings-tab-#{entry.key}"}
@@ -171,7 +245,23 @@ defmodule ApiaryWeb.SettingsComponents do
       >
         <header class="q-settings-head">
           <div class="min-w-0">
-            <h2 id="settings-section-title" class="q-settings-head-title">{@title}</h2>
+            <h1
+              :if={@kind != :node}
+              id="settings-section-title"
+              class="q-settings-title outline-none"
+              tabindex="-1"
+            >
+              {@title}
+            </h1>
+            <%!-- A node's settings: the node's page has the h1. --%>
+            <h2
+              :if={@kind == :node}
+              id="settings-section-title"
+              class="q-settings-head-title outline-none"
+              tabindex="-1"
+            >
+              {@title}
+            </h2>
             <p :if={@subtitle != []} class="q-settings-head-sub">{render_slot(@subtitle)}</p>
           </div>
           <div :if={@actions != []} class="q-settings-actions">{render_slot(@actions)}</div>
@@ -195,13 +285,20 @@ defmodule ApiaryWeb.SettingsComponents do
   @doc """
   part/1 is one part of a settings section, or of a person's settings page: its fields or
   its list straight on the page, no card, under a heading when the section has more than
-  one part (an `<h3>` under the section's `<h2>`; an `<h2>` on a person's page, whose
-  title is the `<h1>`), with a count beside it where one helps.
+  one part (an `<h2>` under the section's title, the page's `<h1>`; an `<h3>` where the
+  section's title is itself an `<h2>`), with a count beside it where one helps. A part of
+  a thing's page, such as a node's, passes `level={:h2}`: an `<h2>` over a rule.
   """
   attr :id, :string, default: nil
   attr :title, :string, default: nil
   attr :count, :integer, default: nil
-  attr :level, :atom, default: :h3, values: [:h2, :h3]
+
+  attr :level, :atom,
+    default: nil,
+    values: [nil, :h2, :h3],
+    doc:
+      "nil: an `<h2>` under a settings section's `<h1>`; `:h2`: an `<h2>` over a rule, on a thing's page; `:h3`: under a section whose title is an `<h2>`"
+
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
@@ -214,7 +311,11 @@ defmodule ApiaryWeb.SettingsComponents do
       class={["q-part", @class]}
       aria-labelledby={@title && @heading_id}
     >
-      <h2 :if={@title && @level == :h2} id={@heading_id} class="q-part-h q-part-h2">
+      <h2
+        :if={@title && @level != :h3}
+        id={@heading_id}
+        class={["q-part-h", @level == :h2 && "q-part-h2"]}
+      >
         {@title}
         <span :if={@count} class="q-part-n">{Format.number(@count)}</span>
       </h2>
@@ -231,8 +332,18 @@ defmodule ApiaryWeb.SettingsComponents do
   save/1 is the foot of a settings form: its button, one primary per section where the
   section has one main action, and beside it one muted line of who may change it or what
   happens once it is saved.
+
+  On a page of its own that creates or changes one thing, Cancel follows the button: a link back to the list the page was opened from (`cancel`), by `patch`
+  within the list's LiveView and by `navigate` from another.
   """
   attr :id, :string, default: nil
+  attr :cancel, :string, default: nil, doc: "where Cancel leads back to"
+
+  attr :cancel_by, :string,
+    default: "patch",
+    values: ~w(patch navigate href),
+    doc: "how Cancel leads back: `href` for a page of the storybook"
+
   slot :inner_block, required: true, doc: "the button"
   slot :note, doc: "the muted line"
 
@@ -240,6 +351,23 @@ defmodule ApiaryWeb.SettingsComponents do
     ~H"""
     <div id={@id} class="q-save">
       {render_slot(@inner_block)}
+      <.button
+        :if={@cancel && @cancel_by == "patch"}
+        id={@id && "#{@id}-cancel"}
+        patch={@cancel}
+      >
+        {gettext("Cancel")}
+      </.button>
+      <.button
+        :if={@cancel && @cancel_by == "navigate"}
+        id={@id && "#{@id}-cancel"}
+        navigate={@cancel}
+      >
+        {gettext("Cancel")}
+      </.button>
+      <.button :if={@cancel && @cancel_by == "href"} id={@id && "#{@id}-cancel"} href={@cancel}>
+        {gettext("Cancel")}
+      </.button>
       <span :if={@note != []}>{render_slot(@note)}</span>
     </div>
     """
@@ -305,10 +433,12 @@ defmodule ApiaryWeb.SettingsComponents do
   organisation's in use, one row on the row spec, its name the title with its slug beside
   it, its targets where the page counted them (`targets`), when it was created, and its ⋯
   menu, the edition's items (the `:workspace_actions`
-  slot) then Delete…, which opens the deletion's dialog at its own path, by `patch` from
-  the organisation's settings and by `navigate` from an edition's page over the same
-  list; then the note under the list, what a deletion does, or why the only workspace is
-  not deleted on its own.
+  slot) then Delete…, which leads to the deletion's own path, by `patch` from the
+  organisation's settings and by `navigate` from an edition's page over the same list;
+  there the workspace's row (`confirming`) is the deletion's confirmation in place of its
+  cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then the
+  note under the list, what a deletion does, or why the only workspace is not deleted on
+  its own.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
@@ -318,6 +448,12 @@ defmodule ApiaryWeb.SettingsComponents do
     doc: "how many targets each workspace has, by its id (`Apiary.Targets.count_by_workspace/1`)"
 
   attr :delete, :string, default: "patch", values: ~w(patch navigate)
+
+  attr :confirming, :any,
+    default: nil,
+    doc: "the workspace whose row asks to confirm its deletion, at the deletion's path"
+
+  attr :confirm_form, :any, default: nil, doc: "the slug typed to confirm it"
 
   def workspace_list(assigns) do
     days = Apiary.Deletion.grace_days()
@@ -334,6 +470,7 @@ defmodule ApiaryWeb.SettingsComponents do
       label={gettext("Workspaces")}
       rows={@workspaces}
       row_id={&"workspace-#{&1.id}"}
+      confirming={@confirming && "workspace-#{@confirming.id}"}
     >
       <:col :let={workspace} label={gettext("Workspace")} kind="title">
         <span class="q-nm">
@@ -368,6 +505,29 @@ defmodule ApiaryWeb.SettingsComponents do
           </.menu_item>
         </.row_menu>
       </:action>
+      <:confirm :let={workspace}>
+        <.deletion_confirm
+          id="delete-workspace"
+          question={gettext("Delete %{name}?", name: workspace.name)}
+          form={@confirm_form}
+          change="confirm"
+          submit="delete_workspace"
+          ready={@confirm_form[:slug].value == workspace.slug}
+          cancel={~p"/#{@scope.organisation}/settings/workspaces"}
+        >
+          <:lost>{workspace_lost()}</:lost>
+          <:field>
+            <.input
+              field={@confirm_form[:slug]}
+              type="text"
+              label={gettext("Type the workspace's slug, %{slug}, to confirm", slug: workspace.slug)}
+              autocomplete="off"
+              spellcheck="false"
+              debounce="0"
+            />
+          </:field>
+        </.deletion_confirm>
+      </:confirm>
     </.table>
     <p id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
       {if length(@workspaces) > 1,
@@ -388,7 +548,20 @@ defmodule ApiaryWeb.SettingsComponents do
     do: ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete"
 
   @doc """
-  danger_zone/1 is the last part of a scope's General page, and of Profile: after a rule,
+  workspace_lost/0 is what deleting a workspace loses, the sentence of its confirmation,
+  from Workspaces and from the workspace's own danger zone.
+  """
+  def workspace_lost do
+    days = Apiary.Deletion.grace_days()
+
+    gettext(
+      "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
+      days: ngettext("%{number} day", "%{number} days", days, number: Format.number(days))
+    )
+  end
+
+  @doc """
+  danger_zone/1 is the last part of a scope's General page, and of Account: after a rule,
   the heading Danger zone, the page's only red words, and one line for each act that
   cannot be undone (`danger_action/1`), with whatever the page says of it under its line.
   No box: the lines rest on the page. It is absent for a reader who may do none of them.
@@ -407,25 +580,166 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   danger_action/1 is one line of a danger zone: the act's title, one muted sentence of
-  what it does and what cannot be undone, and at the right its button, a default one in
-  the error colour, which opens the act's confirm dialog at a path of its own; the red
-  button is the dialog's. Without a button, where the act is not there, the sentence says
-  why.
+  what it does and what cannot be undone, and at the right its button (`button`), a
+  default one in the error colour. The confirmation is in place, never a dialog: the
+  button is a patch to the act's own path (`open_path`), and there (`open`) the line
+  expands under its sentence into the act's `deletion_confirm/1`, what is lost (`:lost`),
+  the field asked to confirm (`:field`), such as the slug typed, then the question
+  (`question`) with its red button, enabled once `ready`, and Cancel. The button above
+  becomes the way to fold it (`aria-expanded`), as Cancel and Escape do, a patch back to
+  the page (`close_path`) that gives that button the focus back.
+
+  Without a button, where the act is not there, the sentence says why; `disabled` shows
+  the button but does not offer it, while something stops the act and the page says what
+  under the line.
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
+
+  attr :button, :string,
+    default: nil,
+    doc: "the button's words, such as Delete organisation…; none where the act is not there"
+
+  attr :disabled, :boolean, default: false, doc: "the button shown but not offered"
+  attr :open, :boolean, default: false, doc: "whether the confirmation is expanded"
+  attr :open_path, :string, default: nil, doc: "the act's own path, which expands it"
+  attr :close_path, :string, default: nil, doc: "the page's path, which folds it"
+  attr :question, :string, default: nil, doc: "the confirmation's question, such as Delete Acme?"
+  attr :form, :any, default: nil, doc: "the confirmation's form, where it asks for a field"
+  attr :change, :string, default: nil, doc: "the event of a change of the field"
+  attr :submit, :string, default: nil, doc: "the event of the red button"
+  attr :ready, :boolean, default: true, doc: "whether the red button is enabled"
+
+  attr :confirm_label, :string,
+    default: nil,
+    doc: "the red button's words, Yes, delete unless given (`deletion_confirm/1`)"
+
+  attr :busy_label, :string,
+    default: nil,
+    doc: "the red button's words while it acts, Deleting unless given"
+
   slot :inner_block, required: true, doc: "the sentence"
-  slot :action, doc: "the button that opens the confirm dialog"
+
+  slot :lost, doc: "what is lost, at more length than the sentence, a paragraph each" do
+    attr :id, :string
+  end
+
+  slot :field, doc: "the field asked to confirm"
+  slot :action, doc: "a control of the page's own in place of the button"
 
   def danger_action(assigns) do
+    assigns =
+      assign(assigns, :expanded, assigns.open && is_binary(assigns.button) && !assigns.disabled)
+
     ~H"""
-    <div id={@id} class="q-danger-line">
+    <div id={@id} class={["q-danger-line", @expanded && "q-danger-line-open"]}>
       <div class="q-danger-what">
-        <h3 class="q-danger-name">{@title}</h3>
+        <h3 id={"#{@id}-title"} class="q-danger-name">{@title}</h3>
         <p class="q-danger-sub">{render_slot(@inner_block)}</p>
       </div>
-      <div :if={@action != []} class="q-danger-act">{render_slot(@action)}</div>
+      <div :if={@button || @action != []} class="q-danger-act">
+        <.button :if={@button && @disabled} id={"#{@id}-button"} type="button" disabled>
+          {@button}
+        </.button>
+        <.button
+          :if={@button && !@disabled}
+          id={"#{@id}-button"}
+          patch={if @expanded, do: @close_path, else: @open_path}
+          aria-expanded={to_string(@expanded)}
+          aria-controls={@expanded && "#{@id}-form"}
+        >
+          {@button}
+        </.button>
+        {render_slot(@action)}
+      </div>
+      <.deletion_confirm
+        :if={@expanded}
+        id={@id}
+        question={@question}
+        form={@form}
+        change={@change}
+        submit={@submit}
+        ready={@ready}
+        confirm_label={@confirm_label}
+        busy_label={@busy_label}
+        cancel={JS.patch(@close_path) |> JS.focus(to: "##{@id}-button")}
+      >
+        <:lost :for={lost <- @lost} id={lost[:id]}>{render_slot(lost)}</:lost>
+        <:field :for={field <- @field}>{render_slot(field)}</:field>
+      </.deletion_confirm>
     </div>
+    """
+  end
+
+  @doc """
+  deletion_confirm/1 is the confirmation of a deletion, in place where it was asked for
+  (a danger zone's line, `danger_action/1`, or a row of a list, `CoreComponents.table/1`'s
+  `confirm` slot), never a dialog: a form, `id`-form, of what is lost (`:lost`), the field
+  asked to confirm (`:field`), such as the slug typed, which takes the focus, then the
+  `CoreComponents.inline_confirm/1` (`id`-confirming), its question and its red button,
+  Yes, delete (`id`-confirm; other words in `confirm_label`, and in `busy_label` for
+  Deleting while it acts, as a removal's Yes, remove and Removing), enabled once `ready`,
+  beside Cancel, which takes the focus where there is no field to type. Cancel and
+  Escape run `cancel`.
+  """
+  attr :id, :string, required: true, doc: "the act's id, which its parts' ids begin with"
+  attr :question, :string, required: true
+  attr :form, :any, default: nil, doc: "the form, where it asks for a field"
+  attr :change, :string, default: nil
+  attr :submit, :string, required: true
+  attr :ready, :boolean, default: true
+  attr :cancel, :any, required: true, doc: "a path to patch to, or a JS command"
+
+  attr :confirm_label, :string,
+    default: nil,
+    doc: "the red button's words; nil for Yes, delete"
+
+  attr :busy_label, :string,
+    default: nil,
+    doc: "the red button's words while it acts; nil for Deleting"
+
+  slot :lost, doc: "what is lost, a paragraph each" do
+    attr :id, :string
+  end
+
+  slot :field
+
+  def deletion_confirm(assigns) do
+    assigns = update(assigns, :form, &(&1 || to_form(%{}, as: :confirm)))
+
+    ~H"""
+    <.form
+      for={@form}
+      id={"#{@id}-form"}
+      class="q-danger-confirm"
+      phx-change={@change}
+      phx-submit={@submit}
+      novalidate
+    >
+      <div :if={@lost != []} class="q-danger-lost">
+        <p :for={lost <- @lost} id={lost[:id]}>{render_slot(lost)}</p>
+      </div>
+      <div :if={@field != []} id={"#{@id}-field"} class="q-danger-field">
+        {render_slot(@field)}
+      </div>
+      <.inline_confirm id={"#{@id}-confirming"} question={@question} cancel={@cancel}>
+        <:action>
+          <.button
+            id={"#{@id}-confirm"}
+            variant="danger"
+            size="xs"
+            type="submit"
+            disabled={!@ready}
+            loading_text={@busy_label || gettext("Deleting")}
+          >
+            {@confirm_label || gettext("Yes, delete")}
+          </.button>
+        </:action>
+      </.inline_confirm>
+      <%!-- After the confirmation's Cancel, which takes the focus as it mounts: the field
+           to type takes it last. --%>
+      <span :if={@field != []} hidden phx-mounted={JS.focus_first(to: "##{@id}-field")}></span>
+    </.form>
     """
   end
 end

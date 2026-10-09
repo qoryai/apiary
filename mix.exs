@@ -98,7 +98,6 @@ defmodule Apiary.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.3.0"},
       {:bandit, "~> 1.5"},
-      {:cloak_ecto, "~> 1.3"},
       {:logger_json, "~> 7.0"},
       {:gen_smtp, "~> 1.3"},
       # In every environment, the release build included: the image builds the docs it
@@ -159,6 +158,7 @@ defmodule Apiary.MixProject do
         "guides/backup.md",
         "guides/retention.md",
         "guides/hosting-checklist.md",
+        "guides/nodes.md",
         "guides/security-policy.md",
         "guides/runner-file.md",
         "guides/contract.md",
@@ -173,12 +173,18 @@ defmodule Apiary.MixProject do
           "guides/retention.md",
           "guides/hosting-checklist.md"
         ],
-        "Using Qory Apiary": ["guides/security-policy.md", "guides/runner-file.md"],
+        "Using Qory Apiary": [
+          "guides/nodes.md",
+          "guides/security-policy.md",
+          "guides/runner-file.md"
+        ],
         Reference: ["guides/contract.md", "CHANGELOG.md"]
       ],
       groups_for_modules: [
         "Accounts and organisations": [~r/^Apiary\.Accounts/, ~r/^Apiary\.Organisations/],
-        "Access keys": [~r/^Apiary\.AccessKeys/, ~r/^Apiary\.Encrypted/, Apiary.Vault],
+        "Access keys": [~r/^Apiary\.AccessKeys/],
+        "Keys and integrity": [Apiary.KeyDerivation, Apiary.Integrity, Apiary.PublicId],
+        "Secrets and variables": [~r/^Apiary\.Secrets/, ~r/^Apiary\.Variables/],
         "Runs and the record": [~r/^Apiary\.Runs/],
         Domains: [~r/^Apiary\.Lingo\.Domain/],
         "Security policy": [~r/^Apiary\.Policy/],
@@ -199,7 +205,7 @@ defmodule Apiary.MixProject do
       # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
       # being listed; a passage of a guide is marked in the guide,
       # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature: the
-      # release notes name them all.
+      # module reference names them all.
       features: [
         security: [
           extras: ["guides/security-policy.md"],
@@ -210,12 +216,19 @@ defmodule Apiary.MixProject do
             Mix.Tasks.Apiary.Policy.Rerender
           ]
         ],
-        # The release notes and the module reference name every feature, the prose of a
-        # shared module included, so only an instance with every feature serves them. The
-        # tasks the guides send a self-hoster to stay in every tree; their docs name no
-        # feature, and ExDoc warns of a `mix` span whose task a tree leaves out.
+        secrets: [
+          modules: [
+            ~r/^Apiary\.Secrets/,
+            ~r/^Apiary\.Variables/,
+            ~r/^Apiary\.Connections/,
+            ~r/^Apiary\.Integrations/
+          ]
+        ],
+        # The module reference names every feature, the prose of a shared module included,
+        # so only an instance with every feature serves it. The tasks the guides send a
+        # self-hoster to stay in every tree; their docs name no feature, and ExDoc warns of
+        # a `mix` span whose task a tree leaves out. The release notes are in every tree.
         all: [
-          extras: ["CHANGELOG.md"],
           modules: [~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/]
         ]
       ]

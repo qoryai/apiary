@@ -4,14 +4,15 @@ defmodule ApiaryWeb.ActivityLiveTest do
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures, only: [node_fixture: 1]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Audit, Organisations, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Membership, Workspace}
 
   defp open(conn, scope, query \\ "") do
-    {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/settings/audit-log#{query}")
+    {:ok, view, _html} = live(conn, "/#{scope.organisation.slug}/audit-log#{query}")
     render_async(view)
     view
   end
@@ -23,6 +24,18 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
   defp text(view, selector),
     do: view |> element(selector) |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
+
+  # The Action filter's options, as `{value, words}`, in the order it shows them.
+  defp action_options(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#filter-action-form li")
+    |> Enum.map(fn li ->
+      [value] = li |> LazyHTML.query("input") |> LazyHTML.attribute("value")
+      {value, li |> LazyHTML.text() |> String.trim()}
+    end)
+  end
 
   # The ids of the rows, in the order the table shows them.
   defp row_ids(view) do
@@ -36,35 +49,107 @@ defmodule ApiaryWeb.ActivityLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
+    @tag needs: :security
+    test "names a stored secret and a variable by name, never by value",
+         %{conn: conn, scope: scope} do
+      {:ok, secret} =
+        Apiary.Secrets.create_secret(scope, %{
+          name: "GITHUB_APP_PRIVATE_KEY",
+          value: "s3cr3t-value"
+        })
+
+      {:ok, _secret} = Apiary.Secrets.rename_value(scope, secret, nil, "main-app")
+
+      {:ok, _variable} =
+        Apiary.Variables.create_variable(scope, :workspace, %{name: "NODE_ENV", value: "plain"})
+
+      view = open(conn, scope)
+      [variable, renamed, created | _older] = entries(scope)
+
+      assert text(view, "#entry-#{created.id}-action") =~ "Created a stored secret"
+      assert text(view, "#entry-#{created.id}-subject") =~ "GITHUB_APP_PRIVATE_KEY"
+      assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed a value ID of a stored secret"
+      assert text(view, "#entry-#{variable.id}-action") =~ "Set a variable"
+      assert text(view, "#entry-#{variable.id}-subject") =~ "NODE_ENV"
+      refute render(view) =~ "s3cr3t-value"
+    end
+
     test "lists the organisation's changes, newest first", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
       {:ok, _workspace} = Organisations.update_workspace(scope, %{name: "Production"})
-      %{access_key: key} = access_key_fixture(scope, %{label: "build-01"})
+      %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
 
       view = open(conn, scope)
       [created, renamed | _older] = entries(scope)
 
       assert row_ids(view) |> Enum.take(2) == ["entry-#{created.id}", "entry-#{renamed.id}"]
 
-      assert text(view, "#entry-#{created.id}-action") =~ "Created an access key"
+      assert text(view, "#entry-#{created.id}-action") =~ "Added an access key to a node"
       assert text(view, "#entry-#{created.id}-subject") =~ "build-01"
       assert text(view, "#entry-#{created.id}-change") =~ key.key_id
       assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed the workspace"
       assert text(view, "#entry-#{renamed.id}-change") =~ "Main → Production"
       assert text(view, "#entry-#{renamed.id}-actor") =~ scope.user.email
       assert has_element?(view, "#entry-#{renamed.id}-time[datetime][title]")
-      # A section of the organisation's settings: its list, Audit log current, and the
-      # sidebar's Settings the current entry.
-      assert has_element?(view, "#settings-tab-audit_log[aria-current='page']")
-      assert has_element?(view, "h2#settings-section-title", "Audit log")
-      assert has_element?(view, "#nav-organisation[aria-current='page']")
+      # A page of the organisation's sidebar, its entry current, not a section of the
+      # settings: no second column, and the sidebar's Settings is not current.
+      assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
+      assert has_element?(view, "#nav-audit_log[aria-current='page']")
+      assert has_element?(view, "#nav-audit_log[href='/#{scope.organisation.slug}/audit-log']")
+      assert has_element?(view, "h1#page-header-title", "Audit log")
+      refute has_element?(view, "#settings-tabs")
+      refute has_element?(view, "#nav-organisation[aria-current='page']")
       refute has_element?(view, "#nav-activity")
     end
 
-    test "its old path sends on to the settings, with the query", %{conn: conn, scope: scope} do
-      conn = get(conn, "/#{scope.organisation.slug}/activity?action=access_key.create")
+    test "its title names the organisation", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+      assert page_title(view) =~ "Audit log · #{scope.organisation.name}"
+    end
 
-      assert redirected_to(conn, 302) ==
-               "/#{scope.organisation.slug}/settings/audit-log?action=access_key.create"
+    test "the breadcrumb ends with Audit log, the page itself", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+
+      assert crumbs(view, :organisation) == [{"Audit log", nil}]
+      assert has_element?(view, "#breadcrumb [aria-current=page]", "Audit log")
+    end
+
+    test "the Action filter's box narrows its options, keeping the chosen one",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope, "?action=workspace.rename")
+      every = action_options(view)
+
+      assert has_element?(view, "#filter-action-search[aria-label='Find an action']")
+
+      view
+      |> form("#filter-action-narrow")
+      |> render_change(%{"_filter" => "action", "q" => "ACCESS KEY"})
+
+      narrowed = action_options(view)
+      assert length(narrowed) < length(every)
+      assert {"access_key.add", "Access key added"} in narrowed
+      # The chosen action stays, so its chip still names it.
+      assert List.keymember?(narrowed, "workspace.rename", 0)
+      assert has_element?(view, "#filter-action-button", "Workspace renamed")
+
+      for {value, words} <- narrowed, value != "workspace.rename" do
+        assert String.downcase(words) =~ "access key"
+      end
+
+      view
+      |> form("#filter-action-narrow")
+      |> render_change(%{"_filter" => "action", "q" => ""})
+
+      assert action_options(view) == every
+    end
+
+    test "its old paths send on to it, with the query", %{conn: conn, scope: scope} do
+      for old <- ["activity", "settings/audit-log"] do
+        conn = get(conn, "/#{scope.organisation.slug}/#{old}?action=access_key.create")
+
+        assert redirected_to(conn, 302) ==
+                 "/#{scope.organisation.slug}/audit-log?action=access_key.create"
+      end
     end
 
     test "shows no other organisation's entries", %{conn: conn, scope: scope} do
@@ -80,18 +165,18 @@ defmodule ApiaryWeb.ActivityLiveTest do
     test "filters by action", %{conn: conn, scope: scope} do
       {:ok, _workspace} = Organisations.update_workspace(scope, %{name: "Production"})
       access_key_fixture(scope)
-      [created] = entries(scope, %{action: "access_key.create"})
+      [created] = entries(scope, %{action: "access_key.add"})
       [renamed] = entries(scope, %{action: "workspace.rename"})
 
       view = open(conn, scope)
 
       view
       |> form("#filter-action-form")
-      |> render_change(%{"_filter" => "action", "action" => "access_key.create"})
+      |> render_change(%{"_filter" => "action", "action" => "access_key.add"})
 
       assert_patch(
         view,
-        "/#{scope.organisation.slug}/settings/audit-log?action=access_key.create"
+        "/#{scope.organisation.slug}/audit-log?action=access_key.add"
       )
 
       render_async(view)
@@ -116,6 +201,8 @@ defmodule ApiaryWeb.ActivityLiveTest do
       for option <- options do
         refute option =~ ~r/^[a-z_]+\.[a-z_]+$/, "#{option} is a code name"
       end
+
+      assert "Owner made on Qory Apiary" in options
     end
 
     test "filters by workspace", %{conn: conn, scope: scope} do
@@ -145,7 +232,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
       assert_patch(
         view,
-        "/#{scope.organisation.slug}/settings/audit-log?workspace_id=#{scope.workspace.id}"
+        "/#{scope.organisation.slug}/audit-log?workspace_id=#{scope.workspace.id}"
       )
 
       render_async(view)
@@ -167,7 +254,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       refute has_element?(view, "#activity-newer")
 
       view |> element("#activity-older") |> render_click()
-      assert_patch(view, "/#{scope.organisation.slug}/settings/audit-log?page=2")
+      assert_patch(view, "/#{scope.organisation.slug}/audit-log?page=2")
       render_async(view)
 
       # The 55 renames and the sign-up.
@@ -182,11 +269,11 @@ defmodule ApiaryWeb.ActivityLiveTest do
     } do
       for page <- ["7", "99999999999999999999"] do
         view = open(conn, scope, "?page=#{page}")
-        assert has_element?(view, "#activity-past-end")
+        assert text(view, "#activity-past-end") =~ "The audit log has fewer pages than that."
         refute has_element?(view, "#activity-empty")
 
         view |> element("#activity-first-page") |> render_click()
-        assert_patch(view, "/#{scope.organisation.slug}/settings/audit-log")
+        assert_patch(view, "/#{scope.organisation.slug}/audit-log")
         render_async(view)
         assert length(row_ids(view)) == 1
       end
@@ -216,7 +303,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       view = open(conn, scope)
       assert text(view, "#entry-#{by_key.id}-actor") =~ "build-01"
       assert text(view, "#entry-#{by_key.id}-actor") =~ key.key_id
-      assert text(view, "#entry-#{pruned.id}-actor") =~ "Qory"
+      assert text(view, "#entry-#{pruned.id}-actor") =~ "Qory Apiary"
       assert text(view, "#entry-#{pruned.id}-change") =~ "1 entry older than 90 days"
     end
 
@@ -230,10 +317,10 @@ defmodule ApiaryWeb.ActivityLiveTest do
 
     test "a person who deleted their account reads as a former member, as actor and subject",
          %{conn: conn, scope: scope} do
-      %{scope: member, user: user} = member_fixture(scope, :member)
-      {:ok, key, _secret} = Apiary.AccessKeys.create_access_key(member, %{label: "theirs"})
+      %{scope: member, user: user} = member_fixture(scope, :admin)
+      %{access_key: key} = access_key_fixture(member, %{label: "theirs"})
       {:ok, _} = Apiary.Accounts.delete_user(member)
-      [created] = entries(scope, %{action: "access_key.create"})
+      [created] = entries(scope, %{action: "access_key.add"})
       [left] = entries(scope, %{action: "member.remove"})
 
       view = open(conn, scope)
@@ -270,7 +357,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       [purged] = entries(scope, %{action: "workspace.purge"})
 
       view = open(conn, scope)
-      assert text(view, "#entry-#{purged.id}-actor") =~ "Qory"
+      assert text(view, "#entry-#{purged.id}-actor") =~ "Qory Apiary"
       assert text(view, "#entry-#{purged.id}-action") =~ "Purged a deleted workspace"
       assert text(view, "#entry-#{purged.id}-subject") =~ "A deleted workspace"
     end
@@ -324,9 +411,31 @@ defmodule ApiaryWeb.ActivityLiveTest do
       assert text(view, "#entry-#{added.id}-change") =~ "Now v1"
     end
 
+    test "a load that fails says so, and where the reason is", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+
+      {1, _} =
+        Repo.update_all(
+          from(m in Membership,
+            where: m.user_id == ^scope.user.id and m.organisation_id == ^scope.organisation.id
+          ),
+          set: [level: :member]
+        )
+
+      view
+      |> form("#filter-action-form")
+      |> render_change(%{"_filter" => "action", "action" => "workspace.rename"})
+
+      render_async(view)
+
+      assert String.trim(text(view, "#activity-error")) ==
+               "The audit log could not be loaded. Reload the page; if it keeps happening, " <>
+                 "Qory Apiary's log has the reason."
+    end
+
     test "says so when nothing matches", %{conn: conn, scope: scope} do
       view = open(conn, scope, "?action=run.close")
-      assert has_element?(view, "#activity-empty")
+      assert has_element?(view, "#activity-empty", "No entries match these filters")
       assert has_element?(view, "#activity-filters-clear")
     end
   end
@@ -343,10 +452,11 @@ defmodule ApiaryWeb.ActivityLiveTest do
       owner: owner
     } do
       assert_error_sent(:not_found, fn ->
-        get(conn, "/#{owner.organisation.slug}/settings/audit-log")
+        get(conn, "/#{owner.organisation.slug}/audit-log")
       end)
 
       {:ok, view, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
+      refute has_element?(view, "#nav-audit_log")
       refute has_element?(view, "#settings-tab-audit_log")
     end
   end

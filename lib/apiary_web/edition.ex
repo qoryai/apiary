@@ -23,8 +23,10 @@ defmodule ApiaryWeb.Edition do
   The callbacks, by where they are asked:
 
   - **Navigation** (`ApiaryWeb.Layouts`): `c:nav_entries/1`, the sidebar's entries after
-    the core's, `c:new_entries/2`, what New offers before the core's, and
-    `c:switcher_entries/1`, the switcher's after its places, each an
+    the core's, `c:new_entries/2`, what New offers before the core's,
+    `c:switcher_entries/1`, the switcher's after its places,
+    `c:account_menu_entries/1`, the account menu's after the core's, and
+    `c:instance_sections/1`, the Instance level's before the core's, each an
     `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's own groups of
     the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
     `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_scope/2`, the scope a place of the
@@ -75,6 +77,27 @@ defmodule ApiaryWeb.Edition do
   @callback switcher_entries(Scope.t()) :: [Entry.t()]
 
   @doc """
+  The edition's entries of the account menu, after the core's of the same group
+  (`ApiaryWeb.Layouts.account_menu_entries/1`), in the scope of the page: each an
+  `ApiaryWeb.Nav.Entry` whose `section` says its group, `:account` (with Settings and
+  Your organisations, the default) or `:instance` (after the theme, before Log out), and
+  whose `action`, where it has one, is asked of the organisation before it is offered.
+  The Instance level is not the account menu's: its Instance settings is in the Qory
+  Apiary menu (`c:instance_sections/1`).
+  """
+  @callback account_menu_entries(Scope.t()) :: [Entry.t()]
+
+  @doc """
+  The edition's sections of the Instance level, before the core's Configuration
+  (`ApiaryWeb.Layouts.instance_sections/1`): each an `ApiaryWeb.Nav.Entry` with
+  `place: :instance` and a path, a string, only those the scope's person may open. The
+  Qory Apiary menu's Instance settings, shown to whoever may open one, leads to the
+  first; with two or more they open as the second column of the Instance's pages, under
+  the heading Instance settings.
+  """
+  @callback instance_sections(Scope.t()) :: [Entry.t()]
+
+  @doc """
   The edition's own groups of the sidebar, in order, after the core's: each the `section`
   its entries name (`ApiaryWeb.Nav.Entry`) and its heading, translated, or nil for a group
   without one. An entry of a section neither the core nor the edition names goes last,
@@ -101,8 +124,9 @@ defmodule ApiaryWeb.Edition do
   @doc """
   What the pages say to a reader (`Apiary.Access.reader/1`), a person who reads the
   organisation of `scope` through the edition's reach, with no membership there, and
-  changes nothing: `:level`, the account menu's line where a member's level would be;
-  `:refused`, the sentence of a change a page refuses them. Nil for the core's words.
+  changes nothing: `:refused`, the sentence of a change a page refuses them. Nil for the
+  core's words. The core no longer asks for `:level` (the account menu's line where a
+  member's level was); it stays in the type so that editions which answer it compile.
   """
   @callback reader_sentence(:level | :refused, Scope.t()) :: String.t() | nil
 
@@ -164,6 +188,8 @@ defmodule ApiaryWeb.Edition do
     nav_counts: 1,
     new_entries: 2,
     switcher_entries: 1,
+    account_menu_entries: 1,
+    instance_sections: 1,
     nav_sections: 0,
     place_group: 1,
     place_scope: 2,

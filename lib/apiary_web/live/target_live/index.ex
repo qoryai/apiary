@@ -201,10 +201,11 @@ defmodule ApiaryWeb.TargetLive.Index do
       nav={:targets}
       width="list"
     >
-      <.header>
-        {gettext("Targets")}
-        <:subtitle>{gettext("The targets this workspace's runs have changed.")}</:subtitle>
-      </.header>
+      <:crumb>{gettext("Targets")}</:crumb>
+
+      <.page_header title={gettext("Targets")}>
+        <:description>{gettext("The targets this workspace's runs have changed.")}</:description>
+      </.page_header>
 
       <div class="q-tgt-list">
         <.views id="targets-views" label={gettext("Views")}>
@@ -381,13 +382,16 @@ defmodule ApiaryWeb.TargetLive.Index do
             <.pin_button
               id={"target-pin-#{row.target.id}"}
               target={row.target}
+              shared={row.shared}
               pinned={MapSet.member?(@pinned, row.target.id)}
             />
           </:col>
           <:col :let={row} label={gettext("Target")} kind="title" class="q-tgt-c-name">
             <.link
               id={"target-link-#{row.target.id}"}
-              navigate={target_path(@current_scope, row.target.system, row.target.path)}
+              navigate={
+                target_path(@current_scope, row.target.system, row.target.path, [], row.shared)
+              }
               class="q-tgt-name"
               title={"#{row.target.system}/#{row.target.path}"}
             >

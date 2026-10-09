@@ -594,6 +594,19 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+  /* A radio as a checkbox: its ring the field's border (3:1 on the page, where honey is
+     2:1), honey only once it is chosen, the ring then darker, as a checked box's. */
+  :where(.radio):not(:checked) {
+    border-color: var(--q-border-field);
+    background-color: var(--color-base-100);
+  }
+  :where(.radio):checked {
+    border-color: color-mix(in oklab, var(--color-primary) 78%, black);
+  }
+  :where(.radio):focus-visible {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 2px;
+  }
 
   /* 40 px controls and 16 px text below 768 px, and everywhere on touch. */
   @media (max-width: 767.98px) {
@@ -949,87 +962,6 @@
     }
   }
 
-  /* ---- Modal on the native <dialog> ---- */
-  :where(.modal) {
-    background-color: transparent;
-    transition: opacity 160ms var(--q-ease-in), visibility 160ms allow-discrete,
-      background-color 160ms var(--q-ease-in);
-  }
-  /* A plain scrim, no blur: what the dialog acts on stays legible behind it. */
-  :where(.modal)[open] {
-    background-color: var(--q-overlay);
-    transition-duration: 240ms;
-    transition-timing-function: var(--q-ease-out);
-  }
-  :where(.modal)::backdrop {
-    background: transparent;
-  }
-  :where(.modal-box) {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    max-height: calc(100dvh - 2rem);
-    padding: 0;
-    overflow: hidden;
-    border-radius: 12px;
-    background-color: var(--color-base-100);
-    color: var(--color-base-content);
-    box-shadow: var(--q-shadow-modal);
-    scale: 0.98;
-    translate: 0 8px;
-    transition: scale 160ms var(--q-ease-in), translate 160ms var(--q-ease-in),
-      opacity 160ms var(--q-ease-in);
-  }
-  :where(.modal)[open] :where(.modal-box) {
-    scale: 1;
-    translate: 0 0;
-    transition-duration: 240ms;
-    transition-timing-function: var(--q-ease-out);
-  }
-  :where(.modal-action) {
-    display: flex;
-    flex-direction: column-reverse;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin: 0;
-    padding: 0.75rem 1.25rem;
-    border-top: 1px solid var(--q-border-subtle);
-    border-radius: 0 0 12px 12px;
-    background-color: var(--color-base-200);
-  }
-  :where(.modal-backdrop) > :where(button) {
-    cursor: default;
-  }
-  @media (min-width: 640px) {
-    :where(.modal-action) {
-      flex-direction: row;
-    }
-    /* From 640 px a dialog sits near the top, as the v2 mocks draw it, not mid-screen. */
-    dialog.modal {
-      place-items: start center;
-      padding: 12vh 1rem 5vh;
-    }
-    dialog.modal .modal-box {
-      max-height: calc(100dvh - 17vh);
-    }
-  }
-  @media (max-width: 639.98px) {
-    :where(.modal-box) {
-      max-width: none;
-      border-radius: 12px 12px 0 0;
-      scale: 1;
-      translate: 0 24px;
-    }
-    :where(.modal-action) {
-      border-radius: 0;
-      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
-    }
-    :where(.modal-action) > :where(.btn) {
-      --size: 2.5rem;
-      width: 100%;
-    }
-  }
-
   /* ---- Toast ---- */
   :where(.toast) {
     gap: 0.5rem;
@@ -1236,7 +1168,7 @@
 
 /* ==== The shell (`ApiaryWeb.Layouts.app/1`): the top bar with the breadcrumb and its
    switcher, Search or jump to, New and the account menu; the sidebar of the page's scope;
-   the page's width; the palette. Section 4 of the v2 brief (docs/ui.md). ==== */
+   the page's width; the palette. ==== */
 @layer qory {
   :root {
     --q-bar: 3rem;
@@ -1301,6 +1233,15 @@
   .q-trail-page {
     color: var(--q-muted);
     font-weight: 400;
+  }
+  /* The parent's back mark, shown on a phone only (below). */
+  .q-trail-back {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    margin-inline-end: -2px;
+    color: var(--q-faint);
   }
   .q-trail-chev {
     display: grid;
@@ -1679,7 +1620,9 @@
     background-color: var(--color-base-300);
     color: var(--color-base-content);
   }
-  .q-nav-item[aria-current="page"] {
+  /* The current entry: the page's ("page"), or the page's parent ("true"), the
+     sidebar's Settings on a page of its sections. */
+  .q-nav-item[aria-current] {
     background-color: var(--color-base-100);
     color: var(--color-base-content);
     font-weight: 500;
@@ -1689,7 +1632,7 @@
     flex: none;
     color: var(--q-faint);
   }
-  .q-nav-item[aria-current="page"] .q-nav-icon {
+  .q-nav-item[aria-current] .q-nav-icon {
     color: var(--color-accent);
   }
   .q-nav-text {
@@ -1717,6 +1660,30 @@
   }
   .q-nav-pin-sys {
     color: var(--q-faint);
+  }
+  /* The drawer, below 768 px: one piece that scrolls, its close button kept at the top,
+     so on a short screen the foot never squeezes the scope's pages; the foot still sits
+     at the bottom of a tall one. The level's settings at the foot, the parent of a
+     settings page whose section the disclosure under the bar marks, is drawn lighter. */
+  @media (max-width: 767px) {
+    .q-sidebar {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+    .q-sidebar-body {
+      flex: 1 0 auto;
+      overflow-y: visible;
+    }
+    .q-drawer-head {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background-color: var(--color-base-200);
+    }
+    .q-nav-item.q-nav-parent {
+      background-color: transparent;
+      box-shadow: none;
+    }
   }
   @media (min-width: 768px) {
     /* The organisation's tile over the sidebar's icons. */
@@ -1813,6 +1780,235 @@
   /* Forms and prose: a 720 px column. */
   .q-page-read > * {
     max-width: 45rem;
+  }
+
+  /* ---- The second column: a level's sections beside the sidebar (Layouts) ----
+     Settings, Your settings and the Instance open their sections as a column of the
+     frame. From 1024 px a column beside the sidebar, under its heading (the level, and
+     the place beneath it), the page beside it. Below 1024 px, at every width, the heading
+     is a full-width button under the top bar (`#settings-disclosure`) that opens the
+     links in place, one per line, pushing the page down: not sticky, not a modal. */
+  .q-second {
+    display: block;
+    flex: none;
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  .q-second-heading {
+    display: none;
+  }
+  .q-second-toggle {
+    display: flex;
+    width: 100%;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 1rem;
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    outline-offset: -2px;
+  }
+  .q-second-toggle:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-second-toggle-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .q-second-toggle-place {
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .q-second-toggle-i {
+    flex: none;
+    color: var(--q-faint);
+    transition: rotate 120ms var(--q-ease-out);
+  }
+  .q-second-toggle[aria-expanded="true"] .q-second-toggle-i {
+    rotate: 180deg;
+  }
+  .q-second-list {
+    display: none;
+    gap: 1px;
+    padding: 0 0.5rem 0.5rem;
+  }
+  .q-second-toggle[aria-expanded="true"] + .q-second-list {
+    display: grid;
+  }
+  .q-second-link {
+    display: flex;
+    min-width: 0;
+    min-height: 2.5rem;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0.5rem;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 400;
+    outline-offset: -2px;
+    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  /* Labels wrap rather than truncate. */
+  .q-second-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .q-second-link:hover {
+    color: var(--color-base-content);
+    background-color: var(--color-base-200);
+  }
+  .q-second-link[aria-current] {
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-second-n {
+    margin-left: auto;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  @media (min-width: 768px) {
+    .q-second-toggle {
+      padding-inline: 1.5rem;
+    }
+    .q-second-list {
+      padding-inline: 1rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    #shell-content.q-has-second {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .q-second {
+      position: sticky;
+      top: var(--q-bar);
+      display: grid;
+      width: 13.5rem;
+      height: calc(100dvh - var(--q-bar));
+      align-content: start;
+      overflow-y: auto;
+      padding: 12px 8px;
+      border-right: 1px solid var(--q-border-subtle);
+      border-bottom: 0;
+    }
+    .q-second-heading {
+      display: grid;
+      min-width: 0;
+      padding: 0 8px 6px;
+      font-size: 0.75rem;
+      line-height: 1rem;
+    }
+    .q-second-level {
+      color: var(--q-faint);
+      font-weight: 500;
+    }
+    .q-second-place {
+      overflow: hidden;
+      color: var(--q-muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .q-second-toggle {
+      display: none;
+    }
+    .q-second-list,
+    .q-second-toggle[aria-expanded="true"] + .q-second-list {
+      display: grid;
+      align-content: start;
+      padding: 0;
+    }
+    .q-second-link {
+      min-height: 2rem;
+      padding: 4px 8px;
+    }
+    #shell-content.q-has-second > main {
+      align-self: stretch;
+    }
+  }
+
+  /* ---- A page's header (PageComponents.page_header) ---- */
+  .q-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .q-page-head-main {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 18rem;
+    gap: 2px;
+  }
+  .q-page-head-title {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .q-page-h1 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.017em;
+  }
+  .q-page-desc {
+    max-width: 62ch;
+    color: var(--q-muted);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  .q-page-actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+  }
+  @media (max-width: 479px) {
+    .q-page-actions {
+      width: 100%;
+    }
+    .q-page-actions > .btn {
+      flex: 1;
+    }
+  }
+
+  /* ---- A form as a page of its own (PageComponents.page_form) ---- */
+  .q-form-page {
+    display: grid;
+    max-width: 45rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .q-form-page-body {
+    display: grid;
+    min-width: 0;
+    gap: 16px;
+  }
+
+  /* ---- What a run receives (PageComponents.not_on_runs) ---- */
+  .q-not-on-runs {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-not-on-runs-i {
+    flex: none;
+    margin-top: 2px;
+    color: var(--q-faint);
   }
 
   /* ---- Settings: the list of a kind's sections beside the section (SettingsComponents) ---- */
@@ -1927,6 +2123,10 @@
     .q-settings-title {
       grid-column: 1 / -1;
     }
+    /* The sections are the frame's second column: the section has the page. */
+    .q-settings.q-settings-solo {
+      grid-template-columns: minmax(0, 1fr);
+    }
     .q-settings-nav {
       position: sticky;
       top: 4.5rem;
@@ -1971,7 +2171,7 @@
     line-height: 1.25rem;
     font-weight: 600;
   }
-  /* On a person's page the part's heading is an h2 over a rule (the mock's part-h). */
+  /* On a person's page the part's heading is an h2 over a rule. */
   .q-part-h2 {
     padding-bottom: 8px;
     border-bottom: 1px solid var(--q-border-subtle);
@@ -1998,6 +2198,55 @@
     .q-form-two {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
+  }
+  /* A confirmation in place (`CoreComponents.inline_confirm/1`): the question, what
+     happens, the button and Cancel, on one line that wraps; on a table's row, the row
+     tinted. */
+  .q-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    min-width: 0;
+  }
+  .q-confirm-what {
+    flex: 1 1 18rem;
+    min-width: 0;
+  }
+  .q-confirm-q {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .q-confirm-sub {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-confirm-act {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+  }
+  tr.q-confirming > td.q-confirm-cell {
+    padding-inline: 1rem;
+    background-color: var(--color-base-200);
+    white-space: normal;
+  }
+  /* A table wider than its box scrolls sideways, and its cell across the row with it: the
+     confirmation stays in the box's view wherever it is scrolled, as wide as the box
+     (`q-tbl`, the container) less the cell's padding, or its buttons would sit off to the
+     right and its question off to the left, out of sight. */
+  tr.q-confirming > td.q-confirm-cell > .q-confirm-view {
+    position: sticky;
+    left: 1rem;
+    max-width: calc(100cqi - 2rem);
+  }
+  /* What cannot be undone: the row in the error's soft colour. */
+  tr.q-confirming > td.q-confirm-cell:has(.btn-error) {
+    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
   }
   /* A form's foot: its button and one muted line beside it. */
   .q-save {
@@ -2258,6 +2507,32 @@
   .q-danger-act .btn:not(:disabled) {
     color: var(--color-error);
   }
+  /* A deletion's confirmation in place (`SettingsComponents.deletion_confirm/1`): what is
+     lost, the field asked to confirm, then the question with its red button and Cancel
+     (`.q-confirm`). Under a danger zone's line, a rule in the error colour at its left
+     sets it apart; in a row, the row's tint does. */
+  .q-danger-confirm {
+    display: grid;
+    gap: 12px;
+    min-width: 0;
+  }
+  .q-danger-line > .q-danger-confirm {
+    flex: 1 1 100%;
+    max-width: 720px;
+    padding: 4px 0 4px 16px;
+    border-left: 2px solid var(--color-error);
+  }
+  .q-danger-field {
+    max-width: 26rem;
+  }
+  .q-danger-lost {
+    display: grid;
+    gap: 8px;
+    max-width: 72ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
 
   /* ---- Search or jump to: the palette ---- */
   .q-palette {
@@ -2386,6 +2661,16 @@
     .q-trail-lead,
     .q-collapse {
       display: none;
+    }
+    /* A page under a parent keeps the parent before it, a link back: "‹ Runs / Run …". */
+    .q-trail-lead.q-trail-up {
+      display: inline-flex;
+    }
+    .q-trail-up .q-trail-back {
+      display: inline-block;
+    }
+    .q-trail-up + .q-trail-item > .q-trail-sep {
+      display: inline;
     }
   }
 }
@@ -2715,12 +3000,17 @@
   }
   .q-tokens {
     display: flex;
+    min-width: 0;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
   }
+  /* A token is never wider than its line: a long value (`q-tok-v`) ends in an ellipsis,
+     whole in its title, and the key and the × keep their place. */
   .q-tok {
     display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
     height: 24px;
     align-items: center;
     gap: 4px;
@@ -2731,10 +3021,20 @@
     font-size: 0.78125rem;
     white-space: nowrap;
   }
+  .q-tok-k {
+    flex: none;
+  }
+  .q-tok-v {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .q-tok-x {
     display: grid;
     width: 18px;
     height: 18px;
+    flex: none;
     place-items: center;
     border-radius: 3px;
     color: var(--q-faint);
@@ -3191,6 +3491,58 @@
     color: var(--q-faint);
     opacity: 1;
   }
+  /* The hosts the query field suggests: a listbox under the field, its width, over the
+     list below it; the active option takes the base-300 ground (`HostSuggest`). */
+  .q-find-suggest {
+    position: relative;
+  }
+  .q-suggest {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    display: grid;
+    gap: 1px;
+    padding: 4px;
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-pop);
+  }
+  .q-suggest[hidden] {
+    display: none;
+  }
+  .q-suggest > li {
+    display: flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 8px;
+    border-radius: var(--radius-field);
+    cursor: pointer;
+  }
+  .q-suggest > li:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-suggest > li[aria-selected="true"] {
+    background-color: var(--color-base-300);
+  }
+  .q-suggest-v {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-suggest-d {
+    flex: none;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
   .q-tok.q-tok-q {
     font-family: var(--font-mono);
     font-size: 0.75rem;
@@ -3544,19 +3896,35 @@
   .q-rl .q-rl-st {
     width: 1%;
   }
+  /* A quiet run's note goes on its own line under the state's word, and may wrap, so the
+     State column keeps about a state's width and the run keeps its room. */
+  .q-rl .q-rl-st .q-st-quiet {
+    display: inline-grid;
+    grid-template-columns: auto auto;
+    gap: 1px 6px;
+  }
+  .q-rl .q-rl-st .q-st-quiet .q-quiet {
+    grid-column: 2;
+    flex-wrap: wrap;
+    gap: 0 5px;
+  }
   .q-rl .q-rl-run {
     width: 100%;
     max-width: 0;
   }
+  /* The title, then the target in the room that is left: the target is cut to an
+     ellipsis, or goes, before the title loses a letter. */
   .q-rl-tt {
-    display: flex;
+    display: grid;
     min-width: 0;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-template-columns: minmax(0, max-content);
     align-items: baseline;
     gap: 12px;
   }
   .q-rl-title {
     min-width: 0;
-    flex: 0 1 auto;
     overflow: hidden;
     color: var(--color-base-content);
     font-size: 0.875rem;
@@ -3575,7 +3943,25 @@
     font-size: 0.8125rem;
   }
   .q-rl-inl {
-    flex: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* What the run is about, one muted line under the title, cut to an ellipsis. Below
+     640 px it names one subject fewer (`.q-rl-about-phone`), so its count stays in sight. */
+  .q-rl-about {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    margin-top: 1px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-rl-about.q-rl-about-phone {
+    display: none;
   }
   .q-rl-faint {
     color: var(--q-faint);
@@ -3598,7 +3984,8 @@
   }
   .q-rl-c2,
   .q-rl-c3,
-  .q-rl-c4 {
+  .q-rl-c4,
+  .q-rl-c5 {
     display: none;
   }
   @container (min-width: 720px) {
@@ -3618,6 +4005,12 @@
      1150 px of table, which the list has at 2560 px with the rail and the preview. */
   @container (min-width: 1150px) {
     .q-rl .q-rl-c4 {
+      display: table-cell;
+    }
+  }
+  /* The node a run ran on joins at the width of a list's `lg` column. */
+  @container (min-width: 1300px) {
+    .q-rl .q-rl-c5 {
       display: table-cell;
     }
   }
@@ -4061,9 +4454,19 @@
   .q-tabs::-webkit-scrollbar {
     display: none;
   }
+  /* A settings section's tabs (`page_tabs place="section"`) stay in the page's flow under
+     its h1: not sticky, no bleed to the gutter, no side padding, and they wrap instead of
+     scrolling sideways. */
+  .q-tabs.q-tabs-section {
+    position: static;
+    flex-wrap: wrap;
+    margin-inline: 0;
+    padding-inline: 0;
+    overflow: visible;
+  }
   /* The document scrolls, so the room for the top bar and the sticky tab bar is the
-     root's. */
-  :root:has(.q-tabs) {
+     root's; a section's tabs do not stick, and ask for none. */
+  :root:has(.q-tabs:not(.q-tabs-section)) {
     scroll-padding-top: calc(var(--q-bar) + 3rem);
   }
   .q-tabs > a {
@@ -4095,6 +4498,10 @@
   }
   .q-tabs > a[aria-current] [class*="hero-"] {
     color: var(--color-accent);
+  }
+  /* A page's Settings, the last tab, set apart at the bar's right end. */
+  .q-tabs > a.q-tabs-end {
+    margin-left: auto;
   }
   /* A tab's count, in a filled pill. */
   .q-tabs-n {
@@ -4482,25 +4889,33 @@
     color: var(--color-base-content);
   }
 
-  /* ---- A connection row's acts: text shown on hover, focus and while its popover or
-     menu is open (always where there is no hover), its ⋯ menu, and a faint lock where no
-     one here changes what happened. Never a bordered button on every row. ---- */
-  .q-act-t {
-    display: inline-flex;
+  /* ---- A connection row's acts: Allow and Deny as icons in two fixed slots (an empty
+     gap where one does not apply, so every Deny is in one column), shown on hover, focus
+     and while the row's panel is open, always where there is no hover, at every width; a
+     faint lock where no rule here changes the row. No ⋯ menu, no border. ---- */
+  .q-act-i {
+    display: inline-grid;
+    width: 24px;
     height: 24px;
-    align-items: center;
-    padding-inline: 6px;
+    place-items: center;
     border-radius: var(--radius-selector);
-    color: var(--color-accent);
-    font-size: 0.78125rem;
-    font-weight: 500;
-    white-space: nowrap;
+    color: var(--q-muted);
     cursor: pointer;
     vertical-align: middle;
   }
-  .q-act-t:hover,
-  .q-act-t[aria-expanded="true"] {
+  .q-act-i:is(:hover, :focus-visible, [aria-expanded="true"]) {
     background-color: var(--color-base-300);
+  }
+  .q-act-i[data-action="allow"]:is(:hover, :focus-visible, [aria-expanded="true"]) {
+    color: var(--color-success);
+  }
+  .q-act-i[data-action="deny"]:is(:hover, :focus-visible, [aria-expanded="true"]) {
+    color: var(--color-error);
+  }
+  .q-act-gap {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
   }
   .q-act-lock {
     display: inline-grid;
@@ -4525,28 +4940,70 @@
     gap: 2px;
     vertical-align: middle;
   }
-  .q-cx-acts .q-rowmenu {
-    vertical-align: middle;
-  }
-  /* In a narrow table the destination keeps the room: the menu holds Allow and Deny. */
-  @container (max-width: 599px) {
-    .q-cxt .q-cx-acts :is(.q-act-t, .q-acts-pair) {
-      display: none;
-    }
-  }
   @media (hover: hover) {
     .q-cxt .q-hov {
       opacity: 0;
       transition: opacity 120ms var(--q-ease-out);
     }
     .q-cxt tr:is(:hover, :focus-within) .q-hov,
-    .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) .q-hov {
+    .q-cxt tr:has(:is(.q-act-i, .q-act-lock)[aria-expanded="true"]) .q-hov,
+    .q-cxt tbody tr:has(+ tr.q-rule-sub) .q-hov {
       opacity: 1;
     }
   }
-  /* The row whose popover or menu is open is the one chosen. */
-  .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) > td {
+  /* The row whose panel is open is the one chosen. */
+  .q-cxt tr:has(:is(.q-act-i, .q-act-lock)[aria-expanded="true"]) > td,
+  .q-cxt tbody tr:has(+ tr.q-rule-sub) > td {
     background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
+  }
+  /* The host's copy icon, at the end of the host's line (`row-reveal` shows it); it
+     keeps the line's height. */
+  .q-cx-copy {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    margin: -2px 0 -2px 4px;
+    place-items: center;
+    border-radius: var(--radius-selector);
+    color: var(--q-faint);
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  /* A tool invocation's line: the destination cut with an ellipsis, its copy beside it. */
+  .q-cx-tl {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+  .q-cx-tl > .q-dest {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+  .q-cx-tl > .q-cx-copy {
+    flex: none;
+  }
+  .q-cx-copy:is(:hover, :focus-visible) {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+  /* The rule the reason names, where it is the rule in force: a link, underlined. */
+  .q-cxt tr.q-cxr a.q-rule-a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-field);
+    text-underline-offset: 3px;
+  }
+  .q-cxt tr.q-cxr a.q-rule-a:hover {
+    color: var(--color-base-content);
+    text-decoration-color: currentColor;
+  }
+  /* Underlined: a link inside a sentence is not told by its colour alone. */
+  .q-after-rule {
+    color: var(--color-accent);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
   }
   .q-dcell {
     display: flex;
@@ -4690,7 +5147,7 @@
 
   /* ---- Phone (ri) ---- */
   @media (max-width: 767.98px) {
-    :root:has(.q-tabs) {
+    :root:has(.q-tabs:not(.q-tabs-section)) {
       scroll-padding-top: calc(var(--q-bar) + 4rem);
     }
     .q-chip {
@@ -4834,11 +5291,18 @@
       max-width: none;
     }
     .q-rl-tt {
-      flex-direction: column;
+      grid-auto-flow: row;
+      grid-template-columns: minmax(0, 1fr);
       gap: 0;
     }
     .q-rl-tt .q-rl-title {
       max-width: 100%;
+    }
+    .q-rl-about.q-rl-about-wide {
+      display: none;
+    }
+    .q-rl-about.q-rl-about-phone {
+      display: block;
     }
     .q-rl tbody tr td.q-rl-st {
       grid-column: 2;
@@ -4866,7 +5330,8 @@
     }
     .q-rl tbody tr td.q-rl-den:not(:has(.q-rl-denied)),
     .q-rl tbody tr td.q-rl-c3,
-    .q-rl tbody tr td.q-rl-c4 {
+    .q-rl tbody tr td.q-rl-c4,
+    .q-rl tbody tr td.q-rl-c5 {
       display: none;
     }
   }
@@ -4969,7 +5434,7 @@
    the runs list and the connections pages is in the section above; the run page's own
    look of a shared piece (a connection line in the timeline) is scoped to the page here.
    A work surface: the column takes the width, the details rail sits beside it from
-   1440 px, and the terminal fills the window below the tab bar. */
+   1440 px but on the Terminal tab, and the terminal fills the window below the tab bar. */
 @layer qory {
   /* ---- The work surface: the column, and the details rail from 1440 px ---- */
   .q-run {
@@ -5026,6 +5491,35 @@
     font-weight: 600;
     letter-spacing: -0.005em;
     text-wrap: pretty;
+  }
+  /* What the run says it is about, under the title: the kind, then the subjects, each
+     after a faint middle dot like the meta line's items; the dot before the first item of
+     each line is clipped, so a wrapped line starts clean. An item longer than the line
+     wraps within itself. */
+  .q-run-about {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 2px;
+    margin-top: 2px;
+    margin-left: -17px;
+    clip-path: inset(0 0 0 17px);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-run-about > * {
+    position: relative;
+    min-width: 0;
+    max-width: calc(100% - 17px);
+    margin-left: 17px;
+    overflow-wrap: anywhere;
+  }
+  .q-run-about > *::before {
+    content: "·";
+    position: absolute;
+    left: -11px;
+    color: var(--q-faint);
   }
   .q-run-sub {
     display: flex;
@@ -5110,8 +5604,16 @@
   .q-run-meta a:hover {
     color: var(--color-base-content);
   }
+  /* A long target gives way: on a line of its own it ends in an ellipsis, whole in its
+     title. */
+  .q-run-meta > #run-target {
+    min-width: 0;
+  }
   .q-run-meta .q-tname {
+    min-width: 0;
+    overflow: hidden;
     font-size: 0.78125rem;
+    text-overflow: ellipsis;
   }
   .q-run-target:hover .q-tname {
     text-decoration: underline;
@@ -5128,16 +5630,17 @@
     align-items: center;
     gap: 8px;
   }
-  /* From 1440 px the rail is beside the column, and the tab bar ends at the column. */
+  /* From 1440 px the rail is beside the column, and the tab bar ends at the column; not on
+     the wide Terminal tab (`q-run-wide`), where Details stays a tab, as on Details itself. */
   @media (min-width: 1440px) {
-    .q-run {
+    .q-run:not(.q-run-wide) {
       grid-template-columns: minmax(0, 1fr) 320px;
     }
-    .q-run .q-tabs {
+    .q-run:not(.q-run-wide) .q-tabs {
       margin-right: 0;
       padding-right: 0;
     }
-    #run-tab-details {
+    .q-run:not(.q-run-wide):not(.q-run-on-details) #run-tab-details {
       display: none;
     }
   }
@@ -5157,6 +5660,9 @@
       max-height: calc(100dvh - var(--q-bar) - 2.5rem);
       overflow: auto;
       scrollbar-width: thin;
+    }
+    .q-run-wide .q-run-rail {
+      display: none;
     }
   }
   .q-rail-title {
@@ -5222,6 +5728,14 @@
     font-family: var(--font-mono);
     font-size: 0.75rem;
   }
+  /* About: each subject a value of its own under Subjects, its title muted under it; a
+     details key breaks before a dot, or within a part too long for the column. */
+  .q-rail-about > dd {
+    grid-column: 2;
+  }
+  .q-rail-about-details dt {
+    overflow-wrap: break-word;
+  }
   .q-rail-kv-mono dt {
     color: var(--q-faint);
   }
@@ -5230,6 +5744,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     overflow-wrap: normal;
+  }
+  /* A detail's value wraps rather than hides its end: text at its spaces, a word too long
+     for the column within it, and compact JSON anywhere. */
+  .q-rail-kv-mono.q-rail-about-details dd {
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+  .q-rail-kv-mono.q-rail-about-details dd.q-rail-json {
+    overflow-wrap: anywhere;
   }
   .q-rail-kv a:hover {
     color: var(--color-accent);
@@ -5278,25 +5802,7 @@
     grid-template-columns: 112px minmax(0, 1fr);
   }
 
-  /* The policy pages' own header (policy_live): the crumbs and a title with its state. */
-  .q-crumbs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-  }
-  .q-crumbs a {
-    border-radius: var(--radius-selector);
-    transition: color 120ms var(--q-ease-out);
-  }
-  .q-crumbs a:hover {
-    color: var(--color-base-content);
-  }
-  .q-crumbs [class*="hero-"] {
-    color: var(--q-faint);
-  }
+  /* The policy pages' own header (policy_live): a title with its state. */
   .q-run-title {
     display: flex;
     flex-wrap: wrap;
@@ -6151,6 +6657,10 @@
     .q-run-sub {
       flex-direction: column;
     }
+    /* The meta lines take the column's width, so a long line is cut, never the page. */
+    .q-run-meta-wrap {
+      align-self: stretch;
+    }
     .q-run-head h1 {
       font-size: 1.125rem;
       line-height: 1.5625rem;
@@ -6256,6 +6766,16 @@
   .q-link:hover {
     text-decoration-color: currentColor;
   }
+  /* A link out of the console (`external_link/1`): its words, then a faint icon. */
+  .q-ext-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .q-ext-icon {
+    flex: none;
+    color: var(--q-faint);
+  }
 
   .q-rowbtn {
     --size: 24px;
@@ -6292,42 +6812,29 @@
     font-size: 0.6875rem;
   }
 
-  /* ---- The popover: top layer, under its button; a sheet on phones ---- */
-  .q-pop {
-    position: fixed;
-    inset: auto;
-    width: 348px;
-    max-width: calc(100vw - 24px);
-    margin: 0;
-    padding: 0;
-    overflow: visible;
-    border: 0;
-    border-radius: var(--radius-box);
-    background-color: var(--color-base-100);
-    box-shadow: var(--q-shadow-pop);
+  /* ---- A row's rule panel: in place, under the row it is of, in the page's flow; never
+     an overlay. The row and its panel share the chosen row's tint. ---- */
+  .q-rp {
+    display: grid;
+    min-width: 0;
+    max-width: 40rem;
+    gap: 12px;
     color: var(--color-base-content);
     font-size: 0.8125rem;
     line-height: 18px;
+    white-space: normal;
   }
-  .q-pop:popover-open {
-    animation: q-pop-in 180ms ease-out;
+  .q-rp-form {
+    display: grid;
+    gap: 12px;
   }
-  .q-pop::backdrop {
-    background: transparent;
-  }
-  @keyframes q-pop-in {
-    from {
-      opacity: 0;
-      transform: translateY(-4px) scale(0.98);
-    }
-  }
-  .q-pop header {
+  .q-rp-head {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: 8px;
-    padding: 12px 14px 0;
   }
-  .q-pop h3 {
+  .q-rp h3 {
     min-width: 0;
     overflow: hidden;
     font-size: 0.875rem;
@@ -6336,16 +6843,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .q-pop-host {
+  .q-rp-host {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
   }
-  .q-pop-body {
-    display: grid;
-    gap: 12px;
-    padding: 10px 14px 14px;
-  }
-  .q-pop fieldset {
+  .q-rp fieldset {
     display: grid;
     min-width: 0;
     gap: 2px;
@@ -6353,27 +6855,27 @@
     padding: 0;
     border: 0;
   }
-  .q-pop legend {
+  .q-rp legend {
     padding: 0 0 4px;
     color: var(--q-muted);
     font-size: 0.75rem;
     font-weight: 500;
   }
-  .q-pop-what {
+  .q-rp-what {
     overflow-wrap: anywhere;
   }
-  .q-pop .q-rule {
+  .q-rp .q-rule {
     display: inline-block;
     max-width: 100%;
     margin-block: 1px;
     overflow-wrap: anywhere;
     white-space: normal;
   }
-  .q-pop-what b,
-  .q-popt b {
+  .q-rp-what b,
+  .q-rp-opt b {
     font-weight: 500;
   }
-  .q-popt {
+  .q-rp-opt {
     display: grid;
     grid-template-columns: 16px minmax(0, 1fr);
     gap: 0 10px;
@@ -6382,10 +6884,10 @@
     border-radius: var(--radius-field);
     cursor: pointer;
   }
-  .q-popt:hover {
-    background-color: var(--color-base-200);
+  .q-rp-opt:hover {
+    background-color: color-mix(in oklab, var(--color-base-content) 6%, transparent);
   }
-  .q-popt input[type="radio"] {
+  .q-rp-opt input[type="radio"] {
     display: grid;
     width: 16px;
     height: 16px;
@@ -6396,55 +6898,53 @@
     appearance: none;
     background-color: var(--color-base-100);
   }
-  .q-popt input[type="radio"]:checked {
+  .q-rp-opt input[type="radio"]:checked {
     border-color: color-mix(in oklab, var(--color-primary) 78%, black);
     background-color: var(--color-primary);
   }
-  .q-popt input[type="radio"]:checked::after {
+  .q-rp-opt input[type="radio"]:checked::after {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background-color: var(--color-primary-content);
     content: "";
   }
-  .q-popt input[type="radio"]:focus-visible {
+  .q-rp-opt input[type="radio"]:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
-  .q-popt small {
+  .q-rp-opt small {
     grid-column: 2;
     color: var(--q-muted);
     font-size: 0.75rem;
     line-height: 16px;
   }
-  .q-pop-select {
+  .q-rp-select {
     width: 100%;
   }
-  .q-popt-more {
+  .q-rp-more {
     padding: 0 0 6px 26px;
   }
-  .q-pop-next {
+  .q-rp-next {
     display: grid;
     grid-template-columns: 14px minmax(0, 1fr);
     gap: 8px;
     color: var(--q-muted);
     font-size: 0.78125rem;
   }
-  .q-pop-next > :first-child {
+  .q-rp-next > :first-child {
     margin-top: 2px;
     color: var(--q-faint);
   }
-  .q-pop footer {
+  /* Its button first, then Cancel; one that names its target ("Allow for
+     acme/payments-ledger") wraps, never cut. */
+  .q-rp-act {
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
-    padding: 10px 14px;
-    border-top: 1px solid var(--q-border-subtle);
-    border-radius: 0 0 var(--radius-box) var(--radius-box);
-    background-color: var(--color-base-200);
   }
-  /* A button that names its target ("Allow for acme/payments-ledger") wraps, never cut. */
-  .q-pop footer .btn {
+  .q-rp-act .btn {
     min-width: 0;
     height: auto;
     min-height: var(--size, 2rem);
@@ -6453,49 +6953,47 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .q-pop footer .btn:last-child {
-    flex: 0 1 auto;
+  /* Under a connection row: a row of its own across the table, its content under the
+     destination. */
+  .q-cxt tbody tr:has(+ tr.q-rule-sub) {
+    border-bottom-color: transparent;
+  }
+  .q-cxt tr.q-rule-sub,
+  .q-cxt tr.q-rule-sub:hover {
+    background: none;
+  }
+  .q-cxt tr.q-rule-sub > td {
+    padding: 2px 16px 16px 40px;
+    background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
+    white-space: normal;
+  }
+  .q-cxt.q-cxt-run tr.q-rule-sub > td {
+    padding-left: 16px;
+  }
+  /* In To review: under the item's subject, inside the item. */
+  .q-ar:has(> .q-ar-panel),
+  .q-ar:has(> .q-ar-panel):hover {
+    background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
+  }
+  .q-ar-panel {
+    grid-column: 2 / -1;
+    min-width: 0;
+    padding: 0 0 12px;
   }
   @media (max-width: 767.98px) {
-    .q-pop {
-      top: auto !important;
-      right: 0 !important;
-      bottom: 0 !important;
-      left: 0 !important;
-      width: auto;
-      max-width: none;
-      max-height: 85dvh;
-      overflow-y: auto;
-      border-radius: 12px 12px 0 0;
-      box-shadow: var(--q-shadow-modal, var(--q-shadow-pop));
+    /* The table may scroll sideways; the panel stays in the view, as wide as the
+       table's box (`q-tbl`, the container) less the cell's padding. */
+    .q-cxt tr.q-rule-sub > td {
+      padding-left: 16px;
     }
-    .q-pop:popover-open {
-      animation: q-sheet-in 240ms ease-out;
+    .q-cxt tr.q-rule-sub .q-rp {
+      position: sticky;
+      left: 16px;
+      width: calc(100cqi - 32px);
     }
-    .q-pop::backdrop {
-      background: oklch(0% 0 0 / 0.32);
-    }
-    .q-pop footer {
-      flex-direction: column-reverse;
-      padding-bottom: max(10px, env(safe-area-inset-bottom));
-      border-radius: 0;
-    }
-    .q-pop footer .btn {
-      height: 40px;
-    }
-    .q-pop-select {
+    .q-rp-select {
       height: 40px;
       font-size: 1rem;
-    }
-  }
-  @keyframes q-sheet-in {
-    from {
-      transform: translateY(100%);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .q-pop:popover-open {
-      animation: none;
     }
   }
 
@@ -6758,8 +7256,8 @@
     align-items: center;
     gap: 8px;
   }
-  /* The version in a policy page's head is plain muted text, as the mock draws it: the
-     version, the digest and its copy, no box. */
+  /* The version in a policy page's head is plain muted text: the version, the digest and
+     its copy, no box. */
   .q-head-side .q-vpill {
     height: auto;
     gap: 8px;
@@ -6928,9 +7426,6 @@
     padding: 10px 16px;
     border-bottom: 1px solid var(--q-border-subtle);
     background-color: var(--color-base-200);
-  }
-  .q-composer-cred {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
   }
   .q-composer > .btn {
     --size: 32px;
@@ -7465,8 +7960,7 @@
       overflow-x: auto;
       scrollbar-width: none;
     }
-    .q-composer,
-    .q-composer-cred {
+    .q-composer {
       grid-template-columns: minmax(0, 1fr);
     }
     .q-composer .q-seg {
@@ -7717,13 +8211,6 @@
     background-color: var(--q-denied-tint);
     color: var(--color-error);
   }
-  .q-pr-key {
-    display: inline-grid;
-    width: 18px;
-    height: 18px;
-    place-items: center;
-    color: var(--q-faint);
-  }
   .q-pr .q-host.q-pr-h {
     color: var(--color-base-content);
     font: 500 13px/20px var(--font-mono);
@@ -7858,37 +8345,153 @@
     }
   }
 
-  /* ---- A target's mode, one line ---- */
-  .q-modeline {
+  /* ---- The mode card, above a policy page's tabs (`PolicyComponents.mode_card/1`) ----
+     The mode in force as a status: a honey tile (primary-soft-content on primary-soft,
+     7.6:1 light and 9.5:1 dark), the mode large, whose it is as a badge. Honey is never
+     its border: it is 2:1 on the page. Change mode opens the choices in the card, option
+     cards with native radios, the picked one raised. */
+  .q-modecard {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+    padding: 16px 20px;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+  }
+  .q-modecard-main {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px 14px;
+  }
+  .q-modecard-tile {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border-radius: var(--radius-field);
+    background-color: var(--color-primary-soft);
+    color: var(--color-primary-soft-content);
+  }
+  .q-modecard-text {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+  }
+  .q-modecard-title {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
+    align-items: flex-end;
+    gap: 4px 10px;
   }
-  .q-modeline-h {
-    width: 64px;
+  .q-modecard-h {
+    display: grid;
+  }
+  .q-modecard-label {
+    color: var(--q-muted);
+    font-size: 0.71875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    line-height: 16px;
+    text-transform: uppercase;
+  }
+  .q-modecard-value {
+    color: var(--color-base-content);
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 24px;
+  }
+  .q-modecard-title > .badge {
+    margin-bottom: 2px;
+  }
+  .q-modecard-p {
+    max-width: 80ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
+  }
+  .q-modecard-p b {
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-modecard-form {
+    display: grid;
+    gap: 14px;
+    padding-top: 16px;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-modecard-form > fieldset {
+    min-width: 0;
+  }
+  .q-modecard-legend {
+    margin-bottom: 10px;
+    color: var(--color-base-content);
     font-size: 0.875rem;
     font-weight: 600;
   }
-  .q-modeline-seg > button {
-    height: 28px;
-    padding-inline: 10px;
-    font-size: 0.8125rem;
+  .q-modeopts {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: 12px;
   }
-  .q-modeline-seg > button[aria-checked="true"] {
+  .q-modeopt {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-content: start;
+    gap: 4px 10px;
+    padding: 14px 16px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    /* base-100, not base-200: the radio's ring (border-field) keeps 3:1 against it. */
     background-color: var(--color-base-100);
+    cursor: pointer;
+    transition:
+      border-color 120ms var(--q-ease-out),
+      background-color 120ms var(--q-ease-out);
+  }
+  .q-modeopt:hover {
+    border-color: var(--q-border-field);
+  }
+  .q-modeopt:has(:checked) {
+    border-color: var(--q-border-field);
     box-shadow: var(--q-shadow-xs);
+  }
+  .q-modeopt .radio {
+    margin-top: 0;
+  }
+  .q-modeopt-h {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
     color: var(--color-base-content);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 20px;
   }
-  .q-modeline-seg > button[aria-disabled="true"] {
-    color: var(--q-faint);
-    cursor: not-allowed;
+  .q-modeopt-p {
+    grid-column: 2;
+    max-width: 52ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
   }
-  /* Under the floor the forbidden mode is struck through beside its lock. */
-  .q-modeline-seg[data-floor] > button[aria-disabled="true"] {
-    text-decoration: line-through;
-    text-decoration-color: var(--q-border-field);
+  .q-modeask {
+    display: grid;
+    max-width: 80ch;
+    gap: 12px;
   }
+  .q-modecard-act {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .q-modeline-p {
     flex: 1 1 30rem;
     max-width: 80ch;
@@ -7915,13 +8518,17 @@
       flex: 1;
       height: 40px;
     }
-    .q-modeline-h {
-      width: auto;
+    .q-modeopts {
+      grid-auto-flow: row;
     }
-    .q-modeline-seg {
-      max-width: 100%;
-      overflow-x: auto;
-      scrollbar-width: none;
+  }
+  @media (max-width: 479.98px) {
+    .q-modecard-main {
+      grid-template-columns: 40px minmax(0, 1fr);
+    }
+    .q-modecard-change {
+      grid-column: 1 / -1;
+      width: 100%;
     }
   }
 }
@@ -8010,6 +8617,22 @@
   .q-tname-sys {
     color: var(--q-faint);
     font-weight: 400;
+  }
+  /* The narrowed line of a list (`#runs-narrowed`, `#connections-target-note`): its links
+     are underlined at rest, as beside its words their hue alone would set them apart, and
+     a long target's name wraps anywhere rather than widen the page. */
+  #runs-narrowed .q-link,
+  #connections-target-note .q-link {
+    text-decoration-color: color-mix(in oklab, currentColor 55%, transparent);
+  }
+  #runs-narrowed .q-link:hover,
+  #connections-target-note .q-link:hover {
+    text-decoration-color: currentColor;
+  }
+  .q-narrowed-name,
+  .q-narrowed-name .q-tname {
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   /* ---- 1. The summary: the largest numbers on the page, in one strip ---- */
@@ -8101,7 +8724,7 @@
     }
   }
 
-  /* ---- 2. Needs attention: mark, subject, where, reason, when, one act. The list holds
+  /* ---- 2. To review: mark, subject, where, reason, when, one act. The list holds
      the columns and each row is a subgrid of them, so the columns line up whatever the
      length of a row's act. ---- */
   .q-att > .q-rows {
@@ -8123,6 +8746,16 @@
   }
   .q-ar:hover {
     background-color: var(--color-base-200);
+  }
+  /* A row asking to confirm its act (`inline_confirm/1`) in place of its cells. */
+  .q-ar.q-confirming,
+  .q-ar.q-confirming:hover {
+    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
+    color: var(--color-base-content);
+  }
+  .q-ar.q-confirming > .q-confirm {
+    grid-column: 1 / -1;
+    padding-block: 6px;
   }
   .q-ar-subj {
     display: flex;
@@ -8601,18 +9234,6 @@
   .q-onb-lbl {
     color: var(--q-faint);
     font-size: 0.75rem;
-  }
-  .q-onb-pre {
-    overflow-x: auto;
-    margin: 0;
-    padding: 12px 14px;
-    border-radius: var(--radius-field);
-    background-color: var(--q-code-bg);
-    font: 12.5px/20px var(--font-mono);
-    tab-size: 2;
-  }
-  .q-onb-k {
-    color: var(--q-muted);
   }
   .q-onb-after {
     max-width: 1040px;
@@ -9151,7 +9772,7 @@
     text-underline-offset: 2px;
   }
 
-  /* Denied destinations: the plain red glyph, one line each. */
+  /* Denied destinations: a faint grey glyph, one line each. */
   .q-tgt-dn > li {
     display: grid;
     height: 44px;
@@ -9319,13 +9940,6 @@
   }
   .q-pr td.q-pr-src .q-tile {
     margin-right: 6px;
-  }
-  .q-modeline-req {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--q-faint);
-    font-size: 0.78125rem;
   }
   .q-above-why {
     display: inline-flex;

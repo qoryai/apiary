@@ -5,7 +5,6 @@ defmodule ApiaryWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Apiary.AccessKeys
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
   alias Apiary.LogMetadata
@@ -340,26 +339,31 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
-  Members, with the policy's mode beside Policy, the targets the person pinned in the
-  workspace (`pins`, `Apiary.Targets.list_pins/2`), and the edition's beside its entries
-  (`c:ApiaryWeb.Edition.nav_counts/1`).
+  The counts the sidebar shows beside Runs (alive now) and Members, with the policy's
+  mode beside Policy, the targets the person pinned in the
+  workspace (`pins`, `Apiary.Targets.list_pins/2`), the sections of the Instance level the
+  person may open (`instance`, `ApiaryWeb.Layouts.instance_sections/1`), for the Qory
+  Apiary menu's Instance settings and the Instance's second column, and the edition's
+  beside its entries (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
 
   def nav_counts(%Scope{workspace: nil} = scope),
     do:
       Map.merge(
-        %{members: scope |> Organisations.list_members() |> length()},
+        %{
+          members: scope |> Organisations.list_members() |> length(),
+          instance: ApiaryWeb.Layouts.instance_sections(scope)
+        },
         ApiaryWeb.Edition.nav_counts(scope)
       )
 
   def nav_counts(%Scope{} = scope) do
     %{
-      keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
       alive: Apiary.Runs.count_alive(scope),
-      pins: pins(scope)
+      pins: pins(scope),
+      instance: ApiaryWeb.Layouts.instance_sections(scope)
     }
     |> Map.merge(policy_mode(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))
@@ -718,7 +722,7 @@ defmodule ApiaryWeb.UserAuth do
   def signed_in_path(_socket), do: ~p"/"
 
   defp signed_in_path(conn, %Apiary.Accounts.User{} = user) do
-    case Organisations.load_home_scope(Scope.for_user(user), get_session(conn, @last_workspace)) do
+    case home_scope(conn, Scope.for_user(user)) do
       %Scope{organisation: %{} = organisation, workspace: %{} = workspace} ->
         ~p"/#{organisation}/#{workspace}"
 
@@ -731,6 +735,19 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   defp signed_in_path(_conn, nil), do: ~p"/"
+
+  @doc """
+  home_scope/1 is the request's scope as a person's own pages and the Instance's have it:
+  its user with the workspace the session remembers as last opened, while they still reach
+  it, else the first workspace they reach (`Apiary.Organisations.load_home_scope/2`), as
+  `on_mount(:load_organisation, ...)` loads it for a LiveView and `signed_in_path/1` reads
+  it. The scope as it is for a user without a membership, and for a visitor.
+  """
+  @spec home_scope(Plug.Conn.t()) :: Scope.t() | nil
+  def home_scope(%Plug.Conn{} = conn), do: home_scope(conn, conn.assigns[:current_scope])
+
+  defp home_scope(conn, scope),
+    do: Organisations.load_home_scope(scope, get_session(conn, @last_workspace))
 
   @doc """
   Plug for the pages under `/:org/…` and `/:org/:workspace/…`: loads the organisation

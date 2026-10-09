@@ -11,17 +11,15 @@ This is done with Gettext, not with a list of word swaps:
 - Every visible string goes through Gettext. The source text (the msgid) is written in
   **engine words**: `gettext("Every target follows it.")`.
 - A **domain is a Gettext locale**, written in GNU's `language@modifier` form:
-  `priv/gettext/en@software/` is English in the software domain's words. A later
-  `de@software` is German for the same domain, and `en@marketing` is another domain. The
-  language and the domain stay separate. (A Gettext domain, such as `errors`, is another
+  `priv/gettext/en@software/` is English in the software domain's words. The language and
+  the domain stay separate. (A Gettext domain, such as `errors`, is another
   thing: one catalogue file of a locale.)
 - **A domain's catalogue holds only its own sentences.** A message the locale's catalogue
-  lacks is looked up in the next locale of the chain (`ApiaryWeb.Gettext.Fallback`):
-  `de@software`, then `de_AT` for `de_AT@software`, then `de`, and at the end the source
-  text. So German is one full catalogue, `priv/gettext/de/`, shared by every domain, and
-  `de@software` and `de@marketing` hold only the sentences that name a target, a system, a
-  change request or applying one. English has no catalogue of its own: the source text is
-  English, and `en@software` translates every sentence with an engine word.
+  lacks is looked up in the next locale of the chain (`ApiaryWeb.Gettext.Fallback`): the
+  locale without its `@modifier`, the language's catalogue, then the language without its
+  territory, and at the end the source text. `priv/gettext` holds one catalogue,
+  `en@software`. English has no catalogue of its own: the source text is English, and
+  `en@software` translates every sentence with an engine word.
 - **The locale is built from the person and the workspace**, `language@domain`
   (`ApiaryWeb.Lingo.locale_for/1`). The language is the person's preference
   (`users.language`, one of `Apiary.Accounts.Preferences.languages/0`: English, and the
@@ -34,7 +32,7 @@ This is done with Gettext, not with a list of word swaps:
   one who reaches no workspace yet, on their organisation's pages) reads the person's
   language in the default domain; a page without a person (log-in, registration) reads
   the default locale, `en@software`. A stored language that has no catalogue any more
-  reads English. `de@software` without a catalogue of its own goes down the chain above.
+  reads English.
 - `ApiaryWeb.Lingo` sets that locale: a plug in the `:browser` pipeline, and an
   `on_mount` hook that every LiveView runs. The default locale of the backend is
   `en@software`, so a render outside a request (an error page) never falls back to engine
@@ -47,12 +45,12 @@ This is done with Gettext, not with a list of word swaps:
   knows) is how times are shown; every time is stored in UTC.
   `Apiary.Accounts.Scope.time_zone/1` reads it, and `ApiaryWeb.Lingo` sets it for
   `ApiaryWeb.Format` beside the locale, from the same scope. The **skin** (`users.skin`) is stored
-  too, with one value, `standard`, the domain's own words, until the apiary skin is
-  built; its catalogue will go in front of the domain's in the chain.
+  too, with one value, `standard`.
 - `test/apiary_web/lingo_catalogue_test.exs` fails when a source string contains an engine
   word and a domain's catalogue has no translation for it, and, for a language other than
   English, when a sentence has a translation neither in the domain's catalogue nor in the
-  language's. It also fails when a catalogue shows a word of the apiary skin.
+  language's. It also fails when a catalogue shows a word such as apiary, hive, bee,
+  flower, nectar, honey or jar.
 
 ## The words
 
@@ -68,10 +66,9 @@ This is done with Gettext, not with a list of word swaps:
 Everything else (run, task, work item, gate, evidence, member, access key, policy) is the
 same word in the engine and in the software domain. Qory Apiary is the product's name and
 stays as it is. Organisation and workspace are the same word in the software domain, so
-their msgids need no translation there. Without the apiary skin, no page says apiary,
-hive, bee, flower, nectar, honey or jar: the skin, a per-user setting that is not built
-yet, calls an organisation an apiary and a workspace a hive. The `<.term>` hover component
-is for words that need a standard term on hover. It is not a way to show hive or apiary.
+their msgids need no translation there. No page says apiary, hive, bee, flower, nectar,
+honey or jar. The `<.term>` hover component is for words that need a standard term on
+hover. It is not a way to show hive or apiary.
 
 Contracts, wire bodies, JSON errors for machines, the schema, code and logs use engine words
 and do not go through Gettext.
@@ -225,9 +222,7 @@ them. CI runs `mix gettext.extract --check-up-to-date`, and so does `mix precomm
 that was not extracted fails there. A string with an engine word that was not translated
 fails the test.
 
-A new domain is a new locale: `mix gettext.merge priv/gettext --locale en@marketing`. A
-new language is a language's catalogue with every sentence,
-`mix gettext.merge priv/gettext --locale de`, and a catalogue per domain with the domain's
-sentences only: `--locale de@software`. A domain's catalogue leaves every other `msgstr`
-empty. `ApiaryWeb.Gettext.Plural` takes the plural rules from the language part of the
-locale.
+A domain is a locale of its own, and a language's catalogue holds every sentence;
+`mix gettext.merge priv/gettext --locale <locale>` makes the catalogue of either. A
+domain's catalogue leaves every other `msgstr` empty. `ApiaryWeb.Gettext.Plural` takes the
+plural rules from the language part of the locale.

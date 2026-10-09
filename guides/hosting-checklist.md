@@ -16,10 +16,17 @@ being one. Every variable named here is described in [Install and configure](ins
   is not set: with it, log-in links and invitation links, which are credentials, are
   written to the log. Send yourself a log-in link before inviting anybody, and check that
   `MAIL_FROM` is an address your relay may send from.
-- **The two keys, kept.** `SECRET_KEY_BASE` and `CLOAK_KEY` are generated once and stored
-  where the database backups are stored, not only in the `.env` of the machine.
-  `CLOAK_KEY` never changes once an access key exists. [Backup and restore](backup.md)
-  says what each loss costs.
+- **The three keys, kept.** `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and
+  `APIARY_SIGNING_SECRET` are generated once, each on its own, and stored where the
+  database backups are stored, not only in the `.env` of the machine.
+  `APIARY_ENCRYPTION_SECRET` never changes once an access key exists: without it, no
+  access key is trusted.
+  <!-- feature: secrets -->
+  Losing it also loses every stored secret value.
+  <!-- /feature -->
+  Every machine pins the key of
+  `APIARY_SIGNING_SECRET`, so changing or losing it means pinning every machine again.
+  [Backup and restore](backup.md) says what each loss costs.
 - **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
   all of them. A feature that is off is absent for everybody on the instance, so decide
   before they arrive: [Install and configure](install.md#features).
@@ -30,6 +37,15 @@ being one. Every variable named here is described in [Install and configure](ins
   the release with your address and your organisation's name: it is the instance's first
   sign-up, and emails you your log-in link.
   [Install and configure](install.md#the-instance-admins) has the command.
+<!-- feature: secrets -->
+- **Where integrations come from.** A workspace adds an integration from a release on
+  `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its
+  `description.json`, which may be on any host; Qory Apiary fetches it from public addresses
+  only. On an instance open to people you do not know, set
+  `INTEGRATION_URL_SOURCES=false` so that they are added from forges' releases alone; a
+  release's download links, which its author chooses on GitLab and Codeberg, are still
+  followed to any public https host: [Install and configure](install.md#integrations).
+<!-- /feature -->
 - **The port is not public.** Publish the release's port to the reverse proxy only. In the
   compose file that is `127.0.0.1:4100:4100` in place of `4100:4100` when the proxy runs
   on the same machine.
@@ -48,8 +64,8 @@ being one. Every variable named here is described in [Install and configure](ins
   [Install and configure](install.md#sign-up-and-invitations) has the details.
 - **Stopping someone.** An owner suspends an admin or a member on the organisation's
   **Members** page, and an admin a member, and activates them again; nothing is removed.
-  A suspended person acts in the organisation no more, but the access keys they created
-  keep working, since they belong to the workspace: revoke those too if they should stop.
+  A suspended person acts in the organisation no more, but the access keys they added
+  keep working, since they belong to their nodes: revoke those too if they should stop.
   [Install and configure](install.md#the-instance-admins) says more.
 - **Retention.** Decide it per workspace before the database decides it for you:
   [Retention](retention.md). Log output is most of what a run stores.
@@ -62,6 +78,9 @@ being one. Every variable named here is described in [Install and configure](ins
   <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
+- **The security headers.** Every page carries a `Content-Security-Policy` that lets only
+  the console's own scripts run. The proxy must pass it on as it is: not strip it, not
+  replace it with one of its own, and not add a second.
 
 ## Upgrades
 

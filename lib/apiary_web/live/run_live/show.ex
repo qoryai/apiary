@@ -1,13 +1,14 @@
 defmodule ApiaryWeb.RunLive.Show do
   @moduledoc """
-  One run, read as a record, on a work surface: a header of two lines from `run.started`,
-  `run.exited` and the policy applied (the title; the state and the run's facts, with Close
-  run and the ⋯ menu), and four tabs that are four live actions of this one LiveView, so
-  that a tab is a `patch` and the header stays: Timeline, Terminal, Network access
-  (`/runs/:run_id/network`, the live action `:connections`; the old `/connections` path
-  sends on here), Details.
-  Details is the rail beside the tabs from 1440 px, and the tab below that shows the same
-  element in the column (`docs/ui.md`, The run page).
+  One run, read as a record, on a work surface: a header from `run.started`, `run.exited`
+  and the policy applied (the title; what the run says it is about, when it says; the state
+  and the run's facts, with Close run and the ⋯ menu), and four tabs that are four live
+  actions of this one LiveView, so that a tab is a `patch` and the header stays: Timeline,
+  Terminal, Network access (`/runs/:run_id/network`, the live action `:connections`; the
+  old `/connections` path sends on here), Details.
+  Details is the rail beside Timeline and Network access from 1440 px, and the tab below
+  that shows the same element in the column (`docs/ui.md`, The run page). The Terminal tab
+  is wide (`q-run-wide`): at every width the rail folds away there and Details is a tab.
 
   `:run_id` in the URL is the run's subject, the id the runner prints. A run that is not
   in the caller's workspace renders the not-found state, whatever else it may be.
@@ -34,10 +35,11 @@ defmodule ApiaryWeb.RunLive.Show do
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
-  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 3]
+  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_label: 3, target_path: 5]
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
+  alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.{Record, Run}
@@ -64,6 +66,13 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
+        {gettext("Runs")}
+      </:crumb>
+      <:crumb :if={missing_id(@loaded_id)}>
+        {gettext("Run %{id}", id: missing_id(@loaded_id))}
+      </:crumb>
+
       <.empty_state
         tone="neutral"
         icon="hero-magnifying-glass"
@@ -91,30 +100,37 @@ defmodule ApiaryWeb.RunLive.Show do
       nav={:runs}
       width="work"
     >
-      <:crumb :if={@run.target_id} navigate={target_link(@current_scope, @run)}>
-        <.target_name
-          path={@run.target_path}
-          system={@target_shared && @run.target_system}
-          class="truncate"
-        />
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
+        {gettext("Runs")}
       </:crumb>
-      <:crumb>{gettext("Run %{id}", id: short_id(@run.run_id))}</:crumb>
+      <:crumb patch={@live_action != :timeline && tab_path(@current_scope, @run, :timeline)}>
+        {gettext("Run %{id}", id: short_id(@run.run_id))}
+      </:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
       </div>
 
+      <%!-- The Terminal tab is wide (`q-run-wide`): from 1440 px too the column has the
+           width to itself, the rail folds away and Details is a tab, as below 1440 px. --%>
       <div
         id="run-page"
-        class={["q-run", @live_action == :details && "q-run-on-details"]}
+        class={[
+          "q-run",
+          @live_action == :details && "q-run-on-details",
+          @live_action == :terminal && "q-run-wide"
+        ]}
       >
         <div class="q-run-col">
           <header class="q-run-head">
-            <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
-            <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
+            <h1 :if={given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
+              <bdi>{given_title(@run)}</bdi>
+            </h1>
+            <h1 :if={!given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
               <.rich text={
                 rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
               } />
             </h1>
+            <.about_header run={@run} />
             <div class="q-run-sub">
               <div class="q-run-meta-wrap">
                 <p id="run-meta" class="q-run-meta">
@@ -134,7 +150,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   <.link
                     :if={@run.target_id}
                     id="run-target"
-                    navigate={target_link(@current_scope, @run)}
+                    navigate={target_link(@current_scope, @run, @target_shared)}
                     class="q-run-target"
                   >
                     <.target_name
@@ -187,8 +203,9 @@ defmodule ApiaryWeb.RunLive.Show do
               </div>
               <div class="q-run-actions">
                 <.button
-                  :if={@closable}
+                  :if={@closable && !@confirm_close}
                   id="close-run-button"
+                  phx-hook="FocusOn"
                   phx-click="close"
                   title={
                     gettext(
@@ -198,6 +215,28 @@ defmodule ApiaryWeb.RunLive.Show do
                 >
                   <.icon name="hero-stop-micro" class="size-4" />{gettext("Close run")}
                 </.button>
+                <%!-- The close is confirmed in place: the button turns into the question,
+                     its act and Cancel, never an overlay. --%>
+                <.inline_confirm
+                  :if={@closable && @confirm_close}
+                  id="close-run"
+                  question={gettext("Close this run?")}
+                  cancel={JS.push("close_cancel")}
+                  class="max-w-[60ch]"
+                >
+                  {gettext("The workspace takes no more events for it. A close is final.")}
+                  <:action>
+                    <.button
+                      id="close-run-confirm"
+                      variant="danger"
+                      size="xs"
+                      phx-click="close_confirm"
+                      loading_text={gettext("Closing")}
+                    >
+                      {gettext("Yes, close")}
+                    </.button>
+                  </:action>
+                </.inline_confirm>
                 <.run_menu
                   run={@run}
                   log={
@@ -240,7 +279,15 @@ defmodule ApiaryWeb.RunLive.Show do
               <div class="mt-1">
                 <.link
                   id="run-behind-diff"
-                  navigate={behind_path(@current_scope, @target, @reported_version, @in_force)}
+                  navigate={
+                    behind_path(
+                      @current_scope,
+                      @target,
+                      @target_shared,
+                      @reported_version,
+                      @in_force
+                    )
+                  }
                   class="q-link"
                 >
                   {if comparable?(@reported_version, @in_force),
@@ -256,44 +303,41 @@ defmodule ApiaryWeb.RunLive.Show do
             </.notice>
           </header>
 
-          <.tabs id="run-tabs" label={gettext("Run")}>
+          <%!-- A thing's tabs (`page_tabs/1`), each `run-tab-<key>`. --%>
+          <.page_tabs id="run-tab" label={gettext("Run")} current={@live_action}>
             <:tab
-              id="run-tab-timeline"
+              key={:timeline}
               patch={tab_path(@current_scope, @run, :timeline, @timeline_query)}
               icon="hero-queue-list"
-              current={@live_action == :timeline}
-              count={@index.session_items > 0 && Format.number(@index.session_items)}
+              count={if @index.session_items > 0, do: @index.session_items}
             >
               {gettext("Timeline")}
             </:tab>
             <:tab
               :if={Access.can?(@current_scope, :"run.read_log", @run)}
-              id="run-tab-terminal"
+              key={:terminal}
               patch={tab_path(@current_scope, @run, :terminal)}
               icon="hero-command-line"
-              current={@live_action == :terminal}
             >
               {gettext("Terminal")}
             </:tab>
             <:tab
-              id="run-tab-connections"
+              key={:connections}
               patch={tab_path(@current_scope, @run, :connections)}
               icon="hero-globe-alt"
-              current={@live_action == :connections}
               count={connections_count(@counts)}
               tone={@counts.denied > 0 && "error"}
             >
               {gettext("Network access")}
             </:tab>
             <:tab
-              id="run-tab-details"
+              key={:details}
               patch={tab_path(@current_scope, @run, :details)}
               icon="hero-clipboard-document-list"
-              current={@live_action == :details}
             >
               {gettext("Details")}
             </:tab>
-          </.tabs>
+          </.page_tabs>
 
           <div class={["q-run-body", @live_action == :terminal && "q-run-body-term"]}>
             <%= cond do %>
@@ -324,6 +368,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   counts={@counts}
                   decision={@decision}
                   acts={@acts}
+                  panel={@rule_panel}
                   version={@reported_version}
                   in_force={@in_force}
                   security={@security}
@@ -335,6 +380,7 @@ defmodule ApiaryWeb.RunLive.Show do
         <.details_rail
           scope={@current_scope}
           run={@run}
+          target_shared={@target_shared}
           policy={@policy}
           session_id={@session_id}
           quiet={@quiet_for != nil}
@@ -343,29 +389,9 @@ defmodule ApiaryWeb.RunLive.Show do
           in_force={@in_force}
           digests={@digests}
           security={@security}
+          instance={@instance}
         />
       </div>
-
-      <.modal
-        :if={@confirm_close}
-        id="close-run"
-        title={gettext("Close this run")}
-        on_cancel={JS.push("close_cancel")}
-      >
-        <p class="text-muted">
-          {gettext(
-            "The workspace stops taking events for this run and the runner is told so on its next delivery. The record kept so far stays. A close is final: nothing reopens the run."
-          )}
-        </p>
-        <:footer>
-          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
-          <.button variant="danger" phx-click="close_confirm" loading_text={gettext("Closing")}>
-            {gettext("Close run")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.rule_popover :if={@security && @popover} popover={@popover} />
     </Layouts.app>
     """
   end
@@ -629,6 +655,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :counts, :map, required: true
   attr :decision, :string, default: nil
   attr :acts, :map, default: nil
+  attr :panel, :map, default: nil, doc: "the open panel of a row's Allow or Deny"
   attr :version, :any, default: nil
   attr :in_force, :any, default: nil
   attr :security, :boolean, required: true
@@ -704,6 +731,7 @@ defmodule ApiaryWeb.RunLive.Show do
         rows={@connections.rows}
         started_at={@run.started_at}
         acts={@acts}
+        panel={@panel}
         security={@security}
       />
       <div
@@ -761,12 +789,14 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
-  # The details of the run: a rail beside the tabs from 1440 px, and below that the
-  # Details tab, which shows this same element in the column (`q-run-on-details`), so the
-  # two never disagree and no id is rendered twice. Key and value lines under small
-  # headings; the run's labels are its own identifiers, in mono.
+  # The details of the run: a rail beside Timeline and Network access from 1440 px; below
+  # that, and on the wide Terminal tab, Details is a tab, which shows this same element in
+  # the column (`q-run-on-details`), so the two never disagree and no id is rendered
+  # twice. Key and value lines under small headings; the run's labels are its own
+  # identifiers, in mono.
   attr :scope, :map, required: true
   attr :run, :map, required: true
+  attr :target_shared, :boolean, default: false, doc: "whether the run's target's path is shared"
   attr :policy, :any, required: true
   attr :session_id, :string, default: nil
   attr :quiet, :boolean, required: true
@@ -775,6 +805,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :in_force, :any, default: nil
   attr :digests, :map, required: true
   attr :security, :boolean, required: true
+  attr :instance, :any, default: nil, doc: "the run's instance's row, for its name"
 
   defp details_rail(assigns) do
     assigns =
@@ -783,6 +814,8 @@ defmodule ApiaryWeb.RunLive.Show do
     ~H"""
     <aside id="run-details" class="q-run-rail" aria-label={gettext("Details")}>
       <h2 class="q-rail-title">{gettext("Details")}</h2>
+
+      <.about_section run={@run} />
 
       <section class="q-rail-sec" aria-labelledby="rail-run">
         <h3 id="rail-run">{gettext("Run")}</h3>
@@ -833,6 +866,17 @@ defmodule ApiaryWeb.RunLive.Show do
               {na()}
             <% end %>
           </dd>
+          <dt :if={@run.node_id}>{gettext("Node")}</dt>
+          <dd :if={@run.node_id} id="run-node">
+            <.node_name scope={@scope} node={Ecto.assoc_loaded?(@run.node) && @run.node} />
+          </dd>
+          <dt :if={@run.instance_id}>{gettext("Instance")}</dt>
+          <dd :if={@run.instance_id} id="run-instance">
+            <span :if={@instance && @instance.name}>{@instance.name}</span>
+            <span class={["font-mono", @instance && @instance.name && "q-rail-sub"]}>
+              {@run.instance_id}
+            </span>
+          </dd>
           <dt :if={@security}>{gettext("Policy")}</dt>
           <dd :if={@security} class="q-kv-policy">
             <.policy_value
@@ -855,12 +899,14 @@ defmodule ApiaryWeb.RunLive.Show do
             <dt>{key}</dt>
             <dd title={to_string(value)}>
               <.link
-                :if={path = label_path(@scope, @run, to_string(key), to_string(value))}
+                :if={
+                  path = label_path(@scope, @run, @target_shared, to_string(key), to_string(value))
+                }
                 navigate={path}
               >
                 {to_string(value)}
               </.link>
-              <span :if={!label_path(@scope, @run, to_string(key), to_string(value))}>
+              <span :if={!label_path(@scope, @run, @target_shared, to_string(key), to_string(value))}>
                 {to_string(value)}
               </span>
             </dd>
@@ -1195,6 +1241,7 @@ defmodule ApiaryWeb.RunLive.Show do
        window_loaded: false,
        index: Timeline.new(),
        policy: nil,
+       instance: nil,
        target: nil,
        digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
        reported_version: nil,
@@ -1202,7 +1249,7 @@ defmodule ApiaryWeb.RunLive.Show do
        versions: %{},
        effective: nil,
        acts: nil,
-       popover: nil,
+       rule_panel: nil,
        policy_flush_scheduled: false,
        session_id: nil,
        counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
@@ -1265,6 +1312,7 @@ defmodule ApiaryWeb.RunLive.Show do
             run.target_id != nil and Targets.shared?(scope, run.target_path)
           )
           |> assign_run(run)
+          |> assign(:instance, Nodes.instance_of(scope, run))
 
         if connected?(socket) do
           # Subscribed before the read, so nothing projected after it is missed.
@@ -1285,7 +1333,7 @@ defmodule ApiaryWeb.RunLive.Show do
             versions: %{},
             effective: nil,
             acts: nil,
-            popover: nil
+            rule_panel: nil
           )
           |> put_index(Record.timeline(scope, run))
           |> assign_ending()
@@ -1313,10 +1361,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # The window's title: the run, and the tab when it is not the timeline, so a reader with
   # several tabs of one run open tells them apart.
   defp run_title(run, tab) do
-    title =
-      gettext("%{title} · Runs",
-        title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
-      )
+    title = gettext("%{title} · Runs", title: run_title(run))
 
     case tab do
       :terminal -> gettext("Terminal") <> " · " <> title
@@ -1462,21 +1507,28 @@ defmodule ApiaryWeb.RunLive.Show do
   defp tab_path(scope, %Run{run_id: id}, :details, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/details?#{query}"
 
-  defp label_path(scope, _run, "task", value),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{task: value}}"
-
   # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
-  defp label_path(scope, %Run{target_id: id} = run, key, _value) when is_binary(id) do
-    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run)
+  defp label_path(scope, %Run{target_id: id} = run, shared, key, _value) when is_binary(id) do
+    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run, shared)
   end
 
-  defp label_path(_scope, _run, _key, _value), do: nil
+  defp label_path(_scope, _run, _shared, _key, _value), do: nil
+
+  # The short form of the id a run that is not here was asked by, when it is a run's id at
+  # all; nil for an address that is none, whose breadcrumb ends with Runs.
+  defp missing_id(run_id) do
+    case Ecto.UUID.cast(run_id) do
+      {:ok, id} -> short_id(id)
+      :error -> nil
+    end
+  end
 
   # The target's page: the run's own copy of its system and path, which the target's row
-  # holds too while the run names it.
-  defp target_link(scope, %Run{target_system: system, target_path: path}),
-    do: target_path(scope, system, path)
+  # holds too while the run names it, at its address: its system in it only where its
+  # path is `shared` (the page's `target_shared`).
+  defp target_link(scope, %Run{target_system: system, target_path: path}, shared),
+    do: target_path(scope, system, path, [], shared)
 
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do
@@ -1552,6 +1604,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp with_versions(items, socket) do
     %{current_scope: scope, target: target, versions: known} = socket.assigns
+    target = {target, socket.assigns.target_shared}
 
     {items, _known} =
       Enum.map_reduce(items, known, fn
@@ -1570,7 +1623,8 @@ defmodule ApiaryWeb.RunLive.Show do
   defp lookup_version(known, _scope, _target, digest) when not is_binary(digest),
     do: {nil, known}
 
-  defp lookup_version(known, scope, target, digest) do
+  # `target` is the run's target and whether its path is shared, which names its versions.
+  defp lookup_version(known, scope, {target, shared}, digest) do
     case known do
       %{^digest => version} ->
         {version, known}
@@ -1579,7 +1633,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {nil, known}
 
       _ ->
-        version = Rules.version(scope, target, digest)
+        version = Rules.version(scope, target, digest, shared)
         {version, Map.put(known, digest, version)}
     end
   end
@@ -1696,7 +1750,7 @@ defmodule ApiaryWeb.RunLive.Show do
     |> trim_window(:after_append)
   end
 
-  ## The limits of the record (P5), chosen from it in the brief's order
+  ## The limits of the record, chosen from it in this order
 
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 
@@ -1797,8 +1851,15 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, assign(socket, confirm_close: state in Runs.closable_states())}
   end
 
-  def handle_event("close_cancel", _params, socket),
-    do: {:noreply, assign(socket, confirm_close: false)}
+  # Cancel, or Escape while the question is out: the button comes back with the focus.
+  def handle_event("close_cancel", _params, %{assigns: %{confirm_close: true}} = socket) do
+    {:noreply,
+     socket
+     |> assign(confirm_close: false)
+     |> push_event("run:focus", %{id: "close-run-button"})}
+  end
+
+  def handle_event("close_cancel", _params, socket), do: {:noreply, socket}
 
   # The context decides what may be closed; the page only asks.
   def handle_event("close_confirm", _params, %{assigns: %{run: %Run{} = run}} = socket) do
@@ -1847,14 +1908,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
     case {act, action} do
       {%{rule_option: :can_allow}, "allow"} ->
-        {:noreply, open_popover(socket, row, act, :allow)}
+        {:noreply, open_panel(socket, row, act, :allow)}
 
       {%{rule_option: :can_deny}, "deny"} ->
-        {:noreply, open_popover(socket, row, act, :deny)}
+        {:noreply, open_panel(socket, row, act, :deny)}
 
       # No rule decides the host: it can be denied outright as well as allowed.
       {%{rule_option: :can_allow, deny: true}, "deny"} ->
-        {:noreply, open_popover(socket, row, act, :deny)}
+        {:noreply, open_panel(socket, row, act, :deny)}
 
       {%{rule_option: locked}, _} when locked in [:locked_deny, :locked_allow] ->
         {:noreply, open_refusal(socket, row, act)}
@@ -1867,47 +1928,47 @@ defmodule ApiaryWeb.RunLive.Show do
   def handle_event(
         "rule_change",
         params,
-        %{assigns: %{popover: %{refusal: nil} = popover}} = socket
+        %{assigns: %{rule_panel: %{refusal: nil} = panel}} = socket
       ) do
     level =
       case params["for"] do
-        "target" when not is_nil(popover.target) -> :target
+        "target" when not is_nil(panel.target) -> :target
         "workspace" -> :workspace
-        _ -> popover.level
+        _ -> panel.level
       end
 
-    {:noreply, assign(socket, popover: %{popover | level: level, error: nil})}
+    {:noreply, assign(socket, rule_panel: %{panel | level: level, error: nil})}
   end
 
-  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_popover(socket)}
+  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_panel(socket)}
 
   # The rule is the domain's to make and to refuse: `rule_from_connection/4` and nothing
   # else, and what it refuses is said in its own sentence.
   def handle_event(
         "rule_submit",
         _params,
-        %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
+        %{assigns: %{rule_panel: %{refusal: nil, level: level} = panel}} = socket
       )
       when level in [:target, :workspace] do
     %{current_scope: scope, run: run} = socket.assigns
 
-    # What the popover said was true of the policy it opened on. It is sent only while
+    # What the panel said was true of the policy it opened on. It is sent only while
     # that is still the policy: a stale Allow must not undo a deny made meanwhile.
-    with :ok <- still(socket, popover),
-         {:ok, connection} <- Record.connection(scope, run, popover.connection_id),
-         {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
+    with :ok <- still(socket, panel),
+         {:ok, connection} <- Record.connection(scope, run, panel.connection_id),
+         {:ok, rule} <- Policy.rule_from_connection(scope, connection, panel.action, level) do
       {:noreply,
        socket
-       |> close_popover()
+       |> close_panel()
        |> assign(effective: nil)
        |> refresh_policy()
-       |> put_flash(:info, rule_toast(socket, popover, rule, level))
+       |> put_flash(:info, rule_toast(socket, panel, rule, level))
        |> announce(
          Rules.toast(
            rule,
-           popover.action,
-           popover.host,
-           popover.path,
+           panel.action,
+           panel.host,
+           panel.path,
            if(level == :target, do: :this_target, else: :workspace)
          ),
          :now
@@ -1917,12 +1978,12 @@ defmodule ApiaryWeb.RunLive.Show do
         {:noreply, socket |> assign(effective: nil) |> refresh_policy() |> policy_moved()}
 
       {:error, %Policy.Error{message: message}} ->
-        {:noreply, assign(socket, popover: %{popover | error: message})}
+        {:noreply, assign(socket, rule_panel: %{panel | error: message})}
 
       _not_found ->
         {:noreply,
          socket
-         |> close_popover()
+         |> close_panel()
          |> put_flash(:error, gettext("This connection is no longer in this run."))}
     end
   end
@@ -1930,19 +1991,19 @@ defmodule ApiaryWeb.RunLive.Show do
   # A crafted event, or one for a page without a run: nothing to do.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  defp open_popover(socket, row, act, action) do
+  defp open_panel(socket, row, act, action) do
     %{run: run, target: target, current_scope: scope, effective: effective} =
       socket.assigns
 
     path = row.path || ""
-    # The page holds the target's policy; the workspace's is read when a popover opens,
+    # The page holds the target's policy; the workspace's is read when a panel opens,
     # since what a rule for the workspace would be is decided by the workspace's own
     # paths.
     baseline = if target, do: Policy.effective(scope, nil), else: effective
 
     assign(socket,
-      popover: %{
-        anchor: "cx-#{row.id}-act",
+      rule_panel: %{
+        anchor: "cx-#{row.id}-#{action}",
         connection_id: row.id,
         action: action,
         host: act.host,
@@ -1950,7 +2011,9 @@ defmodule ApiaryWeb.RunLive.Show do
         mode: Rules.mode(row),
         page: :run,
         level: if(target, do: :target, else: :workspace),
-        target: target && %{label: "#{target.system}/#{target.path}"},
+        target:
+          target &&
+            %{label: target_label(target.system, target.path, socket.assigns.target_shared)},
         targets: [],
         choice: nil,
         what: %{
@@ -1977,8 +2040,8 @@ defmodule ApiaryWeb.RunLive.Show do
     locked = locked_change(scope, act.entry)
 
     assign(socket,
-      popover: %{
-        anchor: "cx-#{row.id}-act",
+      rule_panel: %{
+        anchor: "cx-#{row.id}-lock",
         host: act.host,
         refusal: %{
           rule_option: act.rule_option,
@@ -1993,12 +2056,12 @@ defmodule ApiaryWeb.RunLive.Show do
     |> mark_expanded()
   end
 
-  defp close_popover(socket), do: socket |> assign(popover: nil) |> mark_expanded()
+  defp close_panel(socket), do: socket |> assign(rule_panel: nil) |> mark_expanded()
 
-  # The slot's button says whether its popover is open.
-  defp mark_expanded(%{assigns: %{acts: acts, popover: popover}} = socket) when is_map(acts) do
-    open = popover && String.replace_suffix(popover.anchor, "-act", "")
-    action = popover && popover[:action]
+  # The slot's button says whether its panel is open.
+  defp mark_expanded(%{assigns: %{acts: acts, rule_panel: panel}} = socket) when is_map(acts) do
+    open = panel && row_of_anchor(panel.anchor)
+    action = panel && panel[:action]
 
     assign(socket,
       acts:
@@ -2035,42 +2098,47 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp deny_consequence(_entry), do: %{}
 
-  # Whether the policy is still the one the popover opened on, for the host it is about.
-  defp still(socket, popover) do
+  # Whether the policy is still the one the panel opened on, for the host it is about.
+  defp still(socket, panel) do
     %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
     effective = Policy.effective(scope, target)
     baseline = if target, do: Policy.effective(scope, nil), else: effective
-    row = Enum.find(rows, &(&1.id == popover.connection_id))
+    row = Enum.find(rows, &(&1.id == panel.connection_id))
 
-    if (row && Rules.rule_option(row, effective, :run).rule_option == popover.rule_option) and
-         {Rules.seen(effective, popover.host), Rules.seen(baseline, popover.host)} == popover.seen,
+    if (row && Rules.rule_option(row, effective, :run).rule_option == panel.rule_option) and
+         {Rules.seen(effective, panel.host), Rules.seen(baseline, panel.host)} == panel.seen,
        do: :ok,
        else: :stale
   end
 
   defp policy_moved(socket) do
     socket
-    |> close_popover()
+    |> close_panel()
     |> put_flash(:error, gettext("The policy changed; look at the row again."))
   end
 
-  # A change of the policy under an open popover closes it when it touches its host.
-  defp recheck_popover(%{assigns: %{popover: %{refusal: nil} = popover}} = socket) do
-    if still(socket, popover) == :ok, do: socket, else: policy_moved(socket)
+  # A change of the policy under an open panel closes it when it touches its host.
+  defp recheck_panel(%{assigns: %{rule_panel: %{refusal: nil} = panel}} = socket) do
+    if still(socket, panel) == :ok, do: socket, else: policy_moved(socket)
   end
 
-  defp recheck_popover(%{assigns: %{popover: %{}}} = socket), do: close_popover(socket)
-  defp recheck_popover(socket), do: socket
+  defp recheck_panel(%{assigns: %{rule_panel: %{}}} = socket), do: close_panel(socket)
+  defp recheck_panel(socket), do: socket
 
-  defp rule_toast(socket, popover, rule, level) do
+  defp rule_toast(socket, panel, rule, level) do
     %{current_scope: scope, target: target} = socket.assigns
     holder = if level == :target, do: target, else: nil
 
     where =
       cond do
-        level != :target -> :workspace
-        target -> {:target, "#{target.system}/#{target.path}"}
-        true -> :this_target
+        level != :target ->
+          :workspace
+
+        target ->
+          {:target, target_label(target.system, target.path, socket.assigns.target_shared)}
+
+        true ->
+          :this_target
       end
 
     version =
@@ -2083,7 +2151,7 @@ defmodule ApiaryWeb.RunLive.Show do
       end
 
     own =
-      if level == :workspace and popover.own_rule,
+      if level == :workspace and panel.own_rule,
         do: gettext("This target's own rule still decides here.")
 
     reach =
@@ -2094,7 +2162,7 @@ defmodule ApiaryWeb.RunLive.Show do
             "This run uses its machine's policy; sessions that take this one have it within a heartbeat."
           )
 
-    [Rules.toast(rule, popover.action, popover.host, popover.path, where), version, own, reach]
+    [Rules.toast(rule, panel.action, panel.host, panel.path, where), version, own, reach]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
   end
@@ -2124,15 +2192,23 @@ defmodule ApiaryWeb.RunLive.Show do
     digests = Rules.digests(scope, run)
 
     {reported, known} =
-      lookup_version(known, scope, target, digests.reported || digests.applied)
+      lookup_version(
+        known,
+        scope,
+        {target, socket.assigns.target_shared},
+        digests.reported || digests.applied
+      )
 
     behind? = alive?(run) and digests.drift
 
     in_force =
       if behind? do
         case Policy.current_configuration(scope, target) do
-          {:ok, configuration} -> Rules.version_of(scope, configuration, target)
-          _ -> nil
+          {:ok, configuration} ->
+            Rules.version_of(scope, configuration, target, socket.assigns.target_shared)
+
+          _ ->
+            nil
         end
       end
 
@@ -2171,7 +2247,7 @@ defmodule ApiaryWeb.RunLive.Show do
     rule_options =
       for {row, rule_option} <- rule_options, do: {row, Rules.answered(rule_option, row, changes)}
 
-    # Who locked a locked rule, for the menu of the rows it decides: one read.
+    # Who locked a locked rule, for the lock's hint on the rows it decides: one read.
     locks =
       Rules.locks(
         scope,
@@ -2200,7 +2276,7 @@ defmodule ApiaryWeb.RunLive.Show do
          changes
        )
        when not is_nil(entry) do
-    %{target: target, current_scope: scope} = socket.assigns
+    %{target: target, current_scope: scope, target_shared: shared} = socket.assigns
     holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
 
@@ -2208,7 +2284,7 @@ defmodule ApiaryWeb.RunLive.Show do
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder, entry.host),
+      rule_path: Rules.rule_path(scope, holder, entry.host, shared),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -2216,8 +2292,8 @@ defmodule ApiaryWeb.RunLive.Show do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder, change.version),
-              label: Rules.version_label(holder && holder.id, target)
+              path: Rules.version_path(scope, holder, change.version, %{}, shared),
+              label: Rules.version_label(holder && holder.id, target, shared)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -2237,7 +2313,12 @@ defmodule ApiaryWeb.RunLive.Show do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
+          Rules.rule_path(
+            scope,
+            if(entry.source == :target and target, do: target),
+            entry.host,
+            socket.assigns.target_shared
+          ),
       after: nil
     })
   end
@@ -2277,12 +2358,16 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # A target's version is on the run's target's Policy tab: the only target a run's
   # versions are of.
-  defp behind_path(scope, target, reported, in_force) do
+  defp behind_path(scope, target, shared, reported, in_force) do
     if comparable?(reported, in_force) and (is_nil(in_force.target_id) or target != nil),
       do:
-        Rules.version_path(scope, in_force.target_id && target, in_force.n, %{
-          "compare" => reported.n
-        }),
+        Rules.version_path(
+          scope,
+          in_force.target_id && target,
+          in_force.n,
+          %{"compare" => reported.n},
+          shared
+        ),
       else: in_force.path
   end
 
@@ -2364,7 +2449,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   def handle_info(:policy_flush, socket) do
     {:noreply,
-     socket |> assign(policy_flush_scheduled: false) |> refresh_policy() |> recheck_popover()}
+     socket |> assign(policy_flush_scheduled: false) |> refresh_policy() |> recheck_panel()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -2377,8 +2462,8 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp follow_run(%{assigns: %{run: %Run{id: id} = old}} = socket, %Run{id: id} = run) do
-    # The broadcast carries the row; the key it was posted with does not change.
-    run = %{run | access_key: old.access_key}
+    # The broadcast carries the row; the key it was posted with and its node do not change.
+    run = %{run | access_key: old.access_key, node: old.node}
     was_quiet? = socket.assigns.quiet_for != nil
 
     socket

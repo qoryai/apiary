@@ -39,8 +39,26 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       lv |> element("#workspace-#{workspace.id} a", "Delete") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete")
-      assert has_element?(lv, "#delete-workspace-modal")
+      # Its row is the confirmation, in place of its cells: no dialog.
+      refute has_element?(lv, "#delete-workspace-modal")
+      row = "#workspace-#{workspace.id}.q-confirming"
+
+      assert has_element?(
+               lv,
+               "#{row} #delete-workspace-form #delete-workspace-confirming",
+               "Delete Staging?"
+             )
+
+      refute has_element?(lv, "#{row} #workspace-#{workspace.id}-menu")
+      refute has_element?(lv, "#workspace-#{scope.workspace.id}.q-confirming")
       assert has_element?(lv, "#delete-workspace-confirm[disabled]")
+
+      # Cancel gives the row back.
+      lv |> element("#delete-workspace-confirming-cancel") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/workspaces")
+      refute has_element?(lv, "#workspace-#{workspace.id}.q-confirming")
+
+      lv |> element("#workspace-#{workspace.id} a", "Delete") |> render_click()
 
       lv |> form("#delete-workspace-form", confirm: %{slug: "stag"}) |> render_change()
       assert has_element?(lv, "#delete-workspace-confirm[disabled]")
@@ -78,9 +96,15 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       lv |> element("#delete-organisation-button") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/danger")
-      assert has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#danger-zone #delete-organisation-form")
 
+      # The red button waits for the slug, typed.
       slug = scope.organisation.slug
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]")
+      lv |> form("#delete-organisation-form", confirm: %{slug: "nope"}) |> render_change()
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]")
+      lv |> form("#delete-organisation-form", confirm: %{slug: slug}) |> render_change()
+      refute has_element?(lv, "#delete-organisation-confirm[disabled]")
 
       lv |> form("#delete-organisation-form", confirm: %{slug: slug}) |> render_submit()
       flash = assert_redirect(lv, ~p"/users/organisations")
@@ -182,7 +206,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       assert has_element?(lv, "#marked-alone-#{scope.organisation.id}", scope.organisation.name)
 
       lv |> element("a#delete-account-button") |> render_click()
-      assert has_element?(lv, "#delete-account-modal-orphans")
+      assert has_element?(lv, "#delete-account-form #delete-account-lost-orphans")
     end
 
     test "a person deletes their account after confirming, and is logged out everywhere",
@@ -199,12 +223,15 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       render_async(lv)
       refute has_element?(lv, "#delete-account-blocked")
-      # Deleting the account is the danger zone that ends Profile, and no entry of the list.
+      # Deleting the account is the danger zone that ends Account, and no entry of the list.
       assert has_element?(lv, "#danger-zone #delete-account", "Delete account")
       refute has_element?(lv, "#sidebar a[href='/users/settings/delete']")
       lv |> element("a#delete-account-button") |> render_click()
       assert_patch(lv, ~p"/users/settings/delete")
-      assert has_element?(lv, "#delete-account-modal")
+      # Its confirmation expands in place, under the danger zone's line: no dialog.
+      refute has_element?(lv, "#delete-account-modal")
+      assert has_element?(lv, "#danger-zone #delete-account #delete-account-form")
+      assert has_element?(lv, "a#delete-account-button[aria-expanded=true]")
       assert has_element?(lv, "#nav-user_settings[aria-current='page']")
 
       # The red button waits for the account's email, typed; the server asks again.

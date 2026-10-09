@@ -9,8 +9,9 @@ address and the client each came from ([Install and configure](install.md)).
 
 ## The two settings
 
-On the workspace's **Settings**, `/:org/:workspace/settings`, under **Retention**. Only
-owners and admins change them; members read them.
+On the workspace's **Settings**, under **Runs**, `/:org/:workspace/settings/runs`
+(`/:org/:workspace/settings/retention`, its path before, still leads there). Only owners and
+admins change them; members read them.
 
 | Setting | What it limits | Default |
 |---|---|---|
@@ -77,6 +78,11 @@ random part of an hour, and prunes every workspace that has a setting.
   than its batch, so the receiver keeps writing while the job runs.
 - One night prunes at most 10,000 runs of a workspace, oldest first, and the next night
   goes on. The first night after a setting is shortened is the long one.
+- Under the same lock, on every workspace whatever its settings, the job deletes the
+  instances of nodes the pages no longer show: a node pool's instances not seen for a
+  day, and a node's instances other than its latest not seen for thirty days. Runs keep
+  the instance id they were started under. The log line is `retention pruned node
+  instances=<count>`, on a night that pruned any.
 - Postgres reuses the space of deleted rows; it does not give it back to the operating
   system. The database's files stop growing, they do not shrink. `VACUUM FULL` or
   `pg_repack` gives the space back, and neither is needed for the instance to work.
@@ -89,7 +95,7 @@ many chunks, and the dates before which it pruned. A row is marked *By hand* whe
 from the task below, and *Not finished* when the job stopped at its bound or a run failed;
 the next night goes on from there.
 
-The same is one line in the server's log per workspace:
+The same is one line in Qory Apiary's log per workspace:
 
 ```text
 retention pruned workspace=6f1c… trigger=schedule runs=12 events=48210 log_chunks=9120 log_bytes=73400320 deliveries=640 events_cutoff=2026-06-01T03:12:44Z log_cutoff=2026-08-02T03:12:44Z complete=true duration_ms=8450

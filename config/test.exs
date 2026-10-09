@@ -36,6 +36,11 @@ config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
+# The development routes (the storybook, LiveDashboard, the mailbox preview) in test too, so
+# that ApiaryWeb.ContentSecurityPolicyTest loads their pages under the policy as it loads
+# the console's.
+config :apiary, dev_routes: true
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
@@ -50,13 +55,23 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-# The encryption key for secrets at rest in test. Not a secret: local databases only.
-config :apiary, Apiary.Vault,
-  ciphers: [
-    default:
-      {Cloak.Ciphers.AES.GCM,
-       tag: "AES.GCM.V1", key: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")}
-  ]
+# APIARY_ENCRYPTION_SECRET in test: every key the instance uses is derived from it
+# (Apiary.KeyDerivation). Not a secret: local databases only.
+config :apiary, Apiary.KeyDerivation,
+  secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+
+# APIARY_SIGNING_SECRET in test: the seed of the instance's own signing key
+# (Apiary.SigningKey), which the tests verify answers under. A fixed 32 bytes of its own,
+# never derived from the encryption secret above, and none of the runner contract's
+# fixture seeds, which the instance refuses. Not a secret.
+config :apiary, Apiary.SigningKey, seed: "qory apiary test signing seed 01"
+
+# Every enrolment test posts from the same address; the limits' own tests set their own.
+config :apiary, ApiaryWeb.Contract.EnrolmentController,
+  rate: 1000,
+  burst: 100_000,
+  code_rate: 1000,
+  code_burst: 100_000
 
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.
@@ -67,3 +82,10 @@ config :apiary, Apiary.Retention.Scheduler, enabled: false
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual
+
+# An integration's release is never fetched over the network in a test: the requests go
+# to the `Req.Test` stub of `Apiary.Integrations.Fetch`, and names resolve by the test
+# resolver's rule (`Apiary.FetchStub`), which a test may override with its own.
+config :apiary, Apiary.Integrations.Fetch,
+  resolver: Apiary.FetchStub,
+  req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]

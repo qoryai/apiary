@@ -7,6 +7,7 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
   import Ecto.Query
 
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Nodes.Instance
   alias Apiary.Organisations.{Invitation, Membership}
   alias Apiary.Repo
   alias Apiary.Runs.{Event, Run, Target}
@@ -62,16 +63,66 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
     assert DateTime.diff(DateTime.utc_now(), oldest, :day) >= 5
   end
 
-  test "keys are made per machine, one revoked and one never used; people join at every level",
+  test "the runs say what they are about, as a caller would, on hosts under example.com",
+       %{scope: scope} do
+    fill(scope, ["--skip-members"])
+
+    runs = runs(scope)
+    kinds = runs |> Enum.map(& &1.about_kind) |> Enum.uniq()
+    assert "Implementation" in kinds
+    assert Enum.all?(kinds, &(&1 in [nil, "Implementation", "Review", "Maintenance", "Audit"]))
+
+    fix = Enum.find(runs, &(&1.about_kind == "Implementation"))
+    assert "Fix ENG-" <> _ = fix.about_title
+    assert [%{"type" => "ticket"}, %{"type" => "pull request"} | _] = fix.about_subjects
+    assert %{"branch" => "qory/eng-" <> _, "attempt" => attempt} = fix.about_details
+    assert is_integer(attempt) and attempt >= 1
+
+    # Every url a subject gives is on example.com; a subject may have none.
+    for run <- runs, %{"url" => url} <- run.about_subjects do
+      assert String.ends_with?(URI.parse(url).host, ".example.com"), url
+    end
+
+    for run <- runs, run.about_kind == "Review" do
+      assert [%{"type" => "pull request", "url" => "https://git.example.com/" <> _}] =
+               run.about_subjects
+    end
+
+    for run <- runs, run.about_kind == "Audit" do
+      assert run.about_title == "Nightly audit"
+      assert run.about_details == %{"schedule" => "0 2 * * *"}
+    end
+  end
+
+  test "nodes and keys are made per machine, one revoked and one never used; people join at every level",
        %{scope: scope} do
     fill(scope)
 
-    keys = Repo.all(from k in AccessKey, where: k.workspace_id == ^scope.workspace.id)
+    keys =
+      Repo.all(from k in AccessKey, where: k.workspace_id == ^scope.workspace.id, preload: :node)
+
     by_label = Map.new(keys, &{&1.label, &1})
 
     assert by_label["legacy-ci"].revoked_at
     assert is_nil(by_label["staging-bot"].last_used_at)
     assert by_label["ci-fleet"].last_used_at
+    assert by_label["ci-fleet"].node.kind == :pool
+    assert by_label["dana-laptop"].node.kind == :node
+    assert Enum.all?(keys, &(&1.public_key && &1.received_at))
+
+    # ci-fleet holds a second key, as when its key is replaced.
+    assert by_label["ci-fleet-next"].node_id == by_label["ci-fleet"].node_id
+    assert is_nil(by_label["ci-fleet-next"].revoked_at)
+
+    # Each run is on its machine's node, as the instance of its host, recorded.
+    runs = runs(scope)
+    assert Enum.all?(runs, &(&1.node_id && &1.instance_id))
+    fleet = by_label["ci-fleet"].node_id
+
+    names =
+      Repo.all(from i in Instance, where: i.node_id == ^fleet, select: i.name)
+
+    assert names != [] and Enum.all?(names, &String.starts_with?(&1, "ci-runner-"))
 
     levels =
       Repo.all(

@@ -31,7 +31,8 @@ defmodule Apiary.Contract.RecordedRunTest do
 
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, key: published_key_fixture(scope)}
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
+    %{scope: scope, key: key, secret: secret}
   end
 
   def lines(file), do: file |> File.read!() |> String.split("\n", trim: true)
@@ -98,7 +99,7 @@ defmodule Apiary.Contract.RecordedRunTest do
     @file_path file
 
     test "the record of #{file |> Path.dirname() |> Path.basename()}, posted as the runner cuts it, is the stored run",
-         %{scope: scope} do
+         %{scope: scope, key: key, secret: secret} do
       lines = lines(@file_path)
       subject = subject(@file_path)
 
@@ -107,7 +108,7 @@ defmodule Apiary.Contract.RecordedRunTest do
 
       for batch <- [[ping] | Enum.chunk_every(rest, 5)] do
         body = "[" <> Enum.join(batch, ",") <> "]"
-        conn = signed_post(build_conn(), published_key_id(), published_secret(), body)
+        conn = signed_post(build_conn(), key.key_id, secret, body)
         assert conn.status == 202
       end
 

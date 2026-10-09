@@ -29,6 +29,10 @@ defmodule Apiary.Runs.Liveness do
   stored value can make a rule raise: the interval is bounded inside the SQL. `lost` is
   not final: a later heartbeat or the exit corrects the state through the projector.
 
+  **Alive.** The two rules are one condition each, shared: `alive/2` is their negation,
+  for whatever counts the runs that are still alive, as a node's running instances and
+  its instance limit do, so that running means exactly "not yet lost".
+
   The process ticks every `:interval` milliseconds (15 s) and is not started when
   `config :apiary, Apiary.Runs.Liveness, enabled: false`; tests call `check/1`.
   """
@@ -112,7 +116,33 @@ defmodule Apiary.Runs.Liveness do
     end
   end
 
-  defp running_silent(now) do
+  @doc """
+  alive/2 narrows `query`, a query of runs whose binding is named `:run` (as
+  `from r in Run, as: :run`), to the runs alive as of `now`: `pending` or `running`, and
+  heard from within three of their intervals by the rules above. It is the negation of
+  the rules the check marks lost by, the same SQL, so a run is alive exactly while the
+  check would not mark it: what counts as running anywhere else (an instance, a node, the
+  instance limit) is "not yet lost".
+
+  The states are compared as literals, so a query of it can be read from a partial index
+  on the runs alive (`WHERE state IN ('pending', 'running')`).
+  """
+  @spec alive(Ecto.Queryable.t(), DateTime.t()) :: Ecto.Query.t()
+  def alive(query, %DateTime{} = now) do
+    silent =
+      dynamic(
+        [run: r],
+        (r.state == "running" and ^silent(:running, now)) or
+          (r.state == "pending" and ^silent(:pending, now))
+      )
+
+    where(query, ^dynamic([run: r], r.state in ["pending", "running"] and not (^silent)))
+  end
+
+  # The two rules, as conditions on a run named `:run`: a running run silent since its
+  # last heartbeat, its run.started's arrival or its first event; a pending run silent
+  # since its first event.
+  defp silent(:running, now) do
     started =
       from e in Event,
         where: e.run_id == parent_as(:run).id and e.type == "dev.qory.run.started",
@@ -120,33 +150,40 @@ defmodule Apiary.Runs.Liveness do
         limit: 1,
         select: e.received_at
 
-    from r in Run,
-      as: :run,
-      where: r.state == "running",
-      where:
-        fragment(
-          "COALESCE(?, ?, ?) + ? < ?",
-          r.last_heartbeat_at,
-          subquery(started),
-          r.inserted_at,
-          silence(r.heartbeat_interval_seconds),
-          ^now
-        )
+    dynamic(
+      [run: r],
+      fragment(
+        "COALESCE(?, ?, ?) + ? < ?",
+        r.last_heartbeat_at,
+        subquery(started),
+        r.inserted_at,
+        silence(r.heartbeat_interval_seconds),
+        ^now
+      )
+    )
   end
 
-  defp pending_silent(now) do
-    from r in Run,
-      where: r.state == "pending",
-      where:
-        fragment(
-          "? + ? < ?",
-          r.inserted_at,
-          silence(r.heartbeat_interval_seconds),
-          ^now
-        )
+  defp silent(:pending, now) do
+    dynamic(
+      [run: r],
+      fragment("? + ? < ?", r.inserted_at, silence(r.heartbeat_interval_seconds), ^now)
+    )
   end
 
-  defp mark(query, now) do
+  defp running_silent(now),
+    do: from(r in Run, as: :run, where: r.state == "running", where: ^silent(:running, now))
+
+  defp pending_silent(now),
+    do: from(r in Run, as: :run, where: r.state == "pending", where: ^silent(:pending, now))
+
+  @doc """
+  mark/2 marks the runs of `query` lost as of `now`, in one `UPDATE … WHERE`, and returns
+  them as they are now. It broadcasts nothing: the caller broadcasts each run once what
+  it is part of has committed. The check marks the runs its rules find; Clear instance
+  (`Apiary.Nodes.clear_instance/3`) the open runs of an instance.
+  """
+  @spec mark(Ecto.Queryable.t(), DateTime.t()) :: [Run.t()]
+  def mark(query, %DateTime{} = now) do
     {_count, runs} =
       Repo.update_all(select(query, [r], r), set: [state: "lost", lost_at: now, updated_at: now])
 

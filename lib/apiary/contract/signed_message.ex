@@ -1,0 +1,141 @@
+defmodule Apiary.Contract.SignedMessage do
+  @moduledoc ~S"""
+  SignedMessage builds the messages the server contract signs with Ed25519
+  (`Apiary.Contract.Ed25519`): a request's, which a runner signs under its access key; an
+  enrolment's proof, which a machine signs under the new key it enrols; and an answer's,
+  to a signed request or to an enrolment, which the server signs under its own key. Each is lines joined by `\n`, with no newline
+  after the last. Pure functions; nothing here touches the database, a connection or a
+  log, and nothing here holds a key.
+
+  **The request string** (`request/5`): `qory-request-ed25519-v1`, the access key id and
+  the instance id exactly as their headers carry them, an absent instance id as an empty
+  line; the method in upper case; the request target exactly as sent, the path and the
+  query when there is one, nothing decoded, reordered or normalised; and last, for a GET
+  the timestamp as sent in `X-Qory-Timestamp`, for a POST the raw body.
+
+  **The proof of an enrolment** (`enrolment/4`): `qory-enrol-ed25519-v1`; the code as the
+  body carries it, `qec_`, its 26 characters and the server's fingerprints after it; the
+  public key as the body carries it; the name; and the timestamp in decimal.
+
+  **The answer string** (`answer/5`): `qory-answer-ed25519-v1`; the status, three decimal
+  digits; the request's `X-Qory-Signature-Ed25519` exactly as sent; the lower-case hex
+  SHA-256 of the body as sent, before any content coding, the SHA-256 of the empty string
+  for no body; the answer's `X-Qory-Configuration`, and its `X-Qory-Run-Configuration`,
+  each empty when the answer has none.
+
+  **The answer string of an enrolment** (`enrolment_answer/3`) has its own first line,
+  `qory-enrol-answer-ed25519-v1`, and the request's `proof` as line 3; the rest is as
+  `answer/5`'s, lines 5 and 6 empty, since an enrolment answer carries neither digest
+  header. Its line 3 is a proof, which anyone holding a live code chooses, so the domain
+  line keeps an enrolment answer's signature from ever verifying as the answer to a signed
+  request, and the reverse. It is a function of its own, not an option of `answer/5`, so
+  no caller can sign an enrolment answer under the other line by leaving one out.
+
+  The contract's known answers for each are in `fixtures/known-answers/signatures.json`
+  of the runner's contract directory, and `test/contract/ed25519_known_answers_test.exs`
+  replays them.
+  """
+
+  @request_tag "qory-request-ed25519-v1"
+  @enrolment_tag "qory-enrol-ed25519-v1"
+  @answer_tag "qory-answer-ed25519-v1"
+  @enrolment_answer_tag "qory-enrol-answer-ed25519-v1"
+
+  @doc ~S"""
+  request/5 is the request string of a request under `access_key_id` from `instance_id`
+  (nil when the request carries none), with `method`, `target` (the path and query as
+  sent) and `last`: the `X-Qory-Timestamp` value as sent for a GET, the raw body for a
+  POST.
+
+      iex> Apiary.Contract.SignedMessage.request("ak_0000000000000000", "i_a", "get", "/x?y=1", "1700000000")
+      "qory-request-ed25519-v1\nak_0000000000000000\ni_a\nGET\n/x?y=1\n1700000000"
+  """
+  @spec request(String.t(), String.t() | nil, String.t(), String.t(), binary) :: binary
+  def request(access_key_id, instance_id, method, target, last)
+      when is_binary(access_key_id) and (is_binary(instance_id) or is_nil(instance_id)) and
+             is_binary(method) and is_binary(target) and is_binary(last) do
+    IO.iodata_to_binary([
+      @request_tag,
+      ?\n,
+      access_key_id,
+      ?\n,
+      instance_id || "",
+      ?\n,
+      String.upcase(method),
+      ?\n,
+      target,
+      ?\n,
+      last
+    ])
+  end
+
+  @doc ~S"""
+  enrolment/4 is the message an enrolment's `proof` signs: the request body's `code`,
+  `public_key` (base64url, exactly as the body carries it) and `name`, and its `timestamp`
+  in decimal.
+
+      iex> Apiary.Contract.SignedMessage.enrolment("qec_X.fp", "pk", "build-01", 1700000000)
+      "qory-enrol-ed25519-v1\nqec_X.fp\npk\nbuild-01\n1700000000"
+  """
+  @spec enrolment(String.t(), String.t(), String.t(), non_neg_integer) :: binary
+  def enrolment(code, public_key, name, timestamp)
+      when is_binary(code) and is_binary(public_key) and is_binary(name) and
+             is_integer(timestamp) and timestamp >= 0 do
+    IO.iodata_to_binary([
+      @enrolment_tag,
+      ?\n,
+      code,
+      ?\n,
+      public_key,
+      ?\n,
+      name,
+      ?\n,
+      Integer.to_string(timestamp)
+    ])
+  end
+
+  @doc ~S"""
+  answer/5 is the answer string of an answer with `status` and `body` to the signed
+  request whose signature is `request_signature`, with the answer's
+  `X-Qory-Configuration` and `X-Qory-Run-Configuration` values, nil for a header the
+  answer does not carry. An answer to an enrolment is `enrolment_answer/3`'s.
+
+      iex> Apiary.Contract.SignedMessage.answer(404, "c2ln", "", nil, nil)
+      "qory-answer-ed25519-v1\n404\nc2ln\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"
+  """
+  @spec answer(100..599, String.t(), iodata, String.t() | nil, String.t() | nil) :: binary
+  def answer(status, request_signature, body, configuration, run_configuration)
+      when status in 100..599 and is_binary(request_signature) and
+             (is_binary(configuration) or is_nil(configuration)) and
+             (is_binary(run_configuration) or is_nil(run_configuration)) do
+    lines(@answer_tag, status, request_signature, body, configuration, run_configuration)
+  end
+
+  @doc ~S"""
+  enrolment_answer/3 is the answer string of an answer with `status` and `body` to the
+  enrolment whose `proof` is `proof`, exactly as the request carried it: under the
+  enrolment answers' own first line, with lines 5 and 6 empty.
+
+      iex> Apiary.Contract.SignedMessage.enrolment_answer(409, "cHJm", "")
+      "qory-enrol-answer-ed25519-v1\n409\ncHJm\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"
+  """
+  @spec enrolment_answer(100..599, String.t(), iodata) :: binary
+  def enrolment_answer(status, proof, body) when status in 100..599 and is_binary(proof),
+    do: lines(@enrolment_answer_tag, status, proof, body, nil, nil)
+
+  defp lines(tag, status, bound_to, body, configuration, run_configuration) do
+    IO.iodata_to_binary([
+      tag,
+      ?\n,
+      Integer.to_string(status),
+      ?\n,
+      bound_to,
+      ?\n,
+      Base.encode16(:crypto.hash(:sha256, body), case: :lower),
+      ?\n,
+      configuration || "",
+      ?\n,
+      run_configuration || ""
+    ])
+  end
+end

@@ -11,14 +11,16 @@ defmodule ApiaryWeb.Routes do
       public_routes()
       account_routes()
       visitor_routes()
+      instance_routes()
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
-    `:contract` (a signed request of the server contract) and `:path_scope` (the reserved
-    names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
+    `:contract` (a signed request of the server contract), `:contract_limited` (the same,
+    held to the key's rate limit) and `:path_scope` (the reserved names,
+    `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
     pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
-    `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+    `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.
   - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
     Storybook), where `:dev_routes` is set and the storybook's dependency, a development
     one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
@@ -27,6 +29,9 @@ defmodule ApiaryWeb.Routes do
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
   - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
     `live_session :current_user`, with the session's controller routes.
+  - `instance_routes/1`: the Instance level's pages under `/instance`, behind sign-in, in
+    the `live_session :instance`; each page checks its own access. Before
+    `organisation_routes/1`, whose `/:org` would take `/instance`.
   - `organisation_routes/1`: the organisation's pages under `/:org/…` and a workspace's
     under `/:org/:workspace/…`, in the `live_session :workspace`, with the palette's
     answers (`/:org/jump`, `/:org/:workspace/jump`) and a run's raw log beside them,
@@ -35,9 +40,9 @@ defmodule ApiaryWeb.Routes do
     the second of an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
     `test/apiary_web/reserved_slugs_test.exs` holds both lists to the router's routes.
 
-  The three route macros that hold a `live_session` take a `do` block, the caller's routes
+  The four route macros that hold a `live_session` take a `do` block, the caller's routes
   in that `live_session`, with its `on_mount` hooks and pipelines: after the core's in
-  `:require_authenticated_user` and `:current_user`, and in `:workspace` after the
+  `:require_authenticated_user`, `:current_user` and `:instance`, and in `:workspace` after the
   organisation's own pages and before `/:org/:workspace`, so that an organisation page of
   the caller's is not taken for a workspace. The block is wrapped in
   `scope "/", alias: false`, so it names its modules in full:
@@ -102,10 +107,17 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Lingo
       end
 
-      # A request of the server contract, signed with an access key.
+      # A request of the server contract, signed with a node's access key: discovery.
       pipeline :contract do
         plug :accepts, ["json"]
         plug ApiaryWeb.Contract.SignedRequest
+      end
+
+      # The same, for the events endpoint and the run configuration, which a key's rate
+      # limit holds.
+      pipeline :contract_limited do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest, rate_limit: true
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -146,22 +158,40 @@ defmodule ApiaryWeb.Routes do
         get "/qory-configuration", ConfigurationController, :show
       end
 
+      # Enrolment: no access key yet, so no signed request; the code and the proof
+      # authenticate it (`ApiaryWeb.Contract.EnrolmentController`).
+      scope "/.well-known", ApiaryWeb.Contract do
+        pipe_through :api
+
+        post "/qory-enrolment", EnrolmentController, :create
+      end
+
       scope "/v1", ApiaryWeb.Contract do
-        pipe_through :contract
+        pipe_through :contract_limited
 
         post "/events", EventsController, :create
         get "/run-configuration", RunConfigurationController, :show
       end
 
-      # LiveDashboard and the Swoosh mailbox preview, in development only.
+      # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts
+      # and styles carry the request's nonce (`ApiaryWeb.ContentSecurityPolicy`), and they
+      # may frame their own pages, as the mailbox frames a message.
       if Application.compile_env(:apiary, :dev_routes) do
         import Phoenix.LiveDashboard.Router
 
-        scope "/dev" do
-          pipe_through :browser
+        pipeline :dev_tools do
+          plug ApiaryWeb.ContentSecurityPolicy, allow_frames: :self
+        end
 
-          live_dashboard "/dashboard", metrics: ApiaryWeb.Telemetry
-          forward "/mailbox", Plug.Swoosh.MailboxPreview
+        scope "/dev" do
+          pipe_through [:browser, :dev_tools]
+
+          live_dashboard "/dashboard",
+            metrics: ApiaryWeb.Telemetry,
+            csp_nonce_assign_key: :csp_nonce
+
+          forward "/mailbox", Plug.Swoosh.MailboxPreview,
+            csp_nonce_assign_key: %{script: :csp_nonce, style: :csp_nonce}
         end
       end
     end
@@ -181,6 +211,16 @@ defmodule ApiaryWeb.Routes do
         if Application.compile_env(:apiary, :dev_routes) do
           import PhoenixStorybook.Router
 
+          # The library's own pipeline, and the storybook may frame its own pages (a story
+          # in an iframe container); its scripts carry the request's nonce
+          # (`ApiaryWeb.ContentSecurityPolicy`).
+          pipeline :storybook_browser do
+            plug :accepts, ["html"]
+            plug :fetch_session
+            plug :protect_from_forgery
+            plug ApiaryWeb.ContentSecurityPolicy, allow_frames: :self
+          end
+
           scope "/" do
             storybook_assets("/dev/storybook/assets")
           end
@@ -188,7 +228,9 @@ defmodule ApiaryWeb.Routes do
           scope "/" do
             live_storybook("/dev/storybook",
               backend_module: ApiaryWeb.Storybook,
-              assets_path: "/dev/storybook/assets"
+              assets_path: "/dev/storybook/assets",
+              pipeline: false,
+              csp_nonce_assign_key: :csp_nonce
             )
           end
         end
@@ -218,11 +260,11 @@ defmodule ApiaryWeb.Routes do
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
-            # A person's settings, one section a page: Profile (email, password, deleting the
+            # A person's settings, one section a page: Account (email, password, deleting the
             # account) and Preferences.
             live "/users/settings", UserLive.Settings, :edit
             live "/users/settings/preferences", UserLive.Settings, :preferences
-            # The confirmation of deleting one's own account, a modal over Profile.
+            # The confirmation of deleting one's own account, in place in Account's danger zone.
             live "/users/settings/delete", UserLive.Settings, :delete
             live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
             # A user's organisations: each in use, and those marked for deletion that they
@@ -269,6 +311,43 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
+  instance_routes/1 defines the Instance level's pages, under `/instance`: what the
+  installation as a whole holds, for the instance's admins (`Apiary.Access.instance_admin?/1`)
+  and whoever else the edition lets in. There is no organisation in the path; the scope
+  carries the workspace the person opened last, as on their own pages, so the sidebar
+  stays the one they came from and the Instance's sections open beside it
+  (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
+  block's routes go into the `live_session :instance`, after the core's. The core's one
+  page here is Instance settings › Configuration
+  (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
+  sends on to the first section the person may open, and is not found for whoever may
+  open none (`ApiaryWeb.InstanceController`).
+  """
+  defmacro instance_routes(opts \\ [], block \\ []) do
+    routes =
+      quote do
+        scope "/", ApiaryWeb do
+          pipe_through [:browser, :require_authenticated_user]
+
+          # The level itself: sent on to the first of its sections the person may open.
+          get "/instance", InstanceController, :show
+
+          live_session :instance,
+            on_mount: [
+              {ApiaryWeb.UserAuth, :require_authenticated},
+              {ApiaryWeb.UserAuth, :load_organisation}
+            ] do
+            # Instance › Configuration: what whoever runs the server set, read only.
+            live "/instance/configuration", InstanceLive.Configuration, :show
+            unquote(@block)
+          end
+        end
+      end
+
+    compose(routes, opts, block)
+  end
+
+  @doc """
   organisation_routes/1 defines the organisation's pages and its workspaces', and the
   raw log of a run; the block's routes go into the `live_session :workspace`, after the
   organisation's own pages and before the workspace's.
@@ -299,18 +378,18 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/switch/:section", SwitchController, :show
         end
 
-        # The paths of pages that moved, under the settings or to a new name, sent on to
-        # where they are now, so a link someone kept still lands. Before the pages, whose
-        # `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
+        # The paths of pages that moved, under the settings, out of them or to a new name,
+        # sent on to where they are now, so a link someone kept still lands. Before the
+        # pages, whose `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
         # too; its page's glob sends that one on (`TargetLive.Show`).
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser]
 
           get "/:org/activity", MovedController, :show
+          get "/:org/settings/audit-log", MovedController, :show
           get "/:org/members", MovedController, :show
           get "/:org/members/*rest", MovedController, :show
-          get "/:org/:workspace/keys", MovedController, :show
-          get "/:org/:workspace/keys/*rest", MovedController, :show
+          get "/:org/:workspace/settings/retention", MovedController, :show
           get "/:org/:workspace/connections", MovedController, :show
           get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
         end
@@ -329,24 +408,25 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
+              # The organisation's audit trail, a page of its sidebar beside the overview,
+              # for the readers `audit.read` allows. It was a section of the settings,
+              # `/settings/audit-log`, which sends on here (`ApiaryWeb.MovedController`).
+              live "/audit-log", ActivityLive, :index
               # Its settings, one section a page, the list of them beside it
               # (`ApiaryWeb.SettingsComponents`). General is the settings' own path.
               live "/settings", SettingsLive, :organisation
               live "/settings/people", MemberLive.Index, :index
               live "/settings/people/invite", MemberLive.Index, :invite
               live "/settings/people/:id/remove", MemberLive.Index, :remove
-              # The confirmation of suspending a membership, a modal over the people.
+              # Removing and suspending a membership confirm on the member's row.
               live "/settings/people/:id/suspend", MemberLive.Index, :suspend
               live "/settings/workspaces", SettingsLive, :workspaces
-              # The confirmation of deleting a workspace, a modal over the workspaces.
+              # The confirmation of deleting a workspace, on its row of the workspaces.
               live "/settings/workspaces/:workspace_id/delete", SettingsLive, :delete_workspace
-              # The confirmation of deleting the organisation, a modal over General, whose
-              # danger zone opens it; the second path opens the same.
+              # The confirmation of deleting the organisation, in place in General's danger
+              # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
               live "/settings/delete", SettingsLive, :delete_organisation
-              # The organisation's audit trail, a section of its settings, for the readers
-              # `audit.read` allows.
-              live "/settings/audit-log", ActivityLive, :index
             end
 
             unquote(@block)
@@ -357,11 +437,50 @@ defmodule ApiaryWeb.Routes do
               # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
-              # The targets the workspace's runs changed, and one target's page: its path
-              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
-              # paths follow the tab (`…/-/policy/history`).
+              # The targets the workspace's runs changed, and one target's page: its
+              # address is the glob, the target's path alone, its system before the path
+              # only where two targets of the workspace share the path (question 9, answer
+              # A; `ApiaryWeb.TargetComponents.target_path/5`). Its tabs follow a `-`
+              # segment (`…/-/policy`), and a tab's own paths follow the tab
+              # (`…/-/policy/history`). An old address with the system of an unshared path
+              # is sent on to the path alone; the old Runs and Network access tabs to the
+              # lists narrowed to the target (`ApiaryWeb.TargetLive.Show`).
               live "/targets", TargetLive.Index, :index
-              live "/targets/:system/*path", TargetLive.Show, :show
+              live "/targets/*glob", TargetLive.Show, :show
+              # The workspace's nodes and node pools: the list, with New node and New node
+              # pool each a page of its own, and a node's page, Overview, Access key and
+              # Settings, its deletion confirmed in place in Settings, and clearing an
+              # instance in place in Overview. `:node_id` is the node's public id; an
+              # instance is named by its instance id. The sidebar's Nodes leads here.
+              live "/nodes", NodeLive.Index, :index
+              live "/nodes/new", NodeLive.Index, :new
+              live "/nodes/new-pool", NodeLive.Index, :new_pool
+              live "/nodes/:node_id", NodeLive.Show, :overview
+              live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
+              live "/nodes/:node_id/settings", NodeLive.Show, :settings
+              live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
+              # A node's Access key tab: its keys and its outstanding enrolment codes;
+              # generating a key in the browser and making a code, each a page of its own; and each act on a key or a code confirmed in place,
+              # at a path of its own; an active key's runner file, and the variables of a
+              # key just made in the browser, each a page of its own. A key is named by its
+              # key id (`ak_…`), a code by its row's id: never by the code, nor a secret.
+              live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
+              live "/nodes/:node_id/access-key/generate", NodeLive.AccessKey, :generate
+              live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
+              live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
+
+              live "/nodes/:node_id/access-key/keys/:key_id/runner-file",
+                   NodeLive.AccessKey,
+                   :runner_file
+
+              live "/nodes/:node_id/access-key/keys/:key_id/generated",
+                   NodeLive.AccessKey,
+                   :generated
+
+              live "/nodes/:node_id/access-key/codes/:code_id/revoke",
+                   NodeLive.AccessKey,
+                   :revoke_code
+
               # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
               # run's subject, the id the runner prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline
@@ -370,7 +489,7 @@ defmodule ApiaryWeb.Routes do
               live "/runs/:run_id/details", RunLive.Show, :details
               # The security policy: the workspace's baseline; a target's view of it is
               # the Policy tab of the target's page. Tabs, filters, the opened change, the
-              # compared version and the export modal are in the URL.
+              # compared version and the export page are in the URL.
               live "/policy", PolicyLive.Show, :rules
               live "/policy/targets", PolicyLive.Show, :targets
               live "/policy/history", PolicyLive.Show, :history
@@ -379,13 +498,79 @@ defmodule ApiaryWeb.Routes do
               live "/policy/versions/:n/export", PolicyLive.Show, :export
               # Its settings, one section a page, as the organisation's.
               live "/settings", SettingsLive, :workspace
-              live "/settings/keys", AccessKeyLive.Index, :index
-              live "/settings/keys/new", AccessKeyLive.Index, :new
-              live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
-              live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
-              live "/settings/retention", SettingsLive, :retention
-              # The confirmation of deleting this workspace, a modal over General, whose
-              # danger zone opens it; the second path opens the same.
+              # Who reaches the workspace, read only: membership is the organisation's.
+              live "/settings/people", MemberLive.Workspace, :index
+              live "/settings/runs", SettingsLive, :runs
+              # The stored secrets and the variables, one section of two views, with the
+              # `secrets` feature; each form a page and each confirmation on its row, at
+              # a path of its own. A secret is named by its public id (`sec_…`), a value by
+              # its value id; the one value without a value id is the secret's
+              # `change-value`.
+              live "/settings/secrets", SecretLive.Index, :secrets
+              live "/settings/secrets/new", SecretLive.Index, :new_secret
+              live "/settings/secrets/:id/edit", SecretLive.Index, :edit_secret
+              live "/settings/secrets/:id/add-value", SecretLive.Index, :add_value
+              live "/settings/secrets/:id/change-value", SecretLive.Index, :change_value
+
+              live "/settings/secrets/:id/values/:value_id/change",
+                   SecretLive.Index,
+                   :change_value
+
+              live "/settings/secrets/:id/values/:value_id/rename",
+                   SecretLive.Index,
+                   :rename_value
+
+              live "/settings/secrets/:id/values/:value_id/delete",
+                   SecretLive.Index,
+                   :delete_value
+
+              live "/settings/secrets/:id/delete", SecretLive.Index, :delete_secret
+              live "/settings/variables", SecretLive.Index, :variables
+              live "/settings/variables/new", SecretLive.Index, :new_variable
+              live "/settings/variables/:id/change", SecretLive.Index, :change_variable
+              live "/settings/variables/:id/lock", SecretLive.Index, :lock_variable
+              live "/settings/variables/:id/unlock", SecretLive.Index, :unlock_variable
+              live "/settings/variables/:id/delete", SecretLive.Index, :delete_variable
+              live "/settings/variables/:id/targets", SecretLive.Index, :variable_targets
+              # The runtimes, integrations and services set up in the workspace, and its
+              # own service definitions, with the `secrets` feature: the list and its
+              # forms; a release asked for, by its id, before it is added; a service
+              # definition by its public id (`svc_…`); and one runtime, integration or
+              # service by its public id (`con_…`), its tabs and acts after it. The fixed
+              # paths go first, so that `:id` never takes them.
+              live "/settings/integrations", IntegrationLive.Index, :index
+              live "/settings/integrations/add", IntegrationLive.Index, :add_integration
+              live "/settings/integrations/new-runtime", IntegrationLive.Index, :new_runtime
+              live "/settings/integrations/new-service", IntegrationLive.Index, :new_service
+
+              live "/settings/integrations/releases/:release_id",
+                   IntegrationLive.Release,
+                   :show
+
+              live "/settings/integrations/definitions/new", IntegrationLive.Definition, :new
+              live "/settings/integrations/definitions/:id", IntegrationLive.Definition, :show
+
+              live "/settings/integrations/definitions/:id/edit",
+                   IntegrationLive.Definition,
+                   :edit
+
+              live "/settings/integrations/definitions/:id/delete",
+                   IntegrationLive.Definition,
+                   :delete
+
+              live "/settings/integrations/:id", IntegrationLive.Show, :overview
+              live "/settings/integrations/:id/targets", IntegrationLive.Show, :targets
+              live "/settings/integrations/:id/targets/add", IntegrationLive.Show, :add_target
+
+              live "/settings/integrations/:id/targets/:target_id/remove",
+                   IntegrationLive.Show,
+                   :remove_target
+
+              live "/settings/integrations/:id/settings", IntegrationLive.Show, :settings
+              live "/settings/integrations/:id/version", IntegrationLive.Show, :version
+              live "/settings/integrations/:id/delete", IntegrationLive.Show, :delete
+              # The confirmation of deleting this workspace, in place in General's danger
+              # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :workspace_danger
               live "/settings/delete", SettingsLive, :delete_this_workspace
             end

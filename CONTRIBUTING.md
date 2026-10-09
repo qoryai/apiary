@@ -38,8 +38,7 @@ Apache License, Version 2.0 (Licence, below).
 
 Opening a pull request against this repository is your acceptance of the agreement, for that
 contribution and every later one. The pull request is the record of your acceptance. Read
-[CLA.md](CLA.md) before your first pull request. A signing step on the pull request may be
-added later; it will not change the terms.
+[CLA.md](CLA.md) before your first pull request.
 
 The agreement names 8wonders GmbH with successors-and-assigns wording, so that if the
 project moves into a dedicated entity, existing grants travel with it and nobody signs again.
@@ -51,9 +50,9 @@ Version 2.0 (see [LICENSE](LICENSE)) in addition to the CLA grant above.
 
 ## Development
 
-The toolchain is pinned in `mise.toml`; `mise install` provides it. Erlang 29 and Elixir
-1.20. Postgres must be reachable on `localhost:5432` as user `postgres` without a
-password; that is the one thing mise does not provide. The development database is
+The toolchain is pinned in `mise.toml`; `mise install` provides it. Erlang 29, Elixir 1.20
+and Node 24, which runs the browser scripts' tests (no npm). Postgres must be reachable on
+`localhost:5432` as user `postgres` without a password; that is the one thing mise does not provide. The development database is
 `apiary_dev`; to use another, set `DATABASE_URL` (`ecto://postgres@localhost/my_database`)
 in `mise.local.toml`, which is not tracked, or in the shell.
 
@@ -65,11 +64,12 @@ mix compile --warnings-as-errors
 mix docs --warnings-as-errors      # the guides and the module reference, into priv/static/docs
 mix gettext.extract --merge        # after changing a visible string; see docs/lingo.md
 mix precommit                      # the above plus deps.unlock --unused and the Gettext check; run it before a pull request
+node --test 'assets/js/test/*.test.mjs'  # the browser scripts' tests, under Node's WebCrypto
 mix phx.server                     # http://localhost:4100
 ```
 
 CI (`.github/workflows/ci.yml`) runs the formatting check, the compile with warnings as
-errors and the tests, then `MIX_ENV=prod mix assets.deploy` to prove the assets still build. Links the application generates, magic links and invitations, are built for
+errors, the browser scripts' tests and the tests, then `MIX_ENV=prod mix assets.deploy` to prove the assets still build. Links the application generates, magic links and invitations, are built for
 `PHX_HOST`, default `localhost`; when a local reverse proxy serves the dev server under
 another name, set `PHX_HOST` (or a full `PUBLIC_URL`) in `mise.local.toml`, which is not
 tracked, or in the shell. Emails in development go to `http://localhost:4100/dev/mailbox`.

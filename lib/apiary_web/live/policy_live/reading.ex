@@ -71,49 +71,6 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     end
   end
 
-  @doc "Reads a credential: a name and an optional argument."
-  def credential(form, own) do
-    name = String.trim(form["name"] || "")
-    argument = String.trim(form["argument"] || "")
-
-    cond do
-      name == "" ->
-        reading(:hint, [])
-
-      not Grammar.credential_name?(name) ->
-        reading(
-          :error,
-          [
-            gettext(
-              "A name is 1 to 64 lower-case letters, digits, dots, dashes or underscores, and starts with a letter or digit."
-            )
-          ],
-          invalid: [:name]
-        )
-
-      argument != "" and not Grammar.argument?(argument) ->
-        reading(:error, [gettext("An argument is at most 256 characters.")], invalid: [:argument])
-
-      existing = Enum.find(own, &(&1.kind == "credential" and &1.name == name)) ->
-        if (existing.argument || "") == argument and existing.action == "allow" do
-          reading(:error, rich_gettext("%{name} is already named here.", name: {:m, name}),
-            invalid: [:name]
-          )
-        else
-          reading(
-            :note,
-            rich_gettext("%{name} is named here already. Adding it replaces its argument.",
-              name: {:m, name}
-            ),
-            button: gettext("Replace credential")
-          )
-        end
-
-      true ->
-        reading(:ok, [])
-    end
-  end
-
   @doc "The paths of a text field: separated by spaces, commas or lines."
   def split(nil), do: []
   def split(text), do: text |> String.split(~r/[\s,]+/u, trim: true) |> Enum.uniq()

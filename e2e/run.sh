@@ -77,9 +77,14 @@ export PORT="$E2E_PORT"
 export PUBLIC_URL="http://127.0.0.1:$E2E_PORT"
 export PHX_SERVER=true
 export MAIL_TO_LOG=true
+# Each secret is a fresh random value of its own, never derived from another. The signing
+# secret is the seed of the key the instance signs its answers with, the key the node pins
+# as apiary_public_key; the instance refuses at boot the runner contract's fixture seeds,
+# whose keys qory refuses as a pin.
 SECRET_KEY_BASE="$(openssl rand -base64 48)"
-CLOAK_KEY="$(openssl rand -base64 32)"
-export SECRET_KEY_BASE CLOAK_KEY
+APIARY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
+APIARY_SIGNING_SECRET="$(openssl rand -base64 32)"
+export SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET APIARY_SIGNING_SECRET
 
 say "compiling the test instance"
 "${mix[@]}" compile
@@ -100,8 +105,10 @@ one_run() {
   cleanup
 
   mkdir -p "$E2E_WORK/config/qory" "$E2E_WORK/tls"
-  # The node's own qory configuration: how the runtime is started, and the part of the
-  # runner file that is not the server's. The scenario writes the file, server block first.
+  # The node's qory configuration: how the runtime is started, and the part of the runner
+  # file that is not the server's. The scenario writes the file, server block first, and
+  # the access key's secret beside it, access-key-secret, in this directory, mode 0700;
+  # node/prepare.sh copies the three into the node.
   cat >"$E2E_WORK/config/qory/qory.yaml" <<YAML
 apiVersion: qory.dev/v1alpha1
 harness:

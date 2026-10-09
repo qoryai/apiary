@@ -70,6 +70,30 @@ defmodule ApiaryWeb.ConnCase do
   end
 
   @doc """
+  The breadcrumb's segments after the place, of a page (its view or its HTML), each
+  `{words, href}`: href is nil where the segment is no link, as the page itself is. The
+  place is the organisation and the workspace on a workspace's page (`:workspace`), the
+  organisation alone on an organisation's (`:organisation`).
+  """
+  def crumbs(page, place \\ :workspace)
+
+  def crumbs(%Phoenix.LiveViewTest.View{} = view, place),
+    do: crumbs(Phoenix.LiveViewTest.render(view), place)
+
+  def crumbs(html, place) when is_binary(html) do
+    html
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#breadcrumb ol.q-trail > li")
+    |> Enum.drop(if(place == :organisation, do: 1, else: 2))
+    |> Enum.map(fn item ->
+      segment = LazyHTML.query(item, ".q-trail-link")
+      words = segment |> LazyHTML.text() |> String.replace(~r/\s+/, " ") |> String.trim()
+      href = segment |> LazyHTML.filter("a") |> LazyHTML.attribute("href") |> List.first()
+      {words, href}
+    end)
+  end
+
+  @doc """
   Logs the given `user` into the `conn`.
 
   It returns an updated `conn`.

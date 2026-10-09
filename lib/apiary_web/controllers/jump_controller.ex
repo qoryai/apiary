@@ -3,8 +3,11 @@ defmodule ApiaryWeb.JumpController do
   What the palette of the top bar (Search or jump to, `ApiaryWeb.Layouts`) finds for what
   the reader typed. Not a page: JSON the `Palette` hook lists.
 
-      GET /:org/:workspace/jump?q=<text>    on a workspace's pages
-      GET /:org/jump?q=<text>               on an organisation's and a person's
+      GET /:org/:workspace/jump?q=<text>    where the sidebar is a workspace's
+      GET /:org/jump?q=<text>               where it is an organisation's or the person's
+
+  The palette asks the sidebar's level (`ApiaryWeb.Layouts.app/1`): a person's own page or
+  an Instance page shown beside the workspace the person came from asks that workspace.
 
   The answer is `{"groups": [{"label", "items": [{"label", "detail", "href", "icon"}]}],
   "status", "empty"}`, the groups in the order they are shown, none left empty, every word
@@ -14,14 +17,16 @@ defmodule ApiaryWeb.JumpController do
 
   - **Go to**: the pages of the navigation the reader may open (`ApiaryWeb.Layouts.
     palette_entries/1`), every section of each Settings they open
-    (`ApiaryWeb.SettingsComponents.sections/2`) and Preferences' theme and shortcuts,
+    (`ApiaryWeb.SettingsComponents.sections/2`, in their order, after it), Preferences'
+    theme and shortcuts, and
+    the Instance's sections the reader may open (`ApiaryWeb.Layouts.instance_sections/1`),
     whose label or other words (members for People) hold the text; all of them for no
     text. A label says whose the page is where a workspace's and an organisation's share a
     name: Workspace overview, Organisation settings › People.
   - **Actions** also hold, for what is typed, the deletions the reader may take, each at
     its confirm's path.
   - **Targets**: the workspace's targets by `system/path` (`Apiary.Runs.search_targets/3`).
-  - **Runs**: by the start of their id, a whole id or a run page's address, or by task
+  - **Runs**: by the start of their id, a whole id or a run page's address, or by title
     (`Apiary.Runs.search_runs/3`).
   - **Places**: the organisations and workspaces the reader reaches, by name and slug.
   - **Actions**: what New offers here (`ApiaryWeb.Layouts.new_entries/2`), on a
@@ -32,7 +37,7 @@ defmodule ApiaryWeb.JumpController do
   the organisation's and the person's, never a workspace's, though the scope carries the
   one opened last. Targets and runs are listed only to a reader of the record
   (`run.read`). The palette belongs to the console's record, `observability`, which every
-  instance has. What a runner reported (a path, a task) is text in
+  instance has. What a runner reported (a path, a title) is text in
   the JSON and the hook writes it as text.
   """
   use ApiaryWeb, :controller
@@ -91,29 +96,57 @@ defmodule ApiaryWeb.JumpController do
     group(gettext("Go to"), items)
   end
 
-  # The pages of the navigation, each Settings followed by its sections the navigation
-  # does not list (Retention, Workspaces) and Preferences by its own parts, each once. A
-  # scope's General is its Settings.
+  # The pages of the navigation, each Settings followed by its sections in the second
+  # column's order (`SettingsComponents.sections/2`), and Preferences by its own parts,
+  # each once: a section is the navigation's entry where both lead to one path (an
+  # organisation's People), listed in its place among the sections, not where the
+  # navigation has it. A scope's General is its Settings.
   defp destinations(scope) do
     entries = Layouts.palette_entries(scope)
-    keys = MapSet.new(entries, fn {entry, _path} -> {entry.place, entry.key} end)
+    navigation = Map.new(entries, fn {entry, path} -> {path, entry} end)
 
-    Enum.flat_map(entries, fn {entry, _path} = pair ->
-      [pair | after_entry(entry, scope, keys)]
-    end)
+    sections =
+      for {%Entry{section: :foot, place: place}, _path} <- entries,
+          place in [:workspace, :organisation],
+          into: %{},
+          do: {place, settings_sections(scope, place, navigation)}
+
+    listed = MapSet.new(for {_place, list} <- sections, {_entry, path} <- list, do: path)
+
+    Enum.flat_map(entries, fn
+      {%Entry{section: :settings}, path} = pair ->
+        if MapSet.member?(listed, path), do: [], else: [pair]
+
+      {entry, _path} = pair ->
+        [pair | after_entry(entry, sections)]
+    end) ++ instance(scope)
   end
 
-  defp after_entry(%Entry{section: :foot, place: place}, scope, keys)
-       when place in [:workspace, :organisation] do
+  # A Settings' sections but General, which is the Settings itself, in their order: the
+  # navigation's entry of the Settings where it leads to the same path, else the section.
+  defp settings_sections(scope, place, navigation) do
     for %Entry{} = section <- SettingsComponents.sections(scope, place),
-        section.key not in [:general, :organisation],
-        not MapSet.member?(keys, {place, settings_key(section.key)}),
-        do:
-          {%{section | section: :settings, place: place},
-           Entry.path(section, scope.organisation, scope.workspace)}
+        section.key not in [:general, :organisation] do
+      path = Entry.path(section, scope.organisation, scope.workspace)
+
+      case Map.get(navigation, path) do
+        %Entry{section: :settings} = entry -> {entry, path}
+        _none -> {%{section | section: :settings, place: place}, path}
+      end
+    end
   end
 
-  defp after_entry(%Entry{key: :user_preferences}, _scope, _keys) do
+  # The Instance's sections the reader may open (`ApiaryWeb.Layouts.instance_sections/1`).
+  defp instance(scope) do
+    for %Entry{} = entry <- Layouts.instance_sections(scope),
+        do: {entry, Entry.path(entry, scope.organisation, scope.workspace)}
+  end
+
+  defp after_entry(%Entry{section: :foot, place: place}, sections)
+       when is_map_key(sections, place),
+       do: Map.fetch!(sections, place)
+
+  defp after_entry(%Entry{key: :user_preferences}, _sections) do
     [
       {%Entry{
          key: :theme,
@@ -134,11 +167,7 @@ defmodule ApiaryWeb.JumpController do
     ]
   end
 
-  defp after_entry(_entry, _scope, _keys), do: []
-
-  # The settings' People is the navigation's members.
-  defp settings_key(:people), do: :members
-  defp settings_key(key), do: key
+  defp after_entry(_entry, _sections), do: []
 
   # Entries of the same name in two scopes say whose they are: a workspace's Overview,
   # Settings and Policy, an organisation's, and an edition's entry by its `long_label`; a
@@ -164,6 +193,9 @@ defmodule ApiaryWeb.JumpController do
   defp go_to_label(%Entry{section: :preferences, label: label}),
     do: gettext("Preferences › %{page}", page: label)
 
+  defp go_to_label(%Entry{place: :instance, label: label}),
+    do: gettext("Instance settings › %{page}", page: label)
+
   defp go_to_label(%Entry{label: label}), do: label
 
   # The other words a reader may look for a page by.
@@ -171,23 +203,30 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("members users invitations")
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
-  defp also(%Entry{key: :retention}), do: gettext("prune keep")
+  defp also(%Entry{key: :nodes}), do: gettext("access keys machines enrolment pool")
+  defp also(%Entry{key: :runs, section: :settings}), do: gettext("retention prune keep")
+  defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")
   defp also(%Entry{section: :foot}), do: gettext("general name slug")
   defp also(%Entry{}), do: ""
 
   defp where(%Entry{place: :workspace}, scope), do: scope.workspace.name
   defp where(%Entry{place: :organisation}, scope), do: scope.organisation.name
+  defp where(%Entry{place: :instance}, _scope), do: gettext("Instance settings")
   defp where(%Entry{}, _scope), do: gettext("Your account")
 
   defp targets(%{workspace: %{} = workspace} = scope, text) when text != "" do
     items =
       if Access.can?(scope, :"run.read", workspace) do
-        for target <- Runs.search_targets(scope, text, @per_group) do
+        targets = Runs.search_targets(scope, text, @per_group)
+        # Each at its address: one read of the paths listed.
+        shared = Runs.shared_paths(scope, Enum.map(targets, & &1.path))
+
+        for target <- targets do
           item(
             target.path,
             target.system,
-            ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path),
+            ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path, [], shared),
             "hero-folder"
           )
         end
@@ -220,10 +259,14 @@ defmodule ApiaryWeb.JumpController do
 
   defp runs(_scope, _text), do: group(gettext("Runs"), [])
 
-  defp run_label(%{task: task, run_id: run_id}) when is_binary(task) and task != "",
-    do: "#{ApiaryWeb.RunComponents.short_id(run_id)} · #{task}"
+  defp run_label(run) do
+    short_id = ApiaryWeb.RunComponents.short_id(run.run_id)
 
-  defp run_label(%{run_id: run_id}), do: ApiaryWeb.RunComponents.short_id(run_id)
+    case ApiaryWeb.RunComponents.given_title(run) do
+      nil -> short_id
+      title -> "#{short_id} · #{title}"
+    end
+  end
 
   defp places(%{user: user}, text) when text != "" do
     items =

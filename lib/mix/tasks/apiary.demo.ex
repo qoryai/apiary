@@ -11,11 +11,11 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   Every `priv/demo/*/events.jsonl` is one run, one CloudEvent of the server contract per
   line, all of it synthetic. `--file` replays one file instead. The run lands in the
-  workspace of the access key named by `--key`, a key id; without it, in the first
-  workspace that has a key that is not revoked, under its newest such key: on a new
-  instance, the Main workspace of the organisation the first user signed up with, once
-  they have created a key there. Signing up needs no setting: the instance's first
-  sign-up is always open.
+  workspace of the access key named by `--key`, a node's key id, on that key's node;
+  without it, in the first workspace that has a key that is not revoked, under its newest
+  such key: on a new instance, the Main workspace of the organisation the first
+  user signed up with, once they have added a key to a node there. Signing up needs no
+  setting: the instance's first sign-up is always open.
 
   Nothing is inserted from here. A file goes the way a delivery goes: cut into batches of
   20 events, each parsed by `Apiary.Runs.Batch` and stored by `Apiary.Runs.Ingest`, the
@@ -27,8 +27,8 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   Once the runs are in, a workspace that has no security policy yet is given one, through
   `Apiary.Policy` as a page would and in the name of the workspace's first owner: enforce,
-  a baseline of hosts, one held to paths, a locked deny, a credential, and in the target
-  `git.example.com/acme/shop` an added host, a disabled one, an allow the lock
+  a baseline of hosts, one held to paths, a locked deny, and in the target
+  `codeberg.org/acme/shop` an added host, a disabled one, an allow the lock
   overrides and a mode of its own (observe, under a workspace that enforces); written rule
   by rule, so there are versions and a history to look at, and the workspace is a managed
   one, serving its run configuration. A workspace whose policy anybody has changed, even
@@ -119,7 +119,7 @@ defmodule Mix.Tasks.Apiary.Demo do
       shop =
         Repo.get_by(Target,
           workspace_id: workspace_id,
-          system: "git.example.com",
+          system: "codeberg.org",
           path: "acme/shop"
         )
 
@@ -131,11 +131,10 @@ defmodule Mix.Tasks.Apiary.Demo do
           &Policy.allow(&1, nil, %{host: "registry.example"}),
           &Policy.allow(&1, nil, %{host: "metrics.example"}),
           &Policy.allow(&1, nil, %{
-            host: "git.example.com",
+            host: "codeberg.org",
             paths: ["/acme/shop.git/info/refs", "/acme/shop.git/git-upload-pack"]
           }),
           &Policy.deny(&1, nil, %{host: "telemetry.llm.example", locked: true}),
-          &Policy.allow(&1, nil, %{kind: "credential", name: "model"}),
           &Policy.set_mode(&1, "enforce"),
           &remove(&1, "metrics.example")
         ] ++
@@ -144,11 +143,6 @@ defmodule Mix.Tasks.Apiary.Demo do
               &Policy.allow(&1, shop, %{host: "api.example"}),
               &Policy.deny(&1, shop, %{host: "registry.example"}),
               &Policy.allow(&1, shop, %{host: "telemetry.llm.example"}),
-              &Policy.allow(&1, shop, %{
-                kind: "credential",
-                name: "product",
-                argument: "acme/shop"
-              }),
               # The workspace enforces; this target is still being watched.
               &Policy.set_mode(&1, shop, "observe")
             ]
@@ -314,44 +308,30 @@ defmodule Mix.Tasks.Apiary.Demo do
   end
 
   @doc false
-  # The key a replay signs with: `--key`'s, or the newest active key of the first
-  # workspace. Public for the tests.
+  # The key a replay posts under, as a verified request carries it, with its workspace and
+  # node: `--key`'s, or the newest key, neither revoked nor of a deleted node, of
+  # the first workspace that has one. Public for the tests.
   def access_key!(nil) do
     if not Repo.exists?(Workspace), do: Mix.raise("there is no workspace yet: sign up first")
 
-    workspace =
-      Repo.one(
-        from h in Workspace,
-          as: :workspace,
-          where:
-            exists(
-              from k in AccessKey,
-                where: k.workspace_id == parent_as(:workspace).id and is_nil(k.revoked_at)
-            ),
-          order_by: [asc: h.inserted_at, asc: h.id],
-          limit: 1
-      )
-
-    if is_nil(workspace),
-      do: Mix.raise("no workspace has an access key that is not revoked: create one")
-
-    key =
+    key_id =
       Repo.one(
         from k in AccessKey,
-          where: k.workspace_id == ^workspace.id and is_nil(k.revoked_at),
-          order_by: [desc: k.inserted_at, desc: k.id],
-          limit: 1
-      )
+          join: w in assoc(k, :workspace),
+          join: n in assoc(k, :node),
+          where: is_nil(k.revoked_at) and is_nil(n.deleted_at),
+          order_by: [asc: w.inserted_at, asc: w.id, desc: k.inserted_at, desc: k.id],
+          limit: 1,
+          select: k.key_id
+      ) || Mix.raise("no workspace has an access key: add one to a node")
 
-    # As a verified key does (`AccessKeys.fetch_for_verification/1`), the key carries its
-    # workspace: its domain names a run's target.
-    %{key | workspace: workspace}
+    access_key!(key_id)
   end
 
   def access_key!(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
-      {:ok, access_key} -> access_key
-      :error -> Mix.raise("no access key #{key_id} that is not revoked")
+      {:ok, %AccessKey{} = access_key} -> access_key
+      _ -> Mix.raise("no access key #{key_id} that is not revoked")
     end
   end
 end

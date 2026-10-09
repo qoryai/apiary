@@ -10,10 +10,10 @@ defmodule Apiary.Policy.Effective do
 
   `entries` holds one `Apiary.Policy.Entry` per rule that took part, the level above's,
   the workspace's and the target's, each saying where it came from and whether it is in
-  force. `allow`, `deny`, `paths` and `credentials` are what the document says, in its
-  order: `deny` is what the runner denies in either mode, `allow` what it reaches under
+  force. `allow`, `deny` and `paths` are what the document says, in its order: `deny` is what the runner denies in either mode, `allow` what it reaches under
   `enforce`. `above` is the level above the workspace the rules were resolved under, nil
-  where there is none.
+  where there is none or where it carries variables only (`Apiary.Policy.Above`'s
+  `policy: false`).
   """
 
   alias Apiary.Policy.{Above, Entry}
@@ -26,8 +26,7 @@ defmodule Apiary.Policy.Effective do
           entries: [Entry.t()],
           allow: [String.t()],
           deny: [String.t()],
-          paths: %{optional(String.t()) => [String.t()]},
-          credentials: [%{required(:name) => String.t(), optional(:argument) => String.t()}]
+          paths: %{optional(String.t()) => [String.t()]}
         }
 
   defstruct mode: "observe",
@@ -37,6 +36,5 @@ defmodule Apiary.Policy.Effective do
             entries: [],
             allow: [],
             deny: [],
-            paths: %{},
-            credentials: []
+            paths: %{}
 end

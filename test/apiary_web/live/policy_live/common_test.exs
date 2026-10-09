@@ -58,4 +58,50 @@ defmodule ApiaryWeb.PolicyLive.CommonTest do
     assert Common.rule_param(" api.example ") == "api.example"
     for bad <- ["API.example", "a\0b", "", nil, %{}], do: assert(Common.rule_param(bad) == nil)
   end
+
+  describe "a change made while the policy still named credentials" do
+    # As the history holds one: a credential rule has a name and an argument, no host.
+    defp change(action, before, after_) do
+      %Apiary.Policy.Change{
+        action: action,
+        subject: "forge-token",
+        before: %{"mode" => "observe", "rules" => before},
+        after: %{"mode" => "observe", "rules" => after_}
+      }
+    end
+
+    @credential %{
+      "kind" => "credential",
+      "action" => "allow",
+      "host" => nil,
+      "paths" => nil,
+      "name" => "forge-token",
+      "argument" => "acme/shop",
+      "locked" => false
+    }
+
+    test "reads in plain words" do
+      added = change("rule_added", [], [@credential])
+      removed = change("rule_removed", [@credential], [])
+      changed = change("rule_changed", [@credential], [%{@credential | "argument" => "acme/lib"}])
+
+      assert flat(Common.change_sentence(added, "dana")) ==
+               "dana added the credential forge-token acme/shop"
+
+      assert flat(Common.change_sentence(removed, "dana")) ==
+               "dana removed the credential forge-token acme/shop"
+
+      assert flat(Common.change_sentence(changed, "dana")) ==
+               "dana changed the argument of the credential forge-token acme/lib"
+
+      assert Common.change_words(added) == "Credential forge-token"
+      assert flat(Common.rule_words(@credential)) == "Credential forge-token acme/shop"
+      assert %{added: [@credential]} = Apiary.Policy.diff(added)
+    end
+  end
+
+  defp flat(text) when is_binary(text), do: text
+  defp flat({_tag, inner}), do: flat(inner)
+  defp flat({_tag, inner, _class}), do: flat(inner)
+  defp flat(list) when is_list(list), do: Enum.map_join(list, &flat/1)
 end

@@ -19,18 +19,28 @@ earlier one.
 
 ## What is a vulnerability here
 
-- A request without a valid signature, or with a revoked access key, is answered as if it
-  were signed: the discovery document, and later the receiver and the run configuration,
-  are served only to a request the workspace's secret signed.
+- A request without a valid signature, or signed by a revoked access key, is answered as
+  if it were signed: the discovery document, the events endpoint and the run
+  configuration serve only a request signed by an active node key, one not revoked.
+- An enrolment code works when it should not. A key enrolled with a valid code is active
+  at once: the code is the approval, given by the owner or admin who made it. So it is a
+  vulnerability if a code enrols a key after its maker stopped being an owner or an admin
+  of its workspace; if it enrols a second key once used (the same machine asking again
+  with the same public key gets that same key back, and nothing changes); if it works
+  after it expired or was cancelled; or if it puts a key on another node than its own.
 - A row of one organisation is readable or writable from another: a page, a query or an
   endpoint that does not scope by the organisation and the workspace of the caller.
-- An access key's secret leaves the application other than in the one reveal after it is
-  created or rotated: in a log line, an event, an email, a page, or in clear in the
-  database.
+- The server's signing key, `APIARY_SIGNING_SECRET`, leaves the application in any form,
+  or an enrolment code leaves it other than on the one page that made it: in a log line,
+  an event, an email, another page, or in clear in the database.
+- An answer carries a valid signature for a request it does not answer.
 - A member does what only an owner may, or the last owner of an organisation can be
   removed.
 - Sign-in, confirmation, password reset or an invitation link can be used by someone the
   link was not sent to.
+- A page of the console runs a script that is not the console's own: one without the
+  request's nonce, an `on…=` attribute or a `javascript:` address, while the page's
+  `Content-Security-Policy` header reaches the browser as the release sent it.
 
 The wall, the proxy and the signed delivery on the machine are the
 [runner](https://github.com/qoryai/runner)'s, and so is its

@@ -14,13 +14,13 @@ defmodule ApiaryWeb.SettingsLiveTest do
          %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
-      # The software domain's words, and no skin word: no apiary, no hive.
-      # A flat column: the section's h2 and its fields, no card of its own.
-      assert has_element?(lv, "h2#settings-section-title", "General")
+      # The software domain's words: no apiary, no hive.
+      # A flat column: the section's h1 and its fields, no card of its own.
+      assert has_element?(lv, "h1#settings-section-title", "General")
       assert has_element?(lv, "#organisation-form label", "Name")
       refute has_element?(lv, "#settings-section-organisation .card")
       assert has_element?(lv, "#organisation-form button[type=submit].btn-primary", "Save")
-      assert has_element?(lv, "#owners-part h3", "Owners")
+      assert has_element?(lv, "#owners-part h2", "Owners")
       refute has_element?(lv, "#workspace-form")
       refute has_element?(lv, "#retention-form")
       assert html =~ "The name of this organisation, where its pages are, and who owns it."
@@ -41,10 +41,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#organisation-form")
       refute has_element?(lv, "#owners")
 
-      assert html =~ "The name of this workspace, and where its pages are."
+      assert html =~ "The name of this workspace, where its pages are, and its type."
 
       assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
-      assert has_element?(lv, "#nav-settings[aria-current='page']")
+      # Settings is the page's parent; the page is the second column's General.
+      assert has_element?(lv, "#nav-settings[aria-current='true']")
       assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
       assert html =~ scope.workspace.name
@@ -82,7 +83,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#owners", user.email)
       assert has_element?(lv, "#owners", other_owner.email)
       refute has_element?(lv, "#owners", member.email)
-      assert has_element?(lv, "#owners-part h3 .q-part-n", "2")
+      assert has_element?(lv, "#owners-part h2 .q-part-n", "2")
 
       # With two owners, the last-owner rule holds nobody in place, and is not said.
       refute has_element?(lv, "#owners-note", "only owner")
@@ -117,10 +118,20 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
     test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
       {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       assert html =~ "This workspace keeps everything."
       assert html =~ "Nothing is pruned: this workspace keeps everything."
+
+      # The line under the fields describes each, and a field's error in its place.
+      for field <- ~w(events log) do
+        assert has_element?(
+                 lv,
+                 "#retention_#{field}_retention_days[aria-describedby=retention-help]"
+               )
+      end
+
+      assert has_element?(lv, "#retention-help", "In days; empty keeps everything.")
 
       html =
         lv
@@ -128,6 +139,13 @@ defmodule ApiaryWeb.SettingsLiveTest do
         |> render_change()
 
       assert html =~ "must be between 1 and 3650 days, or empty to keep everything"
+
+      assert has_element?(
+               lv,
+               "#retention_events_retention_days[aria-describedby=retention_events_retention_days-error]"
+             )
+
+      assert has_element?(lv, "#retention_log_retention_days[aria-describedby=retention-help]")
 
       html =
         lv
@@ -173,7 +191,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, _} = Apiary.Retention.update_retention(scope, %{events_retention_days: 30})
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       # A text field, so what was typed reaches the server as it is: a number field sends
       # an empty value for letters, which would read as keeping everything.
@@ -223,7 +241,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert %{runs_pruned: 0} = Apiary.Retention.prune_workspace(other_workspace, now: now)
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       assert [mine] = Apiary.Retention.list_retention_runs(%{scope | workspace: workspace})
 
@@ -261,7 +279,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "button", "Save")
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       assert has_element?(lv, "input#retention_events_retention_days[disabled]")
       assert has_element?(lv, "input#retention_log_retention_days[disabled]")
@@ -305,69 +323,138 @@ defmodule ApiaryWeb.SettingsLiveTest do
       for {key, path} <- [
             organisation: ~p"/#{org}/settings",
             people: ~p"/#{org}/settings/people",
-            workspaces: ~p"/#{org}/settings/workspaces",
-            audit_log: ~p"/#{org}/settings/audit-log"
+            workspaces: ~p"/#{org}/settings/workspaces"
           ] do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
+      # The audit log is a page of the organisation's sidebar, not a section of its
+      # settings.
+      refute has_element?(lv, "#settings-tab-audit_log")
+      assert has_element?(lv, ~s(#sidebar #nav-audit_log[href="#{~p"/#{org}/audit-log"}"]))
+
       # Its own sections only: no other kind's, no cross-link, no Elsewhere.
       refute has_element?(
                lv,
-               "#settings-tab-general, #settings-tab-keys, #settings-tab-retention"
+               "#settings-tab-general, #settings-tab-runs"
              )
 
       refute has_element?(lv, "#settings-tab-workspace_settings, #settings-tab-your_settings")
       refute render(lv) =~ "Elsewhere"
 
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "h1", "Organisation settings")
-      assert has_element?(lv, "h2#settings-section-title", "General")
+      refute has_element?(lv, "h1", "Organisation settings")
+      assert has_element?(lv, "#settings-tabs-heading", "Organisation settings")
+      assert has_element?(lv, "h1#settings-section-title", "General")
+      assert page_title(lv) == "General · Organisation settings · #{org.name} · Qory Apiary"
 
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
       assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
       assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
 
-      # The danger zone ends General, and its dialog is at a path of its own over it.
+      # The danger zone ends General, and its confirmation expands in place there, at a
+      # path of its own: no dialog.
       {:ok, lv, html} = live(conn, ~p"/#{org}/settings")
       assert has_element?(lv, "#danger-zone h2", "Danger zone")
       assert html =~ ~r/id="owners".*id="danger-zone"/s
 
       assert has_element?(
                lv,
-               "#danger-zone #delete-organisation a#delete-organisation-button[href='#{~p"/#{org}/settings/danger"}']"
+               "#danger-zone #delete-organisation a#delete-organisation-button[href='#{~p"/#{org}/settings/danger"}'][aria-expanded=false]"
              )
 
-      refute has_element?(lv, "#delete-organisation-modal")
+      refute has_element?(lv, "#delete-organisation-form")
 
       lv |> element("#delete-organisation-button") |> render_click()
       assert_patch(lv, ~p"/#{org}/settings/danger")
-      assert has_element?(lv, "#delete-organisation-modal")
+      refute has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#danger-zone #delete-organisation #delete-organisation-form")
+      assert has_element?(lv, "#delete-organisation-form", "your organisations page")
+
+      assert has_element?(
+               lv,
+               "#delete-organisation-form #delete-organisation-confirming.q-confirm",
+               "Delete #{scope.organisation.name}?"
+             )
+
+      # The slug's field takes the focus, after Cancel, which takes it as it mounts.
+      assert has_element?(lv, "#delete-organisation-field input[name='confirm[slug]']")
+      assert has_element?(lv, "#delete-organisation-field ~ span[hidden][phx-mounted]")
+
+      # Its button now folds it, as Cancel does, which gives that button the focus back.
+      assert has_element?(
+               lv,
+               "a#delete-organisation-button[href='#{~p"/#{org}/settings"}'][aria-expanded=true][aria-controls=delete-organisation-form]"
+             )
+
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]", "Yes, delete")
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "h2#settings-section-title", "General")
+      assert has_element?(lv, "h1#settings-section-title", "General")
+
+      cancel = lv |> element("#delete-organisation-confirming-cancel") |> render()
+      assert cancel =~ "focus" and cancel =~ "#delete-organisation-button"
+      lv |> element("#delete-organisation-confirming-cancel") |> render_click()
+      assert_patch(lv, ~p"/#{org}/settings")
+      refute has_element?(lv, "#delete-organisation-form")
+      assert has_element?(lv, "a#delete-organisation-button[aria-expanded=false]")
+
+      lv |> element("#delete-organisation-button") |> render_click()
+      lv |> element("#delete-organisation-button") |> render_click()
+      assert_patch(lv, ~p"/#{org}/settings")
+      refute has_element?(lv, "#delete-organisation-form")
 
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/delete")
-      assert has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#delete-organisation-form")
+      refute has_element?(lv, "#delete-organisation-modal")
     end
 
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
-      {:ok, lv, _html} = live(conn, base <> "/retention")
+      {:ok, lv, _html} = live(conn, base <> "/runs")
 
-      for {key, path} <- [
-            general: base,
-            keys: base <> "/keys",
-            retention: base <> "/retention"
-          ] do
+      secrets? = Apiary.Features.on?(:secrets)
+
+      sections =
+        [general: base, people: base <> "/people"] ++
+          if(secrets?,
+            do: [integrations: base <> "/integrations", secrets: base <> "/secrets"],
+            else: []
+          ) ++
+          [runs: base <> "/runs"]
+
+      for {key, path} <- sections do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
+
+      # In the map's order: General, People, with the `security` feature Integrations and
+      # Secrets and variables, and Runs last. The access keys are their nodes', not here.
+      assert lv
+             |> element("#settings-tabs")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("a")
+             |> LazyHTML.attribute("id") ==
+               Enum.map(sections, fn {key, _path} -> "settings-tab-#{key}" end)
 
       # No link to the organisation's settings, which are its own place.
       refute has_element?(lv, "#settings-tab-organisation, #settings-tab-organisation_settings")
 
-      assert has_element?(lv, "#settings-tab-retention[aria-current=page]")
-      assert has_element?(lv, "h1", "Workspace settings")
-      assert has_element?(lv, "h2#settings-section-title", "Retention")
+      assert has_element?(lv, "#settings-tab-runs[aria-current=page]", "Runs")
+      refute has_element?(lv, "h1", "Workspace settings")
+      assert has_element?(lv, "#settings-tabs-heading", "Workspace settings")
+      assert has_element?(lv, "#settings-tabs-place", scope.workspace.name)
+      assert has_element?(lv, "h1#settings-section-title", "Runs")
+      assert has_element?(lv, "#breadcrumb-section[aria-current='page']", "Runs")
+
+      assert has_element?(
+               lv,
+               "#settings-section-runs .q-settings-head-sub",
+               "How long this workspace keeps runs, their events and their logs."
+             )
+
+      assert page_title(lv) ==
+               "Runs · Workspace settings · #{scope.workspace.name} · #{scope.organisation.name} · Qory Apiary"
+
       assert has_element?(lv, "#retention-form")
       refute has_element?(lv, "#workspace-form")
 
@@ -383,8 +470,16 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#danger-zone #delete-workspace", "Delete this workspace")
       lv |> element("#delete-workspace-button") |> render_click()
       assert_patch(lv, ~p"/#{org}/#{platform}/settings/danger")
-      assert has_element?(lv, "#delete-workspace-modal")
+      refute has_element?(lv, "#delete-workspace-modal")
+      assert has_element?(lv, "#danger-zone #delete-workspace #delete-workspace-form")
       assert has_element?(lv, "#settings-tab-general[aria-current=page]")
+
+      # The red button waits for the slug.
+      assert has_element?(lv, "#delete-workspace-confirm[disabled]")
+      lv |> form("#delete-workspace-form", confirm: %{slug: "plat"}) |> render_change()
+      assert has_element?(lv, "#delete-workspace-confirm[disabled]")
+      lv |> form("#delete-workspace-form", confirm: %{slug: platform.slug}) |> render_change()
+      refute has_element?(lv, "#delete-workspace-confirm[disabled]")
 
       lv |> form("#delete-workspace-form", confirm: %{slug: platform.slug}) |> render_submit()
       {path, flash} = assert_redirect(lv)
@@ -405,7 +500,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       refute has_element?(lv, "#delete-workspace-button")
 
-      # Its dialog's path says so, and goes back to General.
+      # Its confirmation's path says so, and goes back to General.
       assert {:error, {:live_redirect, %{to: ^general, flash: flash}}} =
                live(conn, general <> "/danger")
 
@@ -425,7 +520,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       # nor the workspace's
       {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/#{owner.workspace}/settings")
-      assert has_element?(lv, "#settings-tab-retention")
+      assert has_element?(lv, "#settings-tab-people")
+      assert has_element?(lv, "#settings-tab-runs")
       refute has_element?(lv, "#danger-zone")
     end
   end
@@ -441,12 +537,27 @@ defmodule ApiaryWeb.SettingsLiveTest do
       for {old, new} <- [
             {~p"/#{org}/members", ~p"/#{org}/settings/people"},
             {~p"/#{org}/members/invite", ~p"/#{org}/settings/people/invite"},
-            {~p"/#{org}/#{ws}/keys", ~p"/#{org}/#{ws}/settings/keys"},
-            {~p"/#{org}/#{ws}/keys/new", ~p"/#{org}/#{ws}/settings/keys/new"},
-            {~p"/#{org}/#{ws}/keys?open=1", ~p"/#{org}/#{ws}/settings/keys?open=1"}
+            {~p"/#{org}/#{ws}/settings/retention", ~p"/#{org}/#{ws}/settings/runs"},
+            {~p"/#{org}/#{ws}/settings/retention?from=mail",
+             ~p"/#{org}/#{ws}/settings/runs?from=mail"}
           ] do
         assert redirected_to(get(conn, old)) == new
       end
+    end
+
+    test "the Access keys page was removed, not moved: its addresses answer 404",
+         %{conn: conn, scope: scope} do
+      for rest <- ~w(/settings/keys /settings/keys/new /keys /keys/new) do
+        assert conn |> get(workspace_path(scope, rest)) |> response(404) == "Not Found", rest
+      end
+    end
+
+    test "a workspace's Retention, renamed Runs, is found there, not moved for good",
+         %{conn: conn, scope: scope} do
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+
+      assert redirected_to(conn, 302) ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs"
     end
   end
 end

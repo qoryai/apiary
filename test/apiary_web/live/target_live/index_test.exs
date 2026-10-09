@@ -75,6 +75,17 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#targets-pager", "1–3 of 3")
   end
 
+  test "the breadcrumb ends with the section, in the workspace's words, the page itself", %{
+    conn: conn,
+    scope: scope
+  } do
+    view = open(conn, scope)
+    assert crumbs(view) == [{"Repositories", nil}]
+    assert has_element?(view, "#breadcrumb [aria-current=page]", "Repositories")
+
+    assert crumbs(open(conn, scope, "?q=shop")) == [{"Repositories", nil}]
+  end
+
   test "the views, with the workspace's counts", %{conn: conn, scope: scope} do
     view = open(conn, scope)
     assert has_element?(view, "#targets-view-all[aria-current=page]", "3")
@@ -151,13 +162,25 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   test "the star pins a target for the reader, and the sidebar lists it", %{
     conn: conn,
     scope: scope,
-    shop: shop
+    shop: shop,
+    api: api
   } do
     view = open(conn, scope)
     refute has_element?(view, "#nav-group-pinned")
 
+    # Its spoken name names the target as it is addressed: the system only where the
+    # path is shared.
+    assert has_element?(view, "#target-pin-#{shop.id}[aria-label='Pin github.example/acme/shop']")
+    assert has_element?(view, "#target-pin-#{api.id}[aria-label='Pin acme/api']")
+
     view |> element("#target-pin-#{shop.id}") |> render_click()
     assert has_element?(view, "#target-pin-#{shop.id}[aria-pressed=true]")
+
+    assert has_element?(
+             view,
+             "#target-pin-#{shop.id}[aria-label='Unpin github.example/acme/shop']"
+           )
+
     assert has_element?(view, "#nav-pin-#{shop.id}", "acme/shop")
     assert Targets.pinned?(scope, shop)
 

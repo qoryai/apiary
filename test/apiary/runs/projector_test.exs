@@ -95,7 +95,6 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projected.runtime == "claude"
       assert projected.args == ["-p", "fix the build"]
       assert projected.host == "dev-laptop"
-      assert projected.task == "issue-12"
       assert projected.target_system == "git.example.com"
       assert projected.target_path == "acme/shop"
       assert projected.labels["repository"] == "acme/shop"
@@ -631,18 +630,9 @@ defmodule Apiary.Runs.ProjectorTest do
     end
   end
 
+  # That it never raises and logs no event data is asked in `Apiary.Runs.ProjectorGuardTest`,
+  # which is not async: a log captured here would hold other tests' lines too.
   describe "project_async/1" do
-    test "never raises into the caller, and logs no event data", %{run: run} do
-      events_fixture(run, record())
-      Repo.delete!(run)
-
-      log = capture_log(fn -> assert :ok = Projector.project_async(run) end)
-
-      assert log =~ "projection failed run=#{run.id}"
-      refute log =~ "acme/shop"
-      assert :ok = Projector.project_async(nil)
-    end
-
     test "projects", %{run: run} do
       events_fixture(run, record())
       assert :ok = Projector.project_async(run)
@@ -672,6 +662,64 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projection(run) == incremental
 
       assert Runs.get_run!(scope, run.id).host == "dev-laptop"
+    end
+
+    test "what the run is about is stored and survives a rebuild", %{run: run} do
+      about = %{
+        "kind" => "implementation",
+        "title" => "Fix the login redirect",
+        "subjects" => [
+          %{"type" => "ticket", "ref" => "ENG-17", "url" => "https://tracker.example.com/ENG-17"},
+          %{"type" => "pull request", "ref" => "#412", "url" => "javascript:alert(1)"}
+        ],
+        "details" => %{"ticket" => %{"priority" => "high"}, "attempts" => [1, 2]}
+      }
+
+      event_fixture(run, 2, "run.started", started_data(%{"about" => about}))
+      {:ok, _} = Projector.project(run)
+
+      stored = Repo.get!(Run, run.id)
+      assert stored.about_kind == "implementation"
+      assert stored.about_title == "Fix the login redirect"
+
+      assert stored.about_subjects == [
+               %{
+                 "type" => "ticket",
+                 "ref" => "ENG-17",
+                 "url" => "https://tracker.example.com/ENG-17"
+               },
+               %{"type" => "pull request", "ref" => "#412"}
+             ]
+
+      assert stored.about_details == about["details"]
+
+      incremental = projection(run)
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [about_kind: "other", about_title: nil, about_subjects: [], about_details: nil]
+      )
+
+      assert {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == incremental
+    end
+
+    test "a rebuild clears what no event says the run is about", %{run: run} do
+      event_fixture(run, 2, "run.started", started_data())
+      {:ok, _} = Projector.project(run)
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [
+          about_kind: "implementation",
+          about_title: "Fix the login redirect",
+          about_subjects: [%{"type" => "ticket", "ref" => "ENG-17"}],
+          about_details: %{"attempt" => 1}
+        ]
+      )
+
+      assert {:ok, rebuilt} = Projector.rebuild(run)
+
+      assert {rebuilt.about_kind, rebuilt.about_title, rebuilt.about_subjects,
+              rebuilt.about_details} == {nil, nil, [], nil}
     end
 
     # Only a run without an end is closed (`Runs.close_run/2`): the record here stops

@@ -6,8 +6,7 @@ defmodule Apiary.Organisations.Slug do
   A slug is 1 to 40 characters of lowercase `a`–`z`, `0`–`9` and hyphens, and starts
   and ends with a letter or a digit. It is made from the name when the organisation or
   the workspace is created (`from_name/2`), made unique with a number (`pick/3`), and
-  kept when the name changes: renaming a slug is not decided yet. It is never one of the
-  names the router reserves (`ApiaryWeb.ReservedSlugs`).
+  kept when the name changes. It is never one of the names the router reserves (`ApiaryWeb.ReservedSlugs`).
 
   The migration that gave the existing rows their slugs made them the same way, with a
   copy of these rules as they were then.

@@ -12,9 +12,14 @@
 
 const GAP = 4
 
+// The trigger: a menu button (`aria-haspopup`), or a disclosure's button
+// (`aria-controls` with `aria-expanded`), as a Filter chip, the Filter menu of a list
+// with sections and Jump to date are. The first in the menu's markup is its trigger.
+export const TRIGGER = "[aria-haspopup], [aria-controls][aria-expanded]"
+
 export const Menu = {
   mounted() {
-    const trigger = () => this.el.querySelector("[aria-haspopup]")
+    const trigger = () => this.el.querySelector(TRIGGER)
     // What is shown: a Filter menu holds its sections' controls hidden until one opens.
     const items = () =>
       [...this.el.querySelectorAll(".dropdown-content :is(a, button):not([disabled])")].filter(
@@ -161,7 +166,7 @@ export const Menu = {
 
   position() {
     const list = this.list()
-    const trigger = this.el.querySelector("[aria-haspopup]")
+    const trigger = this.el.querySelector(TRIGGER)
     if (!list || !trigger) return
     const at = trigger.getBoundingClientRect()
     const height = list.offsetHeight

@@ -75,9 +75,17 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.exit_code == 0
       assert run.runtime == "claude"
       assert run.wall == "docker"
-      assert run.target_system == "git.example.com"
+      assert run.target_system == "codeberg.org"
       assert run.target_path == "acme/shop"
-      assert run.task == "checkout-redesign"
+      assert run.labels["task"] == "checkout-redesign"
+
+      # Its title is the one its about gives; the task label is a label like any other.
+      assert {run.about_kind, run.about_title} ==
+               {"Implementation", "Redesign the checkout steps"}
+
+      assert Enum.map(run.about_subjects, &{&1["type"], &1["ref"]}) ==
+               [{"ticket", "SHOP-128"}, {"pull request", "#412"}]
+
       assert run.runner_version == "0.10.0"
       assert run.contract_version == 1
       assert run.heartbeat_interval_seconds == 60
@@ -92,8 +100,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert connections(run) == [
                {"api.llm.example", 443, "", 6, 6, 0, "connected"},
                {"cdn.packages.example.com", 443, "", 1, 1, 0, "dial_failed"},
-               {"git.example.com", 443, "/acme/shop.git/git-upload-pack", 1, 1, 0, "connected"},
-               {"git.example.com", 443, "/acme/shop.git/info/refs", 1, 1, 0, "connected"},
+               {"codeberg.org", 443, "/acme/shop.git/git-upload-pack", 1, 1, 0, "connected"},
+               {"codeberg.org", 443, "/acme/shop.git/info/refs", 1, 1, 0, "connected"},
                {"metrics.example", 80, "", 1, 0, 1, "refused"},
                {"packages.example.com", 443, "", 2, 2, 0, "connected"},
                {"registry.example", 443, "", 1, 0, 1, "refused"}
@@ -127,8 +135,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.state == "failed"
       assert run.exit_code == 2
 
-      assert {run.target_system, run.target_path, run.task} ==
-               {"github.example", "acme/api", "checkout-redesign"}
+      assert {run.target_system, run.target_path, run.labels["task"]} ==
+               {"github.com", "acme/api", "checkout-redesign"}
 
       assert lanes(events(run)) == []
 
@@ -163,7 +171,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       assert run.state == "timed_out"
       assert {run.reason, run.exit_code, run.duration_ms} == {"timeout", -1, 3_600_000}
-      assert {run.target_system, run.target_path} == {"github.example", "acme/shop"}
+      assert {run.target_system, run.target_path} == {"github.com", "acme/shop"}
       assert run.denied_count == 0
     end
 
@@ -183,7 +191,9 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
 
       assert run.state == "succeeded"
-      assert {run.target_system, run.target_path, run.task, run.wall} == {nil, nil, nil, nil}
+
+      assert {run.target_system, run.target_path, run.labels["task"], run.wall} ==
+               {nil, nil, nil, nil}
 
       assert [%{last_rule: "", last_mode: "observe", last_decision: "allowed"}, _telemetry] =
                Repo.all(from c in Connection, where: c.run_id == ^run.id, order_by: c.host)
@@ -227,7 +237,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
          %{scope: scope, access_key: access_key} do
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
       refute Apiary.Policy.managed?(scope)
-      assert {:ok, 15} = Demo.policy(access_key)
+      assert {:ok, 13} = Demo.policy(access_key)
       assert Apiary.Policy.managed?(scope)
 
       assert Apiary.Policy.get_mode(scope) == "enforce"
@@ -240,17 +250,12 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert effective.allow == [
                "api.example",
                "api.llm.example",
-               "git.example.com",
+               "codeberg.org",
                "packages.example.com",
                "*.packages.example.com"
              ]
 
-      assert Map.keys(effective.paths) == ["git.example.com"]
-
-      assert effective.credentials == [
-               %{name: "model"},
-               %{name: "product", argument: "acme/shop"}
-             ]
+      assert Map.keys(effective.paths) == ["codeberg.org"]
 
       assert %{in_force: false, overridden_by: %{locked: true}} =
                Enum.find(
@@ -258,8 +263,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
                  &(&1.host == "telemetry.llm.example" and &1.source == :target)
                )
 
-      assert %{total: 10} = Apiary.Policy.list_changes(scope, nil)
-      assert %{total: 5} = Apiary.Policy.list_changes(scope, shop)
+      assert %{total: 9} = Apiary.Policy.list_changes(scope, nil)
+      assert %{total: 4} = Apiary.Policy.list_changes(scope, shop)
 
       assert %{mode: "observe", own: "observe", workspace: "enforce"} =
                Apiary.Policy.get_mode(scope, shop)
@@ -269,14 +274,14 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       # A second invocation leaves the policy as it is.
       assert :kept = Demo.policy(access_key)
-      assert %{total: 15} = Apiary.Policy.list_changes(scope, :all)
+      assert %{total: 13} = Apiary.Policy.list_changes(scope, :all)
     end
 
     test "without the demo's target the baseline alone is written", %{
       scope: scope,
       access_key: access_key
     } do
-      assert {:ok, 10} = Demo.policy(access_key)
+      assert {:ok, 9} = Demo.policy(access_key)
       assert Apiary.Policy.effective(scope, nil).allow != []
     end
   end

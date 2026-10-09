@@ -3,7 +3,6 @@
 // this collection to register the same ones beside its own. `autoDismiss` is the toasts'
 // timer, which app.js also runs for a page a controller rendered.
 import {CopyToClipboard} from "./hooks/copy_to_clipboard"
-import {Modal} from "./hooks/modal"
 import {Menu} from "./hooks/menu"
 import {NavDrawer} from "./hooks/nav_drawer"
 import {Switcher} from "./hooks/switcher"
@@ -16,15 +15,17 @@ import {TimelineKeys} from "./hooks/timeline_keys"
 import {Terminal} from "./hooks/terminal"
 import {FocusOn} from "./hooks/focus_on"
 import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
-import {RulePopover} from "./hooks/rule_popover"
+import {RulePanel} from "./hooks/rule_panel"
+import {HostSuggest} from "./hooks/host_suggest"
 import {DaysChart, OverviewPage} from "./hooks/overview"
 import {FamilyBoxes} from "./hooks/family_boxes"
+import {SecretValues} from "./hooks/secret_values"
+import {GenerateKey} from "./hooks/generate_key"
 
 export {autoDismiss}
 
 export const hooks = {
   CopyToClipboard,
-  Modal,
   Menu,
   NavDrawer,
   Switcher,
@@ -36,11 +37,14 @@ export const hooks = {
   TimelineKeys,
   Terminal,
   FocusOn,
-  RulePopover,
+  RulePanel,
+  HostSuggest,
   PolicyPage,
   RuleComposer,
   ChangeRow,
   DaysChart,
   OverviewPage,
   FamilyBoxes,
+  SecretValues,
+  GenerateKey,
 }

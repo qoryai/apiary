@@ -200,16 +200,18 @@ defmodule Apiary.Policy.Activity do
         Enum.reduce(rows, %{}, fn row, counts ->
           policy = policies[row.target_id]
 
-          [host_rule(policy, row.host), credential_rule(policy, row.credential)]
-          |> Enum.reject(&is_nil/1)
-          |> Enum.reduce(counts, fn rule_id, counts ->
-            Map.update(
-              counts,
-              rule_id,
-              %{allowed: row.allowed, denied: row.denied},
-              &%{allowed: &1.allowed + row.allowed, denied: &1.denied + row.denied}
-            )
-          end)
+          case host_rule(policy, row.host) do
+            nil ->
+              counts
+
+            rule_id ->
+              Map.update(
+                counts,
+                rule_id,
+                %{allowed: row.allowed, denied: row.denied},
+                &%{allowed: &1.allowed + row.allowed, denied: &1.denied + row.denied}
+              )
+          end
         end)
 
       {:ok, counts}
@@ -237,7 +239,6 @@ defmodule Apiary.Policy.Activity do
           path: c.path,
           allowed: c.allowed,
           denied: c.denied,
-          credential: c.last_credential,
           tool: c.last_tool,
           last_seen_at: c.last_seen_at,
           run_id: c.run_id,
@@ -256,10 +257,11 @@ defmodule Apiary.Policy.Activity do
   ## The policies the rows are held to
 
   # target id (nil for the baseline) => what matching needs of its effective policy. The
-  # level above the workspace is read once for all of them.
+  # level above the workspace is read once for all of them; one that carries variables
+  # only decides no connection, so none is counted or marked as its.
   defp policies(%Workspace{id: workspace_id} = workspace, rows) do
     mode = Repo.one!(from h in Workspace, where: h.id == ^workspace_id, select: h.egress_mode)
-    above = Above.for_workspace(workspace)
+    above = workspace |> Above.for_workspace() |> Above.for_policy()
 
     modes =
       Repo.all(
@@ -319,13 +321,7 @@ defmodule Apiary.Policy.Activity do
       # The document's own list, names before suffixes as `allow` is: what the runner
       # decides first, and the most exact entry is the one it names.
       denies: effective.deny,
-      by_host: by_host,
-      credentials:
-        for(
-          %{kind: :credential, action: :allow, rule: %Rule{id: id}} = entry <- in_force,
-          into: %{},
-          do: {entry.name, id}
-        )
+      by_host: by_host
     }
   end
 
@@ -374,9 +370,6 @@ defmodule Apiary.Policy.Activity do
       true -> nil
     end
   end
-
-  defp credential_rule(_policy, credential) when credential in [nil, ""], do: nil
-  defp credential_rule(policy, credential), do: policy.credentials[credential]
 
   defp first_match(entries, host) when is_binary(host) do
     if String.valid?(host), do: Enum.find(entries, &Grammar.matches?([&1], host))

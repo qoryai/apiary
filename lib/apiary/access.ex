@@ -125,11 +125,38 @@ defmodule Apiary.Access do
       "purge a workspace marked for deletion once its grace period is over: every row it holds",
       roles: [:instance]
     ),
-    Action.new(:"access_key.create", "create an access key", roles: @members),
-    Action.new(:"access_key.rotate", "rotate an access key, and retire its previous secret",
-      roles: @members
+    # The access keys of nodes and node pools: one Ed25519 public key each.
+    Action.new(
+      :"access_key.create_code",
+      "make an enrolment code for a node, with the settings of the key it brings",
+      roles: @admins
     ),
-    Action.new(:"access_key.revoke", "revoke an access key", roles: @members),
+    Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
+      roles: @admins
+    ),
+    Action.new(:"access_key.add", "add an access key to a node by its public key",
+      roles: @admins
+    ),
+    Action.new(:"access_key.revoke", "revoke a node's access key", roles: @admins),
+    # The workspace's nodes and node pools, the places its runs run.
+    Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"node.create",
+      "make a node or a node pool, whose kind is fixed from then on",
+      roles: @admins
+    ),
+    Action.new(:"node.edit", "rename a node, and change a node pool's instance limit",
+      roles: @admins
+    ),
+    Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
+    Action.new(
+      :"node.clear_instance",
+      "clear an instance of a node that stopped without saying so: its open runs are marked lost, and another instance can start",
+      roles: @admins
+    ),
     # The record.
     Action.new(:"run.read", "read the runs, their outcomes and the connections",
       feature: :observability,
@@ -168,6 +195,53 @@ defmodule Apiary.Access do
       roles: @owners
     ),
     Action.new(:"security_policy.set_mode", "set the mode, observe or enforce",
+      feature: :security,
+      roles: @admins
+    ),
+    # Stored secrets and variables.
+    Action.new(
+      :"secret.read",
+      "read the stored secrets: their names, notes and value IDs, never a value",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"secret.write",
+      "create a stored secret, change its name, note and values, and delete it",
+      feature: :security,
+      roles: @admins
+    ),
+    Action.new(
+      :"secret.use",
+      "link a stored secret to what uses it",
+      feature: :security,
+      roles: @admins,
+      audited:
+        {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
+    ),
+    Action.new(:"variable.read", "read the variables of the workspace and its repositories",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"variable.edit",
+      "set, change, lock and remove the variables of the workspace and its repositories",
+      feature: :security,
+      roles: @admins
+    ),
+    # What a run is connected to: runtimes, integrations and services.
+    Action.new(
+      :"connection.read",
+      "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"connection.write",
+      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's own service definitions",
       feature: :security,
       roles: @admins
     ),
@@ -249,7 +323,7 @@ defmodule Apiary.Access do
     once, checked, and kept for the node: an action named twice, a role or a feature
     nobody knows, stops it. An action that is in neither raises `ArgumentError`.
   - **`subject`** is the thing acted on: an organisation, a workspace, or a row of one, such
-    as a run, a rule, an access key, an invitation or a membership, which carries
+    as a run, a rule, an access key, a node, an invitation or a membership, which carries
     `organisation_id`, and `workspace_id` when it belongs to a workspace. Deleting a
     workspace and cancelling its deletion are asked of the organisation: an owner or an
     admin deletes any workspace of it, from the organisation's settings.

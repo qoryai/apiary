@@ -33,6 +33,8 @@ defmodule ApiaryWeb.OrganisationLive do
       counts={@nav_counts}
       nav={:organisation_overview}
     >
+      <:crumb>{gettext("Overview")}</:crumb>
+
       <div :if={is_nil(@current_scope.workspace)} id="not-added">
         <.empty_state
           icon="hero-squares-2x2"
@@ -61,13 +63,12 @@ defmodule ApiaryWeb.OrganisationLive do
 
       <div :if={@current_scope.workspace} id="organisation-overview" class="q-org">
         <div class="q-org-top">
-          <.header>
-            {@current_scope.organisation.name}
-            <:subtitle>{gettext("The organisation's workspaces and its people.")}</:subtitle>
+          <.page_header title={@current_scope.organisation.name}>
+            <:description>{gettext("The organisation's workspaces and its people.")}</:description>
             <:actions>
               <ApiaryWeb.Extension.slot name={:organisation_heading} scope={@current_scope} />
             </:actions>
-          </.header>
+          </.page_header>
         </div>
 
         <.notice :if={@added} kind={:info} class="q-org-top">
@@ -188,13 +189,6 @@ defmodule ApiaryWeb.OrganisationLive do
                 {Format.date(@current_scope.organisation.inserted_at)}
               </dd>
             </dl>
-            <.link
-              id="about-settings"
-              navigate={~p"/#{@current_scope.organisation}/settings"}
-              class="q-more"
-            >
-              {gettext("Settings")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
-            </.link>
           </section>
         </aside>
       </div>

@@ -13,7 +13,7 @@ defmodule Apiary.AccountDeletionTest do
   describe "delete_user/2" do
     test "leaves a tombstone: the id stays, the personal data goes" do
       %{scope: owner} = sign_up_fixture()
-      %{user: user, scope: scope} = member_fixture(owner)
+      %{user: user, scope: scope} = member_fixture(owner, :admin)
       user = set_password(user)
       _session = Accounts.generate_user_session_token(user)
       {:ok, _} = Accounts.update_user_preferences(user, %{time_zone: "Europe/Berlin"})

@@ -9,8 +9,8 @@ defmodule Apiary.Lingo.Domain do
   created; every member of the workspace reads the same words. `domains/0` is the registry
   of the domains there are, by name; `for_workspace/1` reads a workspace's through it.
   The software domain is the only one and the default: a workspace is created with it,
-  and a render outside any workspace reads it. Whether a workspace may change its domain
-  later is not decided, and nothing changes it. Code that reads a run's labels for its
+  and a render outside any workspace reads it. Nothing changes a workspace's domain. Code
+  that reads a run's labels for its
   target asks here and never names a label itself.
   """
 

@@ -712,14 +712,60 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.middle(value, 32) |> String.length() == 32
     end
 
-    test "labels come with the target's, by the workspace's domain, and task first" do
-      labels = %{"a" => "1", "task" => "t", "forge" => "f", "repository" => "r"}
+    test "labels come with the target's first, by the workspace's domain, then by name" do
+      labels = %{"zone" => "1", "task" => "t", "forge" => "f", "repository" => "r"}
 
       assert RunComponents.ordered_labels(labels, nil) ==
-               [{"forge", "f"}, {"repository", "r"}, {"task", "t"}, {"a", "1"}]
+               [{"forge", "f"}, {"repository", "r"}, {"task", "t"}, {"zone", "1"}]
 
+      # A task is an ordinary label, sorted with the rest.
       assert RunComponents.ordered_labels(%{"a" => "1", "task" => "t", "forge" => "f"}, nil) ==
-               [{"forge", "f"}, {"task", "t"}, {"a", "1"}]
+               [{"forge", "f"}, {"a", "1"}, {"task", "t"}]
+    end
+  end
+
+  describe "a run's title and what it is about" do
+    @run_id "7f3e9b20-5b1d-4c7e-9a10-2f6d0c4b7e11"
+
+    test "the title is the one the run gave, else Run and its short id" do
+      titled = %{run_id: @run_id, about_title: "Fix the login redirect"}
+      assert RunComponents.run_title(titled) == "Fix the login redirect"
+      assert RunComponents.given_title(titled) == "Fix the login redirect"
+
+      for untitled <- [
+            %{run_id: @run_id, about_title: nil},
+            %{run_id: @run_id, about_title: ""},
+            # A task is an ordinary label, never the title.
+            %{run_id: @run_id, about_title: nil, labels: %{"task" => "fix-login"}}
+          ] do
+        assert RunComponents.run_title(untitled) == "Run 7f3e9b20"
+        assert RunComponents.given_title(untitled) == nil
+      end
+    end
+
+    test "the about line: the kind, two subjects as text, then how many more" do
+      subjects =
+        for {type, ref} <- [{"pull request", "#418"}, {"ticket", "ENG-21"}, {"incident", "INC-5"}],
+            do: %{"type" => type, "ref" => ref, "url" => "https://example.com/#{ref}"}
+
+      run = %{about_kind: "Review", about_subjects: subjects}
+
+      assert RunComponents.about_line(run) ==
+               "Review · pull request #418 · ticket ENG-21 · +1 more"
+
+      assert RunComponents.about_line(run, 1) == "Review · pull request #418 · +2 more"
+
+      assert RunComponents.about_line(%{run | about_subjects: Enum.take(subjects, 2)}) ==
+               "Review · pull request #418 · ticket ENG-21"
+
+      assert RunComponents.about_line(%{about_kind: "Demo recording", about_subjects: []}) ==
+               "Demo recording"
+
+      assert RunComponents.about_line(%{about_kind: nil, about_subjects: [hd(subjects)]}) ==
+               "pull request #418"
+
+      assert RunComponents.about_line(%{about_kind: nil, about_subjects: []}) == nil
+      assert RunComponents.about_line(%{about_kind: "", about_subjects: []}) == nil
     end
 
     test "the pill hides at zero and counts in words" do
@@ -738,6 +784,199 @@ defmodule ApiaryWeb.RunComponentsTest do
                  target: "#t"
                )
              ) == "1 new line"
+    end
+  end
+
+  describe "rule_actions" do
+    defp acts(act) do
+      render_component(
+        &RunComponents.rule_actions/1,
+        Map.merge(
+          %{id: "r", connection: %{host: "api.example.com"}, controls: "r-panel", values: %{}},
+          act
+        )
+      )
+      |> LazyHTML.from_fragment()
+    end
+
+    defp attr_of(doc, selector, name),
+      do: doc |> LazyHTML.query(selector) |> LazyHTML.attribute(name)
+
+    # The two slots, in order: a control's id, or :gap for the empty one.
+    defp slots(doc) do
+      doc
+      |> LazyHTML.query(".q-acts-pair > *")
+      |> Enum.map(fn node ->
+        case LazyHTML.attribute(node, "id") do
+          [id] -> id
+          [] -> :gap
+        end
+      end)
+    end
+
+    test "both icons where no rule decides the host, each with a hint and the host in its name" do
+      doc = acts(%{rule_option: :can_allow, deny: true})
+
+      assert slots(doc) == ["r-allow", "r-deny"]
+      assert attr_of(doc, "button#r-allow", "aria-label") == ["Allow api.example.com"]
+      assert attr_of(doc, "button#r-allow", "data-tip") == ["Allow api.example.com"]
+      assert attr_of(doc, "button#r-deny", "aria-label") == ["Deny api.example.com"]
+      assert attr_of(doc, "button#r-deny", "data-tip") == ["Deny api.example.com"]
+      assert attr_of(doc, "button#r-allow.tooltip.q-act-i", "data-action") == ["allow"]
+      assert attr_of(doc, "button#r-deny.tooltip.q-act-i", "data-action") == ["deny"]
+      assert attr_of(doc, "button", "aria-controls") == ["r-panel", "r-panel"]
+      assert attr_of(doc, "button", "aria-expanded") == ["false", "false"]
+      refute LazyHTML.query(doc, "[disabled]") |> Enum.any?()
+    end
+
+    test "only the act that changes something, the other slot an empty gap" do
+      # A deny rule decides it: Allow alone.
+      assert slots(acts(%{rule_option: :can_allow, deny: false})) == ["r-allow", :gap]
+      # Allowed: Deny alone, in the second slot.
+      doc = acts(%{rule_option: :can_deny})
+      assert slots(doc) == [:gap, "r-deny"]
+      assert attr_of(doc, ".q-act-gap", "aria-hidden") == ["true"]
+    end
+
+    test "each icon says whether its own panel is open" do
+      doc = acts(%{rule_option: :can_allow, deny: true, expanded: true, expanded_action: :deny})
+      assert attr_of(doc, "#r-allow", "aria-expanded") == ["false"]
+      assert attr_of(doc, "#r-deny", "aria-expanded") == ["true"]
+
+      doc = acts(%{rule_option: :can_allow, deny: true, expanded: true, expanded_action: :allow})
+      assert attr_of(doc, "#r-allow", "aria-expanded") == ["true"]
+      assert attr_of(doc, "#r-deny", "aria-expanded") == ["false"]
+    end
+
+    test "the wall and the level above are a lock the keyboard reaches, its hint why" do
+      doc = acts(%{rule_option: :wall})
+      assert slots(doc) == ["r-lock", :gap]
+      assert attr_of(doc, "span#r-lock.q-act-lock.tooltip", "tabindex") == ["0"]
+      assert attr_of(doc, "#r-lock", "data-tip") == ["No rule changes this"]
+
+      assert attr_of(doc, "span#r-lock[role=img]", "aria-label") == ["No rule changes this"]
+
+      doc =
+        acts(%{
+          rule_option: :above_deny,
+          entry_host: "api.example.com",
+          above: %{name: "Main", action: :deny}
+        })
+
+      assert slots(doc) == ["r-lock", :gap]
+      assert attr_of(doc, "span#r-lock", "tabindex") == ["0"]
+
+      assert attr_of(doc, "#r-lock", "data-tip") == [
+               "Main's policy denies api.example.com. No workspace or repository rule can allow it."
+             ]
+
+      refute LazyHTML.query(doc, "button") |> Enum.any?()
+    end
+
+    test "only the level above allows a host: Allow leads there, else a lock" do
+      elsewhere = %{rule_option: :can_allow, deny: true, allow_elsewhere: %{name: "Main"}}
+
+      doc = acts(Map.put(elsewhere, :allow_path, "/main/policy?allow=api.example.com"))
+      assert slots(doc) == ["r-allow", "r-deny"]
+      assert attr_of(doc, "#r-allow", "data-tip") == ["Allow api.example.com in Main's policy"]
+      assert attr_of(doc, "#r-allow", "aria-label") == ["Allow api.example.com in Main's policy"]
+
+      doc = acts(elsewhere)
+      assert slots(doc) == ["r-lock", "r-deny"]
+      assert attr_of(doc, "span#r-lock", "data-tip") == ["Only Main's policy allows a host here"]
+    end
+
+    test "a locked rule is a lock button whose hint names who locked it and when" do
+      doc =
+        acts(%{
+          rule_option: :locked_deny,
+          entry_host: "*.example.com",
+          locked: %{by: "owner@acme.example", at: ~U[2026-10-07 09:00:00Z]}
+        })
+
+      assert slots(doc) == ["r-lock", :gap]
+      [tip] = attr_of(doc, "button#r-lock.q-act-lock", "data-tip")
+
+      assert tip =~
+               "A locked workspace rule denies *.example.com. Locked by owner@acme.example on "
+
+      assert attr_of(doc, "button#r-lock", "aria-label") == [tip]
+      assert attr_of(doc, "button#r-lock", "aria-controls") == ["r-panel"]
+
+      # Who locked it is said only where it is known.
+      doc = acts(%{rule_option: :locked_allow, entry_host: "api.example.com"})
+
+      assert attr_of(doc, "button#r-lock", "data-tip") == [
+               "A locked workspace rule allows api.example.com."
+             ]
+    end
+
+    test "a host no rule can name says so to a screen reader alone; a rule just added, nothing" do
+      doc = acts(%{rule_option: :unnameable})
+      assert slots(doc) == [:gap, :gap]
+      assert doc |> LazyHTML.query(".sr-only") |> LazyHTML.text() == "No rule can name this host"
+
+      assert slots(acts(%{rule_option: {:rule_added, :allow}})) == [:gap, :gap]
+    end
+  end
+
+  describe "the host's copy icon" do
+    defp copy_row(connection) do
+      base = %{
+        id: "c1",
+        host: "sum.golang.example",
+        port: 443,
+        path: "/lookup",
+        method: "CONNECT",
+        attempts: 1,
+        allowed: 1,
+        denied: 0,
+        last_decision: "allowed",
+        last_rule: "",
+        last_outcome: "connected",
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      assigns = %{c: Map.merge(base, connection)}
+
+      rendered_to_string(~H"""
+      <table>
+        <tbody>
+          <RunComponents.connection_row
+            id="cx-1"
+            connection={@c}
+            variant="workspace"
+            security={false}
+          />
+        </tbody>
+      </table>
+      """)
+      |> LazyHTML.from_fragment()
+    end
+
+    test "on a tool invocation it is beside the destination, outside its cut box" do
+      doc = copy_row(%{last_tool: "files", path: "/media/a.png"})
+
+      assert doc
+             |> LazyHTML.query(".q-cx-d .q-cx-tl > .q-dest-tool + button#cx-1-copy")
+             |> Enum.any?()
+
+      refute doc |> LazyHTML.query(".q-dest #cx-1-copy") |> Enum.any?()
+    end
+
+    test "beside the host it copies the host alone, and says Copied in the shell's announcer" do
+      doc = copy_row(%{})
+      [button] = doc |> LazyHTML.query(".q-cx-d .q-cx-h > button#cx-1-copy") |> Enum.to_list()
+
+      assert LazyHTML.attribute(button, "phx-hook") == ["CopyToClipboard"]
+      assert LazyHTML.attribute(button, "data-copy") == ["sum.golang.example"]
+      assert LazyHTML.attribute(button, "aria-label") == ["Copy sum.golang.example"]
+      assert LazyHTML.attribute(button, "data-tip") == ["Copy sum.golang.example"]
+      assert LazyHTML.attribute(button, "data-copied-words") == ["Copied"]
+      # No live region in the row: the shell's one announcer says it.
+      refute doc |> LazyHTML.query("#cx-1-copy [aria-live]") |> Enum.any?()
+      # Without security too: it is the record's host, not a rule.
+      refute doc |> LazyHTML.query(".q-cx-acts") |> Enum.any?()
     end
   end
 end

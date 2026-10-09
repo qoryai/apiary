@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
   @moduledoc """
-  Needs attention under a level above the workspace's policy (`Apiary.Policy.Above`), with
+  To review under a level above the workspace's policy (`Apiary.Policy.Above`), with
   the edition's answer faked: a denied destination only that level could allow, or one its
   own deny holds, offers no allow of the workspace, which would not be in force.
   """
@@ -80,7 +80,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
     view = open(conn, scope)
     item = item(view, "flags.example")
 
-    # The count stays the reason; the lock says who decides, and nothing opens a popover.
+    # The count stays the reason; the lock says who decides, and nothing opens a panel.
     assert has_element?(view, "##{item} .q-ar-why", "Denied once in 1 run")
 
     assert has_element?(
@@ -96,9 +96,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewAboveTest do
 
     refute has_element?(view, "button##{item}-act")
 
-    # An event that asks anyway is ignored: no popover, no rule, no success.
+    # An event that asks anyway is ignored: no panel, no rule, no success.
     render_hook(view, "rule_open", %{"id" => item, "level" => "workspace"})
-    refute has_element?(view, "#rule-popover")
+    refute has_element?(view, "#rule-panel")
     refute has_element?(view, "##{item}-done")
     assert Policy.list_rules(scope, nil) == []
   end

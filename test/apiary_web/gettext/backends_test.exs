@@ -38,11 +38,13 @@ defmodule ApiaryWeb.Gettext.BackendsTest do
 
   test "the core's catalogues come first where both translate a sentence" do
     Gettext.with_locale("en@software", fn ->
-      assert Backends.dgettext(@backends, "default", "Name, such as system-token") ==
-               "Name, such as forge-token"
+      sentence = "A target appears here once a run names it with its system and target labels."
 
-      assert Backends.dgettext(Enum.reverse(@backends), "default", "Name, such as system-token") ==
-               "Name, such as forge-token"
+      translated =
+        "A repository appears here once a run names it with its forge and repository labels."
+
+      assert Backends.dgettext(@backends, "default", sentence) == translated
+      assert Backends.dgettext(Enum.reverse(@backends), "default", sentence) == translated
     end)
   end
 

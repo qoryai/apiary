@@ -21,17 +21,23 @@ defmodule Apiary.Application do
     # First, so a wrong QORY_FEATURES, or an edition's features that do not add up, stops
     # the boot before anything is started.
     Apiary.Features.boot!()
-    # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY
-    # or TRUSTED_PROXIES stops the boot too, and so does an edition's table or subject
-    # the core has already, or a page whose feature is none there is.
+    # As early, so a wrong AUDIT_RETENTION_DAYS, DELETION_GRACE_DAYS, INVITATIONS_PER_DAY,
+    # TRUSTED_PROXIES, APIARY_SIGNING_SECRET or integration setting stops the boot too, and
+    # so does an edition's table or subject the core has already, or a page whose feature
+    # is none there is.
+    Apiary.SigningKey.boot!()
     Apiary.Audit.boot!()
     Apiary.Deletion.boot!()
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
     ApiaryWeb.Origin.boot!()
+    Apiary.Integrations.Source.boot!()
     ApiaryWeb.Features.boot!()
     # Then the edition's own settings, once the core's are known to be right.
     :ok = Apiary.Edition.boot!()
+    # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
+    # covers and what it does not.
+    Apiary.SecretLogFilter.install()
     attach_request_log()
     # A job's failure, cancellation or discard is one line, with its organisation and
     # workspace ids and without its arguments.
@@ -42,11 +48,11 @@ defmodule Apiary.Application do
       [
         ApiaryWeb.Telemetry,
         Apiary.Repo,
-        Apiary.Vault,
         {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Apiary.PubSub},
         {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
-        Apiary.Runs.RateLimit
+        Apiary.Runs.RateLimit,
+        Apiary.Nodes.Throttle
       ] ++
         migrator() ++
         [

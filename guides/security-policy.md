@@ -11,9 +11,11 @@ which apply it to the runs they start and to the runs already in flight. In the 
 > Installing or upgrading the server changes no machine's policy. Until somebody makes the
 > workspace's policy, by the first rule or the first change of mode, the server offers the
 > workspace's machines no run configuration, and every machine keeps the `egress` section
-> of its own runner file, enforcement included. The first change takes over for every
-> machine of the workspace at once. Read [The first change](#the-first-change) before you
-> make it.
+> of its own runner file, enforcement included. From the first change, every machine of
+> the workspace applies the workspace's policy narrowed by its own `egress` section: a run
+> enforces when either side enforces, a host is allowed only where both sides allow it,
+> and what either side denies is denied. Read [The first change](#the-first-change) before
+> you make it.
 
 ## Rules
 
@@ -26,15 +28,11 @@ A rule allows or denies one thing:
 - **Paths**, on an allowed host: every path, or the paths listed. A path starts with `/` and
   may end in one `*`, such as `/v1/*`; there is no other wildcard and no query. A host held
   to paths is one the proxy reads requests to, which it can do only behind a wall.
-- **A credential**, by name, with an argument when the machine's adapter takes one: a name
-  such as `forge-token` and an argument such as `acme/shop`. The policy names a credential
-  and never holds one. Each machine defines its credentials in its own runner file, and a
-  run whose policy names a credential its machine does not define does not start. The
-  policy in force on a run's Details tab lists each of the run's credentials with its
-  argument and the hosts it is for, such as `forge-token acme/shop (forge.example)`.
 
-Paths and credentials need a wall. Without one the runner refuses to start a run whose
-policy has either.
+Paths need a wall. Without one the runner refuses to start a run whose policy has them.
+
+Credentials are not part of the policy: the run configuration this server renders selects
+none, and a run uses no credential of its machine's.
 
 The policy document the runner reads has a deny list and an allow list. The runner decides
 the deny list first, in either mode: a host a deny rule names is denied under observe as
@@ -45,7 +43,7 @@ disables a host the workspace allows.
 ## The workspace's baseline and a repository's rules
 
 The workspace has a baseline of rules, on `/:org/:workspace/policy`: the hosts and paths
-in its **Network access** section, the credentials in **Credentials**. What the runs
+in its **Network access** section. What the runs
 reached, and what decided it, is the **Network access** page beside **Policy** in the
 sidebar, `/:org/:workspace/network`, where each row can allow or deny its host; the
 section links to it, and its rules link back. A repository has rules of its own on top,
@@ -77,13 +75,12 @@ policy page, which their menu leads to (**View in Main's policy**). A rule that 
 force, the repository's own under a locked rule of the workspace, or the workspace's that
 the repository's own decides, stays in the list, struck through, and says why. A
 repository overrides the workspace's rule for a host by adding its own rule for it, the
-other way round; removing that rule gives the workspace's back. Its credentials are its
-own, then the workspace's, each with its source.
+other way round; removing that rule gives the workspace's back.
 
 ## How rules resolve
 
-Rules meet on the same host string, or the same credential name, and the one that wins
-decides the host whole, its action and its paths.
+Rules meet on the same host string, and the one that wins decides the host whole, its
+action and its paths.
 
 0. A rule of the level above the workspace, where the edition keeps one (the core keeps
    none): its denies hold everywhere, so no rule of the workspace or of a repository
@@ -96,8 +93,7 @@ decides the host whole, its action and its paths.
 
 So where the two meet on a host, the repository wins, unless the workspace's rule is
 locked. Where the level above the workspace allows only its own hosts, an allow of the
-workspace or of a repository is listed, struck, and not in force; denies and credentials
-still apply.
+workspace or of a repository is listed, struck, and not in force; denies still apply.
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
 `api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
@@ -139,8 +135,10 @@ Members edit rules. Only an owner locks, unlocks, changes or removes a locked ru
 
 ## Observe and enforce
 
-The workspace has a mode, one line at the top of `/:org/:workspace/policy`: Observe or
-Enforce, then a sentence of what it does and how many repositories follow it.
+The workspace has a mode, a card at the top of `/:org/:workspace/policy`, above its tabs:
+Observe or Enforce, then a sentence of what it does and how many repositories follow it.
+Change mode opens the choices in the card; a pick only selects, and the button that names
+it saves it.
 
 - **Observe** records every connection and denies only what a deny rule names. A host no
   rule names is let through, and the record says so. A deny holds in observe as in enforce,
@@ -219,9 +217,9 @@ as it was.
 ## Tool invocations
 
 A runner can give a run **tools**: programs on the runner's machine that serve hosts. The
-machine defines them; the run's policy selects among them by name, as it selects
-credentials. A run configuration could carry that selection, but this server never sends
-one: the workspace's policy has no tools. So a run has tools only when it runs under its
+machine defines them; the run's policy selects among them by name. A run configuration
+could carry that selection, but this server never sends one: the workspace's policy has no
+tools. So a run has tools only when it runs under its
 machine's own policy, the one in its [runner file](runner-file.md), and only such runs
 report tool invocations.
 
@@ -277,7 +275,7 @@ policy of that version as text, with **Download**:
 
 - the `egress` section for the machine's runner file, which says a mode, the hosts
   allowed, the hosts denied and nothing else;
-- when the policy has paths or credentials, a policy file in the contract's own format,
+- when the policy has paths, a policy file in the contract's own format,
   given to one run with `qory run --policy <file>`. It narrows the runner file's section and
   never widens it, so the two are exported together and agree.
 
@@ -317,23 +315,24 @@ Until somebody has made the workspace's policy:
 - the policy page says: "Runs use each machine's own policy until the first change here."
 
 The first rule or the first change of mode, the workspace's or a repository's, is the
-moment the workspace takes over:
+moment the workspace's policy applies:
 
-- for every machine under the workspace's access keys, and for the runs in flight, which
+- to every machine under the workspace's access keys, and to the runs in flight, which
   reload within a heartbeat;
-- entirely: from then on the workspace's policy is the policy, and a machine's own
-  `egress` section is not merged with it;
-- in the mode the workspace is in, which is observe until an owner or an admin sets it. A
-  machine that enforced a list of its own is, after the first change, under a workspace
-  that observes and denies only what a deny rule names, until an owner or an admin
-  switches the workspace to enforce.
+- narrowed by each machine's own `egress` section, which only takes away: a run enforces
+  when either side enforces, a host is allowed only where both sides allow it (a side in
+  observe allows every host), and the deny rules are both sides' together;
+- in the mode the workspace is in, which is observe until an owner or an admin sets it,
+  unless the machine enforces. A machine that enforced a list of its own stays in
+  enforce after the first change: while the workspace observes, its runs reach the hosts
+  of its own list, less what a deny rule of the workspace names.
 
 So before the first change:
 
 1. Collect what the machines' own lists say, the `egress.allow` of every runner file.
-2. Say all of it in the workspace. The first rule you add already takes over, so add the
-   rest straight after it; while the workspace is in observe only what a deny rule names
-   is denied in between.
+2. Say all of it in the workspace. The first rule you add already applies, so add the
+   rest straight after it; where both sides enforce, a run reaches only the hosts both
+   allow.
 3. When the rules are complete, an owner or an admin switches to enforce. The confirmation lists what
    would start being denied, from the record.
 

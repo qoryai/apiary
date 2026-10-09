@@ -38,7 +38,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     refute text =~ @policy_words, "the page names the policy: " <> inspect(text)
     refute main |> LazyHTML.query("a[href*='/policy']") |> Enum.any?()
     refute main |> LazyHTML.query("[phx-click*='rule_open']") |> Enum.any?()
-    refute main |> LazyHTML.query("#rule-popover") |> Enum.any?()
+    refute main |> LazyHTML.query("#rule-panel") |> Enum.any?()
     refute main |> LazyHTML.query(".q-after, .q-kv-policy, #card-policy") |> Enum.any?()
   end
 
@@ -155,7 +155,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
         render_submit(lv, "rule_submit", %{"for" => "workspace"})
       end
 
-      refute has_element?(lv, "#rule-popover")
+      refute has_element?(lv, "#rule-panel")
       refute_policy(render(lv))
       nothing_written()
     end
@@ -255,7 +255,11 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
         )
 
       refute_policy(render(view))
-      assert has_element?(view, "#connections-target-note", "github.example/acme/shop")
+      # The target by its path, its system only where another system has the path too.
+      assert has_element?(view, "#connections-target-note", "acme/shop")
+      refute has_element?(view, "#connections-target-note", "github.example/")
+      assert has_element?(view, "#connections-target-runs", "Runs")
+      assert has_element?(view, "#connections-target-all", "Show all destinations")
       refute has_element?(view, "#connections-target-policy")
     end
 
@@ -269,7 +273,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
         render_submit(view, "rule_submit", %{"for" => "workspace"})
       end
 
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       refute_policy(render(view))
       nothing_written()
     end

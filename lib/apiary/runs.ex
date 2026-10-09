@@ -26,6 +26,7 @@ defmodule Apiary.Runs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Filters, Target, Run}
@@ -423,8 +424,7 @@ defmodule Apiary.Runs do
   @doc """
   The options of each section of the runs list's Filter menu, counted from the data: every
   facet is counted under the other filters and the range, not under itself, so a section
-  shows what choosing another value would give. `%{state:, target:, task:, runtime:, host:,
-  key:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
+  shows what choosing another value would give. `%{state:, target:, runtime:, host:, node:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
   #{@facet_size} of them unless `limits:` maps the facet's name to more, and the chosen one,
   with how many values there are. `narrow:` maps a facet's name to what the reader typed in
   its section, matched anywhere in the value, case-insensitively, as text and never as a
@@ -445,12 +445,9 @@ defmodule Apiary.Runs do
           narrow["target"],
           limit.("target")
         ),
-      task:
-        text_facet(scope, filters, now, :task, gettext("No task"), narrow["task"], limit.("task")),
-      runtime:
-        text_facet(scope, filters, now, :runtime, nil, narrow["runtime"], limit.("runtime")),
-      host: text_facet(scope, filters, now, :host, nil, narrow["host"], limit.("host")),
-      key: key_facet(scope, filters, now, narrow["key"], limit.("key"))
+      runtime: text_facet(scope, filters, now, :runtime, narrow["runtime"], limit.("runtime")),
+      host: text_facet(scope, filters, now, :host, narrow["host"], limit.("host")),
+      node: node_facet(scope, filters, now, narrow["node"], limit.("node"))
     }
   end
 
@@ -509,7 +506,7 @@ defmodule Apiary.Runs do
   defp target_text({nil, _path}, path), do: path
   defp target_text({system, _path}, path), do: "#{system}/#{path}"
 
-  defp text_facet(scope, filters, now, field, none_label, narrow, limit) do
+  defp text_facet(scope, filters, now, field, narrow, limit) do
     chosen = Map.fetch!(filters, field)
     base = filtered(scope, Map.put(filters, field, nil), now)
     pattern = like(narrow)
@@ -532,9 +529,7 @@ defmodule Apiary.Runs do
         do: Repo.one(from g in subquery(select(grouped, [r], field(r, ^field))), select: count()),
         else: length(rows)
 
-    # A label that reads "none" cannot be told from the absence of one in the URL.
-    options =
-      for {value, n} <- Enum.take(rows, limit), value != "none", do: {value, value, n}
+    options = for {value, n} <- Enum.take(rows, limit), do: {value, value, n}
 
     options =
       if is_binary(chosen) and not Enum.any?(options, &(elem(&1, 1) == chosen)) do
@@ -544,52 +539,63 @@ defmodule Apiary.Runs do
         options
       end
 
-    none =
-      if none_label && is_nil(pattern),
-        do: Repo.aggregate(from(r in base, where: is_nil(field(r, ^field))), :count),
-        else: 0
-
-    options = if none > 0, do: options ++ [{none_label, "none", none}], else: options
-
-    %{options: options, total: total + if(none > 0, do: 1, else: 0)}
+    %{options: options, total: total}
   end
 
-  # The access keys the runs came in with, by the key's label: the label is unique in the
-  # workspace, and a revoked key keeps its runs.
-  defp key_facet(scope, filters, now, narrow, limit) do
-    base = filtered(scope, %{filters | key: nil}, now)
+  # The nodes the runs ran on, a pool for its instances' runs, deleted ones included. A node
+  # in use is offered by its name, as one types it; a deleted one by its public id, since its
+  # name may be another's now (`where_node/3` reads both). The chosen node keeps the value it
+  # was chosen by, so a node page's link, by the node's id, shows its option checked.
+  defp node_facet(scope, filters, now, narrow, limit) do
+    base = filtered(scope, %{filters | node: nil}, now)
     pattern = like(narrow)
 
     grouped =
       from [run: r] in base,
-        join: k in AccessKey,
-        on: k.id == r.access_key_id and k.workspace_id == r.workspace_id,
-        group_by: k.label
+        join: n in Node,
+        on:
+          n.id == r.node_id and n.organisation_id == r.organisation_id and
+            n.workspace_id == r.workspace_id,
+        group_by: [n.id, n.public_id, n.name, n.deleted_at]
 
-    grouped = if pattern, do: where(grouped, [_r, k], ilike(k.label, ^pattern)), else: grouped
+    grouped = if pattern, do: where(grouped, [_r, n], ilike(n.name, ^pattern)), else: grouped
 
     rows =
       Repo.all(
-        from [r, k] in grouped,
-          order_by: [desc: count(r.id), asc: k.label],
+        from [r, n] in grouped,
+          order_by: [desc: count(r.id), asc: n.name, asc: n.public_id],
           limit: ^(limit + 1),
-          select: {k.label, count(r.id)}
+          select: {n.public_id, n.name, n.deleted_at, count(r.id)}
       )
 
     total =
       if length(rows) > limit,
-        do: Repo.one(from g in subquery(select(grouped, [_r, k], k.label)), select: count()),
+        do: Repo.one(from g in subquery(select(grouped, [_r, n], n.id)), select: count()),
         else: length(rows)
 
-    options = for {label, n} <- Enum.take(rows, limit), do: {label, label, n}
+    options =
+      for {public_id, name, deleted_at, n} <- Enum.take(rows, limit),
+          do:
+            {node_label(name, deleted_at), node_value(public_id, name, deleted_at, filters.node),
+             n}
 
     options =
-      if is_binary(filters.key) and not Enum.any?(options, &(elem(&1, 1) == filters.key)),
-        do: [{filters.key, filters.key, 0} | options],
-        else: options
+      if is_binary(filters.node) and not Enum.any?(options, &(elem(&1, 1) == filters.node)) do
+        n = Repo.aggregate(where_node(base, scope, filters.node), :count)
+        [{filters.node, filters.node, n} | options]
+      else
+        options
+      end
 
     %{options: options, total: total}
   end
+
+  defp node_label(name, nil), do: name
+  defp node_label(name, _deleted_at), do: gettext("%{name} (deleted)", name: name)
+
+  defp node_value(public_id, _name, _deleted_at, public_id), do: public_id
+  defp node_value(_public_id, name, nil, _chosen), do: name
+  defp node_value(public_id, _name, _deleted_at, _chosen), do: public_id
 
   # What the reader typed, as the operand of ILIKE that matches it anywhere and as text:
   # the pattern's own characters are escaped, so "%" finds a per cent sign and nothing else.
@@ -628,10 +634,9 @@ defmodule Apiary.Runs do
     in_scope(scope)
     |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
     |> where_target(f.target)
-    |> where_text(:task, f.task)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
-    |> where_key(scope, f.key)
+    |> where_node(scope, f.node)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
     |> where_if(from, dynamic([r], coalesce(r.started_at, r.inserted_at) >= ^from))
@@ -652,24 +657,25 @@ defmodule Apiary.Runs do
     do: where(query, [run: r], r.target_system == ^system and r.target_path == ^path)
 
   defp where_text(query, _field, nil), do: query
-  defp where_text(query, field, :none), do: where(query, [r], is_nil(field(r, ^field)))
   defp where_text(query, field, value), do: where(query, [r], field(r, ^field) == ^value)
 
-  defp where_key(query, _scope, nil), do: query
+  # A node by its public id, or by the name of a node in use: a deleted node's runs are
+  # found by its id, since its name may be another's now.
+  defp where_node(query, _scope, nil), do: query
 
-  defp where_key(query, scope, label) do
-    keys =
-      from k in AccessKey,
+  defp where_node(query, scope, node) do
+    nodes =
+      from n in Node,
         where:
-          k.organisation_id == ^scope.organisation.id and k.workspace_id == ^scope.workspace.id,
-        where: k.label == ^label,
-        select: k.id
+          n.organisation_id == ^scope.organisation.id and n.workspace_id == ^scope.workspace.id,
+        where: n.public_id == ^node or (n.name == ^node and is_nil(n.deleted_at)),
+        select: n.id
 
-    where(query, [r], r.access_key_id in subquery(keys))
+    where(query, [r], r.node_id in subquery(nodes))
   end
 
   # The free text: the start of the run's id (four hexadecimal characters at least, or a
-  # run page's address), or its task or its target, `system/path`, holding it anywhere.
+  # run page's address), or its title or its target, `system/path`, holding it anywhere.
   defp where_query(query, nil), do: query
 
   defp where_query(query, q) do
@@ -681,7 +687,7 @@ defmodule Apiary.Runs do
         text =
           dynamic(
             [r],
-            ilike(r.task, ^pattern) or
+            ilike(r.about_title, ^pattern) or
               ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^pattern)
           )
 
@@ -798,7 +804,7 @@ defmodule Apiary.Runs do
   end
 
   # Denied first: the destinations whose last attempt was denied, the most denied attempts
-  # first and then the most recently seen, as Needs attention weighs them; the rest by
+  # first and then the most recently seen, as To review weighs them; the rest by
   # first seen, newest first, so such a row does not move when it is seen again (see
   # Record.connections/3). Or the order the reader chose.
   defp destination_order(sort) do
@@ -990,7 +996,9 @@ defmodule Apiary.Runs do
   The options of the connections page's filters, `%{target:, host:}`, each
   `%{options: [{label, value, count}], total: n}` like `run_facets/3`: a target counted in
   destinations, as the rail counts it (`destination_target_counts/3`), a host in runs;
-  `narrow:` as there.
+  `narrow:` as there. `decided: true` keeps the hosts to those of the destinations the
+  filters' `decision` lists, as the list itself does (the query field's suggestions); the
+  Filter menu's hosts do not.
   """
   def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
@@ -1007,15 +1015,23 @@ defmodule Apiary.Runs do
           destination_count()
         ),
       host:
-        destination_host_facet(scope, filters, now, narrow["host"], facet_limit(limits["host"]))
+        destination_host_facet(
+          scope,
+          filters,
+          now,
+          narrow["host"],
+          facet_limit(limits["host"]),
+          Keyword.get(opts, :decided, false)
+        )
     }
   end
 
-  defp destination_host_facet(scope, filters, now, narrow, limit) do
+  defp destination_host_facet(scope, filters, now, narrow, limit, decided) do
     base = connections_in(scope, %{filters | host: nil}, now)
     like = like(narrow)
     grouped = from c in base, group_by: c.host
     grouped = if like, do: where(grouped, [c], ilike(c.host, ^like)), else: grouped
+    grouped = if decided, do: having_decision(grouped, filters.decision), else: grouped
 
     rows =
       Repo.all(
@@ -1194,12 +1210,13 @@ defmodule Apiary.Runs do
             )
         }
 
-    case f.decision do
-      "denied" -> having(query, [c], sum(c.denied) > 0)
-      "allowed" -> having(query, [c], sum(c.allowed) > 0)
-      _all -> query
-    end
+    having_decision(query, f.decision)
   end
+
+  # Destinations, or hosts, with any attempt so decided.
+  defp having_decision(query, "denied"), do: having(query, [c], sum(c.denied) > 0)
+  defp having_decision(query, "allowed"), do: having(query, [c], sum(c.allowed) > 0)
+  defp having_decision(query, _all), do: query
 
   @doc "The last heartbeat each access key of the workspace delivered, by the key's row id; keys that never did are absent."
   def last_heartbeats_by_key(%Scope{
@@ -1235,7 +1252,11 @@ defmodule Apiary.Runs do
 
   # The runs are placed by when they started, or, for a run that has only pinged, by when
   # the workspace first heard of it: the expression of
-  # `runs_workspace_id_started_or_first_heard_index`.
+  # `runs_workspace_id_started_or_first_heard_index`. A run's UTC day is that expression
+  # cast to a date as it is, since the columns hold UTC with no zone: `AT TIME ZONE 'UTC'`
+  # would make a timestamptz of it, which the cast dates in the connection's time zone, and
+  # a database not set to UTC would put the runs of the hours around midnight on the wrong
+  # day.
   defp by_start, do: dynamic([r], coalesce(r.started_at, r.inserted_at))
 
   @typedoc """
@@ -1270,14 +1291,12 @@ defmodule Apiary.Runs do
 
     Repo.all(
       from r in query,
-        group_by:
-          fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
-        order_by:
-          fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+        group_by: fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
+        order_by: fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
         select: %{
           day:
             type(
-              fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+              fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
               :date
             ),
           runs: count(r.id),
@@ -1320,12 +1339,12 @@ defmodule Apiary.Runs do
           where: coalesce(r.started_at, r.inserted_at) >= ^from,
           group_by: [
             r.workspace_id,
-            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+            fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at)
           ],
           select:
             {r.workspace_id,
              type(
-               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
                :date
              ), count(r.id), type(coalesce(sum(r.denied_count), 0), :integer)}
       )
@@ -1445,12 +1464,12 @@ defmodule Apiary.Runs do
           where: r.target_id in ^ids,
           group_by: [
             r.target_id,
-            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+            fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at)
           ],
           select:
             {r.target_id,
              type(
-               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
                :date
              ), count(r.id)}
       )
@@ -1626,7 +1645,7 @@ defmodule Apiary.Runs do
   @doc """
   search_runs/3 is the workspace's runs that `text` names: by the start of their id, as
   the runner prints it (four hexadecimal characters at least, a whole id or the address
-  of a run's page too), or by their task, which holds it anywhere; newest first, at most
+  of a run's page too), or by their title, which holds it anywhere; newest first, at most
   `limit`. What the palette finds (`ApiaryWeb.JumpController`).
   """
   @spec search_runs(Scope.t(), String.t(), pos_integer) :: [Run.t()]
@@ -1640,13 +1659,16 @@ defmodule Apiary.Runs do
           nil
 
         {nil, pattern} ->
-          dynamic([r], ilike(r.task, ^pattern))
+          dynamic([r], ilike(r.about_title, ^pattern))
 
         {prefix, nil} ->
           dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix))
 
         {prefix, pattern} ->
-          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.task, ^pattern))
+          dynamic(
+            [r],
+            fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.about_title, ^pattern)
+          )
       end
 
     if condition do

@@ -25,23 +25,45 @@ defmodule ApiaryWeb.JumpControllerTest do
     go_to = group(answer, "Go to")
 
     assert "Runs" in labels(go_to)
-    assert "Workspace settings › Access keys" in labels(go_to)
-    assert "Workspace settings › Retention" in labels(go_to)
+    refute "Workspace settings › Access keys" in labels(go_to)
+    assert "Nodes" in labels(go_to)
+    assert "Workspace settings › Runs" in labels(go_to)
+    assert "Workspace settings › People" in labels(go_to)
     assert "Organisation settings › People" in labels(go_to)
-    assert "Profile" in labels(go_to)
+    refute "Workspace settings › Retention" in labels(go_to)
 
+    people = Enum.find(go_to["items"], &(&1["label"] == "Workspace settings › People"))
+    assert people["href"] == workspace_path(scope, "/settings/people")
+    settings_runs = Enum.find(go_to["items"], &(&1["label"] == "Workspace settings › Runs"))
+    assert settings_runs["href"] == workspace_path(scope, "/settings/runs")
+    assert "Account" in labels(go_to)
+    refute "Profile" in labels(go_to)
+
+    # Go to opens the whole lists: a narrowing is the list's address, never carried here.
     runs = Enum.find(go_to["items"], &(&1["label"] == "Runs"))
     assert runs["href"] == workspace_path(scope, "/runs")
     assert runs["detail"] == scope.workspace.name
 
-    # nothing else is listed for nothing typed but what New offers
+    nodes = Enum.find(go_to["items"], &(&1["label"] == "Nodes"))
+    assert nodes["href"] == workspace_path(scope, "/nodes")
+
+    # nothing else is listed for nothing typed but what New offers; Add integration,
+    # secrets and variables with the `secrets` feature, whose they are
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
-    assert labels(group(answer, "Actions")) == ["New access key", "Invite people"]
+
+    security =
+      if Apiary.Features.on?(:secrets),
+        do: ["Add integration", "New secret", "New variable"],
+        else: []
+
+    assert labels(group(answer, "Actions")) ==
+             ["New node", "New node pool"] ++ security ++ ["Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
-    answer = jump(conn, workspace_path(scope, "/jump"), "keys")
-    assert labels(group(answer, "Go to")) == ["Workspace settings › Access keys"]
+    # A workspace's keys are its nodes': the old words find Nodes.
+    answer = jump(conn, workspace_path(scope, "/jump"), "access keys")
+    assert labels(group(answer, "Go to")) == ["Nodes"]
     assert answer["status"] == "1 result"
 
     answer = jump(conn, workspace_path(scope, "/jump"), "no such page")
@@ -74,9 +96,11 @@ defmodule ApiaryWeb.JumpControllerTest do
        %{conn: conn, scope: scope} do
     found = fn q -> labels(group(jump(conn, workspace_path(scope, "/jump"), q), "Go to")) end
 
-    assert found.("retention") == ["Workspace settings › Retention"]
-    assert found.("audit") == ["Organisation settings › Audit log"]
-    assert found.("members") == ["Organisation settings › People"]
+    assert found.("retention") == ["Workspace settings › Runs"]
+    assert found.("prune") == ["Workspace settings › Runs"]
+    assert found.("runs") == ["Runs", "Workspace settings › Runs"]
+    assert found.("audit") == ["Audit log"]
+    assert found.("members") == ["Workspace settings › People", "Organisation settings › People"]
     assert found.("workspaces") == ["Organisation settings › Workspaces"]
     assert "Organisation settings" in found.("organisation settings")
     assert found.("theme") == ["Preferences › Theme"]
@@ -98,19 +122,21 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert "Delete your account…" in actions
   end
 
-  test "a target by its path, and runs by their id or task", %{conn: conn, scope: scope} do
+  test "a target by its path, and runs by their id or title", %{conn: conn, scope: scope} do
     run =
-      started_run(scope, %{
-        "forge" => "github.example",
-        "repository" => "acme/shop",
-        "task" => "fix-checkout"
-      })
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/shop"},
+        about: %{"title" => "Fix the checkout"}
+      )
+
+    # A task is an ordinary label: ⌘K does not find a run by it.
+    task = started_run(scope, %{"task" => "nightly-load"})
 
     answer = jump(conn, workspace_path(scope, "/jump"), "shop")
     [target] = group(answer, "Repositories")["items"]
     assert target["label"] == "acme/shop"
     assert target["detail"] == "github.example"
-    assert target["href"] == workspace_path(scope, "/targets/github.example/acme/shop")
+    # The path alone: no other system of the workspace has it (question 9, answer A).
+    assert target["href"] == workspace_path(scope, "/targets/acme/shop")
 
     short = String.slice(run.run_id, 0, 8)
     href = workspace_path(scope, "/runs/#{run.run_id}")
@@ -122,10 +148,39 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     answer = jump(conn, workspace_path(scope, "/jump"), "checkout")
     assert [%{"label" => label, "href" => ^href}] = group(answer, "Runs")["items"]
-    assert label == "#{short} · fix-checkout"
+    assert label == "#{short} · Fix the checkout"
+
+    refute group(jump(conn, workspace_path(scope, "/jump"), "nightly"), "Runs")
+
+    # A run without a title is its short id.
+    task_short = String.slice(task.run_id, 0, 8)
+    answer = jump(conn, workspace_path(scope, "/jump"), task_short)
+    assert [%{"label" => ^task_short}] = group(answer, "Runs")["items"]
 
     # three characters are not an id
     refute group(jump(conn, workspace_path(scope, "/jump"), "abc"), "Runs")
+  end
+
+  test "a target whose path another system has is at its address, with its system",
+       %{conn: conn, scope: scope} do
+    started_run(scope, shop())
+    started_run(scope, shop("gitlab.example"))
+    started_run(scope, %{"forge" => "github.example", "repository" => "acme/shopfront"})
+
+    hrefs =
+      jump(conn, workspace_path(scope, "/jump"), "shop")
+      |> group("Repositories")
+      |> Map.fetch!("items")
+      |> Map.new(&{{&1["detail"], &1["label"]}, &1["href"]})
+
+    assert hrefs == %{
+             {"github.example", "acme/shop"} =>
+               workspace_path(scope, "/targets/github.example/acme/shop"),
+             {"gitlab.example", "acme/shop"} =>
+               workspace_path(scope, "/targets/gitlab.example/acme/shop"),
+             {"github.example", "acme/shopfront"} =>
+               workspace_path(scope, "/targets/acme/shopfront")
+           }
   end
 
   test "places by name and slug", %{conn: conn, user: user, scope: scope} do
@@ -147,7 +202,8 @@ defmodule ApiaryWeb.JumpControllerTest do
     answer = jump(conn, ~p"/#{scope.organisation}/jump")
 
     refute "Runs" in labels(group(answer, "Go to"))
-    assert "Organisation settings › Audit log" in labels(group(answer, "Go to"))
+    assert "Audit log" in labels(group(answer, "Go to"))
+    refute "Organisation settings › Audit log" in labels(group(answer, "Go to"))
     # the organisation's own actions, and an edition's; no key of a workspace
     assert "Invite people" in labels(group(answer, "Actions"))
     refute "New access key" in labels(group(answer, "Actions"))
@@ -155,11 +211,9 @@ defmodule ApiaryWeb.JumpControllerTest do
   end
 
   test "a runner's words are text in the answer", %{conn: conn, scope: scope} do
-    started_run(scope, %{
-      "forge" => "github.example",
-      "repository" => "acme/<b>shop</b>",
-      "task" => "<script>x</script>"
-    })
+    started_run(scope, %{"forge" => "github.example", "repository" => "acme/<b>shop</b>"},
+      about: %{"title" => "<script>x</script>"}
+    )
 
     answer = jump(conn, workspace_path(scope, "/jump"), "<")
     assert "acme/<b>shop</b>" in labels(group(answer, "Repositories"))
@@ -182,5 +236,43 @@ defmodule ApiaryWeb.JumpControllerTest do
       |> get(workspace_path(scope, "/jump"), %{"q" => "x"})
 
     assert conn.status == 404
+  end
+
+  test "Go to lists a Settings' sections after it, in the second column's order",
+       %{conn: conn, scope: scope} do
+    labels = labels(group(jump(conn, workspace_path(scope, "/jump")), "Go to"))
+
+    workspace =
+      for %{label: label} <- ApiaryWeb.SettingsComponents.sections(scope, :workspace),
+          label != "General",
+          do: "Workspace settings › #{label}"
+
+    # Right after Workspace settings, in order, each once: Runs last, as the column has it.
+    at = Enum.find_index(labels, &(&1 == "Workspace settings"))
+    assert Enum.slice(labels, at + 1, length(workspace)) == workspace
+    assert List.last(workspace) == "Workspace settings › Runs"
+    assert Enum.count(labels, &(&1 == "Workspace settings › Runs")) == 1
+
+    organisation =
+      for %{label: label} <- ApiaryWeb.SettingsComponents.sections(scope, :organisation),
+          label != "General",
+          do: "Organisation settings › #{label}"
+
+    at = Enum.find_index(labels, &(&1 == "Organisation settings"))
+    assert Enum.slice(labels, at + 1, length(organisation)) == organisation
+    assert Enum.count(labels, &(&1 == "Organisation settings › People")) == 1
+  end
+
+  test "an instance admin goes to Instance settings › Configuration; nobody else does",
+       %{conn: conn, user: user, scope: scope} do
+    go_to = fn -> group(jump(conn, workspace_path(scope, "/jump"), "configuration"), "Go to") end
+
+    refute "Instance settings › Configuration" in labels(go_to.())
+
+    {:ok, %{granted?: true}} = Organisations.grant_instance_admin(user)
+
+    item = Enum.find(go_to.()["items"], &(&1["label"] == "Instance settings › Configuration"))
+    assert item["href"] == "/instance/configuration"
+    assert item["detail"] == "Instance settings"
   end
 end

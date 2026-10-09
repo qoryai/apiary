@@ -1,14 +1,16 @@
 defmodule ApiaryWeb.PolicyLive.Show do
   @moduledoc """
-  The workspace's security policy: the mode with its two confirms, Network access (the
+  The workspace's security policy: the mode card above the tabs, whose choices open in
+  place and are saved by one button, Network access (the
   hosts and paths allowed and denied, with the composer that reads a rule back before it
-  is saved, and a link to the Network access page, what the runs reached), the
-  credentials, the targets and their policy, the history with diffs, one version with its
+  is saved, and a link to the Network access page, what the runs reached), the targets
+  and their policy, the history with diffs, one version with its
   document, and the export. The Network access page's rule links (`?rule=`) lead to the
   rule in that section.
 
-  One LiveView, five live actions, so a tab is a patch. Filters, the opened change, the
-  compared version and the export modal are in the URL. The page calls `Apiary.Policy`
+  One LiveView, five live actions, so a tab is a patch. A version and its export name
+  themselves in the frame's breadcrumb, after Policy. Filters, the opened change, the
+  compared version and the export page are in the URL. The page calls `Apiary.Policy`
   and nothing under it, except the contract's grammar for the reading line. It follows
   `policy:<workspace>` and reads again at most once per 250 ms.
 
@@ -39,7 +41,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       |> assign(reload: &load/1, list_query: %RuleList{}, ruled_host: nil, targets: nil)
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(would: nil, composer_open: false, own_only: false, params: %{})
-      |> assign(target_list: [], summary: nil)
+      |> assign(target_list: [], summary: nil, shown: nil)
       |> assign(:target_details, Phoenix.LiveView.AsyncResult.loading())
       |> assign(:target_suggestions, Phoenix.LiveView.AsyncResult.loading())
 
@@ -89,8 +91,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     )
     |> then(fn socket ->
       assign(socket,
-        rows: Common.above_rows(effective, socket) ++ Common.workspace_rules(own, socket, locks),
-        credentials: Common.credential_rows(own, socket)
+        rows: Common.above_rows(effective, socket) ++ Common.workspace_rules(own, socket, locks)
       )
     end)
     |> load_record()
@@ -157,7 +158,27 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   def handle_params(params, _uri, socket) do
     socket = assign(socket, missing: nil, export: nil, params: params, now: DateTime.utc_now())
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+
+    # A rule row's confirm is in place on the rules tab: another tab leaves it. The mode's
+    # choices stay open on every tab, the card being above them, and close where the card
+    # is not drawn: a version and its export.
+    socket =
+      if socket.assigns.live_action != :rules and socket.assigns.dialog != nil,
+        do: assign(socket, :dialog, nil),
+        else: socket
+
+    socket =
+      if socket.assigns.live_action in [:version, :export],
+        do: assign(socket, mode_pick: nil, would: nil),
+        else: socket
+
+    action = socket.assigns.live_action
+
+    {:noreply,
+     socket
+     |> apply_action(action, params)
+     |> Common.heading_focus(socket.assigns.shown, action)
+     |> assign(:shown, action)}
   end
 
   # The list's query is the URL's (`RuleList`), written back without what it does not
@@ -234,7 +255,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
         cond do
           action == :export and v.current? ->
-            assign(socket, :export, Common.export(socket, v.configuration))
+            assign(socket,
+              export: Common.export(socket, v.configuration),
+              page_title:
+                gettext("Export · Version %{version} · Policy", version: v.configuration.version)
+            )
 
           action == :export ->
             scope = socket.assigns.current_scope
@@ -385,17 +410,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   ## Events
 
-  # `?confirm=enforce` (the overview's one-click nudge) lands with the enforce confirm
-  # open, as if Enforce had been chosen, and only for an owner of a workspace that
-  # observes; the parameter is dropped from the address at once, so a reload or a shared
-  # link does not ask again. Any other value of `confirm` is ignored.
+  # `?confirm=enforce` (the overview's one-click nudge) lands with the mode's choices
+  # open and Enforce picked, its question asked, and only for an owner of a workspace that
+  # observes; nothing is saved until its button is pressed. The parameter is dropped from
+  # the address at once, so a reload or a shared link does not ask again. Any other value
+  # of `confirm` is ignored.
   defp confirm_enforce(socket) do
     # The address is cleaned once the page is up: a patch from the connected mount's own
     # `handle_params` would be part of the join.
     send(self(), :drop_confirm)
 
     if Common.may?(socket, :"security_policy.set_mode") and socket.assigns.mode != "enforce",
-      do: event("mode_ask", %{"mode" => "enforce"}, socket),
+      do: event("mode_open", %{"mode" => "enforce"}, socket),
       else: socket
   end
 
@@ -414,7 +440,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
-  defp event("mode_ask", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
+  # The mode's choices: opened by Change mode (or `?confirm=enforce`, with Enforce picked),
+  # a pick only selects, and one button saves the pick; Cancel and Escape close them. Each
+  # asks again whether the reader may set a mode and whether the level above fixes it.
+  # `mode_pick` alone says the choices are open, and what is picked.
+  defp event("mode_open", params, socket) do
     cond do
       required_mode(socket.assigns.effective) != nil ->
         socket
@@ -422,49 +452,52 @@ defmodule ApiaryWeb.PolicyLive.Show do
       not Common.may?(socket, :"security_policy.set_mode") ->
         assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
 
-      mode == socket.assigns.mode ->
+      true ->
+        pick =
+          case params do
+            %{"mode" => mode} when mode in ~w(observe enforce) -> mode
+            _ -> socket.assigns.mode
+          end
+
+        socket |> pick_mode(pick) |> Common.focus("policy-mode-opt-#{pick}")
+    end
+  end
+
+  defp event("mode_pick", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
+    cond do
+      required_mode(socket.assigns.effective) != nil or is_nil(socket.assigns.mode_pick) ->
         socket
 
-      mode == "enforce" ->
-        assign(socket,
-          dialog: {:mode, "enforce"},
-          would: Common.would(socket.assigns.current_scope, nil)
-        )
+      not Common.may?(socket, :"security_policy.set_mode") ->
+        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
 
       true ->
-        assign(socket, dialog: {:mode, "observe"}, would: nil)
+        pick_mode(socket, mode)
     end
   end
 
-  defp event("mode_confirm", _params, %{assigns: %{dialog: {:mode, mode}}} = socket) do
-    case Policy.set_mode(socket.assigns.current_scope, mode) do
-      {:ok, mode} ->
+  defp event("mode_set", _params, socket) do
+    pick = socket.assigns.mode_pick
+
+    cond do
+      required_mode(socket.assigns.effective) != nil ->
         socket
-        |> assign(:dialog, nil)
-        |> then(fn socket ->
-          following = socket.assigns.following
-          default = default_sentence(mode)
 
-          Common.wrote(
-            socket,
-            nil,
-            default <>
-              " " <>
-              ngettext(
-                "%{number} target follows it.",
-                "%{number} targets follow it.",
-                following,
-                number: Format.number(following)
-              ),
-            default
-          )
-        end)
-        |> Common.focus("policy-mode-#{mode}")
+      not Common.may?(socket, :"security_policy.set_mode") ->
+        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
 
-      {:error, error} ->
-        socket |> assign(:dialog, nil) |> Common.refused(error)
+      is_nil(pick) ->
+        socket
+
+      pick == socket.assigns.mode ->
+        close_mode(socket)
+
+      true ->
+        socket |> assign(mode_pick: nil, would: nil) |> set_mode(pick)
     end
   end
+
+  defp event("mode_cancel", _params, socket), do: close_mode(socket)
 
   defp event("would_allow", %{"key" => key}, %{assigns: %{would: %{} = would}} = socket) do
     scope = socket.assigns.current_scope
@@ -481,13 +514,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
         case result do
           {:ok, _rule} ->
+            would = Common.would(scope, nil, would)
+
             socket
             |> load()
-            |> assign(:would, Common.would(scope, nil, would))
+            |> assign(:would, would)
             |> assign(
               :announce,
               gettext("%{host} is allowed for the workspace.", host: destination.host)
             )
+            |> Common.focus_next_allow(would, key, "policy-mode-set")
 
           {:error, error} ->
             assign(socket, :would, Map.put(would, :error, error.message))
@@ -521,8 +557,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
-  # A confirm acts on the rule as it is now, not as it was when the dialog opened: one
-  # that is gone, or is not what the dialog named any more, is refused and the list re-read.
+  # A confirm acts on the rule as it is now, not as it was when the confirm showed: one
+  # that is gone, or is not what the confirm named any more, is refused and the list re-read.
   defp event("lock_confirm", _params, %{assigns: %{dialog: {:lock, rule, _held}}} = socket) do
     socket = assign(socket, :dialog, nil)
 
@@ -642,15 +678,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
       {:ok, rule} ->
         sentence =
           if locked,
-            do: gettext("%{rule} is locked. No target can override it.", rule: subject(rule)),
-            else:
-              gettext("%{rule} is unlocked. A target can override it again.", rule: subject(rule))
+            do: gettext("%{rule} is locked. No target can override it.", rule: rule.host),
+            else: gettext("%{rule} is unlocked. A target can override it again.", rule: rule.host)
 
         announce = if locked, do: gettext("Rule locked."), else: gettext("Rule unlocked.")
 
+        # Locked, the row's lock takes the focus; unlocked, the lock is gone: its menu.
         socket
         |> Common.wrote(nil, sentence, announce)
-        |> Common.focus("rule-#{rule.id}-lock")
+        |> focus_row(rule.host, if(locked, do: "lock", else: "menu-button"))
 
       {:error, error} ->
         Common.refused(socket, error)
@@ -664,49 +700,123 @@ defmodule ApiaryWeb.PolicyLive.Show do
         do: gettext("%{host} is denied for the workspace.", host: host),
         else: gettext("%{host} is allowed for the workspace.", host: host)
 
-    Common.wrote(socket, rule, sentence, gettext("Rule changed."))
+    socket
+    |> Common.wrote(rule, sentence, gettext("Rule changed."))
+    |> focus_row(host)
   end
 
   defp changed(socket, {:error, error}, _host, _action), do: Common.refused(socket, error)
 
   defp remove(socket, rule) do
-    rows = Common.listing(socket.assigns).rows
+    rows = Common.listing(socket.assigns).rows |> Enum.filter(&(&1.id == rule.id or menu?(&1)))
     index = Enum.find_index(rows, &(&1.id == rule.id))
     next = index && (Enum.at(rows, index + 1) || (index > 0 && Enum.at(rows, index - 1)))
 
     case Policy.remove_rule(socket.assigns.current_scope, rule) do
       {:ok, rule} ->
-        words =
-          if rule.kind == "credential",
-            do: gettext("The credential %{name} is removed.", name: rule.name),
-            else: gettext("The rule %{host} is removed.", host: rule.host)
+        socket =
+          Common.wrote(
+            socket,
+            nil,
+            gettext("The rule %{host} is removed.", host: rule.host),
+            gettext("Rule removed.")
+          )
 
-        socket
-        |> Common.wrote(nil, words, gettext("Rule removed."))
-        |> Common.focus(if(next, do: "rule-#{next.id}-menu-button", else: "policy-composer-host"))
+        Common.focus(socket, if(next, do: "rule-#{next.id}-menu-button", else: add_rule(socket)))
 
       {:error, error} ->
         Common.refused(socket, error)
     end
   end
 
-  defp subject(%{kind: "credential", name: name}), do: name
-  defp subject(%{host: host}), do: host
+  # After an act on a row, the focus stays on the row, `part` of it (its menu, or its lock
+  # once locked), when the row is on the page; else it goes to adding a rule.
+  defp focus_row(socket, host, part \\ "menu-button") do
+    case Enum.find(Common.listing(socket.assigns).rows, &(&1.own and &1.host == host)) do
+      %{id: id} -> Common.focus(socket, "rule-#{id}-#{part}")
+      nil -> Common.focus(socket, add_rule(socket))
+    end
+  end
+
+  # A row's ⋯ menu is drawn for the page's own rule the reader may change, and for a rule
+  # written elsewhere that has a page to change it on (`rule_line/1`).
+  defp menu?(row), do: (row.own and row.can_change) or (not row.own and row.view != nil)
+
+  # Adding a rule: Add rule over the list, or the first rule of a page with none, which
+  # shows no list (`rules_tab/1`'s `empty?`).
+  defp add_rule(%{assigns: %{own: [], effective: %{above: nil}, composer_open: false}}),
+    do: "policy-first-rule"
+
+  defp add_rule(_socket), do: "policy-rules-add"
+
+  # A pick of the mode's choices: what enforce would deny is read when it is picked over
+  # observe, and kept while it stays picked.
+  defp pick_mode(socket, mode) do
+    would =
+      if mode == "enforce" and socket.assigns.mode != "enforce",
+        do: socket.assigns.would || Common.would(socket.assigns.current_scope, nil),
+        else: nil
+
+    assign(socket, mode_pick: mode, would: would)
+  end
+
+  # The choices close, nothing saved; the focus goes back to Change mode.
+  defp close_mode(socket) do
+    socket |> assign(mode_pick: nil, would: nil) |> Common.focus("policy-mode-change")
+  end
+
+  defp set_mode(socket, mode) do
+    case Policy.set_mode(socket.assigns.current_scope, mode) do
+      {:ok, mode} ->
+        following = socket.assigns.following
+        default = default_sentence(mode)
+
+        socket
+        |> Common.wrote(
+          nil,
+          default <>
+            " " <>
+            ngettext(
+              "%{number} target follows it.",
+              "%{number} targets follow it.",
+              following,
+              number: Format.number(following)
+            ),
+          default
+        )
+        |> Common.focus("policy-mode-change")
+
+      {:error, error} ->
+        Common.refused(socket, error)
+    end
+  end
 
   defp default_sentence("enforce"), do: gettext("The workspace's default is enforce.")
   defp default_sentence(_observe), do: gettext("The workspace's default is observe.")
 
   # The targets' own rules a lock of this rule would put out of force: a rule on the
   # same host, or an allow below a locked `*.` deny. Read for the targets that have
-  # rules of their own, at most fifty of them.
+  # rules of their own, at most fifty of them. Each is named as it is addressed (`name`):
+  # one read of the paths it names.
   defp held_by_lock(scope, rule) do
-    for {target, own} <- target_rules(scope),
-        other <- own,
-        other.kind == "host",
-        other.host == rule.host or
-          (rule.action == "deny" and other.action == "allow" and
-             Grammar.covers?(rule.host, other.host)),
-        do: %{target: target, rule: other}
+    held =
+      for {target, own} <- target_rules(scope),
+          other <- own,
+          other.kind == "host",
+          other.host == rule.host or
+            (rule.action == "deny" and other.action == "allow" and
+               Grammar.covers?(rule.host, other.host)),
+          do: %{target: target, rule: other}
+
+    shared = Apiary.Runs.shared_paths(scope, Enum.map(held, & &1.target.path))
+
+    for %{target: target} = one <- held,
+        do:
+          Map.put(
+            one,
+            :name,
+            ApiaryWeb.TargetComponents.target_label(target.system, target.path, shared)
+          )
   end
 
   defp overriders(scope, rule) do
@@ -782,6 +892,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="list"
     >
+      <:crumb>{gettext("Policy")}</:crumb>
       <.page_skeleton title={gettext("Policy")} />
     </Layouts.app>
     """
@@ -797,30 +908,39 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="list"
     >
+      <:crumb
+        :if={@live_action in [:version, :export] && @v}
+        navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
+      >
+        {gettext("Policy")}
+      </:crumb>
+      <:crumb
+        :if={@live_action in [:version, :export] && @v}
+        navigate={
+          @live_action == :export &&
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
+        }
+      >
+        {gettext("Version %{version}", version: @v.configuration.version)}
+      </:crumb>
+      <:crumb :if={@live_action == :export && @v}>{gettext("Export")}</:crumb>
+      <:crumb :if={!(@live_action in [:version, :export] && @v)}>{gettext("Policy")}</:crumb>
+
       <div
         id="policy-page"
         phx-hook="PolicyPage"
         class="q-policy grid grid-cols-[minmax(0,1fr)] gap-6"
       >
-        <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">
-          <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
-              "Policy"
-            )}</.link>
-            <.icon name="hero-chevron-right-micro" class="size-3" />
-            <span class="q-here" aria-current="page">
-              {gettext("Version %{version}", version: @v.configuration.version)}
-            </span>
-          </nav>
-          <.version_head v={@v} base={@base} />
-        </div>
+        <.version_head :if={@live_action == :version && @v} v={@v} base={@base} />
 
-        <.header :if={!(@live_action in [:version, :export] && @v)}>
-          {gettext("Policy")}
-          <:subtitle>
+        <.page_header
+          :if={!(@live_action in [:version, :export] && @v)}
+          id="policy-header"
+          title={gettext("Policy")}
+        >
+          <:description>
             {gettext("What the runs of this workspace may reach through the runner's proxy.")}
-            <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
-          </:subtitle>
+          </:description>
           <:actions>
             <div :if={@managed? && @version} class="q-head-side">
               <.version_pill
@@ -843,20 +963,58 @@ defmodule ApiaryWeb.PolicyLive.Show do
             </div>
             <div :if={!(@managed? && @version)} class="q-head-side">
               <.version_pill id="policy-version-pill" />
+              <%!-- Off but focusable, so its reason is met by keyboard too: it does nothing. --%>
               <.tooltip
                 tip={gettext("Nothing to export yet: the first change here renders version 1.")}
                 placement="left"
                 class="q-tip-wide"
               >
-                <.button id="policy-export-button" disabled aria-disabled="true">
+                <.button
+                  id="policy-export-button"
+                  type="button"
+                  class="btn-disabled"
+                  aria-disabled="true"
+                  aria-describedby="policy-export-why"
+                >
                   <.icon name="hero-arrow-up-tray" class="size-4" />{gettext("Export")}
                 </.button>
               </.tooltip>
+              <span id="policy-export-why" class="sr-only">
+                {gettext("Nothing to export yet: the first change here renders version 1.")}
+              </span>
             </div>
           </:actions>
-        </.header>
+          <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
+        </.page_header>
+
+        <.mode_card
+          :if={!(@live_action in [:version, :export] && @v)}
+          level={:workspace}
+          scope={@current_scope}
+          mode={@mode}
+          can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
+          served={@managed?}
+          following={@following}
+          own={@own_modes}
+          fact={with :unavailable <- async_value(@fact, :loading), do: nil}
+          floor={required_mode(@effective)}
+          pick={@mode_pick}
+        >
+          <:effect>
+            <.mode_ask_effect
+              :if={@mode_pick}
+              mode={@mode_pick}
+              alive={if @own_modes == [], do: (@nav_counts && @nav_counts[:alive]) || 0, else: 0}
+              started={@managed?}
+              following={@following}
+              own={length(@own_modes)}
+            />
+          </:effect>
+          <.mode_would :if={@mode_pick == "enforce"} would={@would} scope={@current_scope} />
+        </.mode_card>
 
         <.policy_tabs
+          :if={!(@live_action == :export && @v)}
           scope={@current_scope}
           live_action={@live_action}
           rules={length(@rows)}
@@ -866,6 +1024,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         />
 
         <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
+        <.keys_panel />
 
         <ApiaryWeb.Extension.slot
           name={:policy_notices}
@@ -894,7 +1053,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
           summary={@summary}
           now={@now}
         />
-        <.version_view :if={@live_action in [:version, :export] && @v} v={@v} base={@base} now={@now} />
+        <.version_view :if={@live_action == :version && @v} v={@v} base={@base} now={@now} />
+        <.export_page
+          :if={@live_action == :export && @v && @export}
+          export={@export}
+          done={
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
+          }
+        />
         <.empty_state
           :if={@missing}
           tone="neutral"
@@ -923,35 +1089,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
           </:actions>
         </.empty_state>
       </div>
-
-      <.keys_dialog />
-      <.export_modal
-        :if={@live_action == :export && @export}
-        export={@export}
-        close={
-          ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
-        }
-      />
-      <.mode_dialog
-        :if={match?({:mode, _}, @dialog)}
-        scope={@current_scope}
-        mode={elem(@dialog, 1)}
-        would={@would}
-        alive={if @own_modes == [], do: (@nav_counts && @nav_counts[:alive]) || 0, else: 0}
-        started={@managed?}
-        following={@following}
-        own={length(@own_modes)}
-      />
-      <.lock_dialog
-        :if={match?({:lock, _, _}, @dialog)}
-        rule={elem(@dialog, 1)}
-        held={elem(@dialog, 2)}
-      />
-      <.remove_dialog
-        :if={match?({:remove, _, _}, @dialog)}
-        rule={elem(@dialog, 1)}
-        overriders={elem(@dialog, 2)}
-      />
     </Layouts.app>
     """
   end
@@ -964,11 +1101,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
     values: ~w(h1 h2),
     doc: "h2 under a page's own title, as a target's Policy tab has"
 
+  # The heading takes the focus a page sends it (`policy-version-h`) when the version is
+  # reached by a patch, as Done from its export is.
   def version_head(assigns) do
     ~H"""
     <header class="flex flex-wrap items-start justify-between gap-4">
       <div class="q-run-title">
-        <.dynamic_tag tag_name={@heading} class="text-xl/7 font-semibold tracking-[-0.017em]">
+        <.dynamic_tag
+          tag_name={@heading}
+          id="policy-version-h"
+          class="text-xl/7 font-semibold tracking-[-0.017em] outline-none"
+          tabindex="-1"
+        >
           {gettext("Version %{version}", version: @v.configuration.version)}
         </.dynamic_tag>
         <.badge :if={@v.current?} color="success">
@@ -1019,42 +1163,46 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp policy_tabs(assigns) do
     ~H"""
-    <.tabs id="policy-tabs" label={gettext("Policy")}>
+    <.page_tabs id="policy-tabs" label={gettext("Policy")} current={tab_key(@live_action)}>
       <:tab
+        key={:rules}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
         icon="hero-shield-check"
-        current={@live_action == :rules}
-        count={@rules > 0 && @rules}
+        count={if @rules > 0, do: @rules}
       >
         {gettext("Rules")}
       </:tab>
       <:tab
+        key={:targets}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
         icon="hero-book-open"
-        current={@live_action == :targets}
-        count={@targets > 0 && @targets}
+        count={if @targets > 0, do: @targets}
       >
         {gettext("Targets")}
       </:tab>
       <:tab
+        key={:history}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/history"}
         icon="hero-clock"
-        current={@live_action == :history}
-        count={@changes > 0 && @changes}
+        count={if @changes > 0, do: @changes}
       >
         {gettext("History")}
       </:tab>
       <:tab
         :if={@document}
+        key={:document}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/document"}
         icon="hero-document-text"
-        current={@live_action in [:version, :export, :document]}
       >
         {gettext("Document")}
       </:tab>
-    </.tabs>
+    </.page_tabs>
     """
   end
+
+  # The tab a live action is under: a version and its export are the Document's.
+  defp tab_key(action) when action in [:version, :export, :document], do: :document
+  defp tab_key(action), do: action
 
   defp rules_tab(assigns) do
     edit? = Common.may?(assigns.current_scope, :"security_policy.edit")
@@ -1073,25 +1221,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
       |> assign(:listing, Common.listing(assigns))
 
     ~H"""
-    <.mode_switch
-      scope={@current_scope}
-      mode={@mode}
-      can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
-      served={@managed?}
-      following={@following}
-      own={@own_modes}
-      fact={with :unavailable <- async_value(@fact, :loading), do: nil}
-      floor={required_mode(@effective)}
-    />
-
     <div :if={@empty?} id="policy-empty" class="grid gap-4">
       <.empty_state
         icon="hero-shield-check"
-        title={if @managed?, do: gettext("No rules yet"), else: gettext("Qory serves no policy yet")}
+        title={
+          if @managed?, do: gettext("No rules yet"), else: gettext("Qory Apiary serves no policy yet")
+        }
       >
         <span :if={!@managed?} id="policy-unmanaged">
-          {gettext(
-            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+          {pgettext(
+            "plain",
+            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
@@ -1172,7 +1312,20 @@ defmodule ApiaryWeb.PolicyLive.Show do
         fresh={@fresh}
         ruled_host={@ruled_host}
         empty={gettext("No host rules yet. Add the first above.")}
+        confirming={confirming(@dialog)}
       >
+        <:confirm>
+          <.lock_ask
+            :if={match?({:lock, _, _}, @dialog)}
+            rule={elem(@dialog, 1)}
+            held={elem(@dialog, 2)}
+          />
+          <.remove_ask
+            :if={match?({:remove, _, _}, @dialog)}
+            rule={elem(@dialog, 1)}
+            overriders={elem(@dialog, 2)}
+          />
+        </:confirm>
         <:composer>
           <.rule_composer
             :if={@composer_open && @edit?}
@@ -1198,36 +1351,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
               "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A locked rule holds in every target; a deny holds in either mode."
             )}
       </p>
-    </section>
-
-    <section
-      :if={!@empty?}
-      id="policy-credentials"
-      class="q-psec"
-      aria-labelledby="policy-credentials-h"
-    >
-      <div class="q-psec-h">
-        <h2 id="policy-credentials-h">{gettext("Credentials")}</h2>
-        <span id="policy-credentials-n" class="q-psec-n">{Format.number(length(@credentials))}</span>
-      </div>
-      <p class="q-psec-p">
-        {gettext(
-          "Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run."
-        )}
-      </p>
-      <.credential_composer
-        :if={@edit?}
-        id="policy-credential"
-        class="q-composer-line"
-        form={@credential}
-        reading={@credential_reading}
-      />
-      <.credentials_table
-        id="policy-credential-rows"
-        label={gettext("Credentials of the workspace")}
-        rows={@credentials}
-        activity={@activity_now}
-      />
     </section>
     """
   end
@@ -1346,7 +1469,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <td role="cell" class="q-c-target">
                 <.link
                   navigate={
-                    ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, ["policy"])
+                    ApiaryWeb.TargetComponents.target_path(
+                      @scope,
+                      row.system,
+                      row.path,
+                      ["policy"],
+                      @shared
+                    )
                   }
                   class="q-target-name q-rowlink"
                   title={"#{row.system}/#{row.path}"}
@@ -1391,11 +1520,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
                           do:
                             ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                           else:
-                            ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [
-                              "policy",
-                              "versions",
-                              to_string(row.detail.version.version)
-                            ])
+                            ApiaryWeb.TargetComponents.target_path(
+                              @scope,
+                              row.system,
+                              row.path,
+                              ["policy", "versions", to_string(row.detail.version.version)],
+                              @shared
+                            )
                       }
                       class="q-mono hover:underline"
                     >
@@ -1445,174 +1576,139 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp suggested?(row), do: is_integer(row.suggestions) and row.suggestions > 0
 
-  ## Dialogs
+  ## The mode's question, in its card; a rule's confirm is on its row
 
-  attr :mode, :string, required: true
-  attr :would, :any, required: true
+  attr :mode, :string, required: true, doc: "the mode picked"
   attr :alive, :integer, required: true
   attr :started, :boolean, required: true
   attr :following, :integer, required: true
   attr :own, :integer, required: true
 
+  # What the picked mode does, the question's sentence (`PolicyComponents.mode_card/1`).
+  defp mode_ask_effect(%{mode: "enforce"} = assigns) do
+    ~H"""
+    <%= for part <- effect_words("enforce", @following, @alive) do %>
+      <b :if={part == :effect} class="font-medium text-base-content">{effect_phrase("enforce")}</b>{if part !=
+                                                                                                         :effect,
+                                                                                                       do:
+                                                                                                         part}
+    <% end %>
+    {own_words(@own)}
+    {gettext("You can switch back at any time.")}
+    <span :if={!@started}>
+      {pgettext(
+        "plain",
+        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
+      )}
+    </span>
+    """
+  end
+
+  defp mode_ask_effect(assigns) do
+    ~H"""
+    <%= for part <- effect_words("observe", @following, @alive) do %>
+      <b :if={part == :effect} class="font-medium text-base-content">{effect_phrase("observe")}</b>{if part !=
+                                                                                                         :effect,
+                                                                                                       do:
+                                                                                                         part}
+    <% end %>
+    {gettext(
+      "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
+    )}
+    """
+  end
+
+  attr :would, :any, required: true
+
   attr :scope, :map,
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  defp mode_dialog(%{mode: "enforce"} = assigns) do
-    shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
-
+  # What enforce would deny, under the question of enforce: what the last 14 days let
+  # through with no rule, each with its Allow.
+  defp mode_would(assigns) do
+    shown = if assigns.would, do: Common.would_shown(assigns.would), else: []
     left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
-
     assigns = assign(assigns, shown: shown, left: left)
 
     ~H"""
-    <.modal
-      id="mode-enforce"
-      title={gettext("Set the workspace's default to enforce")}
-      size="lg"
-      on_cancel={JS.push("dialog_cancel")}
-    >
-      <p class="text-muted">
-        <%= for part <- effect_words("enforce", @following, @alive) do %>
-          <b :if={part == :effect} class="font-medium text-base-content">
-            {effect_phrase("enforce")}
-          </b>{if part !=
-                                                                                                                             :effect,
-                                                                                                                           do:
-                                                                                                                             part}
-        <% end %>
-        {own_words(@own)}
-        {gettext("You can switch back at any time.")}
-        <span :if={!@started}>
-          {gettext(
-            "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
-          )}
+    <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
+      <div>
+        <span>
+          {gettext("Let through in the last 14 days with no rule matching, in those targets")}
         </span>
-      </p>
-      <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
-        <div>
-          <span>
-            {gettext("Let through in the last 14 days with no rule matching, in those targets")}
-          </span>
-          <span id="mode-would-n" class="tabular-nums">
-            {if @left == 0,
-              do: gettext("none left"),
-              else:
-                ngettext("%{number} destination", "%{number} destinations", @left,
-                  number: Format.number(@left)
-                )}
-          </span>
-        </div>
-        <ul>
-          <li :for={destination <- @shown} id={"would-#{would_key(destination)}"}>
-            <.rule_mark action={
-              if !MapSet.member?(@would.open, would_key(destination)), do: "allow", else: "pending"
-            } />
-            <span :if={destination[:tool]} class="q-dest q-dest-tool">
-              <.tool_mark name={destination.tool} /><span
-                :if={destination.path}
-                class="text-muted"
-              >{destination.path}</span><span class="text-faint">{destination.host}</span>
-            </span>
-            <span :if={!destination[:tool]} class="q-dest">
-              {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
-            </span>
-            <small>
-              {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
-                number: Format.number(destination.attempts)
-              )} · {ngettext(
-                "%{number} run",
-                "%{number} runs",
-                destination.runs,
-                number: Format.number(destination.runs)
+        <span id="mode-would-n" class="tabular-nums">
+          {if @left == 0,
+            do: gettext("none left"),
+            else:
+              ngettext("%{number} destination", "%{number} destinations", @left,
+                number: Format.number(@left)
               )}
-            </small>
-            <button
-              :if={MapSet.member?(@would.open, would_key(destination))}
-              type="button"
-              class="btn btn-xs"
-              phx-click={JS.push("would_allow", value: %{key: would_key(destination)})}
-            >
-              {gettext("Allow for the workspace")}
-            </button>
-            <span :if={!MapSet.member?(@would.open, would_key(destination))} class="q-done">
-              <.icon name="hero-check-micro" class="size-3" />{gettext("Allowed")}
-            </span>
-          </li>
-        </ul>
-        <p :if={length(@would.destinations) > 8} class="q-would-more">
-          <%= for part <- more_words(length(@would.destinations) - 8) do %>
-            <.link
-              :if={part == :link}
-              navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network"}
-              class="q-link"
-            >
-              {gettext("Network access page")}
-            </.link>{if part !=
-                                                                               :link,
-                                                                             do: part}
-          <% end %>
-        </p>
+        </span>
       </div>
-      <p :if={@would && @would[:error]} class="text-error-soft-content" role="alert">
-        {@would[:error]}
-      </p>
-      <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
-        {gettext("Every destination your runs reached in the last 14 days is covered by a rule.")}
-      </p>
-      <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">
-        {gettext(
-          "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list."
-        )}
-      </p>
-      <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
-        <.button
-          id="mode-confirm"
-          variant="primary"
-          phx-click="mode_confirm"
-          loading_text={gettext("Setting")}
-        >
-          {gettext("Set the default to enforce")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
-
-  defp mode_dialog(assigns) do
-    ~H"""
-    <.modal
-      id="mode-observe"
-      title={gettext("Set the workspace's default to observe")}
-      size="sm"
-      on_cancel={JS.push("dialog_cancel")}
-    >
-      <p class="text-muted">
-        <%= for part <- effect_words("observe", @following, @alive) do %>
-          <b :if={part == :effect} class="font-medium text-base-content">
-            {effect_phrase("observe")}
-          </b>{if part !=
-                                                                                                                             :effect,
-                                                                                                                           do:
-                                                                                                                             part}
+      <ul>
+        <li :for={destination <- @shown} id={"would-#{would_key(destination)}"}>
+          <.rule_mark action={
+            if !MapSet.member?(@would.open, would_key(destination)), do: "allow", else: "pending"
+          } />
+          <span :if={destination[:tool]} class="q-dest q-dest-tool">
+            <.tool_mark name={destination.tool} /><span
+              :if={destination.path}
+              class="text-muted"
+            >{destination.path}</span><span class="text-faint">{destination.host}</span>
+          </span>
+          <span :if={!destination[:tool]} class="q-dest">
+            {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
+          </span>
+          <small>
+            {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
+              number: Format.number(destination.attempts)
+            )} · {ngettext(
+              "%{number} run",
+              "%{number} runs",
+              destination.runs,
+              number: Format.number(destination.runs)
+            )}
+          </small>
+          <button
+            :if={MapSet.member?(@would.open, would_key(destination))}
+            id={"would-#{would_key(destination)}-allow"}
+            type="button"
+            class="btn btn-xs"
+            phx-click={JS.push("would_allow", value: %{key: would_key(destination)})}
+          >
+            {gettext("Allow for the workspace")}<span class="sr-only">: {Common.would_name(
+              destination
+            )}</span>
+          </button>
+          <span :if={!MapSet.member?(@would.open, would_key(destination))} class="q-done">
+            <.icon name="hero-check-micro" class="size-3" />{gettext("Allowed")}
+          </span>
+        </li>
+      </ul>
+      <p :if={length(@would.destinations) > 8} class="q-would-more">
+        <%= for part <- more_words(length(@would.destinations) - 8) do %>
+          <.link
+            :if={part == :link}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network"}
+            class="q-link"
+          >
+            {gettext("Network access page")}
+          </.link>{if part != :link, do: part}
         <% end %>
-        {gettext(
-          "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
-        )}
       </p>
-      <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
-        <.button
-          id="mode-confirm"
-          variant="danger"
-          phx-click="mode_confirm"
-          loading_text={gettext("Setting")}
-        >
-          {gettext("Set the default to observe")}
-        </.button>
-      </:footer>
-    </.modal>
+    </div>
+    <p :if={@would && @would[:error]} class="text-error-soft-content" role="alert">
+      {@would[:error]}
+    </p>
+    <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
+      {gettext("Every destination your runs reached in the last 14 days is covered by a rule.")}
+    </p>
+    <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">
+      {gettext(
+        "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list."
+      )}
+    </p>
     """
   end
 
@@ -1710,91 +1806,91 @@ defmodule ApiaryWeb.PolicyLive.Show do
   @doc false
   def would_key(destination), do: Common.would_key(destination)
 
+  # The row a Lock or a Remove asks to confirm on, in place of its cells.
+  defp confirming({kind, %{id: id}, _}) when kind in [:lock, :remove], do: id
+  defp confirming(_dialog), do: nil
+
   attr :rule, :map, required: true
   attr :held, :list, required: true
 
-  defp lock_dialog(assigns) do
+  defp lock_ask(assigns) do
+    assigns = assign(assigns, shown: Enum.take(assigns.held, 4), more: length(assigns.held) - 4)
+
     ~H"""
-    <.modal
+    <.inline_confirm
       id="lock-confirm"
-      title={lock_title(@rule)}
-      size="sm"
-      on_cancel={JS.push("dialog_cancel")}
+      question={lock_title(@rule)}
+      cancel={confirm_cancel("rule-#{@rule.id}-menu-button")}
     >
-      <p class="text-muted">
-        {gettext("A locked rule holds against every target.")}
-        <b class="font-medium text-base-content">{ngettext(
-            "%{number} target rule stops being in force",
-            "%{number} target rules stop being in force",
-            length(@held), number: Format.number(length(@held))
-          )}</b>:
-      </p>
-      <div class="q-would">
-        <ul>
-          <li :for={held <- @held} class="!grid-cols-[18px_minmax(0,1fr)_auto]">
-            <.rule_mark action={held.rule.action} />
-            <span class="q-dest">{held.rule.host}</span>
-            <small class="font-mono">{held.target.system}/{held.target.path}</small>
-          </li>
-        </ul>
-      </div>
-      <p class="text-muted">
-        {gettext("The target's rule is kept and shown as held. Only an owner can unlock.")}
-      </p>
-      <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
-        <.button id="lock-confirm-button" variant="primary" phx-click="lock_confirm">
-          {gettext("Lock the rule")}
+      {gettext("A locked rule holds against every target.")}
+      <b class="font-medium text-base-content">{ngettext(
+          "%{number} target rule stops being in force",
+          "%{number} target rules stop being in force",
+          length(@held), number: Format.number(length(@held))
+        )}</b>: <span
+        :for={{held, i} <- Enum.with_index(@shown)}
+        phx-no-format
+      >{if i > 0, do: "; "}<span class="font-mono text-[12.5px]">{held.name}</span> ({held.rule.host})</span><span
+        :if={@more > 0}
+        phx-no-format
+      >; {ngettext("and %{number} more", "and %{number} more", @more, number: Format.number(@more))}</span>. {gettext(
+        "The target's rule is kept and shown as held. Only an owner can unlock."
+      )}
+      <:action>
+        <.button id="lock-confirm-button" variant="primary" size="xs" phx-click="lock_confirm">
+          {gettext("Yes, lock")}
         </.button>
-      </:footer>
-    </.modal>
+      </:action>
+    </.inline_confirm>
     """
   end
 
   attr :rule, :map, required: true
   attr :overriders, :list, required: true
 
-  defp remove_dialog(assigns) do
+  defp remove_ask(assigns) do
     ~H"""
-    <.modal
+    <.inline_confirm
       id="remove-confirm"
-      title={remove_title(@rule)}
-      size="sm"
-      on_cancel={JS.push("dialog_cancel")}
+      question={remove_title(@rule)}
+      cancel={confirm_cancel("rule-#{@rule.id}-menu-button")}
     >
-      <p class="text-muted">
-        <span :if={@rule.locked}>
-          {gettext(
-            "This rule is locked: it holds against every target, and removing it lets their own rules decide again."
-          )}
-        </span>
-        <span :if={@overriders != []}>
-          {ngettext(
-            "%{number} target has a rule of its own on this host; it then has nothing to override and is kept.",
-            "%{number} targets have a rule of their own on this host; it then has nothing to override and is kept.",
-            length(@overriders),
-            number: Format.number(length(@overriders))
-          )}
-        </span>
-        {gettext("This takes effect within a heartbeat.")}
-      </p>
-      <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
-        <.button id="remove-confirm-button" variant="danger" phx-click="remove_confirm">
-          {gettext("Remove the rule")}
+      <span :if={@rule.locked}>
+        {gettext(
+          "This rule is locked: it holds against every target, and removing it lets their own rules decide again."
+        )}
+      </span>
+      <span :if={@overriders != []}>
+        {ngettext(
+          "%{number} target has a rule of its own on this host; it then has nothing to override and is kept.",
+          "%{number} targets have a rule of their own on this host; it then has nothing to override and is kept.",
+          length(@overriders),
+          number: Format.number(length(@overriders))
+        )}
+      </span>
+      {gettext("This takes effect within a heartbeat.")}
+      <:action>
+        <.button
+          id="remove-confirm-button"
+          variant="danger"
+          size="xs"
+          phx-click="remove_confirm"
+          loading_text={gettext("Removing")}
+        >
+          {gettext("Yes, remove")}
         </.button>
-      </:footer>
-    </.modal>
+      </:action>
+    </.inline_confirm>
     """
   end
 
   defp lock_title(%{action: "deny", host: host}),
-    do: gettext("Lock the deny rule %{host}", host: host)
+    do: gettext("Lock the deny rule %{host}?", host: host)
 
-  defp lock_title(%{host: host}), do: gettext("Lock the allow rule %{host}", host: host)
+  defp lock_title(%{host: host}), do: gettext("Lock the allow rule %{host}?", host: host)
 
   defp remove_title(%{action: "deny", host: host}),
-    do: gettext("Remove the deny rule %{host}", host: host)
+    do: gettext("Remove the deny rule %{host}?", host: host)
 
-  defp remove_title(%{host: host}), do: gettext("Remove the allow rule %{host}", host: host)
+  defp remove_title(%{host: host}), do: gettext("Remove the allow rule %{host}?", host: host)
 end

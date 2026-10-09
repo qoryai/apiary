@@ -43,6 +43,12 @@ defmodule Apiary.Retention do
   `runs_retention_log_index`, which a pruned run leaves. One night prunes at most
   `:max_runs` runs of a workspace (10,000) and goes on the next night.
 
+  **A node's instances.** Under the same lock, on every workspace whatever its settings,
+  the job deletes the rows of nodes' instances that the pages no longer show
+  (`Apiary.Nodes.prune_instances/1`): a pool's instances not seen for a day, and a node's
+  other than its latest not seen for thirty days. Runs and deliveries keep the instance
+  id they claimed.
+
   It says what it did: a `Apiary.Retention.RetentionRun` per workspace per run of the job,
   which the settings page lists, and one log line per workspace,
   `retention pruned workspace=…`. With `dry_run: true` it deletes nothing, writes no
@@ -180,7 +186,9 @@ defmodule Apiary.Retention do
       fn ->
         if try_lock() do
           try do
-            {:ok, opts |> workspaces() |> Enum.map(&prune_workspace(&1, opts))}
+            results = opts |> workspaces() |> Enum.map(&prune_workspace(&1, opts))
+            prune_instances(opts)
+            {:ok, results}
           after
             unlock()
           end
@@ -533,6 +541,17 @@ defmodule Apiary.Retention do
 
   defp iso(nil), do: "none"
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
+
+  # The instances of nodes the pages no longer show (`Apiary.Nodes.prune_instances/1`), on
+  # every workspace whatever its settings; a dry run deletes none.
+  defp prune_instances(opts) do
+    unless Keyword.get(opts, :dry_run, false) do
+      pruned = Apiary.Nodes.prune_instances(Keyword.get(opts, :now) || DateTime.utc_now())
+      if pruned > 0, do: Logger.info("retention pruned node instances=#{pruned}")
+    end
+
+    :ok
+  end
 
   ## The workspaces and the lock
 

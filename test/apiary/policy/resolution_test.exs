@@ -1,7 +1,7 @@
 defmodule Apiary.Policy.ResolutionTest do
   @moduledoc """
   The table of cases of rule resolution: add, disable, conflict, lock, wildcards, paths,
-  credentials, and the deny list the document carries. Every case that resolves is
+  and the deny list the document carries. Every case that resolves is
   rendered, and the render validated against the contract's schema.
   """
   use ExUnit.Case, async: true
@@ -15,92 +15,66 @@ defmodule Apiary.Policy.ResolutionTest do
     %Rule{kind: "host", action: action, host: host, paths: opts[:paths], locked: !!opts[:locked]}
   end
 
-  defp credential(action, name, opts \\ []) do
-    %Rule{
-      kind: "credential",
-      action: action,
-      name: name,
-      argument: opts[:argument],
-      locked: !!opts[:locked]
-    }
-  end
-
-  # {name, workspace rules, target rules, allow, deny, paths, credentials}
+  # {name, workspace rules, target rules, allow, deny, paths}
   @resolved [
-    {"nothing", [], [], [], [], %{}, []},
-    {"add: the workspace allows", [{:allow, "api.example"}], [], ["api.example"], [], %{}, []},
+    {"nothing", [], [], [], [], %{}},
+    {"add: the workspace allows", [{:allow, "api.example"}], [], ["api.example"], [], %{}},
     {"add: the target allows on top", [{:allow, "api.example"}], [{:allow, "mcp.example"}],
-     ["api.example", "mcp.example"], [], %{}, []},
+     ["api.example", "mcp.example"], [], %{}},
     {"disable: the target denies a host of the workspace, and the document says so",
      [{:allow, "api.example"}, {:allow, "cdn.example"}], [{:deny, "cdn.example"}],
-     ["api.example"], ["cdn.example"], %{}, []},
+     ["api.example"], ["cdn.example"], %{}},
     {"conflict: the target's allow wins over the workspace's deny", [{:deny, "mcp.example"}],
-     [{:allow, "mcp.example"}], ["mcp.example"], [], %{}, []},
+     [{:allow, "mcp.example"}], ["mcp.example"], [], %{}},
     {"lock: a locked deny holds against a target allow, in deny",
-     [{:deny, "mcp.example", locked: true}], [{:allow, "mcp.example"}], [], ["mcp.example"], %{},
-     []},
+     [{:deny, "mcp.example", locked: true}], [{:allow, "mcp.example"}], [], ["mcp.example"], %{}},
     {"lock: a locked allow holds against a target deny", [{:allow, "api.example", locked: true}],
-     [{:deny, "api.example"}], ["api.example"], [], %{}, []},
+     [{:deny, "api.example"}], ["api.example"], [], %{}},
     {"a deny of something nothing allows is in deny: it holds under observe",
-     [{:deny, "ads.example"}], [], [], ["ads.example"], %{}, []},
+     [{:deny, "ads.example"}], [], [], ["ads.example"], %{}},
     {"deny: an exact deny under an allowed *. suffix stands beside it",
      [{:allow, "*.example"}, {:deny, "tracker.example"}], [], ["*.example"], ["tracker.example"],
-     %{}, []},
+     %{}},
     {"deny: a target's deny under the workspace's unlocked suffix stands",
-     [{:allow, "*.s.example"}], [{:deny, "a.s.example"}], ["*.s.example"], ["a.s.example"], %{},
-     []},
+     [{:allow, "*.s.example"}], [{:deny, "a.s.example"}], ["*.s.example"], ["a.s.example"], %{}},
     {"deny: a narrower suffix denied under a wider one", [{:allow, "*.example"}],
-     [{:deny, "*.s.example"}], ["*.example"], ["*.s.example"], %{}, []},
+     [{:deny, "*.s.example"}], ["*.example"], ["*.s.example"], %{}},
     {"deny: a locked suffix allow of the workspace beats the target's deny below it",
-     [{:allow, "*.s.example", locked: true}], [{:deny, "a.s.example"}], ["*.s.example"], [], %{},
-     []},
+     [{:allow, "*.s.example", locked: true}], [{:deny, "a.s.example"}], ["*.s.example"], [], %{}},
     {"deny: names before *. suffixes", [{:deny, "*.ads.example"}, {:deny, "tracker.example"}], [],
-     [], ["tracker.example", "*.ads.example"], %{}, []},
+     [], ["tracker.example", "*.ads.example"], %{}},
     {"wildcards: names sort before suffixes", [{:allow, "*.example"}, {:allow, "example"}], [],
-     ["example", "*.example"], [], %{}, []},
+     ["example", "*.example"], [], %{}},
     {"wildcards: a *. deny takes out the allows it covers and is in deny",
      [{:allow, "a.s.example"}, {:allow, "*.b.s.example"}, {:allow, "s.example"}],
-     [{:deny, "*.s.example"}], ["s.example"], ["*.s.example"], %{}, []},
+     [{:deny, "*.s.example"}], ["s.example"], ["*.s.example"], %{}},
     {"wildcards: a locked *. deny takes out the target's allows below it",
      [{:deny, "*.s.example", locked: true}], [{:allow, "a.s.example"}, {:allow, "t.example"}],
-     ["t.example"], ["*.s.example"], %{}, []},
+     ["t.example"], ["*.s.example"], %{}},
     {"wildcards: an unlocked *. deny of the workspace loses to a target allow below it, and is not written",
      [{:deny, "*.s.example"}, {:allow, "b.s.example"}], [{:allow, "a.s.example"}],
-     ["a.s.example"], [], %{}, []},
+     ["a.s.example"], [], %{}},
     {"wildcards: a locked allow stands under the workspace's own unlocked *. deny, which is not written",
      [{:deny, "*.s.example"}, {:allow, "a.s.example", locked: true}], [], ["a.s.example"], [],
-     %{}, []},
+     %{}},
     {"wildcards: a target's *. allow overrides the workspace's deny below it",
-     [{:deny, "a.s.example"}], [{:allow, "*.s.example"}], ["*.s.example"], [], %{}, []},
+     [{:deny, "a.s.example"}], [{:allow, "*.s.example"}], ["*.s.example"], [], %{}},
     {"paths: a host held to paths is in allow and in paths",
      [{:allow, "git.example", paths: ["/acme/shop.git/info/refs", "/acme/shop.git/*"]}], [],
-     ["git.example"], [], %{"git.example" => ["/acme/shop.git/*", "/acme/shop.git/info/refs"]},
-     []},
+     ["git.example"], [], %{"git.example" => ["/acme/shop.git/*", "/acme/shop.git/info/refs"]}},
     {"paths: no path at all", [{:allow, "git.example", paths: []}], [], ["git.example"], [],
-     %{"git.example" => []}, []},
+     %{"git.example" => []}},
     {"paths: the target's rule decides the host whole", [{:allow, "git.example", paths: ["/a"]}],
-     [{:allow, "git.example", paths: ["/b"]}], ["git.example"], [], %{"git.example" => ["/b"]},
-     []},
+     [{:allow, "git.example", paths: ["/b"]}], ["git.example"], [], %{"git.example" => ["/b"]}},
     {"paths: the target opens every path", [{:allow, "git.example", paths: ["/a"]}],
-     [{:allow, "git.example"}], ["git.example"], [], %{}, []},
+     [{:allow, "git.example"}], ["git.example"], [], %{}},
     {"paths: a locked path list holds", [{:allow, "git.example", paths: ["/a"], locked: true}],
-     [{:allow, "git.example"}], ["git.example"], [], %{"git.example" => ["/a"]}, []},
+     [{:allow, "git.example"}], ["git.example"], [], %{"git.example" => ["/a"]}},
     {"paths: a name held to paths under a free suffix",
      [{:allow, "*.example"}, {:allow, "git.example", paths: ["/a"]}], [],
-     ["git.example", "*.example"], [], %{"git.example" => ["/a"]}, []},
+     ["git.example", "*.example"], [], %{"git.example" => ["/a"]}},
     {"paths: a denied host is never in paths", [{:allow, "git.example", paths: ["/a"]}],
-     [{:deny, "git.example"}], [], ["git.example"], %{}, []},
-    {"credentials: selected by name, sorted, with an argument",
-     [{:credential, "allow", "product", argument: "acme/shop"}, {:credential, "allow", "model"}],
-     [], [], [], %{}, [%{name: "model"}, %{name: "product", argument: "acme/shop"}]},
-    {"credentials: the target's argument wins",
-     [{:credential, "allow", "product", argument: "acme/shop"}],
-     [{:credential, "allow", "product", argument: "acme/site"}], [], [], %{},
-     [%{name: "product", argument: "acme/site"}]},
-    {"credentials: the target disables one", [{:credential, "allow", "model"}],
-     [{:credential, "deny", "model"}], [], [], %{}, []},
-    {"credentials: a locked deny holds", [{:credential, "deny", "model", locked: true}],
-     [{:credential, "allow", "model"}], [], [], %{}, []}
+     [{:deny, "git.example"}], [], ["git.example"], %{}}
   ]
 
   # {name, workspace rules, target rules, what the sentence says}
@@ -117,12 +91,10 @@ defmodule Apiary.Policy.ResolutionTest do
       {:allow, host, opts} -> allow(host, opts)
       {:deny, host} -> deny(host)
       {:deny, host, opts} -> deny(host, opts)
-      {:credential, action, name} -> credential(action, name)
-      {:credential, action, name, opts} -> credential(action, name, opts)
     end)
   end
 
-  for {name, workspace, target, allow, deny, paths, credentials} <- @resolved,
+  for {name, workspace, target, allow, deny, paths} <- @resolved,
       mode <- ~w(observe enforce) do
     test "#{name} (#{mode})" do
       assert {:ok, effective} =
@@ -136,7 +108,6 @@ defmodule Apiary.Policy.ResolutionTest do
       assert effective.allow == unquote(allow)
       assert effective.deny == unquote(deny)
       assert effective.paths == unquote(Macro.escape(paths))
-      assert effective.credentials == unquote(Macro.escape(credentials))
 
       document = Render.document(effective)
       assert :ok = Schema.validate(document)
@@ -224,9 +195,9 @@ defmodule Apiary.Policy.ResolutionTest do
       {"a workspace name held to paths under its free *. allow narrows it",
        [{:allow, "*.example"}], [], [{:allow, "git.example", paths: ["/a"]}], [],
        ["git.example", "*.example"], [], %{"git.example" => ["/a"]}, []},
-      {"the switch off strikes the workspace's and the target's allows, keeps denies and credentials",
+      {"the switch off strikes the workspace's and the target's allows, keeps denies",
        [{:allow, "api.example"}], [own_allows: false],
-       [{:allow, "cdn.example"}, {:deny, "ads.example"}, {:credential, "allow", "model"}],
+       [{:allow, "cdn.example"}, {:deny, "ads.example"}],
        [{:allow, "mcp.example"}, {:deny, "api.example"}], [], ["ads.example", "api.example"], %{},
        ["cdn.example", "mcp.example"]},
       {"the switch off: only its own allows grant, with their paths",
@@ -372,13 +343,6 @@ defmodule Apiary.Policy.ResolutionTest do
 
       assert {:ok, %{mode: "observe", mode_source: :target}} =
                Resolution.resolve_for("enforce", "observe", [], [], id, above([]))
-    end
-
-    test "credential rules of the level above are not read" do
-      above = above([{:credential, "allow", "model"}])
-      {:ok, effective} = Resolution.resolve("enforce", [], [], nil, above)
-      assert effective.credentials == []
-      assert effective.entries == []
     end
   end
 

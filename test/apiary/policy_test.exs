@@ -391,23 +391,21 @@ defmodule Apiary.PolicyTest do
     end
 
     test "a change that renders the same bytes writes a change and no version", %{scope: scope} do
-      {:ok, _rule} = Policy.deny(scope, nil, %{kind: "credential", name: "model"})
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
 
-      # The first change renders version 1 whatever it changed in the bytes.
       assert %{total: 1, items: [%Change{version_after: 1}]} = Policy.list_changes(scope, nil)
       assert %{version: 1, changed_by_id: changed_by} = current!(scope, nil)
       assert changed_by == scope.user.id
-      # A credential deny is not in the document: the same bytes, no version.
-      {:ok, _rule} = Policy.deny(scope, nil, %{kind: "credential", name: "product"})
-      assert %{version: 1} = current!(scope, nil)
 
-      {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
-      assert %{version: 2} = current!(scope, nil)
+      # A lock holds against targets and leaves the workspace's document as it was.
       {:ok, _rule} = Policy.lock(scope, rule)
 
-      assert %{total: 4, items: [%Change{action: "rule_locked", version_after: 2} | _]} =
+      assert %{total: 2, items: [%Change{action: "rule_locked", version_after: 1} | _]} =
                Policy.list_changes(scope, nil)
 
+      assert %{version: 1} = current!(scope, nil)
+
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "cdn.example"})
       assert %{version: 2} = current!(scope, nil)
       assert %{total: 2} = Policy.list_configurations(scope, nil)
     end
@@ -432,30 +430,41 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{field: :paths}} =
                Policy.allow(scope, nil, %{host: "api.example", paths: ["/a/*/b"]})
 
-      assert {:error, %Error{field: :name}} =
-               Policy.allow(scope, nil, %{kind: "credential", name: "Not A Name"})
+      assert [] = Policy.list_rules(scope, nil)
+      assert %{total: 0} = Policy.list_changes(scope, nil)
+    end
 
-      assert {:error, %Error{field: :argument}} =
-               Policy.allow(scope, nil, %{
-                 kind: "credential",
-                 name: "product",
-                 argument: String.duplicate("a", 257)
-               })
+    test "a rule is a host rule: a credential is refused, and nothing is written", %{
+      scope: scope
+    } do
+      for kind <- ["credential", :credential] do
+        assert {:error, %Error{reason: :invalid, field: :kind}} =
+                 Policy.allow(scope, nil, %{kind: kind, name: "model"})
+
+        assert {:error, %Error{reason: :invalid, field: :kind}} =
+                 Policy.deny(scope, nil, %{kind: kind, name: "model"})
+      end
 
       assert [] = Policy.list_rules(scope, nil)
       assert %{total: 0} = Policy.list_changes(scope, nil)
     end
 
-    test "credentials are named, never held", %{scope: scope} do
-      {:ok, _rule} = Policy.allow(scope, nil, %{kind: "credential", name: "model"})
+    test "the run configuration selects no credential, and the contract's schema accepts it",
+         %{scope: scope} do
+      target = target_fixture(scope)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/shop.git/*"]})
+      {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example", locked: true})
+      {:ok, _} = Policy.allow(scope, target, %{host: "mcp.example"})
 
-      {:ok, _rule} =
-        Policy.allow(scope, nil, %{kind: :credential, name: "product", argument: "acme/shop"})
+      for holder <- [nil, target] do
+        %{document: document} = current!(scope, holder)
+        assert :ok = Schema.validate(document)
 
-      assert policy(current!(scope, nil))["credentials"] == [
-               %{"name" => "model"},
-               %{"name" => "product", "argument" => "acme/shop"}
-             ]
+        assert %{"version" => 1, "security_policy" => policy} = Jason.decode!(document)
+        assert Map.keys(policy) == ["egress", "version"]
+        refute document =~ "credential"
+        refute Map.has_key?(Policy.effective(scope, holder), :credentials)
+      end
     end
 
     test "an exact deny under an allowed suffix is accepted and written to deny", %{scope: scope} do
@@ -535,14 +544,6 @@ defmodule Apiary.PolicyTest do
       # A new rule with an empty paths field is on every path.
       assert {:ok, %Rule{paths: nil}} =
                Policy.allow(scope, nil, %{host: "new.example", paths: ""})
-    end
-
-    test "a credential's argument stays when it is not named", %{scope: scope} do
-      {:ok, _} =
-        Policy.allow(scope, nil, %{kind: "credential", name: "product", argument: "acme/site"})
-
-      assert {:ok, %Rule{argument: "acme/site"}} =
-               Policy.allow(scope, nil, %{kind: "credential", name: "product"})
     end
   end
 
@@ -792,8 +793,9 @@ defmodule Apiary.PolicyTest do
       assert [%{target_id: nil, version: 2}, %{target_id: ^site_id, version: 2}] =
                by_change[cdn.id]
 
-      # A change that rendered the same bytes has no key.
-      {:ok, _} = Policy.deny(ctx.scope, nil, %{kind: "credential", name: "model"})
+      # A change that rendered the same bytes has no key: a lock leaves the workspace's
+      # document as it was.
+      {:ok, _} = Policy.lock(ctx.scope, hd(Policy.list_rules(ctx.scope, nil)))
       %{items: [same | _]} = Policy.list_changes(ctx.scope, nil)
       assert Policy.configurations_for_changes(ctx.scope, [same.id]) == %{}
     end
@@ -1061,11 +1063,10 @@ defmodule Apiary.PolicyTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.example", locked: true})
       {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/shop.git/*"]})
 
-      {:ok, _} =
-        Policy.allow(scope, nil, %{kind: "credential", name: "product", argument: "acme/shop"})
-
+      {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example"})
       {:ok, _} = Policy.allow(scope, target, %{host: "mcp.test"})
-      {:ok, _} = Policy.deny(scope, target, %{kind: "credential", name: "product"})
+      {:ok, _} = Policy.deny(scope, target, %{host: "git.example"})
+      {:ok, _} = Policy.allow(scope, target, %{host: "api.example", paths: ["/v1/*"]})
 
       configurations = Repo.all(RunConfiguration)
       assert length(configurations) >= 6
@@ -1317,19 +1318,11 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{field: :paths}} =
                Policy.allow(scope, nil, %{host: "git.example", paths: ["/a\u2028b"]})
 
-      assert {:error, %Error{field: :argument}} =
-               Policy.allow(scope, nil, %{
-                 kind: "credential",
-                 name: "product",
-                 argument: "x\u2028y: z"
-               })
-
       # The export does not lean on that: a scalar is one line whatever it holds.
       effective = %Apiary.Policy.Effective{
         mode: "enforce",
         allow: ["git.example"],
-        paths: %{"git.example" => ["/a\u2028b", "/c\u2029d", "/e\u0085f", "/ü/🐝"]},
-        credentials: [%{name: "product", argument: "x\u2028y: z"}]
+        paths: %{"git.example" => ["/a\u2028b", "/c\u2029d", "/e\u0085f", "/ü/🐝"]}
       }
 
       %{policy_file: policy_file} = Apiary.Policy.Export.text(effective)
@@ -1338,18 +1331,12 @@ defmodule Apiary.PolicyTest do
       assert policy_file =~ ~S("/a\u2028b")
       assert policy_file =~ ~S("/c\u2029d")
       assert policy_file =~ ~S("/e\u0085f")
-      assert policy_file =~ ~S(argument: "x\u2028y: z")
       # Nothing else is escaped: an astral character stays itself.
       assert policy_file =~ ~s("/ü/🐝")
     end
 
-    test "paths and credentials go to a policy file the contract's schema accepts", %{
-      scope: scope
-    } do
+    test "paths go to a policy file", %{scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/shop.git/*"]})
-
-      {:ok, _} =
-        Policy.allow(scope, nil, %{kind: "credential", name: "product", argument: "acme/shop"})
 
       assert {:ok, %{runner_file: runner_file, policy_file: policy_file, notes: [_ | _]}} =
                Policy.export(scope, nil)
@@ -1366,9 +1353,6 @@ defmodule Apiary.PolicyTest do
                paths:
                  "git.example":
                    - "/acme/shop.git/*"
-             credentials:
-               - name: "product"
-                 argument: "acme/shop"
              """
     end
   end

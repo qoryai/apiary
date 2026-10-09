@@ -28,6 +28,8 @@ defmodule ApiaryWeb.MemberLive.DeliveryTest do
     assert html =~ "could not be sent"
     refute html =~ "Invitation sent"
     assert Organisations.list_invitations(scope) == []
+    # Still on the page, the address there to send again.
+    assert has_element?(lv, "#invitation-form")
   end
 
   @tag :capture_log

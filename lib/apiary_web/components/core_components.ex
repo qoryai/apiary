@@ -90,8 +90,8 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.term word="wall" standard="The enclosure the agent runs in." />
 
-  Not a way to show the apiary skin's words, apiary or hive: a page says organisation and
-  workspace through Gettext (`docs/lingo.md`).
+  Not a way to show a word such as apiary or hive: a page says organisation and workspace
+  through Gettext (`docs/lingo.md`).
   """
   attr :word, :string, required: true
   attr :standard, :string, required: true, doc: "the standard term, or what the word means"
@@ -198,9 +198,10 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  An inline notice: a soft fill, an icon, no close button.
+  An inline notice: a soft fill, an icon, no close button. `:success` says a thing the
+  reader waited for has happened.
   """
-  attr :kind, :atom, default: :info, values: [:info, :warning, :error]
+  attr :kind, :atom, default: :info, values: [:info, :warning, :error, :success]
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
@@ -213,6 +214,7 @@ defmodule ApiaryWeb.CoreComponents do
         @kind == :info && "bg-info-soft text-info-soft-content",
         @kind == :warning && "bg-primary-soft text-primary-soft-content",
         @kind == :error && "bg-error-soft text-error-soft-content",
+        @kind == :success && "bg-success-soft text-success-soft-content",
         @class
       ]}
     >
@@ -222,6 +224,7 @@ defmodule ApiaryWeb.CoreComponents do
             :info -> "hero-information-circle-micro"
             :warning -> "hero-exclamation-triangle-micro"
             :error -> "hero-exclamation-circle-micro"
+            :success -> "hero-check-circle-micro"
           end
         }
         class="mt-px size-4"
@@ -569,8 +572,8 @@ defmodule ApiaryWeb.CoreComponents do
         class={["select", "select-#{@size}", @errors != [] && "select-error", @class]}
         multiple={@multiple}
         aria-invalid={@errors != [] && "true"}
-        aria-describedby={describedby(@id, @errors, @hint)}
-        {@rest}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        {without_describedby(@rest)}
       >
         <option :if={@prompt} value="">{@prompt}</option>
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
@@ -622,8 +625,8 @@ defmodule ApiaryWeb.CoreComponents do
         class={["textarea textarea-sm", @errors != [] && "input-error", @class]}
         phx-debounce={@debounce}
         aria-invalid={@errors != [] && "true"}
-        aria-describedby={describedby(@id, @errors, @hint)}
-        {@rest}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        {without_describedby(@rest)}
       >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
@@ -649,11 +652,11 @@ defmodule ApiaryWeb.CoreComponents do
           aria-invalid={@errors != [] && "true"}
           aria-describedby={
             Enum.join(
-              ["#{@id}-prefix", describedby(@id, @errors, @hint)] |> Enum.reject(&is_nil/1),
+              ["#{@id}-prefix", describedby(@id, @errors, @hint, @rest)] |> Enum.reject(&is_nil/1),
               " "
             )
           }
-          {@rest}
+          {without_describedby(@rest)}
         />
       </div>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
@@ -675,8 +678,8 @@ defmodule ApiaryWeb.CoreComponents do
         class={["input", "input-#{@size}", @errors != [] && "input-error", @class]}
         phx-debounce={@debounce}
         aria-invalid={@errors != [] && "true"}
-        aria-describedby={describedby(@id, @errors, @hint)}
-        {@rest}
+        aria-describedby={describedby(@id, @errors, @hint, @rest)}
+        {without_describedby(@rest)}
       />
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
@@ -691,11 +694,26 @@ defmodule ApiaryWeb.CoreComponents do
 
   defp submitted_group?(_assigns, _field), do: false
 
+  # What describes a field: its errors, else its hint, then whatever the page describes it
+  # by too (an `aria-describedby` given to `input/1`, such as a hint the page draws
+  # itself), so that neither hides the other.
+  defp describedby(id, errors, hint, rest) do
+    case Enum.reject([describedby(id, errors, hint), rest[:"aria-describedby"]], &blank?/1) do
+      [] -> nil
+      ids -> Enum.join(ids, " ")
+    end
+  end
+
   defp describedby(id, [_ | _] = errors, _hint),
     do: errors |> Enum.with_index() |> Enum.map_join(" ", fn {_, i} -> error_id(id, i) end)
 
   defp describedby(id, [], hint) when is_binary(hint), do: "#{id}-hint"
   defp describedby(_id, _errors, _hint), do: nil
+
+  defp blank?(ids), do: ids in [nil, false, ""]
+
+  # The attributes given to `input/1` but the description, which `describedby/4` merges.
+  defp without_describedby(rest), do: Map.delete(rest, :"aria-describedby")
 
   # A field may have more than one error, each of them a line of its own with an id of its
   # own: the first is the field's `-error`, as a test or a script looks for it.
@@ -780,9 +798,9 @@ defmodule ApiaryWeb.CoreComponents do
   one primary and one default action.
 
       <.header>
-        Access keys
-        <:subtitle>Keys let machines post runs to this workspace.</:subtitle>
-        <:actions><.button variant="primary">New access key</.button></:actions>
+        Nodes
+        <:subtitle>A node is one permanent machine; a node pool is a fleet of short-lived instances.</:subtitle>
+        <:actions><.button variant="primary">New node</.button></:actions>
       </.header>
   """
   attr :class, :any, default: nil
@@ -852,7 +870,7 @@ defmodule ApiaryWeb.CoreComponents do
   Summary figures as one bordered object with internal dividers.
 
       <.stats>
-        <.stat label="Access keys" value={3} hint="active" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys"} />
+        <.stat label="Nodes" value={3} hint="running" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/nodes"} />
       </.stats>
   """
   attr :class, :any, default: nil
@@ -937,12 +955,13 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   A quiet line that says the page is waiting for something.
   """
+  attr :id, :string, default: nil
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
   def listening(assigns) do
     ~H"""
-    <p class={["flex items-center gap-2.5 text-[13px]/[18px] text-muted", @class]}>
+    <p id={@id} class={["flex items-center gap-2.5 text-[13px]/[18px] text-muted", @class]}>
       <span class="listening-dot mx-1" aria-hidden="true" />
       {render_slot(@inner_block)}
     </p>
@@ -968,7 +987,12 @@ defmodule ApiaryWeb.CoreComponents do
       @class
     ]}>
       <.hex_tile :if={@icon} icon={@icon} tone={@tone} class="mb-2.5" />
-      <.dynamic_tag tag_name={@heading} class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
+      <%!-- As the page's h1 it takes the focus after a navigation, as every page's h1. --%>
+      <.dynamic_tag
+        tag_name={@heading}
+        class="text-[15px]/[22px] font-semibold tracking-[-0.006em] outline-none"
+        tabindex={@heading == "h1" && "-1"}
+      >
         {@title}
       </.dynamic_tag>
       <div class="max-w-[46ch] text-[13.5px]/5 text-muted">{render_slot(@inner_block)}</div>
@@ -1062,6 +1086,11 @@ defmodule ApiaryWeb.CoreComponents do
   attr :code, :string, required: true
   attr :label, :string, default: nil
   attr :copy_label, :string, default: nil, doc: "defaults to Copy block"
+
+  attr :wrap, :boolean,
+    default: false,
+    doc: "wraps long lines, breaking anywhere, instead of scrolling them: a command shown whole"
+
   attr :class, :any, default: nil
 
   def code_block(assigns) do
@@ -1084,7 +1113,10 @@ defmodule ApiaryWeb.CoreComponents do
       <pre
         id={@id}
         tabindex="0"
-        class="overflow-x-auto p-3.5 font-mono text-[12.5px]/5 [tab-size:2]"
+        class={[
+          "p-3.5 font-mono text-[12.5px]/5 [tab-size:2]",
+          if(@wrap, do: "whitespace-pre-wrap break-all", else: "overflow-x-auto")
+        ]}
       ><code>{@highlighted}</code></pre>
     </div>
     """
@@ -1135,6 +1167,57 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
+  ## Links out
+
+  @doc """
+  A link to a page outside the console, which opens in a new tab: the icon shows that it
+  leaves, and a screen reader hears that it opens a new tab. `rel` keeps the console's
+  window and address from the page, and gives the link no weight. A url that is not
+  `external_url?/1` (one with a user name or password among them), or none, renders the
+  content as plain text with the same `class` and attributes, so a url from a record is
+  never a `javascript:`, `data:` or relative link.
+  """
+  attr :href, :any, required: true, doc: "the url; nil, or one that may not be a link, for text"
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def external_link(assigns) do
+    assigns = assign(assigns, :link, external_url?(assigns.href))
+
+    ~H"""
+    <a
+      :if={@link}
+      href={@href}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      class={["q-link q-ext-link", @class]}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+      <.icon name="hero-arrow-top-right-on-square-micro" class="q-ext-icon size-3" />
+      <span class="sr-only">{gettext("(opens in a new tab)")}</span>
+    </a>
+    <span :if={!@link} class={@class} {@rest}>{render_slot(@inner_block)}</span>
+    """
+  end
+
+  @doc """
+  Whether `url` may be a link out: an absolute `http` or `https` url with a host, and with
+  no user name or password in it.
+  """
+  def external_url?(url) when is_binary(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme, host: host, userinfo: nil}} when scheme in ["http", "https"] ->
+        is_binary(host) and host != ""
+
+      _ ->
+        false
+    end
+  end
+
+  def external_url?(_url), do: false
+
   ## Tables
 
   @doc """
@@ -1148,7 +1231,10 @@ defmodule ApiaryWeb.CoreComponents do
   (`"sm"` 600 px, `"md"` 1000 px, `"lg"` 1300 px), so a table in a narrow pane reflows as
   on a narrow screen. A row's actions are its last column: a text action for the one
   thing a row's state asks for, and the rest in a `row_menu/1`; never a bordered button
-  on every row, and never red outside the confirm dialog.
+  on every row, and never red outside a confirmation. A row asked to confirm an act on it
+  (`confirming`, the row's id) shows the `confirm` slot in place of its cells, an
+  `inline_confirm/1`, in one cell across the row; where the table is wider than its box,
+  the confirmation stays in the box's view however far the table is scrolled sideways.
 
   ## Examples
 
@@ -1178,6 +1264,14 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
+
+  attr :confirming, :string,
+    default: nil,
+    doc: "the id of the row that is asking to confirm an act on it (`confirm` slot)"
+
+  slot :confirm,
+    doc:
+      "what the row `confirming` names shows in place of its cells: an `inline_confirm/1`, given the row"
 
   def table(assigns) do
     assigns =
@@ -1211,16 +1305,30 @@ defmodule ApiaryWeb.CoreComponents do
           <tr
             :for={row <- @rows}
             id={@row_id && @row_id.(row)}
-            class={@row_class && @row_class.(row)}
+            class={[
+              @row_class && @row_class.(row),
+              confirming?(@confirming, @row_id, row) && "q-confirming"
+            ]}
           >
             <td
+              :if={confirming?(@confirming, @row_id, row)}
+              colspan={length(@col) + if(@action != [], do: 1, else: 0)}
+              class="q-confirm-cell"
+            >
+              <div class="q-confirm-view">{render_slot(@confirm, @row_item.(row))}</div>
+            </td>
+            <td
               :for={col <- @col}
+              :if={!confirming?(@confirming, @row_id, row)}
               phx-click={@row_click && @row_click.(row)}
               class={[@row_click && "cursor-pointer", col_class(col), col[:class]]}
             >
               {render_slot(col, @row_item.(row))}
             </td>
-            <td :if={@action != []} class="cell-actions w-px text-right">
+            <td
+              :if={@action != [] && !confirming?(@confirming, @row_id, row)}
+              class="cell-actions w-px text-right"
+            >
               <div class="flex items-center justify-end gap-1">
                 <%= for action <- @action do %>
                   {render_slot(action, @row_item.(row))}
@@ -1230,6 +1338,93 @@ defmodule ApiaryWeb.CoreComponents do
           </tr>
         </tbody>
       </table>
+    </div>
+    """
+  end
+
+  defp confirming?(nil, _row_id, _row), do: false
+  defp confirming?(_id, nil, _row), do: false
+  defp confirming?(id, row_id, row), do: row_id.(row) == id
+
+  @doc """
+  Renders a confirmation in place, where the act was asked for: never an overlay
+  (`docs/ui.md`, Confirmations). A row of a table becomes one (`table/1`'s `confirming`
+  and `confirm` slot), and so does a page's own control, such as a danger zone's line.
+
+  It reads as one line that wraps: the question in the text colour ("Delete
+  FORGE_TOKEN?"), what happens in a muted sentence, then its button, red for what cannot
+  be undone ("Yes, delete"), and Cancel, which leads back (`cancel`, a patch) and takes
+  the focus as it shows, so Enter does not act by mistake; Escape cancels too. The group
+  is named by its question and described by the sentence (`id`-sub), so a screen reader
+  says what happens, "This cannot be undone." included, as Cancel takes the focus.
+  Where the act is itself a cancelling, `cancel_label` names the way back instead ("Keep
+  it"), so the two buttons don't both say cancel.
+
+      <.inline_confirm id="secret-1-confirm" question="Delete FORGE_TOKEN?" cancel={@list}>
+        The secret and its value are deleted. This cannot be undone.
+        <:action>
+          <.button variant="danger" size="xs" phx-click="delete_secret" loading_text="Deleting">
+            Yes, delete
+          </.button>
+        </:action>
+      </.inline_confirm>
+  """
+  attr :id, :string, required: true
+
+  attr :question, :any,
+    required: true,
+    doc: "the question, text or rich text (`ApiaryWeb.RichText`)"
+
+  attr :cancel, :any,
+    required: true,
+    doc: "where Cancel leads: a path to patch to, or a JS command"
+
+  attr :class, :any, default: nil
+
+  attr :cancel_label, :string,
+    default: nil,
+    doc:
+      "the words of the button that leads back, where Cancel would be ambiguous; Cancel unless given"
+
+  slot :inner_block, doc: "what happens, one or two short sentences"
+  slot :action, required: true, doc: "the button that acts"
+
+  def inline_confirm(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :cancel_js,
+        if(is_binary(assigns.cancel), do: JS.patch(assigns.cancel), else: assigns.cancel)
+      )
+
+    ~H"""
+    <div
+      id={@id}
+      role="group"
+      aria-labelledby={"#{@id}-question"}
+      aria-describedby={@inner_block != [] && "#{@id}-sub"}
+      class={["q-confirm", @class]}
+      phx-window-keydown={@cancel_js}
+      phx-key="Escape"
+    >
+      <div class="q-confirm-what">
+        <p id={"#{@id}-question"} class="q-confirm-q"><.rich text={@question} /></p>
+        <p :if={@inner_block != []} id={"#{@id}-sub"} class="q-confirm-sub">
+          {render_slot(@inner_block)}
+        </p>
+      </div>
+      <div class="q-confirm-act">
+        {render_slot(@action)}
+        <button
+          id={"#{@id}-cancel"}
+          type="button"
+          class="btn btn-xs"
+          phx-click={@cancel_js}
+          phx-mounted={JS.focus()}
+        >
+          {@cancel_label || gettext("Cancel")}
+        </button>
+      </div>
     </div>
     """
   end
@@ -1274,8 +1469,11 @@ defmodule ApiaryWeb.CoreComponents do
   slot :inner_block
 
   def row_menu(assigns) do
+    assigns = assign(assigns, :items?, not blank_slot?(assigns.inner_block))
+
     ~H"""
     <div
+      :if={@items?}
       id={@id}
       class={["q-rowmenu dropdown dropdown-end", @class]}
       phx-hook="Menu"
@@ -1304,6 +1502,21 @@ defmodule ApiaryWeb.CoreComponents do
       </ul>
     </div>
     """
+  end
+
+  # Whether a slot renders nothing but whitespace: absent, or each of its items left out
+  # by its `:if`. It renders the slot on its own, apart from the template's render, so the
+  # menu's markup keeps its change tracking.
+  defp blank_slot?([]), do: true
+
+  defp blank_slot?(slot) do
+    assigns = %{slot: slot}
+
+    ~H"{render_slot(@slot)}"
+    |> Phoenix.HTML.Safe.to_iodata()
+    |> IO.iodata_to_binary()
+    |> String.trim()
+    |> Kernel.==("")
   end
 
   @doc """
@@ -1491,6 +1704,14 @@ defmodule ApiaryWeb.CoreComponents do
   and on Enter. Its value lives in the page's URL, which the page patches. `live={false}`
   sends it on Enter only, for a query whose words are read as a whole (qualifiers such as
   `state:failed`, which the page turns into filters).
+
+  `suggest` makes the field a combobox (the ARIA list autocomplete, manual selection): the
+  form sends `suggest` 150 ms after the reader stops typing, and the page answers with
+  `suggestions`, `%{value:, detail:}` each, at most a handful, listed under the field as
+  options of the listbox `<id>-hosts`, and `status`, what a screen reader is told of them.
+  The `HostSuggest` hook moves among them with ↑ and ↓; Enter or a click puts the chosen
+  one in place of the word being typed, as `host:<value>`, and sends the query; Escape,
+  Tab and leaving the field close the list.
   """
   attr :id, :string, required: true
   attr :name, :string, default: "q"
@@ -1500,15 +1721,21 @@ defmodule ApiaryWeb.CoreComponents do
   attr :change, :string, default: "search", doc: "the event the form sends"
   attr :live, :boolean, default: true
   attr :class, :any, default: nil
+  attr :suggest, :string, default: nil, doc: "the event that asks for suggestions; nil for none"
+  attr :suggestions, :list, default: [], doc: "`%{value:, detail:}` each, as the page answered"
+  attr :suggestions_label, :string, default: nil, doc: "the listbox's accessible name"
+  attr :status, :string, default: nil, doc: "what the answer is, for a screen reader"
 
   def list_search(assigns) do
     ~H"""
     <form
       id={@id}
-      class={["q-find", @class]}
+      class={["q-find", @suggest && "q-find-suggest", @class]}
       role="search"
-      phx-change={@live && @change}
+      phx-change={(@live && @change) || @suggest}
       phx-submit={@change}
+      phx-hook={@suggest && "HostSuggest"}
+      data-suggest={@suggest}
       novalidate
     >
       <label>
@@ -1522,11 +1749,35 @@ defmodule ApiaryWeb.CoreComponents do
           placeholder={@placeholder || @label}
           autocomplete="off"
           spellcheck="false"
-          phx-debounce={@live && "200"}
+          phx-debounce={(@live && "200") || (@suggest && "150")}
           enterkeyhint="search"
           class="input input-sm"
+          role={@suggest && "combobox"}
+          aria-autocomplete={@suggest && "list"}
+          aria-controls={@suggest && "#{@id}-hosts"}
+          aria-expanded={@suggest && to_string(@suggestions != [])}
         />
       </label>
+      <ul
+        :if={@suggest}
+        id={"#{@id}-hosts"}
+        class="q-suggest"
+        role="listbox"
+        aria-label={@suggestions_label}
+        hidden={@suggestions == []}
+      >
+        <li
+          :for={{suggestion, i} <- Enum.with_index(@suggestions)}
+          id={"#{@id}-host-#{i}"}
+          role="option"
+          aria-selected="false"
+          data-value={suggestion.value}
+        >
+          <span class="q-suggest-v">{suggestion.value}</span>
+          <span :if={suggestion[:detail]} class="q-suggest-d">{suggestion.detail}</span>
+        </li>
+      </ul>
+      <p :if={@suggest} id={"#{@id}-status"} class="sr-only" role="status">{@status}</p>
     </form>
     """
   end
@@ -1571,7 +1822,6 @@ defmodule ApiaryWeb.CoreComponents do
         id={"#{@id}-button"}
         type="button"
         class="btn btn-sm"
-        aria-haspopup="dialog"
         aria-controls={"#{@id}-panel"}
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
@@ -1585,7 +1835,7 @@ defmodule ApiaryWeb.CoreComponents do
       </button>
       <div
         id={"#{@id}-panel"}
-        role="dialog"
+        role="group"
         aria-label={gettext("Filter")}
         class="dropdown-content q-fm-panel"
         tabindex="-1"
@@ -1754,83 +2004,6 @@ defmodule ApiaryWeb.CoreComponents do
       </.link>
       {render_slot(@inner_block)}
     </div>
-    """
-  end
-
-  ## Modal
-
-  @doc """
-  Renders a modal on the native `<dialog>`: focus is trapped, the background is
-  inert and Escape works for free. Render it conditionally (for example on a
-  live action) and pass an `on_cancel` JS command, usually a patch back to the
-  index. `dismissable={false}` leaves the footer's button as the only exit.
-
-      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys")} title="New access key">
-        ...
-        <:footer>
-          <.button patch={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys"}>Cancel</.button>
-        </:footer>
-      </.modal>
-
-  Initial focus goes to the element marked `data-autofocus`, else the first
-  field, else the primary button. Mark Cancel in destructive confirms.
-  """
-  attr :id, :string, required: true
-  attr :title, :string, required: true
-  attr :on_cancel, JS, default: %JS{}
-  attr :dismissable, :boolean, default: true, doc: "close on escape, click outside and the X"
-  attr :size, :string, default: "md", values: ~w(sm md lg)
-  slot :inner_block, required: true
-  slot :aside, doc: "sits at the right of the title, for example a badge"
-  slot :footer
-
-  def modal(assigns) do
-    ~H"""
-    <dialog
-      id={@id}
-      phx-hook="Modal"
-      data-cancel={@dismissable && @on_cancel}
-      aria-labelledby={"#{@id}-title"}
-      class="modal modal-bottom sm:modal-middle"
-    >
-      <div class={[
-        "modal-box",
-        @size == "sm" && "sm:max-w-[400px]",
-        @size == "md" && "sm:max-w-[480px]",
-        @size == "lg" && "sm:max-w-[560px]"
-      ]}>
-        <div class="flex items-start justify-between gap-3 px-5 pt-5">
-          <h2
-            id={"#{@id}-title"}
-            class="min-w-0 break-words text-base/6 font-semibold tracking-[-0.01em]"
-          >
-            {@title}
-          </h2>
-          <div :if={@aside != []} class="flex h-6 flex-none items-center">
-            {render_slot(@aside)}
-          </div>
-          <.tooltip :if={@dismissable} tip={gettext("Close")} placement="left" class="flex-none">
-            <button
-              type="button"
-              phx-click={@on_cancel}
-              class="btn btn-ghost btn-xs btn-square btn-keep"
-              aria-label={gettext("Close")}
-            >
-              <.icon name="hero-x-mark-micro" class="size-4" />
-            </button>
-          </.tooltip>
-        </div>
-        <div class="modal-body grid min-h-0 gap-4 overflow-y-auto px-5 pb-5 pt-2 text-[13.5px]/5">
-          {render_slot(@inner_block)}
-        </div>
-        <div :if={@footer != []} class="modal-action flex-none">
-          {render_slot(@footer)}
-        </div>
-      </div>
-      <form :if={@dismissable} method="dialog" class="modal-backdrop" novalidate>
-        <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
-      </form>
-    </dialog>
     """
   end
 

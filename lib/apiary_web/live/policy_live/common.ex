@@ -41,30 +41,35 @@ defmodule ApiaryWeb.PolicyLive.Common do
   The assigns every policy page starts from, and the one subscription, to the policy of
   the scope's workspace where the scope has one. `opts`: `writer`, what the page writes
   rules with (`t:writer/0`), the core's policy by default; `base`, the path of the page's
-  list of rules, the holder's policy page by default.
+  list of rules, the holder's policy page by default; `shared`, whether a target holder's
+  path is shared by another target of the workspace, read once
+  (`Apiary.Targets.shared?/2`) when the page does not say. The holder is named and
+  addressed by it (`holder_name/1`, `base/3`), its system said only where it is shared.
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
     if connected?(socket) and scope.workspace, do: Policy.subscribe(scope)
+    shared = holder_shared(scope, holder, opts)
 
     socket
     |> assign(
       holder: holder,
+      holder_shared: shared,
       writer: Keyword.get(opts, :writer, policy_writer()),
       scope_kind: if(holder, do: :target, else: :workspace),
-      base: Keyword.get(opts, :base) || base(scope, holder),
+      base: Keyword.get(opts, :base) || base(scope, holder, shared),
       people: people(scope),
       fresh: %{},
       announce: nil,
       write_error: nil,
       dialog: nil,
+      mode_pick: nil,
       queue: [],
       reload_pending: false,
       touched: MapSet.new(),
       now: DateTime.utc_now()
     )
     |> reset_composer()
-    |> reset_credential()
   end
 
   @typedoc """
@@ -99,11 +104,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
     }
   end
 
-  @doc "The path of the holder's policy page in `scope`'s workspace."
-  def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+  # Whether a target holder's path is shared: as the page says, or one read.
+  defp holder_shared(_scope, nil, _opts), do: false
 
-  def base(scope, %{system: system, path: path}),
-    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"])
+  defp holder_shared(scope, %{path: path}, opts) do
+    case Keyword.fetch(opts, :shared) do
+      {:ok, shared} when is_boolean(shared) -> shared
+      _ -> Apiary.Targets.shared?(scope, path)
+    end
+  end
+
+  @doc """
+  The path of the holder's policy page in `scope`'s workspace: a target's Policy tab at its
+  address, its system in it only where its path is `shared`
+  (`ApiaryWeb.TargetComponents.target_path/5`).
+  """
+  def base(scope, holder, shared \\ false)
+
+  def base(scope, nil, _shared), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+
+  def base(scope, %{system: system, path: path}, shared),
+    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"], shared)
 
   @doc """
   Whether the reader of a policy page may take `action` on the workspace's security
@@ -196,10 +217,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Where a rule of the level above the workspace is written (`Apiary.Policy.Above`): the
   level by its name, with its tile, its slug the `source:` qualifier's value, between a
-  target's own rules and the workspace's in the list's order.
+  target's own rules and the workspace's in the list's order. Nil where there is no
+  level, and for one that carries variables only (`policy: false`), which writes no rule.
   """
-  def above_source(%Above{name: name, slug: slug}),
+  def above_source(%Above{policy: true, name: name, slug: slug}),
     do: %{key: slug, label: name, rank: 1, tile: String.first(name || "?")}
+
+  def above_source(_above), do: nil
 
   @doc """
   The host rules of the level above the workspace, one row each, on the workspace's page
@@ -207,9 +231,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   the lock glyph with the level's words (`above` true), and the way to the level
   (`view`) where the edition gives one (`c:ApiaryWeb.Edition.above_policy_link/1`). One
   the holder does not hold in force (its allow a lower deny narrows) says why. Nothing
-  where the effective policy has no level above it.
+  where the effective policy has no level above it, or one that carries variables only.
   """
-  def above_rows(%Policy.Effective{above: %Above{} = above} = effective, socket) do
+  def above_rows(%Policy.Effective{above: %Above{policy: true} = above} = effective, socket) do
     scope = socket.assigns.current_scope
     source = above_source(above)
     link = ApiaryWeb.Edition.above_policy_link(scope)
@@ -392,65 +416,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def off_words(_entry, _workspace, _above), do: gettext("Not in force")
 
-  @doc """
-  The credentials of the workspace's page, one row each (`ApiaryWeb.PolicyComponents.credentials_table/1`),
-  every one its own.
-  """
-  def credential_rows(rules, socket) do
-    scope = socket.assigns.current_scope
-    source = workspace_source(scope)
-    edit? = may?(scope, :"security_policy.edit")
-    lock? = may?(scope, :"security_policy.lock")
-
-    for rule <- rules, rule.kind == "credential" do
-      %{
-        id: rule.id,
-        action: rule.action,
-        name: rule.name,
-        argument: rule.argument,
-        locked: rule.locked,
-        source: source,
-        own: true,
-        view: nil,
-        by: person(socket.assigns.people, rule.created_by_id),
-        at: rule.inserted_at,
-        can_change: edit? and (not rule.locked or lock?)
-      }
-    end
-  end
-
-  @doc """
-  The credentials a target's runs may use, on its Policy tab: its own, then the
-  workspace's, each with where it is written; the workspace's are read here and changed
-  on the workspace's page.
-  """
-  def target_credentials(%Policy.Effective{entries: entries}, socket) do
-    scope = socket.assigns.current_scope
-    edit? = may?(scope, :"security_policy.edit")
-    view = gettext("View in %{workspace}'s policy", workspace: scope.workspace.name)
-    path = ~p"/#{scope.organisation}/#{scope.workspace}/policy"
-
-    for %{kind: :credential} = entry <- entries do
-      own? = entry.source == :target
-
-      %{
-        id: entry.rule.id,
-        action: to_string(entry.action),
-        name: entry.name,
-        argument: entry.argument,
-        locked: entry.locked,
-        in_force: entry.in_force,
-        source: if(own?, do: target_source(), else: workspace_source(scope)),
-        own: own?,
-        view: if(own?, do: nil, else: {view, path}),
-        by: person(socket.assigns.people, entry.rule.created_by_id),
-        at: entry.rule.inserted_at,
-        can_change: own? and edit?
-      }
-    end
-    |> Enum.sort_by(&{not &1.own, &1.name})
-  end
-
   # What Remove does to a target's own rule: gives the workspace's back where the target's
   # overrode it, else removes it.
   defp act(%{action: :deny, overrides: overrides}) do
@@ -524,16 +489,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
     )
   end
 
-  def reset_credential(socket) do
-    params = %{"name" => "", "argument" => ""}
-
-    assign(socket,
-      credential: to_form(params, as: :credential),
-      credential_params: params,
-      credential_reading: nil
-    )
-  end
-
   @doc "Reads the composer again against the rules on the page. `own` and `entries` are the page's."
   def read(socket, params) do
     params =
@@ -563,8 +518,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
         kind: rule.kind,
         action: rule.action,
         host: rule.host,
-        name: rule.name,
-        argument: rule.argument,
         paths: rule.paths,
         locked: rule.locked,
         by: person(people, rule.created_by_id),
@@ -675,47 +628,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
      )}
   end
 
-  def handle_event("credential_change", params, socket) when is_map(params) do
-    params =
-      Map.merge(
-        %{"name" => "", "argument" => ""},
-        fields(params["credential"], ~w(name argument))
-      )
+  # A confirm in place is cancelled (Cancel, Escape): the focus goes back to the control
+  # that asked, once it is drawn again.
+  def handle_event("dialog_cancel", params, socket) do
+    socket = assign(socket, :dialog, nil)
 
-    reading = Reading.credential(params, socket.assigns.own)
-
-    {:halt,
-     assign(socket,
-       credential: to_form(params, as: :credential),
-       credential_params: params,
-       credential_reading: reading
-     )}
-  end
-
-  def handle_event("credential_save", _params, socket) do
-    params = socket.assigns.credential_params
-    reading = Reading.credential(params, socket.assigns.own)
-
-    if reading.kind in [:ok, :note] do
-      attrs = %{kind: "credential", name: params["name"], argument: params["argument"]}
-
-      case Policy.allow(socket.assigns.current_scope, socket.assigns.holder, attrs) do
-        {:ok, rule} ->
-          {:halt,
-           socket
-           |> reset_credential()
-           |> wrote(rule, credential_named(socket, rule.name), gettext("Credential added."))
-           |> focus("policy-credential-name")}
-
-        {:error, error} ->
-          {:halt, refused(socket, error)}
-      end
-    else
-      {:halt, assign(socket, :credential_reading, reading)}
+    case params do
+      %{"focus" => id} when is_binary(id) and byte_size(id) <= 200 -> {:halt, focus(socket, id)}
+      _ -> {:halt, socket}
     end
   end
-
-  def handle_event("dialog_cancel", _params, socket), do: {:halt, assign(socket, :dialog, nil)}
 
   # The list's search, sent as the reader types and on Enter: a qualifier they typed
   # becomes a token on Enter only, so one half typed is never applied; until then it is
@@ -854,7 +776,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  def holder_name(%{assigns: %{holder: %{system: system, path: path}}}), do: "#{system}/#{path}"
+  @doc """
+  The target holder's name in words, as it is addressed: its path, `acme/shop`, and its
+  system before it only where the path is shared, `gitlab.com/acme/shop`
+  (`ApiaryWeb.TargetComponents.target_label/3`, the page's `holder_shared`).
+  """
+  def holder_name(%{assigns: %{holder: %{system: system, path: path}} = assigns}),
+    do: ApiaryWeb.TargetComponents.target_label(system, path, assigns[:holder_shared])
 
   @doc """
   The toast of a host rule written on the page:
@@ -876,16 +804,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def rule_written(socket, "deny", host),
     do: gettext("%{host} is denied for %{target}.", host: host, target: holder_name(socket))
-
-  defp credential_named(%{assigns: %{holder: nil}}, name),
-    do: gettext("The credential %{name} is named for the workspace.", name: name)
-
-  defp credential_named(socket, name),
-    do:
-      gettext("The credential %{name} is named for %{target}.",
-        name: name,
-        target: holder_name(socket)
-      )
 
   @doc """
   After a write: the page is read again, the new rule is marked fresh, the toast and the
@@ -945,21 +863,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def focus(socket, id), do: push_event(socket, "policy:focus", %{id: id})
 
   @doc """
+  After a patch between a version and its export (Export, Done), the focus goes to the
+  heading of what is shown now, so it never falls to the page's body: `from` is the view
+  shown before the patch, `to` the one shown now.
+  """
+  def heading_focus(socket, :version, :export), do: focus(socket, "policy-export-h")
+  def heading_focus(socket, :export, :version), do: focus(socket, "policy-version-h")
+  def heading_focus(socket, _from, _to), do: socket
+
+  @doc """
   Puts the composer's values into its fields in the browser. A patch leaves a field that
   has focus as the reader typed it, so what the server sets (a repair, a cleared form, the
   next pasted host) is sent as well.
   """
   def set_fields(socket) do
     composer = socket.assigns.composer_params
-    credential = socket.assigns.credential_params
 
     push_event(socket, "policy:fields", %{
       fields: %{
         "policy-composer-host" => composer["host"],
         "policy-composer-paths" =>
-          if(composer["action"] == "deny", do: "", else: composer["paths"]),
-        "policy-credential-name" => credential["name"],
-        "policy-credential-argument" => credential["argument"]
+          if(composer["action"] == "deny", do: "", else: composer["paths"])
       }
     })
   end
@@ -989,6 +913,33 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The DOM-safe key of a destination of the list."
   def would_key(%{host: host, path: path}), do: ApiaryWeb.RunComponents.dom_token({host, path})
 
+  @doc "The destinations an enforce confirm lists, each on its row: the first eight."
+  def would_shown(%{destinations: destinations}), do: Enum.take(destinations, 8)
+
+  @doc "A destination of the list as its Allow names it: the host, and its path where it has one."
+  def would_name(%{host: host, path: path}) when is_binary(path), do: host <> path
+  def would_name(%{host: host}), do: host
+
+  @doc """
+  After an Allow of the list, the focus goes on to the next Allow still open among those
+  shown, after the one acted on and then from the top, so that a reader allowing several
+  goes from one to the next; with none left, to the confirm's act (`fallback`).
+  `allowable?` leaves out a row that shows no Allow, as one a locked deny covers.
+  """
+  def focus_next_allow(socket, would, key, fallback, allowable? \\ fn _destination -> true end)
+
+  def focus_next_allow(socket, %{open: open} = would, key, fallback, allowable?) do
+    {before, from} = would |> would_shown() |> Enum.split_while(&(would_key(&1) != key))
+
+    next =
+      Enum.find(Enum.drop(from, 1) ++ before, &(would_key(&1) in open and allowable?.(&1)))
+
+    focus(socket, if(next, do: "would-#{would_key(next)}-allow", else: fallback))
+  end
+
+  def focus_next_allow(socket, _unavailable, _key, fallback, _allowable?),
+    do: focus(socket, fallback)
+
   ## The words of a change
 
   @doc """
@@ -998,7 +949,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   name of the level above the workspace, for a change of it (`above_changed`), or nil.
   """
   def change_sentence(change, who, above \\ nil) do
-    who = {:b, who || gettext("Qory")}
+    who = {:b, who || gettext("Qory Apiary")}
     diff = Policy.diff(change)
 
     case {change.action, diff} do
@@ -1021,6 +972,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       {"mode_changed", _} ->
         rich_gettext("%{who} set the mode", who: who)
 
+      # The policy no longer names credentials; a change made while it did reads as it was.
       {"rule_added", %{added: [%{"kind" => "credential"} = rule | _]}} ->
         rich_gettext("%{who} added the credential %{credential}",
           who: who,
@@ -1138,6 +1090,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         host: {:code, new["host"]}
       )
 
+  # A credential rule of a change made while the policy still named credentials.
   defp credential_chips(%{"name" => name, "argument" => argument}) when is_binary(argument),
     do: [{:code, name}, " ", {:code, argument}]
 
@@ -1241,8 +1194,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def mode_line(mode), do: rich_gettext("Mode %{mode}", mode: {:b, to_string(mode)})
 
   @doc """
-  rule_words/1 says a rule of the policy as a line of a diff says it: a credential, an
-  allow with its paths, or a deny, each marked when it is locked.
+  rule_words/1 says a rule of the policy as a line of a diff says it: an allow with its
+  paths, or a deny, each marked when it is locked. A credential, of a change made while
+  the policy still named credentials, is said by its name and argument.
   """
   @spec rule_words(map) :: term
   def rule_words(%{"kind" => "credential"} = rule) do
@@ -1282,8 +1236,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   A served document indented for reading, its keys in the order served: the document,
-  `security_policy` and `egress` a key per line, `allow`, `paths` and `credentials` an
-  entry per line, everything below on its line. A document that is not JSON is shown as
+  `security_policy` and `egress` a key per line, `allow` and `paths` an entry per line
+  (and `credentials`, in a version rendered while the policy still named them),
+  everything below on its line. A document that is not JSON is shown as
   it is.
   """
   def pretty(document) when is_binary(document) do
@@ -1743,6 +1698,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     %{
       subject: subject,
+      # The page names a target as it is addressed; the file's head, `subject`, in full.
+      name: if(holder, do: holder_name(socket)),
       workspace: if(is_nil(holder), do: scope.workspace.name),
       version: configuration.version,
       file_name: file_name,

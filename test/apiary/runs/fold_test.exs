@@ -17,7 +17,10 @@ defmodule Apiary.Runs.FoldTest do
     wall: nil,
     image: nil,
     labels: %{},
-    task: nil,
+    about_kind: nil,
+    about_title: nil,
+    about_subjects: [],
+    about_details: nil,
     target_system: nil,
     target_path: nil,
     started_at: nil,
@@ -173,7 +176,6 @@ defmodule Apiary.Runs.FoldTest do
       assert run.host == "dev-laptop"
       assert run.wall == "docker"
       assert run.image == "example/agent:1"
-      assert run.task == "issue-12"
       assert run.target_system == "git.example.com"
       assert run.target_path == "acme/shop"
       assert run.labels["task"] == "issue-12"
@@ -232,6 +234,348 @@ defmodule Apiary.Runs.FoldTest do
         %{run: run} = Fold.fold(@run, [started(2, %{"terminal" => terminal})])
         assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
       end
+    end
+  end
+
+  describe "about of dev.qory.run.started" do
+    defp about(about), do: Fold.fold(@run, [started(2, %{"about" => about})]).run
+
+    defp subject(type, ref, extra \\ %{}),
+      do: Map.merge(%{"type" => type, "ref" => ref}, extra)
+
+    # `n` bytes, of characters of two bytes and one more of one when `n` is odd.
+    defp bytes(n), do: String.duplicate("é", div(n, 2)) <> String.duplicate("a", rem(n, 2))
+
+    defp subject_refs(run), do: Enum.map(run.about_subjects, &{&1["type"], &1["ref"]})
+
+    test "keeps the kind, the title, the subjects and the details as sent" do
+      run =
+        about(%{
+          "kind" => "implementation",
+          "title" => "Fix the login redirect",
+          "subjects" => [
+            subject("ticket", "ENG-17", %{
+              "url" => "https://tracker.example.com/ENG-17",
+              "title" => "Login redirects to the wrong page"
+            }),
+            subject("pull request", "#412")
+          ],
+          "details" => %{"ticket" => %{"priority" => "high"}, "attempt" => 2}
+        })
+
+      assert run.about_kind == "implementation"
+      assert run.about_title == "Fix the login redirect"
+
+      assert run.about_subjects == [
+               %{
+                 "type" => "ticket",
+                 "ref" => "ENG-17",
+                 "url" => "https://tracker.example.com/ENG-17",
+                 "title" => "Login redirects to the wrong page"
+               },
+               %{"type" => "pull request", "ref" => "#412"}
+             ]
+
+      assert run.about_details == %{"ticket" => %{"priority" => "high"}, "attempt" => 2}
+    end
+
+    test "a start without about says nothing about the run" do
+      %{run: run} = Fold.fold(@run, [started(2)])
+
+      assert {run.about_kind, run.about_title, run.about_subjects, run.about_details} ==
+               {nil, nil, [], nil}
+    end
+
+    test "an about that is not an object is ignored" do
+      for about <- ["Fix the login redirect", ["implementation"], 3, true, nil] do
+        run = about(about)
+
+        assert {run.about_kind, run.about_title, run.about_subjects, run.about_details} ==
+                 {nil, nil, [], nil}
+
+        assert run.runtime == "claude"
+      end
+    end
+
+    test "the kind is kept up to 64 bytes and dropped whole past them" do
+      assert about(%{"kind" => bytes(64)}).about_kind == bytes(64)
+      assert about(%{"kind" => "a"}).about_kind == "a"
+
+      for kind <- [bytes(65), "", 64, ["implementation"]] do
+        run = about(%{"kind" => kind, "title" => "Fix the login redirect"})
+        assert {run.about_kind, run.about_title} == {nil, "Fix the login redirect"}
+      end
+    end
+
+    test "the title is kept up to 256 bytes and dropped whole past them" do
+      assert about(%{"title" => bytes(256)}).about_title == bytes(256)
+      assert about(%{"title" => "a"}).about_title == "a"
+
+      for title <- [bytes(257), "", 256, %{"text" => "Fix"}] do
+        run = about(%{"title" => title, "kind" => "implementation"})
+        assert {run.about_title, run.about_kind} == {nil, "implementation"}
+      end
+    end
+
+    test "details are kept up to 8192 bytes encoded and dropped whole past them" do
+      # `{"k":"` and `"}` are eight bytes around the value.
+      fits = %{"k" => String.duplicate("a", 8184)}
+      assert byte_size(Jason.encode!(fits)) == 8192
+      assert about(%{"details" => fits}).about_details == fits
+
+      over = %{"k" => String.duplicate("a", 8185)}
+      run = about(%{"details" => over, "kind" => "implementation"})
+      assert {run.about_details, run.about_kind} == {nil, "implementation"}
+
+      # Counted in bytes, not characters.
+      wide = %{"k" => String.duplicate("é", 4093)}
+      assert byte_size(Jason.encode!(wide)) == 8194
+      assert about(%{"details" => wide}).about_details == nil
+
+      assert about(%{"details" => %{}}).about_details == %{}
+    end
+
+    test "details nested deeper than 4 levels are dropped whole, an array counting as a level" do
+      for details <- [
+            %{"a" => %{"b" => %{"c" => 1}}},
+            %{"a" => %{"b" => %{"c" => %{"d" => 1}}}},
+            %{"a" => [%{"b" => [1, 2]}]},
+            %{"a" => [[["x"]]]},
+            %{"a" => [[[]]]}
+          ] do
+        assert about(%{"details" => details}).about_details == details
+      end
+
+      for details <- [
+            %{"a" => %{"b" => %{"c" => %{"d" => %{"e" => 1}}}}},
+            %{"a" => [%{"b" => [[1]]}]},
+            %{"a" => [[[[]]]]},
+            %{"shallow" => 1, "deep" => [[[%{}]]]}
+          ] do
+        run = about(%{"details" => details, "title" => "Fix the login redirect"})
+        assert {run.about_details, run.about_title} == {nil, "Fix the login redirect"}
+      end
+    end
+
+    test "details are measured as the event carries them, <, > and & six bytes each" do
+      # `{"k":"` and `"}` are eight bytes around the value, and `<`, `>` and `&` are written
+      # `\u003c`, `\u003e` and `\u0026` in the event: five bytes more each.
+      fits = %{"k" => "<>&" <> String.duplicate("a", 8184 - 18)}
+      assert about(%{"details" => fits}).about_details == fits
+
+      over = %{"k" => "<>&" <> String.duplicate("a", 8184 - 17)}
+      assert byte_size(Jason.encode!(over)) < 8192
+      assert about(%{"details" => over}).about_details == nil
+    end
+
+    test "a details key is 1 to 64 bytes at every level, or the details are dropped whole" do
+      key = String.duplicate("k", 64)
+
+      for details <- [%{key => 1}, %{"a" => %{key => [%{key => true}]}}] do
+        assert about(%{"details" => details}).about_details == details
+      end
+
+      for details <- [
+            %{(key <> "k") => 1},
+            %{"" => 1},
+            %{"a" => %{(key <> "k") => 1}},
+            %{"a" => [%{"" => 1}]}
+          ] do
+        run = about(%{"details" => details, "kind" => "implementation"})
+        assert {run.about_details, run.about_kind} == {nil, "implementation"}
+      end
+    end
+
+    test "a string with a control character drops what holds it" do
+      for bad <- ["\u0000", "\a", "\n", "\u007F", "\u0085", "\u009F", "\u2028", "\u2029"] do
+        run = about(%{"kind" => "imple#{bad}mentation", "title" => "Fix the#{bad} build"})
+        assert {run.about_kind, run.about_title} == {nil, nil}
+
+        run =
+          about(%{
+            "subjects" => [
+              subject("ticket", "ENG-1#{bad}"),
+              subject("ticket", "ENG-2", %{
+                "url" => "https://example.com/ENG-2#{bad}",
+                "title" => "Login#{bad}"
+              })
+            ]
+          })
+
+        assert run.about_subjects == [%{"type" => "ticket", "ref" => "ENG-2"}]
+
+        for details <- [
+              %{"a#{bad}" => 1},
+              %{"a" => "b#{bad}"},
+              %{"a" => [%{"b" => ["c#{bad}"]}]},
+              %{"a" => %{"b#{bad}" => 1}}
+            ] do
+          assert about(%{"details" => details}).about_details == nil
+        end
+      end
+
+      kept = %{"a" => "é and a no-break space,\u00A0are fine"}
+      assert about(%{"details" => kept, "title" => "é \u00A0"}).about_details == kept
+    end
+
+    test "details that are not an object are dropped" do
+      for details <- [[%{"a" => 1}], "priority: high", 1, nil] do
+        assert about(%{"details" => details}).about_details == nil
+      end
+    end
+
+    test "a subject without a valid type or ref is dropped on its own" do
+      run =
+        about(%{
+          "subjects" => [
+            subject("ticket", "ENG-17"),
+            "ticket ENG-18",
+            %{"type" => "ticket"},
+            %{"ref" => "ENG-19"},
+            subject("Ticket", "ENG-20"),
+            subject("pull  request", "#1"),
+            subject("pull request ", "#2"),
+            subject("-ticket", "ENG-21"),
+            subject("", "ENG-22"),
+            subject(String.duplicate("a", 65), "ENG-23"),
+            subject(String.duplicate("a", 64), "ENG-24"),
+            subject("ticket", ""),
+            subject("ticket", 25),
+            subject("ticket", bytes(257)),
+            subject("ticket", bytes(256)),
+            subject(7, "ENG-26"),
+            subject("work_item.v2", "a"),
+            subject("pull request", "#412")
+          ]
+        })
+
+      assert subject_refs(run) == [
+               {"ticket", "ENG-17"},
+               {String.duplicate("a", 64), "ENG-24"},
+               {"ticket", bytes(256)},
+               {"work_item.v2", "a"},
+               {"pull request", "#412"}
+             ]
+    end
+
+    test "subjects that are not a list are none" do
+      for subjects <- [subject("ticket", "ENG-17"), "ENG-17", nil] do
+        assert about(%{"subjects" => subjects}).about_subjects == []
+      end
+    end
+
+    test "a subject's title is kept up to 256 bytes and dropped from that subject alone" do
+      run =
+        about(%{
+          "subjects" => [
+            subject("ticket", "ENG-1", %{"title" => bytes(256)}),
+            subject("ticket", "ENG-2", %{"title" => bytes(257)}),
+            subject("ticket", "ENG-3", %{"title" => ""}),
+            subject("ticket", "ENG-4", %{"title" => 4}),
+            subject("ticket", "ENG-5", %{"title" => "a"})
+          ]
+        })
+
+      assert run.about_subjects == [
+               %{"type" => "ticket", "ref" => "ENG-1", "title" => bytes(256)},
+               %{"type" => "ticket", "ref" => "ENG-2"},
+               %{"type" => "ticket", "ref" => "ENG-3"},
+               %{"type" => "ticket", "ref" => "ENG-4"},
+               %{"type" => "ticket", "ref" => "ENG-5", "title" => "a"}
+             ]
+    end
+
+    test "a url is kept only when absolute http or https with a host and no user, up to 2048 bytes" do
+      long = "https://example.com/" <> String.duplicate("a", 2028)
+      assert byte_size(long) == 2048
+
+      kept = [long, "http://example.com", "https://tracker.example.com/ENG-17?tab=1#top"]
+
+      dropped = [
+        long <> "a",
+        "javascript:alert(1)",
+        "ftp://x",
+        "/ENG-17",
+        "ENG-17",
+        "tracker.example.com/ENG-17",
+        "//tracker.example.com/ENG-17",
+        "http:///ENG-17",
+        "https://",
+        "mailto:someone@example.com",
+        "https://user@tracker.example.com/ENG-17",
+        "https://user:secret@tracker.example.com/ENG-17",
+        "https://example.com/a b",
+        "",
+        17
+      ]
+
+      for url <- kept do
+        assert [%{"url" => ^url}] =
+                 about(%{"subjects" => [subject("ticket", "1", %{"url" => url})]}).about_subjects
+      end
+
+      for url <- dropped do
+        assert about(%{"subjects" => [subject("ticket", "1", %{"url" => url, "title" => "t"})]}).about_subjects ==
+                 [%{"type" => "ticket", "ref" => "1", "title" => "t"}]
+      end
+    end
+
+    test "a url with a user name, or a user name and password, is dropped; the subject stays" do
+      for url <- [
+            "https://user@tracker.example.com/ENG-17",
+            "https://user:secret@tracker.example.com/ENG-17"
+          ] do
+        run = about(%{"subjects" => [subject("ticket", "ENG-17", %{"url" => url})]})
+        assert run.about_subjects == [%{"type" => "ticket", "ref" => "ENG-17"}]
+      end
+    end
+
+    test "subjects are de-duplicated by type and ref, the first winning, then cut to 16" do
+      subjects =
+        [
+          subject("ticket", "ENG-0", %{"title" => "first"}),
+          subject("ticket", "invalid", %{"type" => "Ticket"}),
+          subject("ticket", "ENG-0", %{"title" => "second"}),
+          subject("pull request", "ENG-0")
+        ] ++ for(n <- 1..20, do: subject("ticket", "ENG-#{n}"))
+
+      run = about(%{"subjects" => subjects})
+
+      assert length(run.about_subjects) == 16
+      assert hd(run.about_subjects) == %{"type" => "ticket", "ref" => "ENG-0", "title" => "first"}
+
+      assert subject_refs(run) ==
+               [{"ticket", "ENG-0"}, {"pull request", "ENG-0"}] ++
+                 for(n <- 1..14, do: {"ticket", "ENG-#{n}"})
+    end
+
+    test "a later run.started replaces it, member by member; an earlier one does not" do
+      first = %{
+        "kind" => "implementation",
+        "title" => "Fix the login redirect",
+        "subjects" => [subject("ticket", "ENG-17")],
+        "details" => %{"attempt" => 1}
+      }
+
+      second = %{
+        "title" => "Fix the login redirect again",
+        "subjects" => [subject("pull request", "#412")]
+      }
+
+      %{run: run, latest: latest} = Fold.fold(@run, [started(2, %{"about" => first})])
+      %{run: run} = Fold.fold(run, [started(5, %{"about" => second})], latest)
+
+      assert {run.about_kind, run.about_title, subject_refs(run), run.about_details} ==
+               {nil, "Fix the login redirect again", [{"pull request", "#412"}], nil}
+
+      %{run: run, latest: latest} = Fold.fold(@run, [started(5, %{"about" => second})])
+      %{run: run} = Fold.fold(run, [started(2, %{"about" => first})], latest)
+      assert run.about_title == "Fix the login redirect again"
+
+      %{run: run} = Fold.fold(@run, [started(2, %{"about" => first}), started(5)])
+
+      assert {run.about_kind, run.about_title, run.about_subjects, run.about_details} ==
+               {nil, nil, [], nil}
     end
   end
 

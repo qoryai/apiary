@@ -9,11 +9,10 @@ One migration per change, generated with `mix ecto.gen.migration`, named for wha
 The rules are in [guides/upgrading.md](../guides/upgrading.md), because they exist for the person
 who restarts a self-hosted installation; the short form:
 
-- **A replacement backfills and drops in one migration.** Until Qory Apiary has
-  installations, a change that replaces a column or a table backfills the new one and
-  drops the old one in the same migration: no expand-then-contract across releases, no
-  dual-writes, no notes on rolling back to the old shape, since nothing is installed yet
-  and nobody runs an older release against a newer schema.
+- **A replacement backfills and drops in one migration.** A change that replaces a
+  column or a table backfills the new one and drops the old one in the same migration: no
+  expand-then-contract across releases, no dual-writes, no notes on rolling back to the
+  old shape.
 - **Every migration reverses.** `change` when Ecto can invert it, an explicit `down`
   otherwise. `Apiary.Release.rollback/2` runs it in production.
 - **No data rewrite inside a schema migration** but a replacement's backfill, and indexes
@@ -78,10 +77,13 @@ edition's too. No file of the core names an edition's module
 (`test/apiary/edition_boundary_test.exs`).
 
 The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
-from a checkout of qoryai/runner: `RUNNER_CONTRACT_DIR`, or `../../runner/main/contracts/runner/v1`
-when that is there. Without one they are excluded and a line says so; CI checks the runner
-out at the ref in `.runner-contract-ref` and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes
-their absence a failure.
+at the commit in `.runner-contract-ref`: `RUNNER_CONTRACT_DIR`, or else that commit's
+`contracts/runner/v1`, taken once with `git archive` from the checkout `../../runner/main`
+into `_build/` (that checkout is only read, whatever it has checked out). Without either
+they are excluded and a line says so; CI checks the runner out at that commit and sets
+`CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is one on
+the runner's `next` branch, pinned by its id. The end to end job builds qory against
+the runner at `.runner-e2e-ref`, pinned apart.
 
 ## Doc comments
 
@@ -89,7 +91,7 @@ Every context, schema and plug carries a `@moduledoc`, and every public context 
 `@doc`. The conventions:
 
 - The first sentence starts with the name and is a complete sentence: `Organisations
-  holds ...`, `create_access_key/2 creates ...`.
+  holds ...`, `add_access_key/3 adds ...`.
 - A moduledoc says what the module owns, the words it defines, how a caller uses it, and
   the invariants a caller must not break, such as which scope a function expects.
 - Say what the function does, including what it refuses (`{:error, :forbidden}`,
@@ -101,19 +103,19 @@ Every context, schema and plug carries a `@moduledoc`, and every public context 
 One vocabulary, no synonyms: **organisation** is the thing that signs up and holds
 everything else; **workspace** is the unit of use inside it; **membership** is a user's
 place in an organisation, at the level owner, admin or member; **access key** is a
-workspace's credential for the server contract; **key id** is its public part, `ak_` and
-sixteen characters; **secret** is the part that signs, shown once; **run** is one
-execution of one session on a machine of the workspace; **event** is one thing a run
-reports, delivered to the events URL; **receiver** is what answers the events URL; **run
-configuration** is what the runner fetches before a run; **security policy** is
+node's credential for the server contract, an Ed25519 key; **key id** is its id, `ak_`
+and sixteen characters; **secret** is the part that signs, which stays on the machine;
+**run** is one execution of one session on a machine of the workspace; **event** is one
+thing a run reports, delivered to the events URL; **receiver** is what answers the events
+URL; **run configuration** is what the runner fetches before a run; **security policy** is
 `SECURITY.md`. An organisation is never a team, a tenant or an account; a
 workspace is never a team, a project or a hive; an access key is never an API key or a
 token; a secret is never a password. The product surface is the one place with other
 words: a page, an email or a flash says a domain's words through Gettext, and the software
 domain calls a target a **repository** ([lingo.md](lingo.md)). So do the guides,
 which are written in the software domain's words. Organisation and workspace are the same
-words in every domain; apiary and hive are words of the apiary skin, which is not built
-yet. Code, schemas, migrations and these documents say organisation and workspace.
+words in every domain. Code, schemas, migrations and these documents say organisation and
+workspace.
 
 The product surface's sentences are in Gettext catalogues ([lingo.md](lingo.md)): the
 core's in `priv/gettext`, which `mix gettext.extract --merge` updates. An edition

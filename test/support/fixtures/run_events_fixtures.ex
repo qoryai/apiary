@@ -66,7 +66,13 @@ defmodule Apiary.RunEventsFixtures do
   """
   def record do
     [
-      {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1, "events" => []}},
+      {1, "ping",
+       %{
+         "runner_version" => "v0.4.0",
+         "contract_version" => 1,
+         "events" => [],
+         "interval_seconds" => 30
+       }},
       {2, "run.started", started_data()},
       {3, "run.policy_applied",
        %{
@@ -117,8 +123,7 @@ defmodule Apiary.RunEventsFixtures do
         "host" => "dev-laptop",
         "labels" => %{
           "forge" => "git.example.com",
-          "repository" => "acme/shop",
-          "task" => "issue-12"
+          "repository" => "acme/shop"
         }
       },
       extra
@@ -127,8 +132,7 @@ defmodule Apiary.RunEventsFixtures do
 
   @doc """
   A `run.policy_applied` whose run has one tool, `files`, serving `files.tools.internal`
-  under a path rule. Not a line of `priv/demo`: the contract fixtures at the pinned ref
-  have no tools yet.
+  under a path rule. Not a line of `priv/demo`.
   """
   def tool_policy_data(extra \\ %{}) do
     Map.merge(

@@ -194,6 +194,23 @@ deletion leave the organisation without them
 revoked; granting one (`Apiary.Release.grant_instance_admin/2`) is the recovery when none
 may act.
 
+## Access keys
+
+An access key is a node's or a node pool's, with one Ed25519 public key. The keys are
+owners' and admins' alone, and a member adds or revokes none: making and cancelling an
+enrolment code (`access_key.create_code`, `access_key.cancel_code`), adding one made in
+their browser (`access_key.add`, `arrived_by` `browser`) and
+revoking one (`access_key.revoke`). Each is asked of the node, the
+code or the key, and leaves its audit entry. A key is active from the moment it is made. A
+machine that enrols a key with a code asks no one: the code is the authority and the
+approval, as long as the person who made it may still make it, an owner or an admin of its
+workspace, neither suspended nor removed, their account in use (`access_key.create_code`,
+asked again of their membership as it is at the enrolment); the key's arrival is an entry
+of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
+node (`node.delete`, owners and admins) revokes its keys in the same transaction, each with
+its entry of `access_key.revoke`. Everyone in the workspace reads the nodes (`node.read`),
+and a page shows a node's keys under it.
+
 ## Leaving
 
 Anyone with a membership may remove their own, whatever their level: leaving the
@@ -296,11 +313,13 @@ for each other and never on each other at once:
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
    (`c:Apiary.Edition.above_workspace/1`): it takes every workspace of the organisation,
-   then renders each again (`Apiary.Policy.rerender_in/3`).
+   then renders each again (`Apiary.Policy.rerender_in/3`), or checks its variables
+   against each (`Apiary.Variables.check_above/2`).
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
-5. **Everything else**: invitations, access keys, runs, and an edition's rows.
+5. **Everything else**: invitations, access keys, nodes, then runs, and an edition's
+   rows.
 
 The modes keep a row that only names another out of it:
 
@@ -312,6 +331,23 @@ The modes keep a row that only names another out of it:
   as a change of a level, a removal and a suspension do, holds the organisation rows
   `FOR SHARE` too, then locks the organisation's own owners' memberships `FOR UPDATE`
   (`Apiary.Organisations.lock_owners/1`).
+- A change of a node's access keys or enrolment codes (`Apiary.AccessKeys`) locks the
+  node's row `FOR UPDATE`, then the key's or the code's: the keys of one node take turns,
+  so the limit of two keys at a time counts every change before it. An enrolment
+  (`Apiary.AccessKeys.enrol/2`) first reads the membership of the code's maker again with
+  `reload/2` and `lock: :share`, the organisation, workspace, membership and account rows
+  before the node's, so a change of the maker's level, a suspension or a removal waits for
+  it, or came first and refuses the code. Deleting a node (`Apiary.Nodes.delete_node/2`)
+  holds the same row, and revokes its keys under it.
+- A write of the security policy, of a stored secret (`Apiary.Secrets`), of a variable
+  (`Apiary.Variables`) or of a connection (`Apiary.Connections`) holds the organisation
+  `FOR SHARE` (`Apiary.Access.lock_places/1`),
+  then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
+  under `FOR SHARE` (`reload/2` with `lock: :share`): writes to one workspace take turns,
+  so the checks that span its rows, a secret's data key made once, a variable's names and
+  limits across the workspace and its repositories, and the overlap of the connections,
+  see every write before them. A change to one secret, variable or connection then locks
+  its row `FOR UPDATE`.
 - A marking for deletion locks the organisation's row `FOR NO KEY UPDATE`, and a
   workspace's marking locks every workspace of the organisation in use: they wait for a
   write in flight, and one asked after them waits and then sees them. What an edition
@@ -337,6 +373,15 @@ The modes keep a row that only names another out of it:
   but a change of a key: the purge's deletion of the row, an account's tombstone, and a
   change an edition locks so, first and alone.
 
+- A node's instance limit is checked under the node's row, `FOR UPDATE`
+  (`Apiary.Nodes.check_instance_limit/3`), before the batch that would create a run
+  locks the run's row: two starts for a node's last slot take turns, and the second
+  counts the first's run and is refused. Clearing an instance (`node.clear_instance`)
+  locks the node's row the same way before it marks the instance's runs lost, so a
+  clearing and a start take turns too. Nothing locks a run and then its node. A node's
+  changes (`node.*`) are owners' and admins' and ask `authorize/3` without holding the
+  organisation, as a rename does.
+
 A few changes lock rows below an organisation without its row first: an account's
 deletion locks its memberships in organisations it does not own, and a workspace's
 deletion locks the organisation's workspaces. None of them then takes an organisation
@@ -350,7 +395,7 @@ organisation.
 
 The races are tested outside the sandbox, on connections that commit
 (`test/apiary/access_races_test.exs`, `deletion_races_test.exs`,
-`sign_up_races_test.exs`, `suspension_races_test.exs`).
+`sign_up_races_test.exs`, `suspension_races_test.exs`, `nodes_races_test.exs`).
 
 ## The page asks the same question
 

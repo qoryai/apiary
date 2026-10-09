@@ -34,7 +34,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
 
     run_fixture(scope, %{
       state: "lost",
-      task: "nightly-mirror",
+      about_title: "nightly-mirror",
       started_at: DateTime.add(now, -7200, :second),
       last_heartbeat_at: DateTime.add(now, -3600, :second),
       lost_at: DateTime.add(now, -3000, :second),
@@ -109,7 +109,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       scope: scope
     } do
       counts = UserAuth.nav_counts(scope)
-      assert Map.has_key?(counts, :keys)
+      assert Map.has_key?(counts, :alive)
+      refute Map.has_key?(counts, :keys)
       refute Map.has_key?(counts, :mode)
       refute Map.has_key?(counts, :own_modes)
 
@@ -117,8 +118,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
-      refute subscribed_to_policy?(keys, scope)
+      {:ok, nodes, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
+      refute subscribed_to_policy?(nodes, scope)
     end
 
     test "the overview reads nothing of the policy", %{conn: conn, scope: scope} do
@@ -164,7 +165,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
           do: render_hook(view, "rule_open", %{"id" => id, "level" => level})
 
       render_hook(view, "rule_submit", %{})
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       assert Policy.list_rules(scope, nil) == []
     end
   end

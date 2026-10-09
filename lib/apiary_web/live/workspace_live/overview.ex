@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
   The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in. It
-  answers two questions, in this order: what needs you (the Needs attention list, a list
+  answers two questions, in this order: what needs you (the To review list, a list
   of acts and nothing else) and what your agents did (the summary, the fourteen-day chart,
   the active targets). Policy and retention are Guard's few lines, each with a link. Each
   level has its own look (`docs/ui.md`, Lists): the summary is the largest type on the
@@ -22,7 +22,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   While no run has landed the page is the empty workspace's one box, each step read from
   the record; when the first run lands the box stays with its third step ticked and leaves
-  at the next navigation.
+  at the next navigation. Its "Get the command" makes the command that connects the box's
+  node in place (`get_command`), as the node's Access key tab does: the code lives in the
+  page's process alone, in a function, shown once in the box and in no path, flash, title
+  or log line, until the page goes, the command expires, it is cancelled on the tab, or
+  the machine runs it. The page hears the last two on the node's topic
+  (`Apiary.AccessKeys.subscribe/2`): a cancel brings the question back, a run moves the box
+  on.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
   it belongs to `security`, and where that is off for the scope the page is one that never
@@ -40,12 +46,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,
-    only: [rule_popover: 1, quiet_for: 2, beat: 1]
+    only: [quiet_for: 2, beat: 1]
 
   alias Apiary.Runs.Filters
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Contract.Enrolment
+  alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Retention
   alias Apiary.Runs
@@ -96,8 +104,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       nav={:overview}
       width="list"
     >
+      <:crumb>{gettext("Overview")}</:crumb>
+
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-5">
-        <.header>{@current_scope.workspace.name}</.header>
+        <.page_header title={@current_scope.workspace.name} />
 
         <div id="overview-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
           {@announce}
@@ -106,8 +116,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         <.onboarding
           :if={@checklist?}
           scope={@current_scope}
-          keys={@keys}
-          preview={@preview}
+          nodes={@onboarding.nodes}
+          keys={@onboarding.keys}
+          may_add={@onboarding.may_add}
+          target={@onboarding.target}
+          may_key={@onboarding.may_key}
+          command={@command}
+          server={@onboarding.server}
           landed={@landed}
         />
 
@@ -130,7 +145,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             more={@attention_more}
             shared={@shared}
             can_set_mode?={Common.may?(@current_scope, :"security_policy.set_mode")}
+            panel={@rule_panel}
             now={@now}
+            confirming={@confirm_close && "att-run-#{@confirm_close.run_id}"}
           />
 
           <section id="overview-activity" class="q-blk q-ov-act" aria-labelledby="overview-activity-h">
@@ -215,36 +232,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           />
         </div>
       </div>
-
-      <.rule_popover :if={@popover} popover={@popover} />
-
-      <.modal
-        :if={@confirm_close}
-        id="close-run"
-        title={gettext("Close this run")}
-        on_cancel={JS.push("close_cancel")}
-        size="sm"
-      >
-        <p>
-          <.rich text={
-            rich_gettext(
-              "The workspace stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
-              run: close_title(@confirm_close)
-            )
-          } />
-        </p>
-        <:footer>
-          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
-          <.button
-            id="close-confirm"
-            variant="danger"
-            phx-click="close_confirm"
-            loading_text={gettext("Closing")}
-          >
-            {gettext("Close run")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
     """
   end
@@ -255,7 +242,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
     now = DateTime.utc_now()
-    keys = scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at))
+    keys = AccessKeys.list_workspace_node_keys(scope)
     alive = Runs.count_alive(scope)
     posted? = alive > 0 or Runs.recent_runs(scope, 1) != []
     security? = Common.may?(scope, :"security_policy.read")
@@ -282,10 +269,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         landed: nil,
         now: now,
         today: DateTime.to_date(now),
-        preview: preview(keys),
+        onboarding: if(posted?, do: nil, else: read_onboarding(scope)),
+        command: nil,
         table?: false,
         chart_w: 640,
-        popover: nil,
+        rule_panel: nil,
         confirm_close: nil,
         announce: nil,
         announced_at: nil,
@@ -412,7 +400,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       connections: connections,
       above_level: if(security?, do: above_level(scope)),
       lost: Runs.lost_since(scope, DateTime.add(now, -@thresholds.lost_days, :day), @shown + 1),
-      keys: scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at)),
+      keys: AccessKeys.list_workspace_node_keys(scope),
       read_at: now
     }
   end
@@ -441,6 +429,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     summary = Policy.mode_summary(scope)
     targets = Policy.list_targets(scope)
     rules = Policy.list_rules(scope, nil)
+    own = Enum.filter(targets, &(&1.own_mode != nil))
 
     version =
       case Common.served_version(scope, nil, summary.managed?) do
@@ -453,7 +442,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       targets: length(targets),
       with_rules: Enum.count(targets, &(&1.rule_count > 0)),
       following: Enum.count(targets, &is_nil(&1.own_mode)),
-      own: Enum.filter(targets, &(&1.own_mode != nil)),
+      own: own,
+      # The one target the guard may name, named as it is addressed: one read, or none.
+      shared: Runs.shared_paths(scope, for(%{target: t} <- own, length(own) == 1, do: t.path)),
       version: version,
       allow_rules: Enum.count(rules, &(&1.kind == "host" and &1.action == "allow")),
       suggestions:
@@ -486,12 +477,17 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     else
       holders = reported |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
       versions = Policy.newest_versions(scope, [nil | holders])
+      targets = Map.new(holders, &{&1, holder_of(scope, &1)})
+
+      # A target's versions are at its address, its system there only where its path is
+      # shared: one read for the targets of the runs that are behind.
+      shared = Runs.shared_paths(scope, for({_id, %{path: path}} <- targets, do: path))
 
       for run <- reported,
           in_force = versions[run.target_id] || versions[nil],
           in_force.digest != run.reported_run_configuration_digest,
           into: %{} do
-        holder = holder_of(scope, run.target_id)
+        holder = run.target_id && targets[run.target_id]
 
         reported_version =
           case Policy.configuration_for_digest(
@@ -499,11 +495,12 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                  holder,
                  run.reported_run_configuration_digest
                ) do
-            {:ok, configuration} -> version_map(scope, configuration, holder)
+            {:ok, configuration} -> version_map(scope, configuration, holder, shared)
             _ -> nil
           end
 
-        {run.id, %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
+        {run.id,
+         %{in_force: version_map(scope, in_force, holder, shared), reported: reported_version}}
       end
     end
   end
@@ -519,8 +516,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   # A target's version is on its Policy tab: `holder` is the run's target, the one target
   # a run's versions are of; no path when it could not be read.
-  defp version_map(scope, configuration, holder) do
+  defp version_map(scope, configuration, holder, shared) do
     holder = if configuration.target_id, do: holder
+    shared = holder != nil and MapSet.member?(shared, holder.path)
 
     %{
       n: configuration.version,
@@ -528,10 +526,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       rendered_at: configuration.rendered_at,
       target_id: configuration.target_id,
       holder: holder,
+      shared: shared,
       path:
         if(configuration.target_id && is_nil(holder),
           do: nil,
-          else: Rules.version_path(scope, holder, configuration.version)
+          else: Rules.version_path(scope, holder, configuration.version, %{}, shared)
         )
     }
   end
@@ -668,7 +667,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   def handle_info({:run_changed, %Run{} = run}, socket) do
-    socket = socket |> patch_run(run) |> remember([run])
+    # Remembered before the patch, whose recompute reads what the page has seen: a quiet
+    # run the check has just found lost leaves the alive runs there, and with the struct
+    # it had before, its row would be struck as resumed instead of turning Lost.
+    socket = socket |> remember([run]) |> patch_run(run)
 
     case {socket.assigns.run_window, window(:coalesce, 250)} do
       # No window (a test): the read follows the message at once.
@@ -715,7 +717,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     socket =
       if socket.assigns.live?, do: socket |> read(:policy) |> read(:attention), else: socket
 
-    {:noreply, recheck_popover(socket)}
+    {:noreply, recheck_panel(socket)}
   end
 
   # Quiet and behind are a comparison of the record's timestamps with the clock: no query.
@@ -730,18 +732,62 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     if socket.assigns.live? do
       {:noreply, read(socket, :attention)}
     else
-      # The checklist reads its steps from the record: a key used since is step 2 done.
-      keys =
-        socket.assigns.current_scope
-        |> AccessKeys.list_access_keys()
-        |> Enum.filter(&is_nil(&1.revoked_at))
-
+      # The box reads its steps from the record: a node, a key, a key used since.
       {:noreply,
-       assign(socket, keys: sort_keys(keys), preview: preview(keys), now: DateTime.utc_now())}
+       socket
+       |> assign(
+         onboarding: read_onboarding(socket.assigns.current_scope),
+         now: DateTime.utc_now()
+       )
+       |> keep_command()}
     end
   end
 
+  # The machine ran the box's command: the box reads its steps again and moves on, and
+  # the command, spent, is let go.
+  def handle_info(
+        {:key_enrolled, %{node_id: node_id}},
+        %{assigns: %{command: %{node: %{id: node_id}}}} = socket
+      ) do
+    socket = assign(socket, :onboarding, read_onboarding(socket.assigns.current_scope))
+    {:noreply, drop_command(socket)}
+  end
+
+  # The box's command was cancelled, on the node's Access key tab: it is let go, and the
+  # box asks again.
+  def handle_info(
+        {:code_cancelled, %{code_id: code_id}},
+        %{assigns: %{command: %{code_id: code_id}}} = socket
+      ),
+      do: {:noreply, drop_command(socket)}
+
+  # The box's command expired: it is let go, and the box asks again.
+  def handle_info(
+        {:command_expired, code_id},
+        %{assigns: %{command: %{code_id: code_id}}} = socket
+      ),
+      do: {:noreply, drop_command(socket)}
+
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  # The box's command, while its node is still the one the box names and has no key; let
+  # go otherwise.
+  defp keep_command(%{assigns: %{command: %{node: %{id: id}}, onboarding: onboarding}} = socket) do
+    case onboarding do
+      %{target: %{id: ^id}, keys: []} -> socket
+      _moved_on -> drop_command(socket)
+    end
+  end
+
+  defp keep_command(socket), do: socket
+
+  defp drop_command(%{assigns: %{command: %{node: node, timer: timer}}} = socket) do
+    Process.cancel_timer(timer)
+    AccessKeys.unsubscribe(socket.assigns.current_scope, node)
+    assign(socket, :command, nil)
+  end
+
+  defp drop_command(socket), do: socket
 
   # The coalesced re-read: today's column, the alive rows, the last runs, the lost runs. At
   # midnight UTC the window has moved: the fourteen days are read anew.
@@ -812,6 +858,64 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("chart_size", _params, socket), do: {:noreply, socket}
 
+  # Get the command, in the box: a code made at once for the box's node, with the defaults
+  # (stored secrets not allowed, no label hint), whatever the event carries, as on the
+  # node's Access key tab. The code is held in a function, and shown in the box alone.
+  def handle_event(
+        "get_command",
+        _params,
+        %{
+          assigns: %{
+            checklist?: true,
+            command: nil,
+            onboarding: %{target: %Nodes.Node{} = target, may_key: true, keys: []}
+          }
+        } = socket
+      ) do
+    scope = socket.assigns.current_scope
+
+    case AccessKeys.create_enrolment_code(scope, target, %{}) do
+      {:ok, row, code} ->
+        code = Enrolment.issued_code(code, Apiary.SigningKey.fingerprint())
+        AccessKeys.subscribe(scope, target)
+        wait = DateTime.diff(row.expires_at, DateTime.utc_now(), :millisecond)
+        timer = Process.send_after(self(), {:command_expired, row.id}, max(wait, 0) + 1)
+
+        {:noreply,
+         assign(socket,
+           command: %{
+             node: target,
+             code_id: row.id,
+             code: fn -> code end,
+             expires_at: row.expires_at,
+             timer: timer
+           }
+         )}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         socket
+         |> assign(:onboarding, read_onboarding(scope))
+         |> put_flash(:error, gettext("Only owners and admins connect a node."))}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> assign(:onboarding, read_onboarding(scope))
+         |> put_flash(:error, gettext("Nothing was changed. Try again."))}
+    end
+  end
+
+  # Get the command where the box offers none: a second click once the command shows, or
+  # an event the page never sent. One who may connect a node is shown the page as it is;
+  # anyone else is refused, and nothing is made.
+  def handle_event("get_command", _params, socket) do
+    if Common.may?(socket.assigns.current_scope, :"access_key.create_code"),
+      do: {:noreply, socket},
+      else:
+        {:noreply, put_flash(socket, :error, gettext("Only owners and admins connect a node."))}
+  end
+
   def handle_event("close_ask", %{"id" => id}, socket) do
     case find_item(socket, id) do
       %{kind: :lost, run: run, resolved: nil} -> {:noreply, assign(socket, :confirm_close, run)}
@@ -819,8 +923,15 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  def handle_event("close_cancel", _params, socket),
-    do: {:noreply, assign(socket, :confirm_close, nil)}
+  # Cancel, or Escape: the row is itself again, and its Close has the focus back.
+  def handle_event("close_cancel", _params, %{assigns: %{confirm_close: %Run{} = run}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:confirm_close, nil)
+     |> push_event("overview:focus", %{id: "att-run-#{run.run_id}-act"})}
+  end
+
+  def handle_event("close_cancel", _params, socket), do: {:noreply, socket}
 
   def handle_event("close_confirm", _params, %{assigns: %{confirm_close: %Run{} = run}} = socket) do
     socket = assign(socket, :confirm_close, nil)
@@ -835,7 +946,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             what: gettext("Closed."),
             done: nil
           })
-          |> announce(gettext("%{run} is closed.", run: run_title(run)), :now)
+          |> announce(gettext("%{run} is closed.", run: row_title(run)), :now)
           |> focus_after("att-run-#{run.run_id}")
 
         {:noreply, socket}
@@ -851,7 +962,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("close_confirm", _params, socket), do: {:noreply, socket}
 
-  ## The one-click allow of a denied destination: the popover of a connection row's Allow,
+  ## The one-click allow of a denied destination: the panel of a connection row's Allow,
   ## called with the destination's targets, exactly as the connections page calls it. A
   ## rule is `security`'s: without it no row offers the act, and an event that asks anyway
   ## is ignored, as an event for a row that is gone is.
@@ -862,7 +973,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
       %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item ->
-        {:noreply, open_popover(socket, item, level)}
+        {:noreply, open_panel(socket, item, level)}
 
       _ ->
         {:noreply, socket}
@@ -872,43 +983,43 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   def handle_event(
         "rule_change",
         params,
-        %{assigns: %{popover: %{refusal: nil} = popover}} = socket
+        %{assigns: %{rule_panel: %{refusal: nil} = panel}} = socket
       ) do
     level =
       case params["for"] do
-        "target" when popover.targets != [] -> :target
+        "target" when panel.targets != [] -> :target
         "workspace" -> :workspace
-        _ -> popover.level
+        _ -> panel.level
       end
 
     choice =
       case params["target"] do
-        id when is_binary(id) -> if Enum.any?(popover.targets, &(&1.id == id)), do: id
-        _ -> popover.choice
+        id when is_binary(id) -> if Enum.any?(panel.targets, &(&1.id == id)), do: id
+        _ -> panel.choice
       end
 
-    popover = %{popover | level: level, choice: choice, error: nil}
+    panel = %{panel | level: level, choice: choice, error: nil}
 
-    popover =
-      if choice != popover.chosen,
-        do: describe(socket, popover, chosen_effective(socket, choice)),
-        else: popover
+    panel =
+      if choice != panel.chosen,
+        do: describe(socket, panel, chosen_effective(socket, choice)),
+        else: panel
 
-    {:noreply, assign(socket, popover: popover)}
+    {:noreply, assign(socket, rule_panel: panel)}
   end
 
-  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_popover(socket)}
+  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_panel(socket)}
 
   def handle_event(
         "rule_submit",
         _params,
-        %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
+        %{assigns: %{rule_panel: %{refusal: nil, level: level} = panel}} = socket
       )
       when level in [:target, :workspace] do
     scope = socket.assigns.current_scope
 
-    with :ok <- still(socket, popover),
-         {:ok, from} <- rule_source(popover),
+    with :ok <- still(socket, panel),
+         {:ok, from} <- rule_source(panel),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, :allow, level) do
       where = if level == :target, do: {:target, from.label}, else: :workspace
@@ -920,17 +1031,17 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
       socket =
         socket
-        |> close_popover()
-        |> resolve_item(popover.item_id, %{mark: :allowed, what: nil, done: done})
-        |> announce(Rules.toast(rule, :allow, popover.host, popover.path, where), :now)
-        |> focus_after(popover.item_id)
+        |> close_panel()
+        |> resolve_item(panel.item_id, %{mark: :allowed, what: nil, done: done})
+        |> announce(Rules.toast(rule, :allow, panel.host, panel.path, where), :now)
+        |> focus_after(panel.item_id)
 
       {:noreply, socket}
     else
       :stale ->
         {:noreply,
          socket
-         |> close_popover()
+         |> close_panel()
          |> read(:attention)
          |> put_flash(
            :info,
@@ -938,12 +1049,12 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
          )}
 
       {:error, %Policy.Error{message: message}} ->
-        {:noreply, assign(socket, popover: %{popover | error: message})}
+        {:noreply, assign(socket, rule_panel: %{panel | error: message})}
 
       _not_found ->
         {:noreply,
          socket
-         |> close_popover()
+         |> close_panel()
          |> put_flash(
            :error,
            gettext("This destination is no longer among the connections shown.")
@@ -954,17 +1065,24 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   def handle_event(event, _params, socket) when event in ~w(rule_change rule_submit),
     do: {:noreply, socket}
 
-  defp open_popover(socket, item, level) do
+  defp open_panel(socket, item, level) do
     scope = socket.assigns.current_scope
 
     reached =
       Runs.destination_targets(scope, @denied_filters, {item.host, item.port, item.path})
 
+    # Each target named as it is addressed: one read of the paths the panel names.
+    shared =
+      Runs.shared_paths(
+        scope,
+        for(%{target_id: id, path: p} when is_binary(id) <- reached, do: p)
+      )
+
     targets =
       for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.system}/#{r.path}",
+          label: ApiaryWeb.TargetComponents.target_label(r.system, r.path, shared),
           runs: r.runs,
           connection_id: r.connection_id
         }
@@ -981,7 +1099,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     baseline = Policy.effective(scope, nil)
     chosen = if choice, do: chosen_effective(socket, choice)
 
-    popover = %{
+    panel = %{
       item_id: item.id,
       anchor: "#{item.id}-act",
       any_connection_id: reached |> List.first() |> then(&(&1 && &1.connection_id)),
@@ -1009,14 +1127,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       own: Rules.own_hosts(scope)
     }
 
-    socket |> assign(popover: describe(socket, popover, chosen)) |> mark_expanded()
+    socket |> assign(rule_panel: describe(socket, panel, chosen)) |> mark_expanded()
   end
 
-  defp close_popover(socket), do: socket |> assign(popover: nil) |> mark_expanded()
+  defp close_panel(socket), do: socket |> assign(rule_panel: nil) |> mark_expanded()
 
-  # The row's button says whether its popover is open (aria-expanded).
+  # The row's button says whether its panel is open (aria-expanded).
   defp mark_expanded(%{assigns: %{attention_items: items}} = socket) when is_list(items) do
-    open = socket.assigns.popover && socket.assigns.popover.item_id
+    open = socket.assigns.rule_panel && socket.assigns.rule_panel.item_id
     assign(socket, :attention_items, Enum.map(items, &Map.put(&1, :expanded, &1.id == open)))
   end
 
@@ -1033,7 +1151,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp rule_source(%{level: :workspace, any_connection_id: id}) when is_binary(id),
     do: {:ok, %{connection_id: id, label: gettext("the workspace"), target: nil}}
 
-  defp rule_source(_popover), do: :error
+  defp rule_source(_panel), do: :error
 
   defp chosen_effective(_socket, nil), do: nil
 
@@ -1044,13 +1162,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  defp describe(_socket, popover, chosen) do
-    %{host: host, path: path, baseline: baseline, own: own} = popover
+  defp describe(_socket, panel, chosen) do
+    %{host: host, path: path, baseline: baseline, own: own} = panel
     own? = Rules.own_touches?(own, host) or Rules.own_rule?(chosen, host)
 
     %{
-      popover
-      | chosen: popover.choice,
+      panel
+      | chosen: panel.choice,
         what: %{
           target: Rules.what(chosen, host, path),
           workspace: Rules.what(baseline, host, path)
@@ -1078,23 +1196,23 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  # Sent only while the policy is still the one the popover opened on, for its host.
-  defp still(socket, popover) do
+  # Sent only while the policy is still the one the panel opened on, for its host.
+  defp still(socket, panel) do
     scope = socket.assigns.current_scope
     baseline = Policy.effective(scope, nil)
-    chosen = chosen_effective(socket, popover.chosen)
+    chosen = chosen_effective(socket, panel.chosen)
 
-    if {Rules.seen(baseline, popover.host), Rules.seen(chosen, popover.host)} == popover.seen,
+    if {Rules.seen(baseline, panel.host), Rules.seen(chosen, panel.host)} == panel.seen,
       do: :ok,
       else: :stale
   end
 
-  # A change of the policy under an open popover closes it when it touches its host.
-  defp recheck_popover(%{assigns: %{popover: %{refusal: nil} = popover}} = socket) do
-    if still(socket, popover) == :ok, do: socket, else: close_popover(socket)
+  # A change of the policy under an open panel closes it when it touches its host.
+  defp recheck_panel(%{assigns: %{rule_panel: %{refusal: nil} = panel}} = socket) do
+    if still(socket, panel) == :ok, do: socket, else: close_panel(socket)
   end
 
-  defp recheck_popover(socket), do: socket
+  defp recheck_panel(socket), do: socket
 
   ## The attention list: built from the record in assigns, merged into what is shown.
 
@@ -1180,7 +1298,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     policy = policy_item(assigns)
 
     idle =
-      for key <- assigns.keys,
+      for key <- idle_candidates(assigns),
           days = idle_days(key, now),
           is_integer(days) and days >= @thresholds.idle_key_days do
         %{id: "att-key-#{key.id}", kind: :idle_key, key: key, days: days}
@@ -1230,13 +1348,31 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp compare_path(scope, in_force, %{n: m, target_id: same})
        when same == in_force.target_id and (is_nil(same) or in_force.holder != nil),
-       do: Rules.version_path(scope, in_force.holder, in_force.n, %{"compare" => m})
+       do:
+         Rules.version_path(
+           scope,
+           in_force.holder,
+           in_force.n,
+           %{"compare" => m},
+           in_force.shared
+         )
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 
+  # The node keys the idle item weighs: every key not revoked (each is active), for a reader
+  # who may revoke them (`access_key.revoke`, owners and admins). The list holds acts, and
+  # a member has none on a key.
+  defp idle_candidates(assigns) do
+    if Common.may?(assigns.current_scope, :"access_key.revoke"),
+      do: assigns.keys,
+      else: []
+  end
+
+  # Idle since the key's last use, or since it arrived when it has never been used.
   defp idle_days(%AccessKey{last_used_at: %DateTime{} = at}, now),
     do: DateTime.diff(now, at, :day)
 
+  defp idle_days(%AccessKey{received_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
   defp idle_days(%AccessKey{inserted_at: %DateTime{} = at}, now), do: DateTime.diff(now, at, :day)
   defp idle_days(_key, _now), do: nil
 
@@ -1313,8 +1449,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           announce(
             socket,
             ngettext(
-              "%{number} more item needs attention.",
-              "%{number} more items need attention.",
+              "%{number} more item to review.",
+              "%{number} more items to review.",
               length(arrived),
               number: Format.number(length(arrived))
             )
@@ -1332,7 +1468,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     count = length(hidden)
 
     case first.kind do
-      # What Needs attention counts: the destinations denied in the fourteen days that no
+      # What To review counts: the destinations denied in the fourteen days that no
       # rule has allowed since. Network access's Denied counts every one denied then.
       :denied ->
         %{
@@ -1372,11 +1508,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       _ ->
         %{
           count: count,
-          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys",
+          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/nodes?#{%{"sort" => "seen"}}",
           title:
             ngettext(
-              "%{number} more item, on the keys page",
-              "%{number} more items, on the keys page",
+              "%{number} more item, on the nodes page",
+              "%{number} more items, on the nodes page",
               count,
               number: Format.number(count)
             )
@@ -1413,7 +1549,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: gettext("Qory serves the policy now."), done: nil}
+    do: %{mark: :resolved, what: gettext("Qory Apiary serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
     what =
@@ -1554,30 +1690,45 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     )
   end
 
-  # The server block the checklist previews: the real key id of the most recent key once
-  # there is one, the secret always as dots (it was shown once).
-  defp preview(keys) do
-    key_id =
-      case Enum.sort_by(keys, & &1.inserted_at, {:desc, DateTime}) do
-        [%AccessKey{key_id: key_id} | _] -> key_id
-        [] -> "ak_················"
-      end
+  # What the empty workspace's box reads: the nodes and pools in use, their keys not
+  # revoked, whether the reader may add a node, the newest node or pool that holds no
+  # active key and whether the reader may give it one, and the address the command names.
+  defp read_onboarding(scope) do
+    counts = Nodes.count_nodes(scope)
+    keys = AccessKeys.list_workspace_node_keys(scope)
+    target = keyless_target(scope, counts, keys)
+    may_key? = &Apiary.Access.can?(scope, &1, target)
 
-    AccessKeys.server_block(
-      %AccessKey{key_id: key_id},
-      "························",
-      ApiaryWeb.Endpoint.url()
-    )
+    %{
+      nodes: counts.node + counts.pool,
+      keys: keys,
+      may_add: Common.may?(scope, :"node.create"),
+      target: target,
+      may_key:
+        not is_nil(target) and may_key?.(:"access_key.add") and
+          may_key?.(:"access_key.create_code"),
+      server: ApiaryWeb.Endpoint.url()
+    }
+  end
+
+  # The newest node or pool in use that holds no active key (a revoked key is no key);
+  # while step 2 is current, no node holds one, and it is simply the newest.
+  defp keyless_target(_scope, %{node: 0, pool: 0}, _keys), do: nil
+
+  defp keyless_target(scope, _counts, keys) do
+    keyed = MapSet.new(keys, & &1.node_id)
+
+    scope
+    |> Nodes.list_nodes()
+    |> Enum.reject(&MapSet.member?(keyed, &1.id))
+    |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.public_id}, fn -> nil end)
   end
 
   defp not_loaded,
     do:
       gettext(
-        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+        "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
-
-  # The run the close dialog names, in bold inside its sentence.
-  defp close_title(run), do: {:b, run_title(run), "font-medium"}
 
   # What became of a run that ended while it was on the list.
   defp ended("succeeded"), do: gettext("Succeeded.")

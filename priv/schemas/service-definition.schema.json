@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/apiary/service-definition.schema.json",
+  "title": "Service definition",
+  "description": "A static-key API: its hosts, the paths a value is set on, how the value is sent, and the secrets it needs. A service connection names its definition and links each declared secret. Built-in definitions ship in priv/services; a workspace may write its own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "key", "title", "hosts", "auth", "declares"],
+  "properties": {
+    "version": {"const": 1},
+    "key": {
+      "description": "The definition's key, unique among the built-in definitions, and among a workspace's own.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "title": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+    "description": {"type": "string", "maxLength": 500},
+    "hosts": {
+      "description": "Exact DNS names, no wildcard, no IP literal: where the value is set.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/exact_host"}
+    },
+    "paths": {
+      "description": "The paths a value is set on, in the policy's path grammar; absent sets it on every path of the hosts.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"type": "string", "maxLength": 512, "pattern": "^/[^*?#\\s]*\\*?$"}
+    },
+    "auth": {
+      "description": "How the value is sent: Apiary's own auth. Its scheme, header and username are the members of the runner contract's auth.schema.json, with a username of at most 128 characters, and a header only with the header scheme. secret and username_secret are ids of secrets Qory Apiary stores for the definition.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "secret"],
+      "properties": {
+        "scheme": {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/properties/scheme"},
+        "header": {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/properties/header"},
+        "username": {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/properties/username", "maxLength": 128},
+        "username_secret": {"$ref": "#/$defs/declared"},
+        "secret": {"$ref": "#/$defs/declared"}
+      },
+      "allOf": [
+        {"$ref": "https://qory.dev/contracts/runner/v1/auth.schema.json#/allOf/0"},
+        {"if": {"properties": {"scheme": {"const": "basic"}}},
+         "then": {"oneOf": [{"required": ["username"]}, {"required": ["username_secret"]}]},
+         "else": {"not": {"anyOf": [{"required": ["username"]}, {"required": ["username_secret"]}]}}}
+      ]
+    },
+    "declares": {
+      "description": "The secrets the service needs, each by an id the auth names, with a title for a form and, optionally, the variable that gets the placeholder.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {
+          "id": {"$ref": "#/$defs/declared"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+          "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "declared": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+    "exact_host": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$"
+    }
+  }
+}

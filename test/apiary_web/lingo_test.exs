@@ -25,7 +25,11 @@ defmodule ApiaryWeb.LingoTest do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
         assert gettext("Workspace name") == "Workspace name"
         assert gettext("Organisation name") == "Organisation name"
-        assert gettext("Name, such as system-token") == "Name, such as forge-token"
+
+        assert gettext(
+                 "A target appears here once a run names it with its system and target labels."
+               ) ==
+                 "A repository appears here once a run names it with its forge and repository labels."
       end)
     end
 
@@ -147,7 +151,7 @@ defmodule ApiaryWeb.LingoTest do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
       {:dictionary, dictionary} = Process.info(view.pid, :dictionary)
       assert {Gettext, "en@software"} in dictionary
-      assert has_element?(view, "h1", "Workspace settings")
+      assert has_element?(view, "#settings-tabs-heading", "Workspace settings")
     end
   end
 

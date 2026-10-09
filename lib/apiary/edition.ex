@@ -94,9 +94,12 @@ defmodule Apiary.Edition do
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
   its workspaces (`Apiary.Policy.Above`: host rules, a required mode, whether the
-  workspace may allow hosts of its own), or nil: the core has none. Asked once per
-  operation of `Apiary.Policy`, and resolved, rendered and shown by the core, which says
-  the level's `name` and nothing of its own about it.
+  workspace may allow hosts of its own, and variables), or nil: the core has none. Asked
+  by the reads and writes of `Apiary.Policy` and `Apiary.Variables` that need it, never
+  once per holder or row, and resolved, rendered and shown by the core, which says the
+  level's `name` and nothing of its own about it. A level with variables and no
+  policy is answered with `policy: false`, which the security policy takes as nil and
+  `Apiary.Variables` still reads.
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
@@ -164,7 +167,7 @@ defmodule Apiary.Edition do
   Whether the scope's membership, at a level that does not reach every workspace
   (`every_workspace_levels/0`), reaches the workspace `workspace_id`, as the scope carries
   it: from what `reach/1`, `reached_workspaces/2` and `reload/2` put on it, without a
-  read. `opts` is for later use.
+  read. `opts` is ignored.
   """
   @callback reaches_workspace?(Scope.t(), workspace_id :: Ecto.UUID.t(), keyword) :: boolean
 

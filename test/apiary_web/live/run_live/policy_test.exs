@@ -13,7 +13,6 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures, only: [shop: 0]
-  import ApiaryWeb.TargetComponents, only: [target_path: 4]
 
   alias Apiary.Policy
   alias Apiary.Repo
@@ -178,11 +177,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       path =
-        target_path(scope, target.system, target.path, [
-          "policy",
-          "versions",
-          "#{configuration.version}"
-        ])
+        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{configuration.version}")
 
       assert has_element?(
                view,
@@ -234,18 +229,20 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert own.version == 1
       heard_policy_change(view, scope)
 
-      assert text(view, "#run-drift") == "Behind v1 · github.example/acme/shop"
+      # A target no other system has is named by its path alone.
+      assert text(view, "#run-drift") == "Behind v1 · acme/shop"
       notice = text(view, "#run-behind")
       assert notice =~ "It last reported v#{baseline.version} of the workspace's policy"
-      assert notice =~ "github.example/acme/shop's v1"
+      assert notice =~ " acme/shop's v1"
+      refute notice =~ "github.example"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = target_path(scope, target.system, target.path, ["policy", "versions", "1"])
+      path = workspace_path(scope, "/targets/acme/shop/-/policy/versions/1")
 
       assert has_element?(
                view,
                ~s(#run-behind-diff[href="#{path}"]),
-               "Open github.example/acme/shop's v1"
+               "Open acme/shop's v1"
              )
 
       # the details tab names both
@@ -253,7 +250,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
       assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
-      assert text(view, "#policy-in-force") =~ "v1 · of github.example/acme/shop"
+      assert text(view, "#policy-in-force") =~ "v1 · of acme/shop"
     end
 
     test "a digest no version here has is not rendered here, and links nowhere", %{
@@ -293,19 +290,15 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       heard_policy_change(view, scope)
 
       # versions count per holder: every one named says whose it is
-      assert text(view, "#run-drift") == "Behind v#{new.version} · github.example/acme/shop"
+      assert text(view, "#run-drift") == "Behind v#{new.version} · acme/shop"
       assert text(view, "#run-behind") =~ "This run is behind the policy in force."
-
-      assert text(view, "#run-behind") =~
-               "It last reported github.example/acme/shop's v#{old.version}"
-
-      assert text(view, "#run-behind") =~ "github.example/acme/shop's v#{new.version}"
-
-      assert text(view, "#run-behind") =~
-               "it decides by github.example/acme/shop's v#{old.version}"
+      assert text(view, "#run-behind") =~ "It last reported acme/shop's v#{old.version}"
+      assert text(view, "#run-behind") =~ " acme/shop's v#{new.version}"
+      assert text(view, "#run-behind") =~ "it decides by acme/shop's v#{old.version}"
+      refute text(view, "#run-behind") =~ "github.example"
 
       compare =
-        target_path(scope, target.system, target.path, ["policy", "versions", "#{new.version}"]) <>
+        workspace_path(scope, "/targets/acme/shop/-/policy/versions/#{new.version}") <>
           "?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
@@ -386,7 +379,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
              )
 
       assert text(view, "#e-30-reload") =~
-               "The runner fetched a new run configuration after the server's answer named a new digest."
+               "The runner fetched a new run configuration after Qory Apiary's answer named a new digest."
 
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 
@@ -502,36 +495,39 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       %{run: run}
     end
 
-    test "Allow and Deny as text with the menu, the padlock, and a lock for the wall", %{
+    test "Allow and Deny as icons, the padlock, and a lock for the wall", %{
       conn: conn,
       run: run,
       scope: scope
     } do
       view = connections(conn, scope, run)
-      id = &"#cx-#{connection_id(run, &1)}-act"
+      id = &"#cx-#{connection_id(run, &1)}"
 
-      assert text(view, "button" <> id.("files.cdn.example")) == "Allow"
-      # no rule decides it, so it can be denied outright too, from its menu: one text
-      # action a row, Allow on a denied destination
-      refute has_element?(view, "button" <> id.("files.cdn.example") <> "-deny")
+      # No rule decides it: Allow and Deny, each with a hint and the host in its name.
+      cdn = id.("files.cdn.example")
+      assert has_element?(view, ~s(button#{cdn}-allow[aria-label="Allow files.cdn.example"]))
+      assert has_element?(view, ~s(button#{cdn}-deny[data-tip="Deny files.cdn.example"]))
 
-      assert text(view, "button" <> id.("registry.example")) == "Deny"
-      refute has_element?(view, "button" <> id.("registry.example") <> "-deny")
+      # A rule allows it: Deny alone.
+      assert has_element?(view, "button" <> id.("registry.example") <> "-deny")
+      refute has_element?(view, id.("registry.example") <> "-allow")
 
-      # The row's menu offers the same, and the host; no bordered button on any row.
-      menu = "#cx-#{connection_id(run, "files.cdn.example")}-menu"
-      assert has_element?(view, menu <> "-allow", "Allow…")
-      assert has_element?(view, menu <> "-deny", "Deny…")
-      assert has_element?(view, menu <> "-copy[data-copy='files.cdn.example']")
+      # No ⋯ menu and no bordered button on any row; the host has its copy icon.
+      refute has_element?(view, "#run-connections .q-rowmenu")
       refute has_element?(view, "#run-connections .q-rowbtn")
+      assert has_element?(view, cdn <> "-copy[data-copy='files.cdn.example']")
 
       assert has_element?(
                view,
-               ~s(button#{id.("bin.paste.example")}[aria-label="A locked workspace rule denies *.paste.example"])
+               ~s(button#{id.("bin.paste.example")}-lock[aria-label^="A locked workspace rule denies *.paste.example. Locked by #{scope.user.email} on "])
              )
 
-      assert text(view, "span" <> id.("169.254.169.254")) == "No rule changes this"
-      refute has_element?(view, "#rule-popover")
+      assert has_element?(
+               view,
+               ~s(span#{id.("169.254.169.254")}-lock[tabindex="0"][data-tip="No rule changes this"])
+             )
+
+      refute has_element?(view, "#rule-panel")
     end
 
     test "a refused request to a tool's host acts on its host and path, as any row does", %{
@@ -553,38 +549,53 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       refute has_element?(view, "#cx-#{id} .q-dest-tool")
       assert has_element?(view, "#cx-#{id} .q-dest", "files.tools.internal")
-      assert text(view, "button#cx-#{id}-act") == "Allow"
+      assert has_element?(view, "button#cx-#{id}-allow[aria-label='Allow files.tools.internal']")
 
-      view |> element("#cx-#{id}-act") |> render_click()
-      assert text(view, "#rule-popover-title") =~ "files.tools.internal"
+      view |> element("#cx-#{id}-allow") |> render_click()
+      assert text(view, "#rule-panel-title") =~ "files.tools.internal"
     end
 
-    test "the popover asks for whom, the target first, and says what happens next", %{
+    test "the panel asks for whom, the target first, and says what happens next", %{
       conn: conn,
       run: run,
       scope: scope
     } do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      view |> element("#cx-#{id}-act") |> render_click()
+      assert has_element?(view, ~s(#cx-#{id}-allow[aria-controls="cx-#{id}-panel"]))
+      refute has_element?(view, "#cx-#{id}-allow[aria-haspopup]")
+      view |> element("#cx-#{id}-allow") |> render_click()
 
-      assert text(view, "#rule-popover-title") == "Allow files.cdn.example"
-      assert has_element?(view, ~s(#rule-popover input[name=for][value=target][checked]))
-      assert text(view, "#rule-popover") =~ "This repository github.example/acme/shop"
-      assert text(view, "#rule-popover") =~ "The whole workspace"
-      assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=true]))
-      assert text(view, "#rule-popover-submit") == "Allow for this repository"
+      # In place, right under the row, in the table: no overlay.
+      assert has_element?(
+               view,
+               ~s(tr#cx-#{id} + tr#cx-#{id}-panel #rule-panel[role=group][data-anchor="cx-#{id}-allow"][data-back="cx-#{id}-rule cx-#{id}-after-rule cx-#{id}-copy"])
+             )
+
+      refute has_element?(view, "#rule-panel[popover], #rule-panel[role=dialog]")
+      assert text(view, "#rule-panel-title") == "Allow files.cdn.example"
+      # The option chosen takes the focus; Enter sends the form once it can be sent.
+      assert has_element?(
+               view,
+               ~s(#rule-panel input[name=for][value=target][checked][data-autofocus])
+             )
+
+      assert has_element?(view, "#rule-panel-form button[type=submit]:not([disabled])")
+      assert text(view, "#rule-panel") =~ "This repository acme/shop"
+      assert text(view, "#rule-panel") =~ "The whole workspace"
+      assert has_element?(view, ~s(#cx-#{id}-allow[aria-expanded=true]))
+      assert text(view, "#rule-panel-submit") == "Allow for this repository"
 
       # this run holds no configuration fetched from here
-      assert text(view, "#rule-popover-next") =~
+      assert text(view, "#rule-panel-next") =~
                "Takes effect in running sessions within a heartbeat, about 30 s. This run uses its machine's policy"
 
-      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
-      assert text(view, "#rule-popover-submit") == "Allow for the workspace"
+      view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
+      assert text(view, "#rule-panel-submit") == "Allow for the workspace"
 
-      view |> element("#rule-popover-cancel") |> render_click()
-      refute has_element?(view, "#rule-popover")
-      assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=false]))
+      view |> element("#rule-panel-cancel") |> render_click()
+      refute has_element?(view, "#rule-panel")
+      assert has_element?(view, ~s(#cx-#{id}-allow[aria-expanded=false]))
     end
 
     test "allowing keeps the record as it was and adds the line after", %{
@@ -599,12 +610,12 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
 
-      view |> element("#cx-#{id}-act") |> render_click()
+      view |> element("#cx-#{id}-allow") |> render_click()
 
-      assert text(view, "#rule-popover-next") =~
+      assert text(view, "#rule-panel-next") =~
                "This run is alive: its next attempt can succeed."
 
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> form("#rule-panel-form") |> render_submit()
 
       # the rule is the target's, made by the domain
       assert [%{host: "files.cdn.example", action: "allow"}] =
@@ -613,7 +624,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       new = in_force(scope, target)
 
       # the row is the record: still denied, the same counts and reason
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied[data-decision=denied]))
       assert text(view, "#cx-#{id}") =~ "No rule matches. Enforce mode denies it."
 
@@ -622,19 +633,22 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "Rule added"
 
       assert line =~
-               "Allowed for this repository in v#{new.version} · of github.example/acme/shop by you"
+               "Allowed for this repository in v#{new.version} · of acme/shop by you"
 
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule =
-        target_path(scope, target.system, target.path, ["policy"]) <> "?rule=files.cdn.example"
+      rule = workspace_path(scope, "/targets/acme/shop/-/policy?rule=files.cdn.example")
 
-      assert has_element?(view, ~s(a#cx-#{id}-act[href="#{rule}"]), "Rule")
+      assert has_element?(
+               view,
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{rule}"]),
+               "Show the rule"
+             )
 
       # the toast names the change and the version
       html = render(view)
-      assert html =~ "files.cdn.example is allowed for github.example/acme/shop."
+      assert html =~ "files.cdn.example is allowed for acme/shop."
       assert html =~ "Version #{new.version}. Running sessions have it within a heartbeat."
       assert has_element?(view, "#run-drift", "Behind v#{new.version}")
 
@@ -644,10 +658,51 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "In force in this run"
 
       assert line =~
-               "Allowed for this repository in v#{new.version} · of github.example/acme/shop . The run has reported it."
+               "Allowed for this repository in v#{new.version} · of acme/shop . The run has reported it."
 
       refute line =~ "has not reloaded"
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied))
+    end
+
+    test "a target whose path another system has is named and linked with its system", %{
+      conn: conn,
+      scope: scope
+    } do
+      Apiary.RunListFixtures.started_run(scope, Apiary.RunListFixtures.shop("gitlab.example"))
+      digest = in_force(scope, nil).digest
+      run = policy_run(scope, applied: digest, egress: [@registry, @denied])
+      target = target(scope, run)
+      run = report(run, digest)
+      view = connections(conn, scope, run)
+      id = connection_id(run, "files.cdn.example")
+
+      # The header's link lands on its page at its address.
+      page = workspace_path(scope, "/targets/github.example/acme/shop")
+      assert has_element?(view, "#run-target[href='#{page}']")
+
+      view |> element("#cx-#{id}-allow") |> render_click()
+      assert text(view, "#rule-panel") =~ "This repository github.example/acme/shop"
+      view |> form("#rule-panel-form") |> render_submit()
+      new = in_force(scope, target)
+
+      assert render(view) =~ "files.cdn.example is allowed for github.example/acme/shop."
+      line = text(view, "#cx-#{id}-after")
+
+      assert line =~
+               "Allowed for this repository in v#{new.version} · of github.example/acme/shop by you"
+
+      assert has_element?(
+               view,
+               ~s(#cx-#{id}-after a[href="#{page}/-/policy/versions/#{new.version}"])
+             )
+
+      assert has_element?(
+               view,
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{page}/-/policy?rule=files.cdn.example"]),
+               "Show the rule"
+             )
+
+      assert text(view, "#run-drift") == "Behind v#{new.version} · github.example/acme/shop"
     end
 
     test "once the run reloaded and the row's last attempt is allowed by the rule, the line stays",
@@ -683,16 +738,14 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       line = text(view, "#cx-#{id}-after")
       assert line =~ "In force in this run"
 
-      assert line =~
-               "Allowed for this repository in v#{new.version} · of github.example/acme/shop"
-
+      assert line =~ "Allowed for this repository in v#{new.version} · of acme/shop"
       assert line =~ "The run reloaded at #0030."
-      assert text(view, "a#cx-#{id}-act") == "Rule"
+      assert text(view, "#cx-#{id}-after a#cx-#{id}-after-rule") == "Show the rule"
 
       # a row that was never denied is not one a rule answered: it can be denied
       registry = connection_id(run, "registry.example")
       refute has_element?(view, "#cx-#{registry}-after")
-      assert text(view, "button#cx-#{registry}-act") == "Deny"
+      assert has_element?(view, "button#cx-#{registry}-deny.q-act-i")
     end
 
     test "the line names the reload that carried the rule, whichever message lands first",
@@ -734,8 +787,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     } do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      view |> element("#cx-#{id}-act") |> render_click()
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> element("#cx-#{id}-allow") |> render_click()
+      view |> form("#rule-panel-form") |> render_submit()
 
       line = text(view, "#cx-#{id}-after")
       assert line =~ "Rule added"
@@ -747,9 +800,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, egress: [@denied], exit: true)
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      view |> element("#cx-#{id}-act") |> render_click()
-      refute text(view, "#rule-popover-next") =~ "This run"
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> element("#cx-#{id}-allow") |> render_click()
+      refute text(view, "#rule-panel-next") =~ "This run"
+      view |> form("#rule-panel-form") |> render_submit()
 
       assert text(view, "#cx-#{id}-after") =~
                "This run has ended; the next run of the repository has it."
@@ -762,18 +815,18 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     } do
       view = connections(conn, scope, run)
       id = connection_id(run, "registry.example")
-      view |> element("#cx-#{id}-act") |> render_click()
+      view |> element("#cx-#{id}-deny") |> render_click()
 
-      assert text(view, "#rule-popover") =~
+      assert text(view, "#rule-panel") =~
                "Disables the workspace's allow rule here. Other repositories keep it."
 
-      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
-      assert text(view, "#rule-popover-submit") == "Deny for the workspace"
+      view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
+      assert text(view, "#rule-panel-submit") == "Deny for the workspace"
 
-      assert text(view, "#rule-popover-next") =~
+      assert text(view, "#rule-panel-next") =~
                "Open connections to the host are closed at the reload."
 
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> form("#rule-panel-form") |> render_submit()
 
       assert Enum.any?(
                Policy.list_rules(scope, nil),
@@ -785,7 +838,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(a#cx-#{id}-act[href="#{workspace_path(scope)}/policy?rule=registry.example"])
+               ~s(#cx-#{id}-after a#cx-#{id}-after-rule[href="#{workspace_path(scope)}/policy?rule=registry.example"])
              )
     end
 
@@ -796,21 +849,21 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, egress: [observed], mode: "observe")
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      assert has_element?(view, "button#cx-#{id}-act[data-action=allow]", "Allow")
-      view |> element("#cx-#{id}-menu-deny") |> render_click()
+      assert has_element?(view, "button#cx-#{id}-allow[data-action=allow]")
+      view |> element("#cx-#{id}-deny") |> render_click()
 
-      assert text(view, "#rule-popover-title") == "Deny files.cdn.example"
-      assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=false]))
-      assert text(view, "#rule-popover-submit") == "Deny for this repository"
+      assert text(view, "#rule-panel-title") == "Deny files.cdn.example"
+      assert has_element?(view, ~s(#cx-#{id}-allow[aria-expanded=false]))
+      assert text(view, "#rule-panel-submit") == "Deny for this repository"
 
       # A deny holds in either mode: the sentence is the one of enforce, not a promise
       # deferred to the day the mode changes.
-      assert text(view, "#rule-popover-next") =~
+      assert text(view, "#rule-panel-next") =~
                "Open connections to the host are closed at the reload."
 
-      refute text(view, "#rule-popover-next") =~ "observes"
+      refute text(view, "#rule-panel-next") =~ "observes"
 
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> form("#rule-panel-form") |> render_submit()
       target = Runs.fetch_target(scope, "github.example", "acme/shop")
       assert "files.cdn.example" in Policy.effective(scope, target).deny
 
@@ -851,11 +904,11 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         Policy.rule_from_connection(scope, connection, :deny, :target)
 
       view = connections(conn, scope, run)
-      view |> element("#cx-#{id}-act") |> render_click()
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> element("#cx-#{id}-deny") |> render_click()
+      view |> form("#rule-panel-form") |> render_submit()
 
-      assert text(view, "#rule-popover-error") == sentence
-      assert has_element?(view, "#rule-popover-error[role=alert]")
+      assert text(view, "#rule-panel-error") == sentence
+      assert has_element?(view, "#rule-panel-error[role=alert]")
       assert Policy.list_rules(scope, target(scope, run)) == []
     end
 
@@ -865,13 +918,13 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       scope: scope
     } do
       view = connections(conn, scope, run)
-      view |> element("#cx-#{connection_id(run, "bin.paste.example")}-act") |> render_click()
+      view |> element("#cx-#{connection_id(run, "bin.paste.example")}-lock") |> render_click()
 
-      assert text(view, "#rule-popover-title") == "bin.paste.example stays denied"
-      refute has_element?(view, "#rule-popover-form")
-      refute has_element?(view, "#rule-popover-submit")
+      assert text(view, "#rule-panel-title") == "bin.paste.example stays denied"
+      refute has_element?(view, "#rule-panel-form")
+      refute has_element?(view, "#rule-panel-submit")
 
-      refusal = text(view, "#rule-popover-refusal")
+      refusal = text(view, "#rule-panel-refusal")
       assert refusal =~ "A locked workspace rule denies *.paste.example ."
       assert refusal =~ "so no rule added here would change what happens."
       assert refusal =~ "Locked by"
@@ -879,11 +932,18 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(#rule-popover-locked-rule[href="#{workspace_path(scope)}/policy?rule=%2A.paste.example"])
+               ~s(#rule-panel-locked-rule[href="#{workspace_path(scope)}/policy?rule=%2A.paste.example"])
              )
 
-      view |> element("#rule-popover-close") |> render_click()
-      refute has_element?(view, "#rule-popover")
+      # Close takes the focus as it opens.
+      assert has_element?(
+               view,
+               "#rule-panel[data-kind=refusal] #rule-panel-close[data-autofocus]",
+               "Close"
+             )
+
+      view |> element("#rule-panel-close") |> render_click()
+      refute has_element?(view, "#rule-panel")
     end
 
     test "a member sees the padlock and the refusal, and can allow what is not locked", %{
@@ -895,20 +955,20 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
 
       paste = connection_id(run, "bin.paste.example")
-      assert has_element?(view, "button#cx-#{paste}-act .hero-lock-closed-micro")
-      view |> element("#cx-#{paste}-act") |> render_click()
-      assert text(view, "#rule-popover-refusal") =~ "Only an owner can change or unlock it."
-      refute text(view, "#rule-popover-refusal") =~ "You can change"
-      view |> element("#rule-popover-close") |> render_click()
+      assert has_element?(view, "button#cx-#{paste}-lock .hero-lock-closed-micro")
+      view |> element("#cx-#{paste}-lock") |> render_click()
+      assert text(view, "#rule-panel-refusal") =~ "Only an owner can change or unlock it."
+      refute text(view, "#rule-panel-refusal") =~ "You can change"
+      view |> element("#rule-panel-close") |> render_click()
 
       cdn = connection_id(run, "files.cdn.example")
-      view |> element("#cx-#{cdn}-act") |> render_click()
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> element("#cx-#{cdn}-allow") |> render_click()
+      view |> form("#rule-panel-form") |> render_submit()
       assert [%{host: "files.cdn.example"}] = Policy.list_rules(scope, target(scope, run))
     end
   end
 
-  describe "the popover says what the chosen scope will get" do
+  describe "the panel says what the chosen scope will get" do
     @pathed %{
       "host" => "api.pathed.example",
       "path" => "/v2/x",
@@ -927,23 +987,23 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       view = connections(conn, scope, run)
       id = connection_id(run, "api.pathed.example")
-      view |> element("#cx-#{id}-act") |> render_click()
+      view |> element("#cx-#{id}-allow") |> render_click()
 
-      assert text(view, "#rule-popover-title") == "Allow on api.pathed.example"
-      assert text(view, "#rule-popover-what") =~ "This path /v2/x is added to the paths in force"
+      assert text(view, "#rule-panel-title") == "Allow on api.pathed.example"
+      assert text(view, "#rule-panel-what") =~ "This path /v2/x is added to the paths in force"
 
       # for the workspace the host has no paths: the
       # rule would be the whole host, and it says so
-      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
-      assert text(view, "#rule-popover-title") == "Allow api.pathed.example"
-      refute has_element?(view, "#rule-popover-what-set")
+      view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
+      assert text(view, "#rule-panel-title") == "Allow api.pathed.example"
+      refute has_element?(view, "#rule-panel-what-set")
 
-      assert text(view, "#rule-popover-own-rule") ==
+      assert text(view, "#rule-panel-own-rule") ==
                "This repository's own rule still decides here."
 
-      assert text(view, "#rule-popover-submit") == "Allow for the workspace"
+      assert text(view, "#rule-panel-submit") == "Allow for the workspace"
 
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> form("#rule-panel-form") |> render_submit()
 
       assert [%{host: "api.pathed.example", paths: nil}] =
                Enum.filter(Policy.list_rules(scope, nil), &(&1.host == "api.pathed.example"))
@@ -954,7 +1014,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       # and the row is not said to be answered: for this target the path is still not allowed
       refute has_element?(view, "#cx-#{id}-after")
-      assert text(view, "#cx-#{id}-act") == "Allow"
+      assert has_element?(view, "button#cx-#{id}-allow")
     end
 
     test "the toast names the path when a path is what was added", %{conn: conn, scope: scope} do
@@ -963,19 +1023,19 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, egress: [@pathed])
       view = connections(conn, scope, run)
       id = connection_id(run, "api.pathed.example")
-      view |> element("#cx-#{id}-act") |> render_click()
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> element("#cx-#{id}-allow") |> render_click()
+      view |> form("#rule-panel-form") |> render_submit()
 
       assert [%{paths: ["/v1/*", "/v2/x"]}] = Policy.list_rules(scope, target(scope, run))
 
       assert render(view) =~
-               "/v2/x on api.pathed.example is allowed for github.example/acme/shop."
+               "/v2/x on api.pathed.example is allowed for acme/shop."
 
       assert text(view, "#cx-#{id}-after") =~ "Allowed for this repository"
     end
   end
 
-  describe "a popover that the policy moved under" do
+  describe "a panel that the policy moved under" do
     setup %{scope: scope} do
       enforce(scope)
       %{run: policy_run(scope, egress: [@denied])}
@@ -989,14 +1049,14 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       target = target(scope, run)
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      view |> element("#cx-#{id}-act") |> render_click()
+      view |> element("#cx-#{id}-allow") |> render_click()
 
       {:ok, _} = Policy.deny(scope, target, %{host: "files.cdn.example"})
       # sent before the page has read the change
-      view |> form("#rule-popover-form") |> render_submit()
+      view |> form("#rule-panel-form") |> render_submit()
 
       assert [%{host: "files.cdn.example", action: "deny"}] = Policy.list_rules(scope, target)
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       assert render(view) =~ "The policy changed; look at the row again."
     end
 
@@ -1007,16 +1067,16 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     } do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      view |> element("#cx-#{id}-act") |> render_click()
-      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
+      view |> element("#cx-#{id}-allow") |> render_click()
+      view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
 
       {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
       {:ok, _} = Policy.lock(scope, rule)
       heard_policy_change(view, scope)
 
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       assert render(view) =~ "The policy changed; look at the row again."
-      assert has_element?(view, "button#cx-#{id}-act .hero-lock-closed-micro")
+      assert has_element?(view, "button#cx-#{id}-lock .hero-lock-closed-micro")
 
       # and a crafted send with nothing open changes nothing
       render_submit(view, "rule_submit", %{"for" => "workspace"})
@@ -1036,7 +1096,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       id = connection_id(run, "files.cdn.example")
 
       # the padlock opens the refusal, which has nothing to send
-      view |> element("#cx-#{id}-act") |> render_click()
+      view |> element("#cx-#{id}-lock") |> render_click()
       render_change(view, "rule_change", %{"for" => "workspace"})
       render_submit(view, "rule_submit", %{"for" => "workspace"})
       render_click(view, "rule_open", %{"id" => id, "action" => "allow"})
@@ -1066,10 +1126,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       for action <- ~w(allow deny) do
         render_click(view, "rule_open", %{"id" => their_id, "action" => action})
-        refute has_element?(view, "#rule-popover")
+        refute has_element?(view, "#rule-panel")
       end
 
-      # crafted events with no popover open, or with values that are not what is asked for
+      # crafted events with no panel open, or with values that are not what is asked for
       render_click(view, "rule_submit", %{"for" => "workspace"})
       render_change(view, "rule_change", %{"for" => "workspace"})
       render_click(view, "rule_open", %{"id" => %{"a" => 1}, "action" => "allow"})
@@ -1079,7 +1139,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         "action" => "lock"
       })
 
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
 
       assert Policy.list_rules(scope, nil) |> Enum.map(& &1.host) == ["registry.example"]
       assert Policy.list_rules(other, nil) |> Enum.map(& &1.host) == ["registry.example"]
@@ -1109,7 +1169,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         "action" => "allow"
       })
 
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
     end
   end
 end

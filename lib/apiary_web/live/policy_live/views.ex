@@ -1,7 +1,9 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
   The views the workspace's policy and a target's policy share: the history with its
-  diffs, one version with its document, and the export. Function components; the two
+  diffs, one version with its document, the export page, a confirm in place with a list
+  (`confirm_panel/1`, an edition's pages use it) and the list of keys. Function
+  components; the two
   LiveViews load what they show through `ApiaryWeb.PolicyLive.Common`.
   """
   use ApiaryWeb, :html
@@ -16,7 +18,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   def page_skeleton(assigns) do
     ~H"""
     <div id="policy-loading" class="grid grid-cols-[minmax(0,1fr)] gap-6" aria-busy="true">
-      <.header>{@title}</.header>
+      <.page_header title={@title} />
       <div class="q-sect">
         <div
           :for={_row <- 1..5}
@@ -81,7 +83,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <% else %>
             {gettext("No changes yet.")}
             <span :if={@scope == :workspace}>
-              {gettext("Qory serves no policy for this workspace until the first one.")}
+              {gettext("Qory Apiary serves no policy for this workspace until the first one.")}
             </span>
             <span :if={@scope == :target}>
               {gettext("The first rule here, or a mode of its own, starts this target's history.")}
@@ -369,21 +371,36 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   ## Export
 
+  @doc """
+  The export of the version in force as a page of its own, at `…/versions/:n/export`: the
+  title and what is exported, the texts to copy, and Done back to the version. The way
+  back to the policy and the version is the frame's breadcrumb, never a trail of its own. Nothing here is a form. `heading` is h2 under a
+  page's own title, as a target's Policy tab has. The heading takes the focus a page sends
+  it (`policy-export-h`) when the page is reached by a patch, as Export is.
+  """
   attr :export, :map, required: true
-  attr :close, :string, required: true
+  attr :done, :string, required: true, doc: "the version's path, where Done goes back"
+  attr :heading, :string, default: "h1", values: ~w(h1 h2)
 
-  def export_modal(assigns) do
+  def export_page(assigns) do
     ~H"""
-    <.modal
-      id="policy-export"
-      title={gettext("Export for a node without a server")}
-      size="lg"
-      on_cancel={JS.patch(@close)}
-    >
-      <p id="export-lead" class="text-muted">
-        <.rich text={export_lead(@export)} />
-        {gettext("It is a copy: it does not follow later changes.")}
-      </p>
+    <section id="policy-export" class="grid max-w-[100ch] gap-4" aria-labelledby="policy-export-h">
+      <div class="grid gap-3">
+        <header>
+          <.dynamic_tag
+            tag_name={@heading}
+            id="policy-export-h"
+            class="text-xl/7 font-semibold tracking-[-0.017em] outline-none"
+            tabindex="-1"
+          >
+            {gettext("Export for a node without a server")}
+          </.dynamic_tag>
+          <p id="export-lead" class="mt-0.5 max-w-[80ch] text-sm/5 text-muted">
+            <.rich text={export_lead(@export)} />
+            {gettext("It is a copy: it does not follow later changes.")}
+          </p>
+        </header>
+      </div>
 
       <.doc_well :if={@export.policy_file} id="export-policy">
         <:caption>{@export.file_name}</:caption>
@@ -417,7 +434,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
         <.code_lines id="export-runner-text" text={@export.runner_file} />
       </.doc_well>
 
-      <p class="text-[12.5px]/[18px] text-muted">
+      <p class="max-w-[80ch] text-[12.5px]/[18px] text-muted">
         <span :for={note <- @export.notes}>{note}</span>
         {gettext("Keep a policy file outside the checkout.")}
         {pgettext(
@@ -425,58 +442,117 @@ defmodule ApiaryWeb.PolicyLive.Views do
           "Deny rules and locks are already applied: the text lists what remains allowed."
         )}
       </p>
-      <:footer>
-        <.button variant="primary" patch={@close}>{gettext("Done")}</.button>
-      </:footer>
-    </.modal>
+
+      <div class="q-save">
+        <.button id="export-done" variant="primary" patch={@done}>{gettext("Done")}</.button>
+      </div>
+    </section>
     """
   end
+
+  ## Inline confirmation
+
+  @doc """
+  A confirmation in place under the control whose act it confirms, in the look of
+  `inline_confirm/1`, for a confirm that also shows a list (what enforce would deny): the
+  question, what happens (`effect`, a paragraph of its own, `<id>-effect`), the
+  rest (`inner_block`), then the act's button and Cancel. Never an overlay. Cancel takes
+  the focus as it shows; where there is an effect, the section and Cancel are described by
+  it, so it is read with them. Cancel and Escape send `dialog_cancel` with `return`, the
+  control the focus goes back to.
+  """
+  attr :id, :string, required: true
+  attr :question, :string, required: true
+  attr :return, :string, required: true, doc: "the id of the control the focus goes back to"
+  slot :effect, doc: "what the act does, the sentence the confirm is read with"
+  slot :inner_block, doc: "what follows the effect: the list, the notes"
+  slot :action, required: true, doc: "the act's button"
+
+  def confirm_panel(assigns) do
+    assigns = assign(assigns, :cancel, confirm_cancel(assigns.return))
+
+    ~H"""
+    <section
+      id={@id}
+      class="grid max-w-[80ch] gap-3 rounded-box border border-line bg-base-100 p-4"
+      aria-labelledby={"#{@id}-question"}
+      aria-describedby={@effect != [] && "#{@id}-effect"}
+      phx-window-keydown={@cancel}
+      phx-key="Escape"
+    >
+      <h3 id={"#{@id}-question"} class="q-confirm-q">{@question}</h3>
+      <div class="q-confirm-sub grid gap-3">
+        <p :if={@effect != []} id={"#{@id}-effect"} class="text-muted">{render_slot(@effect)}</p>
+        {render_slot(@inner_block)}
+      </div>
+      <div class="q-confirm-act">
+        {render_slot(@action)}
+        <button
+          id={"#{@id}-cancel"}
+          type="button"
+          class="btn btn-xs"
+          aria-describedby={@effect != [] && "#{@id}-effect"}
+          phx-click={@cancel}
+          phx-mounted={JS.focus()}
+        >
+          {gettext("Cancel")}
+        </button>
+      </div>
+    </section>
+    """
+  end
+
+  @doc "What Cancel and Escape of a confirm in place send: `dialog_cancel`, and the focus's way back."
+  def confirm_cancel(return), do: JS.push("dialog_cancel", value: %{focus: return})
 
   ## The keys of the page (ph)
 
-  @doc "The list `?` opens: the shortcuts of the policy pages. A native dialog the `PolicyPage` hook shows."
-  def keys_dialog(assigns) do
+  @doc """
+  The list `?` shows and hides: the shortcuts of the policy pages, a small panel in the
+  page's flow, never an overlay. The `PolicyPage` hook toggles it (`hidden`, which the
+  server leaves to the browser) and closes it on Escape or Close.
+  """
+  def keys_panel(assigns) do
     ~H"""
-    <dialog
+    <section
       id="policy-keys"
-      class="modal modal-bottom sm:modal-middle"
+      class="max-w-[60ch] rounded-box border border-line bg-base-100 p-4"
       aria-labelledby="policy-keys-h"
+      tabindex="-1"
+      hidden
+      phx-mounted={JS.ignore_attributes(["hidden"])}
     >
-      <div class="modal-box sm:max-w-[400px]">
-        <div class="flex items-start justify-between gap-3 px-5 pt-5">
-          <h2 id="policy-keys-h" class="text-base/6 font-semibold tracking-[-0.01em]">
-            {gettext("Keys")}
-          </h2>
-        </div>
-        <dl class="q-keys modal-body px-5 pb-5 pt-2 text-[13.5px]/5">
-          <dt><kbd class="kbd kbd-sm">a</kbd></dt>
-          <dd>{gettext("Add a rule: the composer's host field")}</dd>
-          <dt><kbd class="kbd kbd-sm">{pgettext("key", "Enter")}</kbd></dt>
-          <dd>{gettext("In the composer, save the rule once it reads back")}</dd>
-          <dt><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></dt>
-          <dd>{gettext("Between the two modes; Space asks to switch")}</dd>
-          <dt><kbd class="kbd kbd-sm">?</kbd></dt>
-          <dd>{gettext("This list")}</dd>
-        </dl>
-        <form method="dialog" class="modal-action flex-none" novalidate>
-          <button class="btn btn-sm" data-autofocus>{gettext("Close")}</button>
-        </form>
+      <div class="flex items-start justify-between gap-3">
+        <h2 id="policy-keys-h" class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
+          {gettext("Keys")}
+        </h2>
+        <button id="policy-keys-close" type="button" class="btn btn-xs" data-keys-close>
+          {gettext("Close")}
+        </button>
       </div>
-      <form method="dialog" class="modal-backdrop" novalidate>
-        <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
-      </form>
-    </dialog>
+      <dl class="q-keys mt-2 text-[13.5px]/5">
+        <dt><kbd class="kbd kbd-sm">a</kbd></dt>
+        <dd>{gettext("Add a rule: the composer's host field")}</dd>
+        <dt><kbd class="kbd kbd-sm">{pgettext("key", "Enter")}</kbd></dt>
+        <dd>{gettext("In the composer, save the rule once it reads back")}</dd>
+        <dt><kbd class="kbd kbd-sm">?</kbd></dt>
+        <dd>{gettext("This list")}</dd>
+      </dl>
+    </section>
     """
   end
 
-  # The lead of the export: what is exported, as of which version, and in which files.
+  # The lead of the export: what is exported, as of which version, and in which files. A
+  # target is named as it is addressed; the file's own head keeps its system and path.
   defp export_lead(export) do
     subject =
       if export.workspace,
         do:
           {:b, gettext("the workspace %{name}", name: export.workspace),
            "font-medium text-base-content"},
-        else: {:b, export.subject, "font-mono text-[12.5px] font-medium text-base-content"}
+        else:
+          {:b, export[:name] || export.subject,
+           "font-mono text-[12.5px] font-medium text-base-content"}
 
     version =
       {:b, gettext("version %{version}", version: export.version),

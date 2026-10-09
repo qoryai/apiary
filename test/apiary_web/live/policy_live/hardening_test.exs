@@ -53,9 +53,11 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       view = open(conn, workspace_path(scope, "/policy"))
       before = rules(scope)
 
-      for event <- ~w(mode_confirm lock_confirm remove_confirm target_mode_confirm) do
+      for event <- ~w(mode_pick lock_confirm remove_confirm mode_cancel) do
         render_hook(view, event, %{})
       end
+
+      render_hook(view, "mode_pick", %{"mode" => "enforce"})
 
       assert rules(scope) == before
       assert Policy.get_mode(scope) == "observe"
@@ -107,8 +109,9 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       assert rule(scope, "github.example").action == "allow"
       refute has_element?(view, "#policy-composer")
 
-      render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
-      render_hook(view, "target_mode_confirm", %{})
+      render_hook(view, "mode_open", %{"mode" => "enforce"})
+      render_hook(view, "mode_pick", %{"mode" => "enforce"})
+      render_hook(view, "mode_set", %{})
       assert Policy.get_mode(scope, target).own == nil
 
       # Rules are a member's to edit, the workspace's too: these are allowed, not refused.
@@ -161,16 +164,19 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
       view = open(conn, workspace_path(scope, "/policy"))
 
+      # The confirmation is on the rule's row, which the page's reload after the change
+      # takes away with the rule, whenever it comes: the confirm is sent as the button
+      # sends it, so what the server does with it is what is tested.
       view |> element("#rule-#{plain.id}-menu button", "Lock") |> render_click()
       assert has_element?(view, "#lock-confirm")
       {:ok, _} = Policy.remove_rule(scope, plain)
-      view |> element("#lock-confirm-button") |> render_click()
-      assert render(view) =~ "was removed while you were deciding"
+      assert render_hook(view, "lock_confirm", %{}) =~ "was removed while you were deciding"
 
       view |> element("#rule-#{locked.id}-menu button", "Remove") |> render_click()
+      assert has_element?(view, "#remove-confirm-button")
       {:ok, _} = Policy.remove_rule(scope, locked)
       {:ok, again} = Policy.allow(scope, nil, %{host: "*.paste.example"})
-      view |> element("#remove-confirm-button") |> render_click()
+      render_hook(view, "remove_confirm", %{})
       assert rule(scope, "*.paste.example").id == again.id
     end
 
@@ -215,14 +221,13 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
         render_hook(view, "composer_use", payload)
       end
 
-      for payload <- [%{"credential" => "x"}, %{"credential" => %{"name" => %{}}}, %{}] do
-        render_hook(view, "credential_change", payload)
-      end
-
       render_hook(view, "composer_paste", %{"hosts" => [1, %{}, "ok.example"]})
       render_hook(view, "composer_paste", %{"hosts" => "nope"})
       render_hook(view, "would_allow", %{"key" => %{}})
-      render_hook(view, "mode_ask", %{"mode" => ["enforce"]})
+      render_hook(view, "mode_open", %{"mode" => ["enforce"]})
+      render_hook(view, "mode_pick", %{"mode" => ["enforce"]})
+      render_hook(view, "mode_pick", %{"mode" => "burn"})
+      render_hook(view, "mode_set", %{"mode" => %{}})
       render_hook(view, "show_rule", %{"host" => 1})
       render_hook(view, "compare", %{"compare" => %{}})
       render_hook(view, "rules_search", %{"q" => ["x"]})

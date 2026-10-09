@@ -3,8 +3,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   @moduledoc """
   Fills a workspace with a history to review the console against at scale: months of
-  synthetic runs across many repositories, the access keys the machines post with, and
-  people at every level. A development tool: it refuses to run in production.
+  synthetic runs across many repositories, the nodes the machines run on with the access
+  keys they post with, and people at every level. A development tool: it refuses to run in production.
 
       mix apiary.demo.history
       mix apiary.demo.history --workspace acme/main --runs 50000 --repositories 300
@@ -18,8 +18,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ago; one run in thirty names no repository. `--seed` (1) makes the plan repeatable: the
   same seed gives the same runs, under new ids every time.
 
-  Each run is a record the runner could have sent: its start, the policy it ran under, an
-  agent's session with its tools and subagents, the terminal's output, its connections and
+  Each run is a record the runner could have sent: its start, with what it is about (an
+  issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
+  under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. Most succeed; some fail, time out, go silent and are found
   lost, or are closed by a member; a few are still running when the task ends and are found
   lost a minute and a half later, as any run that stops talking is; one in two hundred
@@ -27,9 +28,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   and received a moment later, as the receiver would have stored them, and every run is
   projected by `Apiary.Runs.Projector`, as the receiver's runs are.
 
-  Keys and people go through the contexts, as the console's pages would, in the name of
-  the workspace's first owner, so the audit trail has them: a key per machine group, one
-  rotated, one revoked and one never used; a dozen people who joined by invitation,
+  Nodes, keys and people go through the contexts, as the console's pages would, in the
+  name of the workspace's first owner, so the audit trail has them: a node per machine
+  group (a node pool for a fleet of several machines), each with a key added by its
+  Ed25519 public key; a second key added to one pool, as when its key is replaced, one key
+  revoked, and one node whose key is never used. Each run is placed on its machine's node,
+  as the instance of its host, and each host is recorded as an instance of the node it
+  last ran on. A dozen people who joined by invitation,
   owners, admins and members, one suspended, and two invitations pending
   (`--skip-members` leaves the people alone). Last, when the instance serves the security
   feature, the workspace is given `mix apiary.demo`'s policy if nobody has made one, the
@@ -42,7 +47,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   import Ecto.Query
 
-  alias Apiary.{AccessKeys, Accounts, Organisations, Policy, Repo, Runs}
+  alias Apiary.{AccessKeys, Accounts, Nodes, Organisations, Policy, Repo, Runs}
+  alias Apiary.Nodes.Instance
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.{Event, Liveness, Projector, Run, Target}
@@ -64,9 +70,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   @minute 60_000
   @day 86_400_000
 
-  # The machines that post, by the key they post with. `weight` is their share of the
-  # daytime runs; the nightly key posts only the nightly batch, and the legacy one only
-  # until it was replaced.
+  # The machines that post, by the node they run on and the label of its key, both named
+  # `key`; several hosts make a node pool. `weight` is their share of the daytime runs; the
+  # nightly machine posts only the nightly batch, and the legacy one only until it was
+  # replaced.
   @machines [
     %{
       key: "ci-fleet",
@@ -77,7 +84,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     },
     %{
       key: "build-eu",
-      hosts: ~w(build-eu-01 build-eu-02 build-eu-03 build-eu-04),
+      hosts: ~w(build-eu-01 build-eu-02),
       wall: "docker",
       weight: 18,
       laptop: false
@@ -113,14 +120,18 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ]
   @invited ~w(new-hire@example.com contractor@partner.example)
 
-  # The repositories every history has: the recorded demo's, and one path on three forges.
+  # The repositories every history has: the recorded demo's, one path on three forges and
+  # one on two, so that a path names more than one repository.
   @anchors [
-    {"git.example.com", "acme/shop"},
-    {"github.example", "acme/shop"},
-    {"gitlab.example", "acme/shop"},
-    {"github.example", "acme/api"},
-    {"github.example", "acme/web"},
-    {"github.example", "acme/tax-service"}
+    {"codeberg.org", "acme/shop"},
+    {"github.com", "acme/shop"},
+    {"gitlab.com", "acme/shop"},
+    {"github.com", "acme/billing"},
+    {"gitlab.com", "acme/billing"},
+    {"github.com", "acme/docs"},
+    {"github.com", "acme/api"},
+    {"github.com", "acme/web"},
+    {"github.com", "acme/tax-service"}
   ]
 
   @namespaces ~w(acme platform data mobile payments growth ml infra security web)
@@ -182,24 +193,28 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     "the SDK retries a 400 as if it were a 503"
   ]
 
+  # A campaign's task, its title, and its prompt.
   @campaigns [
-    {"renovate-deps",
+    {"renovate-deps", "Update the flagged dependencies",
      "Update the dependencies Renovate flagged, run the tests, and summarise anything that needed a code change."},
-    {"fix-flaky-tests",
+    {"fix-flaky-tests", "Make the flakiest test deterministic",
      "Find the flakiest test in the last week of CI for this repository and make it deterministic."},
-    {"upgrade-node-24",
+    {"upgrade-node-24", "Move to Node 24",
      "Move this repository to Node 24: engines, CI images and anything the upgrade breaks."},
-    {"migrate-to-pnpm",
+    {"migrate-to-pnpm", "Replace npm with pnpm",
      "Replace npm with pnpm, keep the lockfile's versions, and make CI green."},
-    {"docs-refresh",
+    {"docs-refresh", "Bring the docs in line with the code",
      "Bring the README and the docs folder in line with what the code does today."},
-    {"checkout-redesign",
+    {"checkout-redesign", "Split checkout into steps",
      "Split checkout into address, delivery and payment steps and keep the existing validation."},
-    {"tax-rules-2027", "Apply the 2027 VAT changes and add a test per changed rate."},
-    {"sbom-export", "Generate a CycloneDX SBOM in CI and attach it to releases."},
-    {"license-audit",
+    {"tax-rules-2027", "Apply the 2027 VAT changes",
+     "Apply the 2027 VAT changes and add a test per changed rate."},
+    {"sbom-export", "Export an SBOM in CI",
+     "Generate a CycloneDX SBOM in CI and attach it to releases."},
+    {"license-audit", "Audit the dependencies' licences",
      "List every dependency whose licence is not on the allow list; change nothing."},
-    {"go-1-26-upgrade", "Upgrade to Go 1.26 and fix what the new vet checks report."}
+    {"go-1-26-upgrade", "Upgrade to Go 1.26",
+     "Upgrade to Go 1.26 and fix what the new vet checks report."}
   ]
 
   @nightly {"nightly-audit",
@@ -213,10 +228,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     "packages.example.com" => "packages.example.com",
     "cdn.packages.example.com" => "*.packages.example.com",
     "registry.example" => "registry.example",
-    "git.example.com" => "git.example.com",
-    "github.example" => "github.example",
-    "api.github.example" => "api.github.example",
-    "gitlab.example" => "gitlab.example",
+    "codeberg.org" => "codeberg.org",
+    "github.com" => "github.com",
+    "api.github.com" => "api.github.com",
+    "gitlab.com" => "gitlab.com",
     "proxy.golang.example" => "proxy.golang.example",
     "pypi.example" => "pypi.example",
     "files.pypi.example" => "files.pypi.example",
@@ -228,7 +243,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   }
   @locked_deny "telemetry.llm.example"
   @baseline_hosts ~w(
-    github.example api.github.example gitlab.example proxy.golang.example pypi.example
+    github.com api.github.com gitlab.com proxy.golang.example pypi.example
     files.pypi.example crates.example static.crates.example registry.terraform.example
     releases.hashicorp.example repo.packagist.example
   )
@@ -342,34 +357,64 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     end
   end
 
-  ## Keys
+  ## Nodes and keys
 
-  # Every machine's key, by label: the workspace's own when it has one of that label that
-  # is not revoked, a new one otherwise. The idle key is made and never posted with.
+  # Every machine's key, by label, on a node of the same name: the workspace's own node
+  # and key when it has them, the key not revoked, new ones otherwise. A machine of
+  # several hosts is a node pool. The idle node's key is made and never posted with. A key
+  # is added by its public key, as Generate a key adds one made in a browser
+  # (`arrived_by: :browser`); its private half is thrown away, since nothing here signs a
+  # request.
   defp keys!(scope) do
+    nodes = Map.new(Nodes.list_nodes(scope), &{&1.name, &1})
+
     held =
       scope
-      |> AccessKeys.list_access_keys()
-      |> Enum.filter(&is_nil(&1.revoked_at))
-      |> Map.new(&{&1.label, &1})
+      |> AccessKeys.list_workspace_node_keys()
+      |> Map.new(&{{&1.node.name, &1.label}, &1})
 
-    labels = Enum.map([@nightly_machine | @machines], & &1.key) ++ [@idle_key]
+    machines = [@nightly_machine | @machines] ++ [%{key: @idle_key, hosts: ["staging-01"]}]
 
-    Map.new(labels, fn label ->
+    Map.new(machines, fn %{key: label, hosts: hosts} ->
+      node = Map.get_lazy(nodes, label, fn -> node!(scope, label, hosts) end)
+
       key =
         case held do
-          %{^label => key} ->
-            key
-
-          _ ->
-            case AccessKeys.create_access_key(scope, %{label: label}) do
-              {:ok, key, _secret} -> key
-              {:error, reason} -> Mix.raise("the key #{label} was not made: #{inspect(reason)}")
-            end
+          %{{^label, ^label} => key} -> key
+          _ -> add_key!(scope, node, label)
         end
 
-      {label, key}
+      {label, %{key | node: node}}
     end)
+  end
+
+  defp node!(scope, name, hosts) do
+    kind = if length(hosts) > 1, do: "pool", else: "node"
+
+    case Nodes.create_node(scope, %{"kind" => kind, "name" => name}) do
+      {:ok, node} -> node
+      {:error, reason} -> Mix.raise("the node #{name} was not made: #{inspect(reason)}")
+    end
+  end
+
+  defp add_key!(scope, node, label) do
+    {public_key, _private} = :crypto.generate_key(:eddsa, :ed25519)
+
+    case AccessKeys.add_access_key(scope, node, %{
+           "label" => label,
+           "public_key" => Base.url_encode64(public_key, padding: false),
+           "allow_secrets" => false
+         }) do
+      {:ok, key} -> key
+      {:error, reason} -> Mix.raise("the key #{label} was not made: #{inspect(reason)}")
+    end
+  end
+
+  # The instance a host runs as on a node: the same id for the same host and node, in
+  # every history, as a runner keeps its instance id.
+  defp instance_id(node_id, host) do
+    digest = :crypto.hash(:sha256, [node_id, ?/, host])
+    "i_" <> Base.url_encode64(binary_part(digest, 0, 16), padding: false)
   end
 
   ## People
@@ -450,18 +495,22 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   ## The repositories
 
-  # `count` repositories: the anchors, then pairs of a namespace and a name. Each has a
-  # language, a weight that falls with its rank, and the days it was active: most all
-  # along, some born lately, some quiet for months.
+  # `count` repositories: the anchors, then pairs of a namespace and a name, each path
+  # once. Each has a language, a weight that falls with its rank, and the days it was
+  # active: most all along, some born lately, some quiet for months.
   defp catalogue(count, days) do
+    anchored = MapSet.new(@anchors, fn {_system, path} -> path end)
+
     generated =
-      for namespace <- @namespaces, name <- @repository_names do
-        {pick_forge(), "#{namespace}/#{name}"}
+      for namespace <- @namespaces,
+          name <- @repository_names,
+          path = "#{namespace}/#{name}",
+          path not in anchored do
+        {pick_forge(), path}
       end
       |> Enum.shuffle()
 
     (@anchors ++ generated)
-    |> Enum.uniq_by(fn {_system, path} -> path end)
     |> Enum.take(count)
     |> Enum.with_index(1)
     |> Enum.map(fn {{system, path}, rank} ->
@@ -490,7 +539,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   defp pick_forge,
-    do: weighted([{"github.example", 70}, {"gitlab.example", 20}, {"git.example.com", 10}])
+    do: weighted([{"github.com", 70}, {"gitlab.com", 20}, {"codeberg.org", 10}])
 
   defp flavour(namespace, name) do
     cond do
@@ -574,7 +623,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end
 
     machine = machine(kind, repository, days_ago)
-    {task, prompt, issues} = task(kind, repository, issues)
+    {task, prompt, attempt, issues} = task(kind, repository, issues)
     runtime = runtime(kind, machine)
     {outcome, duration} = outcome(kind, runtime, at, now_ms)
 
@@ -586,6 +635,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
        host: pick(machine.hosts),
        task: task,
        prompt: prompt,
+       attempt: attempt,
        runtime: runtime,
        interactive: machine.laptop and runtime == "claude" and chance(0.5),
        outcome: outcome,
@@ -609,7 +659,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp task(:nightly, _repository, issues) do
     {name, prompt} = @nightly
-    {name, prompt, issues}
+    {name, prompt, nil, issues}
   end
 
   defp task(_kind, nil, issues) do
@@ -620,9 +670,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
            "tidy up the scratch branch",
            "explain this stack trace",
            "what changed since Friday?"
-         ]), issues},
+         ]), nil, issues},
       else:
-        {"scratch", "Try the new lint rules on this checkout and tell me what breaks.", issues}
+        {"scratch", "Try the new lint rules on this checkout and tell me what breaks.", nil,
+         issues}
   end
 
   defp task(_kind, repository, issues) do
@@ -630,21 +681,30 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     cond do
       chance(0.12) ->
-        {nil, "Look at #{pick(@issues)} and tell me where to start.", issues}
+        {nil, "Look at #{pick(@issues)} and tell me where to start.", nil, issues}
 
       chance(0.17) ->
-        {name, prompt} = pick(@campaigns)
-        {name, prompt, issues}
+        {name, _title, prompt} = pick(@campaigns)
+        {name, prompt, nil, issues}
 
       true ->
-        # Mostly the next issue; one in three is another attempt at the last one.
-        number = Map.fetch!(issues, key)
-        number = if chance(0.33), do: number, else: number + between(1, 6)
+        # Mostly the next issue; one in three is another attempt at the last one. One issue
+        # in nine is a review of its pull request instead.
+        last = Map.fetch!(issues, key)
+        number = if chance(0.33), do: last, else: last + between(1, 6)
         title = Enum.at(@issues, rem(number, length(@issues)))
+        attempt = if number == last, do: Map.get(issues, {:attempt, key}, 1) + 1, else: 1
+        issues = issues |> Map.put(key, number) |> Map.put({:attempt, key}, attempt)
 
-        {"issue-#{number}",
-         "Fix issue ##{number}: #{title}. Keep the existing tests passing and add one for the fix.",
-         Map.put(issues, key, number)}
+        if rem(number, 9) == 0 do
+          {"review-#{pull_request(number)}",
+           "Review pull request ##{pull_request(number)} for issue ##{number}: #{title}. Comment on what to change; change nothing.",
+           nil, issues}
+        else
+          {"issue-#{number}",
+           "Fix issue ##{number}: #{title}. Keep the existing tests passing and add one for the fix.",
+           attempt, issues}
+        end
     end
   end
 
@@ -759,6 +819,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       workspace_id: workspace.id,
       run_id: uuid7(spec.at),
       access_key_id: key.id,
+      node_id: key.node_id,
+      instance_id: instance_id(key.node_id, spec.host),
       state: "pending",
       runner_version: runner_version(spec),
       contract_version: 1,
@@ -825,12 +887,19 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp ends(%{duration: duration}), do: duration
 
-  defp ping(spec),
-    do: %{"runner_version" => runner_version(spec), "events" => ["*"], "contract_version" => 1}
+  defp ping(spec) do
+    %{
+      "runner_version" => runner_version(spec),
+      "events" => ["*"],
+      "contract_version" => 1,
+      "interval_seconds" => 30
+    }
+  end
 
   defp started(spec) do
     {command, args} = command(spec)
     repository = spec.repository
+    about = about(spec)
 
     labels =
       %{
@@ -853,6 +922,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "host" => spec.host,
       "labels" => labels
     }
+    |> put_if(about, "about", about)
     |> put_if(spec.machine.wall, "wall", spec.machine.wall)
     |> put_if(spec.machine.wall, "image", image(spec))
     |> put_if(spec.interactive, "terminal", %{
@@ -860,6 +930,68 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "rows" => pick([40, 48, 56])
     })
   end
+
+  # What the run says it is about, as a caller would: an issue's ticket and the pull
+  # request that fixes it, a review of a pull request, a campaign, the nightly audit. A run
+  # at a prompt of its own says nothing. Every host is on example.com.
+  defp about(%{task: "nightly-audit"}) do
+    %{"kind" => "Audit", "title" => "Nightly audit", "details" => %{"schedule" => "0 2 * * *"}}
+  end
+
+  defp about(%{task: "issue-" <> number} = spec) do
+    number = String.to_integer(number)
+    issue = Enum.at(@issues, rem(number, length(@issues)))
+
+    # One issue in eleven came from an incident, which has no page to link to.
+    incident =
+      if rem(number, 11) == 0,
+        do: [%{"type" => "incident", "ref" => "INC-#{div(number, 11)}"}],
+        else: []
+
+    %{
+      "kind" => "Implementation",
+      "title" => "Fix ENG-#{number}: #{issue}",
+      "subjects" =>
+        [
+          %{
+            "type" => "ticket",
+            "ref" => "ENG-#{number}",
+            "url" => "https://tracker.example.com/browse/ENG-#{number}",
+            "title" => upcase_first(issue)
+          },
+          pull_request_subject(spec, pull_request(number))
+        ] ++ incident,
+      "details" => %{"branch" => "qory/eng-#{number}", "attempt" => spec.attempt}
+    }
+  end
+
+  defp about(%{task: "review-" <> number} = spec) do
+    %{
+      "kind" => "Review",
+      "title" => "Review pull request ##{number}",
+      "subjects" => [pull_request_subject(spec, String.to_integer(number))]
+    }
+  end
+
+  defp about(%{task: task}) do
+    case List.keyfind(@campaigns, task, 0) do
+      {_task, title, _prompt} -> %{"kind" => "Maintenance", "title" => title}
+      nil -> nil
+    end
+  end
+
+  # The pull request that fixes an issue.
+  defp pull_request(number), do: number + 395
+
+  defp pull_request_subject(spec, number) do
+    %{
+      "type" => "pull request",
+      "ref" => "##{number}",
+      "url" => "https://git.example.com/#{spec.repository.path}/pull/#{number}"
+    }
+  end
+
+  defp upcase_first(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
 
   defp trigger(%{machine: %{key: "nightly"}}), do: "schedule"
   defp trigger(%{machine: %{laptop: true}}), do: nil
@@ -935,7 +1067,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # The workspace observed until fifty days ago and enforces since; a few repositories
   # keep a mode of their own.
-  defp mode(%{repository: %{path: "acme/shop", system: "git.example.com"}}), do: "observe"
+  defp mode(%{repository: %{path: "acme/shop", system: "codeberg.org"}}), do: "observe"
   defp mode(%{repository: %{path: "growth/" <> _}}), do: "observe"
   defp mode(%{days_ago: days_ago}) when days_ago > 50, do: "observe"
   defp mode(_spec), do: "enforce"
@@ -1384,7 +1516,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp install_command(spec, host) do
     case flavour_of(spec) do
       "node" -> "npm install @acme/ui-steps --registry https://#{host}"
-      "go" -> "go get github.example/acme/money@v1.9.0"
+      "go" -> "go get github.com/acme/money@v1.9.0"
       "python" -> "pip install --index-url https://#{host}/simple polars==1.9"
       "rust" -> "cargo add serde_json"
       "terraform" -> "terraform init -upgrade"
@@ -1394,7 +1526,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # The fetch every run starts its work with: the forge, and the language's registries.
   defp fetch(acc, at, spec, mode) do
-    forge = (spec.repository && spec.repository.system) || "github.example"
+    forge = (spec.repository && spec.repository.system) || "github.com"
 
     acc
     |> egress(at, spec, mode, forge, 443)
@@ -1561,7 +1693,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp test_text("go", names, failing, dir) do
     Enum.map_join(names, fn name ->
-      package = "github.example/acme/#{dir}/internal/#{name |> String.split() |> hd()}"
+      package = "github.com/acme/#{dir}/internal/#{name |> String.split() |> hd()}"
 
       if name == failing,
         do:
@@ -1616,8 +1748,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ## After the writing
 
   # What the record implies beyond the runs: the lost ones found, some closed by a member,
-  # the repositories dated by their first run, the keys by their last delivery; one key
-  # rotated and the legacy one revoked.
+  # the repositories dated by their first run, the keys by their last delivery, the hosts
+  # recorded as instances of their nodes; a second key added to ci-fleet, as when a key is
+  # replaced, and the legacy machine's key revoked.
   defp settle(ctx, plan) do
     %Scope{workspace: workspace} = scope = ctx.scope
     Liveness.check(DateTime.utc_now())
@@ -1678,10 +1811,64 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end
     end
 
-    {:ok, _key, _secret} = AccessKeys.rotate_access_key(scope, Map.fetch!(ctx.keys, "ci-fleet"))
+    instances(workspace)
+
+    # A second key beside ci-fleet's, once: a pool holds two keys at most.
+    fleet = Map.fetch!(ctx.keys, "ci-fleet")
+
+    if length(Enum.reject(AccessKeys.list_for_node(scope, fleet.node), & &1.revoked_at)) < 2,
+      do: add_key!(scope, fleet.node, "ci-fleet-next")
+
     {:ok, _key} = AccessKeys.revoke_access_key(scope, Map.fetch!(ctx.keys, "legacy-ci"))
 
-    Mix.shell().info("#{closed} silent runs closed; ci-fleet rotated, legacy-ci revoked")
+    Mix.shell().info(
+      "#{closed} silent runs closed; ci-fleet has a second key, legacy-ci's is revoked"
+    )
+  end
+
+  # Each host a run named, an instance of the run's node: first and last seen at the
+  # node's first and last run from it, as the receiver records the instances it hears
+  # from. A host seen again in a later history keeps its first sighting.
+  defp instances(workspace) do
+    rows =
+      Repo.all(
+        from r in Run,
+          where: r.workspace_id == ^workspace.id and not is_nil(r.node_id),
+          where: not is_nil(r.instance_id) and not is_nil(r.host),
+          group_by: [r.node_id, r.instance_id, r.host],
+          select: %{
+            node_id: r.node_id,
+            instance_id: r.instance_id,
+            name: r.host,
+            first_seen_at: min(r.inserted_at),
+            last_seen_at: max(r.last_event_at),
+            access_key_id:
+              type(
+                fragment("(array_agg(? ORDER BY ? DESC))[1]", r.access_key_id, r.inserted_at),
+                Ecto.UUID
+              ),
+            last_runner_version:
+              fragment("(array_agg(? ORDER BY ? DESC))[1]", r.runner_version, r.inserted_at)
+          }
+      )
+
+    now = DateTime.utc_now()
+
+    entries =
+      for row <- rows do
+        Map.merge(row, %{
+          id: Ecto.UUID.generate(),
+          organisation_id: workspace.organisation_id,
+          workspace_id: workspace.id,
+          last_seen_at: row.last_seen_at || now,
+          last_contract_version: 1
+        })
+      end
+
+    Repo.insert_all(Instance, entries,
+      on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_runner_version]},
+      conflict_target: [:node_id, :instance_id]
+    )
   end
 
   # The owner, and the people who joined, as they would close a run from its page.

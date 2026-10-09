@@ -13,16 +13,16 @@ defmodule Apiary.Policy.Resolution do
   1. **Precedence.** A rule of the level above the workspace, where the edition keeps one
      (`Apiary.Policy.Above`, source `:organisation`), then a locked rule of the workspace,
      then the target's rule, then an unlocked rule of the workspace. Rules meet on the
-     same host string (or the same credential name), and the one that wins decides the
-     host whole: action and paths. The level above is not one rank: its **deny** is above
-     everything (nothing below allows the host), and its **allow** reaches every workspace
-     but may be narrowed: a lower deny on the same host, or a lower `*.` deny that covers
-     it, beats it; against lower allows on the same host it holds, paths included, so its
-     allow is never widened. An allow of the workspace or of the target is struck without
-     a winner (`Apiary.Policy.Entry`'s `reason: :only_above_allows`) where the level
-     above allows only its own hosts (`own_allows` off); denies and credentials still
-     count. Where it requires `enforce` (`floor`), the mode in force is `enforce` whatever
-     the workspace or the target set, `mode_source: :organisation`.
+     same host string, and the one that wins decides the host whole: action and paths.
+     The level above is not one rank: its **deny** is above everything (nothing below
+     allows the host), and its **allow** reaches every workspace but may be narrowed: a
+     lower deny on the same host, or a lower `*.` deny that covers it, beats it; against
+     lower allows on the same host it holds, paths included, so its allow is never
+     widened. An allow of the workspace or of the target is struck without a winner
+     (`Apiary.Policy.Entry`'s `reason: :only_above_allows`) where the level above allows
+     only its own hosts (`own_allows` off); denies still count. Where it requires
+     `enforce` (`floor`), the mode in force is `enforce` whatever the workspace or the
+     target set, `mode_source: :organisation`.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
      `api.example` and `*.eu.example`), unless the allow has the higher precedence. The
      runner would deny those hosts by the deny anyway, deny being decided first; they are
@@ -46,13 +46,12 @@ defmodule Apiary.Policy.Resolution do
      rule below it.
   5. A host held to paths is rendered in `allow` and in `paths`: the runner's proxy decides
      the connection by `deny`, then by `allow`, and only then the request by `paths`
-     (`docs/contract-assumptions.md`). A denied host is never reached, so its paths and a
-     credential for it never apply.
+     (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
+     apply.
 
   `allow` and `deny` are sorted with names before `*.` suffixes, each alphabetically, so
-  the rule a runner reports for a connection is the most exact one; `paths` and
-  `credentials` are sorted by host and by name. The same rules always give the same
-  effective policy.
+  the rule a runner reports for a connection is the most exact one; `paths` is sorted by
+  host. The same rules always give the same effective policy.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -92,6 +91,8 @@ defmodule Apiary.Policy.Resolution do
         target_id,
         above \\ nil
       ) do
+    above = Above.for_policy(above)
+
     {mode, source} =
       cond do
         match?(%Above{floor: true}, above) -> {"enforce", :organisation}
@@ -107,12 +108,15 @@ defmodule Apiary.Policy.Resolution do
   @doc """
   Resolves the rules. `target_rules` is `[]` for the baseline and for a target
   with no rules of its own; `above` is the level above the workspace, with its rules,
-  or nil where the edition keeps none.
+  or nil where the edition keeps none. A level that carries variables only
+  (`Apiary.Policy.Above`'s `policy: false`) resolves as nil, here and in `resolve_for/6`.
   """
   @spec resolve(String.t(), [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil, Above.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
   def resolve(mode, workspace_rules, target_rules \\ [], target_id \\ nil, above \\ nil)
       when mode in ["observe", "enforce"] do
+    above = Above.for_policy(above)
+
     entries =
       (Enum.map(above_rules(above), &entry(&1, :organisation)) ++
          Enum.map(workspace_rules, &entry(&1, :workspace)) ++
@@ -143,8 +147,6 @@ defmodule Apiary.Policy.Resolution do
       action: String.to_existing_atom(rule.action),
       host: rule.host,
       paths: rule.paths,
-      name: rule.name,
-      argument: rule.argument,
       source: source,
       locked: source == :workspace and rule.locked
     }
@@ -180,10 +182,11 @@ defmodule Apiary.Policy.Resolution do
 
   defp only_above_allows(entries, _above), do: entries
 
-  # Rules that meet on the same host or name: the highest precedence decides it whole.
+  # Rules that meet on the same host: the highest precedence decides it whole.
   defp same_subject(entries) do
-    (in_force(entries, :host) ++ in_force(entries, :credential))
-    |> Enum.group_by(fn {_index, entry} -> {entry.kind, entry.host || entry.name} end)
+    entries
+    |> in_force(:host)
+    |> Enum.group_by(fn {_index, entry} -> entry.host end)
     |> Enum.reduce(entries, fn {_subject, group}, entries ->
       {winner, _entry} = winner(group)
 
@@ -508,13 +511,6 @@ defmodule Apiary.Policy.Resolution do
         Enum.any?(hosts, &(&1.host != deny.host and Grammar.covers?(deny.host, &1.host)))
       end)
 
-    credentials =
-      for {_index, %{action: :allow} = entry} <- in_force(entries, :credential) do
-        if entry.argument,
-          do: %{name: entry.name, argument: entry.argument},
-          else: %{name: entry.name}
-      end
-
     %Effective{
       mode: mode,
       target_id: target_id,
@@ -522,9 +518,7 @@ defmodule Apiary.Policy.Resolution do
       entries:
         entries
         |> Map.values()
-        |> Enum.sort_by(
-          &{&1.kind != :host, sort_key(&1.host || &1.name), source_order(&1.source)}
-        ),
+        |> Enum.sort_by(&{sort_key(&1.host), source_order(&1.source)}),
       allow: hosts |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
       deny: said |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
       paths:
@@ -532,8 +526,7 @@ defmodule Apiary.Policy.Resolution do
           %{paths: paths} = entry when is_list(paths) <- hosts,
           into: %{},
           do: {entry.host, Enum.sort(Enum.uniq(paths))}
-        ),
-      credentials: Enum.sort_by(credentials, & &1.name)
+        )
     }
   end
 

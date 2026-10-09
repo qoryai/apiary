@@ -2,9 +2,12 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   @moduledoc """
   The run configuration endpoint of the server contract: a signed
   `GET /v1/run-configuration?<label>=<value>&…`, reached only through
-  `ApiaryWeb.Contract.SignedRequest`, as discovery is. Every query parameter is one of the
-  run's labels, and the runner sends every label of the run. The workspace's domain
-  (`Apiary.Lingo.Domain`) says which of them name the target.
+  `ApiaryWeb.Contract.SignedRequest`, as discovery is, which verifies the request, refuses
+  what the contract refuses before the configuration (the key's rate limit, a contract
+  revision not served, a stale timestamp) and signs the
+  answer. Every query parameter is one of the run's labels, and the runner sends every
+  label of the run. The workspace's domain (`Apiary.Lingo.Domain`) says which of them name
+  the target.
 
   The answer is `200`, `application/json`, the bytes as they were stored when the policy
   was rendered (never rendered again for a request, so the digest is of what is sent),
@@ -15,10 +18,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
 
   A workspace nobody has given a policy (`Apiary.Policy.managed?/1`) serves none: `404`
   `{"error":"not_found"}`, and nothing is rendered. Discovery names no `run` section for
-  such a workspace, so a runner does not ask. A key is limited here as on the events
-  endpoint, from the same bucket: `429` with `Retry-After`. After that, as on the events
-  endpoint, a request whose `X-Qory-Contract-Version` names no revision served is `400`
-  (`ApiaryWeb.Contract.ContractVersion`), and nothing is read.
+  such a workspace, so a runner does not ask.
 
   Never a `304`: to a runner anything but `200` is no run, so `If-None-Match` is not
   read. A parameter sent as anything but a string, or longer than a label may be, names
@@ -30,33 +30,17 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   use ApiaryWeb.Features, :security
 
   alias Apiary.Policy.Serving
-  alias Apiary.Runs.RateLimit
-  alias ApiaryWeb.Contract.{Configuration, ContractVersion}
+  alias ApiaryWeb.Contract.Configuration
 
   def show(conn, _params) do
-    with :ok <- RateLimit.check(conn.assigns.access_key.id),
-         {:ok, _version} <- ContractVersion.fetch(conn) do
-      serve(conn)
-    else
-      {:error, seconds} ->
-        conn
-        |> put_resp_header("retry-after", Integer.to_string(seconds))
-        |> put_status(429)
-        |> json(%{error: "rate_limited"})
+    access_key = conn.assigns.access_key
 
-      :error ->
-        ContractVersion.refuse(conn)
-    end
-  end
-
-  defp serve(conn) do
-    case Serving.fetch(conn.assigns.access_key, conn.query_params) do
+    case Serving.fetch(access_key, conn.query_params) do
       {:ok, configuration} ->
         conn
         |> put_resp_header("x-qory-run-configuration", configuration.digest)
         |> put_resp_header("etag", ~s("#{configuration.digest}"))
-        |> put_resp_header("x-qory-configuration", Configuration.digest(true))
-        |> put_resp_header("cache-control", "no-store")
+        |> put_resp_header("x-qory-configuration", Configuration.digest(access_key.node, true))
         |> put_resp_content_type("application/json")
         |> send_resp(200, configuration.document)
 

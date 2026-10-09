@@ -45,10 +45,10 @@ terminated by a reverse proxy in front of it.
 The console's pages are live over a WebSocket: let the proxy pass WebSocket upgrades
 through. Without them the pages fall back to long polling.
 
-Links in emails, the `server` block the console shows for a new access key and the URLs in
-the discovery document are all built from `PUBLIC_URL`, never from the request's `Host`
-header. A `PUBLIC_URL` that is not the address runners and people use gives them links that
-do not work.
+Links in emails, the runner file lines and the command the console shows to connect a
+machine, and the URLs in the discovery document are all built from `PUBLIC_URL`, never
+from the request's `Host` header. A `PUBLIC_URL` that is not the address runners and
+people use gives them links that do not work.
 
 The audit trail records the address each change came from. Behind a proxy that is the
 proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
@@ -136,7 +136,14 @@ For example: ecto://USER:PASS@HOST/DATABASE
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `CLOAK_KEY` | required | Encrypts access key secrets at rest. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or every stored secret becomes unreadable. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to runners with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the runner contract's published fixture seeds and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+<!-- feature: secrets -->
+
+`APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
+derived from it: it must never change once one exists, and losing it loses every stored
+value, for good.
+<!-- /feature -->
 
 ```text
 environment variable SECRET_KEY_BASE is missing.
@@ -144,13 +151,38 @@ You can generate one by calling: mix phx.gen.secret
 ```
 
 ```text
-environment variable CLOAK_KEY is missing.
+environment variable APIARY_ENCRYPTION_SECRET is missing.
 It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
 ```
 
 ```text
-environment variable CLOAK_KEY is not 32 bytes in base64 (44 characters).
+environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
 Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is missing.
+It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
+Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET.
+It is a secret of its own, generated apart. Generate one with: openssl rand -base64 32
+```
+
+```text
+environment variable APIARY_SIGNING_SECRET is the development or test seed this repository publishes.
+Generate one with: openssl rand -base64 32
+```
+
+```text
+APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, so anyone could sign as this instance. Generate one with: openssl rand -base64 32
 ```
 
 ### Public address and port
@@ -252,12 +284,15 @@ QORY_FEATURES=all-security
 The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
 the upgrade; a list leaves it off until you add it to the list.
 
+An opt-in feature is on only when a list names it: `all`, `all-…`, and a value that is not
+set or empty leave it off, with or without an upgrade.
+
 The value is read once, at boot. A name that is not a feature, or a feature without one it
 needs, stops the boot:
 
 ```text
 environment variable QORY_FEATURES is not valid: unknown feature obsevability; the Install guide at /docs lists the features.
-Leave it unset or set it to all for every feature, or name them, for example:
+Leave it unset or set it to all for the default features, or name them, for example:
 QORY_FEATURES=observability
 ```
 
@@ -273,8 +308,8 @@ whole database schema whatever its features, so nothing is migrated.
 | `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
-its owners and admins read in its settings, under Audit log, `/:org/settings/audit-log`: who made it (a person, an access
-key, or Qory itself for its own scheduled work), when, from which address and client, and
+its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access
+key, or Qory Apiary itself for its own scheduled work), when, from which address and client, and
 what it changed. An entry never holds a secret, nor a person's name or email address: it
 names a person by their account, and the page looks the address up when it shows it.
 <!-- feature: security -->
@@ -299,6 +334,44 @@ An `AUDIT_ADDRESS_RETENTION_DAYS` longer than `AUDIT_RETENTION_DAYS` stops the b
 since an address is not kept longer than its entry. The values are read at boot, so a
 change takes a restart. A shorter period deletes or clears what it no longer keeps at the
 next day's job; setting it longer again does not bring it back.
+
+<!-- feature: secrets -->
+### Integrations
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `INTEGRATION_URL_SOURCES` | `true` | Whether an integration may be added from an https address of its `description.json`: `true`, `1` or `yes`, or `false`, `0` or `no`. Not set, or empty, is `true`. Any other value stops the boot. |
+
+When a workspace adds an integration from a release, Qory Apiary reads the release's
+`description.json` and `checksums.txt` from the forge or the address it names. A release
+is on `github.com`, `gitlab.com` or `codeberg.org`, found by the repository's path and
+the version at the download address that forge gives it (on GitLab, the API's download
+route, `/api/v4/projects/…/releases/…/downloads/…`, which redirects to where the
+release's link points), or at an https address of its `description.json`. A repository
+on any other host is refused: self-hosted forges are not supported.
+
+Qory Apiary connects only to public addresses: it resolves the host, refuses the fetch when any
+address is private, loopback, link-local or a cloud metadata address, and connects to the
+address it checked, each redirect checked again, at most five, within 15 seconds and
+1 MiB. This holds for every host, and no setting allows a private address. A fetch that
+fails says only that it failed; the reason is in the log, with the address it was
+fetching.
+
+An address of a `description.json` may be on any host, so an instance open to people you
+do not know, such as a cloud service, sets `INTEGRATION_URL_SOURCES=false`: integrations
+are then added from forges' releases alone. A workspace that asks for one from an address
+is told so, and a release already asked for from an address is not fetched, nor added.
+Even so, Qory Apiary follows a forge release's download links where they lead, to any public
+https host: on GitLab a release's links, and on Codeberg its attachments, may be addresses
+the release's author chose.
+
+Qory Apiary fetches every release without credentials, as anyone could: no request carries a
+token, so private releases are not supported.
+
+The value is read at boot, so a change takes a restart. A release asked for from an
+address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
+`integration_source_refused`, and a release found before is not added.
+<!-- /feature -->
 
 ### Sign-up and invitations
 
@@ -401,15 +474,15 @@ adding it to the organisation when it is not there yet; the account must exist, 
 person signs up with an invitation first. The second makes an instance admin a member of
 the organisation: they stay in it, where an owner removes them if they should leave. It
 refuses the last instance admin: grant another first. Each is an entry in the
-organisation's activity, by Qory rather than by a person.
+organisation's activity, by Qory Apiary rather than by a person.
 
 **Suspending** a member pauses and removes nothing, and **Activate** undoes it; each is an
 entry in the activity. On the organisation's **Members** page an owner suspends an admin or
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
-open pages follow. **The access keys they created keep working**: an access key belongs to
-its workspace, not to a person, so revoke them under **Access keys** if they should stop;
-anyone who reaches the workspace may.
+open pages follow. **The access keys they added keep working**: an access key belongs to
+its node, not to a person, so an owner or an admin revokes it on the node's **Access key**
+tab if it should stop.
 
 The last owner of the organisation who may act is not suspended, made an admin or a member,
 or removed. Should every instance admin be locked out, `grant_instance_admin` is the way
@@ -427,7 +500,8 @@ boot with an error that does not name the variable.
 ## Backups
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
-two values to keep beside it are `CLOAK_KEY` and `SECRET_KEY_BASE`.
+three values to keep beside it are `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
+`SECRET_KEY_BASE`.
 [Backup and restore](backup.md) has the commands for the compose installation and for an
 external Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so

@@ -2,7 +2,7 @@ defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
   The components of the workspace overview, each a level of its own look (`docs/ui.md`,
   Lists): the summary (the largest numbers on the page), then blocks, each one box with a
-  band and rows or lines and nothing boxed inside it: Needs attention, the fourteen-day
+  band and rows or lines and nothing boxed inside it: To review, the fourteen-day
   chart, the active targets and Guard; and the empty workspace's one box.
 
   Every number here is a count the workspace already keeps: `runs` columns the projector
@@ -23,14 +23,24 @@ defmodule ApiaryWeb.OverviewComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [button: 1, icon: 1, listening: 1, sparkline: 1, steps: 1]
+    only: [
+      button: 1,
+      code_block: 1,
+      icon: 1,
+      inline_confirm: 1,
+      listening: 1,
+      sparkline: 1,
+      steps: 1
+    ]
 
   import ApiaryWeb.RunComponents,
     only: [
       beat: 1,
       format_seconds: 1,
+      given_title: 1,
       heard_at: 1,
       relative_time: 1,
+      rule_panel: 1,
       short_id: 1,
       state_label: 1,
       target_name: 1,
@@ -214,14 +224,15 @@ defmodule ApiaryWeb.OverviewComponents do
 
   def cost_text(_cost), do: gettext("n/a")
 
-  ## Needs attention
+  ## To review
 
   @doc """
   The list of acts: one line an item, its mark, its subject (the only strong text), where
   it is, the reason in a few words, when, and the one act that settles it. `items` is
   ordered and bounded by the caller; an empty list renders nothing at all: when there is
   nothing to do the block is absent. `shared` is the target paths on more than one
-  system, whose system is shown.
+  system, whose system is shown. A denied destination's Allow opens its panel
+  (`RunComponents.rule_panel/1`, the page's `panel`) inside the item, under its subject.
   """
   attr :id, :string, required: true
   attr :items, :list, required: true
@@ -236,18 +247,26 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :can_set_mode?, :boolean, default: false
   attr :now, :any, required: true
 
+  attr :confirming, :string,
+    default: nil,
+    doc: "the id of the item whose act asks to confirm in place (a lost run's Close)"
+
+  attr :panel, :map,
+    default: nil,
+    doc: "the page's open panel of an item's Allow (`RunComponents.rule_panel/1`), by `item_id`"
+
   def attention(assigns) do
     ~H"""
     <section :if={@items != []} id={@id} class="q-blk q-att" aria-labelledby={"#{@id}-h"}>
       <div class="q-band">
-        <h2 id={"#{@id}-h"}>{gettext("Needs attention")}</h2>
+        <h2 id={"#{@id}-h"}>{gettext("To review")}</h2>
         <span id={"#{@id}-n"} class="q-band-n">{Format.number(@count)}</span>
       </div>
       <ul
         id={"#{@id}-list"}
         class="q-rows"
         aria-label={
-          ngettext("%{number} item needs attention", "%{number} items need attention", @count,
+          ngettext("%{number} item to review", "%{number} items to review", @count,
             number: Format.number(@count)
           )
         }
@@ -259,6 +278,8 @@ defmodule ApiaryWeb.OverviewComponents do
           shared={@shared}
           can_set_mode?={@can_set_mode?}
           now={@now}
+          confirming={@confirming == item.id}
+          panel={@panel && @panel.item_id == item.id && @panel}
         />
       </ul>
       <.link
@@ -283,6 +304,37 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, required: true
   attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
+  attr :confirming, :boolean, default: false
+
+  attr :panel, :any, default: nil
+
+  # A lost run's Close asks in place: the row becomes the question, its act and Cancel.
+  defp attention_item(%{confirming: true, item: %{kind: :lost}} = assigns) do
+    ~H"""
+    <li id={@item.id} class="q-ar q-confirming" data-kind={@item.kind}>
+      <.inline_confirm
+        id="close-run"
+        question={rich_gettext("Close %{run}?", run: row_name(@item.run))}
+        cancel={JS.push("close_cancel")}
+      >
+        {gettext(
+          "The workspace stops taking events for it: the runner is told the run is gone at its next delivery. A close is final."
+        )}
+        <:action>
+          <.button
+            id="close-confirm"
+            variant="danger"
+            size="xs"
+            phx-click="close_confirm"
+            loading_text={gettext("Closing")}
+          >
+            {gettext("Yes, close")}
+          </.button>
+        </:action>
+      </.inline_confirm>
+    </li>
+    """
+  end
 
   defp attention_item(assigns) do
     ~H"""
@@ -308,9 +360,17 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-check-micro" class="size-3" />{@item.resolved.done}
           </span>
         <% else %>
-          <.attention_act scope={@scope} item={@item} can_set_mode?={@can_set_mode?} />
+          <.attention_act
+            scope={@scope}
+            item={@item}
+            shared={@shared}
+            can_set_mode?={@can_set_mode?}
+          />
         <% end %>
       </span>
+      <div :if={@panel && !@item.resolved} id={"#{@item.id}-panel"} class="q-ar-panel">
+        <.rule_panel panel={@panel} />
+      </div>
     </li>
     """
   end
@@ -414,9 +474,10 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-ar-t"
-      title={run_title(@item.run)}
+      title={row_title(@item.run)}
     >
-      {run_title(@item.run)}
+      <bdi :if={given_title(@item.run)}>{given_title(@item.run)}</bdi>
+      {if !given_title(@item.run), do: row_title(@item.run)}
     </.link>
     <span class="q-ar-id">{short_id(@item.run.run_id)}</span>
     """
@@ -436,7 +497,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_subject(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <span class="q-ar-t">{gettext("Qory serves no policy yet")}</span>
+    <span class="q-ar-t">{gettext("Qory Apiary serves no policy yet")}</span>
     """
   end
 
@@ -497,7 +558,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_where(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
-    {gettext("Access keys")}
+    {@item.key.node.name}
     """
   end
 
@@ -656,7 +717,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp attention_when(%{item: %{kind: :idle_key, key: key}} = assigns) do
-    assigns = assign(assigns, :at, key.last_used_at || key.inserted_at)
+    assigns = assign(assigns, :at, key.last_used_at || key.received_at || key.inserted_at)
 
     ~H"""
     <span class="tabular-nums">{Format.day(@at)}</span>
@@ -667,6 +728,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :scope, :map, required: true
   attr :item, :map, required: true
+  attr :shared, :any, default: MapSet.new()
   attr :can_set_mode?, :boolean, required: true
 
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
@@ -755,11 +817,11 @@ defmodule ApiaryWeb.OverviewComponents do
       aria-label={
         gettext("Allow %{host} for %{target}",
           host: @item.host,
-          target: "#{@target.system}/#{@target.path}"
+          target: ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)
         )
       }
-      aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
+      aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "target"})}
     >
       {gettext("Allow here")}
@@ -774,8 +836,8 @@ defmodule ApiaryWeb.OverviewComponents do
       type="button"
       class="q-act"
       aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
-      aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
+      aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
     >
       {gettext("Allow")}
@@ -790,8 +852,8 @@ defmodule ApiaryWeb.OverviewComponents do
       type="button"
       class="q-act"
       aria-label={gettext("Allow %{host}, choose a scope", host: @item.host)}
-      aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
+      aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "choose"})}
     >
       {gettext("Allow")}
@@ -806,7 +868,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
-      aria-label={gettext("Close %{run}", run: run_title(@item.run))}
+      aria-label={gettext("Close %{run}", run: row_title(@item.run))}
       phx-click={JS.push("close_ask", value: %{id: @item.id})}
     >
       {gettext("Close")}
@@ -816,7 +878,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
-      aria-label={gettext("Open %{run}", run: run_title(@item.run))}
+      aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
       {gettext("Open")}
     </.link>
@@ -830,7 +892,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       navigate={@item.compare}
       class="q-act"
-      aria-label={gettext("What changed for %{run}", run: run_title(@item.run))}
+      aria-label={gettext("What changed for %{run}", run: row_title(@item.run))}
     >
       {gettext("What changed")}
     </.link>
@@ -843,7 +905,7 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
-      aria-label={gettext("Open %{run}", run: run_title(@item.run))}
+      aria-label={gettext("Open %{run}", run: row_title(@item.run))}
     >
       {gettext("Open")}
     </.link>
@@ -897,7 +959,9 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/#{@item.key.id}/revoke"}
+      navigate={
+        ~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@item.key.node.public_id}/access-key/keys/#{@item.key.key_id}/revoke"
+      }
       class="q-act"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
@@ -966,15 +1030,27 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
-  @doc "The task of a run, else its command line, else its short id: what a row calls it."
-  def run_title(%{task: task}) when is_binary(task) and task != "", do: task
+  @doc """
+  The title a run gave (`ApiaryWeb.RunComponents.given_title/1`), else its command line,
+  else its short id: what a row calls it.
+  """
+  def row_title(run), do: given_title(run) || command_title(run)
 
-  def run_title(%{command: command, args: args}) when is_binary(command) do
+  # `row_title/1` in a sentence: the title a run gave isolated (`{:bdi, title}`), so a
+  # bidirectional character in it reorders nothing of the sentence.
+  defp row_name(run) do
+    case given_title(run) do
+      nil -> command_title(run)
+      title -> {:bdi, title}
+    end
+  end
+
+  defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")
     if String.length(line) > 40, do: String.slice(line, 0, 39) <> "…", else: line
   end
 
-  def run_title(%{run_id: run_id}), do: short_id(run_id)
+  defp command_title(%{run_id: run_id}), do: short_id(run_id)
 
   ## Active targets
 
@@ -1031,7 +1107,9 @@ defmodule ApiaryWeb.OverviewComponents do
       <ul :if={@rows not in [nil, []]} id={"#{@id}-list"} class="q-rows">
         <li :for={row <- @rows} id={"active-#{row.id}"}>
           <.link
-            navigate={ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [])}
+            navigate={
+              ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [], row.shared?)
+            }
             class="q-rr"
           >
             <span class="q-rr-p">
@@ -1480,10 +1558,10 @@ defmodule ApiaryWeb.OverviewComponents do
           <span class="q-gr-v" id="overview-retention-setting">{retention_value(@workspace)}</span>
           <.link
             id="overview-retention-settings"
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/retention"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/runs"}
             class="q-do"
           >
-            {gettext("Settings")}
+            {gettext("Change")}
           </.link>
           <span :if={is_nil(@retention)} class="skeleton q-skel-line q-gr-d w-3/4"></span>
           <span :if={@retention} class="q-gr-d" id="overview-retention-last">
@@ -1553,16 +1631,16 @@ defmodule ApiaryWeb.OverviewComponents do
   # Who sets a mode of their own: none, the one by name, or how many and which modes.
   defp own_detail(_scope, %{own: []}), do: gettext("Every target follows the workspace's mode.")
 
-  defp own_detail(scope, %{own: [%{target: target, own_mode: "observe"}]}),
+  defp own_detail(scope, %{own: [%{target: target, own_mode: "observe"}]} = policy),
     do:
       rich_gettext("%{target} observes; the rest follow the workspace.",
-        target: own_link(scope, target)
+        target: own_link(scope, target, policy[:shared])
       )
 
-  defp own_detail(scope, %{own: [%{target: target}]}),
+  defp own_detail(scope, %{own: [%{target: target}]} = policy),
     do:
       rich_gettext("%{target} enforces; the rest follow the workspace.",
-        target: own_link(scope, target)
+        target: own_link(scope, target, policy[:shared])
       )
 
   defp own_detail(_scope, %{own: own}) do
@@ -1578,16 +1656,24 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  defp own_link(scope, target) do
-    assigns = %{scope: scope, target: target}
+  # The target's Policy tab, the target named as it is addressed: its system in its name
+  # and its address only where its path is `shared` (the policy's read says).
+  defp own_link(scope, target, shared) do
+    assigns = %{scope: scope, target: target, shared: shared}
 
     ~H"""
     <.link
       navigate={
-        ApiaryWeb.TargetComponents.target_path(@scope, @target.system, @target.path, ["policy"])
+        ApiaryWeb.TargetComponents.target_path(
+          @scope,
+          @target.system,
+          @target.path,
+          ["policy"],
+          @shared
+        )
       }
       class="q-mono hover:underline"
-    >{@target.path}</.link>
+    >{ApiaryWeb.TargetComponents.target_label(@target.system, @target.path, @shared)}</.link>
     """
   end
 
@@ -1645,15 +1731,24 @@ defmodule ApiaryWeb.OverviewComponents do
   defp not_loaded,
     do:
       gettext(
-        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+        "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
   ## The empty workspace
 
   @doc """
-  The empty workspace's one box, with the state of each step read from the record: step
-  1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the first run.
-  `landed` is the first run while the page is open; the box leaves at the next navigation.
+  The empty workspace's one box, with the state of each step read from the record: step 1
+  ticks on a node or pool, step 2 on a key of one (every key the list holds is active),
+  step 3 on the first run; a key's `last_used_at` changes step 3's words. Step 2,
+  "Connect it", is the two ways a node or pool gets its key: a command run on the machine,
+  or a key generated in the browser. While it is current, it names `target`, the newest
+  node or pool with no active key, and the panel asks a reader who may connect it
+  (`may_key`) how, with the two ways as rows, its kind's own first and primary (a node:
+  Get the command; a pool: Generate a key). Get the command makes the command in place
+  (the caller's `get_command` event): `command`, once got, is shown in the panel, with
+  Copy, until when it works, and that the box waits for the machine. Anyone else reads who
+  connects it. `landed` is the first run while the page is open; the box leaves at the
+  next navigation.
   """
   attr :id, :string, default: "onboarding"
 
@@ -1661,8 +1756,28 @@ defmodule ApiaryWeb.OverviewComponents do
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  attr :keys, :list, required: true, doc: "the active keys"
-  attr :preview, :string, required: true
+  attr :nodes, :integer, required: true, doc: "how many nodes and node pools are in use"
+
+  attr :keys, :list,
+    required: true,
+    doc: "the keys of the workspace's nodes in use, not revoked, each with its node, newest first"
+
+  attr :may_add, :boolean, required: true, doc: "whether the reader may add a node"
+
+  attr :target, :any,
+    default: nil,
+    doc: "the newest node or pool in use that holds no active key, or nil"
+
+  attr :may_key, :boolean,
+    default: false,
+    doc: "whether the reader may connect `target`: add a key and make its enrolment code"
+
+  attr :command, :any,
+    default: nil,
+    doc:
+      "the command got for `target`, shown once: `%{code: fun, expires_at: at}`, the code in a function, or nil"
+
+  attr :server, :string, required: true, doc: "this server's address, for the command"
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
   def onboarding(assigns) do
@@ -1674,12 +1789,19 @@ defmodule ApiaryWeb.OverviewComponents do
     current =
       cond do
         assigns.landed -> 4
-        used -> 3
-        assigns.keys != [] -> 2
+        assigns.keys != [] -> 3
+        assigns.nodes > 0 -> 2
         true -> 1
       end
 
-    assigns = assign(assigns, used: used, current: current, lines: yaml_lines(assigns.preview))
+    assigns =
+      assign(assigns,
+        used: used,
+        current: current,
+        asks: current == 2 and assigns.target != nil and assigns.may_key,
+        ways: key_ways(assigns.target),
+        target_path: target_path(assigns.scope, assigns.target)
+      )
 
     ~H"""
     <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
@@ -1687,47 +1809,73 @@ defmodule ApiaryWeb.OverviewComponents do
         <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
         <p :if={@current == 1} class="q-onb-lead">
           {gettext(
-            "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
+            "Nothing has posted to this workspace yet. A machine posts once it is connected to a node."
           )}
         </p>
         <p :if={@current > 1} class="q-onb-lead">
           {gettext(
-            "The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created."
+            "A node or pool is connected once it has a key. Qory Apiary keeps only the key's public half."
           )}
         </p>
         <.steps current={@current} class="my-5">
-          <:step title={gettext("Create an access key")}>
-            {gettext("Label it after the machine or environment.")}
+          <:step title={gettext("Add a node")}>
+            {gettext("One per machine, or a node pool for short-lived instances that share one key.")}
           </:step>
-          <:step title={gettext("Paste the server block into the runner file")}>
-            {gettext(
-              "The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
+          <:step title={gettext("Connect it")}>
+            {pgettext(
+              "plain",
+              "Run one command on the machine, or generate a key for a CI or another system."
             )}
           </:step>
           <:step title={gettext("See runs here")}>
-            {if @current == 3,
+            {if @used,
               do:
                 gettext("The machine has verified with its key. The first run it starts lands here."),
               else:
                 gettext("From the first post on, every run of that machine lands in this workspace.")}
           </:step>
         </.steps>
+        <div :if={@current == 1 and @may_add} class="flex flex-wrap gap-2">
+          <.button
+            id={"#{@id}-new-node"}
+            variant="primary"
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new"}
+            class="max-[479px]:w-full"
+          >
+            <.icon name="hero-server" class="size-4" /> {gettext("New node")}
+          </.button>
+          <.button
+            id={"#{@id}-new-pool"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/new-pool"}
+            class="max-[479px]:w-full"
+          >
+            <.icon name="hero-server-stack" class="size-4" /> {gettext("New node pool")}
+          </.button>
+        </div>
+        <p :if={@current == 1 and !@may_add} id={"#{@id}-members"} class="text-[13px]/5 text-muted">
+          {gettext("An owner or admin adds nodes and connects them.")}
+        </p>
+        <p :if={@asks} id={"#{@id}-target"} class="text-[13px]/5">
+          <.rich text={
+            rich_gettext("%{node} has no key yet.",
+              node: {:link, @target_path, @target.name, "q-link font-medium"}
+            )
+          } />
+        </p>
+        <p
+          :if={(@current == 2 and @target) && !@may_key}
+          id={"#{@id}-members-key"}
+          class="text-[13px]/5 text-muted"
+        >
+          {gettext("An owner or admin connects %{node}.", node: @target.name)}
+        </p>
         <.button
-          :if={@current == 1}
-          id={"#{@id}-create"}
-          variant="primary"
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
+          :if={@current == 3 or (@current == 2 and !@asks)}
+          id={"#{@id}-nodes"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes"}
           class="max-[479px]:w-full"
         >
-          <.icon name="hero-key" class="size-4" /> {gettext("Create an access key")}
-        </.button>
-        <.button
-          :if={@current in [2, 3]}
-          id={"#{@id}-keys"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
-          class="max-[479px]:w-full"
-        >
-          {gettext("Manage access keys")}
+          {gettext("Go to nodes")}
         </.button>
         <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
@@ -1737,30 +1885,107 @@ defmodule ApiaryWeb.OverviewComponents do
           >{gettext("Open it")}</.link>
         </p>
       </div>
-      <div class="q-onb-paste">
-        <span class="q-onb-lbl">
-          <.rich text={
-            if @current >= 3,
-              do:
-                rich_gettext("What you pasted into %{file}", file: {:m, "~/.config/qory/runner.yaml"}),
-              else:
-                rich_gettext("What you will paste into %{file}",
-                  file: {:m, "~/.config/qory/runner.yaml"}
-                )
-          } />
-        </span>
-        <pre class="q-onb-pre"><code><%= for {key, value} <- @lines do %><span :if={key} class="q-onb-k">{key}</span>{value}{"\n"}<% end %></code></pre>
-        <.listening :if={!@landed}>
-          <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
-          <span :if={@used}>
-            <.rich text={
-              rich_gettext("Listening for the first run. %{key} verified %{when}.",
-                key: {:m, @used.label, "font-mono text-[12.5px]"},
-                when: relative_time(%{__changed__: nil, at: @used.last_used_at})
-              )
-            } />
-          </span>
-        </.listening>
+      <div id={"#{@id}-panel"} class="q-onb-paste">
+        <%= cond do %>
+          <% @current < 2 or (@current == 2 and !@asks) -> %>
+            <span class="q-onb-lbl">{gettext("Two ways to connect a machine")}</span>
+            <div class="grid gap-3 text-[13px]/5">
+              <div class="flex gap-3">
+                <.icon name="hero-command-line" class="mt-0.5 size-4.5 flex-none text-muted" />
+                <p>
+                  <span class="font-medium">{gettext("Connect with a command.")}</span>
+                  {gettext(
+                    "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
+                  )}
+                </p>
+              </div>
+              <div class="flex gap-3">
+                <.icon name="hero-key" class="mt-0.5 size-4.5 flex-none text-muted" />
+                <p>
+                  <span class="font-medium">{gettext("Generate a key in the browser.")}</span>
+                  {pgettext(
+                    "plain",
+                    "For a CI job, a pool, or a machine you can't type on: this page shows the key's secret once, and you copy it into that system."
+                  )}
+                </p>
+              </div>
+              <%!-- Said only to one who may add a node and connect it. --%>
+              <p :if={@may_add} id={"#{@id}-choose"} class="text-muted">
+                {gettext("You choose one for each node, once you have added it.")}
+              </p>
+            </div>
+            <.listening>{gettext("Listening for the first post from a machine.")}</.listening>
+          <% @asks and @command == nil -> %>
+            <span id={"#{@id}-ask"} class="q-onb-lbl">
+              {gettext("How do you want to connect %{node}?", node: @target.name)}
+            </span>
+            <div id={"#{@id}-ways"} class="grid text-[13px]/5">
+              <div
+                :for={{way, index} <- Enum.with_index(@ways)}
+                id={"#{@id}-way-#{way}"}
+                class={["flex items-start gap-3 py-3", index > 0 && "border-t border-line"]}
+              >
+                <.icon name={way_icon(way)} class="mt-0.5 size-4.5 flex-none text-muted" />
+                <div class="grid min-w-0 flex-1 gap-1">
+                  <p class="font-medium">{way_title(way)}</p>
+                  <p class="text-muted">{way_for(way)}</p>
+                </div>
+                <.button
+                  :if={way == :enrol}
+                  id={"#{@id}-enrol"}
+                  variant={if index == 0, do: "primary", else: "default"}
+                  phx-click="get_command"
+                  aria-label={way_label(way, @target.name)}
+                  class="flex-none"
+                >
+                  {way_words(way)}
+                </.button>
+                <.button
+                  :if={way == :generate}
+                  id={"#{@id}-generate"}
+                  variant={if index == 0, do: "primary", else: "default"}
+                  navigate={generate_path(@scope, @target)}
+                  aria-label={way_label(way, @target.name)}
+                  class="flex-none"
+                >
+                  {way_words(way)}
+                </.button>
+              </div>
+            </div>
+            <.listening>{gettext("Listening for the first post from a machine.")}</.listening>
+          <% @asks -> %>
+            <span class="q-onb-lbl">
+              {gettext("What you run on %{node}", node: @target.name)}
+            </span>
+            <ApiaryWeb.NodeComponents.unreachable_server id={"#{@id}-unreachable"} url={@server} />
+            <.code_block
+              id={"#{@id}-command"}
+              code={ApiaryWeb.NodeComponents.enrol_command(@server, @command.code.())}
+              copy_label={gettext("Copy command")}
+              wrap
+            />
+            <p id={"#{@id}-works"} class="text-[13px]/5 text-muted">
+              {gettext("It works once, until %{time}. This is the only time it is shown.",
+                time: Format.time(@command.expires_at)
+              )}
+            </p>
+            <.listening id={"#{@id}-waiting"}>
+              {gettext("Waiting for %{node} to run it.", node: @target.name)}
+            </.listening>
+          <% !@landed -> %>
+            <.listening>
+              <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
+              <span :if={@used}>
+                <.rich text={
+                  rich_gettext("Listening for the first run. %{key} verified %{when}.",
+                    key: {:m, @used.label, "font-mono text-[12.5px]"},
+                    when: relative_time(%{__changed__: nil, at: @used.last_used_at})
+                  )
+                } />
+              </span>
+            </.listening>
+          <% true -> %>
+        <% end %>
       </div>
     </section>
     <p :if={!@landed} class="q-onb-after">
@@ -1771,15 +1996,35 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # The server block, a line at a time: a YAML key in muted, the rest as it is.
-  defp yaml_lines(preview) do
-    for line <- preview |> String.trim_trailing() |> String.split("\n") do
-      case Regex.run(~r/^(\s*[A-Za-z_][\w.-]*:)(.*)$/, line) do
-        [_, key, value] -> {key, value}
-        _ -> {nil, line}
-      end
-    end
-  end
+  # The two ways to connect a node or pool, its kind's way first: a machine runs a
+  # command, a pool's shared key is generated in the browser.
+  defp key_ways(%{kind: :pool}), do: [:generate, :enrol]
+  defp key_ways(_target), do: [:enrol, :generate]
+
+  defp target_path(_scope, nil), do: nil
+
+  defp target_path(scope, target),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key"
+
+  defp generate_path(scope, target),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{target}/access-key/generate"
+
+  defp way_icon(:enrol), do: "hero-command-line"
+  defp way_icon(:generate), do: "hero-key"
+
+  defp way_title(:enrol), do: gettext("Connect with a command")
+  defp way_title(:generate), do: gettext("Generate a key in the browser")
+
+  defp way_for(:enrol), do: gettext("For a laptop or a server you can open a terminal on.")
+
+  defp way_for(:generate),
+    do: gettext("For a CI job, a pool of short-lived machines, or a machine you can't type on.")
+
+  defp way_words(:enrol), do: gettext("Get the command")
+  defp way_words(:generate), do: gettext("Generate a key")
+
+  defp way_label(:enrol, node), do: gettext("Get the command for %{node}", node: node)
+  defp way_label(:generate, node), do: gettext("Generate a key for %{node}", node: node)
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil

@@ -4,7 +4,7 @@
 // ApiaryWeb.JumpController) 150 ms after they stop, and the answer is listed as links in
 // groups: ↑ and ↓ move, Enter opens, Escape and the backdrop close, and focus goes back
 // to where it was. Every word comes from the server; what a runner reported (a path, a
-// task) is written as text, never as markup.
+// title) is written as text, never as markup.
 import {singleKeys} from "./shortcuts"
 const DEBOUNCE = 150
 
@@ -111,7 +111,8 @@ export const Palette = {
         const icon = document.createElement("span")
         icon.className = `${item.icon || "hero-arrow-right-micro"} size-4`
         icon.setAttribute("aria-hidden", "true")
-        const label = document.createElement("span")
+        // A <bdi>: a run's title in it reorders nothing around it.
+        const label = document.createElement("bdi")
         label.className = "q-palette-label"
         label.textContent = item.label
         link.append(icon, label)

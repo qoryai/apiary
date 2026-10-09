@@ -15,16 +15,24 @@ defmodule Apiary.Runs.Ingest do
   with another (its id under a different run, or its sequence under a different
   id) is dropped and counted.
 
-  Nothing of the request's headers but the versions and the run configuration
-  digest is stored, and nothing of an event is logged: the insert of the events
-  is kept out of the query log.
+  **Where a run runs.** A run is created on the node of the key its first batch came
+  with, and the instance id that batch claimed (`Apiary.Nodes.placement/2`), both fixed
+  from then on; each delivery records its instance id too. The first batch of a run that
+  holds its ping is admitted by the node's instance limit (`Apiary.Nodes.admit/4`), in
+  the transaction that creates the run: an instance beyond the limit is
+  `{:error, :instance_limit}` and nothing is stored. A batch that claims no instance id
+  places the run on its key's node with no instance, and is not held to a limit.
+
+  Nothing of the request's headers but the versions, the instance id and the run
+  configuration digest is stored, and nothing of an event is logged: the insert of the
+  events is kept out of the query log.
   """
 
   import Ecto.Query, warn: false
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys}
+  alias Apiary.{Access, AccessKeys, Nodes}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Policy.Serving
@@ -34,6 +42,7 @@ defmodule Apiary.Runs.Ingest do
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @heartbeat "dev.qory.run.heartbeat"
+  @ping "dev.qory.ping"
   @log "dev.qory.run.log"
   @insert_chunk 500
 
@@ -41,12 +50,14 @@ defmodule Apiary.Runs.Ingest do
   What the request said beside its body: `contract_version`, the revision of
   `X-Qory-Contract-Version`, which the runner sends on every request and the events
   endpoint has checked; `delivery_id` (`X-Qory-Delivery`; one is made up when it is
-  absent or not a UUID), `runner_version` and `run_configuration`
-  (`X-Qory-Run-Configuration`), each nil when not sent.
+  absent or not a UUID), `runner_version`, `run_configuration`
+  (`X-Qory-Run-Configuration`) and `instance_id` (`X-Qory-Instance-Id`, as the request
+  verified it), each nil when not sent.
   """
   @type meta :: %{
           required(:contract_version) => pos_integer,
           optional(:delivery_id) => String.t() | nil,
+          optional(:instance_id) => String.t() | nil,
           optional(:runner_version) => String.t() | nil,
           optional(:run_configuration) => String.t() | nil
         }
@@ -61,8 +72,9 @@ defmodule Apiary.Runs.Ingest do
   configuration (nil when that could not be read) and `run_configuration_digest` is
   the digest in force for the run's target, for the answer's headers (nil for a
   workspace that is not managed, and when it could not be read). `{:error, :unavailable}`
-  when the batch could not be stored, and `{:error, :not_found}` when the key may not post
-  (`run.post_events` in `Apiary.Access`).
+  when the batch could not be stored, `{:error, :not_found}` when the key may not post
+  (`run.post_events` in `Apiary.Access`), and `{:error, :instance_limit}` when the batch
+  holds the ping of a new run from an instance its node's limit refuses.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -71,12 +83,12 @@ defmodule Apiary.Runs.Ingest do
   no configuration of its own and the baseline's is read after it.
   """
   @spec ingest(AccessKey.t(), Batch.t(), meta) ::
-          {:ok, map} | {:error, :unavailable | :not_found}
+          {:ok, map} | {:error, :unavailable | :not_found | :instance_limit}
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
-    # A verified key carries its workspace; one that does not is given it here.
-    access_key = Repo.preload(access_key, :workspace)
+    # A verified key carries its workspace and node; one that does not is given them here.
+    access_key = Repo.preload(access_key, [:workspace, :node])
     scope = Scope.for_access_key(access_key)
 
     with :ok <- may_post(scope),
@@ -117,16 +129,38 @@ defmodule Apiary.Runs.Ingest do
   # names the exception's module and nothing else: a Postgres message can
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
-    if Runs.closed?(access_key.workspace_id, batch.subject) do
-      Repo.transact(fn -> {:ok, gone(access_key, batch, meta, delivery_id, now)} end)
-    else
-      Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
+    cond do
+      Runs.closed?(access_key.workspace_id, batch.subject) ->
+        Repo.transact(fn -> {:ok, gone(access_key, batch, meta, delivery_id, now)} end)
+
+      held_to_limit?(access_key, batch, meta) ->
+        Nodes.admit(
+          access_key.node,
+          meta.instance_id,
+          fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end,
+          now
+        )
+
+      true ->
+        Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
     end
   rescue
     exception ->
       Logger.error("a delivery could not be stored: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
   end
+
+  # The instance limit holds the ping of a run the workspace has not seen yet, claimed by
+  # an instance of the key's node: the batch that would create the run.
+  defp held_to_limit?(%AccessKey{node: %Nodes.Node{}} = access_key, batch, meta) do
+    is_binary(meta[:instance_id]) and Enum.any?(batch.events, &(&1.type == @ping)) and
+      not Repo.exists?(
+        from r in Run,
+          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
+      )
+  end
+
+  defp held_to_limit?(_access_key, _batch, _meta), do: false
 
   defp store(access_key, batch, meta, delivery_id, now) do
     run = upsert_run(access_key, batch, meta, now)
@@ -198,18 +232,21 @@ defmodule Apiary.Runs.Ingest do
     Repo.insert_all(
       Run,
       [
-        %{
-          id: Ecto.UUID.generate(),
-          organisation_id: access_key.organisation_id,
-          workspace_id: access_key.workspace_id,
-          run_id: batch.subject,
-          access_key_id: access_key.id,
-          state: "pending",
-          runner_version: meta[:runner_version],
-          contract_version: meta.contract_version,
-          inserted_at: now,
-          updated_at: now
-        }
+        Map.merge(
+          %{
+            id: Ecto.UUID.generate(),
+            organisation_id: access_key.organisation_id,
+            workspace_id: access_key.workspace_id,
+            run_id: batch.subject,
+            access_key_id: access_key.id,
+            state: "pending",
+            runner_version: meta[:runner_version],
+            contract_version: meta.contract_version,
+            inserted_at: now,
+            updated_at: now
+          },
+          placement(access_key, meta)
+        )
       ],
       on_conflict: :nothing,
       conflict_target: [:workspace_id, :run_id]
@@ -240,7 +277,8 @@ defmodule Apiary.Runs.Ingest do
             event_count: length(batch.events),
             inserted_count: 0,
             status: status,
-            run_configuration_digest: run_configuration(meta)
+            run_configuration_digest: run_configuration(meta),
+            instance_id: placement(access_key, meta).instance_id
           }
         ],
         on_conflict: :nothing,
@@ -340,6 +378,8 @@ defmodule Apiary.Runs.Ingest do
 
     run
   end
+
+  defp placement(access_key, meta), do: Nodes.placement(access_key.node, meta[:instance_id])
 
   defp run_configuration(meta) do
     case meta[:run_configuration] do

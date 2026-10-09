@@ -109,7 +109,7 @@ defmodule Apiary.Accounts.PreferencesTest do
       assert {:ok, %{language: "en"}} = Accounts.update_user_preferences(user, %{language: "en"})
     end
 
-    test "refuse a skin that is not built" do
+    test "refuse a skin other than standard" do
       user = user_fixture()
       assert {:error, changeset} = Accounts.update_user_preferences(user, %{skin: "apiary"})
       assert %{skin: ["is invalid"]} = errors_on(changeset)

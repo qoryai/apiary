@@ -9,6 +9,11 @@ defmodule Apiary.TargetsTest do
 
   @day 86_400
 
+  # The moment the index and a target's page are read at, which the runs are placed back
+  # from: the fourteen days end with its UTC day, which a run a minute before the clock
+  # would miss just after midnight.
+  @now ~U[2026-09-20 14:00:00.000000Z]
+
   defp repo(system, path), do: %{"forge" => system, "repository" => path}
 
   defp ended(scope, labels, state, opts) do
@@ -18,7 +23,7 @@ defmodule Apiary.TargetsTest do
         "failed" -> %{"state" => "failed", "exit_code" => 1}
       end
 
-    started_run(scope, labels, Keyword.put(opts, :exit, exit))
+    started_run(scope, labels, opts |> Keyword.put(:exit, exit) |> Keyword.put(:now, @now))
   end
 
   defp target(scope, system, path), do: Targets.get(scope, system, path)
@@ -122,7 +127,7 @@ defmodule Apiary.TargetsTest do
     test "every target with its last run, runs a day, how they ended and its denials", %{
       scope: scope
     } do
-      %{rows: rows, total: 4, page: 1, pages: 1} = Targets.page(scope, %{})
+      %{rows: rows, total: 4, page: 1, pages: 1} = Targets.page(scope, %{}, @now)
 
       # By last run, newest first.
       assert Enum.map(rows, &{&1.target.system, &1.target.path}) == [
@@ -148,12 +153,12 @@ defmodule Apiary.TargetsTest do
     test "the views, the search and its qualifiers", %{scope: scope} do
       paths = fn query ->
         scope
-        |> Targets.page(query)
+        |> Targets.page(query, @now)
         |> Map.fetch!(:rows)
         |> Enum.map(&"#{&1.target.system}/#{&1.target.path}")
       end
 
-      assert Targets.view_counts(scope) == %{all: 4, active: 2, never: 0}
+      assert Targets.view_counts(scope, @now) == %{all: 4, active: 2, never: 0}
       assert paths.(%{view: :active}) == ["github.example/acme/shop", "github.example/acme/api"]
       assert paths.(%{view: :never}) == []
       assert paths.(%{text: "SHOP"}) == ["github.example/acme/shop", "gitlab.example/acme/shop"]
@@ -184,7 +189,7 @@ defmodule Apiary.TargetsTest do
       :ok = Targets.pin(scope, api)
 
       paths = fn query ->
-        scope |> Targets.page(query) |> Map.fetch!(:rows) |> Enum.map(& &1.target.path)
+        scope |> Targets.page(query, @now) |> Map.fetch!(:rows) |> Enum.map(& &1.target.path)
       end
 
       assert paths.(%{modes: [:observes]}) == ["web/blog"]
@@ -196,7 +201,7 @@ defmodule Apiary.TargetsTest do
     test "the sorts, each ending on the path and the system", %{scope: scope} do
       order = fn sort ->
         scope
-        |> Targets.page(%{sort: sort})
+        |> Targets.page(%{sort: sort}, @now)
         |> Map.fetch!(:rows)
         |> Enum.map(&"#{&1.target.system}/#{&1.target.path}")
       end
@@ -213,12 +218,13 @@ defmodule Apiary.TargetsTest do
     end
 
     test "pages of 50, and a page past the end is the last", %{scope: scope} do
-      for n <- 1..48, do: started_run(scope, repo("github.example", "bulk/#{n}"), ago: 600 + n)
+      for n <- 1..48,
+          do: started_run(scope, repo("github.example", "bulk/#{n}"), ago: 600 + n, now: @now)
 
-      assert %{page: 1, pages: 2, total: 52, rows: rows} = Targets.page(scope, %{})
+      assert %{page: 1, pages: 2, total: 52, rows: rows} = Targets.page(scope, %{}, @now)
       assert length(rows) == 50
-      assert %{page: 2, rows: [_, _]} = Targets.page(scope, %{page: 2})
-      assert %{page: 2, rows: [_, _]} = Targets.page(scope, %{page: 9})
+      assert %{page: 2, rows: [_, _]} = Targets.page(scope, %{page: 2}, @now)
+      assert %{page: 2, rows: [_, _]} = Targets.page(scope, %{page: 9}, @now)
     end
 
     test "another organisation's targets are not in it" do
@@ -256,10 +262,10 @@ defmodule Apiary.TargetsTest do
       last =
         ended(scope, repo("github.example", "acme/shop"), "succeeded", ago: 60, host: "ci-01")
 
-      started_run(scope, repo("gitlab.example", "acme/shop"))
+      started_run(scope, repo("gitlab.example", "acme/shop"), now: @now)
 
       shop = target(scope, "github.example", "acme/shop")
-      summary = Targets.summary(scope, shop)
+      summary = Targets.summary(scope, shop, @now)
 
       assert summary.runs == 3
       assert summary.first.run_id == first.run_id
@@ -271,7 +277,7 @@ defmodule Apiary.TargetsTest do
       assert newest == last.run_id
       assert [_] = Targets.recent_runs(scope, shop, 1)
 
-      since = DateTime.add(DateTime.utc_now(), -14 * @day, :second)
+      since = DateTime.add(@now, -14 * @day, :second)
 
       # A destination is its host, port and path, as Network access counts it.
       assert %{rows: rows, destinations: 2, attempts: 2} =

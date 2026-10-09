@@ -22,10 +22,11 @@ defmodule Mix.Tasks.Docs.All do
 
   - **An extra or a module**, in the `:features` of the docs configuration in `mix.exs`:
     `security: [extras: [...], modules: [...]]`, a module given by name or by a regex on
-    it. The key `all` is every feature: the release notes, which name them all, are only
-    in the tree of an instance that has every one, and so is the module reference but for
-    the tasks the guides name: the prose of a shared module names features too, and ExDoc
-    reads it from the compiled docs, where no marker reaches.
+    it. The key `all` is every feature: the module reference, but for the tasks the guides
+    name, is only in the tree of an instance that has every one, since the prose of a
+    shared module names features too, and ExDoc reads it from the compiled docs, where no
+    marker reaches. An extra listed under no feature, such as the release notes, is in
+    every tree.
   - **A module that declares its feature** with `use ApiaryWeb.Features`, without anything
     in `mix.exs`.
   - **A passage of a guide**, between marker lines that stand on their own:
@@ -42,9 +43,11 @@ defmodule Mix.Tasks.Docs.All do
 
   A tree is named by its features in the order of `Apiary.Features.all/0`, joined with
   `+`, or `all` for every feature (`ApiaryWeb.DocsController.tree_name/1`), and holds what
-  those features need: `observability` (nothing that needs a feature),
-  `observability+security`, and `all`, which is the one with the release notes. There is one tree for each different content an instance can be owed,
-  so adding markers for a feature that had none adds the trees it needs and nothing else.
+  those features need. The core builds `observability` (nothing that needs a feature),
+  `observability+security`, and `all`, which is the one with the module reference; an
+  edition's features add the trees between them. There is one tree for each different
+  content an instance can be owed, so adding markers for a feature that had none adds the
+  trees it needs and nothing else.
   A link from a guide into a page a tree leaves out is a warning, which
   `--warnings-as-errors` makes a failure: a passage that needs a feature and is not marked
   is found by the build.

@@ -6,8 +6,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
   without a feature deciding it.
 
   The routes every instance has are the core's (`always/0`: signing in and out, the
-  organisation's own management and its audit trail, the documentation, health and
-  discovery) and those an edition names for its own pages. A test module uses it with a
+  organisation's own management and its audit trail, the instance's configuration, the
+  documentation, health, discovery and enrolment) and those an edition names for its own pages. A test module uses it with a
   router, the core's or an edition's, and the edition's modules beside the core's:
 
       use ApiaryWeb.RoutesFeaturesCase, async: true, router: ApiaryWeb.Router
@@ -18,8 +18,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         always: [MyEditionWeb.SomeLive]
 
   and gets the tests: every route of the router is decided, no module listed as one every
-  instance has declares a feature, and the security policy's pages and endpoint belong to
-  `security`. `routes/1` is the router's routes, for a test of the edition's own features.
+  instance has declares a feature, the security policy's pages and endpoint belong to
+  `security`, and the stored secrets', variables' and integrations' pages to `secrets`. `routes/1` is the router's routes, for a test of the edition's own features.
   """
 
   use ExUnit.CaseTemplate
@@ -30,8 +30,12 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.DocsController,
     ApiaryWeb.HealthController,
     ApiaryWeb.Contract.ConfigurationController,
-    ApiaryWeb.AccessKeyLive.Index,
+    ApiaryWeb.Contract.EnrolmentController,
+    ApiaryWeb.NodeLive.Index,
+    ApiaryWeb.NodeLive.Show,
+    ApiaryWeb.NodeLive.AccessKey,
     ApiaryWeb.MemberLive.Index,
+    ApiaryWeb.MemberLive.Workspace,
     ApiaryWeb.SettingsLive,
     ApiaryWeb.ActivityLive,
     ApiaryWeb.UserLive.Organisations,
@@ -43,7 +47,9 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.UserLive.Registration,
     ApiaryWeb.UserLive.Login,
     ApiaryWeb.UserLive.Confirmation,
-    ApiaryWeb.InvitationLive.Accept
+    ApiaryWeb.InvitationLive.Accept,
+    ApiaryWeb.InstanceLive.Configuration,
+    ApiaryWeb.InstanceController
   ]
 
   # Development only (`:dev_routes`), never in a release.
@@ -89,6 +95,20 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         end
 
         assert ApiaryWeb.Contract.RunConfigurationController.__feature__() == :security
+      end
+
+      test "the stored secrets', variables' and integrations' pages belong to secrets" do
+        pages =
+          for {_verb, "/:org/:workspace/settings/" <> rest, module} <-
+                ApiaryWeb.RoutesFeaturesCase.routes(@router),
+              Enum.any?(~w(secrets variables integrations), &String.starts_with?(rest, &1)),
+              do: module
+
+        assert pages != []
+
+        for module <- pages do
+          assert module.__feature__() == :secrets, inspect(module)
+        end
       end
     end
   end

@@ -24,11 +24,11 @@ defmodule Apiary.Runs.Filters do
   and a `target` without a `system` is that path on every system the workspace has it on.
   `target_params/2` writes them, for every link to a filtered page.
 
-  `q` is the free text of the query: the runs whose id starts with it, or whose task or
+  `q` is the free text of the query: the runs whose id starts with it, or whose title or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
-  `target:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `started:` and `denied:` on the
-  runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
+  `target:`, `state:`, `runtime:`, `host:`, `node:`, `started:` and
+  `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
   the other words are `q`. A value in double quotes may hold spaces. A word whose qualifier
   the page does not know is free text; a qualifier it knows with a value it cannot read is
   refused and named. `tokens/2` writes the filters back as those words.
@@ -77,10 +77,9 @@ defmodule Apiary.Runs.Filters do
       "repository" => :target,
       "target" => :target,
       "state" => :state,
-      "task" => :task,
       "runtime" => :runtime,
       "host" => :host,
-      "key" => :key,
+      "node" => :node,
       "started" => :started,
       "denied" => :denied,
       "denials" => :denied
@@ -100,10 +99,9 @@ defmodule Apiary.Runs.Filters do
   defstruct kind: :runs,
             states: [],
             target: nil,
-            task: nil,
             runtime: nil,
             host: nil,
-            key: nil,
+            node: nil,
             q: nil,
             since: "all",
             from: nil,
@@ -122,10 +120,9 @@ defmodule Apiary.Runs.Filters do
           kind: :runs | :connections,
           states: [String.t()],
           target: target(),
-          task: nil | :none | String.t(),
           runtime: nil | String.t(),
           host: nil | String.t(),
-          key: nil | String.t(),
+          node: nil | String.t(),
           q: nil | String.t(),
           since: nil | String.t(),
           from: nil | Date.t(),
@@ -232,21 +229,19 @@ defmodule Apiary.Runs.Filters do
     case kind do
       :runs ->
         {states, d9} = states(params)
-        {task, d10} = read(params, "task", &none_or_text/1)
-        {runtime, d11} = read(params, "runtime", &text/1)
-        {denials, d12} = read(params, "denials", &if(&1 == "1", do: true))
-        {key, d13} = read(params, "key", &text/1)
-        {per, d14} = read(params, "per", &per/1)
+        {runtime, d10} = read(params, "runtime", &text/1)
+        {denials, d11} = read(params, "denials", &if(&1 == "1", do: true))
+        {per, d12} = read(params, "per", &per/1)
+        {node, d13} = read(params, "node", &text/1)
 
         %{
           filters
           | states: states,
-            task: task,
             runtime: runtime,
             denials: denials == true,
-            key: key,
+            node: node,
             per: per || @default_per,
-            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14
+            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13
         }
 
       :connections ->
@@ -284,10 +279,9 @@ defmodule Apiary.Runs.Filters do
       {"state", f.states != [] && Enum.join(f.states, ",")},
       {"system", system_param(f.target)},
       {"target", target_param(f.target)},
-      {"task", if(f.task == :none, do: "none", else: f.task)},
       {"runtime", f.runtime},
       {"host", f.host},
-      {"key", f.key},
+      {"node", f.node},
       {"q", f.q},
       {"since", f.since not in [nil, @default_since[kind]] && f.since},
       {"from", f.from && Date.to_iso8601(f.from)},
@@ -308,9 +302,9 @@ defmodule Apiary.Runs.Filters do
   order and the page size narrow nothing.
   """
   def any?(%__MODULE__{kind: kind} = f) do
-    f.states != [] or f.target != nil or f.task != nil or f.runtime != nil or f.host != nil or
-      f.key != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
-      f.decision != nil or f.tools
+    f.states != [] or f.target != nil or f.runtime != nil or f.host != nil or f.node != nil or
+      f.q != nil or f.since != @default_since[kind] or f.denials or f.decision != nil or
+      f.tools
   end
 
   @doc "Whether the range is one the reader set: not the page's default window."
@@ -371,7 +365,7 @@ defmodule Apiary.Runs.Filters do
           |> Map.drop(["system", "target"])
           |> Map.merge(target_from_value(form["target"]))
 
-        name when name in ~w(task runtime host key) ->
+        name when name in ~w(runtime host node) ->
           Map.merge(current, Map.take(form, [name]))
 
         name when name in ~w(denials tools) ->
@@ -442,7 +436,7 @@ defmodule Apiary.Runs.Filters do
   end
 
   # The words of a query: runs of anything but white space, a stretch in double quotes kept
-  # whole, so `task:"Fix the build"` is one word.
+  # whole, so `"Fix the build"` is one word.
   defp words(text) do
     ~r/(?:"[^"]*"?|[^\s"])+/u
     |> Regex.scan(String.slice(text, 0, 2048))
@@ -491,15 +485,7 @@ defmodule Apiary.Runs.Filters do
       else: :error
   end
 
-  defp query_params(:task, value, _kind, _resolve) do
-    if String.downcase(value) == "none" or text(value),
-      do:
-        {:ok, ["task"],
-         %{"task" => if(String.downcase(value) == "none", do: "none", else: value)}},
-      else: :error
-  end
-
-  defp query_params(name, value, _kind, _resolve) when name in [:runtime, :host, :key] do
+  defp query_params(name, value, _kind, _resolve) when name in [:runtime, :host, :node] do
     if text(value),
       do: {:ok, [Atom.to_string(name)], %{Atom.to_string(name) => value}},
       else: :error
@@ -602,8 +588,8 @@ defmodule Apiary.Runs.Filters do
 
   @doc """
   The filters as the query writes them, one token each, in the order the page shows them:
-  `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`, `:task`,
-  `:runtime`, `:host`, `:key`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
+  `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`,
+  `:runtime`, `:host`, `:node`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
   follows it (quoted when it holds a space), `without` the filters with it removed, nil
   for the connections' widest window, which cannot be. The free text is not a token, nor
   is a default but the connections' window, which is always said. `target_text:` writes a target (by default
@@ -618,10 +604,9 @@ defmodule Apiary.Runs.Filters do
     [
       {:target, f.target && target_text.(f.target), [target: nil]},
       {:state, f.states != [] && states_text(f.states), [states: []]},
-      {:task, f.task && if(f.task == :none, do: "none", else: f.task), [task: nil]},
       {:runtime, f.runtime, [runtime: nil]},
       {:host, f.host, [host: nil]},
-      {:key, f.key, [key: nil]},
+      {:node, f.node, [node: nil]},
       {:decision, f.decision, [decision: nil]},
       {:started, range_text(f), range_without(f)},
       {:denied, f.denials && "yes", [denials: false]},
@@ -761,6 +746,41 @@ defmodule Apiary.Runs.Filters do
   def target_params(nil, path) when is_binary(path), do: %{"target" => path}
   def target_params(_system, _path), do: %{"target" => "none"}
 
+  @doc """
+  The parameters of a target as the console's links write them (question 9, answer A): its
+  path, `%{"target" => "acme/shop"}`, and its system only where the path is `shared` by
+  another target of the workspace, `%{"system" => "gitlab.com", "target" => "acme/shop"}`.
+  `shared` is a boolean, or the workspace's shared paths (`Apiary.Runs.shared_paths/2`).
+  """
+  @spec target_params(String.t() | nil, String.t(), boolean | MapSet.t(String.t())) :: %{
+          String.t() => String.t()
+        }
+  def target_params(system, path, shared) when is_binary(path) do
+    {system, path} = link_target({system, path}, shared)
+    target_params(system, path)
+  end
+
+  @doc """
+  A target of the filters as the console's links write it (question 9, answer A):
+  `{nil, path}`, the path alone, unless the path is `shared` by another target of the
+  workspace, where the pair stays whole. `shared` is a boolean, or the workspace's shared
+  paths (`Apiary.Runs.shared_paths/2`). `nil` and `:none` are themselves. A rail's link and
+  a Filter menu's option write a target through it, so they match the short address the
+  sidebar and the narrowed line write.
+  """
+  @spec link_target(target(), boolean | MapSet.t(String.t()) | nil) :: target()
+  def link_target({system, path}, shared) when is_binary(path) do
+    shared? =
+      case shared do
+        %MapSet{} -> MapSet.member?(shared, path)
+        shared -> shared == true
+      end
+
+    {if(shared?, do: system), path}
+  end
+
+  def link_target(target, _shared), do: target
+
   defp target_params(:none), do: %{"target" => "none"}
   defp target_params({system, path}), do: target_params(system, path)
 
@@ -853,9 +873,6 @@ defmodule Apiary.Runs.Filters do
 
   defp one_of(value, allowed) when is_binary(value), do: if(value in allowed, do: value)
   defp one_of(_value, _allowed), do: nil
-
-  defp none_or_text("none"), do: :none
-  defp none_or_text(value), do: text(value)
 
   defp text(value) when is_binary(value) do
     if value != "" and fits?(value), do: value
