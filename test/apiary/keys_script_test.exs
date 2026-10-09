@@ -260,6 +260,21 @@ defmodule Apiary.KeysScriptTest do
   end
 
   @tag :tmp_dir
+  test "a write step that fails without a word still names a reason", %{tmp_dir: dir} do
+    bin = Path.join(dir, "silent-bin")
+    File.mkdir_p!(bin)
+    File.write!(Path.join(bin, "sync"), "#!/bin/sh\nexit 1\n")
+    File.chmod!(Path.join(bin, "sync"), 0o755)
+
+    assert {output, 1} = run(dir, [], bin)
+
+    assert output ==
+             "Cannot write #{dir}: the write did not complete. The volume keys has to be writable by the user nobody.\n"
+
+    assert File.ls!(dir) == ["silent-bin"]
+  end
+
+  @tag :tmp_dir
   test "a directory it cannot write to exits non-zero, naming it and the reason",
        %{tmp_dir: dir} do
     missing = Path.join(dir, "missing")

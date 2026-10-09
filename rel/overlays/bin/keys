@@ -20,10 +20,13 @@ password_file=$dir/postgres-password
 newline='
 '
 
+# fail OUTPUT: stops, with the reason the failed command gave (what follows its last ": "),
+# or a reason of its own when that command printed none.
 fail() {
   rm -f "$file.tmp" "$password_file.tmp" 2>/dev/null || true
+  reason=${1##*: }
   printf 'Cannot write %s: %s. The volume keys has to be writable by the user nobody.\n' \
-    "$dir" "${1##*: }" >&2
+    "$dir" "${reason:-the write did not complete}" >&2
   exit 1
 }
 
@@ -42,15 +45,19 @@ held() {
 }
 
 # write PATH MODE CONTENT: CONTENT in PATH, through PATH.tmp, created afresh and renamed
-# into place once written. printf is a builtin, so no value reaches a command line.
+# into place once written. printf is a builtin, so no value reaches a command line. The
+# first sync puts the whole file on disk before the rename; the second puts the rename on
+# disk before this run ends, so a power loss cannot undo it and leave the next run to
+# remove the whole temporary file and generate new keys.
 write() {
-  reason=$({
+  output=$({
     rm -f "$1.tmp" &&
       (set -C && printf '%s' "$3" >"$1.tmp") &&
       chmod "$2" "$1.tmp" &&
       sync &&
-      mv -f "$1.tmp" "$1"
-  } 2>&1) || fail "$reason"
+      mv -f "$1.tmp" "$1" &&
+      sync
+  } 2>&1) || fail "$output"
 }
 
 # A temporary file left by a run that crashed is never read, only removed.
