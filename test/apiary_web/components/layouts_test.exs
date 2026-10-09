@@ -613,13 +613,28 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       # Each chevron controls its own menu; this organisation has no other workspace, so
-      # the workspace has none.
+      # the workspace has one only where the edition gives its menu an entry.
       assert has_element?(
                view,
                "button#organisation-menu-button[aria-controls='organisation-menu'][aria-expanded='false']"
              )
 
-      refute has_element?(view, "#workspace-menu-button, #workspace-menu")
+      case ApiaryWeb.Edition.workspace_switcher_entries(scope) do
+        [] ->
+          refute has_element?(view, "#workspace-menu-button, #workspace-menu")
+
+        entries ->
+          assert has_element?(
+                   view,
+                   "button#workspace-menu-button[aria-controls='workspace-menu'][aria-expanded='false']"
+                 )
+
+          assert has_element?(view, "#workspace-menu[role='group'][hidden]")
+
+          for entry <- entries do
+            assert has_element?(view, "#workspace-menu a#workspace-menu-#{entry.key}")
+          end
+      end
 
       assert has_element?(
                view,
