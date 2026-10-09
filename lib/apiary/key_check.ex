@@ -21,9 +21,14 @@ defmodule Apiary.KeyCheck do
   application's supervisor after `Apiary.Release.Migrator`, and it runs with
   `MIGRATE_ON_BOOT=false` too, where `bin/migrate` has run before the start. A value the
   row does not hold yet is recorded, so the first boot records both. Before the check
-  value is recorded on a database that has access keys, the newest key's integrity code
-  must be under the secret's key id (`Apiary.AccessKeys.AccessKey.verify_integrity/1`),
-  so a wrong secret is never recorded as the right one. Then each recorded value is
+  value is recorded on a database that holds data, the oldest row with a key id derived
+  from `APIARY_ENCRYPTION_SECRET`, across the tables that hold one (`key_id_columns/0`),
+  must carry the current secret's key id. The instance holds one secret at a time, so a
+  database it ran on with one secret holds no other key id; where a boot without this
+  check, before its migration ran, added rows under another secret, the oldest row is
+  still the first secret's, unless that boot changed it. So a wrong secret is not
+  recorded as the right one, nor the right one refused for rows a wrong one added; a
+  database with no such row records the secret it is given. Then each recorded value is
   compared with the current one, and a mismatch stops the boot with a message in the log
   for each key that does not match (`encryption_message/0`, `signing_message/2`). A
   message names the variable and, for the signing key, the two fingerprints; never a
@@ -48,7 +53,6 @@ defmodule Apiary.KeyCheck do
 
   require Logger
 
-  alias Apiary.AccessKeys.AccessKey
   alias Apiary.{KeyDerivation, Repo, SigningKey}
 
   @label "apiary key check v1"
@@ -65,6 +69,18 @@ defmodule Apiary.KeyCheck do
       COALESCE(instance_settings.signing_key_fingerprint, EXCLUDED.signing_key_fingerprint)
   RETURNING encryption_secret_check, signing_key_fingerprint
   """
+
+  # Each column that stores a key id derived from APIARY_ENCRYPTION_SECRET, with its table
+  # and the purpose of the key it names (`Apiary.KeyDerivation`). This release's migration
+  # comes after the last of these tables, so a schema with the check's columns has them all.
+  @key_id_columns [
+    {"access_keys", :integrity_key_id, :integrity},
+    {"access_key_enrolment_codes", :integrity_key_id, :integrity},
+    {"integration_releases", :integrity_key_id, :integrity},
+    {"service_definitions", :integrity_key_id, :integrity},
+    {"workspace_connections", :integrity_key_id, :integrity},
+    {"workspace_data_keys", :wrapping_key_id, :values}
+  ]
 
   @accept """
   INSERT INTO instance_settings (id, signing_key_fingerprint, updated_at)
@@ -122,7 +138,7 @@ defmodule Apiary.KeyCheck do
           is_binary(recorded_check) and is_binary(recorded_fingerprint) ->
             compare(recorded, check, fingerprint)
 
-          is_nil(recorded_check) and not newest_access_key_verifies?() ->
+          is_nil(recorded_check) and not oldest_data_under_secret?() ->
             {:error, [encryption_message()]}
 
           true ->
@@ -130,6 +146,14 @@ defmodule Apiary.KeyCheck do
         end
     end
   end
+
+  @doc """
+  key_id_columns/0 is each column that stores a key id derived from
+  `APIARY_ENCRYPTION_SECRET`: `{table, column, purpose}`, the purpose of the key it names
+  (`Apiary.KeyDerivation`). The check reads them before it records the check value.
+  """
+  @spec key_id_columns() :: [{String.t(), atom, KeyDerivation.purpose()}, ...]
+  def key_id_columns, do: @key_id_columns
 
   @doc """
   check_value/0 is the check value of the current `APIARY_ENCRYPTION_SECRET`: HMAC-SHA256
@@ -201,17 +225,37 @@ defmodule Apiary.KeyCheck do
     {recorded_check, recorded_fingerprint}
   end
 
-  # The newest access key, revoked or not, is the one most likely made under the secret
-  # the instance runs with now. None at all is a database nothing can be checked against.
-  # Only a key id that is not the secret's is a wrong secret: a mismatch under the row's
-  # own key id proves the secret, and the request path still refuses that one key.
-  defp newest_access_key_verifies? do
-    query = from(k in AccessKey, order_by: [desc: k.inserted_at, desc: k.id], limit: 1)
+  # Whether the oldest row with a key id, across `@key_id_columns`, carries the current
+  # secret's key id for its purpose; true when no row has one. One query per table, for
+  # its oldest row, and only until the check value is recorded. Not the newest row, which
+  # a boot without this check may have written under a wrong secret; nor any row that
+  # differs, which would refuse the right secret on such a database with a message not
+  # true of it. Only the key id is compared, not the code: a changed row under the
+  # secret's own key id proves the secret, and the request path still refuses that row.
+  defp oldest_data_under_secret? do
+    case Enum.flat_map(@key_id_columns, &oldest_key_id/1) do
+      [] ->
+        true
 
-    case Repo.one(query) do
-      nil -> true
-      key -> AccessKey.verify_integrity(key) != {:error, :unknown_key}
+      oldest_per_table ->
+        {_inserted_at, key_id, purpose} =
+          Enum.min_by(oldest_per_table, &elem(&1, 0), NaiveDateTime)
+
+        {current, _key} = KeyDerivation.key(purpose)
+        key_id == current
     end
+  end
+
+  defp oldest_key_id({table, column, purpose}) do
+    query =
+      from(t in table,
+        where: not is_nil(field(t, ^column)),
+        order_by: [asc: t.inserted_at, asc: t.id],
+        limit: 1,
+        select: {t.inserted_at, field(t, ^column)}
+      )
+
+    for {inserted_at, key_id} <- Repo.all(query), do: {inserted_at, key_id, purpose}
   end
 
   defp compare({recorded_check, recorded_fingerprint}, check, fingerprint) do

@@ -306,9 +306,10 @@ generates new keys against the old database, and the key check below stops it.
 `APIARY_ENCRYPTION_SECRET`, which tells nothing of the secret, and the fingerprint of its
 signing key, in its own row of `instance_settings`. At every boot, once the migrations
 have run and before it serves, it compares both with the keys it runs with; before it
-records the check value on a database that has access keys, the newest one must verify
-under the secret, so a wrong secret is never recorded as the right one. A boot with
-another `APIARY_ENCRYPTION_SECRET` stops, and the log says first:
+records the check value on a database that already holds data, the oldest row made under
+an `APIARY_ENCRYPTION_SECRET` must have been made under this one, so a wrong secret is
+not recorded as the right one. A boot with another `APIARY_ENCRYPTION_SECRET` stops, and
+the log says first:
 
 ```text
 APIARY_ENCRYPTION_SECRET is not the one this instance first started with.

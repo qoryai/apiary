@@ -12,9 +12,12 @@ defmodule Apiary.KeyCheckTest do
   import ExUnit.CaptureIO
   import ExUnit.CaptureLog
   import Apiary.AccessKeysFixtures
+  import Apiary.ConnectionsFixtures
+  import Apiary.DescriptionFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{KeyCheck, KeyDerivation, Release, SigningKey}
+  alias Apiary.{AccessKeys, Connections, KeyCheck, KeyDerivation, Release, Secrets, SigningKey}
   alias Apiary.AccessKeys.AccessKey
 
   setup do
@@ -184,6 +187,22 @@ defmodule Apiary.KeyCheckTest do
     assert recorded() == current()
   end
 
+  # A secret's key id for `purpose`, as `Apiary.KeyDerivation` names the key.
+  defp key_id(purpose), do: elem(KeyDerivation.key(purpose), 0)
+
+  # Sets the key id of every row of `table` that has one, as `KeyCheck.key_id_columns/0`
+  # names its column.
+  defp put_key_id(table, key_id) do
+    {^table, column, _purpose} = List.keyfind(KeyCheck.key_id_columns(), table, 0)
+    Repo.query!("UPDATE #{table} SET #{column} = $1", [key_id])
+  end
+
+  # Makes every row of `table` older than any other row with a key id.
+  defp oldest(table),
+    do: Repo.query!("UPDATE #{table} SET inserted_at = '2000-01-01'")
+
+  defp count(table), do: Repo.one(from(t in table, select: count()))
+
   describe "a database with access keys and no recorded values" do
     setup do
       %{scope: scope} = sign_up_fixture()
@@ -208,22 +227,31 @@ defmodule Apiary.KeyCheckTest do
       assert recorded() == {nil, SigningKey.fingerprint()}
     end
 
-    test "booted with the secret its newest key was coded under, records", %{key: key} do
-      # An older key, coded under another secret, is not the one asked.
-      Repo.query!(
-        "UPDATE access_keys SET inserted_at = inserted_at - interval '1 day' WHERE id = $1",
-        [Ecto.UUID.dump!(key.id)]
-      )
-
+    test "booted with the secret only its newer keys were coded under, stops" do
+      # The oldest key, coded under the secret the instance first started with; a newer
+      # one coded under another, as a boot without the check writes it.
       encryption_secret(:crypto.strong_rand_bytes(32))
       %{scope: scope} = sign_up_fixture()
       access_key_fixture(scope)
+
+      assert KeyCheck.check() == {:error, [@encryption_message]}
+      assert recorded() == nil
+    end
+
+    test "booted with the secret its oldest key was coded under, records" do
+      first = Application.get_env(:apiary, KeyDerivation)
+
+      # A newer key, coded under another secret, as a boot without the check writes it.
+      encryption_secret(:crypto.strong_rand_bytes(32))
+      %{scope: scope} = sign_up_fixture()
+      access_key_fixture(scope)
+      Application.put_env(:apiary, KeyDerivation, first)
 
       assert KeyCheck.check() == :ok
       assert recorded() == current()
     end
 
-    test "booted with the right secret and a changed newest key, records", %{key: key} do
+    test "booted with the right secret and a changed key, records", %{key: key} do
       # A changed row under the secret's own key id: the secret is right.
       Repo.query!("UPDATE access_keys SET rate = 10 WHERE id = $1", [
         Ecto.UUID.dump!(key.id)
@@ -233,6 +261,115 @@ defmodule Apiary.KeyCheckTest do
 
       assert KeyCheck.check() == :ok
       assert recorded() == current()
+    end
+  end
+
+  test "a database with no access keys and an enrolment code under another secret stops" do
+    %{scope: scope} = sign_up_fixture()
+    node = node_fixture(scope)
+    {:ok, _code_row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+    assert count("access_keys") == 0
+
+    encryption_secret(:crypto.strong_rand_bytes(32))
+
+    assert KeyCheck.check() == {:error, [@encryption_message]}
+    assert recorded() == nil
+  end
+
+  test "a database with no row under any key id records the secret it is given" do
+    sign_up_fixture()
+    encryption_secret(:crypto.strong_rand_bytes(32))
+
+    for {table, _column, _purpose} <- KeyCheck.key_id_columns(),
+        do: assert(count(table) == 0, table)
+
+    assert KeyCheck.check() == :ok
+    assert recorded() == current()
+  end
+
+  test "names every column of the schema that holds a key id the secret derives" do
+    %{rows: rows} =
+      Repo.query!("""
+      SELECT table_name, column_name FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND column_name IN ('integrity_key_id', 'wrapping_key_id')
+      """)
+
+    assert Enum.sort(for [table, column] <- rows, do: {table, String.to_atom(column)}) ==
+             Enum.sort(
+               for {table, column, _purpose} <- KeyCheck.key_id_columns(),
+                   do: {table, column}
+             )
+  end
+
+  describe "a database with data in every table that holds a key id" do
+    @describetag needs: :security
+
+    setup do
+      %{scope: scope} = sign_up_fixture()
+      node = node_fixture(scope)
+      enrolled_key_fixture(scope, node)
+      {:ok, _secret} = Secrets.create_secret(scope, %{name: "API_KEY", value: "example"})
+      ready_release!(scope, github_description())
+      {:ok, _connection} = Connections.create_runtime(scope, %{runtime: "claude"})
+
+      {:ok, _definition} =
+        Connections.create_service_definition(scope, %{
+          "version" => 1,
+          "key" => "status-api",
+          "title" => "Status API",
+          "hosts" => ["status.example.com"],
+          "auth" => %{"scheme" => "bearer", "secret" => "key"},
+          "declares" => [%{"id" => "key", "title" => "API key", "name" => "STATUS_API_KEY"}]
+        })
+
+      for {table, _column, _purpose} <- KeyCheck.key_id_columns(),
+          do: assert(count(table) > 0, table)
+
+      :ok
+    end
+
+    test "booted with the secret it was made under, records" do
+      assert KeyCheck.check() == :ok
+      assert recorded() == current()
+    end
+
+    test "booted with another secret, stops instead of recording" do
+      encryption_secret(:crypto.strong_rand_bytes(32))
+
+      assert KeyCheck.check() == {:error, [@encryption_message]}
+      assert recorded() == nil
+    end
+
+    for {table, _column, purpose} <- Apiary.KeyCheck.key_id_columns() do
+      @table table
+      @purpose purpose
+
+      test "#{table}: booted with the secret its oldest row was made under, records" do
+        # Every other row under the secret the instance runs with before; this table's,
+        # the oldest, under the one it runs with now.
+        encryption_secret(:crypto.strong_rand_bytes(32))
+        put_key_id(@table, key_id(@purpose))
+        oldest(@table)
+
+        assert KeyCheck.check() == :ok
+        assert recorded() == current()
+      end
+
+      test "#{table}: booted with a secret only newer rows were made under, stops" do
+        # Every other row under the secret the instance runs with now; this table's, the
+        # oldest, under the one it ran with before.
+        encryption_secret(:crypto.strong_rand_bytes(32))
+
+        for {other, _column, purpose} <- KeyCheck.key_id_columns(),
+            other != @table,
+            do: put_key_id(other, key_id(purpose))
+
+        oldest(@table)
+
+        assert KeyCheck.check() == {:error, [@encryption_message]}
+        assert recorded() == nil
+      end
     end
   end
 
