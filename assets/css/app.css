@@ -5590,6 +5590,7 @@
   }
   .q-run-meta .q-sdot-succeeded,
   .q-run-meta .q-sdot-closed,
+  .q-run-meta .q-sdot-ended,
   .q-run-meta .q-sdot-pending {
     color: var(--color-base-content);
   }

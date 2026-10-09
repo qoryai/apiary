@@ -476,7 +476,7 @@ nothing is boxed inside a row.
   secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
   (revoked, suspended) is `row-off`, its title muted.
 - **A state is said only when it is not the usual one.** An active key, a member in use,
-  a run that ended well say nothing (a screen reader hears the word); a suspended
+  a run that succeeded say nothing (a screen reader hears the word); a suspended
   member, a revoked key say so in words (`<.state_word>`), with a dot and the
   text colour when the state needs someone. A pill is for a state of at most two words
   that needs someone, and never on every row.
@@ -596,8 +596,10 @@ version. Only the version in force is exported; another version's path sends on 
 - **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. What the run says it is about is a muted line under them, only when
-  it names a kind or a subject: the kind, then up to two subjects, each its type and ref
+  when there are any. A run that ended has a grey dot and its word, as a closed one has,
+  and counts with the runs that ended well. The runtime of a run a gateway opened, with no
+  session, reads "no session". What the run says it is about is a muted line under them,
+  only when it names a kind or a subject: the kind, then up to two subjects, each its type and ref
   as given ("pull request #412"), then "+N more", as text and never a link, since the
   title's link covers the row. Below 640 px it names one subject, so the count stays in
   sight; the whole line is its tooltip.

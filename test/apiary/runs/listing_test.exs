@@ -314,6 +314,12 @@ defmodule Apiary.Runs.ListingTest do
       {f, []} = query("state:ended-badly")
       assert f.states == ~w(failed timed_out lost closed)
 
+      {f, []} = query("state:ended")
+      assert f.states == ["ended"]
+
+      {f, []} = query("state:ended-well")
+      assert f.states == ~w(succeeded ended)
+
       {f, []} = query("STATE:Timed-Out,alive")
       assert f.states == ~w(pending running timed_out)
       assert Filters.to_params(f) == %{"state" => "pending,running,timed_out"}

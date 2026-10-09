@@ -30,10 +30,10 @@ pruned until an owner or an admin asks for it.
 
 Retention works on whole runs, so a timeline is never half there.
 
-A run is due when it is not alive (it succeeded, failed, timed out, was lost or was closed) and
-the server last received an event of it before the cut-off. Only the server's clock is
-compared, never the time Forager wrote into an event. A run that is still running is never
-pruned, however long it has run.
+A run is due when it is not alive (it succeeded, ended, failed, timed out, was lost or was
+closed) and the server last received an event of it before the cut-off. Only the server's
+clock is compared, never the time Forager wrote into an event. A run that is still running
+is never pruned, however long it has run.
 
 - **Past the days for log output** the run loses its log: the terminal tab says *Log output
   pruned* and the date. The timeline, the connections and the details are whole.

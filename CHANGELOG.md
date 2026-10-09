@@ -29,6 +29,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   revision 1: discovery, events, the run configuration and enrolment): the session as a
   timeline, the terminal, every connection with its decision and rule, and how the run
   ended.
+- A run a gateway opened, with no session: no runtime, command or host, and no exit
+  status. When it was quiet, its run credential expired or its issuer reported it ended, it
+  is Ended, a grey dot and the word, counted with the runs that ended well; the runs
+  list's state filter offers it, and its Runtime column says "no session".
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's

@@ -1161,8 +1161,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   A run's state as a dot, with its word only when the run needs a look (running, ended
-  badly); a run that ended well is its dot, and a screen reader hears the word. Then
-  when it started.
+  badly) or ended, grey; a run that succeeded is its dot, and a screen reader hears the
+  word. Then when it started.
   """
   attr :run, :map, required: true
   attr :quiet, :boolean, default: false

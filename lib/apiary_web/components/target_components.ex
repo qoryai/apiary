@@ -127,8 +127,9 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   A run's state as a dot and, when the run needs a look, its word (running, pending,
-  failed, timed out, lost); the dot alone for one that ended well or was closed, its word
-  there for a screen reader. `word` forces the word, as a header does.
+  failed, timed out, lost), and the word of a run that ended, beside its grey dot; the dot
+  alone for one that succeeded or was closed, its word there for a screen reader. `word`
+  forces the word, as a header does.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"

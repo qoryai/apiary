@@ -493,7 +493,8 @@ defmodule ApiaryWeb.TargetLive.Index do
     """
   end
 
-  # The last run: its dot and when, and its word only when it is running or went badly.
+  # The last run: its dot and when, and its word only when it is running, went badly or
+  # ended.
   attr :last, :map, required: true
 
   defp last_run(assigns) do

@@ -46,6 +46,7 @@ defmodule ApiaryWeb.RunComponents do
   alias ApiaryWeb.PolicyComponents
 
   alias Apiary.Runs
+  alias Apiary.Runs.Run
   alias Phoenix.LiveView.JS
 
   @outcome_tip gettext_noop(
@@ -773,6 +774,8 @@ defmodule ApiaryWeb.RunComponents do
     do: gettext("Closed %{date}", date: Format.date(at))
 
   defp ended_sentence("closed", _run), do: gettext("Closed")
+
+  defp ended_sentence("ended", _run), do: gettext("Ended")
 
   ## Filter bar
 
@@ -1509,10 +1512,10 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A run's state as a row of a list says it: a dot, and its word where the state needs a
-  look (pending, running, failed, timed out, lost, closed); a run that succeeded is its
-  dot, its word for a screen reader only, unless `word` asks for it. `quiet_for` turns a
-  running run's dot amber and adds the note, as `run_state/1` does; `code` follows the
-  word (the exit, for the preview).
+  look (pending, running, failed, timed out, lost, closed) and for a run that ended, grey
+  as a closed one is; a run that succeeded is its dot, its word for a screen reader only,
+  unless `word` asks for it. `quiet_for` turns a running run's dot amber and adds the
+  note, as `run_state/1` does; `code` follows the word (the exit, for the preview).
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :quiet_for, :integer, default: nil
@@ -1769,8 +1772,14 @@ defmodule ApiaryWeb.RunComponents do
         </span>
       </td>
       <td class="q-rl-c4 q-rl-faint" role="cell">
-        <span :if={@run.runtime}>{@run.runtime} {@run.runtime_version}</span>
-        <span :if={!@run.runtime}>{gettext("n/a")}</span>
+        <%= cond do %>
+          <% Run.no_session?(@run) -> %>
+            <span>{gettext("no session")}</span>
+          <% @run.runtime -> %>
+            <span>{@run.runtime} {@run.runtime_version}</span>
+          <% true -> %>
+            <span>{gettext("n/a")}</span>
+        <% end %>
       </td>
       <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">{@run.host || gettext("n/a")}</td>
       <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
@@ -1802,7 +1811,7 @@ defmodule ApiaryWeb.RunComponents do
   least" what it last reported; nothing for a run that has only pinged.
   """
   def run_length(%{run: %{state: state}} = assigns)
-      when state in ~w(succeeded failed timed_out) do
+      when state in ~w(succeeded ended failed timed_out) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """
