@@ -276,6 +276,52 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
+    property "the run page's timeline says no issuer at a run's end or refusal" do
+      t0 = ~U[2026-10-09 12:00:00Z]
+
+      check all(
+              code <- member_of(@reserved ++ @earlier ++ @refusals ++ ["example_reason"]),
+              state <- member_of([nil, "succeeded", "failed", "cancelled", "other"]),
+              exit_code <- member_of([nil, -1, 0, 1]),
+              signal <- member_of([nil, "SIGTERM"]),
+              refused? <- boolean()
+            ) do
+        {type, data} =
+          if refused?,
+            do: {"dev.qory.run.refused", %{"code" => code}},
+            else:
+              {"dev.qory.run.exited",
+               %{
+                 "state" => state,
+                 "reason" => code,
+                 "exit_code" => exit_code,
+                 "signal" => signal,
+                 "quiet_seconds" => 1800,
+                 "duration_ms" => 720_000
+               }}
+
+        event = %{sequence: 1, type: type, time: t0, data: data}
+        light = %{sequence: 1, type: type, time: t0}
+        index = Apiary.Runs.Record.Timeline.index([light])
+
+        [item] =
+          Apiary.Runs.Record.Timeline.build(index.items, %{
+            1 => Apiary.Runs.Record.Timeline.slim(event)
+          })
+
+        html =
+          render_component(&ApiaryWeb.RunPageComponents.timeline_item/1,
+            id: "e-1",
+            item: item,
+            started_at: t0,
+            seq_path: fn seq -> "/runs/r?seq=#{seq}" end
+          )
+
+        assert text(html) =~ if(refused?, do: "Run did not start", else: "Run ended")
+        refute text(html) =~ ~r/issuer/i, inspect({type, data, text(html)})
+      end
+    end
+
     test "every reason of Forager's that reaches Qory Apiary has words" do
       for reason <- (@reserved -- ["run_closed"]) ++ @earlier do
         assert is_binary(RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})),

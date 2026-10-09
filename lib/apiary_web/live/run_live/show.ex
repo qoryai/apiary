@@ -144,12 +144,7 @@ defmodule ApiaryWeb.RunLive.Show do
                     quiet={@quiet_for != nil}
                     run={@run}
                   />
-                  <span :if={
-                    ended?(@run) && !Run.no_session?(@run) && !reason_words(@run) &&
-                      exit_value(@run) not in ["0", gettext("n/a")]
-                  }>
-                    {gettext("exit %{code}", code: exit_value(@run))}
-                  </span>
+                  <span :if={program_exit(@run)}>{program_exit(@run)}</span>
                   <.link
                     :if={@run.target_id}
                     id="run-target"
@@ -826,8 +821,8 @@ defmodule ApiaryWeb.RunLive.Show do
                Command section. --%>
           <dt :if={@no_session}>{gettext("Opened by")}</dt>
           <dd :if={@no_session} id="run-opened-by">{gettext("gateway (no session)")}</dd>
-          <dt :if={ended?(@run) && !@no_session}>{gettext("Exit")}</dt>
-          <dd :if={ended?(@run) && !@no_session} class="font-mono">{exit_value(@run)}</dd>
+          <dt :if={exited?(@run) && !@no_session}>{gettext("Exit")}</dt>
+          <dd :if={exited?(@run) && !@no_session} class="font-mono">{exit_value(@run)}</dd>
           <dt>{gettext("Started")}</dt>
           <dd><.clock at={@run.started_at} id="run-started-clock" /></dd>
           <dt>{gettext("Duration")}</dt>
@@ -2454,30 +2449,46 @@ defmodule ApiaryWeb.RunLive.Show do
     announce(socket, state_sentence(run), :now)
   end
 
-  defp state_sentence(%Run{state: state, duration_ms: ms})
-       when state in ~w(succeeded completed) and is_integer(ms),
-       do: gettext("Run succeeded after %{duration}.", duration: format_duration_ms(ms))
+  # A state stored under an earlier name is said as the state that took it in.
+  defp state_sentence(%Run{state: state} = run),
+    do: state_sentence(Run.current_state(state), run)
 
-  defp state_sentence(%Run{state: state}) when state in ~w(succeeded completed),
-    do: gettext("Run succeeded.")
+  defp state_sentence("completed", %Run{duration_ms: ms}) when is_integer(ms),
+    do: gettext("Run completed after %{duration}.", duration: format_duration_ms(ms))
 
-  defp state_sentence(%Run{state: "failed", signal: signal}) when is_binary(signal),
-    do: gettext("Run failed with %{signal}.", signal: signal)
+  defp state_sentence("completed", _run), do: gettext("Run completed.")
+  defp state_sentence("failed", %Run{exited_at: nil}), do: gettext("Run did not start.")
 
-  defp state_sentence(%Run{state: "failed", exit_code: code}) when is_integer(code),
-    do: gettext("Run failed with exit %{code}.", code: code)
+  # The program's exit is said where the header says it (`program_exit/1`).
+  defp state_sentence("failed", run) do
+    cond do
+      is_nil(program_exit(run)) -> gettext("Run failed.")
+      signal?(run) -> gettext("Run failed with %{signal}.", signal: run.signal)
+      true -> gettext("Run failed with exit %{code}.", code: run.exit_code)
+    end
+  end
 
-  defp state_sentence(%Run{state: "failed"}), do: gettext("Run failed.")
-  defp state_sentence(%Run{state: "timed_out"}), do: gettext("Run timed out.")
+  defp state_sentence("cancelled", run) do
+    if words = reason_words(run),
+      do: gettext("Run cancelled: %{reason}.", reason: words),
+      else: gettext("Run cancelled.")
+  end
 
-  defp state_sentence(%Run{state: "lost", heartbeat_interval_seconds: interval})
+  # Lost by its exit: why, in words. Lost by the liveness check: how long it was silent.
+  defp state_sentence("lost", %Run{exited_at: %DateTime{}} = run) do
+    if words = reason_words(run),
+      do: gettext("Run lost: %{reason}.", reason: words),
+      else: gettext("Run lost.")
+  end
+
+  defp state_sentence("lost", %Run{heartbeat_interval_seconds: interval})
        when is_integer(interval),
        do:
          gettext("Run lost. No heartbeat for %{seconds} s.", seconds: Format.number(interval * 3))
 
-  defp state_sentence(%Run{state: "lost"}), do: gettext("Run lost.")
-  defp state_sentence(%Run{state: "running"}), do: gettext("Run started.")
-  defp state_sentence(%Run{}), do: nil
+  defp state_sentence("lost", _run), do: gettext("Run lost.")
+  defp state_sentence("running", _run), do: gettext("Run started.")
+  defp state_sentence(_state, _run), do: nil
 
   defp announce(socket, nil, _when), do: socket
 
@@ -2656,22 +2667,33 @@ defmodule ApiaryWeb.RunLive.Show do
   ## Words
 
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
-  defp ended?(%Run{state: "lost"} = run), do: run.exited_at != nil
-  defp ended?(%Run{state: state}), do: state in ~w(succeeded completed failed timed_out cancelled)
+  # A run whose exit was recorded, whatever its state: one that ended Lost by its exit too.
+  # A run Apiary marked lost by its own check, and one that did not start, have no exit.
+  defp exited?(%Run{exited_at: exited_at}), do: exited_at != nil
 
-  defp exit_value(%Run{reason: "timeout"}), do: gettext("timeout")
-  defp exit_value(%Run{reason: "gateway_lost"}), do: gettext("gateway lost")
-  defp exit_value(%Run{reason: "session_lost"}), do: gettext("session lost")
-  defp exit_value(%Run{reason: "issuer_unreachable"}), do: gettext("issuer unreachable")
-  defp exit_value(%Run{reason: "issuer_answer_invalid"}), do: gettext("issuer answer invalid")
-  defp exit_value(%Run{reason: "credential_expired"}), do: gettext("run credential expired")
-
-  defp exit_value(%Run{reason: "run_ended_at_issuer"}),
-    do: gettext("the issuer reported the run ended")
-
+  # The program's exit as recorded, whatever the run's state. `-1` with no signal is the
+  # gateway's placeholder for an exit it wrote: the program's own was not recorded.
   defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "", do: signal
+  defp exit_value(%Run{exit_code: -1}), do: gettext("not recorded")
   defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
   defp exit_value(_run), do: gettext("n/a")
+
+  # The program's exit after a failed session's run's state, when the program exited
+  # non-zero by itself and no reason words stand: "exit 1", "SIGKILL". Nil otherwise.
+  defp program_exit(%Run{} = run) do
+    if Run.current_state(run.state) == "failed" and !Run.no_session?(run) and
+         is_nil(reason_words(run)) do
+      cond do
+        signal?(run) -> run.signal
+        is_integer(run.exit_code) and run.exit_code not in [0, -1] -> exit_words(run.exit_code)
+        true -> nil
+      end
+    end
+  end
+
+  defp exit_words(code), do: gettext("exit %{code}", code: code)
+
+  defp signal?(%Run{signal: signal}), do: is_binary(signal) and signal != ""
 
   defp connections_count(%{denied: denied}) when denied > 0,
     do: ngettext("%{number} denied", "%{number} denied", denied, number: Format.number(denied))

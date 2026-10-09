@@ -421,7 +421,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
             "Turn finished",
             "Result",
             "Session ended",
-            "Run exited"
+            "Run ended"
           ] do
         assert html =~ words
       end
@@ -1932,6 +1932,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
+  # The rail's Exit row, as read.
+  defp exit_row(lv) do
+    case Regex.run(~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*(.*?)\s*</dd>}s, render(lv)) do
+      [_, value] -> value
+      nil -> nil
+    end
+  end
+
   # The terms of the rail's Run section, in order.
   defp run_terms(lv) do
     lv
@@ -2144,25 +2152,26 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#run-facts #rail-reason", "did not start: image_unknown")
     end
 
-    test "the timeline's last item: Run ended for an end that is no failure, Run exited else", %{
+    test "the timeline's last item: Run ended for every end, its mark the state's", %{
       conn: conn,
       scope: scope
     } do
-      for {reason, kind, words, glyph} <- [
-            {"credential_expired", "Run ended", "permission to run expired", "hero-stop-micro"},
-            {"run_ended_at_issuer", "Run ended", "stopped, no outcome given", "hero-stop-micro"},
-            {"gateway_lost", "Run exited", "end not recorded", "hero-x-mark-micro"},
-            {"timeout", "Run exited", "time limit reached", "hero-x-mark-micro"}
+      for {reason, words, mark} <- [
+            {"credential_expired", "permission to run expired", "q-n.q-n-sys .hero-stop-micro"},
+            {"run_ended_at_issuer", "stopped, no outcome given", "q-n.q-n-sys .hero-stop-micro"},
+            {"gateway_lost", "end not recorded", "q-n-warn .hero-signal-slash-micro"},
+            {"timeout", "time limit reached", "q-n.q-n-sys .hero-stop-micro"}
           ] do
         run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 95_000})
 
-        {:ok, lv, _html} =
+        {:ok, lv, html} =
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-        assert has_element?(lv, "#e-3", kind)
+        assert has_element?(lv, "#e-3", "Run ended")
         assert has_element?(lv, "#e-3", words)
         assert has_element?(lv, "#e-3", "1 m 35 s")
-        assert has_element?(lv, "#e-3 .#{glyph}")
+        assert has_element?(lv, "#e-3 .#{mark}")
+        refute html =~ "Run exited"
       end
     end
 
@@ -2184,7 +2193,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#run-facts #rail-reason", words)
         refute "Exit" in run_terms(lv)
-        assert has_element?(lv, "#e-3", "Run exited")
+        assert has_element?(lv, "#e-3", "Run ended")
         assert has_element?(lv, "#e-3", words)
         assert has_element?(lv, "#e-3", "2 m 10 s")
         refute has_element?(lv, "#e-3", "n/a")
@@ -2210,7 +2219,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#run-meta", "exit")
       assert has_element?(lv, "#run-facts #rail-reason", "time limit reached")
       assert has_element?(lv, "#run-runtime")
-      assert html =~ "Run exited"
+      assert html =~ "Run ended"
+      refute html =~ "Run exited"
       refute html =~ "by a gateway with no session"
 
       terms = run_terms(lv)
@@ -2247,8 +2257,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#run-meta", "exit")
       assert has_element?(lv, "#rail-reason", "end not recorded")
       assert "Exit" in run_terms(lv)
+      assert exit_row(lv) == "not recorded"
       refute has_element?(lv, "#run-opened-by")
-      assert has_element?(lv, ".q-run-rail", "n/a")
 
       # with no output, it says so, as before
       {:ok, _lv, html} =
@@ -2274,18 +2284,18 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#run-meta", "exit")
       assert has_element?(lv, "#rail-reason", "stopped responding")
       assert "Exit" in run_terms(lv)
-      assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*session lost\s*</dd>}
-      assert has_element?(lv, "#e-2", "Run exited")
+      assert exit_row(lv) == "not recorded"
+      assert has_element?(lv, "#e-2", "Run ended")
       assert has_element?(lv, "#e-2", "stopped responding")
+      assert has_element?(lv, "#e-2 .q-n-warn .hero-signal-slash-micro")
       refute html =~ "exit -1"
     end
 
     test "an expired run credential or the starter's end is said after the state, under it and in the timeline",
          %{conn: conn, scope: scope} do
-      for {reason, words, exit_row} <- [
-            {"credential_expired", "permission to run expired", "run credential expired"},
-            {"run_ended_at_issuer", "stopped, no outcome given",
-             "the issuer reported the run ended"}
+      for {reason, words} <- [
+            {"credential_expired", "permission to run expired"},
+            {"run_ended_at_issuer", "stopped, no outcome given"}
           ] do
         run =
           projected(scope, [
@@ -2301,21 +2311,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#rail-reason", words)
         assert "Exit" in run_terms(lv)
-        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{exit_row}\s*</dd>}
+        assert exit_row(lv) == "not recorded"
         assert has_element?(lv, "#e-2", "Run ended")
         assert has_element?(lv, "#e-2", words)
+        assert has_element?(lv, "#e-2 .q-n.q-n-sys .hero-stop-micro")
         refute html =~ "exit -1"
       end
     end
 
     test "a run credential that could not be checked is said after the state, under it and in the timeline, and it is Failed",
          %{conn: conn, scope: scope} do
-      for {reason, words, exit_row} <- [
-            {"issuer_unreachable", "couldn't check whether the run may go on: no answer",
-             "issuer unreachable"},
+      for {reason, words} <- [
+            {"issuer_unreachable", "couldn't check whether the run may go on: no answer"},
             {"issuer_answer_invalid",
-             "couldn't check whether the run may go on: unreadable answer",
-             "issuer answer invalid"}
+             "couldn't check whether the run may go on: unreadable answer"}
           ] do
         exit = %{
           "state" => "failed",
@@ -2336,12 +2345,269 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#run-facts #rail-reason", words)
         assert "Exit" in run_terms(lv)
-        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{exit_row}\s*</dd>}
-        assert has_element?(lv, "#e-2", "Run exited")
+        # the program's exit as recorded: the signal that stopped it
+        assert exit_row(lv) == "SIGTERM"
+        assert has_element?(lv, "#e-2", "Run ended")
         assert has_element?(lv, "#e-2", words)
+        assert has_element?(lv, "#e-2 .q-n-fail .hero-x-mark-micro")
         assert has_element?(lv, "#e-2", "2 m 10 s")
         refute has_element?(lv, "#e-2", "SIGTERM")
         refute html =~ "exit -1"
+      end
+    end
+  end
+
+  describe "how a run ended, on its page (decision 216)" do
+    defp session_run(scope, exit) do
+      projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
+    end
+
+    defp run_page(conn, scope, run),
+      do: live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+    defp words_of(lv, selector) do
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> LazyHTML.text()
+      |> String.replace(~r/\s+/, " ")
+      |> String.trim()
+    end
+
+    # The item's mark, by the state it ends in.
+    @marks %{
+      "Completed" => ".q-n.q-n-sys:not(.q-n-fail):not(.q-n-warn) .hero-check-micro",
+      "Cancelled" => ".q-n.q-n-sys:not(.q-n-fail):not(.q-n-warn) .hero-stop-micro",
+      "Lost" => ".q-n.q-n-sys.q-n-warn .hero-signal-slash-micro",
+      "Failed" => ".q-n.q-n-sys.q-n-fail .hero-x-mark-micro"
+    }
+
+    test "a session's run: the state and why after it, the reason under it, the exit as recorded, and one Run ended",
+         %{conn: conn, scope: scope} do
+      # {exit, state, reason words, Exit row, the header's exit}
+      for {exit, state, words, exit_row, header_exit} <- [
+            # time limit: Cancelled · time limit reached; Exit the program's own
+            {%{"state" => "cancelled", "reason" => "timeout", "signal" => "SIGTERM"}, "Cancelled",
+             "time limit reached", "SIGTERM", nil},
+            # an older Forager's time limit
+            {%{
+               "state" => "failed",
+               "reason" => "timeout",
+               "exit_code" => -1,
+               "signal" => "SIGTERM"
+             }, "Cancelled", "time limit reached", "SIGTERM", nil},
+            # permission expired, written by an older gateway
+            {%{"state" => "failed", "reason" => "credential_expired", "exit_code" => -1},
+             "Cancelled", "permission to run expired", "not recorded", nil},
+            {%{"state" => "cancelled", "reason" => "credential_expired", "exit_code" => -1},
+             "Cancelled", "permission to run expired", "not recorded", nil},
+            # the starter's end with no outcome, old style and new
+            {%{"state" => "failed", "reason" => "run_ended_at_issuer", "exit_code" => -1},
+             "Cancelled", "stopped, no outcome given", "not recorded", nil},
+            {%{"state" => "cancelled", "reason" => "stopped", "exit_code" => -1}, "Cancelled",
+             "stopped, no outcome given", "not recorded", nil},
+            # the starter's own outcome and reason
+            {%{"state" => "succeeded", "reason" => "all_checks_passed", "exit_code" => 0},
+             "Completed", "all checks passed", "0", nil},
+            {%{"state" => "failed", "reason" => "checks_failed", "exit_code" => 0}, "Failed",
+             "checks failed", "0", nil},
+            {%{"state" => "cancelled", "reason" => "no_longer_needed", "exit_code" => -1},
+             "Cancelled", "no longer needed", "not recorded", nil},
+            # the run credential could not be checked, new names and old
+            {%{
+               "state" => "failed",
+               "reason" => "credential_check_unreachable",
+               "exit_code" => -1
+             }, "Failed", "couldn't check whether the run may go on: no answer", "not recorded",
+             nil},
+            {%{"state" => "failed", "reason" => "issuer_unreachable", "exit_code" => -1},
+             "Failed", "couldn't check whether the run may go on: no answer", "not recorded",
+             nil},
+            {%{"state" => "failed", "reason" => "credential_check_invalid", "exit_code" => -1},
+             "Failed", "couldn't check whether the run may go on: unreadable answer",
+             "not recorded", nil},
+            {%{"state" => "failed", "reason" => "issuer_answer_invalid", "exit_code" => -1},
+             "Failed", "couldn't check whether the run may go on: unreadable answer",
+             "not recorded", nil},
+            # the session went silent; a batch was refused; the record's machine died
+            {%{"state" => "failed", "reason" => "session_lost", "exit_code" => -1}, "Lost",
+             "stopped responding", "not recorded", nil},
+            {%{"state" => "failed", "reason" => "batch_refused", "exit_code" => -1}, "Failed",
+             "events refused", "not recorded", nil},
+            {%{"state" => "failed", "reason" => "gateway_lost", "exit_code" => -1}, "Lost",
+             "end not recorded", "not recorded", nil},
+            # the program's own exit, unchanged
+            {%{"state" => "succeeded", "exit_code" => 0}, "Completed", nil, "0", nil},
+            {%{"state" => "failed", "exit_code" => 1}, "Failed", nil, "1", "exit 1"},
+            {%{"state" => "failed", "exit_code" => -1, "signal" => "SIGKILL"}, "Failed", nil,
+             "SIGKILL", "SIGKILL"},
+            # the starter's outcome with no reason: no exit beside a state that is not Failed
+            {%{"state" => "cancelled", "exit_code" => -1}, "Cancelled", nil, "not recorded", nil},
+            {%{"state" => "succeeded", "exit_code" => 1}, "Completed", nil, "1", nil}
+          ] do
+        run = session_run(scope, Map.put(exit, "duration_ms", 720_000))
+        {:ok, lv, html} = run_page(conn, scope, run)
+        case_ = inspect(exit)
+
+        assert words_of(lv, "#run-meta #run-state") == state, case_
+
+        if words do
+          assert words_of(lv, "#run-meta #run-state + #run-reason") == words, case_
+          assert words_of(lv, "#run-facts #rail-reason") == words, case_
+        else
+          refute has_element?(lv, "#run-reason"), case_
+          refute has_element?(lv, "#rail-reason"), case_
+        end
+
+        assert exit_row(lv) == exit_row, case_
+
+        meta = words_of(lv, "#run-meta")
+
+        if header_exit,
+          do: assert(meta =~ header_exit, case_),
+          else: refute(meta =~ ~r/\bexit\b|SIG/, case_)
+
+        # the timeline's last item: Run ended, why or the exit, how long; its mark the state's
+        assert words_of(lv, "#e-2 .q-k") == "Run ended", case_
+
+        end_words =
+          words || header_exit ||
+            if(exit["exit_code"] in [0, 1] and !exit["signal"], do: "exit #{exit["exit_code"]}")
+
+        expected = if end_words, do: "#{end_words} · 12 m 00 s", else: "12 m 00 s"
+        assert words_of(lv, "#e-2 .q-s") == expected, case_
+        assert has_element?(lv, "#e-2 #{@marks[state]}"), case_
+        refute html =~ "Run exited", case_
+        refute html =~ "exit -1", case_
+      end
+    end
+
+    test "a gateway's run: the same words, and no Exit row", %{conn: conn, scope: scope} do
+      for {exit, state, words} <- [
+            {%{"state" => "cancelled", "reason" => "quiet", "quiet_seconds" => 1800}, "Cancelled",
+             "no activity for 30 minutes"},
+            {%{"reason" => "quiet", "quiet_seconds" => 1800}, "Cancelled",
+             "no activity for 30 minutes"},
+            {%{"state" => "cancelled", "reason" => "credential_expired"}, "Cancelled",
+             "permission to run expired"},
+            {%{"reason" => "credential_expired"}, "Cancelled", "permission to run expired"},
+            {%{"reason" => "run_ended_at_issuer"}, "Cancelled", "stopped, no outcome given"},
+            {%{"state" => "cancelled", "reason" => "stopped"}, "Cancelled",
+             "stopped, no outcome given"},
+            {%{"state" => "succeeded", "reason" => "all_checks_passed"}, "Completed",
+             "all checks passed"},
+            {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "Cancelled",
+             "no longer needed"}
+          ] do
+        run = gateway_run(scope, Map.put(exit, "duration_ms", 1_804_000))
+        {:ok, lv, _html} = run_page(conn, scope, run)
+        case_ = inspect(exit)
+
+        assert words_of(lv, "#run-meta #run-state") == state, case_
+        assert words_of(lv, "#run-meta #run-state + #run-reason") == words, case_
+        assert words_of(lv, "#run-facts #rail-reason") == words, case_
+        refute exit_row(lv), case_
+        assert words_of(lv, "#e-3 .q-k") == "Run ended", case_
+        assert words_of(lv, "#e-3 .q-s") == "#{words} · 30 m 04 s", case_
+        assert has_element?(lv, "#e-3 #{@marks[state]}"), case_
+      end
+    end
+
+    test "a run that did not start: Failed, why after it and under it, no Exit row, and its item",
+         %{conn: conn, scope: scope} do
+      for started <- [started_data(), gateway_started_data()] do
+        run =
+          projected(scope, [
+            {1, "run.started", started},
+            {2, "run.refused", %{"code" => "image_unknown"}}
+          ])
+
+        {:ok, lv, _html} = run_page(conn, scope, run)
+
+        assert words_of(lv, "#run-meta #run-state") == "Failed"
+        assert words_of(lv, "#run-meta #run-reason") == "did not start: image_unknown"
+        assert words_of(lv, "#run-facts #rail-reason") == "did not start: image_unknown"
+        refute exit_row(lv)
+        refute "Exit" in run_terms(lv)
+        refute words_of(lv, "#run-meta") =~ "exit"
+
+        assert words_of(lv, "#e-2 .q-k") == "Run did not start"
+        assert words_of(lv, "#e-2 .q-s") == "image_unknown"
+        assert has_element?(lv, "#e-2 .q-s .font-mono", "image_unknown")
+        assert has_element?(lv, "#e-2 #{@marks["Failed"]}")
+      end
+    end
+
+    test "the announcer says how the run ended", %{conn: conn, scope: scope} do
+      for {event, sentence} <- [
+            {{"run.exited",
+              %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 720_000}},
+             "Run completed after 12 m 00 s."},
+            {{"run.exited", %{"state" => "succeeded", "exit_code" => 0}}, "Run completed."},
+            {{"run.exited",
+              %{"state" => "cancelled", "reason" => "timeout", "signal" => "SIGTERM"}},
+             "Run cancelled: time limit reached."},
+            {{"run.exited", %{"state" => "cancelled", "reason" => "no_longer_needed"}},
+             "Run cancelled: no longer needed."},
+            {{"run.exited", %{"state" => "cancelled", "exit_code" => -1}}, "Run cancelled."},
+            {{"run.exited",
+              %{"state" => "failed", "reason" => "session_lost", "exit_code" => -1}},
+             "Run lost: stopped responding."},
+            {{"run.refused", %{"code" => "image_unknown"}}, "Run did not start."},
+            {{"run.exited", %{"state" => "failed", "exit_code" => 1}}, "Run failed with exit 1."},
+            {{"run.exited", %{"state" => "failed", "signal" => "SIGKILL", "exit_code" => -1}},
+             "Run failed with SIGKILL."},
+            {{"run.exited",
+              %{"state" => "failed", "reason" => "checks_failed", "exit_code" => 0}},
+             "Run failed."},
+            {{"run.exited",
+              %{
+                "state" => "failed",
+                "reason" => "credential_check_unreachable",
+                "exit_code" => -1
+              }}, "Run failed."}
+          ] do
+        run = projected(scope, [{1, "run.started", started_data()}])
+        {:ok, lv, _html} = run_page(conn, scope, run)
+        {type, data} = event
+        project_more(run, [{2, type, data}])
+        flush(lv)
+
+        assert words_of(lv, "#run-announcer") == sentence, inspect(event)
+      end
+    end
+
+    test "no end reason's words, nor the Exit row, nor the timeline, say issuer on the page", %{
+      conn: conn,
+      scope: scope
+    } do
+      reasons =
+        ~w(timeout quiet credential_expired stopped session_lost gateway_lost batch_refused
+           credential_check_unreachable credential_check_invalid run_closed run_ended_at_issuer
+           issuer_unreachable issuer_answer_invalid example_reason)
+
+      runs =
+        for reason <- reasons, state <- [nil, "succeeded", "failed", "cancelled"] do
+          exit =
+            %{"reason" => reason, "exit_code" => -1, "quiet_seconds" => 1800}
+            |> then(&if(state, do: Map.put(&1, "state", state), else: &1))
+
+          session_run(scope, exit)
+        end
+
+      refused =
+        for code <- ~w(run_ended_at_issuer issuer_unreachable issuer_answer_invalid image_unknown) do
+          projected(scope, [
+            {1, "run.started", started_data()},
+            {2, "run.refused", %{"code" => code}}
+          ])
+        end
+
+      for run <- runs ++ refused do
+        {:ok, _lv, html} = run_page(conn, scope, run)
+        text = html |> LazyHTML.from_document() |> LazyHTML.text()
+        refute text =~ ~r/issuer/i, inspect({run.state, run.reason})
       end
     end
   end

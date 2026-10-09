@@ -198,9 +198,10 @@ defmodule ApiaryWeb.RunComponents do
     do: reason_words(%{refused: code})
 
   def reason_words(%{refused: code}) do
-    if is_binary(code) and code =~ @reason_code,
-      do: gettext("did not start: %{code}", code: Map.get(@earlier_reasons, code, code)),
-      else: gettext("did not start")
+    case refusal_code(code) do
+      nil -> gettext("did not start")
+      code -> gettext("did not start: %{code}", code: code)
+    end
   end
 
   # The starter's end under the earlier name came with no outcome, whatever the state the
@@ -212,6 +213,18 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   def reason_words(_run), do: nil
+
+  @doc """
+  The code of a `dev.qory.run.refused` as the run page shows it, an earlier name read as the
+  new one: `image_unknown`, and `stopped` for `run_ended_at_issuer`. Nil for a value that is
+  no code.
+  """
+  @spec refusal_code(term()) :: String.t() | nil
+  def refusal_code(code) when is_binary(code) do
+    if code =~ @reason_code, do: Map.get(@earlier_reasons, code, code)
+  end
+
+  def refusal_code(_code), do: nil
 
   defp words_of("timeout", _run), do: gettext("time limit reached")
 

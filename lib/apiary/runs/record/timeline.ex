@@ -32,6 +32,7 @@ defmodule Apiary.Runs.Record.Timeline do
   use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.Runs
+  alias Apiary.Runs.Fold
 
   @prefix "dev.qory."
 
@@ -39,6 +40,7 @@ defmodule Apiary.Runs.Record.Timeline do
     "run.started" => :run_started,
     "run.policy_applied" => :policy_applied,
     "run.exited" => :run_exited,
+    "run.refused" => :run_refused,
     "run.egress" => :connection,
     "session.started" => :session_started,
     "session.prompt_submitted" => :prompt,
@@ -534,7 +536,7 @@ defmodule Apiary.Runs.Record.Timeline do
   defp also(state, item_seq, seq), do: %{state | by_seq: Map.put(state.by_seq, seq, item_seq)}
 
   defp lane_of(_state, kind, _event)
-       when kind in [:run_started, :policy_applied, :run_exited, :connection],
+       when kind in [:run_started, :policy_applied, :run_exited, :run_refused, :connection],
        do: @main
 
   defp lane_of(state, _kind, event) do
@@ -617,7 +619,15 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   defp session_kind?(kind),
-    do: kind not in [:run_started, :policy_applied, :run_exited, :connection, :connection_group]
+    do:
+      kind not in [
+        :run_started,
+        :policy_applied,
+        :run_exited,
+        :run_refused,
+        :connection,
+        :connection_group
+      ]
 
   ## Background tasks
 
@@ -805,8 +815,15 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp body(%{kind: :session_ended}, event, _events, _limit), do: %{reason: event.reason}
 
-  defp body(%{kind: :run_exited}, event, _events, _limit),
-    do: Map.take(event, [:exit_code, :signal, :reason, :quiet_seconds, :duration_ms])
+  # The state the exit's `state` and `reason` mean (`Apiary.Runs.Fold.exit_state/2`), which
+  # the item's mark and words follow.
+  defp body(%{kind: :run_exited}, event, _events, _limit) do
+    event
+    |> Map.take([:exit_code, :signal, :reason, :quiet_seconds, :duration_ms])
+    |> Map.put(:state, Fold.exit_state(event.state, event.reason))
+  end
+
+  defp body(%{kind: :run_refused}, event, _events, _limit), do: %{code: event.code}
 
   defp body(%{kind: :connection}, event, _events, _limit), do: %{connection: connection(event)}
 
@@ -991,8 +1008,8 @@ defmodule Apiary.Runs.Record.Timeline do
   ## Slim events
 
   @slim_keys ~w(sequence type time tool agent_id agent_type opened_by runtime runtime_version host wall
-    mode source model cwd kind outcome reason signal method request_method path decision rule path_rule
-    credential request_id port exit_code quiet_seconds duration_ms turns status cost_usd interrupted in_background allow
+    mode source model cwd kind outcome reason state code signal method request_method path decision rule
+    path_rule credential request_id port exit_code quiet_seconds duration_ms turns status cost_usd interrupted in_background allow
     allow_count deny deny_count run_configuration terminated terminated_count tools summary text
     text_bytes error error_bytes error_lines details details_bytes details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
@@ -1044,8 +1061,8 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(
       for key <-
             ~w(tool agent_id agent_type opened_by runtime runtime_version host wall mode source model
-            cwd kind outcome reason signal method request_method path decision rule path_rule
-            credential request_id),
+            cwd kind outcome reason state code signal method request_method path decision rule
+            path_rule credential request_id),
           into: %{} do
         {String.to_existing_atom(key), string(data, key)}
       end
