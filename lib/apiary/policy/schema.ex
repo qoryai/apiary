@@ -2,7 +2,7 @@ defmodule Apiary.Policy.Schema do
   @moduledoc """
   The contract's `run-configuration.schema.json` and the `policy.schema.json` it refers
   to, vendored under `priv/contract/`, and the validation every rendered document passes
-  before it is stored. A test compares the vendored files with the runner's contract
+  before it is stored. A test compares the vendored files with Forager's contract
   directory at the commit in `.forager-contract-ref`.
 
   The schema's patterns are anchored with `^` and `$`, and `$` also matches before a final

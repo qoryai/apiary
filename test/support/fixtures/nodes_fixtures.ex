@@ -43,7 +43,7 @@ defmodule Apiary.NodesFixtures do
     })
   end
 
-  @doc "A fresh instance id, as a runner would claim one."
+  @doc "A fresh instance id, as Forager would claim one."
   def unique_instance_id, do: "i_#{System.unique_integer([:positive])}"
 
   @doc """

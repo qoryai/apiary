@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     %{scope: scope, key: key, secret: secret}
   end
 
-  # Discovery, as the runner fetches it unless told otherwise (`:path` for another target;
+  # Discovery, as the gateway fetches it unless told otherwise (`:path` for another target;
   # the rest as `Apiary.ContractFixtures.signed_get/5` reads them).
   defp signed_get(conn, key_id, secret, opts \\ []) do
     {path, opts} = Keyword.pop(opts, :path, @path)
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert conn.resp_body =~ ~r/\A\{"version":1,"node_id":"nd_[^"]+","events":/
 
     # No run section until somebody has made the workspace's policy: until then its
-    # machines keep the policy of their own runner file.
+    # machines keep the policy of their own Forager file.
     refute Map.has_key?(json_response(conn, 200), "run")
 
     [digest] = get_resp_header(conn, "x-qory-configuration")

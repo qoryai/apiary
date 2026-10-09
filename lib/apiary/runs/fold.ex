@@ -37,7 +37,7 @@ defmodule Apiary.Runs.Fold do
   it (compact, with `<`, `>` and `&` written as `\\u003c`, `\\u003e` and `\\u0026`), nested
   at most 4 levels deep, each key at any level 1 to 64 bytes; a key or a string that
   breaks a rule anywhere in it drops it whole. A member name given twice in `details`
-  cannot be seen once the event is decoded, which keeps the last; the runner refuses it
+  cannot be seen once the event is decoded, which keeps the last; Forager refuses it
   before it sends. A subject is kept when its `type` matches `^[a-z0-9]+([ _.-][a-z0-9]+)*$`
   in at most 64 bytes and its `ref` is 1 to 256 bytes; its `title` (1 to 256 bytes) and
   `url` (at most 2048 bytes, absolute `http` or `https` with a host and no user name or
@@ -45,10 +45,10 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
+  Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
   with the highest sequence, because the lost-run check compares it with the server's
-  clock and a runner's clock may be anywhere.
+  clock and Forager's clock may be anywhere.
   """
 
   @ping "dev.qory.ping"
@@ -346,7 +346,7 @@ defmodule Apiary.Runs.Fold do
 
   defp started_state(run), do: %{run | state: "running", lost_at: nil}
 
-  # `ping` and `run.started` both say the runner's version: the later of the two decides.
+  # `ping` and `run.started` both say Forager's version: the later of the two decides.
   defp forager_version(acc, %{sequence: sequence, data: data}) do
     if sequence > Map.get(acc.latest, @forager_version, 0) do
       %{

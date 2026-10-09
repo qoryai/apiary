@@ -21,7 +21,7 @@ defmodule Apiary.Nodes do
   transaction: the name, kind, public id and limit of a new node, the name and limit an
   edit changed, a deletion's time, the instance a clearing cleared.
 
-  **Instances.** An instance is what a runner using a node's access key reports itself as
+  **Instances.** An instance is what Forager, under a node's access key, reports itself as
   (`Apiary.Nodes.Instance`): a claim, for display, the audit and the instance limit, never
   for authorisation. `seen/3` records one when a request is verified and broadcasts
   `{:nodes_touched, workspace_id}` (`topic/1`). An instance is **running** while it has a
@@ -269,7 +269,7 @@ defmodule Apiary.Nodes do
 
   @typedoc """
   What a request under a node's access key said of its instance: the `instance_id` it
-  signed, and beside it the `name` it gave (unsigned), the key's row id, and the runner's
+  signed, and beside it the `name` it gave (unsigned), the key's row id, and Forager's
   and the contract's versions. Only `instance_id` is required.
   """
   @type claim :: %{
@@ -283,7 +283,7 @@ defmodule Apiary.Nodes do
   @typedoc """
   An instance running now, as the pages show it: its id and name, since when it runs (the
   start of its oldest run alive), its newest run alive (`run_id`, the run's subject) and
-  the runner's version that run reported.
+  the Forager version that run reported.
   """
   @type running :: %{
           instance_id: String.t(),
@@ -357,7 +357,7 @@ defmodule Apiary.Nodes do
   defp record_seen(node, instance_id, claim, now) do
     name = Instance.name(claim[:name])
     key = claim[:access_key_id]
-    runner = version(claim[:forager_version])
+    forager = version(claim[:forager_version])
     contract = contract(claim[:contract_version])
 
     {updated, _} =
@@ -369,7 +369,7 @@ defmodule Apiary.Nodes do
               last_seen_at: fragment("GREATEST(?, ?)", i.last_seen_at, ^now),
               name: coalesce(type(^name, :string), i.name),
               access_key_id: coalesce(type(^key, :binary_id), i.access_key_id),
-              last_forager_version: coalesce(type(^runner, :string), i.last_forager_version),
+              last_forager_version: coalesce(type(^forager, :string), i.last_forager_version),
               last_contract_version: coalesce(type(^contract, :integer), i.last_contract_version)
             ]
           ]
@@ -402,7 +402,7 @@ defmodule Apiary.Nodes do
               name: name,
               first_seen_at: now,
               last_seen_at: now,
-              last_forager_version: runner,
+              last_forager_version: forager,
               last_contract_version: contract
             }
           ],

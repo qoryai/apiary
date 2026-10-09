@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.Contract.SignedRequest do
   @moduledoc ~S"""
-  Verifies a signed request of the runner contract under a node's access key, signs every
+  Verifies a signed request of the Forager contract under a node's access key, signs every
   answer to it, and refuses what the contract refuses, in the contract's order, for
   discovery, the run configuration and the events endpoint alike.
 
-  **The request.** The runner sends `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, the
+  **The request.** The gateway sends `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, the
   unsigned `X-Qory-Instance-Name`, `X-Qory-Contract-Version` and
   `X-Qory-Signature-Ed25519`, the Ed25519 signature under the access key of the request
   string (`Apiary.Contract.SignedMessage.request/5`): the access key id and the instance
@@ -50,7 +50,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   recorded as seen on the key's node (`Apiary.Nodes.seen/3`) once its instance id passes
   and, on a GET, only when its timestamp is within the window: a GET outside it, stale or
   replayed after the window closes, leaves neither the instance's last sighting nor its
-  name, and still gets its refusal in the order above. On a GET the use of the key is recorded: the runner version, reduced
+  name, and still gets its refusal in the order above. On a GET the use of the key is recorded: Forager's version, reduced
   to what the column holds and dropped when it does not fit, and the contract version; on
   a POST the receiver records the use with the delivery. Neither failing fails the
   request. The Logger metadata carries the key's
@@ -218,7 +218,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     )
   end
 
-  # The path and query exactly as received, so the runner and the server sign the same
+  # The path and query exactly as received, so the gateway and the server sign the same
   # bytes without any normalisation.
   defp target(%Plug.Conn{request_path: path, query_string: ""}), do: path
   defp target(%Plug.Conn{request_path: path, query_string: query}), do: path <> "?" <> query
@@ -330,7 +330,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
-  @doc "The runner version of `User-Agent: qory-forager/<version>`, as the columns hold it, or nil."
+  @doc "Forager's version of `User-Agent: qory-forager/<version>`, as the columns hold it, or nil."
   def forager_version(conn) do
     with [user_agent] <- get_req_header(conn, "user-agent"),
          true <- String.valid?(user_agent),

@@ -7,7 +7,7 @@ defmodule Apiary.Kinds.Schema do
   settings schema. Every schema is given `Apiary.Kinds.Pattern.end_only/1` first, so its
   patterns read `$` as the contracts do. A schema from a file is built once and kept in
   `:persistent_term`. Nothing is fetched over the network: a reference outside the file
-  resolves to the runner contract's `auth.schema.json`, vendored under `priv/contract/`,
+  resolves to the Forager contract's `auth.schema.json`, vendored under `priv/contract/`,
   which a service definition's `auth` refers to by its URL, or through JSV's own local
   resolvers, to JSON Schema's meta-schemas it embeds and to schemas of loaded modules.
   """
@@ -67,7 +67,7 @@ defmodule Apiary.Kinds.Schema do
     end
   end
 
-  # A file of ours that refers to the runner's contract gets the vendored copy, whose
+  # A file of ours that refers to Forager's contract gets the vendored copy, whose
   # patterns are read as the contract reads them, like the file's own.
   @impl JSV.Resolver
   def resolve(@forager_contract <> file, _opts) when file in @vendored do

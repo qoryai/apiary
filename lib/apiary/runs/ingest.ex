@@ -10,7 +10,7 @@ defmodule Apiary.Runs.Ingest do
   asked to project the run on its own time, and the caller answers.
 
   Delivery is at least once and in any order, so nothing here is an error that
-  the runner could cause by sending again: an event already stored is skipped, a
+  the gateway could cause by sending again: an event already stored is skipped, a
   delivery already recorded is answered as before, and an event that collides
   with another (its id under a different run, or its sequence under a different
   id) is dropped and counted.
@@ -48,7 +48,7 @@ defmodule Apiary.Runs.Ingest do
 
   @typedoc """
   What the request said beside its body: `contract_version`, the revision of
-  `X-Qory-Contract-Version`, which the runner sends on every request and the events
+  `X-Qory-Contract-Version`, which the gateway sends on every request and the events
   endpoint has checked; `delivery_id` (`X-Qory-Delivery`; one is made up when it is
   absent or not a UUID), `forager_version`, `run_configuration`
   (`X-Qory-Run-Configuration`) and `instance_id` (`X-Qory-Instance-Id`, as the request
@@ -125,7 +125,7 @@ defmodule Apiary.Runs.Ingest do
   end
 
   # Whatever the database refuses or cannot do is `{:error, :unavailable}`, a
-  # 503 the runner retries, never an exception into the request. The log line
+  # 503 the gateway retries, never an exception into the request. The log line
   # names the exception's module and nothing else: a Postgres message can
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
@@ -398,7 +398,7 @@ defmodule Apiary.Runs.Ingest do
   end
 
   # Bookkeeping on the key, after the commit: it never fails the delivery. The
-  # heartbeat is dated by this server's clock, when it was received: the runner's
+  # heartbeat is dated by this server's clock, when it was received: Forager's
   # clock, which may be wrong or ahead, never pins it.
   defp touch(access_key, result, meta, now) do
     AccessKeys.touch_delivery(access_key, %{

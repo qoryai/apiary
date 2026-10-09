@@ -1,6 +1,6 @@
 defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   @moduledoc """
-  The contract's Ed25519 known answers, from the runner's contract directory at the commit
+  The contract's Ed25519 known answers, from Forager's contract directory at the commit
   in `.forager-contract-ref`: the fixture keys (`known-answers/keys.json`), the keys every
   instance refuses (`known-answers/small-order.json`), the request, enrolment and answer
   strings with their signatures (`known-answers/signatures.json`), the discovery body they

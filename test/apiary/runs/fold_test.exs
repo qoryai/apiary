@@ -137,7 +137,7 @@ defmodule Apiary.Runs.FoldTest do
       assert %{run: @run} = Fold.fold(@run, [event(1, "ping", data)])
     end
 
-    test "the later of ping and run.started says the runner's version, in any order" do
+    test "the later of ping and run.started says Forager's version, in any order" do
       ping = event(1, "ping", %{"forager_version" => "v0.4.0", "contract_version" => 1})
       start = started(2, %{"forager_version" => "v0.4.1"})
 
@@ -656,7 +656,7 @@ defmodule Apiary.Runs.FoldTest do
       assert run.state == "running"
     end
 
-    test "the highest sequence decides, whatever the runner's clock says" do
+    test "the highest sequence decides, whatever Forager's clock says" do
       # The later beat is dated before the earlier one: a clock that was set back.
       later = heartbeat(9, 60, 30, 3)
       earlier = heartbeat(5, 30, 15, 50)

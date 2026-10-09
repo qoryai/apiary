@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.Contract.ContractVersion do
   @moduledoc """
-  ContractVersion decides whether a request names a revision of runner contract v1 this
+  ContractVersion decides whether a request names a revision of Forager contract v1 this
   server serves, for every endpoint of the contract: discovery, the events endpoint, the
   run configuration and enrolment.
 
-  The runner sends `X-Qory-Contract-Version`, the revision it implements, on every
+  The gateway sends `X-Qory-Contract-Version`, the revision it implements, on every
   request. The header is served when it is sent once, is a decimal integer and is one of
   `supported/0`, which is `[1]`; anything else, the header absent or sent twice included,
   is refused with `400` and `{"error":"unsupported_contract_version","supported":[1]}`.

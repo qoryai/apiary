@@ -8,8 +8,8 @@ defmodule Apiary.SigningKeyTest do
   alias Apiary.Contract.Ed25519
   alias Apiary.SigningKey
 
-  # The runner contract's fixture signing keys, current and next, and their known answers
-  # (runner contracts/forager/v1/fixtures/known-answers/keys.json, at the commit
+  # The Forager contract's fixture signing keys, current and next, and their known answers
+  # (Forager's contracts/forager/v1/fixtures/known-answers/keys.json, at the commit
   # .forager-contract-ref names): the seeds are the bytes 65 to 96 and 161 to 192.
   @fixture_seed :binary.list_to_bin(Enum.to_list(65..96))
   @fixture_public_key "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"

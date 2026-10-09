@@ -424,7 +424,7 @@ defmodule Apiary.Runs.ProjectorTest do
       end
     end
 
-    test "the later of ping and run.started says the runner's version, in any order", %{
+    test "the later of ping and run.started says Forager's version, in any order", %{
       scope: scope
     } do
       events = [

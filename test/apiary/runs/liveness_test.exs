@@ -42,7 +42,7 @@ defmodule Apiary.Runs.LivenessTest do
       silent = run_fixture(scope, %{state: "running", inserted_at: ago(60)})
       fresh = run_fixture(scope, %{state: "running", inserted_at: ago(600)})
 
-      # The runner's own time says nothing here: only when the server received it.
+      # Forager's own time says nothing here: only when the server received it.
       event_fixture(silent, 2, "run.started", started_data(), time: @now, received_at: ago(91))
 
       event_fixture(fresh, 2, "run.started", started_data(),
@@ -100,7 +100,7 @@ defmodule Apiary.Runs.LivenessTest do
     end
   end
 
-  describe "the runner's clock" do
+  describe "Forager's clock" do
     defp beat(run, sequence, opts) do
       event_fixture(
         run,

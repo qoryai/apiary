@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ago; one run in thirty names no repository. `--seed` (1) makes the plan repeatable: the
   same seed gives the same runs, under new ids every time.
 
-  Each run is a record the runner could have sent: its start, with what it is about (an
+  Each run is a record Forager could have sent: its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. Most succeed; some fail, time out, go silent and are found
@@ -411,7 +411,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   # The instance a host runs as on a node: the same id for the same host and node, in
-  # every history, as a runner keeps its instance id.
+  # every history, as Forager keeps its instance id.
   defp instance_id(node_id, host) do
     digest = :crypto.hash(:sha256, [node_id, ?/, host])
     "i_" <> Base.url_encode64(binary_part(digest, 0, 16), padding: false)
@@ -835,7 +835,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp instant(ms), do: DateTime.from_unix!(ms * 1000, :microsecond)
 
-  # A version 7 UUID of the run's start, as the runner makes one.
+  # A version 7 UUID of the run's start, as Forager makes one.
   defp uuid7(ms) do
     <<a::12, b::62, _::6>> = :crypto.strong_rand_bytes(10)
     {:ok, uuid} = Ecto.UUID.load(<<ms::48, 7::4, a::12, 2::2, b::62>>)
