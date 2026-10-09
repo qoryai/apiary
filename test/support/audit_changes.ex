@@ -11,7 +11,6 @@ defmodule Apiary.AuditChanges do
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
-  import Apiary.RunEventsFixtures
   import Ecto.Query
 
   alias Apiary.{
@@ -25,7 +24,6 @@ defmodule Apiary.AuditChanges do
     Policy,
     Repo,
     Retention,
-    Runs,
     Secrets,
     Variables
   }
@@ -64,7 +62,6 @@ defmodule Apiary.AuditChanges do
       :"node.edit",
       :"node.delete",
       :"node.clear_instance",
-      :"run.close",
       :"retention.edit",
       :"security_policy.edit",
       :"security_policy.lock",
@@ -260,13 +257,6 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
-  def make(:"run.close", %{scope: scope}) do
-    run = run_fixture(scope)
-    before = entries()
-    {:ok, _} = Runs.close_run(scope, run)
-    %{scope: scope, subject: {"run", run.id}, before: before}
-  end
-
   def make(:"retention.edit", %{scope: scope}) do
     before = entries()
     {:ok, _} = Retention.update_retention(scope, %{events_retention_days: 30})
@@ -445,7 +435,6 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.revoke", %{scope: scope}),
     do: node_key_fixture(scope, node_fixture(scope)).access_key
 
-  defp prepare(:"run.close", %{scope: scope}), do: run_fixture(scope)
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
@@ -540,8 +529,6 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"node.clear_instance", scope, {node, instance_id}),
     do: Nodes.clear_instance(scope, node, instance_id)
-
-  defp attempt(:"run.close", scope, run), do: Runs.close_run(scope, run)
 
   defp attempt(:"secret.write", scope, _),
     do: Secrets.create_secret(scope, %{name: "API_TOKEN", value: "s3cr3t-audit-value"})

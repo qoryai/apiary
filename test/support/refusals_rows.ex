@@ -329,13 +329,7 @@ defmodule ApiaryWeb.RefusalsRows do
        "delete_variable", %{}, needs: :secrets},
       {:"variable.edit", :other_owner,
        "/:other_org/:other_ws/settings/variables/:variable/delete", "delete_variable", %{},
-       answer: :refused_at_mount, needs: :secrets},
-
-      # A run.
-      {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
-       prelude: [{"close", %{}}]},
-      {:"run.close", :other_owner, "/:other_org/:other_ws/runs/:run", "close_confirm", %{},
-       prelude: [{"close", %{}}], answer: :not_found}
+       answer: :refused_at_mount, needs: :secrets}
     ]
   end
 

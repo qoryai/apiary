@@ -28,7 +28,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     :"connection.read",
     :"connection.write"
   ]
-  alias ApiaryWeb.{Format, RunComponents}
+  alias ApiaryWeb.Format
 
   @impl true
   def label(:"organisation.create"), do: gettext("Organisation created")
@@ -58,7 +58,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"node.edit"), do: gettext("Node changed")
   def label(:"node.delete"), do: gettext("Node deleted")
   def label(:"node.clear_instance"), do: gettext("Instance cleared")
-  def label(:"run.close"), do: gettext("Run closed")
   def label(:"retention.edit"), do: gettext("Retention changed")
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
   def label(:"security_policy.lock"), do: gettext("Policy rule locked or unlocked")
@@ -175,8 +174,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"node.clear_instance", _details, _actor),
     do: gettext("Cleared an instance of a node")
-
-  defp said(:"run.close", _details, _actor), do: gettext("Closed a run")
 
   defp said(:"retention.edit", _details, _actor),
     do: gettext("Changed how long runs are kept")
@@ -387,9 +384,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     ]
   end
 
-  def change(:"run.close", before, after_, _details),
-    do: from_to(state(before["state"]), state(after_["state"]))
-
   def change(:"retention.edit", before, after_, _details) do
     for {field, label} <- [
           {"events_retention_days", gettext("Events")},
@@ -461,9 +455,6 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp limit_or_name("instance_limit", nil), do: gettext("No limit")
   defp limit_or_name("instance_limit", n) when is_integer(n), do: Format.number(n)
   defp limit_or_name(_field, value), do: to_string(value)
-
-  defp state(nil), do: nil
-  defp state(state), do: RunComponents.state_label(state)
 
   defp days(nil), do: gettext("Forever")
 

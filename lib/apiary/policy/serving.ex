@@ -79,7 +79,7 @@ defmodule Apiary.Policy.Serving do
   The digest in force for a run of the key's managed workspace (the caller has asked
   `managed?/1`), or nil when it cannot be read: the answer then carries no such header,
   which means nothing to the gateway. `run` is the run's
-  row or nil (a closed run is looked up by the batch's subject).
+  row or nil (a pruned run is looked up by the batch's subject).
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil
   def digest_for(%AccessKey{} = access_key, run, %Batch{} = batch, reported) do

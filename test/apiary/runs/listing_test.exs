@@ -140,17 +140,17 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.families() |> Enum.flat_map(& &1.states) |> Enum.sort() ==
                Enum.sort(Apiary.Runs.Run.states())
 
-      assert Filters.family_states("ended_badly") == ~w(failed timed_out lost closed)
+      assert Filters.family_states("ended_badly") == ~w(failed timed_out lost)
       assert Filters.family_states("ended") == nil
 
-      assert Filters.families_of(~w(failed timed_out lost closed)) == ["ended_badly"]
+      assert Filters.families_of(~w(failed timed_out lost)) == ["ended_badly"]
       assert Filters.families_of(~w(succeeded ended running pending)) == ~w(alive ended_well)
       assert Filters.family_states("ended_well") == ~w(succeeded ended)
       assert Filters.families_of(~w(succeeded running pending)) == nil
       assert Filters.families_of(Apiary.Runs.Run.states()) == ~w(alive ended_well ended_badly)
       assert Filters.families_of(~w(failed lost)) == nil
       assert Filters.families_of(~w(running succeeded)) == nil
-      assert Filters.families_of(~w(running succeeded closed)) == nil
+      assert Filters.families_of(~w(running succeeded lost)) == nil
       assert Filters.families_of([]) == nil
     end
 
@@ -163,17 +163,17 @@ defmodule Apiary.Runs.ListingTest do
       }
 
       filters = Filters.change(parse(%{"state" => "running"}), on)
-      assert filters.states == ~w(running failed timed_out lost closed)
-      assert Filters.to_params(filters) == %{"state" => "running,failed,timed_out,lost,closed"}
+      assert filters.states == ~w(running failed timed_out lost)
+      assert Filters.to_params(filters) == %{"state" => "running,failed,timed_out,lost"}
 
       # The page's script has already ticked the family's boxes: the same result.
-      ticked = %{on | "state" => ~w(running failed timed_out lost closed)}
+      ticked = %{on | "state" => ~w(running failed timed_out lost)}
       assert Filters.change(parse(%{"state" => "running"}), ticked) == filters
 
       off = %{
         "_filter" => "state",
         "_target" => ["family_ended_badly"],
-        "state" => ~w(running failed timed_out lost closed)
+        "state" => ~w(running failed timed_out lost)
       }
 
       assert Filters.change(filters, off).states == ["running"]
@@ -312,7 +312,7 @@ defmodule Apiary.Runs.ListingTest do
 
     test "a state may be a family, words are folded, and the URL says the states" do
       {f, []} = query("state:ended-badly")
-      assert f.states == ~w(failed timed_out lost closed)
+      assert f.states == ~w(failed timed_out lost)
 
       {f, []} = query("state:ended")
       assert f.states == ["ended"]
@@ -393,7 +393,7 @@ defmodule Apiary.Runs.ListingTest do
     test "tokens write the filters back as the query, a view's own left out" do
       f =
         parse(%{
-          "state" => "failed,timed_out,lost,closed",
+          "state" => "failed,timed_out,lost",
           "system" => "github.example",
           "target" => "acme/shop",
           "runtime" => "claude code",

@@ -21,8 +21,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   Each run is a record Forager could have sent: its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
-  heartbeats, and its exit. Most succeed; some fail, time out, go silent and are found
-  lost, or are closed by a member; a few are still running when the task ends and are found
+  heartbeats, and its exit. Most succeed; some fail, time out, or go silent and are
+  found lost; a few are still running when the task ends and are found
   lost a minute and a half later, as any run that stops talking is; one in two hundred
   writes tens of thousands of lines. The events are written with the times they happened
   and received a moment later, as the receiver would have stored them, and every run is
@@ -47,7 +47,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   import Ecto.Query
 
-  alias Apiary.{AccessKeys, Accounts, Nodes, Organisations, Policy, Repo, Runs}
+  alias Apiary.{AccessKeys, Accounts, Nodes, Organisations, Policy, Repo}
   alias Apiary.Nodes.Instance
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
@@ -299,7 +299,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     seconds = div(System.monotonic_time(:millisecond) - started, 1000)
     Mix.shell().info("Written in #{seconds} s")
 
-    settle(ctx, plan)
+    settle(ctx)
 
     if Apiary.Features.on?(scope, :security), do: policy(scope, keys)
 
@@ -727,7 +727,6 @@ defmodule Mix.Tasks.Apiary.Demo.History do
           {:failed, 16},
           {:timed_out, 3},
           {:lost, 3},
-          {:closed, 1.5},
           {:ping, 0.5}
         ])
       end
@@ -882,7 +881,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     do: %{acc | items: [{at, acc.n, type, data} | acc.items], n: acc.n + 1}
 
   # Where the record stops: at its exit, or, for a run that went silent, part of the way.
-  defp ends(%{outcome: outcome, duration: duration}) when outcome in [:lost, :closed],
+  defp ends(%{outcome: :lost, duration: duration}),
     do: round(duration * (0.3 + :rand.uniform() * 0.5))
 
   defp ends(%{duration: duration}), do: duration
@@ -1167,7 +1166,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   defp session_end(acc, %{outcome: outcome}, _session, _ends)
-       when outcome in [:lost, :closed, :alive, :timed_out],
+       when outcome in [:lost, :alive, :timed_out],
        do: acc
 
   defp session_end(acc, spec, session, ends) do
@@ -1219,7 +1218,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     final = max(round(ends * 0.9), 2_500)
     pass = spec.outcome not in [:failed, :timed_out]
 
-    if spec.outcome in [:lost, :closed, :alive],
+    if spec.outcome in [:lost, :alive],
       do: acc,
       else:
         tool(
@@ -1600,7 +1599,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     end)
   end
 
-  defp finish(acc, %{outcome: outcome}, _ends) when outcome in [:lost, :closed, :alive], do: acc
+  defp finish(acc, %{outcome: outcome}, _ends) when outcome in [:lost, :alive], do: acc
 
   defp finish(acc, %{outcome: :timed_out} = spec, ends) do
     acc
@@ -1749,32 +1748,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   ## After the writing
 
-  # What the record implies beyond the runs: the lost ones found, some closed by a member,
-  # the repositories dated by their first run, the keys by their last delivery, the hosts
-  # recorded as instances of their nodes; a second key added to ci-fleet, as when a key is
-  # replaced, and the legacy machine's key revoked.
-  defp settle(ctx, plan) do
+  # What the record implies beyond the runs: the lost ones found, the repositories dated by
+  # their first run, the keys by their last delivery, the hosts recorded as instances of
+  # their nodes; a second key added to ci-fleet, as when a key is replaced, and the legacy
+  # machine's key revoked.
+  defp settle(ctx) do
     %Scope{workspace: workspace} = scope = ctx.scope
     Liveness.check(DateTime.utc_now())
-
-    closable =
-      Repo.all(
-        from r in Run,
-          where: r.workspace_id == ^workspace.id and r.state in ["running", "lost"],
-          where: r.inserted_at < ^DateTime.add(ctx.now, -1, :hour),
-          select: r
-      )
-
-    closers = closers(scope)
-
-    share =
-      Enum.count(plan, &(&1.outcome == :closed)) /
-        max(Enum.count(plan, &(&1.outcome in [:lost, :closed])), 1)
-
-    closed =
-      closable
-      |> Enum.filter(fn _run -> :rand.uniform() < share end)
-      |> Enum.count(fn run -> match?({:ok, _}, Runs.close_run(pick(closers), run)) end)
 
     Repo.update_all(
       from(t in Target,
@@ -1823,9 +1803,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     {:ok, _key} = AccessKeys.revoke_access_key(scope, Map.fetch!(ctx.keys, "legacy-ci"))
 
-    Mix.shell().info(
-      "#{closed} silent runs closed; ci-fleet has a second key, legacy-ci's is revoked"
-    )
+    Mix.shell().info("ci-fleet has a second key, legacy-ci's is revoked")
   end
 
   # Each host a run named, an instance of the run's node: first and last seen at the
@@ -1871,23 +1849,6 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_forager_version]},
       conflict_target: [:node_id, :instance_id]
     )
-  end
-
-  # The owner, and the people who joined, as they would close a run from its page.
-  defp closers(%Scope{organisation: organisation, workspace: workspace} = scope) do
-    others =
-      Repo.all(
-        from m in Membership,
-          join: u in assoc(m, :user),
-          where:
-            m.organisation_id == ^organisation.id and
-              u.email in ^Enum.map(@people, &"#{elem(&1, 0)}@example.com"),
-          select: u
-      )
-      |> Enum.map(&scope_of(&1, organisation, workspace))
-      |> Enum.reject(&is_nil/1)
-
-    [scope | others]
   end
 
   ## The policy

@@ -114,7 +114,6 @@ defmodule Apiary.Runs.Fold do
 
   @terminal ~w(succeeded ended failed timed_out)
   @openers ~w(session gateway)
-  @credential_sources ~w(issuer none)
   # The reasons of an exit without a state that end a run neither well nor by a failure of
   # its own: a run a gateway opened was quiet, its run credential expired, or its issuer
   # said it ended.
@@ -171,7 +170,6 @@ defmodule Apiary.Runs.Fold do
       run
       |> Map.merge(%{
         opened_by: opened_by(data),
-        credential_from: credential_from(data),
         runtime: string(data, "runtime"),
         runtime_version: string(data, "runtime_version"),
         command: string(data, "command", @long_text),
@@ -300,7 +298,7 @@ defmodule Apiary.Runs.Fold do
         quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8)
       })
-      |> Map.update!(:state, &exited_state(&1, string(data, "state"), reason))
+      |> Map.put(:state, exit_state(string(data, "state"), reason))
       |> Map.put(:lost_at, nil)
     end)
   end
@@ -351,15 +349,14 @@ defmodule Apiary.Runs.Fold do
   The run state a `dev.qory.run.exited` with this `state` and `reason` means. A session's
   exit says its state: succeeded, or failed, timed out with the reason `timeout`. An exit
   without one, a run a gateway opened, reads its reason: `quiet`, `credential_expired` and
-  `run_ended_at_issuer` are ended, `timeout` timed out, `run_closed` closed, and the rest,
-  `gateway_lost` and `session_lost` among them, failed.
+  `run_ended_at_issuer` are ended, `timeout` timed out, and the rest, `gateway_lost`,
+  `session_lost` and `run_closed` among them, failed.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
   def exit_state("succeeded", _reason), do: "succeeded"
   def exit_state("failed", "timeout"), do: "timed_out"
   def exit_state(nil, reason) when reason in @ended_reasons, do: "ended"
   def exit_state(nil, "timeout"), do: "timed_out"
-  def exit_state(nil, "run_closed"), do: "closed"
   def exit_state(_state, _reason), do: "failed"
 
   @doc """
@@ -370,11 +367,7 @@ defmodule Apiary.Runs.Fold do
   @spec ended_reasons() :: [String.t()]
   def ended_reasons, do: @ended_reasons
 
-  defp exited_state("closed", _state, _reason), do: "closed"
-  defp exited_state(_current, state, reason), do: exit_state(state, reason)
-
-  defp started_state(%{state: state} = run) when state in @terminal or state == "closed",
-    do: run
+  defp started_state(%{state: state} = run) when state in @terminal, do: run
 
   defp started_state(run), do: %{run | state: "running", lost_at: nil}
 
@@ -382,14 +375,6 @@ defmodule Apiary.Runs.Fold do
   defp opened_by(data) do
     case string(data, "opened_by", 64) do
       opener when opener in @openers -> opener
-      _ -> nil
-    end
-  end
-
-  # Where the run's credential came from, one of the two the contract names, or nil.
-  defp credential_from(data) do
-    case string(data, "credential", 64) do
-      source when source in @credential_sources -> source
       _ -> nil
     end
   end
@@ -436,7 +421,7 @@ defmodule Apiary.Runs.Fold do
   end
 
   # A heartbeat says the run is alive: a lost run runs again, and so does a run whose
-  # `run.started` has not arrived yet. An exit or a close is not undone.
+  # `run.started` has not arrived yet. An exit is not undone.
   defp revive(%{state: state} = run) when state in ["lost", "pending"],
     do: %{run | state: "running", lost_at: nil}
 

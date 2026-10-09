@@ -44,10 +44,8 @@ defmodule Apiary.Runs.Filters do
   alias Apiary.Runs.Run
 
   # The three families every surface reads the states as, in the order they are shown.
-  # `closed` is stopped by the workspace, not a failure of the run, and sits with the bad
-  # endings for scanning. Only their states go in a URL:
-  # `state=failed,timed_out,lost,closed`. The three families every surface counts runs in
-  # (`Apiary.Runs.Run`): one definition.
+  # Only their states go in a URL: `state=failed,timed_out,lost`. The three families every
+  # surface counts runs in (`Apiary.Runs.Run`): one definition.
   @families [
     %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
@@ -157,7 +155,7 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The three families the states read as, in the order they are shown: alive (`pending`,
   `running`), ended well (`succeeded`, `ended`) and ended badly (`failed`, `timed_out`,
-  `lost`, `closed`). Every state is in exactly one. The labels are in the domain's words:
+  `lost`). Every state is in exactly one. The labels are in the domain's words:
   translated here, at call time, because the list is made at compile time.
   """
   @spec families() :: [family()]
@@ -171,7 +169,7 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The keys of the families these states are, in the families' order, when the states are
   exactly one or more whole families; nil otherwise (a part of a family, or nothing). This
-  is what lets a token and the empty state say "ended badly" for the four states.
+  is what lets a token and the empty state say "ended badly" for the three states.
   """
   @spec families_of([String.t()]) :: [String.t()] | nil
   def families_of(states) when is_list(states) do

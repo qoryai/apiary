@@ -75,7 +75,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#targets-pager", "1–3 of 3")
   end
 
-  test "a last run that ended is its grey dot, as a closed one is: the word is a screen reader's",
+  test "a last run that ended is its grey dot: the word is a screen reader's",
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/quiet"),
       ago: 30,

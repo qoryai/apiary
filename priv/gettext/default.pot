@@ -1645,11 +1645,6 @@ msgstr ""
 msgid "%{runtime} %{version} on %{host}, without a wall"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "%{run} is closed."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{seconds} s"
@@ -1749,11 +1744,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{time} by %{person}"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{time} by a member"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -3650,21 +3640,10 @@ msgstr ""
 msgid "Clearing"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Close"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Close %{run}"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "Close %{run}?"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -3672,62 +3651,9 @@ msgstr ""
 msgid "Close menu"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Close run"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Close this run?"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Closed"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Closed %{date}"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Closed a run"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Closed by a member on %{date}. The run never posted its exit."
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Closed by a member. The run never posted its exit."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Closed when a new policy denied the host."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Closed."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Closing"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Closing tells the workspace to take no more events for this run. It is for a run that went quiet and will not post its exit."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -3965,11 +3891,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Counted per host, port and path from the run's egress events. The reason and outcome are those of the last attempt. A rule added here changes what happens next; what the record already says stays as it was."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Counted with the runs that ended badly."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -9421,16 +9342,6 @@ msgstr ""
 msgid "Run %{id}"
 msgstr ""
 
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
-msgid "Run closed"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run closed."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run configuration"
@@ -10195,11 +10106,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Stays on %{name}; it is never shown"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Stopped by the workspace: a member closed it after it went quiet."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11045,11 +10951,6 @@ msgstr ""
 msgid "The rules stay as they are, locked ones too."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "The run could not be closed."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run has not reloaded yet."
@@ -11248,16 +11149,6 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#, elixir-autogen, elixir-format
-msgid "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "The workspace takes no more events for it. A close is final."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -11505,19 +11396,9 @@ msgstr ""
 msgid "This run had no wall. A program that ignores the proxy is not seen."
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This run has ended; its record keeps the end it posted."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "This run has ended; the next run of the target has it."
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "This run has ended; there is nothing to close."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11528,11 +11409,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "This run is behind the policy in force."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This run is no longer in this workspace."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -12382,12 +12258,6 @@ msgstr ""
 msgid "Yes, clear"
 msgstr ""
 
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Yes, close"
-msgstr ""
-
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -12475,7 +12345,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You are no longer a member of this workspace."
@@ -12850,11 +12719,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by rule"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "closed"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

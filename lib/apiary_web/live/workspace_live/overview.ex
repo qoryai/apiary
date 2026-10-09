@@ -147,7 +147,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             can_set_mode?={Common.may?(@current_scope, :"security_policy.set_mode")}
             panel={@rule_panel}
             now={@now}
-            confirming={@confirm_close && "att-run-#{@confirm_close.run_id}"}
           />
 
           <section id="overview-activity" class="q-blk q-ov-act" aria-labelledby="overview-activity-h">
@@ -274,7 +273,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         table?: false,
         chart_w: 640,
         rule_panel: nil,
-        confirm_close: nil,
         announce: nil,
         announced_at: nil,
         failed: %{},
@@ -916,57 +914,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         {:noreply, put_flash(socket, :error, gettext("Only owners and admins connect a node."))}
   end
 
-  def handle_event("close_ask", %{"id" => id}, socket) do
-    case find_item(socket, id) do
-      %{kind: :lost, run: %Run{} = run, resolved: nil} ->
-        if Runs.closable?(run),
-          do: {:noreply, assign(socket, :confirm_close, run)},
-          else: {:noreply, socket}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  # Cancel, or Escape: the row is itself again, and its Close has the focus back.
-  def handle_event("close_cancel", _params, %{assigns: %{confirm_close: %Run{} = run}} = socket) do
-    {:noreply,
-     socket
-     |> assign(:confirm_close, nil)
-     |> push_event("overview:focus", %{id: "att-run-#{run.run_id}-act"})}
-  end
-
-  def handle_event("close_cancel", _params, socket), do: {:noreply, socket}
-
-  def handle_event("close_confirm", _params, %{assigns: %{confirm_close: %Run{} = run}} = socket) do
-    socket = assign(socket, :confirm_close, nil)
-
-    case Runs.close_run(socket.assigns.current_scope, run) do
-      {:ok, closed} ->
-        socket =
-          socket
-          |> remember([closed])
-          |> resolve_item("att-run-#{run.run_id}", %{
-            mark: :closed,
-            what: gettext("Closed."),
-            done: nil
-          })
-          |> announce(gettext("%{run} is closed.", run: row_title(run)), :now)
-          |> focus_after("att-run-#{run.run_id}")
-
-        {:noreply, socket}
-
-      {:error, :not_closable} ->
-        {:noreply,
-         put_flash(socket, :error, gettext("This run has ended; there is nothing to close."))}
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, gettext("The run could not be closed."))}
-    end
-  end
-
-  def handle_event("close_confirm", _params, socket), do: {:noreply, socket}
-
   ## The one-click allow of a denied destination: the panel of a connection row's Allow,
   ## called with the destination's targets, exactly as the connections page calls it. A
   ## rule is `security`'s: without it no row offers the act, and an event that asks anyway
@@ -1534,14 +1481,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     what =
       cond do
-        current.state == "closed" -> gettext("Closed.")
         kind == :behind and current.state in Run.alive_states() -> gettext("Reloaded.")
         current.state in Run.alive_states() -> gettext("Heartbeats resumed.")
         current.state == "lost" -> gettext("Marked lost.")
         true -> ended(current.state)
       end
 
-    %{mark: if(current.state == "closed", do: :closed, else: :resolved), what: what, done: nil}
+    %{mark: :resolved, what: what, done: nil}
   end
 
   defp resolution(%{kind: :enforce}, %{policy: policy}) do

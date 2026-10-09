@@ -133,7 +133,6 @@ defmodule ApiaryWeb.Storybook.Sample do
         host: "build-0#{n}",
         started_at: at,
         inserted_at: at,
-        closed_at: nil,
         duration_ms: nil,
         elapsed_seconds: nil,
         last_heartbeat_at: nil,

@@ -16,14 +16,14 @@ defmodule ApiaryWeb.TargetComponentsTest do
   @scope %Scope{organisation: %Organisation{slug: "acme"}, workspace: %Workspace{slug: "main"}}
   @shared MapSet.new(["acme/shop"])
 
-  test "state_mark/1: a run that succeeded, ended or was closed is its dot, its word for a screen reader" do
-    for state <- ~w(succeeded ended closed) do
+  test "state_mark/1: a run that succeeded or ended is its dot, its word for a screen reader" do
+    for state <- ~w(succeeded ended) do
       html = render_component(&TargetComponents.state_mark/1, state: state)
       assert html =~ "q-sdot-#{state}"
       assert html =~ ~s(class="sr-only")
     end
 
-    # Ended as Closed: the word only where it is asked for, as a header does
+    # The word only where it is asked for, as a header does
     html = render_component(&TargetComponents.state_mark/1, state: "ended", word: true)
     assert html =~ ">Ended</span>"
     refute html =~ "sr-only"

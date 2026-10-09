@@ -119,7 +119,7 @@ export const DaysChart = {
   },
 }
 
-// The page: after an act removed the control that had focus (an allow, a close), focus
+// The page: after an act removed the control that had focus (an allow), focus
 // moves where the server says ("overview:focus" with the element's id), never to the body.
 export const OverviewPage = {
   mounted() {

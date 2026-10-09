@@ -12,7 +12,7 @@ defmodule Apiary.Runs.Run do
   @typedoc "A run of a workspace."
   @type t :: %__MODULE__{}
 
-  @states ~w(pending running succeeded ended failed timed_out lost closed)
+  @states ~w(pending running succeeded ended failed timed_out lost)
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -35,10 +35,6 @@ defmodule Apiary.Runs.Run do
     # a runtime, or "gateway", a gateway with no session, whose start says no runtime,
     # command or host and whose exit no state or exit code. Nil until a start says it.
     field :opened_by, :string
-    # Where the run's credential came from, `credential` of `run.started`: "issuer", an
-    # issuer gave the run its run credential, or "none", the run has none. Nil until a start
-    # says it.
-    field :credential_from, :string
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -74,7 +70,6 @@ defmodule Apiary.Runs.Run do
     field :run_configuration_digest, :string
     field :reported_run_configuration_digest, :string
 
-    field :closed_at, :utc_datetime_usec
     field :lost_at, :utc_datetime_usec
 
     # Set by `Apiary.Retention` when it deleted the run's events, or its log bytes alone.
@@ -97,7 +92,6 @@ defmodule Apiary.Runs.Run do
     belongs_to :node, Apiary.Nodes.Node
     field :instance_id, :string
     belongs_to :target, Apiary.Runs.Target
-    belongs_to :closed_by, Apiary.Accounts.User
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
@@ -121,12 +115,10 @@ defmodule Apiary.Runs.Run do
   def ended_well_states, do: ~w(succeeded ended)
 
   @doc """
-  The states of a run that ended badly: failed, timed out, lost and closed. A closed run
-  was stopped by the workspace, not by a failure of its own; it sits in this family so
-  that every surface counts runs in the same three families (alive, ended well, ended
-  badly).
+  The states of a run that ended badly: failed, timed out and lost. Every surface counts
+  runs in the same three families (alive, ended well, ended badly).
   """
-  def ended_badly_states, do: ~w(failed timed_out lost closed)
+  def ended_badly_states, do: ~w(failed timed_out lost)
 
   @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
   @spec no_session?(t() | map()) :: boolean()

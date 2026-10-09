@@ -14,7 +14,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   alias Apiary.Repo
   alias Apiary.Policy
   alias Apiary.Retention
-  alias Apiary.Runs
   alias Apiary.Runs.{Liveness, Projector, Run}
 
   setup :register_and_log_in_user
@@ -940,8 +939,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-run-#{lost.run_id}-act[aria-label='Close nightly-mirror']",
-               "Close"
+               "#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']",
+               "Open"
              )
 
       assert has_element?(
@@ -1108,141 +1107,33 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#att-key-#{idle.id}")
     end
 
-    test "close a lost run in place: the row stays struck, the count drops, the page says so",
+    test "a lost run offers Open, never Close, whatever opened it",
          %{conn: conn, scope: scope} do
-      lost = lost_run(scope)
-      started_run(scope, shop())
-      view = open(conn, scope)
-      # With `security` the unmanaged policy is the second item, and focus goes to it;
-      # without it the lost run is the only one, and focus goes to All runs.
-      security? = Apiary.Features.on?(:security)
-      assert text(view, "#attention-n") == if(security?, do: "2", else: "1")
-
-      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
-
-      # The row itself asks, in place: no modal over the page.
-      assert has_element?(
-               view,
-               "#att-run-#{lost.run_id}.q-confirming #close-run",
-               "Close nightly-mirror?"
-             )
-
-      refute has_element?(view, "dialog#close-run")
-      refute has_element?(view, "#att-run-#{lost.run_id}-act")
-
-      view |> element("#close-run-cancel") |> render_click()
-      refute has_element?(view, "#close-run")
-      close_act = "att-run-#{lost.run_id}-act"
-      assert_push_event(view, "overview:focus", %{id: ^close_act})
-
-      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
-      view |> element("#att-run-#{lost.run_id} #close-confirm", "Yes, close") |> render_click()
-
-      assert %Run{state: "closed"} = Runs.get_run!(scope, lost.id)
-      assert has_element?(view, "#att-run-#{lost.run_id}.q-resolved .q-mark-closed")
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Closed."
-      refute has_element?(view, "#att-run-#{lost.run_id}-act")
-      assert text(view, "#attention-n") == if(security?, do: "1", else: "0")
-      assert text(view, "#overview-announcer") == "nightly-mirror is closed."
-
-      next = if security?, do: "att-policy-unmanaged-act", else: "activity-all"
-      assert_push_event(view, "overview:focus", %{id: ^next})
-    end
-
-    test "a lost run a gateway opened offers Open, never Close, and a crafted close is refused",
-         %{conn: conn, scope: scope} do
-      lost = lost_run(scope, %{opened_by: "gateway"})
-      session = lost_run(scope, %{about_title: "weekly-sync", opened_by: "session"})
-      view = open(conn, scope)
-
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
-
-      assert has_element?(
-               view,
-               "a#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']" <>
-                 "[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
-               "Open"
-             )
-
-      refute has_element?(view, "button#att-run-#{lost.run_id}-act")
-
-      assert has_element?(
-               view,
-               "button#att-run-#{session.run_id}-act[aria-label='Close weekly-sync']",
-               "Close"
-             )
-
-      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
-      refute has_element?(view, "#close-run")
-      render_hook(view, "close_confirm", %{})
-
-      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
-      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
-    end
-
-    test "a lost run whose credential came from an issuer offers Open, never Close, and a crafted close is refused",
-         %{conn: conn, scope: scope} do
-      lost = lost_run(scope, %{opened_by: "session", credential_from: "issuer"})
-
-      kept =
-        for source <- ["none", nil] do
-          lost_run(scope, %{
-            about_title: "weekly-sync-#{source || "unsaid"}",
-            opened_by: "session",
-            credential_from: source
-          })
+      runs =
+        for {opener, n} <- Enum.with_index([nil, "session", "gateway"]) do
+          lost_run(scope, %{about_title: "nightly-mirror-#{n}", opened_by: opener})
         end
 
       view = open(conn, scope)
 
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+      for run <- runs do
+        assert text(view, "#att-run-#{run.run_id}") =~ "Lost, never posted its exit"
 
-      assert has_element?(
-               view,
-               "a#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']" <>
-                 "[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
-               "Open"
-             )
-
-      refute has_element?(view, "button#att-run-#{lost.run_id}-act")
-
-      for run <- kept do
         assert has_element?(
                  view,
-                 "button#att-run-#{run.run_id}-act[aria-label='Close #{run.about_title}']",
-                 "Close"
+                 "a#att-run-#{run.run_id}-act[aria-label='Open #{run.about_title}']" <>
+                   "[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
+                 "Open"
                )
+
+        refute has_element?(view, "button#att-run-#{run.run_id}-act")
       end
 
-      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
+      refute render(view) =~ ~r/>\s*Close\s*</
       refute has_element?(view, "#close-run")
-      render_hook(view, "close_confirm", %{})
-
-      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
-      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
-      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
     end
 
-    test "a lost run whose start says issuer between its Close question and the answer is refused, and stays lost",
-         %{conn: conn, scope: scope} do
-      lost = lost_run(scope, %{opened_by: "session"})
-      view = open(conn, scope)
-
-      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
-      assert has_element?(view, "#close-run")
-
-      # Its start is projected meanwhile, and says its credential came from an issuer.
-      Repo.update_all(from(r in Run, where: r.id == ^lost.id), set: [credential_from: "issuer"])
-
-      render_hook(view, "close_confirm", %{})
-
-      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
-      assert view |> element("#flash-group") |> render() =~ "The run could not be closed."
-      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
-    end
-
-    test "a lost run's Close question isolates its title, so a bidi override flips nothing",
+    test "a lost run's title is isolated, so a bidi override flips nothing",
          %{conn: conn, scope: scope} do
       title = "nightly\u202Erorrim"
       lost = lost_run(scope, %{about_title: title})
@@ -1250,13 +1141,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(view, "#att-run-#{lost.run_id} .q-ar-t > bdi", title)
       # The label for a screen reader stays plain text.
-      assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Close #{title}"]))
-      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
-
-      assert has_element?(view, "#close-run-question > bdi", title)
-
-      assert view |> element("#close-run-question") |> render() =~
-               ~r/>Close <bdi[^>]*>#{title}<\/bdi>\?</
+      assert has_element?(view, ~s(#att-run-#{lost.run_id}-act[aria-label="Open #{title}"]))
     end
 
     @tag needs: :security

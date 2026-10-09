@@ -210,14 +210,14 @@ defmodule Apiary.Runs.LivenessTest do
     end
   end
 
-  test "a run that has ended or is closed is left alone", %{scope: scope} do
+  test "a run that has ended or is lost is left alone", %{scope: scope} do
     runs =
-      for state <- ~w(succeeded failed timed_out closed lost) do
+      for state <- ~w(succeeded ended failed timed_out lost) do
         run_fixture(scope, %{state: state, last_heartbeat_at: ago(9000), inserted_at: ago(9000)})
       end
 
     assert Liveness.check(@now) == []
-    assert Enum.map(runs, &state/1) == ~w(succeeded failed timed_out closed lost)
+    assert Enum.map(runs, &state/1) == ~w(succeeded ended failed timed_out lost)
   end
 
   test "a second check finds nothing new, and each lost run is announced once", %{scope: scope} do
@@ -262,16 +262,6 @@ defmodule Apiary.Runs.LivenessTest do
              Projector.project(run)
 
     assert Liveness.check(DateTime.add(@now, 3600, :second)) == []
-  end
-
-  test "a closed run stays closed", %{scope: scope} do
-    run = run_fixture(scope, %{state: "running", inserted_at: ago(600)})
-    {:ok, _} = Runs.close_run(scope, run)
-
-    assert Liveness.check(@now) == []
-
-    event_fixture(run, 9, "run.heartbeat", %{"elapsed_seconds" => 1, "interval_seconds" => 30})
-    assert {:ok, %Run{state: "closed"}} = Projector.project(run)
   end
 
   # Started before the sandbox lets it in, its sweep at boot fails, says so and goes on.

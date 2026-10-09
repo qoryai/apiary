@@ -3362,8 +3362,7 @@
   }
   /* The State menu's families: a heading row over its states, which are indented by the
      heading's checkbox and the gap after it. daisyUI draws the dash of a mixed heading
-     (`:indeterminate`). The grouped menu has a fixed shape and never scrolls, so it does
-     not clip Closed's tooltip. */
+     (`:indeterminate`). The grouped menu has a fixed shape and never scrolls. */
   .q-filter-menu:has(.q-filter-group) {
     max-height: none;
     overflow: visible;
@@ -5596,7 +5595,6 @@
     font-weight: 500;
   }
   .q-run-meta .q-sdot-succeeded,
-  .q-run-meta .q-sdot-closed,
   .q-run-meta .q-sdot-ended,
   .q-run-meta .q-sdot-pending {
     color: var(--color-base-content);
@@ -8769,16 +8767,6 @@
   .q-ar:hover {
     background-color: var(--color-base-200);
   }
-  /* A row asking to confirm its act (`inline_confirm/1`) in place of its cells. */
-  .q-ar.q-confirming,
-  .q-ar.q-confirming:hover {
-    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
-    color: var(--color-base-content);
-  }
-  .q-ar.q-confirming > .q-confirm {
-    grid-column: 1 / -1;
-    padding-block: 6px;
-  }
   .q-ar-subj {
     display: flex;
     min-width: 0;
@@ -8853,8 +8841,7 @@
     color: var(--q-muted);
   }
   .q-amk-faint,
-  .q-amk.q-mark-faint,
-  .q-amk.q-mark-closed {
+  .q-amk.q-mark-faint {
     color: var(--q-faint);
   }
   .q-amk.q-mark-ok {

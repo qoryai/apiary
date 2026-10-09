@@ -9,8 +9,8 @@ defmodule Apiary.Runs.Projector do
   events were left unprojected, by a task that died or a node that stopped.
 
   A pass takes a Postgres advisory transaction lock on the run, so two projections of one
-  run never interleave on any node, then locks the run's row, so a close or a lost-run
-  check decided meanwhile is seen and not overwritten. It reads the events with
+  run never interleave on any node, then locks the run's row, so a lost-run check decided
+  meanwhile is seen and not overwritten. It reads the events with
   `projected_at is null` in `sequence` order, folds them (`Apiary.Runs.Fold`), writes the
   result and marks the events projected in the same transaction: an event is folded
   exactly once, and a pass with nothing to fold changes nothing. Events that arrive late
@@ -40,8 +40,8 @@ defmodule Apiary.Runs.Projector do
 
   # What the fold may change on the run's row.
   @folded_fields ~w(
-    state forager_version contract_version opened_by credential_from runtime runtime_version
-    command args dir interactive terminal_cols terminal_rows host wall image labels
+    state forager_version contract_version opened_by runtime runtime_version command args
+    dir interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
     target_system target_path started_at exited_at exit_code
     signal reason quiet_seconds duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
@@ -107,8 +107,8 @@ defmodule Apiary.Runs.Projector do
 
   @doc """
   Deletes the run's projections, clears `projected_at` on its events and projects again:
-  the projections come from `events` alone. A close is not an event and is kept; a lost
-  run is found lost again by the next liveness check.
+  the projections come from `events` alone. A lost run is found lost again by the next
+  liveness check.
 
   A run whose events retention has deleted, or is due to delete (`Apiary.Retention.due_or_pruned?/1`),
   is returned as it is: its projection is all that is left of it, and nothing here deletes
@@ -153,12 +153,11 @@ defmodule Apiary.Runs.Projector do
     Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
 
     blank = Map.take(%Run{}, @rebuilt_fields)
-    state = if current.state == "closed", do: "closed", else: "pending"
 
     current
     |> Ecto.Changeset.change(blank)
     |> Ecto.Changeset.change(
-      state: state,
+      state: "pending",
       projected_sequence: 0,
       target_id: nil,
       denied_count: 0

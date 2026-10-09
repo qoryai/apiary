@@ -81,7 +81,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
     }
   end
 
-  test "after the events were pruned the run takes nothing more: 410, as a closed run", %{
+  test "after the events were pruned the run takes nothing more: 410", %{
     scope: scope,
     key: key
   } do
@@ -99,7 +99,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
     {:ok, _run} = Projector.project(run)
     assert state(run) == before
 
-    # The delivery is recorded, like a closed run's.
+    # The delivery is recorded, and nothing else.
     assert Repo.exists?(from d in Delivery, where: d.run_id == ^run.run_id and d.status == 410)
   end
 

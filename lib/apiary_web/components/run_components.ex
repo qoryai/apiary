@@ -63,7 +63,7 @@ defmodule ApiaryWeb.RunComponents do
   ## Run state
 
   @doc """
-  The badge of a run's state, one family for the eight states. `quiet_for` (seconds since
+  The badge of a run's state, one family for the seven states. `quiet_for` (seconds since
   the last heartbeat, set by the server once it is over one interval) turns a running badge
   amber and adds the note beside it.
   """
@@ -73,7 +73,6 @@ defmodule ApiaryWeb.RunComponents do
   attr :quiet_for, :integer, default: nil
   attr :quiet_since, :any, default: nil, doc: "the last heartbeat, so the seconds tick"
   attr :interval, :integer, default: nil, doc: "heartbeat_interval_seconds, for the tooltip"
-  attr :closed_at, :any, default: nil, doc: "for the tooltip of a closed run"
   attr :note, :boolean, default: true, doc: "false drops the amber note, for tight rows"
   attr :class, :any, default: nil
 
@@ -99,13 +98,7 @@ defmodule ApiaryWeb.RunComponents do
       >
         <.icon :if={@glyph} name={@glyph} class="size-3" />
         <i :if={!@glyph} aria-hidden="true"></i>
-        <span
-          :if={@state == "closed"}
-          class="tooltip q-tip-wide"
-          tabindex="0"
-          data-tip={closed_tip(@closed_at)}
-        >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
-        <span :if={@state != "closed"}>{state_label(@state)}</span>
+        <span>{state_label(@state)}</span>
         <span :if={@code} class="font-mono text-[11px]">{@code}</span>
       </.badge>
       <span
@@ -139,7 +132,6 @@ defmodule ApiaryWeb.RunComponents do
   def state_label("failed"), do: gettext("Failed")
   def state_label("timed_out"), do: gettext("Timed out")
   def state_label("lost"), do: gettext("Lost")
-  def state_label("closed"), do: gettext("Closed")
   def state_label("ended"), do: gettext("Ended")
 
   @doc """
@@ -149,7 +141,6 @@ defmodule ApiaryWeb.RunComponents do
   """
   @spec reason_words(map()) :: String.t() | nil
   def reason_words(%{reason: "timeout"}), do: gettext("timed out")
-  def reason_words(%{reason: "run_closed"}), do: gettext("closed")
   def reason_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
   def reason_words(%{reason: "session_lost"}), do: gettext("session lost")
   def reason_words(%{reason: "credential_expired"}), do: gettext("run credential expired")
@@ -217,7 +208,6 @@ defmodule ApiaryWeb.RunComponents do
   defp state_glyph("failed"), do: "hero-x-mark-micro"
   defp state_glyph("timed_out"), do: "hero-clock-micro"
   defp state_glyph("lost"), do: "hero-signal-slash-micro"
-  defp state_glyph("closed"), do: "hero-lock-closed-micro"
   defp state_glyph(_state), do: nil
 
   defp exit_word(%{state: "failed", signal: signal}) when is_binary(signal) and signal != "",
@@ -239,14 +229,6 @@ defmodule ApiaryWeb.RunComponents do
 
   defp quiet_tip(_interval),
     do: gettext("Heartbeats have stopped. After three missed intervals the run is marked lost.")
-
-  defp closed_tip(%DateTime{} = at),
-    do:
-      gettext("Closed by a member on %{date}. The run never posted its exit.",
-        date: Format.date(at)
-      )
-
-  defp closed_tip(_at), do: gettext("Closed by a member. The run never posted its exit.")
 
   # What `Apiary.Runs.Liveness` holds a run to when it announced no interval, and its bounds.
   @default_beat 30
@@ -769,11 +751,6 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp ended_sentence("lost", _run), do: gettext("Lost")
-
-  defp ended_sentence("closed", %{closed_at: %DateTime{} = at}),
-    do: gettext("Closed %{date}", date: Format.date(at))
-
-  defp ended_sentence("closed", _run), do: gettext("Closed")
 
   defp ended_sentence("ended", _run), do: gettext("Ended")
 
@@ -1512,16 +1489,15 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A run's state as a row of a list says it: a dot, and its word where the state needs a
-  look (pending, running, failed, timed out, lost, closed) and for a run that ended, grey
-  as a closed one is; a run that succeeded is its dot, its word for a screen reader only,
-  unless `word` asks for it. `quiet_for` turns a running run's dot amber and adds the
-  note, as `run_state/1` does; `code` follows the word (the exit, for the preview).
+  look (pending, running, failed, timed out, lost) and for a run that ended, in grey; a
+  run that succeeded is its dot, its word for a screen reader only, unless `word` asks for
+  it. `quiet_for` turns a running run's dot amber and adds the note, as `run_state/1`
+  does; `code` follows the word (the exit, for the preview).
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :quiet_for, :integer, default: nil
   attr :quiet_since, :any, default: nil
   attr :interval, :integer, default: nil
-  attr :closed_at, :any, default: nil
   attr :word, :boolean, default: false
   attr :code, :string, default: nil
   attr :class, :any, default: nil
@@ -1533,15 +1509,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <span class={["q-st", "q-st-#{@state}", @quiet? && "q-st-quiet", @class]}>
       <i aria-hidden="true"></i>
-      <span
-        :if={@state == "closed"}
-        class="q-st-w tooltip q-tip-wide"
-        data-tip={closed_tip(@closed_at)}
-      >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
-      <span
-        :if={@state != "closed"}
-        class={["q-st-w", @state == "succeeded" && !@word && "sr-only"]}
-      >{state_label(@state)}</span>
+      <span class={["q-st-w", @state == "succeeded" && !@word && "sr-only"]}>{state_label(@state)}</span>
       <span :if={@code} class="q-st-code">{@code}</span>
       <span
         :if={@quiet?}
@@ -1738,7 +1706,6 @@ defmodule ApiaryWeb.RunComponents do
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
           quiet_since={heard_at(@run)}
           interval={beat(@run)}
-          closed_at={@run.closed_at}
         />
       </td>
       <td class="q-rl-run" role="cell">
@@ -1807,7 +1774,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   How long a run ran, as its row and its preview say it: the duration its exit gave; for a
-  running run the time since it started, ticking; for a quiet, lost or closed one "at
+  running run the time since it started, ticking; for a quiet or lost one "at
   least" what it last reported; nothing for a run that has only pinged.
   """
   def run_length(%{run: %{state: state}} = assigns)
@@ -1870,7 +1837,6 @@ defmodule ApiaryWeb.RunComponents do
             quiet_for={if @preview.quiet, do: quiet_for(@preview.run) || 0}
             quiet_since={heard_at(@preview.run)}
             interval={beat(@preview.run)}
-            closed_at={@preview.run.closed_at}
           />
           <span class="flex-1"></span>
           <.button

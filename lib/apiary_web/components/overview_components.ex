@@ -27,7 +27,6 @@ defmodule ApiaryWeb.OverviewComponents do
       button: 1,
       code_block: 1,
       icon: 1,
-      inline_confirm: 1,
       listening: 1,
       sparkline: 1,
       steps: 1
@@ -247,10 +246,6 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :can_set_mode?, :boolean, default: false
   attr :now, :any, required: true
 
-  attr :confirming, :string,
-    default: nil,
-    doc: "the id of the item whose act asks to confirm in place (a lost run's Close)"
-
   attr :panel, :map,
     default: nil,
     doc: "the page's open panel of an item's Allow (`RunComponents.rule_panel/1`), by `item_id`"
@@ -278,7 +273,6 @@ defmodule ApiaryWeb.OverviewComponents do
           shared={@shared}
           can_set_mode?={@can_set_mode?}
           now={@now}
-          confirming={@confirming == item.id}
           panel={@panel && @panel.item_id == item.id && @panel}
         />
       </ul>
@@ -304,37 +298,7 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, required: true
   attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
-  attr :confirming, :boolean, default: false
-
   attr :panel, :any, default: nil
-
-  # A lost run's Close asks in place: the row becomes the question, its act and Cancel.
-  defp attention_item(%{confirming: true, item: %{kind: :lost}} = assigns) do
-    ~H"""
-    <li id={@item.id} class="q-ar q-confirming" data-kind={@item.kind}>
-      <.inline_confirm
-        id="close-run"
-        question={rich_gettext("Close %{run}?", run: row_name(@item.run))}
-        cancel={JS.push("close_cancel")}
-      >
-        {gettext(
-          "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
-        )}
-        <:action>
-          <.button
-            id="close-confirm"
-            variant="danger"
-            size="xs"
-            phx-click="close_confirm"
-            loading_text={gettext("Closing")}
-          >
-            {gettext("Yes, close")}
-          </.button>
-        </:action>
-      </.inline_confirm>
-    </li>
-    """
-  end
 
   defp attention_item(assigns) do
     ~H"""
@@ -381,9 +345,6 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <span :if={@item.resolved.mark == :allowed} class="q-amk q-mark-ok" title={gettext("Allowed")}>
       <.icon name="hero-check-micro" class="size-3.5" /><span class="sr-only">{gettext("Allowed")}</span>
-    </span>
-    <span :if={@item.resolved.mark == :closed} class="q-amk q-mark-closed" title={gettext("Closed")}>
-      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{gettext("Closed")}</span>
     </span>
     <span
       :if={@item.resolved.mark == :resolved}
@@ -861,30 +822,9 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # A run a gateway opened, or one whose credential came from an issuer, is ended by the one
-  # who started it: its row offers Open, never Close (`Apiary.Runs.closable?/1`).
   defp attention_act(%{item: %{kind: :lost}} = assigns) do
-    assigns =
-      assign(
-        assigns,
-        :close?,
-        Apiary.Runs.closable?(assigns.item.run) and
-          Apiary.Access.can?(assigns.scope, :"run.close", assigns.item.run)
-      )
-
     ~H"""
-    <button
-      :if={@close?}
-      id={"#{@item.id}-act"}
-      type="button"
-      class="q-act"
-      aria-label={gettext("Close %{run}", run: row_title(@item.run))}
-      phx-click={JS.push("close_ask", value: %{id: @item.id})}
-    >
-      {gettext("Close")}
-    </button>
     <.link
-      :if={!@close?}
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
@@ -1045,15 +985,6 @@ defmodule ApiaryWeb.OverviewComponents do
   else its short id: what a row calls it.
   """
   def row_title(run), do: given_title(run) || command_title(run)
-
-  # `row_title/1` in a sentence: the title a run gave isolated (`{:bdi, title}`), so a
-  # bidirectional character in it reorders nothing of the sentence.
-  defp row_name(run) do
-    case given_title(run) do
-      nil -> command_title(run)
-      title -> {:bdi, title}
-    end
-  end
 
   defp command_title(%{command: command, args: args}) when is_binary(command) do
     line = Enum.join([command | args || []], " ")

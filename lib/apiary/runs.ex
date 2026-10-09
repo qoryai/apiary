@@ -4,15 +4,14 @@ defmodule Apiary.Runs do
 
   Events come in through `Apiary.Runs.Ingest`, are folded by `Apiary.Runs.Projector` and
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
-  the caller's scope first and reads only the scope's workspace. Two read more:
-  `closed?/2`, for the receiver, which has an access key's workspace and no user, and
+  the caller's scope first and reads only the scope's workspace. One reads more:
   `workspace_facts/3`, for the organisation's overview, which reads the workspaces of the
   scope's organisation it is given.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
     * `topic(workspace_id)`, `"runs:<workspace_id>"`: `{:run_changed, %Run{}}` whenever a
-      run of the workspace was projected, found lost or closed;
+      run of the workspace was projected or found lost;
     * `topic(workspace_id, run_id)`, `"run:<workspace_id>:<run_id>"` (`run_id` is the
       row's id): `{:run_projected, %Run{}, first_sequence, last_sequence}` after a
       projection, with the lowest and highest sequence it folded, and
@@ -24,7 +23,6 @@ defmodule Apiary.Runs do
   import Ecto.Query, warn: false
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
@@ -1232,22 +1230,6 @@ defmodule Apiary.Runs do
     |> Map.new()
   end
 
-  @doc """
-  Whether the workspace has closed the run with this subject. For the receiver, which
-  answers `410` to a closed run; a subject the workspace has never seen is not closed.
-  """
-  def closed?(workspace_id, run_id) do
-    with {:ok, workspace_id} <- Ecto.UUID.cast(workspace_id),
-         {:ok, run_id} <- Ecto.UUID.cast(run_id) do
-      Repo.exists?(
-        from r in Run,
-          where: r.workspace_id == ^workspace_id and r.run_id == ^run_id and r.state == "closed"
-      )
-    else
-      :error -> false
-    end
-  end
-
   ## The workspace overview
 
   # The runs are placed by when they started, or, for a run that has only pinged, by when
@@ -1552,9 +1534,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The runs the workspace found lost since `since`, the most recently lost first, at most
-  `limit` (default 6): the ones a member may still want to close, or open when a gateway
-  opened them or their credential came from an issuer. Older losses are facts on the runs
-  list, not tasks.
+  `limit` (default 6): the ones a member may still want to open. Older losses are facts on
+  the runs list, not tasks.
   """
   @spec lost_since(Scope.t(), DateTime.t(), pos_integer) :: [Run.t()]
   def lost_since(%Scope{} = scope, %DateTime{} = since, limit \\ 6) do
@@ -1696,90 +1677,6 @@ defmodule Apiary.Runs do
       nil ->
         if Regex.match?(~r/\A[0-9a-fA-F-]{4,36}\z/, text),
           do: String.downcase(text) <> "%"
-    end
-  end
-
-  ## Closing
-
-  @closable_states ~w(pending running lost)
-
-  @doc "The states a member may close a run from: the ones without an end."
-  def closable_states, do: @closable_states
-
-  @doc """
-  Whether the run may be closed: it has not ended, no gateway opened it with no session, and
-  its credential did not come from an issuer. The one who starts a run ends it, so a run a
-  gateway opened ends by its own exit, and a session's run whose credential came from an
-  issuer ends by its runtime's exit or at the gateway, never by a close.
-  """
-  @spec closable?(Run.t()) :: boolean()
-  def closable?(%Run{} = run),
-    do: run.state in @closable_states and not ended_by_its_starter?(run)
-
-  defp ended_by_its_starter?(%Run{credential_from: "issuer"}), do: true
-  defp ended_by_its_starter?(run), do: Run.no_session?(run)
-
-  @doc """
-  Closes the run: the workspace takes no more events for it and the receiver answers
-  `410` (`run.close`, which every member may). Only a run that has
-  not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
-  ended, failed or timed out keeps the end its events gave it. A close is final: no event reopens
-  the run, and closing a closed run changes nothing. A run a gateway opened, with no session,
-  and a run whose credential came from an issuer are never closed once their projected start
-  says so: the one who starts a run ends it (`closable?/1`). Until its start is projected, a
-  run says neither who opened it nor where its credential came from, and may still be closed.
-
-  `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`
-  when the run is not one of the scope's workspace, `{:error, :ended_by_its_starter}` when a
-  gateway opened it or its credential came from an issuer, `{:error, :not_closable}` when it
-  has ended.
-  """
-  def close_run(%Scope{user: user, workspace: workspace} = scope, %Run{id: id}) do
-    Repo.transact(fn ->
-      with :ok <- Access.authorize(scope, :"run.close", workspace) do
-        now = DateTime.utc_now()
-
-        # The state it had, for the audit entry, read under the row's lock; the update
-        # keeps the state in its WHERE all the same, so an exit that lands between a read
-        # and this write is not overwritten. A run a gateway opened, or one whose credential
-        # came from an issuer, is never in it.
-        closable =
-          from r in in_scope(scope),
-            where: r.id == ^id and r.state in ^@closable_states,
-            where: is_nil(r.opened_by) or r.opened_by != "gateway",
-            where: is_nil(r.credential_from) or r.credential_from != "issuer"
-
-        before = Repo.one(from r in closable, select: r.state, lock: "FOR UPDATE")
-
-        case Repo.update_all(from(r in closable, select: r),
-               set: [state: "closed", closed_at: now, closed_by_id: user.id, updated_at: now]
-             ) do
-          {1, [run]} ->
-            with {:ok, _entry} <-
-                   Audit.record(Repo, scope, :"run.close", run, %{
-                     before: %{state: before},
-                     after: %{state: run.state}
-                   }),
-                 do: {:ok, {:closed, run}}
-
-          {0, _} ->
-            case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
-              %Run{state: "closed"} = run -> {:ok, run}
-              %Run{opened_by: "gateway"} -> {:error, :ended_by_its_starter}
-              %Run{credential_from: "issuer"} -> {:error, :ended_by_its_starter}
-              %Run{} -> {:error, :not_closable}
-              nil -> {:error, :not_found}
-            end
-        end
-      end
-    end)
-    |> case do
-      {:ok, {:closed, run}} ->
-        broadcast_changed(run)
-        {:ok, run}
-
-      result ->
-        result
     end
   end
 

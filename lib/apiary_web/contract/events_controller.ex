@@ -13,8 +13,8 @@ defmodule ApiaryWeb.Contract.EventsController do
   revision served is `400`. Here, in order: a body the contract refuses (not a batch, or a ping whose `interval_seconds` is
   absent or outside 1 to 300, `Apiary.Runs.Batch`) is `400` `invalid_request`; a key
   `Apiary.Access` does not let post (`run.post_events`) is `404`, as a path that does not
-  exist; then `Apiary.Runs.Ingest`: a delivery already recorded is `202` again, a run the
-  workspace has closed is `410`, and the ping of a new run from an instance beyond its
+  exist; then `Apiary.Runs.Ingest`: a delivery already recorded is `202` again, a run whose
+  events retention has pruned is `410`, and the ping of a new run from an instance beyond its
   node's limit is `409` `instance_limit` (`Apiary.Nodes.admit/4`), with nothing stored;
   anything else is stored and answered `202`, with nothing projected yet.
 

@@ -64,11 +64,6 @@ defmodule ApiaryWeb.RunLive.Index do
   @flush_window 250
   @preview_lines 30
   @preview_denials 5
-  # Closed's tooltip in the State section: what the state means and where it is counted.
-  @closed_menu_tip [
-    gettext_noop("Stopped by the workspace: a member closed it after it went quiet."),
-    gettext_noop("Counted with the runs that ended badly.")
-  ]
 
   @impl true
   def render(assigns) do
@@ -196,7 +191,6 @@ defmodule ApiaryWeb.RunLive.Index do
                   values={@filters.states}
                   options={state_options(@facets)}
                   groups={state_groups()}
-                  tips={state_tips()}
                 />
               </:section>
               <:section
@@ -1488,11 +1482,6 @@ defmodule ApiaryWeb.RunLive.Index do
   defp family_checkbox_name("alive"), do: gettext("Every alive state")
   defp family_checkbox_name("ended_well"), do: gettext("Every state that ended well")
   defp family_checkbox_name("ended_badly"), do: gettext("Every state that ended badly")
-
-  defp state_tips do
-    tip = Enum.map_join(@closed_menu_tip, " ", &Gettext.gettext(ApiaryWeb.Gettext, &1))
-    %{"closed" => tip}
-  end
 
   # The chosen states as family words when they are whole families ("ended badly", "alive,
   # ended badly"); nil otherwise.

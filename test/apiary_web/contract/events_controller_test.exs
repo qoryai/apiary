@@ -328,12 +328,17 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     end
   end
 
-  describe "a closed run" do
+  describe "a run whose events retention has pruned" do
     test "is answered 410 with the digest; the delivery is recorded and nothing else",
          %{scope: scope, key: key, secret: secret} do
       {subject, [ping, started]} = first_events()
       assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
-      {:ok, _run} = Runs.close_run(scope, run!(scope, subject))
+      pruned = run!(scope, subject)
+
+      # The mark `Apiary.Retention` sets once it has deleted the run's events.
+      Repo.update_all(from(r in Run, where: r.id == ^pruned.id),
+        set: [events_pruned_at: DateTime.utc_now()]
+      )
 
       conn = signed_post(build_conn(), key.key_id, secret, [started])
       assert response(conn, 410) == ""
@@ -343,7 +348,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              ]
 
       run = run!(scope, subject)
-      assert run.state == "closed"
+      assert run.state == "pending"
       assert run.event_count == 1
       assert length(events(run)) == 1
 

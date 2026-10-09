@@ -152,7 +152,7 @@ defmodule Apiary.AccessTest do
     # Each action whose subject can be a row, asked by an owner of one organisation of a row
     # of another's: not found, and yes for that organisation's own owner.
     @rows [
-      {:run, [:"run.read", :"run.read_log", :"run.close"]},
+      {:run, [:"run.read", :"run.read_log"]},
       {:rule, [:"security_policy.edit", :"security_policy.lock"]},
       {:node, [:"access_key.create_code", :"access_key.add"]},
       {:node_key, [:"access_key.revoke"]},

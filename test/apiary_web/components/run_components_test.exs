@@ -23,7 +23,6 @@ defmodule ApiaryWeb.RunComponentsTest do
             {"failed", "Failed"},
             {"timed_out", "Timed out"},
             {"lost", "Lost"},
-            {"closed", "Closed"},
             {"ended", "Ended"}
           ] do
         html = render_component(&RunComponents.run_state/1, state: state)
@@ -61,7 +60,7 @@ defmodule ApiaryWeb.RunComponentsTest do
                "Succeeded"
     end
 
-    test "an ended run is grey, as a closed one is" do
+    test "an ended run is grey" do
       html = render_component(&RunComponents.run_state/1, state: "ended")
       refute html =~ "-soft"
       assert text(html) == "Ended"
@@ -70,7 +69,6 @@ defmodule ApiaryWeb.RunComponentsTest do
     test "reason_words says why a run ended, the quiet period as a duration reads" do
       for {reason, words} <- [
             {"timeout", "timed out"},
-            {"run_closed", "closed"},
             {"gateway_lost", "gateway lost"},
             {"session_lost", "session lost"},
             {"credential_expired", "run credential expired"},
@@ -96,6 +94,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: nil}) == nil
       assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
       assert RunComponents.reason_words(%{reason: "unheard of", quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
     end
 
     test "a quiet running run turns amber, stops rippling and says for how long" do
@@ -725,19 +724,6 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert html =~ ~r/<button[^>]*type="button"[^>]*aria-pressed="true"/
       refute html =~ "role=\"button\""
       assert html =~ "/acme/main/runs"
-    end
-
-    test "the closed badge's tip is focusable and is text" do
-      html =
-        render_component(&RunComponents.run_state/1,
-          state: "closed",
-          closed_at: ~U[2026-09-14 10:00:00Z]
-        )
-
-      assert html =~ ~s(tabindex="0")
-
-      assert text(html) =~
-               "Closed. Closed by a member on 14 Sept 2026. The run never posted its exit."
     end
   end
 

@@ -201,8 +201,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, ~s(#run-menu-raw[href="#{log}"][target="_blank"]), "Raw log")
       assert has_element?(lv, ~s(#run-menu-download[href="#{log}?download=1"][download]))
-      # an ended run is not closed again
-      refute has_element?(lv, "#close-run-button")
     end
 
     test "the Terminal tab is wide: the rail folds away and Details is a tab", %{
@@ -1245,48 +1243,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ run.run_id
       assert html =~ "projected through"
       assert html =~ "5b8e2f14-9c3a-4d7e-a1b6-3f0c8d2e7a45"
-      # a succeeded run is not closed by hand
-      refute html =~ "close-run-button"
-    end
-
-    test "a member closes a quiet run after confirming in place", %{conn: conn, scope: scope} do
-      run =
-        projected(scope, [
-          {1, "run.started", started_data()},
-          {2, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}}
-        ])
-
-      {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
-
-      refute has_element?(lv, "#close-run")
-      lv |> element("#close-run-button") |> render_click()
-
-      # The button turns into the question in place, with its act and Cancel: no modal.
-      assert has_element?(lv, ".q-run-actions #close-run.q-confirm", "Close this run?")
-      assert has_element?(lv, "#close-run", "A close is final")
-      refute has_element?(lv, "dialog#close-run")
-      refute has_element?(lv, "#close-run-button")
-      assert has_element?(lv, "#close-run-cancel[phx-mounted]")
-
-      lv |> element("#close-run-cancel") |> render_click()
-      refute has_element?(lv, "#close-run")
-      assert has_element?(lv, "#close-run-button[phx-hook=FocusOn]")
-      assert_push_event(lv, "run:focus", %{id: "close-run-button"})
-      assert Runs.get_run!(scope, run.id).state == "running"
-
-      # Escape takes the question back too.
-      lv |> element("#close-run-button") |> render_click()
-      render_keydown(lv, "close_cancel", %{"key" => "Escape"})
-      refute has_element?(lv, "#close-run")
-
-      lv |> element("#close-run-button") |> render_click()
-      html = lv |> element("#close-run-confirm", "Yes, close") |> render_click()
-
-      assert Runs.get_run!(scope, run.id).state == "closed"
-      assert html =~ "Closed"
-      refute has_element?(lv, "#close-run-button")
-      assert has_element?(lv, "#run-announcer", "Run closed.")
     end
   end
 
@@ -1631,153 +1587,44 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "closing" do
-    test "a crafted close_confirm does not close a run that has ended, and its end stays", %{
+  describe "no Close" do
+    test "no run page offers a Close, whatever opened the run, its credential and its state", %{
       conn: conn,
       scope: scope
     } do
-      for {exit, state} <- [
-            {%{"state" => "failed", "exit_code" => 1, "duration_ms" => 5}, "failed"},
-            {%{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 5}, "succeeded"},
-            {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout", "duration_ms" => 5},
-             "timed_out"}
-          ] do
-        run = projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
-        assert run.state == state
+      starts = [
+        started_data(),
+        started_data(%{"credential" => "issuer"}),
+        Map.delete(started_data(), "credential"),
+        gateway_started_data()
+      ]
 
-        {:ok, lv, _html} =
+      runs =
+        for data <- starts, state <- ~w(running lost) do
+          run = projected(scope, [{1, "run.started", data}])
+          if state == "lost", do: Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
+          run
+        end
+
+      for run <- [run_fixture(scope, %{state: "pending"}) | runs] do
+        {:ok, lv, html} =
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
+        assert has_element?(lv, ".q-run-actions #run-menu")
         refute has_element?(lv, "#close-run-button")
-
-        render_hook(lv, "close", %{})
         refute has_element?(lv, "#close-run")
-
-        render_hook(lv, "close_confirm", %{})
-
-        after_close = Runs.get_run!(scope, run.id)
-        assert after_close.state == state
-        assert after_close.closed_at == nil
-        assert after_close.closed_by_id == nil
+        refute html =~ "Close run"
       end
     end
 
-    test "the context refuses, whoever asks", %{scope: scope} do
-      ended =
-        projected(scope, [
-          {1, "run.started", started_data()},
-          {2, "run.exited", %{"state" => "failed", "exit_code" => 1}}
-        ])
-
-      assert Runs.close_run(scope, ended) == {:error, :not_closable}
-      assert Runs.get_run!(scope, ended.id).state == "failed"
-
-      for state <- Runs.closable_states() do
-        run = run_fixture(scope, %{state: state})
-        assert {:ok, %{state: "closed"} = closed} = Runs.close_run(scope, run)
-        # closing a closed run changes nothing
-        assert {:ok, %{closed_at: at}} = Runs.close_run(scope, closed)
-        assert at == closed.closed_at
-      end
-
-      # a run of another workspace is not found, whatever its state
-      assert Runs.close_run(scope, run_fixture(scope_fixture())) == {:error, :not_found}
-    end
-
-    test "a run a gateway opened offers no Close, and a crafted close changes nothing", %{
+    test "show_all and load_earlier on a page without a run do nothing", %{
       conn: conn,
       scope: scope
     } do
-      for state <- ~w(running lost) do
-        run = projected(scope, [{1, "run.started", gateway_started_data()}])
-        assert run.opened_by == "gateway"
-
-        if state == "lost", do: Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
-
-        {:ok, lv, _html} =
-          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
-
-        assert has_element?(lv, "#run-opened-by", "gateway (no session)")
-        refute has_element?(lv, "#close-run-button")
-
-        render_hook(lv, "close", %{})
-        refute has_element?(lv, "#close-run")
-
-        # The page lives on, and the run keeps its state.
-        assert render_hook(lv, "close_confirm", %{}) =~ "run-title"
-        assert Process.alive?(lv.pid)
-
-        after_close = Runs.get_run!(scope, run.id)
-        assert after_close.state == state
-        assert after_close.closed_at == nil
-        refute has_element?(lv, "#run-announcer", "Run closed.")
-      end
-    end
-
-    test "a session's run whose credential came from an issuer offers no Close, and a crafted close changes nothing",
-         %{conn: conn, scope: scope} do
-      for state <- ~w(running lost) do
-        run = projected(scope, [{1, "run.started", started_data(%{"credential" => "issuer"})}])
-        assert {run.opened_by, run.credential_from} == {"session", "issuer"}
-
-        if state == "lost", do: Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
-
-        {:ok, lv, _html} =
-          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
-
-        refute has_element?(lv, "#close-run-button")
-
-        render_hook(lv, "close", %{})
-        refute has_element?(lv, "#close-run")
-
-        # The page lives on, and the run keeps its state.
-        assert render_hook(lv, "close_confirm", %{}) =~ "run-title"
-        assert Process.alive?(lv.pid)
-
-        after_close = Runs.get_run!(scope, run.id)
-        assert after_close.state == state
-        assert after_close.closed_at == nil
-        refute has_element?(lv, "#run-announcer", "Run closed.")
-      end
-    end
-
-    test "a lost run a session opened still offers Close, its credential from no issuer or not said",
-         %{conn: conn, scope: scope} do
-      for data <- [started_data(), Map.delete(started_data(), "credential")] do
-        run = projected(scope, [{1, "run.started", data}])
-        assert run.credential_from == data["credential"]
-        Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
-
-        {:ok, lv, _html} =
-          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
-
-        lv |> element("#close-run-button") |> render_click()
-        lv |> element("#close-run-confirm", "Yes, close") |> render_click()
-
-        assert Runs.get_run!(scope, run.id).state == "closed"
-      end
-    end
-
-    test "close and close_confirm on a page without a run do nothing", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, "#{workspace_path(scope)}/runs/#{Ecto.UUID.generate()}")
 
-      assert render_hook(lv, "close", %{}) =~ "This run is not in this workspace"
-      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this workspace"
       assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this workspace"
       assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this workspace"
-    end
-
-    test "after a close, focus is sent to the page's heading", %{conn: conn, scope: scope} do
-      run = projected(scope, [{1, "run.started", started_data()}])
-
-      {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
-
-      lv |> element("#close-run-button") |> render_click()
-      lv |> element("#close-run-confirm", "Yes, close") |> render_click()
-
-      assert_push_event(lv, "run:focus", %{id: "run-title"})
-      assert has_element?(lv, "h1#run-title[tabindex='-1'][phx-hook='FocusOn']")
     end
   end
 
@@ -2247,8 +2094,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "the issuer reported the run ended"},
             {%{"reason" => "gateway_lost"}, "failed", "gateway lost", "gateway lost"},
             {%{"reason" => "session_lost"}, "failed", "session lost", "session lost"},
-            {%{"reason" => "timeout"}, "timed_out", nil, "timed out"},
-            {%{"reason" => "run_closed"}, "closed", nil, "closed"}
+            {%{"reason" => "timeout"}, "timed_out", nil, "timed out"}
           ] do
         run = gateway_run(scope, exit)
 
@@ -2266,6 +2112,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, "#run-meta", "exit")
         refute "Exit" in run_terms(lv)
       end
+    end
+
+    test "an exit with the reason run_closed reads Failed, with no words", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = gateway_run(scope, %{"reason" => "run_closed"})
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-failed", "Failed")
+      refute has_element?(lv, "#run-reason")
+      refute has_element?(lv, "#rail-reason")
     end
 
     test "the timeline's last item: Run ended for an end that is no failure, Run exited else", %{

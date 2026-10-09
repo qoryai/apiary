@@ -2,7 +2,7 @@ defmodule ApiaryWeb.RunLive.Show do
   @moduledoc """
   One run, read as a record, on a work surface: a header from `run.started`, `run.exited`
   and the policy applied (the title; what the run says it is about, when it says; the state
-  and the run's facts, with Close run and the ⋯ menu), and four tabs that are four live
+  and the run's facts, with the ⋯ menu), and four tabs that are four live
   actions of this one LiveView, so that a tab is a `patch` and the header stays: Timeline,
   Terminal, Network access (`/runs/:run_id/network`, the live action `:connections`; the
   old `/connections` path sends on here), Details.
@@ -46,7 +46,6 @@ defmodule ApiaryWeb.RunLive.Show do
   alias Apiary.Targets
   alias Apiary.Runs.Record.Timeline
   alias ApiaryWeb.ConnectionLive.Rules
-  alias ApiaryWeb.UserAuth
 
   @window 300
   @page 200
@@ -206,41 +205,6 @@ defmodule ApiaryWeb.RunLive.Show do
                 </p>
               </div>
               <div class="q-run-actions">
-                <.button
-                  :if={@closable && !@confirm_close}
-                  id="close-run-button"
-                  phx-hook="FocusOn"
-                  phx-click="close"
-                  title={
-                    gettext(
-                      "Closing tells the workspace to take no more events for this run. It is for a run that went quiet and will not post its exit."
-                    )
-                  }
-                >
-                  <.icon name="hero-stop-micro" class="size-4" />{gettext("Close run")}
-                </.button>
-                <%!-- The close is confirmed in place: the button turns into the question,
-                     its act and Cancel, never an overlay. --%>
-                <.inline_confirm
-                  :if={@closable && @confirm_close}
-                  id="close-run"
-                  question={gettext("Close this run?")}
-                  cancel={JS.push("close_cancel")}
-                  class="max-w-[60ch]"
-                >
-                  {gettext("The workspace takes no more events for it. A close is final.")}
-                  <:action>
-                    <.button
-                      id="close-run-confirm"
-                      variant="danger"
-                      size="xs"
-                      phx-click="close_confirm"
-                      loading_text={gettext("Closing")}
-                    >
-                      {gettext("Yes, close")}
-                    </.button>
-                  </:action>
-                </.inline_confirm>
                 <.run_menu
                   run={@run}
                   log={
@@ -1019,10 +983,6 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd><.clock at={@run.exited_at} id="exited-at" /></dd>
           <dt :if={@run.lost_at}>{gettext("Lost")}</dt>
           <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
-          <dt :if={@run.closed_at}>{gettext("Closed")}</dt>
-          <dd :if={@run.closed_at}>
-            <.rich phx-no-format text={rich_gettext("%{time} by a member", time: {:part, :time})}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.rich>
-          </dd>
           <dt>{gettext("Session")}</dt>
           <dd class="font-mono">
             {@session_id || if(@no_session, do: gettext("none"), else: gettext("n/a"))}
@@ -1138,7 +1098,7 @@ defmodule ApiaryWeb.RunLive.Show do
           elapsed_at={elem(elapsed(@run), 1)}
           so_far
         />
-      <% @run.state in ~w(running lost closed) and is_integer(@run.elapsed_seconds) -> %>
+      <% @run.state in ~w(running lost) and is_integer(@run.elapsed_seconds) -> %>
         <.duration at_least_seconds={@run.elapsed_seconds} />
       <% true -> %>
         <.duration />
@@ -1276,8 +1236,6 @@ defmodule ApiaryWeb.RunLive.Show do
        page_title: gettext("Run"),
        tips: tips(),
        target_shared: false,
-       closable: false,
-       confirm_close: false,
        announcement: nil,
        announced_at: nil,
        at_end: false,
@@ -1394,12 +1352,9 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp assign_run(socket, %Run{} = run) do
-    scope = socket.assigns.current_scope
-
     assign(socket,
       run: run,
       quiet_for: quiet_for(run),
-      closable: Runs.closable?(run) and Access.can?(scope, :"run.close", run),
       page_title: run_title(run, socket.assigns.live_action)
     )
   end
@@ -1893,55 +1848,6 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  def handle_event("close", _params, %{assigns: %{run: %Run{} = run}} = socket) do
-    {:noreply, assign(socket, confirm_close: Runs.closable?(run))}
-  end
-
-  # Cancel, or Escape while the question is out: the button comes back with the focus.
-  def handle_event("close_cancel", _params, %{assigns: %{confirm_close: true}} = socket) do
-    {:noreply,
-     socket
-     |> assign(confirm_close: false)
-     |> push_event("run:focus", %{id: "close-run-button"})}
-  end
-
-  def handle_event("close_cancel", _params, socket), do: {:noreply, socket}
-
-  # The context decides what may be closed; the page only asks.
-  def handle_event("close_confirm", _params, %{assigns: %{run: %Run{} = run}} = socket) do
-    socket =
-      case Runs.close_run(socket.assigns.current_scope, run) do
-        {:ok, closed} ->
-          socket
-          |> follow_run(closed)
-          |> put_flash(:info, gettext("Run closed."))
-          # The button that had focus is gone with the state it belonged to.
-          |> push_event("run:focus", %{id: "run-title"})
-
-        {:error, :not_closable} ->
-          socket
-          |> refresh_run()
-          |> put_flash(:error, gettext("This run has ended; its record keeps the end it posted."))
-
-        # The page offers no Close for a run a gateway opened or one whose credential came
-        # from an issuer: an event that asks for one anyway changes nothing.
-        {:error, :ended_by_its_starter} ->
-          socket
-
-        {:error, :forbidden} ->
-          forbidden(socket)
-
-        # The run is gone, or the person no longer reaches the workspace: the scope is
-        # loaded again, and a workspace out of reach sends the page to `/`.
-        {:error, :not_found} ->
-          socket
-          |> UserAuth.reload_scope()
-          |> put_flash(:error, gettext("This run is no longer in this workspace."))
-      end
-
-    {:noreply, assign(socket, confirm_close: false)}
-  end
-
   ## A row's Allow and Deny. What the browser names is looked up among the rows the page
   ## holds, which are the run's: an id of another run or another workspace finds nothing.
 
@@ -2422,13 +2328,6 @@ defmodule ApiaryWeb.RunLive.Show do
       else: in_force.path
   end
 
-  defp refresh_run(socket) do
-    case Record.reload(socket.assigns.current_scope, socket.assigns.run) do
-      %Run{} = run -> follow_run(socket, run)
-      nil -> socket
-    end
-  end
-
   ## The run's topic
 
   @impl true
@@ -2575,7 +2474,6 @@ defmodule ApiaryWeb.RunLive.Show do
          gettext("Run lost. No heartbeat for %{seconds} s.", seconds: Format.number(interval * 3))
 
   defp state_sentence(%Run{state: "lost"}), do: gettext("Run lost.")
-  defp state_sentence(%Run{state: "closed"}), do: gettext("Run closed.")
   defp state_sentence(%Run{state: "running"}), do: gettext("Run started.")
   defp state_sentence(%Run{}), do: nil
 
@@ -2759,8 +2657,8 @@ defmodule ApiaryWeb.RunLive.Show do
   defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
 
   # Why the run ended, in words, for the meta line: nothing where the words only repeat the
-  # state ("timed out" beside Timed out, "closed" beside Closed).
-  @repeats %{"timeout" => "timed_out", "run_closed" => "closed"}
+  # state ("timed out" beside Timed out).
+  @repeats %{"timeout" => "timed_out"}
 
   defp meta_reason(%Run{reason: reason, state: state} = run) do
     if @repeats[reason] != state, do: reason_words(run)
@@ -2843,25 +2741,4 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp group_named(_other), do: []
-
-  # Why a change was refused, by the reach the database has now: one who reaches the
-  # organisation through the edition's reach reads it and changes nothing in it, and
-  # stays; one who reaches it no longer is sent to `/`, as every page sends them; anyone
-  # else lost the level the change needs.
-  defp forbidden(socket) do
-    scope = Apiary.Access.reload(socket.assigns.current_scope)
-
-    case Apiary.Access.reach(scope) do
-      nil ->
-        socket
-        |> put_flash(:error, gettext("You are no longer a member of this workspace."))
-        |> redirect(to: ~p"/")
-
-      :membership ->
-        put_flash(socket, :error, gettext("You are no longer a member of this workspace."))
-
-      _edition ->
-        put_flash(socket, :error, ApiaryWeb.Access.reads_only(scope))
-    end
-  end
 end

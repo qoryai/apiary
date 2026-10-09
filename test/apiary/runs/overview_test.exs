@@ -38,7 +38,7 @@ defmodule Apiary.Runs.OverviewTest do
       run(scope, 20, "pending", %{started_at: nil})
       run(scope, 3600, "succeeded", %{denied_count: 2, cost_usd: Decimal.new("0.50")})
       run(scope, 2 * 86_400, "failed", %{denied_count: 1, cost_usd: Decimal.new("0.25")})
-      run(scope, 2 * 86_400 + 60, "closed")
+      run(scope, 2 * 86_400 + 60, "lost")
       # A run a gateway opened that ended quiet ended well, never badly.
       run(scope, 2 * 86_400 + 120, "ended")
       # Just before the window: not counted.

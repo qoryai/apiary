@@ -17,8 +17,8 @@ defmodule ApiaryWeb.TargetComponents do
   alone: the page there lists the targets that share it.
 
   **A run's state** is a dot and, when the run needs a look, a word: running, failed,
-  timed out, lost and pending say so; a run that ended well, or was closed, is the dot
-  alone, its word for a screen reader. Never a pill.
+  timed out, lost and pending say so; a run that ended well is the dot alone, its word
+  for a screen reader. Never a pill.
 
   What Forager reported is untrusted: it is interpolated, never passed to `raw/1`.
   """
@@ -127,8 +127,8 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   A run's state as a dot and, when the run needs a look, its word (running, pending,
-  failed, timed out, lost); the dot alone for one that succeeded, ended or was closed, its
-  word there for a screen reader. `word` forces the word, as a header does.
+  failed, timed out, lost); the dot alone for one that succeeded or ended, its word there
+  for a screen reader. `word` forces the word, as a header does.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
@@ -137,7 +137,7 @@ defmodule ApiaryWeb.TargetComponents do
 
   def state_mark(assigns) do
     assigns =
-      assign(assigns, :quiet, assigns.state in ~w(succeeded ended closed) and !assigns.word)
+      assign(assigns, :quiet, assigns.state in ~w(succeeded ended) and !assigns.word)
 
     ~H"""
     <span class={["q-sdot", "q-sdot-#{@state}", @class]} {@rest}>

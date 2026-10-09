@@ -31,7 +31,6 @@ defmodule Apiary.Runs.ProjectorTest do
           :workspace,
           :access_key,
           :target,
-          :closed_by,
           :events,
           :log_chunks,
           :connections
@@ -602,13 +601,6 @@ defmodule Apiary.Runs.ProjectorTest do
       assert {:ok, %Run{projected_sequence: 2500}} = Projector.project(run)
     end
 
-    test "a closed run stays closed whatever arrives", %{scope: scope, run: run} do
-      {:ok, _} = Runs.close_run(scope, run)
-      events_fixture(run, record())
-
-      assert {:ok, %Run{state: "closed", exit_code: 0}} = Projector.project(run)
-    end
-
     test "broadcasts on the workspace's topic and the run's", %{scope: scope, run: run} do
       Runs.subscribe(scope)
       Runs.subscribe(scope, run)
@@ -722,17 +714,19 @@ defmodule Apiary.Runs.ProjectorTest do
               rebuilt.about_details} == {nil, nil, [], nil}
     end
 
-    # Only a run without an end is closed (`Runs.close_run/2`): the record here stops
-    # before its exit.
-    test "keeps a close, which no event records", %{scope: scope, run: run} do
+    # The record here stops before its exit: a lost run is rebuilt from its events alone,
+    # and the next liveness check finds it lost again.
+    test "rebuilds a lost run from its events alone", %{run: run} do
       events_fixture(run, Enum.drop(record(), -1))
       {:ok, %{state: "running"}} = Projector.project(run)
-      {:ok, closed} = Runs.close_run(scope, run)
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "lost", lost_at: DateTime.utc_now()]
+      )
 
       assert {:ok, rebuilt} = Projector.rebuild(run)
-      assert rebuilt.state == "closed"
-      assert rebuilt.closed_at == closed.closed_at
-      assert rebuilt.closed_by_id == scope.user.id
+      assert rebuilt.state == "running"
+      assert rebuilt.lost_at == nil
       assert rebuilt.runtime == "claude"
       assert rebuilt.elapsed_seconds == 60
     end

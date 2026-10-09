@@ -37,7 +37,6 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Accounts.Scope
   alias Apiary.Policy.Serving
   alias Apiary.Repo
-  alias Apiary.Runs
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
@@ -63,10 +62,9 @@ defmodule Apiary.Runs.Ingest do
         }
 
   @doc """
-  Stores the batch. `{:ok, result}` with `status` 202, or 410 when the workspace has
-  closed the run, or retention has pruned its events (`runs.events_pruned_at`), and
-  nothing but the delivery was recorded; `inserted` events
-  were new, `duplicates` were already held, `conflicts` were dropped,
+  Stores the batch. `{:ok, result}` with `status` 202, or 410 when retention has pruned
+  the run's events (`runs.events_pruned_at`) and nothing but the delivery was recorded;
+  `inserted` events were new, `duplicates` were already held, `conflicts` were dropped,
   `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
   delivery id had been recorded before; `managed` says whether the workspace serves a run
   configuration (nil when that could not be read) and `run_configuration_digest` is
@@ -130,9 +128,6 @@ defmodule Apiary.Runs.Ingest do
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
     cond do
-      Runs.closed?(access_key.workspace_id, batch.subject) ->
-        Repo.transact(fn -> {:ok, gone(access_key, batch, meta, delivery_id, now)} end)
-
       held_to_limit?(access_key, batch, meta) ->
         Nodes.admit(
           access_key.node,
@@ -166,9 +161,6 @@ defmodule Apiary.Runs.Ingest do
     run = upsert_run(access_key, batch, meta, now)
 
     cond do
-      run.state == "closed" ->
-        gone(access_key, batch, meta, delivery_id, now)
-
       # Retention deleted the run's events, and with them what a replay would be
       # deduplicated against: the workspace wants nothing more of this run.
       not is_nil(run.events_pruned_at) ->
@@ -204,8 +196,8 @@ defmodule Apiary.Runs.Ingest do
     {%{batch | events: kept}, length(events) - length(kept)}
   end
 
-  # The workspace has closed the run, or pruned its events: the delivery is recorded,
-  # nothing else is kept.
+  # Retention has pruned the run's events: the delivery is recorded, nothing else is
+  # kept.
   defp gone(access_key, batch, meta, delivery_id, now) do
     repeated = not new_delivery?(access_key, batch, meta, delivery_id, now, 410)
     %{result(410, nil) | repeated: repeated}
@@ -225,9 +217,7 @@ defmodule Apiary.Runs.Ingest do
 
   # Two first batches of one run may arrive at once: the insert that loses waits
   # for the one that wins and inserts nothing, and the read after it sees the row.
-  # The read locks the row for the rest of the transaction, so a close that
-  # committed first is seen here, and one that comes after waits for this batch:
-  # a closed run never gains an event.
+  # The read locks the row for the rest of the transaction.
   defp upsert_run(access_key, batch, meta, now) do
     Repo.insert_all(
       Run,

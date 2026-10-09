@@ -14,7 +14,6 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs
   alias Apiary.Runs.{Delivery, Projector, Target, Run}
   alias ApiaryWeb.Contract.Configuration
 
@@ -165,12 +164,16 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert run!(ctx, subject).reported_run_configuration_digest == ctx.own
   end
 
-  test "a 410 carries both digests, the run configuration's for the closed run's target",
+  test "a 410 carries both digests, the run configuration's for the pruned run's target",
        ctx do
     {subject, [ping, started]} = first_events()
     deliver(ctx, [ping, started])
     {:ok, run} = Projector.project(run!(ctx, subject))
-    {:ok, _run} = Runs.close_run(ctx.scope, run)
+
+    # The mark `Apiary.Retention` sets once it has deleted the run's events.
+    Repo.update_all(from(r in Run, where: r.id == ^run.id),
+      set: [events_pruned_at: DateTime.utc_now()]
+    )
 
     conn =
       deliver(ctx, [wire_event(subject, 3, "run.heartbeat", %{})], run_configuration: ctx.own)

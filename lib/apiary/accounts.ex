@@ -205,8 +205,8 @@ defmodule Apiary.Accounts do
   its id stays, with the time it was deleted, and its email address, password and
   preferences are erased. Its memberships are deleted, each an entry in its
   organisation's trail (`Apiary.Organisations.end_memberships/2`), and so are its session
-  and email tokens. What the person made in a workspace, an access key, a rule, a run's
-  closing, stays with the workspace and names the tombstone. All of it in one
+  and email tokens. What the person made in a workspace, an access key or a rule, stays with
+  the workspace and names the tombstone. All of it in one
   transaction.
 
   Given the person's scope, the person deletes their own account: the page asks for a

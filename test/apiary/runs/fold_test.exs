@@ -8,7 +8,6 @@ defmodule Apiary.Runs.FoldTest do
     forager_version: nil,
     contract_version: nil,
     opened_by: nil,
-    credential_from: nil,
     runtime: nil,
     runtime_version: nil,
     command: nil,
@@ -172,7 +171,6 @@ defmodule Apiary.Runs.FoldTest do
       assert run.state == "running"
       assert run.started_at == at(2)
       assert run.opened_by == "session"
-      assert run.credential_from == "none"
       assert run.runtime == "claude"
       assert run.runtime_version == "2.1.0"
       assert run.command == "claude"
@@ -205,7 +203,6 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(@run, [start])
 
       assert run.opened_by == "gateway"
-      assert run.credential_from == "issuer"
       assert Apiary.Runs.Run.no_session?(run)
       assert run.state == "running"
       assert run.forager_version == "0.6.0"
@@ -222,19 +219,6 @@ defmodule Apiary.Runs.FoldTest do
         assert run.opened_by == nil
         refute Apiary.Runs.Run.no_session?(run)
       end
-    end
-
-    test "where the credential came from is kept, and a source the contract does not name is not" do
-      %{run: run} = Fold.fold(@run, [started(2, %{"credential" => "issuer"})])
-      assert run.credential_from == "issuer"
-
-      for source <- ["robot", "", "Issuer", 1, nil] do
-        %{run: run} = Fold.fold(@run, [started(2, %{"credential" => source})])
-        assert run.credential_from == nil
-      end
-
-      %{run: run} = Fold.fold(@run, [started(2, %{"credential" => "issuer"}), started(3)])
-      assert run.credential_from == "none"
     end
 
     test "the workspace's domain names the target, by its own labels" do
@@ -259,11 +243,6 @@ defmodule Apiary.Runs.FoldTest do
 
       assert run.state == "succeeded"
       assert run.runtime == "claude"
-    end
-
-    test "a closed run stays closed" do
-      %{run: run} = Fold.fold(%{@run | state: "closed"}, [started(2)])
-      assert run.state == "closed"
     end
 
     test "arriving for a lost run, the run is running and no longer lost" do
@@ -762,8 +741,8 @@ defmodule Apiary.Runs.FoldTest do
       assert run.last_heartbeat_at == at(10)
     end
 
-    test "a succeeded or a closed run is not revived" do
-      for state <- ~w(succeeded failed timed_out closed) do
+    test "a run that ended is not revived" do
+      for state <- ~w(succeeded ended failed timed_out) do
         %{run: run} = Fold.fold(%{@run | state: state}, [heartbeat(5, 30)])
         assert run.state == state
       end
@@ -1031,7 +1010,7 @@ defmodule Apiary.Runs.FoldTest do
             {"credential_expired", "ended"},
             {"run_ended_at_issuer", "ended"},
             {"timeout", "timed_out"},
-            {"run_closed", "closed"},
+            {"run_closed", "failed"},
             {"gateway_lost", "failed"},
             {"session_lost", "failed"},
             {"unheard of", "failed"},
@@ -1096,14 +1075,6 @@ defmodule Apiary.Runs.FoldTest do
 
       %{run: run} = Fold.fold(run, [heartbeat(20, 600)], %{"dev.qory.run.exited" => 18})
       assert run.state == "ended"
-    end
-
-    test "a closed run stays closed and keeps the result" do
-      %{run: run} = Fold.fold(%{@run | state: "closed"}, [exited(18, %{"state" => "failed"})])
-
-      assert run.state == "closed"
-      assert run.exit_code == 0
-      assert run.exited_at == at(18)
     end
   end
 
