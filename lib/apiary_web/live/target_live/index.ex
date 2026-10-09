@@ -493,7 +493,7 @@ defmodule ApiaryWeb.TargetLive.Index do
     """
   end
 
-  # The last run: its dot and when, and its word only when it is running or went badly.
+  # The last run: its dot and when, and its word for every state but completed.
   attr :last, :map, required: true
 
   defp last_run(assigns) do
@@ -504,7 +504,7 @@ defmodule ApiaryWeb.TargetLive.Index do
       </span>
       <.relative_time at={@last.at} />
       <span
-        :if={@last.state not in ~w(succeeded completed ended)}
+        :if={Runs.Run.current_state(@last.state) != "completed"}
         class={["q-tgt-lw", "q-sdot-#{@last.state}"]}
         aria-hidden="true"
       >

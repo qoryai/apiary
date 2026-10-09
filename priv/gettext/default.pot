@@ -163,12 +163,12 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{bad} ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{day}: %{runs} (%{well} ended well, %{other} alive or ended badly), %{denied}, open that day's runs"
+msgid "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -3318,6 +3318,7 @@ msgid "Cancel the deletion of %{name}"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled"
@@ -3341,6 +3342,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled the organisation's deletion"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -3722,6 +3728,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Completed %{duration} after it started"
+msgstr ""
+
+#: lib/apiary_web/live/workspace_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Completed."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -6846,7 +6857,17 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
+msgid "Lost, end not recorded"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
 msgid "Lost, never posted its exit"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Lost, stopped responding"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10218,11 +10239,6 @@ msgstr ""
 msgid "Subjects"
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Succeeded."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Suggestions"
@@ -11048,6 +11064,11 @@ msgstr ""
 msgid "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run's end was not recorded; how it went is not known."
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The runs could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
@@ -11587,11 +11608,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Time zone"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_live/overview.ex
-#, elixir-autogen, elixir-format
-msgid "Timed out."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

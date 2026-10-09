@@ -15,6 +15,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   alias Apiary.Policy
   alias Apiary.Retention
   alias Apiary.Runs.{Liveness, Projector, Run}
+  alias ApiaryWeb.Format
 
   setup :register_and_log_in_user
 
@@ -660,7 +661,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#days a[data-day='#{today}'][aria-label*='Today: 3 runs (1 ended well, 2 alive or ended badly), 0 denied attempts']"
+               "#days a[data-day='#{today}'][aria-label*='Today: 3 runs (1 ended well, 0 cancelled, 2 alive or ended badly), 0 denied attempts']"
              )
 
       assert has_element?(view, "#days .q-col-runs.q-col-today")
@@ -682,6 +683,59 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#days svg")
       render_hook(view, "chart_table", %{"on" => false})
       assert has_element?(view, "#days svg")
+    end
+
+    test "the tiles, the table and the spoken days count every state in its family, Cancelled apart",
+         %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+      today = DateTime.to_date(now)
+      yesterday = Date.add(today, -1)
+      noon = DateTime.new!(yesterday, ~T[12:00:00.000000], "Etc/UTC")
+
+      # Yesterday, every state that ends, with the names an older release stored:
+      # succeeded ended well, timed_out and ended were cancelled.
+      for state <- ~w(completed succeeded cancelled timed_out ended failed lost),
+          do: run_fixture(scope, %{state: state, started_at: noon})
+
+      for state <- ~w(pending running completed cancelled failed),
+          do: run_fixture(scope, %{state: state, started_at: now})
+
+      view = open(conn, scope)
+
+      assert text(view, "#overview-strip-alive .q-sum-v") == "2"
+      assert text(view, "#overview-strip-runs .q-sum-v") == "12"
+      assert text(view, "#overview-strip-runs") =~ "3 ended well"
+      # Failed and Lost: a cancelled run does not raise Ended badly.
+      assert text(view, "#overview-strip-bad .q-sum-v") == "3"
+      assert text(view, "#overview-strip-bad") =~ "25% of the runs"
+
+      assert has_element?(view, "#overview-strip-bad[href*='state=failed%2Clost']")
+
+      day = Date.to_iso8601(yesterday)
+
+      assert has_element?(
+               view,
+               "#days a[data-day='#{day}'][aria-label^='#{Format.short_date(yesterday)}: 7 runs (2 ended well, 3 cancelled, 2 ended badly), 0 denied attempts, open that day']"
+             )
+
+      assert has_element?(
+               view,
+               "#days a[data-day='#{Date.to_iso8601(today)}'][aria-label^='Today: 5 runs (1 ended well, 1 cancelled, 3 alive or ended badly), 0 denied attempts']"
+             )
+
+      view |> element("#days-toggle") |> render_click()
+
+      headings =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#days table th")
+        |> Enum.map(&LazyHTML.text/1)
+
+      assert headings == ["Day", "Runs", "Ended well", "Cancelled", "Denied attempts"]
+
+      assert text(view, "#days-row-#{day}") == "#{Format.short_date(yesterday)} 7 2 3 0"
+
+      assert text(view, "#days-row-#{Date.to_iso8601(today)}") == "Today 5 1 1 0"
     end
 
     test "the active targets are the eight with the most runs; a path on two systems names them",
@@ -1133,6 +1187,47 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#close-run")
     end
 
+    test "a run that ended Lost lists with its own words; Apiary's own Lost keeps its line",
+         %{conn: conn, scope: scope} do
+      own = lost_run(scope)
+
+      silent =
+        started_run(scope, shop(),
+          about: %{"title" => "nightly-build"},
+          exit: %{"state" => "failed", "reason" => "session_lost", "exit_code" => -1}
+        )
+
+      unrecorded =
+        started_run(scope, shop(),
+          about: %{"title" => "nightly-sync"},
+          exit: %{"state" => "failed", "reason" => "gateway_lost", "exit_code" => -1}
+        )
+
+      assert %Run{state: "lost", lost_at: %DateTime{}} = Repo.reload!(silent)
+      view = open(conn, scope)
+
+      assert text(view, "#att-run-#{own.run_id}") =~ "Lost, never posted its exit"
+
+      assert has_element?(
+               view,
+               "#att-run-#{own.run_id} .q-ar-why[title='Nothing was heard for three heartbeat intervals. The run may still be going; the record is not.']"
+             )
+
+      for {run, words} <- [
+            {silent, "Lost, stopped responding"},
+            {unrecorded, "Lost, end not recorded"}
+          ] do
+        assert has_element?(view, "#att-run-#{run.run_id}[data-kind=lost]", "Lost")
+        assert text(view, "#att-run-#{run.run_id}") =~ words
+        refute text(view, "#att-run-#{run.run_id}") =~ "never posted its exit"
+
+        assert has_element?(
+                 view,
+                 ~s(#att-run-#{run.run_id} .q-ar-why[title="The run's end was not recorded; how it went is not known."])
+               )
+      end
+    end
+
     test "a lost run's title is isolated, so a bidi override flips nothing",
          %{conn: conn, scope: scope} do
       title = "nightly\u202Erorrim"
@@ -1399,6 +1494,42 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       render_async(view, 5_000)
       assert has_element?(view, "#att-run-#{other.run_id}[data-kind=lost].q-arrived", "Lost")
       assert text(view, "#overview-announcer") == "1 more item to review."
+    end
+
+    test "a quiet run that ends resolves its row with its state: Completed, Failed, Cancelled",
+         %{conn: conn, scope: scope} do
+      runs =
+        for exit <- [
+              %{"state" => "succeeded", "exit_code" => 0},
+              %{"state" => "failed", "exit_code" => 1},
+              %{"state" => "cancelled", "reason" => "no_longer_needed"}
+            ] do
+          {started_run(scope, shop(), heartbeat: {45, 100, 30}), exit}
+        end
+
+      view = open(conn, scope)
+
+      for {run, _exit} <- runs,
+          do: assert(has_element?(view, "#att-run-#{run.run_id}[data-kind=quiet]"))
+
+      for {run, exit} <- runs do
+        event_fixture(run, 41, "run.exited", Map.put(exit, "duration_ms", 1000),
+          time: DateTime.utc_now(),
+          received_at: DateTime.utc_now()
+        )
+
+        {:ok, _} = Projector.project(run)
+      end
+
+      render_async(view, 5_000)
+
+      for {{run, _exit}, words} <- Enum.zip(runs, ["Completed.", "Failed.", "Cancelled."]) do
+        assert has_element?(view, "#att-run-#{run.run_id}.q-resolved")
+        assert text(view, "#att-run-#{run.run_id}") =~ words
+      end
+
+      # Nothing arrived, so the announcer says nothing.
+      assert text(view, "#overview-announcer") == ""
     end
 
     test "a quiet run the check finds lost turns its row to Lost in place", %{

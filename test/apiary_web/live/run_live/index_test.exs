@@ -704,6 +704,39 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
     end
 
+    test "the State section and the views count every state in its family, an old name in its new state's",
+         %{conn: conn, scope: scope} do
+      # Beside the setup's running and failed runs.
+      at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+          do: run_fixture(scope, %{state: state, started_at: at})
+
+      view = open(conn, scope)
+      form = "#filter-state-form"
+
+      headings =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#{form} .q-filter-family")
+        |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+      assert headings == ["Alive", "Ended well", "Cancelled", "Ended badly"]
+
+      assert text(view, form) =~
+               "Alive Pending 1 Running 2 Ended well Completed 2 Cancelled Cancelled 3 Ended badly Failed 2 Lost 1"
+
+      for state <- ~w(pending running completed failed cancelled lost),
+          do: assert(has_element?(view, "#{form} input[name='state[]'][value=#{state}]"))
+
+      for old <- ~w(succeeded timed_out ended),
+          do: refute(has_element?(view, "#{form} input[name='state[]'][value=#{old}]"))
+
+      assert text(view, "#runs-view-all") == "All 11"
+      assert text(view, "#runs-view-alive") == "Alive 3"
+      assert text(view, "#runs-view-ended-badly") == "Ended badly 3"
+    end
+
     test "ticking a family fills its states into the URL, and the view is that family's",
          %{conn: conn, failed: failed, running: running, scope: scope} do
       view = open(conn, scope)

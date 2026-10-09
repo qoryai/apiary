@@ -52,11 +52,29 @@ defmodule Apiary.Runs.OverviewTest do
       from = DateTime.add(@now, -14 * 86_400, :second)
       assert [older, today] = Runs.day_facts(scope, from)
 
-      assert %{runs: 5, alive: 0, ended_well: 1, ended_badly: 2, denied: 1, costed: 1} = older
+      assert %{
+               runs: 5,
+               alive: 0,
+               ended_well: 1,
+               cancelled: 2,
+               ended_badly: 2,
+               denied: 1,
+               costed: 1
+             } = older
+
       assert older.day == day(2)
       assert Decimal.equal?(older.cost, Decimal.new("0.25"))
 
-      assert %{runs: 3, alive: 2, ended_well: 1, ended_badly: 0, denied: 2, costed: 1} = today
+      assert %{
+               runs: 3,
+               alive: 2,
+               ended_well: 1,
+               cancelled: 0,
+               ended_badly: 0,
+               denied: 2,
+               costed: 1
+             } = today
+
       assert today.day == day(0)
       assert Decimal.equal?(today.cost, Decimal.new("0.50"))
 

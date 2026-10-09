@@ -2,6 +2,7 @@ defmodule Apiary.TargetsTest do
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [run_fixture: 2]
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
@@ -236,6 +237,23 @@ defmodule Apiary.TargetsTest do
   end
 
   describe "a target's page" do
+    test "every state counts in its family, an old name in its new state's" do
+      %{scope: scope} = sign_up_fixture()
+      ended(scope, repo("github.example", "acme/shop"), "succeeded", ago: 60)
+      shop = target(scope, "github.example", "acme/shop")
+      at = DateTime.add(@now, -120, :second)
+
+      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+          do: run_fixture(scope, %{state: state, started_at: at, target_id: shop.id})
+
+      # Cancelled is neither ended well nor ended badly, so a page's share leaves it out.
+      assert Targets.summary(scope, shop, @now).window ==
+               %{runs: 10, ended_well: 3, cancelled: 3, ended_badly: 2, denied: 0}
+
+      assert %{rows: [row]} = Targets.page(scope, %{}, @now)
+      assert %{runs: 10, ended_well: 3, cancelled: 3, ended_badly: 2} = row
+    end
+
     test "its summary, runs, denials, machines, runtimes and the same path elsewhere" do
       %{scope: scope} = sign_up_fixture()
 
@@ -270,7 +288,7 @@ defmodule Apiary.TargetsTest do
       assert summary.runs == 3
       assert summary.first.run_id == first.run_id
       assert summary.last.run_id == last.run_id
-      assert summary.window == %{runs: 2, ended_well: 1, ended_badly: 1, denied: 2}
+      assert summary.window == %{runs: 2, ended_well: 1, cancelled: 0, ended_badly: 1, denied: 2}
       assert List.last(summary.days) == 2
 
       assert [%{run_id: newest}, _, _] = Targets.recent_runs(scope, shop, 10)
