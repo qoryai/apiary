@@ -5,7 +5,68 @@ on:
     branches: [main, next]
   pull_request:
 
+# A newer push to a pull request cancels its run in progress. A push to next or main is a
+# group of its own, the run's, so no later push cancels its run, in progress or waiting,
+# and the head of every push to them is checked.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Two jobs side by side: Checks, the checks that do not depend on the features, run once;
+# and the tests, under each set of features.
 jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain pinned in mise.toml
+        uses: jdx/mise-action@v3
+
+      # The job's own cache, apart from the tests': the dependencies, the dev and prod
+      # builds the checks and the assets compile, and the Tailwind binary. Not esbuild's:
+      # its file carries no version, so a cached one would outlive a change of version.
+      - name: Restore dependencies and build
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build/dev
+            _build/prod
+            _build/tailwind-*
+          key: mix-checks-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          restore-keys: |
+            mix-checks-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Compile without warnings
+        run: mix compile --warnings-as-errors
+
+      - name: Check the Gettext catalogues are extracted
+        run: mix gettext.extract --check-up-to-date
+
+      # The hooks' own tests, under Node's test runner and its WebCrypto, with no npm: the
+      # key a browser makes against the contract's known answer, and what it sends Qory.
+      - name: Test the browser scripts
+        run: node --test 'assets/js/test/*.test.mjs'
+
+      - name: Build the documentation without warnings
+        run: mix docs --warnings-as-errors
+
+      - name: Build the assets
+        env:
+          MIX_ENV: prod
+        run: mix assets.deploy
+
   test:
     name: Elixir tests (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -13,8 +74,7 @@ jobs:
     # ones included (QORY_FEATURES unset or empty, which the tests take for every
     # feature); the default features, as `all` gives them to an instance; and the record
     # alone. A test that exercises a feature is tagged `needs:` and left out where the
-    # feature is off; the checks that do not depend on the features run once, with every
-    # feature.
+    # feature is off.
     strategy:
       fail-fast: false
       matrix:
@@ -57,43 +117,25 @@ jobs:
       - name: Install the toolchain pinned in mise.toml
         uses: jdx/mise-action@v3
 
+      # The legs compile the same build, as QORY_FEATURES is read when the suite runs and
+      # not when it compiles: each restores the tests' cache, and "every feature" alone
+      # saves it, so no leg's save races another's.
       - name: Restore dependencies and build
-        uses: actions/cache@v6
+        id: restore
+        uses: actions/cache/restore@v6
         with:
           path: |
             deps
-            _build
-          key: mix-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+            _build/test
+          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
           restore-keys: |
-            mix-${{ runner.os }}-
+            mix-test-${{ runner.os }}-
 
       - name: Fetch dependencies
         run: |
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
-
-      - name: Check formatting
-        if: matrix.features == ''
-        run: mix format --check-formatted
-
-      - name: Compile without warnings
-        if: matrix.features == ''
-        run: mix compile --warnings-as-errors
-
-      - name: Check the Gettext catalogues are extracted
-        if: matrix.features == ''
-        run: mix gettext.extract --check-up-to-date
-
-      # The hooks' own tests, under Node's test runner and its WebCrypto, with no npm: the
-      # key a browser makes against the contract's known answer, and what it sends Qory.
-      - name: Test the browser scripts
-        if: matrix.features == ''
-        run: node --test 'assets/js/test/*.test.mjs'
-
-      - name: Build the documentation without warnings
-        if: matrix.features == ''
-        run: mix docs --warnings-as-errors
 
       - name: Test
         env:
@@ -103,8 +145,11 @@ jobs:
           QORY_FEATURES: ${{ matrix.features }}
         run: mix test
 
-      - name: Build the assets
-        if: matrix.features == ''
-        env:
-          MIX_ENV: prod
-        run: mix assets.deploy
+      - name: Save dependencies and build
+        if: matrix.features == '' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps
+            _build/test
+          key: ${{ steps.restore.outputs.cache-primary-key }}

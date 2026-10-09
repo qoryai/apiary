@@ -68,8 +68,10 @@ node --test 'assets/js/test/*.test.mjs'  # the browser scripts' tests, under Nod
 mix phx.server                     # http://localhost:4100
 ```
 
-CI (`.github/workflows/ci.yml`) runs the formatting check, the compile with warnings as
-errors, the browser scripts' tests and the tests, then `MIX_ENV=prod mix assets.deploy` to prove the assets still build. Links the application generates, magic links and invitations, are built for
+CI (`.github/workflows/ci.yml`) runs two jobs side by side: Checks, which runs the
+formatting check, the compile with warnings as errors, the Gettext check, the browser
+scripts' tests and the documentation build, then `MIX_ENV=prod mix assets.deploy` to prove
+the assets still build; and the tests, once for each of three sets of features. Links the application generates, magic links and invitations, are built for
 `PHX_HOST`, default `localhost`; when a local reverse proxy serves the dev server under
 another name, set `PHX_HOST` (or a full `PUBLIC_URL`) in `mise.local.toml`, which is not
 tracked, or in the shell. Emails in development go to `http://localhost:4100/dev/mailbox`.
