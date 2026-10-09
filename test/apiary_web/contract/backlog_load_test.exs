@@ -9,9 +9,11 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   outage is brought back by its backlog, and that each stays lost until its exit arrives;
   that the only refusals are `429` and `503` and that each clears on retry, after the
   `Retry-After` of a `429` and with Forager's backoff after a `503`; that a new run's
-  configuration is served during the flush on the same key; and that a new run from
-  another instance of the full node opens during it. It prints what it measured: the wall
-  time, the refusals, the most projections in flight at once and how the pool held.
+  configuration is served during the flush on the same key; and that the ping of a new run
+  from another instance of the full node, sent as Forager's gateway sends it, is refused by
+  no instance limit, only by the key's bucket. It prints what it measured: the wall time,
+  the refusals, the most projections in flight at once, how the pool held, and the new
+  run's tries and whether it opened.
 
   The pool is the one an instance runs with: `@pool_size` connections of a
   `DBConnection.ConnectionPool`, outside the sandbox, with projections in tasks, as in
@@ -58,8 +60,12 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   @quiet 300 + 3 * @interval + 60
   # The liveness check's tick in production.
   @tick :timer.seconds(15)
-  # Forager's backoff after an answer it does not take: 1 s, doubling to a minute.
+  # Forager's backoff after an answer it does not take: 1 s, doubling to a minute. As a
+  # run opens, its gateway waits 1 s, then 2 s, between the tries of its ping, and starts
+  # none more than 6 s after the run request.
   @backoff_max 60_000
+  @open_waits [1000, 2000]
+  @open_window 6000
   # Of the batches accepted, every `@answer_lost`th is sent again under the same delivery
   # id, its answer having been lost, and every `@cut_again`th again under a new one, cut
   # again after a restart.
@@ -147,6 +153,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
         :timer.tc(
           fn ->
             probes = Task.async(fn -> probe(flush, div(tuple_size(batches), 3)) end)
+            flush = Map.put(flush, :probe, probes.pid)
             workers = for _ <- 1..@in_flight, do: Task.async(fn -> work(flush) end)
             Task.await_many(workers, :infinity)
             Task.await(probes, :infinity)
@@ -232,16 +239,25 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       end
     end
 
-    # During the flush, a new run's configuration was served, and a new run from another
-    # instance of the full node opened.
-    assert %{configuration: 200, configuration_signed: true, ping: 202, flushing: true} = probes
+    # During the flush, right after a 429, a new run's configuration was served, and the
+    # new run's ping from another instance of the full node was never refused by the
+    # instance limit: only by the key's bucket, and then it is no run.
+    assert %{configuration: 200, configuration_signed: true, signed: true} = probes
+    assert %{after_429: true, flushing: true} = probes
+    assert Enum.all?(probes.tries, &(&1 in [202, 429]))
+    opened? = List.last(probes.tries) == 202
 
-    assert %Run{instance_id: @new_instance, node_id: node_id} =
-             Repo.one!(from r in Run, where: r.run_id == ^probes.subject)
+    if opened? do
+      assert %Run{instance_id: @new_instance, node_id: node_id} =
+               Repo.one!(from r in Run, where: r.run_id == ^probes.subject)
 
-    assert node_id == ctx.node.id
+      assert node_id == ctx.node.id
+    else
+      refute Repo.exists?(from r in Run, where: r.run_id == ^probes.subject)
+    end
+
     assert Liveness.check(DateTime.utc_now()) |> Enum.filter(&MapSet.member?(ids, &1.id)) == []
-    assert Runs.count_alive(ctx.scope) == 1
+    assert Runs.count_alive(ctx.scope) == if(opened?, do: 1, else: 0)
 
     # The exits the gateway records once it is back end the runs that had none.
     exits = for flushed <- runs, not flushed.exit, do: exit_batch(flushed)
@@ -449,19 +465,8 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   # Retry-After says, after a 503 or no answer it backs off. Returns the last status.
   defp deliver(flush, body, delivery, opts \\ []) do
     attempt = Keyword.get(opts, :attempt, 0)
-    instance = Keyword.get(opts, :instance, @backlog_instance)
 
-    answer =
-      try do
-        signed_post(Phoenix.ConnTest.build_conn(), flush.key.key_id, flush.secret, body,
-          delivery: delivery,
-          instance_id: instance
-        )
-      rescue
-        exception -> {:raised, exception.__struct__}
-      end
-
-    case answer do
+    case post(flush, body, delivery, @backlog_instance) do
       {:raised, module} ->
         bump(flush.stats, :raised)
         :ets.insert(flush.stats.table, {:raised_by, module})
@@ -479,6 +484,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
 
           429 ->
             bump(flush.stats, :rate_limited)
+            if probe = flush[:probe], do: send(probe, :refused)
 
             case Plug.Conn.get_resp_header(conn, "retry-after") do
               [seconds] ->
@@ -503,18 +509,41 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
     end
   end
 
+  # One try: the answer, or what was raised in place of one.
+  defp post(flush, body, delivery, instance) do
+    signed_post(Phoenix.ConnTest.build_conn(), flush.key.key_id, flush.secret, body,
+      delivery: delivery,
+      instance_id: instance
+    )
+  rescue
+    exception -> {:raised, exception.__struct__}
+  end
+
   defp backoff(attempt), do: min(1000 * Integer.pow(2, attempt), @backoff_max)
 
-  # Once a third of the backlog is in, a new run starts on another instance of the node:
-  # it fetches its configuration, then sends its ping. The ping spends the key's events
-  # bucket, which the flush spends as fast as it refills, so it may be refused 429 first; it is sent again
-  # after Retry-After, as any batch is, to reach the instance limit's answer.
+  # Once a third of the backlog is in, a new run starts on another instance of the node,
+  # right after a batch of the flush was refused 429, so the key's events bucket is empty.
+  # Its gateway asks as Forager's does when a run opens: up to three tries of the ping,
+  # under one delivery id, the second 1 s after the first ends and the third 2 s after the
+  # second, again only after no answer, a 5xx or a signed 429 `rate_limited`, without
+  # reading Retry-After, and none started more than 6 s after the run request. A ping still
+  # refused is no run. The configuration is asked right after the ping's first try,
+  # whatever its answer, so that it too is asked while the bucket is empty.
   defp probe(%{stats: stats} = flush, after_batches) do
     if :counters.get(stats.counters, index(:accepted)) < after_batches do
       Process.sleep(10)
       probe(flush, after_batches)
     else
-      before = :counters.get(stats.counters, index(:rate_limited))
+      refused_before = :counters.get(stats.counters, index(:rate_limited))
+      forget_refusals()
+      after_429 = receive(do: (:refused -> true), after: (30_000 -> false))
+      requested = System.monotonic_time(:millisecond)
+
+      {subject, [ping, _started]} = first_events()
+      body = Jason.encode!([ping])
+      delivery = Ecto.UUID.generate()
+      first = post(flush, body, delivery, @new_instance)
+      ended = System.monotonic_time(:millisecond)
 
       configuration =
         signed_get(
@@ -525,24 +554,58 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
           instance_id: @new_instance
         )
 
-      {subject, [ping, _started]} = first_events()
-      ping_stats = new_stats()
-      opened = %{flush | stats: ping_stats}
-
-      status =
-        deliver(opened, Jason.encode!([ping]), Ecto.UUID.generate(), instance: @new_instance)
+      tries = ping_tries(flush, body, delivery, requested, [first], ended, @open_waits)
 
       %{
         configuration: configuration.status,
         configuration_signed: signed_answer?(configuration),
-        ping: status,
-        ping_refused: :counters.get(ping_stats.counters, index(:rate_limited)),
-        events_refused_before: before,
+        tries: Enum.map(tries, &answered/1),
+        signed:
+          Enum.all?(tries, &match?(%Plug.Conn{}, &1)) and Enum.all?(tries, &signed_answer?/1),
+        after_429: after_429,
+        events_refused_before: refused_before,
         subject: subject,
         flushing: :counters.get(stats.counters, index(:accepted)) < tuple_size(flush.batches)
       }
     end
   end
+
+  defp forget_refusals do
+    receive do
+      :refused -> forget_refusals()
+    after
+      0 -> :ok
+    end
+  end
+
+  defp ping_tries(flush, body, delivery, requested, [last | _] = tries, ended, waits) do
+    case waits do
+      [wait | rest] ->
+        if passing?(last) and ended + wait - requested <= @open_window do
+          Process.sleep(max(wait - (System.monotonic_time(:millisecond) - ended), 0))
+          answer = post(flush, body, delivery, @new_instance)
+          ended = System.monotonic_time(:millisecond)
+          ping_tries(flush, body, delivery, requested, [answer | tries], ended, rest)
+        else
+          Enum.reverse(tries)
+        end
+
+      [] ->
+        Enum.reverse(tries)
+    end
+  end
+
+  # What Forager asks again as a run opens: no answer, a 5xx, a signed 429 `rate_limited`.
+  defp passing?({:raised, _module}), do: true
+  defp passing?(%Plug.Conn{status: status}) when status >= 500, do: true
+
+  defp passing?(%Plug.Conn{status: 429} = conn),
+    do: signed_answer?(conn) and Jason.decode!(conn.resp_body)["error"] == "rate_limited"
+
+  defp passing?(_answer), do: false
+
+  defp answered({:raised, module}), do: module
+  defp answered(%Plug.Conn{status: status}), do: status
 
   ## What is measured
 
@@ -696,7 +759,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       projections          at most #{m.sampled.tasks} in flight at once; events unprojected #{at_end} at the end, #{after_drain} once drained
       pool                 longest wait #{div(waited, 1000)} ms, #{slow} of #{queries} checkouts waited over 50 ms, at most #{m.sampled.queue} waiting at once, none free in #{m.sampled.busy} of #{m.sampled.samples} samples
       failures logged      #{inspect(m.log)}
-      new run              configuration #{m.probes.configuration}, ping #{m.probes.ping} after #{m.probes.ping_refused} × 429, while #{m.probes.events_refused_before} batches had been refused 429
+      new run              configuration #{m.probes.configuration}, ping tries #{inspect(m.probes.tries)}: #{if List.last(m.probes.tries) == 202, do: "opened", else: "no run"}; asked after #{m.probes.events_refused_before} batches had been refused 429
     """)
   end
 end
