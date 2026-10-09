@@ -65,9 +65,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   other code as the run's starter gave it, with spaces for underscores ("no longer
   needed"). An exit stored under one of Forager's earlier names reads in the words of the
   new one. A session run's Exit in the rail is the runtime's exit as recorded, "not
-  recorded" for `-1`; the page announces a cancelled or lost end in the same words ("Run
-  cancelled: time limit reached."); and a run whose exit said it was lost lists on the
-  Overview as "Lost, stopped responding" or "Lost, end not recorded".
+  recorded" for `-1` without a signal; the page announces a cancelled or lost end in the
+  same words ("Run cancelled: time limit reached."); and a run whose exit said it was lost
+  lists on the Overview as "Lost, stopped responding" or "Lost, end not recorded".
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
@@ -190,7 +190,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   workspace's settings, so a gateway's record sent after a shorter outage is stored.
 - A heartbeat counts by its own time, corrected by its run's clock offset, within 300
   seconds and never after its arrival, so a gateway's record sent after an outage revives
-  no lost run and holds no instance slot: the run stays lost until its exit arrives, and
+  no lost run and holds no instance slot: the run stays lost until its exit arrives,
+  which keeps it Lost, for good, when it says `session_lost` or `gateway_lost`, and
+  otherwise sets the state it says; and
   the access key's Last heartbeat says when its heartbeats were recorded. Three limits
   stay: after an outage shorter than about 6½ minutes, a run can still look alive for a
   moment; a session's run whose heartbeats all arrive late, because the outage began

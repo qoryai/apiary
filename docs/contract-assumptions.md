@@ -498,9 +498,11 @@ session's heartbeats through it, and a run with no session the gateway's own. So
 means the gateway sent nothing recent for the run. A session that falls silent is the
 gateway's to notice, and it ends the run `failed` with `session_lost`, an exit the server
 reads as Lost, and final (How a run ends). The lost-run check's `lost` is not final: a
-later heartbeat that counts within three intervals of its arrival, or the run's
-`dev.qory.run.exited`, such as a `gateway_lost` sent later with the run's record,
-corrects the state.
+later heartbeat that counts within three intervals of its arrival brings the run back,
+and the run's `dev.qory.run.exited` decides its state by How a run ends. An exit `failed`
+with `gateway_lost`, sent later with the run's record, or with `session_lost` keeps the
+run Lost, now final, with `lost_at` the exit's time; any other exit sets the state it maps
+to.
 
 **After an outage.** A gateway that could not reach the server keeps the run's record and
 sends it once the server answers again, oldest first. Its heartbeats arrive late, and each

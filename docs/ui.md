@@ -1407,13 +1407,13 @@ page has no breadcrumb of its own.
   ("SIGTERM"), else the code ("0", "1"), and "not recorded" for `-1` without a signal,
   the placeholder of an exit that holds no exit status of the runtime's.
 - **The timeline's last item** is one kind for every end: "Run ended", then the end
-  reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1`), then
-  how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
+  reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
+  a signal), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
   Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
   not start ends on "Run did not start" and the refusal's code in mono, with the red
   x-mark.
 - **The announcer** (`#run-announcer`) says a change of state at once: "Run started.";
-  "Run completed after 12 m 4 s.", or "Run completed."; "Run failed with exit 1.", "Run
+  "Run completed after 12 m 04 s.", or "Run completed."; "Run failed with exit 1.", "Run
   failed with SIGKILL.", or "Run failed." where the header says no exit; "Run did not
   start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason;
   "Run lost: stopped responding." for a run whose exit said it was lost, and "Run lost.
