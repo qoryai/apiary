@@ -355,7 +355,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
     """
   end
 
-  @doc "The path of a version page with its `view` and `compare`, defaults left out."
+  @doc """
+  The path of a version page with its `view` and `compare`, defaults left out; of the
+  Document view (`v.path`) where the version is shown there.
+  """
   def version_path(base, v, opts) do
     view = Keyword.get(opts, :view, v.view)
     compare = Keyword.get(opts, :compare, v.compare && v.compare.version)
@@ -365,7 +368,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
       [{"view", view != "changes" && view}, {"compare", compare && compare != default && compare}]
       |> Enum.filter(&elem(&1, 1))
 
-    "#{base}/versions/#{v.configuration.version}" <>
+    (v[:path] || "#{base}/versions/#{v.configuration.version}") <>
       if(query == [], do: "", else: "?" <> URI.encode_query(query))
   end
 
