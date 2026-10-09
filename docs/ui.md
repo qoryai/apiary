@@ -568,11 +568,21 @@ workspace, by its name, or Its own; Required by the level), one sentence of what
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
 The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
-in force under the card and the tabs: its version's number, In force, Export and the
-version's views, which stay on the tab. A change that makes a new version, Enforce or
+in force under the card and the tabs: its version's number, In force and the version's
+views, which stay on the tab. The document's bar is the tab's one place to take it away,
+the code-block header's pattern: two small icon buttons on its right, Copy (the document
+as served; its hint reads Copied while the copy is confirmed, which is said politely
+too) and Download (the export page's policy file, which exists only where the policy in
+force narrows a host to paths: an allow rule in force with paths), each named by its
+hint, which opens under it, flush with its right edge. The tab has no Export;
+the export page opens from the header's Export on the other tabs and from a version's
+own page. In the list of versions, on the tab and on each
+version's page, the version in force leads to the Document tab and an older one to its
+own page. A change that makes a new version, Enforce or
 Observe among them, shows the new version, its number and its mode there in place. A
-target served the workspace's policy shows the workspace's version, its links the
-workspace's.
+target served the workspace's policy shows the workspace's version: in its list the
+version in force leads to the target's own Document view and the older ones to the
+workspace's version pages, and Download gives the workspace's policy file.
 
 The policy pages confirm in place, never over the page:
 
@@ -602,7 +612,8 @@ with Version n and Export and is the one way back, with no trail of the page's o
 title "Export for a node without a server" and what is exported (an h2 under a target's
 own title), the policy file with Download and Copy, the command for the
 node and the Forager file's egress section, each with Copy, the notes, and Done back to the
-version. Only the version in force is exported; another version's path sends on to it.
+Document tab (a target's Document view), the version in force under the card. Only the
+version in force is exported; another version's path sends on to it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no

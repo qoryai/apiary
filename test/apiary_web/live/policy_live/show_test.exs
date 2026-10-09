@@ -38,6 +38,15 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     |> String.trim()
   end
 
+  defp attribute(view, selector, name) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.attribute(name)
+    |> hd()
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -933,11 +942,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-mode-value") == "Observe"
       assert page_title(view) =~ "Version 1 · Policy"
 
+      # The document's bar holds Copy, the tab's one place for it; no Export on this tab.
       assert has_element?(
                view,
-               "#version-export[href='#{workspace_path(scope, "/policy/versions/1/export")}']",
-               "Export"
+               "#version-doc .q-docwell-bar button#version-copy[aria-label=Copy][data-copy]"
              )
+
+      refute has_element?(view, "#version-export")
+      refute has_element?(view, "#policy-export-button")
 
       # Its views stay on the tab.
       view |> element("#version-view button", "Document") |> render_click()
@@ -1436,13 +1448,38 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       render_async(view, 5_000)
       assert has_element?(view, "h2#policy-version-h", "Version 2")
-      assert has_element?(view, "#ver-2[aria-current=page]")
       assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
 
-      # Its Export opens the export, and Done goes back to the version's page.
-      view |> element("#version-export") |> render_click()
-      assert_patch(view, workspace_path(scope, "/policy/versions/2/export"))
-      assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
+      # Done on the export comes back to the tab.
+      view = open(conn, scope, "/policy/versions/2/export")
+      view |> element("#export-done") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy/document"))
+      assert has_element?(view, "#policy-mode")
+      assert has_element?(view, "h2#policy-version-h", "Version 2")
+      assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
+    end
+
+    test "the versions list leads to the Document tab for the version in force, to its page for an older one",
+         %{conn: conn, scope: scope} do
+      document = workspace_path(scope, "/policy/document")
+      older = workspace_path(scope, "/policy/versions/1")
+
+      # On the tab, the version in force is the page itself.
+      view = open(conn, scope, "/policy/document")
+      assert has_element?(view, "#ver-2[href='#{document}'][aria-current=page]")
+      assert has_element?(view, "#ver-1[href='#{older}']")
+      refute has_element?(view, "#ver-1[aria-current]")
+
+      # On the version in force's own page, its entry is the version shown, not the page.
+      view = open(conn, scope, "/policy/versions/2")
+      assert has_element?(view, "#ver-2[href='#{document}'][aria-current=true]")
+      assert has_element?(view, "#ver-1[href='#{older}']")
+
+      # On an older version's page, its entry is the page.
+      view = open(conn, scope, "/policy/versions/1")
+      assert has_element?(view, "#ver-1[href='#{older}'][aria-current=page]")
+      assert has_element?(view, "#ver-2[href='#{document}']")
+      refute has_element?(view, "#ver-2[aria-current]")
     end
 
     test "changes from the one before, the document, and the bytes as served",
@@ -1467,7 +1504,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
       assert text(view, "#version-lines .q-add") =~ ~s(Added: "files.cdn.example")
       assert has_element?(view, "#version-copy[data-copy='#{configuration.document}']")
-      assert has_element?(view, "#ver-2[aria-current=page]")
+      assert has_element?(view, "#ver-2[aria-current=true]")
 
       view |> element("#version-view button", "As served") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/2?view=served"))
@@ -1563,16 +1600,117 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")
       refute_push_event(view, "policy:focus", %{id: "policy-export-h"})
 
+      # Done goes back to the Document tab, the version in force under the card.
       view |> element("#policy-export a", "Done") |> render_click()
-      assert_patch(view, workspace_path(scope, "/policy/versions/3"))
-      assert has_element?(view, "h1#policy-version-h.outline-none[tabindex='-1']", "Version 3")
+      assert_patch(view, workspace_path(scope, "/policy/document"))
+      assert has_element?(view, "h2#policy-version-h.outline-none[tabindex='-1']", "Version 3")
       assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
-      # From the version, its Export opens the page again, named in the browser's title.
+      # The tab has no Export: the header's, on the other tabs, opens the page again.
+      refute has_element?(view, "#version-export")
+      refute has_element?(view, "#policy-export-button")
+      view |> element("#policy-tabs-rules") |> render_click()
+
+      assert has_element?(
+               view,
+               "#policy-export-button[href='#{workspace_path(scope, "/policy/versions/3/export")}']"
+             )
+
+      # From the version's own page, its Export opens the page, named in the browser's title.
+      view = open(conn, scope, "/policy/versions/3")
       view |> element("#version-export") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/3/export"))
       assert page_title(view) =~ "Export · Version 3 · Policy"
       assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
+    end
+
+    test "the Document tab's document has Copy and Download in its bar, the tab no Export",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
+      {:ok, configuration} = Policy.get_configuration(scope, nil, 3)
+      view = open(conn, scope, "/policy/document")
+
+      # Two small icon buttons on the bar's right, Copy then Download, named by their hints.
+      bar = "#version-doc .q-docwell-bar"
+
+      assert has_element?(
+               view,
+               "#{bar} button#version-copy.btn-square[aria-label=Copy][data-copy='#{configuration.document}']"
+             )
+
+      assert has_element?(view, "#{bar} .tooltip[data-tip=Copy] #version-copy")
+      assert has_element?(view, "#{bar} [aria-live=polite]")
+
+      # The hints open under the icons, flush with their right edge, so the well never
+      # cuts them; Copy's reads Copied while the copy is confirmed.
+      assert has_element?(
+               view,
+               "#{bar} .tooltip.tooltip-bottom.q-tip-end[data-tip=Copy][data-tip-done=Copied] button#version-copy[phx-hook=CopyToClipboard][data-copied-words=Copied]"
+             )
+
+      assert has_element?(
+               view,
+               "#{bar} .tooltip.tooltip-bottom.q-tip-end[data-tip=Download] #version-download"
+             )
+
+      assert has_element?(
+               view,
+               "#{bar} a#version-download.btn-square[aria-label=Download][download$='-policy.yaml'][href^='data:text/yaml']"
+             )
+
+      assert has_element?(view, "#{bar} .tooltip[data-tip=Download] #version-download")
+      [copy, download] = order(view, ~w(version-copy version-download))
+      assert copy < download
+      refute has_element?(view, "#{bar}", "Copy document")
+
+      # The same file the export page downloads.
+      export = open(conn, scope, "/policy/versions/3/export")
+
+      for attribute <- ~w(href download) do
+        assert attribute(view, "#version-download", attribute) ==
+                 attribute(export, "#export-download", attribute)
+      end
+
+      # The one place: no Export in the page's header or the version's head on this tab.
+      refute has_element?(view, "#policy-export-button")
+      refute has_element?(view, "#version-export")
+
+      # The sentence under the document reads with its space.
+      assert name(view, "#version-doc-note") =~ ~s(Shown indented for reading. "As served" is)
+
+      # The other tabs keep the header's Export.
+      for rest <- ~w(/policy /policy/targets /policy/history) do
+        assert has_element?(open(conn, scope, rest), "a#policy-export-button"), rest
+      end
+
+      # A version's own page keeps Copy document and its Export.
+      for rest <- ~w(/policy/versions/3 /policy/versions/1) do
+        view = open(conn, scope, rest)
+        assert has_element?(view, "#version-copy", "Copy document"), rest
+        assert has_element?(view, "#version-export"), rest
+        refute has_element?(view, "#version-download"), rest
+      end
+    end
+
+    test "a deny rule is in the document, and the note under it says nothing otherwise",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example"})
+
+      for rest <- ~w(/policy/document /policy/versions/3) do
+        view = open(conn, scope, rest)
+        assert text(view, "#version-doc") =~ ~s("deny"), rest
+        assert text(view, "#version-doc") =~ ~s("tracker.example"), rest
+        refute text(view, "#version-doc-note") =~ "Deny rules", rest
+        refute text(view, "#version-doc-note") =~ "what it lists", rest
+      end
+    end
+
+    test "with no paths there is no policy file: the bar has Copy alone",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope, "/policy/document")
+      assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
+      assert has_element?(view, "#version-doc .q-docwell-bar .tooltip.q-tip-end #version-copy")
+      refute has_element?(view, "#version-download")
     end
 
     test "only the version in force is exported", %{conn: conn, scope: scope} do

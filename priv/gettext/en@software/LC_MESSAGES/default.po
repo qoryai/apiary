@@ -4465,11 +4465,6 @@ msgctxt "plain"
 msgid "Deny rules and locks are already applied: the text lists what remains allowed."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "Deny rules and locks are not in the document: they decide what it lists."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Describe another API: its hosts and how its token is sent."

@@ -110,8 +110,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp document(socket) do
     with %{version: n} <- socket.assigns.version,
          {:ok, v} <- Common.version(socket, n, socket.assigns.params) do
+      export = Common.export(socket, v.configuration)
+
       assign(socket,
-        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
+        v:
+          Map.merge(v, %{
+            path: "#{socket.assigns.base}/document",
+            download: export.policy_file && %{name: export.file_name, file: export.policy_file}
+          }),
         page_title: gettext("Version %{version} · Policy", version: n)
       )
     else
@@ -972,7 +978,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 }
                 copy
               />
+              <%!-- On the Document tab the document's own bar is the one place: Copy, Download. --%>
               <.button
+                :if={@live_action != :document}
                 id="policy-export-button"
                 navigate={
                   ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export"
@@ -1078,6 +1086,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           v={@v}
           base={@base}
           heading="h2"
+          export={false}
         />
         <.version_view
           :if={@live_action in [:version, :document] && @v}
@@ -1088,9 +1097,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
-          done={
-            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
-          }
+          done={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/document"}
         />
         <.empty_state
           :if={@missing}
@@ -1136,6 +1143,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
     default: false,
     doc: "the version is another page's (the workspace's, on a target served it): Export leaves"
 
+  attr :export, :boolean,
+    default: true,
+    doc: "false on the Document view, whose document's bar has Copy and Download instead"
+
   # The heading takes the focus a page sends it (`policy-version-h`) when the version is
   # reached by a patch, as Done from its export is.
   def version_head(assigns) do
@@ -1164,7 +1175,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <% end %>
         </span>
       </div>
-      <div class="q-head-side">
+      <div :if={@export} class="q-head-side">
         <.button
           id="version-export"
           patch={!@away && "#{@base}/versions/#{@v.latest}/export"}

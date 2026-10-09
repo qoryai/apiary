@@ -870,7 +870,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def heading_focus(socket, from, :export) when from in [:version, :document],
     do: focus(socket, "policy-export-h")
 
-  def heading_focus(socket, :export, :version), do: focus(socket, "policy-version-h")
+  def heading_focus(socket, :export, to) when to in [:version, :document],
+    do: focus(socket, "policy-version-h")
+
   def heading_focus(socket, _from, _to), do: socket
 
   @doc """
@@ -1674,9 +1676,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc "The export of the holder's effective policy, with the scope, version and digest as comments."
-  def export(socket, configuration) do
+  def export(socket, configuration, opts \\ []) do
     scope = socket.assigns.current_scope
-    holder = socket.assigns.holder
+    holder = Keyword.get(opts, :holder, socket.assigns.holder)
     {:ok, export} = Policy.export(scope, holder)
 
     subject =

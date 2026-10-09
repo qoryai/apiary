@@ -8048,6 +8048,19 @@
     color: var(--q-muted);
     font: 12px/16px var(--font-mono);
   }
+  /* A hint on a box that clips what overflows it, at the box's right edge: under its
+     control, flush with the control's right edge, so it is never cut. */
+  .tooltip-bottom.q-tip-end[data-tip]::before {
+    inset: var(--tt-off) 0 auto auto;
+    transform: translateY(var(--tt-pos, -0.25rem));
+  }
+  /* The hint a copy changes while it is confirmed: Copy, then Copied, shown for as long
+     as the confirmation lasts, pointed at or not. */
+  .tooltip[data-tip-done]:has(.copy-btn[data-copied])::before {
+    content: attr(data-tip-done);
+    display: block;
+    opacity: 1;
+  }
   .q-docwell pre {
     overflow-x: auto;
     margin: 0;
