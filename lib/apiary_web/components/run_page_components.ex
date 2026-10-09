@@ -1230,16 +1230,16 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # How the run ended: why, in words (`RunComponents.reason_words/1`), else the program's
   # signal or exit code. `-1` with no signal is the gateway's placeholder for an exit it
-  # wrote, not the program's: nothing is said of it.
+  # wrote, not the program's, and an exit with neither has none: nothing is said of either,
+  # and the item says how long the run ran alone.
   defp end_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
 
   defp exit_code_words(%{signal: signal}) when is_binary(signal), do: signal
-  defp exit_code_words(%{exit_code: -1}), do: nil
 
-  defp exit_code_words(%{exit_code: code}) when is_integer(code),
+  defp exit_code_words(%{exit_code: code}) when is_integer(code) and code != -1,
     do: gettext("exit %{code}", code: code)
 
-  defp exit_code_words(_item), do: gettext("n/a")
+  defp exit_code_words(_item), do: nil
 
   defp result_words(item) do
     [

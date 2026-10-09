@@ -1408,7 +1408,7 @@ page has no breadcrumb of its own.
   the placeholder of an exit that holds no exit status of the runtime's.
 - **The timeline's last item** is one kind for every end: "Run ended", then the end
   reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1` without
-  a signal), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
+  a signal, nor for an exit with no code at all), then how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
   Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
   not start ends on "Run did not start" and the refusal's code in mono, with the red
   x-mark.

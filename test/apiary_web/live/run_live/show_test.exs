@@ -2514,6 +2514,23 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
+    test "a gateway's run with no reason and no exit code: Run ended and how long, no n/a",
+         %{conn: conn, scope: scope} do
+      for {exit, says} <- [
+            {%{"state" => "failed", "duration_ms" => 720_000}, "12 m 00 s"},
+            {%{"state" => "failed"}, ""}
+          ] do
+        run = gateway_run(scope, exit)
+        {:ok, lv, _html} = run_page(conn, scope, run)
+        case_ = inspect(exit)
+
+        assert words_of(lv, "#e-3 .q-k") == "Run ended", case_
+        assert words_of(lv, "#e-3 .q-s") == says, case_
+        refute has_element?(lv, "#e-3", "n/a"), case_
+        assert has_element?(lv, "#e-3 #{@marks["Failed"]}"), case_
+      end
+    end
+
     test "a run that did not start: Failed, why after it and under it, no Exit row, and its item",
          %{conn: conn, scope: scope} do
       for started <- [started_data(), gateway_started_data()] do
