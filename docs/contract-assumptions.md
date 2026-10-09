@@ -213,10 +213,10 @@ What is stored, in one transaction, before the answer:
 
 After the commit, and never failing the request: the key records the time, and the Forager
 version and the contract version when the request named them (a request that names none
-leaves what is recorded); when the batch held a heartbeat that was new, the key records when
-the server received it, by the server's clock and never Forager's. A repeated delivery
+leaves what is recorded). A repeated delivery
 records nothing on the key. The run's events are projected into the run, its connections and its log, on the server's own
-time. Nothing of a request's headers beyond the above is stored, and neither the signature nor
+time; a projection that moves the run's last heartbeat records it as the key's last
+heartbeat too, never moving that backwards (Liveness, below). Nothing of a request's headers beyond the above is stored, and neither the signature nor
 the body is logged.
 
 ## Signed GET: the run configuration
@@ -420,13 +420,18 @@ silent. Qory Apiary's own lost-run check
 three of the heartbeat intervals it announced (`interval_seconds` of its heartbeats), 90
 seconds when it announced none: a `running` run from its last heartbeat, else from the
 arrival of its `run.started`, and a `pending` run from when the workspace first heard of
-it. Only the server's clock is compared.
+it. A heartbeat counts by its own `time`, corrected by the run's clock offset (the
+smallest arrival less `time` over the run's heartbeats, and for a run with no session its
+ping's), plus 300 seconds, and never after its arrival, as the contract's liveness for the
+server says; a run's first heartbeat with no offset before it counts at its arrival. Only the server's clock is
+compared.
 
 Every event of a run reaches the server from one gateway, the node toward the server: a
 session's heartbeats through it, and a run with no session the gateway's own. So `lost`
-means the gateway stopped sending for the run. A session that falls silent is the
+means the gateway sent nothing recent for the run. A session that falls silent is the
 gateway's to notice, and it ends the run with `session_lost`, which the server sees as an
-exit. `lost` is not final: a later heartbeat or the run's `dev.qory.run.exited`, such as
+exit. `lost` is not final: a later heartbeat that counts within three intervals of its
+arrival, or the run's `dev.qory.run.exited`, such as
 a `gateway_lost` sent later with the run's record, corrects the state.
 
 ## Failure

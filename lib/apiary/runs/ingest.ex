@@ -40,7 +40,6 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
-  @heartbeat "dev.qory.run.heartbeat"
   @ping "dev.qory.ping"
   @log "dev.qory.run.log"
   @insert_chunk 500
@@ -65,14 +64,14 @@ defmodule Apiary.Runs.Ingest do
   Stores the batch. `{:ok, result}` with `status` 202, or 410 when retention has pruned
   the run's events (`runs.events_pruned_at`) and nothing but the delivery was recorded;
   `inserted` events were new, `duplicates` were already held, `conflicts` were dropped,
-  `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
-  delivery id had been recorded before; `managed` says whether the workspace serves a run
-  configuration (nil when that could not be read) and `run_configuration_digest` is
-  the digest in force for the run's target, for the answer's headers (nil for a
-  workspace that is not managed, and when it could not be read). `{:error, :unavailable}`
-  when the batch could not be stored, `{:error, :not_found}` when the key may not post
-  (`run.post_events` in `Apiary.Access`), and `{:error, :instance_limit}` when the batch
-  holds the ping of a new run from an instance its node's limit refuses.
+  and `repeated` says the delivery id had been recorded before; `managed` says whether
+  the workspace serves a run configuration (nil when that could not be read) and
+  `run_configuration_digest` is the digest in force for the run's target, for the
+  answer's headers (nil for a workspace that is not managed, and when it could not be
+  read). `{:error, :unavailable}` when the batch could not be stored,
+  `{:error, :not_found}` when the key may not post (`run.post_events` in
+  `Apiary.Access`), and `{:error, :instance_limit}` when the batch holds the ping of a
+  new run from an instance its node's limit refuses.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -91,7 +90,7 @@ defmodule Apiary.Runs.Ingest do
 
     with :ok <- may_post(scope),
          {:ok, result} <- transact(access_key, batch, meta, delivery_id, now) do
-      if not result.repeated, do: touch(access_key, result, meta, now)
+      if not result.repeated, do: touch(access_key, meta, now)
       if result.conflicts > 0, do: log_conflicts(result)
       if result.status == 202, do: Projector.project_async(result.run)
 
@@ -171,7 +170,7 @@ defmodule Apiary.Runs.Ingest do
 
       true ->
         {batch, pruned} = without_pruned_log(run, batch)
-        {inserted, duplicates, conflicts, heartbeat} = insert_events(run, batch, now)
+        {inserted, duplicates, conflicts} = insert_events(run, batch, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
@@ -179,8 +178,7 @@ defmodule Apiary.Runs.Ingest do
           result(202, run)
           | inserted: inserted,
             duplicates: duplicates + pruned,
-            conflicts: conflicts,
-            heartbeat: heartbeat
+            conflicts: conflicts
         }
     end
   end
@@ -210,7 +208,6 @@ defmodule Apiary.Runs.Ingest do
       inserted: 0,
       duplicates: 0,
       conflicts: 0,
-      heartbeat: false,
       repeated: false
     }
   end
@@ -316,7 +313,7 @@ defmodule Apiary.Runs.Ingest do
         {inserted, returned} =
           Repo.insert_all(Event, chunk,
             on_conflict: :nothing,
-            returning: [:event_id, :type],
+            returning: [:event_id],
             log: false
           )
 
@@ -325,7 +322,7 @@ defmodule Apiary.Runs.Ingest do
 
     skipped = length(rows) - inserted
     conflicts = if skipped > 0, do: conflicts(run, rows, stored), else: 0
-    {inserted, skipped - conflicts, conflicts, Enum.any?(stored, &(&1.type == @heartbeat))}
+    {inserted, skipped - conflicts, conflicts}
   end
 
   # An event that was not inserted is a duplicate when the workspace holds the same id
@@ -387,15 +384,14 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # Bookkeeping on the key, after the commit: it never fails the delivery. The
-  # heartbeat is dated by this server's clock, when it was received: Forager's
-  # clock, which may be wrong or ahead, never pins it.
-  defp touch(access_key, result, meta, now) do
+  # Bookkeeping on the key, after the commit: it never fails the delivery. The key's
+  # last heartbeat is the projector's (`Apiary.Runs.Projector`), by the heartbeat's own
+  # time.
+  defp touch(access_key, meta, now) do
     AccessKeys.touch_delivery(access_key, %{
       last_used_at: now,
       last_forager_version: meta[:forager_version],
-      last_contract_version: meta.contract_version,
-      last_heartbeat_at: if(result.heartbeat, do: now)
+      last_contract_version: meta.contract_version
     })
   rescue
     _exception -> :ok

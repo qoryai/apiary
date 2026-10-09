@@ -747,6 +747,126 @@ defmodule Apiary.Runs.FoldTest do
         assert run.state == state
       end
     end
+
+    test "a beat counts by its own time within the run's clock offset, never after its arrival" do
+      # The offset the run's beats set: received 100 s after their time.
+      run = %{@run | state: "running"} |> Map.put(:clock_offset_ms, 100_000)
+
+      # Received on time, a little faster than the others, or an hour late.
+      fast = %{heartbeat(5, 30) | received_at: at(95)}
+      late = %{heartbeat(6, 60) | received_at: at(3606)}
+
+      assert %{last_heartbeat_at: heard, clock_offset_ms: 90_000} = Fold.fold(run, [fast]).run
+      assert heard == at(95)
+
+      assert %{last_heartbeat_at: heard, clock_offset_ms: 100_000} = Fold.fold(run, [late]).run
+      assert heard == at(6 + 100 + 300)
+    end
+
+    test "the offset is the smallest over every beat, whatever its sequence or order" do
+      beats = [
+        %{heartbeat(5, 30) | received_at: at(120)},
+        %{heartbeat(6, 60) | received_at: at(70)},
+        %{heartbeat(7, 90) | received_at: at(500)}
+      ]
+
+      offsets =
+        for order <- [beats, Enum.reverse(beats), [Enum.at(beats, 2), Enum.at(beats, 0)]] do
+          Enum.reduce(order, {@run, %{}}, fn beat, {run, latest} ->
+            %{run: run, latest: latest} = Fold.fold(run, [beat], latest)
+            {run, latest}
+          end)
+          |> elem(0)
+          |> Map.get(:clock_offset_ms)
+        end
+
+      assert offsets == [64_000, 64_000, 115_000]
+    end
+
+    test "a replayed beat never moves the offset, and revives no lost run" do
+      lost =
+        %{@run | state: "lost", lost_at: at(400), last_heartbeat_at: at(105)}
+        |> Map.put(:clock_offset_ms, 100_000)
+
+      # Recorded at 200 s, sent at 3600 s.
+      replayed = %{heartbeat(9, 200, 30, 200) | received_at: at(3600)}
+      %{run: run} = Fold.fold(lost, [replayed], %{"dev.qory.run.heartbeat" => 4})
+
+      assert run.clock_offset_ms == 100_000
+      assert run.last_heartbeat_at == at(600)
+      assert run.state == "lost"
+      assert run.lost_at == at(400)
+
+      # Nor a run whose start has not arrived.
+      pending = Map.put(@run, :clock_offset_ms, 100_000)
+      assert Fold.fold(pending, [replayed]).run.state == "pending"
+    end
+
+    test "a lost run revives on a beat heard within three of its intervals of its arrival" do
+      lost = %{@run | state: "lost", lost_at: at(10)} |> Map.put(:clock_offset_ms, 100_000)
+
+      # Heard at 3 × 30 s before its arrival, then a moment earlier.
+      within = %{heartbeat(7, 120, 30, 3000) | received_at: at(3490)}
+      without = %{within | received_at: at(3491)}
+
+      assert Fold.fold(lost, [within]).run.state == "running"
+      assert Fold.fold(lost, [without]).run.state == "lost"
+    end
+
+    test "a lower offset counts the last beat again, from what was projected" do
+      # A beat folded alone counted at its arrival and revived the run; the start that
+      # brings the ping's lower offset comes after it.
+      run = %{@run | state: "running", opened_by: "gateway", last_heartbeat_at: at(3600)}
+      run = Map.put(run, :clock_offset_ms, 3_000_000)
+      beat = %{time: at(600), received_at: at(3600)}
+      projected = %{ping_offset: 100_000, beat: beat}
+      latest = %{"dev.qory.run.heartbeat" => 9}
+
+      %{run: counted} =
+        Fold.fold(run, [started(2, %{"opened_by" => "gateway"})], latest, projected)
+
+      assert counted.clock_offset_ms == 100_000
+      assert counted.last_heartbeat_at == at(600 + 100 + 300)
+
+      # The same beat folded with the lower offset already there counts the same.
+      %{run: direct} =
+        Fold.fold(
+          %{@run | state: "lost", opened_by: "gateway"} |> Map.put(:clock_offset_ms, 100_000),
+          [%{heartbeat(9, 270, 30, 600) | received_at: at(3600)}]
+        )
+
+      assert direct.last_heartbeat_at == counted.last_heartbeat_at
+      assert direct.state == "lost"
+    end
+
+    test "a run a gateway opened takes its ping's offset, whichever comes first; a session's does not" do
+      ping =
+        event(
+          1,
+          "ping",
+          %{"forager_version" => "v0.6.0", "contract_version" => 1, "interval_seconds" => 30}
+        )
+
+      ping = %{ping | received_at: at(51)}
+      gateway = started(2, %{"opened_by" => "gateway", "credential" => "issuer"})
+
+      assert Fold.fold(@run, [ping, gateway]).run.clock_offset_ms == 50_000
+
+      %{run: run} = Fold.fold(@run, [gateway])
+      assert Map.get(run, :clock_offset_ms) == nil
+      assert Fold.fold(run, [ping], %{"dev.qory.run.started" => 2}).run.clock_offset_ms == 50_000
+
+      # Across passes, the projector hands over the offset of the pings already projected.
+      projected = %{ping_offset: 50_000}
+
+      assert Fold.fold(@run, [gateway], %{"dev.qory.ping" => 1}, projected).run.clock_offset_ms ==
+               50_000
+
+      for credential <- ["none", "issuer"] do
+        session = started(2, %{"credential" => credential})
+        assert Map.get(Fold.fold(@run, [ping, session]).run, :clock_offset_ms) == nil
+      end
+    end
   end
 
   describe "dev.qory.run.log" do
