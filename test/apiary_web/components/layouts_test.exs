@@ -563,7 +563,7 @@ defmodule ApiaryWeb.LayoutsTest do
         {[], []} ->
           assert has_element?(view, "#breadcrumb #organisation-block", scope.organisation.name)
           refute has_element?(view, "#breadcrumb-menus, #organisation-menu, #workspace-menu")
-          refute has_element?(view, "#breadcrumb button")
+          refute has_element?(view, "#breadcrumb button, #drawer-place")
 
         {entries, workspace_entries} ->
           refute has_element?(view, "#organisation-block")
@@ -813,6 +813,66 @@ defmodule ApiaryWeb.LayoutsTest do
                view,
                "#organisation-menu-of-#{other.organisation.slug} #switch-#{other.organisation.slug}_#{other.workspace.slug}"
              )
+    end
+
+    test "on a phone the drawer's head opens the organisation menu and the workspace menu, which the bar's segments do not show",
+         %{conn: conn, user: user, scope: scope} do
+      workspace_fixture(scope.organisation, "Research")
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+
+      # Below 768 px the bar names the page alone: the organisation's and the workspace's
+      # segments, chevrons and all, are leading ones, which a phone's bar hides.
+      assert has_element?(view, "#breadcrumb li.q-trail-lead #organisation-menu-button")
+      assert has_element?(view, "#breadcrumb li.q-trail-lead #workspace-menu-button")
+
+      # The drawer's head holds them, shown below 768 px only, nothing around them hidden.
+      assert has_element?(view, "#sidebar .q-drawer-head #drawer-place[class~='md:hidden']")
+
+      for hidden <- ["[hidden]", "[class~='hidden']", "[class~='max-md:hidden']"] do
+        refute has_element?(view, "#sidebar #{hidden} #drawer-place")
+      end
+
+      # Each closes the drawer and opens the bar's menu as the sheet under the bar; Escape
+      # closes the menu and gives the focus to the bar's menu button.
+      assert has_element?(
+               view,
+               "#drawer-place button#drawer-organisation-menu-button[data-switcher-open][data-switcher-back='nav-drawer-open'][aria-controls='organisation-menu'][aria-expanded='false'][aria-label='Switch organisation, current: #{scope.organisation.name}']",
+               scope.organisation.name
+             )
+
+      assert has_element?(
+               view,
+               "#drawer-place button#drawer-workspace-menu-button[data-switcher-open][data-switcher-back='nav-drawer-open'][aria-controls='workspace-menu'][aria-expanded='false'][aria-label='Switch workspace, current: #{scope.workspace.name}']",
+               scope.workspace.name
+             )
+
+      assert has_element?(
+               view,
+               "#top-bar #breadcrumb-menus[phx-hook='Switcher'] #organisation-menu"
+             )
+
+      assert has_element?(view, "#top-bar #breadcrumb-menus[phx-hook='Switcher'] #workspace-menu")
+      assert has_element?(view, "button#nav-drawer-open[data-drawer-open][class~='md:hidden']")
+
+      # The organisation comes first, then the workspace, then the close button.
+      html = render(view)
+
+      assert before?(
+               html,
+               ~s(id="drawer-organisation-menu-button"),
+               ~s(id="drawer-workspace-menu-button")
+             )
+
+      assert before?(html, ~s(id="drawer-workspace-menu-button"), "data-drawer-close")
+
+      # An organisation's own page has no workspace, so no workspace menu.
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert has_element?(view, "#drawer-place #drawer-organisation-menu-button")
+      refute has_element?(view, "#drawer-workspace-menu-button")
     end
 
     test "the organisation menu lists the organisations by name, and one that reaches no workspace as plain words",

@@ -188,10 +188,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   clock ran more than about 6½ minutes ahead and was then set back reads lost until its
   exit arrives.
 - The console's shell: a top bar that says where a page is, the organisation first, and
-  switches from it, keeping the page you're on, or its list where the page is one item's
-  (the organisation's menu lists the organisations beside the workspaces of the one
-  pointed at, an organisation opening in the workspace you last used there, and the
-  workspace's menu the organisation's workspaces, each with a search), Search or jump to
+  switches from it (on a phone, from the drawer's head), keeping the page you're on, or
+  its list where the page is one item's (the organisation's menu lists the organisations
+  beside the workspaces of the one pointed at, an organisation opening in the workspace
+  you last used there, and the workspace's menu the organisation's workspaces, each with
+  a search), Search or jump to
   (⌘K) for pages, repositories, runs and places, New, which offers a workspace's page a
   new node and an organisation's an invitation, and a sidebar of the page's workspace,
   organisation or account, which folds to icons, with the Qory Apiary menu (docs, the

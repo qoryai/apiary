@@ -373,8 +373,10 @@ defmodule ApiaryWeb.Layouts do
   level (Workspace settings, Organisation settings), the current entry on every page of
   them, then the Qory Apiary menu, which leads first to Instance settings for whoever may
   open a section of the Instance level, and the control that folds the sidebar to icons,
-  from 768 px; below that it is a drawer behind the bar's menu button. A page without a
-  person has no sidebar, and the Qory Apiary menu opens from the bar.
+  from 768 px; below that it is a drawer behind the bar's menu button, whose head opens
+  the organisation menu and the workspace menu where there are any, as a phone's bar
+  names the page alone. A page without a person has no sidebar, and the Qory Apiary menu
+  opens from the bar.
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
@@ -526,6 +528,10 @@ defmodule ApiaryWeb.Layouts do
         if(level == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
       )
       |> assign(:show_notices, notices?(assigns.notices, current, assigns.place))
+      |> assign(
+        :menus,
+        if(user, do: menus(scope, assigns.memberships, organisation, workspace, place))
+      )
 
     ~H"""
     <a
@@ -554,6 +560,7 @@ defmodule ApiaryWeb.Layouts do
         instance_path={@instance_path}
         section={@section}
         second={@second}
+        menus={@menus}
       />
 
       <div :if={@user} class="drawer md:drawer-open">
@@ -579,6 +586,8 @@ defmodule ApiaryWeb.Layouts do
             counts={@counts}
             second={@second}
             instance_path={@instance_path}
+            organisation={@organisation}
+            menus={@menus}
           />
         </div>
 
@@ -780,6 +789,7 @@ defmodule ApiaryWeb.Layouts do
   attr :instance_path, :string, required: true
   attr :section, :atom, required: true
   attr :second, :map, required: true
+  attr :menus, :map, default: nil
 
   defp top_bar(assigns) do
     # An Instance page offers what a person's own page does.
@@ -831,6 +841,7 @@ defmodule ApiaryWeb.Layouts do
         instance={@instance}
         here={@section || @nav}
         second={@second}
+        menus={@menus}
       />
 
       <div class="flex-1"></div>
@@ -871,7 +882,8 @@ defmodule ApiaryWeb.Layouts do
   # The chevron beside the organisation opens the organisation menu, with more than one
   # place to go or an edition's entry after the places; the one beside the workspace opens
   # the workspace menu, with another workspace of the organisation to go to or an
-  # edition's entry for it. A person's own page names itself.
+  # edition's entry for it (`menus/5`). A phone's bar names the page alone, so there the
+  # drawer's head opens the two menus (`drawer_place/1`). A person's own page names itself.
   attr :scope, :any, required: true
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
@@ -884,6 +896,7 @@ defmodule ApiaryWeb.Layouts do
   attr :instance, :list, default: []
   attr :here, :atom, default: nil
   attr :second, :map, default: nil
+  attr :menus, :map, default: nil
 
   defp breadcrumb(%{place: :person} = assigns) do
     assigns =
@@ -977,32 +990,13 @@ defmodule ApiaryWeb.Layouts do
   end
 
   defp breadcrumb(assigns) do
-    places = places(assigns.memberships)
-    switcher_entries = ApiaryWeb.Edition.switcher_entries(assigns.scope)
-    workspace = if(assigns.place == :workspace, do: assigns.workspace)
-
-    workspaces =
-      if(workspace, do: workspaces_of(assigns.memberships, assigns.organisation, workspace))
-
-    workspace_entries =
-      if(workspace, do: ApiaryWeb.Edition.workspace_switcher_entries(assigns.scope))
-
-    organisation_menu? =
-      places != [] and (length(places) > 1 or switcher_entries != [])
-
-    workspace_menu? =
-      workspace != nil and (length(workspaces) > 1 or workspace_entries != [])
+    %{organisation_menu?: organisation_menu?, workspace_menu?: workspace_menu?} =
+      menus = assigns.menus
 
     assigns =
       assigns
-      |> assign(:organisation_menu?, organisation_menu?)
-      |> assign(:workspace_menu?, workspace_menu?)
+      |> assign(menus)
       |> assign(:menus?, organisation_menu? or workspace_menu?)
-      |> assign(:places, places)
-      |> assign(:switcher_entries, switcher_entries)
-      |> assign(:workspaces, workspaces)
-      |> assign(:workspace_entries, workspace_entries)
-      |> assign(:workspace, workspace)
       |> assign(:after_place, assigns.trail != nil or assigns.crumb != [])
 
     ~H"""
@@ -1491,6 +1485,35 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
+  # The breadcrumb's two menus, on an organisation's or a workspace's page: the organisation
+  # menu with more than one place to go or an edition's entry after the places, the
+  # workspace menu, on a workspace's page, with another workspace of the organisation or an
+  # edition's entry for it. Worked out once for the bar's breadcrumb and the drawer's head.
+  # None on a person's own page, an Instance page or a page with no organisation.
+  defp menus(_scope, _memberships, _organisation, _workspace, place)
+       when place in [:person, :instance],
+       do: nil
+
+  defp menus(_scope, _memberships, nil, _workspace, _place), do: nil
+
+  defp menus(scope, memberships, organisation, workspace, place) do
+    places = places(memberships)
+    switcher_entries = ApiaryWeb.Edition.switcher_entries(scope)
+    workspace = if(place == :workspace, do: workspace)
+    workspaces = if(workspace, do: workspaces_of(memberships, organisation, workspace))
+    workspace_entries = if(workspace, do: ApiaryWeb.Edition.workspace_switcher_entries(scope))
+
+    %{
+      organisation_menu?: places != [] and (length(places) > 1 or switcher_entries != []),
+      workspace_menu?: workspace != nil and (length(workspaces) > 1 or workspace_entries != []),
+      places: places,
+      switcher_entries: switcher_entries,
+      workspace: workspace,
+      workspaces: workspaces,
+      workspace_entries: workspace_entries
+    }
+  end
+
   # The places by the organisation menu's groups: the person's own organisations first,
   # then each group the edition names (`c:ApiaryWeb.Edition.place_group/1`), in the order
   # its first place came; within each, the organisations by name, each with its
@@ -1771,6 +1794,75 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
+  # The breadcrumb's places in the drawer's head, below 768 px, where the bar names the
+  # page alone, shown where either has a menu: the organisation, then the workspace on a
+  # workspace's page, each a button that opens its menu where it has one (`menus/5`), else
+  # its name. The menus are the bar's: a button closes the drawer (the `NavDrawer` hook)
+  # and opens its menu as the sheet under the bar (the `Switcher` hook), and Escape closes
+  # the menu and gives the focus to the bar's menu button.
+  attr :organisation, :any, required: true
+  attr :menus, :map, required: true
+
+  defp drawer_place(assigns) do
+    ~H"""
+    <div id="drawer-place" class="q-drawer-place md:hidden">
+      <.drawer_switch
+        :if={@menus.organisation_menu?}
+        id="drawer-organisation-menu-button"
+        controls="organisation-menu"
+        label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
+      >
+        <.avatar name={@organisation.name} kind="organisation" size="xs" />
+        <span class="truncate">{@organisation.name}</span>
+      </.drawer_switch>
+      <span :if={!@menus.organisation_menu?} class="q-drawer-switch" title={@organisation.name}>
+        <.avatar name={@organisation.name} kind="organisation" size="xs" />
+        <span class="truncate">{@organisation.name}</span>
+      </span>
+      <span :if={@menus.workspace} class="q-trail-sep" aria-hidden="true">/</span>
+      <.drawer_switch
+        :if={@menus.workspace_menu?}
+        id="drawer-workspace-menu-button"
+        controls="workspace-menu"
+        label={gettext("Switch workspace, current: %{name}", name: @menus.workspace.name)}
+      >
+        <span class="truncate">{@menus.workspace.name}</span>
+      </.drawer_switch>
+      <span
+        :if={@menus.workspace && !@menus.workspace_menu?}
+        class="q-drawer-switch"
+        title={@menus.workspace.name}
+      >
+        <span class="truncate">{@menus.workspace.name}</span>
+      </span>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :controls, :string, required: true
+  attr :label, :string, required: true
+  slot :inner_block, required: true
+
+  defp drawer_switch(assigns) do
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      class="q-drawer-switch"
+      data-switcher-open
+      data-switcher-back="nav-drawer-open"
+      aria-expanded="false"
+      aria-controls={@controls}
+      aria-label={@label}
+      phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+    >
+      {render_slot(@inner_block)}
+      <.icon name="hero-chevron-up-down-micro" class="q-drawer-switch-chev size-4" />
+    </button>
+    """
+  end
+
   # The main column. Every width starts at the same left edge, 32 px from the sidebar (24
   # below 1024 px, 16 below 768); nothing is centred in the space beside it.
   attr :width, :string, required: true
@@ -1792,7 +1884,8 @@ defmodule ApiaryWeb.Layouts do
   # own name; the targets the person pinned, on a workspace's pages. At the foot the
   # scope's settings, Workspace settings or Organisation settings, the current entry on
   # every page of them, then the Qory Apiary menu and the control that folds the sidebar to
-  # icons.
+  # icons. Its head, in the drawer below 768 px, holds the breadcrumb's menus' places
+  # where there are any menus (`drawer_place/1`), and the close button.
   attr :place, :atom, required: true
   attr :nav, :atom, required: true
   attr :groups, :list, required: true
@@ -1803,6 +1896,8 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :any, required: true
   attr :second, :any, required: true
   attr :instance_path, :string, required: true
+  attr :organisation, :any, default: nil
+  attr :menus, :map, default: nil
 
   defp sidebar(assigns) do
     assigns = assign(assigns, :version, version())
@@ -1815,6 +1910,11 @@ defmodule ApiaryWeb.Layouts do
       phx-mounted={JS.ignore_attributes(["role", "aria-modal"])}
     >
       <div class="q-drawer-head">
+        <.drawer_place
+          :if={@menus && (@menus.organisation_menu? or @menus.workspace_menu?)}
+          organisation={@organisation}
+          menus={@menus}
+        />
         <button
           type="button"
           data-drawer-close
