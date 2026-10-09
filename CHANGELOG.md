@@ -54,6 +54,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   whatever its state, and "Run exited" otherwise. A session run's Exit in the rail says a
   lost gateway or session, an expired run credential and the issuer's end in those words,
   never as `-1`, and the header after its state adds no exit for them.
+- A run the gateway ended because it could not reach the issuer, or the issuer gave it no
+  valid answer, is Failed, on a session's run and on one a gateway opened, and says so in
+  words: issuer unreachable, or issuer answer invalid, after its state, under State in the
+  rail, as a session run's Exit and in the timeline's "Run exited", never as `-1`.
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's

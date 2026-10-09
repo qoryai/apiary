@@ -376,23 +376,25 @@ the run's Node is the gateway's and its Host the agent's machine.
 ## How a run ends
 
 `dev.qory.run.exited` carries `reason` when the run ended other than by the runtime's own
-exit. The contract names eight; Qory Apiary receives seven of them. The eighth,
-`batch_refused`, and the codes of a gateway's `410` in `dev.qory.run.refused` stay in the
-session's own record, which never reaches Qory Apiary:
+exit. The contract names ten; Qory Apiary receives eight of them. The other two,
+`run_closed` and `batch_refused`, and the codes of a gateway's `410` in
+`dev.qory.run.refused` stay in the session's own record, which never reaches Qory Apiary:
 
 | `reason` | What Qory saw | Words | State without `state` |
 |---|---|---|---|
 | `timeout` | the run reached its time limit | timed out | Timed out (`timed_out`) |
-| `run_closed` | the server closed the run | none | Failed (`failed`) |
+| `run_closed` | nothing: it stays in the session's record | none | Failed (`failed`) |
 | `gateway_lost` | the gateway was lost before the run's end was recorded | gateway lost | Failed (`failed`) |
 | `session_lost` | the gateway lost the session: it heard nothing from it for three of its heartbeat intervals, or refused its events | session lost | Failed (`failed`) |
+| `issuer_unreachable` | the gateway could not reach the issuer after its tries | issuer unreachable | Failed (`failed`) |
+| `issuer_answer_invalid` | the issuer gave the gateway no valid answer | issuer answer invalid | Failed (`failed`) |
 | `quiet` | a run with no session had no connection for the gateway's quiet period | quiet for N minutes | Ended (`ended`) |
 | `credential_expired` | the run credential expired | run credential expired | Ended (`ended`) |
 | `run_ended_at_issuer` | the issuer reported the run ended | the issuer reported the run ended | Ended (`ended`) |
 
-`run_closed` has no state of its own and no words: Qory Apiary closes no run, so a live
-gateway never sends it to Qory Apiary, and one that arrived would read by its `state`, else
-as Failed.
+`run_closed` has no state of its own and no words: it is the session's reason for the
+gateway's `410` to a run already ended at the gateway, and it stays in the session's
+record. One that arrived would read by its `state`, else as Failed.
 
 `quiet_seconds`, an integer of at least 1, comes with `quiet` and with no other reason:
 the quiet period the gateway applied, which the words say as a duration reads: 1800
@@ -402,7 +404,8 @@ rail, and follow the state in its meta line where they say more than the state.
 `state` and `exit_code` are optional. A session's run carries both, and a run a gateway
 opened carries neither, whatever its reason. The schema (`run.exited.schema.json`) fixes
 `failed` and `-1` with `gateway_lost` alone; the gateway writes them too for a session's
-run it ends with `session_lost`, `credential_expired` or `run_ended_at_issuer`. When
+run it ends with `session_lost`, `credential_expired`, `run_ended_at_issuer`,
+`issuer_unreachable` or `issuer_answer_invalid`. When
 `state` is there it decides as it always has: `succeeded` is Succeeded, `failed` with
 `timeout` is Timed out, and any other `failed` is Failed. When it is not, the reason
 decides, by the last column above; the contract fixes no state per reason and leaves each
