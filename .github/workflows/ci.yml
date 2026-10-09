@@ -264,6 +264,22 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
+      # share theirs. What this job pulls from Docker Hub, the images no mirror serves and
+      # the builder that setup-buildx starts, is pulled as the account in
+      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them, as on a pull
+      # request from a fork, nothing is logged in and the pulls stay anonymous.
+      - name: Log in to Docker Hub, when its token is set
+        env:
+          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
+        run: |
+          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
+            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
+            exit 0
+          fi
+          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
+
       - uses: docker/setup-buildx-action@v4
 
       # Loaded into the runner's Docker for the checks below, under a name that is not the
@@ -431,6 +447,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 2
+
+      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
+      # share theirs. What this job pulls from Docker Hub, the images no mirror serves and
+      # the builder that setup-buildx starts, is pulled as the account in
+      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them, as on a pull
+      # request from a fork, nothing is logged in and the pulls stay anonymous.
+      - name: Log in to Docker Hub, when its token is set
+        env:
+          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
+        run: |
+          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
+            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
+            exit 0
+          fi
+          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
 
       # The builder loads what it builds into the runner's Docker, so the development path
       # below runs `docker build` as a person types it, on this builder's layers.
