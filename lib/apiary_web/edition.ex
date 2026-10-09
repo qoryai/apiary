@@ -24,15 +24,15 @@ defmodule ApiaryWeb.Edition do
 
   - **Navigation** (`ApiaryWeb.Layouts`): `c:nav_entries/1`, the sidebar's entries after
     the core's, `c:new_entries/2`, what New offers before the core's,
-    `c:switcher_entries/1`, the switcher's after its places,
+    `c:switcher_entries/1`, the organisation menu's after its places,
+    `c:workspace_switcher_entries/1`, the workspace menu's after its workspaces,
     `c:account_menu_entries/1`, the account menu's after the core's, and
     `c:instance_sections/1`, the Instance level's before the core's, each an
     `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's own groups of
     the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
-    `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_scope/2`, the scope a place of the
-    switcher gives, for a place the edition lists (`c:Apiary.Edition.places/1`) or a
-    membership it puts more on; `c:place_group/1`, the heading the switcher lists such a
-    place under.
+    `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_group/1`, the heading the organisation
+    menu lists a place the edition lists (`c:Apiary.Edition.places/1`) under;
+    `c:place_scope/2`, which the core no longer asks.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
@@ -54,7 +54,8 @@ defmodule ApiaryWeb.Edition do
 
   @doc """
   The edition's entries of the sidebar, after the core's of the same section, in the
-  scope of the page; the switcher asks the same entries of each place it leads to.
+  scope of the page; a link of the breadcrumb's menus asks the same entries of the place
+  it leads to (`ApiaryWeb.SwitchController`).
   """
   @callback nav_entries(Scope.t()) :: [Entry.t()]
 
@@ -73,8 +74,18 @@ defmodule ApiaryWeb.Edition do
   """
   @callback new_entries(Scope.t(), place :: :workspace | :organisation | :person) :: [Entry.t()]
 
-  @doc "The organisation switcher's entries after the places it switches to."
+  @doc """
+  The organisation menu's entries, the breadcrumb's menu of the organisations the person
+  reaches, after Your organisations, in the scope of the page.
+  """
   @callback switcher_entries(Scope.t()) :: [Entry.t()]
+
+  @doc """
+  The workspace menu's entries, the breadcrumb's menu of the organisation's workspaces,
+  after its workspaces, in the scope of a workspace's page, such as a way to add one;
+  none in the core, which has no page that adds a workspace.
+  """
+  @callback workspace_switcher_entries(Scope.t()) :: [Entry.t()]
 
   @doc """
   The edition's entries of the account menu, after the core's of the same group
@@ -106,18 +117,19 @@ defmodule ApiaryWeb.Edition do
   @callback nav_sections() :: [{atom, String.t() | nil}]
 
   @doc """
-  The heading the switcher lists a place under (`c:Apiary.Edition.places/1`), translated,
-  such as the clients a person reaches through their operator; nil for the person's own
-  organisations, which the switcher lists first.
+  The heading the organisation menu lists a place under (`c:Apiary.Edition.places/1`),
+  translated, such as the clients a person reaches through their operator; nil for the
+  person's own organisations, which the menu lists first.
   """
   @callback place_group(place :: term) :: String.t() | nil
 
   @doc """
-  The scope a place of the organisation switcher gives in `workspace`, as
-  `Apiary.Organisations.resolve_scope/4` would load it, which the switcher asks what its
-  link may open there: for a place of the edition's (`c:Apiary.Edition.places/1`), and a
-  membership the edition's scope carries more of. Nil for the core's own, a membership
-  in its organisation and workspace.
+  The scope a place of the edition's (`c:Apiary.Edition.places/1`), or a membership the
+  edition's scope carries more of, gives in `workspace`, as
+  `Apiary.Organisations.resolve_scope/4` would load it; nil for the core's own. The core
+  no longer asks for it: the breadcrumb's menus link every workspace through
+  `ApiaryWeb.SwitchController`, which reads the destination's own scope when the link is
+  followed. It stays so that editions which answer it compile.
   """
   @callback place_scope(place :: term, %Workspace{}) :: Scope.t() | nil
 
@@ -188,6 +200,7 @@ defmodule ApiaryWeb.Edition do
     nav_counts: 1,
     new_entries: 2,
     switcher_entries: 1,
+    workspace_switcher_entries: 1,
     account_menu_entries: 1,
     instance_sections: 1,
     nav_sections: 0,

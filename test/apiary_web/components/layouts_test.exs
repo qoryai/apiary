@@ -542,28 +542,33 @@ defmodule ApiaryWeb.LayoutsTest do
       assert page_title(view) == "Account · Your settings · Qory Apiary"
     end
 
-    test "one place: the breadcrumb's segments are links, with no switcher", %{
+    test "one place: the breadcrumb's segments are links, with no menu", %{
       conn: conn,
       scope: scope
     } do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
-      case ApiaryWeb.Edition.switcher_entries(scope) do
-        [] ->
+      case {ApiaryWeb.Edition.switcher_entries(scope),
+            ApiaryWeb.Edition.workspace_switcher_entries(scope)} do
+        {[], []} ->
           assert has_element?(view, "#breadcrumb #organisation-block", scope.organisation.name)
-          refute has_element?(view, "#organisation-menu")
+          refute has_element?(view, "#breadcrumb-menus, #organisation-menu, #workspace-menu")
           refute has_element?(view, "#breadcrumb button")
 
-        entries ->
+        {entries, workspace_entries} ->
           refute has_element?(view, "#organisation-block")
 
           for entry <- entries do
             assert has_element?(view, "#organisation-menu a#organisation-menu-#{entry.key}")
           end
+
+          for entry <- workspace_entries do
+            assert has_element?(view, "#workspace-menu a#workspace-menu-#{entry.key}")
+          end
       end
     end
 
-    test "the breadcrumb's segments are its trail's, whatever the switcher beside them lists",
+    test "the breadcrumb's segments are its trail's, whatever the menus beside them list",
          %{conn: conn, user: user, scope: scope} do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
@@ -573,8 +578,8 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{ws}/settings/runs")
       html = render(view)
 
-      # The switcher's places are items inside the breadcrumb too, and no segment of it.
-      assert has_element?(view, "#breadcrumb #organisation-menu-panel li")
+      # The menu's places are items inside the breadcrumb too, and no segment of it.
+      assert has_element?(view, "#breadcrumb #organisation-menu li")
 
       assert html |> LazyHTML.from_fragment() |> LazyHTML.query("#breadcrumb li") |> Enum.count() >
                length(trail(html))
@@ -582,95 +587,286 @@ defmodule ApiaryWeb.LayoutsTest do
       assert tl(trail(html)) == [ws.name, "Workspace settings", "Runs"]
     end
 
-    test "with several places the chevrons open the switcher: a search, then the places", %{
-      conn: conn,
-      user: user,
-      scope: scope
-    } do
+    test "with several places the organisation's chevron opens the organisation menu: the organisations, and the workspaces of the one pointed at",
+         %{conn: conn, user: user, scope: scope} do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
-
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+      org = scope.organisation.slug
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
       refute has_element?(view, "#organisation-block")
-      assert has_element?(view, "#breadcrumb #organisation-menu[phx-hook='Switcher']")
-
-      for button <- ~w(organisation-menu-button workspace-menu-button) do
-        assert has_element?(
-                 view,
-                 "#organisation-menu button##{button}[aria-controls='organisation-menu-panel'][aria-expanded='false']"
-               )
-      end
-
-      assert has_element?(view, "#organisation-menu-panel[role='group'][hidden]")
 
       assert has_element?(
                view,
-               "#organisation-menu-panel input#organisation-menu-search[aria-label='Find an organisation or workspace']"
+               "#breadcrumb #breadcrumb-menus[phx-hook='Switcher'][data-page-base='#{workspace_path(scope)}']"
+             )
+
+      # Each chevron controls its own menu; this organisation has no other workspace, so
+      # the workspace has none.
+      assert has_element?(
+               view,
+               "button#organisation-menu-button[aria-controls='organisation-menu'][aria-expanded='false']"
+             )
+
+      refute has_element?(view, "#workspace-menu-button, #workspace-menu")
+
+      assert has_element?(
+               view,
+               "#organisation-menu[role='group'][aria-label='Switch organisation'][hidden]"
+             )
+
+      assert has_element?(
+               view,
+               "#organisation-menu input#organisation-menu-search[aria-label='Find an organisation or workspace'][placeholder='Find an organisation or workspace…']"
              )
 
       # What the search leaves is said in a status line the Switcher hook fills.
       assert has_element?(
                view,
-               "#organisation-menu-panel p#organisation-menu-status[role='status'][data-none][data-one][data-other]"
+               "#organisation-menu p#organisation-menu-status[role='status'][data-none='No organisation or workspace matches.'][data-one='1 organisation matches.'][data-other='%{count} organisations match.']"
              )
 
-      # plain links to each workspace's own URL, the current one marked; no form
-      refute has_element?(view, "#organisation-menu form")
+      # No form, and no Recent.
+      refute has_element?(view, "#organisation-menu form, #organisation-menu-recent")
+      refute text(html, "#organisation-menu") =~ "Recent"
+
+      # The left panel: each organisation a link to it, which lands in the workspace last
+      # used there, at the section the reader is on, the current one marked and pointed at.
+      assert has_element?(
+               view,
+               "#organisation-menu-places li[data-org='#{org}'] a#switch-#{org}[aria-current='true'][href='/#{org}/-/switch/runs']",
+               scope.organisation.name
+             )
 
       assert has_element?(
                view,
-               "#organisation-menu a[data-place][aria-current='true'][href='#{workspace_path(scope)}']"
-             )
-
-      assert has_element?(
-               view,
-               "#organisation-menu a[data-place]:not([aria-current])[href='#{workspace_path(other)}']",
+               "#organisation-menu-places a#switch-#{other.organisation.slug}:not([aria-current])[href='/#{other.organisation.slug}/-/switch/runs']",
                other.organisation.name
              )
 
+      # Its ›, which shows its workspaces in the right panel.
+      for {organisation, expanded} <- [
+            {scope.organisation, "true"},
+            {other.organisation, "false"}
+          ] do
+        assert has_element?(
+                 view,
+                 "li[data-org='#{organisation.slug}'] button[data-show][aria-label='Show the workspaces of #{organisation.name}'][aria-controls='organisation-menu-workspaces'][aria-expanded='#{expanded}']"
+               )
+      end
+
+      # The right panel: the workspaces of each organisation under its own heading, the
+      # pointed one's shown, each a link at the section the reader is on.
       assert has_element?(
                view,
-               "#organisation-menu-panel a#organisation-menu-organisations[href='/users/organisations']"
+               "#organisation-menu-workspaces section#organisation-menu-of-#{org}:not([hidden]) h3",
+               "Workspaces of #{scope.organisation.name}"
              )
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{org} ul[aria-labelledby='organisation-menu-of-#{org}-heading'] a#switch-#{org}-#{scope.workspace.slug}[aria-current='true'][href='#{workspace_path(scope, "/switch/runs")}']"
+             )
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{other.organisation.slug}[hidden] a#switch-#{other.organisation.slug}-#{other.workspace.slug}:not([aria-current])[href='#{workspace_path(other, "/switch/runs")}']"
+             )
+
+      # A phone's way back from the workspaces.
+      assert has_element?(
+               view,
+               "#organisation-menu-workspaces button[data-back]",
+               "Organisations"
+             )
+
+      assert has_element?(
+               view,
+               "#organisation-menu .q-switcher-foot a#organisation-menu-organisations[href='/users/organisations']"
+             )
+
+      for entry <- ApiaryWeb.Edition.switcher_entries(scope) do
+        assert has_element?(
+                 view,
+                 "#organisation-menu .q-switcher-foot a#organisation-menu-#{entry.key}"
+               )
+      end
     end
 
-    test "the switcher lists each workspace the person reaches in each organisation", %{
-      conn: conn,
-      user: user,
-      scope: scope
-    } do
+    test "the workspace's chevron opens the workspace menu: only this organisation's workspaces",
+         %{conn: conn, user: user, scope: scope} do
       platform = workspace_fixture(scope.organisation, "Platform")
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
+      org = scope.organisation.slug
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
 
-      # An owner reaches both of their organisation's workspaces; a member the one they
-      # were invited to.
-      assert has_element?(view, "#switch-#{scope.organisation.slug}-#{scope.workspace.slug}")
-      assert has_element?(view, "#switch-#{scope.organisation.slug}-#{platform.slug}")
-      assert has_element?(view, "#switch-#{other.organisation.slug}-#{other.workspace.slug}")
+      assert has_element?(
+               view,
+               "button#workspace-menu-button[aria-controls='workspace-menu'][aria-expanded='false']"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu[role='group'][aria-label='Switch workspace'][hidden]"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu input#workspace-menu-search[aria-label='Find a workspace'][placeholder='Find a workspace…']"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu h3#workspace-menu-heading",
+               "Workspaces of #{scope.organisation.name}"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu p#workspace-menu-status[role='status'][data-none='No workspace matches.'][data-one='1 workspace matches.'][data-other='%{count} workspaces match.']"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu p#workspace-menu-empty[hidden]",
+               "No workspace matches."
+             )
+
+      # The organisation's two workspaces, by name, the current one marked, each a link at
+      # the section the reader is on; no other organisation's.
+      links =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query(
+          "#workspace-menu ul[aria-labelledby='workspace-menu-heading'] a[data-switch]"
+        )
+
+      assert links |> Enum.map(&String.trim(LazyHTML.text(&1))) ==
+               Enum.sort_by([scope.workspace.name, platform.name], &String.downcase/1)
+
+      assert Enum.all?(LazyHTML.attribute(links, "href"), &String.starts_with?(&1, "/#{org}/"))
+
+      assert has_element?(
+               view,
+               "#workspace-menu a#workspace-menu-switch-#{scope.workspace.slug}[aria-current='true'][href='#{workspace_path(scope, "/switch/nodes")}']"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu a#workspace-menu-switch-#{platform.slug}:not([aria-current])[href='/#{org}/#{platform.slug}/switch/nodes']"
+             )
+
+      refute text(html, "#workspace-menu") =~ other.organisation.name
+
+      # Its foot holds the edition's entries for it, and is absent without one.
+      case ApiaryWeb.Edition.workspace_switcher_entries(scope) do
+        [] ->
+          refute has_element?(view, "#workspace-menu .q-switcher-foot")
+
+        entries ->
+          for entry <- entries do
+            assert has_element?(
+                     view,
+                     "#workspace-menu .q-switcher-foot a#workspace-menu-#{entry.key}"
+                   )
+          end
+      end
+
+      # The organisation menu lists them too, under the organisation pointed at.
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{org} #switch-#{org}-#{scope.workspace.slug}"
+             )
+
+      assert has_element?(view, "#organisation-menu-of-#{org} #switch-#{org}-#{platform.slug}")
+
+      assert has_element?(
+               view,
+               "#organisation-menu-of-#{other.organisation.slug} #switch-#{other.organisation.slug}-#{other.workspace.slug}"
+             )
     end
 
-    test "switching keeps the section the user is on", %{conn: conn, user: user, scope: scope} do
+    test "the organisation menu lists the organisations by name, and one that reaches no workspace as plain words",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+      [own] = :sys.get_state(view.pid).socket.assigns.memberships
+
+      # Two more memberships, made up: Beta reaches no workspace, Alpha one.
+      made_up = fn name, workspaces ->
+        id = Ecto.UUID.generate()
+        slug = name |> String.downcase() |> String.replace(" ", "-")
+
+        %{
+          own
+          | id: Ecto.UUID.generate(),
+            organisation_id: id,
+            organisation: %{own.organisation | id: id, name: name, slug: slug},
+            workspaces: workspaces
+        }
+      end
+
+      alpha = made_up.("Alpha Org", [%{scope.workspace | id: Ecto.UUID.generate()}])
+      beta = made_up.("Beta Org", [])
+      assigns = %{scope: scope, memberships: [own, beta, alpha]}
+
+      html =
+        rendered_to_string(~H"""
+        <ApiaryWeb.Layouts.app
+          flash={%{}}
+          current_scope={@scope}
+          memberships={@memberships}
+          place={:workspace}
+          nav={:overview}
+        >
+          <p>page</p>
+        </ApiaryWeb.Layouts.app>
+        """)
+
+      names =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#organisation-menu-places li[data-org] > a > span.truncate")
+        |> Enum.map(&String.trim(LazyHTML.text(&1)))
+
+      assert names ==
+               Enum.sort_by(
+                 ["Alpha Org", "Beta Org", scope.organisation.name],
+                 &String.downcase/1
+               )
+
+      assert text(html, "#organisation-menu-of-beta-org") ==
+               "Workspaces of Beta Org No workspace yet"
+
+      assert count(html, "#organisation-menu-of-beta-org a") == 0
+      # Beta's own row still leads to it, which says so.
+      assert attribute(html, "a#switch-beta-org", "href") == "/beta-org/-/switch/overview"
+    end
+
+    test "a link leads through the switch at the section the reader is on; from an organisation's page, to the workspace's overview",
+         %{conn: conn, user: user, scope: scope} do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
-      switch = "#organisation-menu a[data-place]"
+      ws = "#organisation-menu a#switch-#{other.organisation.slug}-#{other.workspace.slug}"
+      org = "#organisation-menu a#switch-#{other.organisation.slug}"
 
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
-      assert has_element?(view, "#{switch}[href='#{workspace_path(other, "/nodes")}']")
+      assert has_element?(view, "#{ws}[href='#{workspace_path(other, "/switch/nodes")}']")
+      assert has_element?(view, "#{org}[href='/#{other.organisation.slug}/-/switch/nodes']")
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
-      assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings/people']")
+      # An organisation's page names no workspace: the hook writes no page, and the link
+      # lands on the workspace's overview.
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      refute has_element?(view, "#breadcrumb-menus[data-page-base]")
+      href = attribute(html, ws, "href")
+      assert href =~ ~r{^#{workspace_path(other, "/switch/")}}
+      assert redirected_to(get(conn, href)) == workspace_path(other)
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings")
-      assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings']")
-
-      # the link opens the other workspace, and the session remembers it for `/`
+      # the workspace's page opens it, and the session remembers it for `/`
       conn = get(conn, workspace_path(other, "/nodes"))
       assert html_response(conn, 200) =~ other.organisation.name
       assert redirected_to(get(recycle(conn), ~p"/")) == workspace_path(other)

@@ -6,7 +6,7 @@ defmodule ApiaryWeb.Layouts do
 
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the
-  breadcrumb and its switcher), searches and jumps (the palette), and holds New and the
+  breadcrumb and its menus), searches and jumps (the palette), and holds New and the
   account menu; the sidebar holds that scope's pages and nothing else, a page of its
   settings included (`ApiaryWeb.SettingsComponents`). Qory Apiary itself, its mark,
   version, docs and source, is the menu at the sidebar's foot.
@@ -43,7 +43,8 @@ defmodule ApiaryWeb.Layouts do
   the core's, then the edition's (`c:ApiaryWeb.Edition.nav_entries/1`), each after the
   core's of its section. Each names the action its page is for (`Apiary.Access`), nil for
   the entries every member has: the sidebar keeps the ones the reader may take, which
-  leaves out those of a feature that is off, and the switcher asks them where it leads.
+  leaves out those of a feature that is off, and a link of the breadcrumb's menus asks
+  them where it leads (`switch_target/3`).
   A new entry of the core goes here, not in a page.
   """
   @spec nav_entries(Apiary.Accounts.Scope.t()) :: [Entry.t()]
@@ -363,7 +364,8 @@ defmodule ApiaryWeb.Layouts do
   page's scope beside the main column.
 
   The top bar holds, from the left, the breadcrumb (the organisation, the workspace and
-  whatever the page adds in its `crumb` slots), whose chevrons open the switcher; then
+  whatever the page adds in its `crumb` slots), whose chevrons open the organisation
+  menu and the workspace menu; then
   Search or jump to (the palette), New and the account menu. The sidebar holds the pages
   of the page's scope, which the entry it passes as `nav` belongs to
   (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's,
@@ -410,7 +412,7 @@ defmodule ApiaryWeb.Layouts do
   attr :memberships, :list,
     default: [],
     doc:
-      "the places the user reaches, for the switcher: their memberships and whatever else the edition lets them reach (`Apiary.Organisations.list_places/1`), with the workspaces of each"
+      "the places the user reaches, for the breadcrumb's menus: their memberships and whatever else the edition lets them reach (`Apiary.Organisations.list_places/1`), with the workspaces of each"
 
   attr :nav, :atom, default: nil, doc: "the active navigation item"
 
@@ -866,9 +868,10 @@ defmodule ApiaryWeb.Layouts do
   # the page's own segments. On a page of an organisation's or a workspace's settings the
   # frame writes the level ("Workspace settings", leading to its General) and the section
   # before them (`settings_trail/4`), and the page adds only what follows the section.
-  # With more than one place to go (or an edition's entry after the places) the chevron
-  # beside the organisation and the workspace opens the switcher. A person's own page
-  # names itself.
+  # The chevron beside the organisation opens the organisation menu, with more than one
+  # place to go or an edition's entry after the places; the one beside the workspace opens
+  # the workspace menu, with another workspace of the organisation to go to or an
+  # edition's entry for it. A person's own page names itself.
   attr :scope, :any, required: true
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
@@ -976,22 +979,39 @@ defmodule ApiaryWeb.Layouts do
   defp breadcrumb(assigns) do
     places = places(assigns.memberships)
     switcher_entries = ApiaryWeb.Edition.switcher_entries(assigns.scope)
+    workspace = if(assigns.place == :workspace, do: assigns.workspace)
+
+    workspaces =
+      if(workspace, do: workspaces_of(assigns.memberships, assigns.organisation, workspace))
+
+    workspace_entries =
+      if(workspace, do: ApiaryWeb.Edition.workspace_switcher_entries(assigns.scope))
+
+    organisation_menu? =
+      places != [] and (length(places) > 1 or switcher_entries != [])
+
+    workspace_menu? =
+      workspace != nil and (length(workspaces) > 1 or workspace_entries != [])
 
     assigns =
       assigns
-      |> assign(:switcher?, places != [] and (length(places) > 1 or switcher_entries != []))
+      |> assign(:organisation_menu?, organisation_menu?)
+      |> assign(:workspace_menu?, workspace_menu?)
+      |> assign(:menus?, organisation_menu? or workspace_menu?)
       |> assign(:places, places)
       |> assign(:switcher_entries, switcher_entries)
-      |> assign(:workspace, if(assigns.place == :workspace, do: assigns.workspace))
+      |> assign(:workspaces, workspaces)
+      |> assign(:workspace_entries, workspace_entries)
+      |> assign(:workspace, workspace)
       |> assign(:after_place, assigns.trail != nil or assigns.crumb != [])
 
     ~H"""
     <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
       <div
-        id={if @switcher?, do: "organisation-menu", else: "organisation-block"}
+        id={if @menus?, do: "breadcrumb-menus", else: "organisation-block"}
         class="contents"
-        phx-hook={@switcher? && "Switcher"}
-        data-current={@switcher? && current_switch_id(@organisation, @workspace)}
+        phx-hook={@menus? && "Switcher"}
+        data-page-base={@menus? && @workspace && ~p"/#{@organisation}/#{@workspace}"}
       >
         <ol class="q-trail">
           <li class={[
@@ -1007,8 +1027,9 @@ defmodule ApiaryWeb.Layouts do
               <span class="truncate">{@organisation.name}</span>
             </.link>
             <.switcher_button
-              :if={@switcher?}
+              :if={@organisation_menu?}
               id="organisation-menu-button"
+              controls="organisation-menu"
               label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
             />
           </li>
@@ -1025,8 +1046,9 @@ defmodule ApiaryWeb.Layouts do
               <span class="truncate">{@workspace.name}</span>
             </.link>
             <.switcher_button
-              :if={@switcher?}
+              :if={@workspace_menu?}
               id="workspace-menu-button"
+              controls="workspace-menu"
               label={gettext("Switch workspace, current: %{name}", name: @workspace.name)}
             />
           </li>
@@ -1034,15 +1056,21 @@ defmodule ApiaryWeb.Layouts do
           <.crumbs crumb={@crumb} />
         </ol>
 
-        <.switcher
-          :if={@switcher?}
-          scope={@scope}
+        <.organisation_menu
+          :if={@organisation_menu?}
           organisation={@organisation}
           workspace={@workspace}
           places={@places}
           nav={@nav}
-          nav_entries={@nav_entries}
           switcher_entries={@switcher_entries}
+        />
+        <.workspace_menu
+          :if={@workspace_menu?}
+          organisation={@organisation}
+          workspace={@workspace}
+          workspaces={@workspaces}
+          nav={@nav}
+          entries={@workspace_entries}
         />
       </div>
     </nav>
@@ -1158,6 +1186,7 @@ defmodule ApiaryWeb.Layouts do
   end
 
   attr :id, :string, required: true
+  attr :controls, :string, required: true
   attr :label, :string, required: true
 
   defp switcher_button(assigns) do
@@ -1168,7 +1197,7 @@ defmodule ApiaryWeb.Layouts do
       class="q-trail-chev"
       data-switcher-open
       aria-expanded="false"
-      aria-controls="organisation-menu-panel"
+      aria-controls={@controls}
       aria-label={@label}
       phx-mounted={JS.ignore_attributes(["aria-expanded"])}
     >
@@ -1177,34 +1206,40 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  # The switcher: a search on top; the places opened last (the `Switcher` hook keeps
-  # them, as a reading preference); the organisations the person reaches, each with its
-  # workspaces, a link to each at the section the user is on (the path says which
-  # workspace a page shows), and to an organisation where they reach no workspace yet; the
-  # places of the edition's groups (`c:ApiaryWeb.Edition.place_group/1`) under their own
-  # headings, each folded behind its heading and its count unless the page's place is in
-  # it, and opened by a search that finds a place in it. A link loads the page afresh, so the session remembers the workspace for
-  # `/`. Last, Your organisations and the edition's entries
-  # (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
-  attr :scope, :any, required: true
+  # The organisation menu, two panels under a search. On the left the organisations the
+  # person reaches, by name: their own first, then the places of the edition's groups
+  # (`c:ApiaryWeb.Edition.place_group/1`) under their own headings, each folded behind its
+  # heading and its count unless the page's organisation is in it, and opened by a search
+  # that finds a place in it. Each is a link to the organisation, which lands in the
+  # workspace the person last used there (`switch_organisation_path/2`), and a `›` button
+  # that shows its workspaces. On the right the workspaces of the organisation pointed at,
+  # by name, each a link to that workspace (`switch_workspace_path/3`); the `Switcher`
+  # hook points at the page's organisation when the menu opens, then at the one under the
+  # pointer or with focus. Every place is in the markup. A link loads the page afresh, so
+  # the session remembers the workspace for `/`. Last, Your organisations and the
+  # edition's entries (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
   attr :places, :list, required: true
   attr :nav, :atom, required: true
-  attr :nav_entries, :list, required: true
   attr :switcher_entries, :list, required: true
 
-  defp switcher(assigns) do
-    assigns = assign(assigns, :groups, place_groups(assigns.places))
+  defp organisation_menu(assigns) do
+    groups = place_groups(assigns.places)
+
+    assigns =
+      assigns
+      |> assign(:groups, groups)
+      |> assign(:listed, Enum.flat_map(groups, &elem(&1, 1)))
 
     ~H"""
     <div
-      id="organisation-menu-panel"
-      class="q-switcher"
+      id="organisation-menu"
+      class="q-switcher q-switcher-two"
       role="group"
-      aria-label={gettext("Switch organisation or workspace")}
+      aria-label={gettext("Switch organisation")}
       hidden
-      phx-mounted={JS.ignore_attributes(["hidden"])}
+      phx-mounted={JS.ignore_attributes(["hidden", "data-view"])}
     >
       <div class="q-switcher-search">
         <.icon name="hero-magnifying-glass" class="size-4 flex-none text-faint" />
@@ -1218,97 +1253,133 @@ defmodule ApiaryWeb.Layouts do
           placeholder={gettext("Find an organisation or workspace…")}
         />
       </div>
-      <div id="organisation-menu-places" class="q-switcher-list">
-        <section
-          id="organisation-menu-recent"
-          class="q-switcher-group"
-          aria-labelledby="organisation-menu-recent-heading"
-          hidden
-        >
-          <h3 id="organisation-menu-recent-heading" class="q-switcher-heading">
-            {gettext("Recent")}
-          </h3>
-          <ul data-recent></ul>
-        </section>
-        <section
-          :for={{{heading, places}, g} <- Enum.with_index(@groups)}
-          class="q-switcher-group"
-          aria-labelledby={"organisation-menu-group-#{g}"}
-          data-group
-        >
-          <h3 id={"organisation-menu-group-#{g}"} class="q-switcher-heading">
-            <%= if heading do %>
-              <button
-                type="button"
-                class="q-switcher-fold"
-                aria-expanded={to_string(group_open?(places, @organisation, @workspace))}
-                aria-controls={"organisation-menu-group-#{g}-places"}
-                phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-                data-fold
-              >
-                <.icon name="hero-chevron-right-micro" class="q-switcher-fold-i size-3.5" />
-                <span class="truncate">{heading}</span>
-                <span class="q-switcher-n">{Format.number(length(places))}</span>
-              </button>
-            <% else %>
-              {gettext("Your organisations")}
-            <% end %>
-          </h3>
-          <div
-            id={"organisation-menu-group-#{g}-places"}
-            hidden={heading && !group_open?(places, @organisation, @workspace)}
-            phx-mounted={JS.ignore_attributes(["hidden"])}
-            data-fold-list={heading && "true"}
+      <div class="q-switcher-cols">
+        <div id="organisation-menu-places" class="q-switcher-list q-switcher-main" data-panel>
+          <section
+            :for={{{heading, places}, g} <- Enum.with_index(@groups)}
+            class="q-switcher-group"
+            data-group
           >
-            <div
-              :for={{place, workspaces} <- places}
-              class="q-switcher-org"
-              data-org
-              data-search={search_text(place.organisation)}
+            <h3 id={"organisation-menu-group-#{g}"} class="q-switcher-heading">
+              <%= if heading do %>
+                <button
+                  type="button"
+                  class="q-switcher-fold"
+                  aria-expanded={to_string(group_open?(places, @organisation))}
+                  aria-controls={"organisation-menu-group-#{g}-places"}
+                  phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+                  data-fold
+                >
+                  <.icon name="hero-chevron-right-micro" class="q-switcher-fold-i size-3.5" />
+                  <span class="truncate">{heading}</span>
+                  <span class="q-switcher-n">{Format.number(length(places))}</span>
+                </button>
+              <% else %>
+                {gettext("Your organisations")}
+              <% end %>
+            </h3>
+            <ul
+              id={"organisation-menu-group-#{g}-places"}
+              aria-labelledby={"organisation-menu-group-#{g}"}
+              hidden={heading && !group_open?(places, @organisation)}
+              phx-mounted={JS.ignore_attributes(["hidden"])}
+              data-fold-list={heading && "true"}
             >
-              <div class="q-switcher-org-name" aria-hidden="true">
-                <.avatar name={place.organisation.name} kind="organisation" size="xs" />
-                <span class="truncate">{place.organisation.name}</span>
-              </div>
-              <ul>
-                <li :for={w <- workspaces}>
-                  <.link
-                    id={switch_id({place, w})}
-                    href={switch_path(@nav, @nav_entries, place, w)}
-                    class="q-switcher-place"
-                    aria-current={current?({place, w}, @organisation, @workspace) && "true"}
-                    data-place
-                    data-search={search_text(place.organisation, w)}
-                    data-recent-label={place_label(place.organisation, w)}
-                  >
-                    <span class="truncate">
-                      <span class="sr-only">{place.organisation.name} /</span>
-                      {if w, do: w.name, else: gettext("No workspace yet")}
-                    </span>
-                    <.icon
-                      :if={current?({place, w}, @organisation, @workspace)}
-                      name="hero-check-micro"
-                      class="ml-auto size-4 flex-none text-accent"
-                    />
-                  </.link>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-        <p id="organisation-menu-empty" class="q-switcher-empty" hidden>
-          {gettext("No organisation or workspace matches.")}
-        </p>
-        <%!-- What the search left, said by the Switcher hook in these words. --%>
-        <p
-          id="organisation-menu-status"
-          role="status"
-          class="sr-only"
-          data-none={gettext("No organisation or workspace matches.")}
-          data-one={gettext("1 place matches.")}
-          data-other={gettext("%{count} places match.", count: "%{count}")}
-        >
-        </p>
+              <li
+                :for={{place, _workspaces} <- places}
+                class="q-switcher-org"
+                data-org={place.organisation.slug}
+                data-search={search_text([place.organisation.name, place.organisation.slug])}
+              >
+                <.link
+                  id={"switch-#{place.organisation.slug}"}
+                  href={switch_organisation_path(@nav, place.organisation)}
+                  class="q-switcher-place"
+                  aria-current={current_organisation?(place, @organisation) && "true"}
+                  data-switch
+                >
+                  <.avatar name={place.organisation.name} kind="organisation" size="xs" />
+                  <span class="truncate">{place.organisation.name}</span>
+                  <.icon
+                    :if={current_organisation?(place, @organisation)}
+                    name="hero-check-micro"
+                    class="ml-auto size-4 flex-none text-accent"
+                  />
+                </.link>
+                <button
+                  type="button"
+                  class="q-switcher-more"
+                  aria-label={
+                    gettext("Show the workspaces of %{name}", name: place.organisation.name)
+                  }
+                  aria-controls="organisation-menu-workspaces"
+                  aria-expanded={to_string(current_organisation?(place, @organisation))}
+                  phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+                  data-show
+                >
+                  <.icon name="hero-chevron-right-micro" class="size-4" />
+                </button>
+              </li>
+            </ul>
+          </section>
+          <p id="organisation-menu-empty" class="q-switcher-empty" hidden>
+            {gettext("No organisation or workspace matches.")}
+          </p>
+          <%!-- What the search left, said by the Switcher hook in these words. --%>
+          <p
+            id="organisation-menu-status"
+            role="status"
+            class="sr-only"
+            data-none={gettext("No organisation or workspace matches.")}
+            data-one={gettext("1 organisation matches.")}
+            data-other={gettext("%{count} organisations match.", count: "%{count}")}
+          >
+          </p>
+        </div>
+        <div id="organisation-menu-workspaces" class="q-switcher-list q-switcher-side" data-panel>
+          <%!-- A phone shows one panel at a time: this one leads back to the other. --%>
+          <button type="button" class="q-switcher-place q-switcher-back" data-back>
+            <.icon name="hero-chevron-left-micro" class="size-4 text-faint" />
+            {gettext("Organisations")}
+          </button>
+          <section
+            :for={{place, workspaces} <- @listed}
+            id={"organisation-menu-of-#{place.organisation.slug}"}
+            data-workspaces={place.organisation.slug}
+            hidden={!current_organisation?(place, @organisation)}
+            phx-mounted={JS.ignore_attributes(["hidden"])}
+          >
+            <h3
+              id={"organisation-menu-of-#{place.organisation.slug}-heading"}
+              class="q-switcher-heading"
+            >
+              {gettext("Workspaces of %{name}", name: place.organisation.name)}
+            </h3>
+            <ul aria-labelledby={"organisation-menu-of-#{place.organisation.slug}-heading"}>
+              <li :for={w <- workspaces}>
+                <.link
+                  :if={w}
+                  id={"switch-#{place.organisation.slug}-#{w.slug}"}
+                  href={switch_workspace_path(@nav, place.organisation, w)}
+                  class="q-switcher-place"
+                  aria-current={current_workspace?(w, @workspace) && "true"}
+                  data-switch
+                  data-search={search_text([w.name, w.slug])}
+                >
+                  <span class="truncate">{w.name}</span>
+                  <.icon
+                    :if={current_workspace?(w, @workspace)}
+                    name="hero-check-micro"
+                    class="ml-auto size-4 flex-none text-accent"
+                  />
+                </.link>
+                <span :if={!w} class="q-switcher-place q-switcher-none">
+                  {gettext("No workspace yet")}
+                </span>
+              </li>
+            </ul>
+          </section>
+        </div>
       </div>
       <div class="q-switcher-foot">
         <.link
@@ -1333,10 +1404,94 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  # The places by the switcher's groups: the person's own organisations first, then each
-  # group the edition names (`c:ApiaryWeb.Edition.place_group/1`), in the order its first
-  # place came; each place with the workspaces to list, `[nil]` for one that reaches none
-  # yet.
+  # The workspace menu: a search on top, then this organisation's workspaces the person
+  # reaches, by name, each a link to that workspace at the page the reader is on
+  # (`switch_workspace_path/3`); no other organisation's. Last, the edition's entries for
+  # it (`ApiaryWeb.Edition.workspace_switcher_entries/1`), such as New workspace.
+  attr :organisation, :any, required: true
+  attr :workspace, :any, required: true
+  attr :workspaces, :list, required: true
+  attr :nav, :atom, required: true
+  attr :entries, :list, required: true
+
+  defp workspace_menu(assigns) do
+    ~H"""
+    <div
+      id="workspace-menu"
+      class="q-switcher q-switcher-one"
+      role="group"
+      aria-label={gettext("Switch workspace")}
+      hidden
+      phx-mounted={JS.ignore_attributes(["hidden", "style"])}
+    >
+      <div class="q-switcher-search">
+        <.icon name="hero-magnifying-glass" class="size-4 flex-none text-faint" />
+        <input
+          id="workspace-menu-search"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label={gettext("Find a workspace")}
+          aria-controls="workspace-menu-places"
+          placeholder={gettext("Find a workspace…")}
+        />
+      </div>
+      <div id="workspace-menu-places" class="q-switcher-list" data-panel>
+        <h3 id="workspace-menu-heading" class="q-switcher-heading">
+          {gettext("Workspaces of %{name}", name: @organisation.name)}
+        </h3>
+        <ul aria-labelledby="workspace-menu-heading">
+          <li :for={w <- @workspaces}>
+            <.link
+              id={"workspace-menu-switch-#{w.slug}"}
+              href={switch_workspace_path(@nav, @organisation, w)}
+              class="q-switcher-place"
+              aria-current={current_workspace?(w, @workspace) && "true"}
+              data-switch
+              data-search={search_text([w.name, w.slug])}
+            >
+              <span class="truncate">{w.name}</span>
+              <.icon
+                :if={current_workspace?(w, @workspace)}
+                name="hero-check-micro"
+                class="ml-auto size-4 flex-none text-accent"
+              />
+            </.link>
+          </li>
+        </ul>
+        <p id="workspace-menu-empty" class="q-switcher-empty" hidden>
+          {gettext("No workspace matches.")}
+        </p>
+        <%!-- What the search left, said by the Switcher hook in these words. --%>
+        <p
+          id="workspace-menu-status"
+          role="status"
+          class="sr-only"
+          data-none={gettext("No workspace matches.")}
+          data-one={gettext("1 workspace matches.")}
+          data-other={gettext("%{count} workspaces match.", count: "%{count}")}
+        >
+        </p>
+      </div>
+      <div :if={@entries != []} class="q-switcher-foot">
+        <.link
+          :for={entry <- @entries}
+          id={"workspace-menu-#{entry.key}"}
+          navigate={Entry.path(entry, @organisation, @workspace)}
+          class="q-switcher-place"
+        >
+          <.icon name={entry.icon} class="size-4 text-faint" />
+          {entry.label}
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  # The places by the organisation menu's groups: the person's own organisations first,
+  # then each group the edition names (`c:ApiaryWeb.Edition.place_group/1`), in the order
+  # its first place came; within each, the organisations by name, each with its
+  # workspaces by name, `[nil]` for one that reaches none yet.
   defp place_groups(places) do
     grouped =
       places
@@ -1348,38 +1503,40 @@ defmodule ApiaryWeb.Layouts do
 
     for heading <- headings do
       {heading,
-       for {^heading, place} <- grouped do
-         {place, if(place.workspaces == [], do: [nil], else: place.workspaces)}
+       for {^heading, place} <- by_name(grouped, fn {_heading, place} -> place.organisation end) do
+         {place, if(place.workspaces == [], do: [nil], else: by_name(place.workspaces))}
        end}
     end
   end
 
-  # An edition's group opens folded, unless the page's place is in it.
-  defp group_open?(places, organisation, workspace),
-    do:
-      Enum.any?(places, fn {place, workspaces} ->
-        Enum.any?(workspaces, &current?({place, &1}, organisation, workspace))
-      end)
+  # The workspaces of the organisation the person reaches, by name; the page's own
+  # workspace for a reader with no place of it, as the organisation's overview lists them.
+  defp workspaces_of(places, organisation, workspace) do
+    case Enum.find(places, &(&1.organisation_id == organisation.id)) do
+      %{workspaces: [_ | _] = workspaces} -> by_name(workspaces)
+      _none -> [workspace]
+    end
+  end
 
-  defp search_text(organisation, workspace \\ nil) do
-    [
-      organisation.name,
-      organisation.slug,
-      workspace && workspace.name,
-      workspace && workspace.slug
-    ]
+  defp by_name(list, named \\ & &1),
+    do: Enum.sort_by(list, &{String.downcase(named.(&1).name), named.(&1).slug})
+
+  # An edition's group opens folded, unless the page's organisation is in it.
+  defp group_open?(places, organisation),
+    do:
+      Enum.any?(places, fn {place, _workspaces} -> current_organisation?(place, organisation) end)
+
+  defp current_organisation?(place, organisation), do: place.organisation_id == organisation.id
+
+  defp current_workspace?(_workspace, nil), do: false
+  defp current_workspace?(workspace, current), do: workspace.id == current.id
+
+  defp search_text(words) do
+    words
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
     |> String.downcase()
   end
-
-  defp place_label(organisation, nil), do: organisation.name
-  defp place_label(organisation, workspace), do: "#{organisation.name} / #{workspace.name}"
-
-  defp current_switch_id(organisation, nil), do: "switch-#{organisation.slug}"
-
-  defp current_switch_id(organisation, workspace),
-    do: "switch-#{organisation.slug}-#{workspace.slug}"
 
   # New: what the person may start from here (`new_entries/2`).
   attr :entries, :list, required: true
@@ -2080,37 +2237,8 @@ defmodule ApiaryWeb.Layouts do
   defp subject(%Entry{place: :organisation}, scope), do: scope.organisation
   defp subject(%Entry{}, scope), do: scope.workspace || scope.organisation
 
-  # Where the switcher leads: to a workspace of a membership, the section the user is on,
-  # when they may open it there too, else the first entry they may open there, the
-  # overview for a reader of the record. Asked with the scope that membership, and what the
-  # edition says of it, give. A membership that reaches no workspace leads to its
-  # organisation's own path, which says so.
-  defp switch_path(_nav, _entries, %{organisation: organisation}, nil), do: ~p"/#{organisation}"
-
-  defp switch_path(nav, entries, %{organisation: organisation} = place, workspace) do
-    scope = place_scope(place, workspace)
-    places = [:workspace, :organisation]
-    may? = &(&1.place in places and nav_open?(scope, &1.action, workspace))
-
-    entry =
-      Enum.find(entries, &(&1.key == nav and may?.(&1))) ||
-        Enum.find(entries, &(&1.place == :workspace and may?.(&1)))
-
-    # A page of a feature may be absent there: the feature is the destination's to say, so
-    # the link asks it when followed (`ApiaryWeb.SwitchController`), rather than every
-    # place's features being read for every page.
-    if of_feature?(entry),
-      do: ~p"/#{organisation}/#{workspace}/switch/#{entry.key}",
-      else: Entry.path(entry, organisation, workspace)
-  end
-
-  defp of_feature?(%Entry{action: nil}), do: false
-  # The overview is where it would fall back to anyway.
-  defp of_feature?(%Entry{key: :overview}), do: false
-  defp of_feature?(%Entry{action: action}), do: not is_nil(Access.feature(action))
-
   @doc """
-  switch_target/3 is where the switcher's link to a workspace leads once followed, asked
+  switch_target/3 is where a menu's link to a workspace leads once followed, asked
   with the scope of that workspace: where the reader may open the workspace's navigation
   entry named `key` there, its feature on there too, `page` when given, the path of the
   reader's page as it is there (`ApiaryWeb.SwitchController`), else the entry's page;
@@ -2131,13 +2259,14 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
-  switch_workspace_path/3 is the switcher's link to `workspace` of `organisation`, from a
-  page whose navigation entry is `nav`: `GET /:org/:workspace/switch/:section`
-  (`ApiaryWeb.SwitchController`), which lands on the reader's page there, given as
-  `?page=` the path after the page's own `/:org/:workspace`, which the menu adds when it
-  opens; else on the section, else the overview. A link from an organisation's page, with
-  no `page`, lands on the overview. Without a workspace, for an organisation the person
-  reaches none of, the organisation's own path, which says so.
+  switch_workspace_path/3 is the link of the breadcrumb's menus to `workspace` of
+  `organisation`, from a page whose navigation entry is `nav`:
+  `GET /:org/:workspace/switch/:section` (`ApiaryWeb.SwitchController`), which lands on
+  the reader's page there, given as `?page=` the path after the page's own
+  `/:org/:workspace`, which the menu adds when it opens; else on the section, else the
+  overview. A link from an organisation's page, with no `page`, lands on the overview.
+  Without a workspace, for an organisation the person reaches none of, the organisation's
+  own path, which says so.
   """
   @spec switch_workspace_path(atom | nil, struct, struct | nil) :: String.t()
   def switch_workspace_path(_nav, organisation, nil), do: ~p"/#{organisation}"
@@ -2146,11 +2275,11 @@ defmodule ApiaryWeb.Layouts do
     do: ~p"/#{organisation}/#{workspace}/switch/#{switch_section(nav)}"
 
   @doc """
-  switch_organisation_path/2 is the switcher's link to `organisation`, from a page whose
-  navigation entry is `nav`: `GET /:org/-/switch/:section`, which lands in the workspace
-  the person last used there (`Apiary.Organisations.resolve_scope/4`), at the page as
-  `switch_workspace_path/3`'s link does, `?page=` too; in the organisation's own path where
-  they reach no workspace.
+  switch_organisation_path/2 is the organisation menu's link to `organisation`, from a
+  page whose navigation entry is `nav`: `GET /:org/-/switch/:section`, which lands in the
+  workspace the person last used there (`Apiary.Organisations.resolve_scope/4`), at the
+  page as `switch_workspace_path/3`'s link does, `?page=` too; in the organisation's own
+  path where they reach no workspace.
   """
   @spec switch_organisation_path(atom | nil, struct) :: String.t()
   def switch_organisation_path(nav, organisation),
@@ -2158,18 +2287,6 @@ defmodule ApiaryWeb.Layouts do
 
   defp switch_section(nil), do: :overview
   defp switch_section(nav), do: nav
-
-  # The scope a place of the switcher gives in `workspace`, as
-  # `Apiary.Organisations.resolve_scope/4` would load it: the edition's, for a place of its
-  # own or a membership it puts more on, else a membership's in its organisation.
-  defp place_scope(place, workspace) do
-    ApiaryWeb.Edition.place_scope(place, workspace) ||
-      %Apiary.Accounts.Scope{
-        organisation: place.organisation,
-        workspace: workspace,
-        membership: place
-      }
-  end
 
   defp nav_open?(_scope, nil, _subject), do: true
   defp nav_open?(scope, action, subject), do: Access.can?(scope, action, subject)
@@ -2181,16 +2298,6 @@ defmodule ApiaryWeb.Layouts do
         workspace <- if(membership.workspaces == [], do: [nil], else: membership.workspaces),
         do: {membership, workspace}
   end
-
-  defp current?({membership, workspace}, organisation, current_workspace) do
-    membership.organisation_id == organisation.id and
-      (workspace && workspace.id) == (current_workspace && current_workspace.id)
-  end
-
-  defp switch_id({membership, nil}), do: "switch-#{membership.organisation.slug}"
-
-  defp switch_id({membership, workspace}),
-    do: "switch-#{membership.organisation.slug}-#{workspace.slug}"
 
   defp nav_count(%{} = counts, %Entry{count: key}) when is_atom(key) and not is_nil(key),
     do: Map.get(counts, key)

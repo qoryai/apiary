@@ -33,7 +33,7 @@ defmodule ApiaryWeb.SwitchControllerTest do
     {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy")
 
     switch = workspace_path(other, "/switch/policy")
-    assert has_element?(view, "#organisation-menu a[data-place][href='#{switch}']")
+    assert has_element?(view, "#organisation-menu a[data-switch][href='#{switch}']")
 
     assert redirected_to(get(conn, switch)) == workspace_path(other, "/policy")
   end
@@ -60,14 +60,14 @@ defmodule ApiaryWeb.SwitchControllerTest do
     assert conn |> get(workspace_path(stranger, "/switch/runs")) |> response(404)
   end
 
-  test "a section of no feature, and the overview, are linked as they are", %{
-    conn: conn,
-    user: user,
-    scope: scope
-  } do
+  test "the overview, a section of no feature, leads through the destination too, to its overview",
+       %{conn: conn, user: user, scope: scope} do
     other = other_place(user)
     {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
-    assert has_element?(view, "#organisation-menu a[data-place][href='#{workspace_path(other)}']")
+
+    switch = workspace_path(other, "/switch/overview")
+    assert has_element?(view, "#organisation-menu a[data-switch][href='#{switch}']")
+    assert redirected_to(get(conn, switch <> "?page=")) == workspace_path(other)
   end
 
   # Where switching workspace lands, by the page the reader is on: `{section, page after

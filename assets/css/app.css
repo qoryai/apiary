@@ -1259,7 +1259,7 @@
     color: var(--color-base-content);
   }
 
-  /* ---- The switcher: a popover under the breadcrumb, a sheet on phones ---- */
+  /* ---- The breadcrumb's menus: popovers under it, a sheet on phones ---- */
   .q-switcher {
     position: absolute;
     top: calc(100% + 0.5rem);
@@ -1277,6 +1277,33 @@
   .q-switcher[hidden],
   .q-switcher [hidden] {
     display: none;
+  }
+  /* The workspace menu, under the workspace's segment (the Switcher hook says where). */
+  .q-switcher-one {
+    left: var(--q-switcher-x, 0);
+  }
+  /* The organisation menu: the organisations, and the workspaces of the one pointed at,
+     each panel scrolling on its own between the search and the foot. */
+  .q-switcher-two {
+    width: 38rem;
+  }
+  .q-switcher-cols {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+  }
+  .q-switcher-cols > .q-switcher-main {
+    width: 18rem;
+    flex: none;
+  }
+  .q-switcher-side {
+    min-width: 0;
+    border-left: 1px solid var(--q-border-subtle);
+  }
+  /* A phone's way back from the workspaces to the organisations (below). */
+  .q-switcher-back {
+    display: none;
+    width: 100%;
   }
   .q-switcher-search {
     display: flex;
@@ -1310,8 +1337,36 @@
     line-height: 1rem;
     font-weight: 500;
   }
+  /* An organisation: its link, then the › that shows its workspaces, pointed at while it
+     is expanded. */
   .q-switcher-org {
-    padding-bottom: 4px;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 2px;
+  }
+  .q-switcher-org > .q-switcher-place {
+    flex: 1;
+  }
+  .q-switcher-org:has(> [aria-expanded="true"]) > .q-switcher-place {
+    background-color: var(--color-base-200);
+  }
+  .q-switcher-more {
+    display: grid;
+    width: 1.75rem;
+    height: 2rem;
+    flex: none;
+    place-items: center;
+    border-radius: var(--radius-field);
+    color: var(--q-faint);
+    cursor: pointer;
+    outline-offset: -2px;
+  }
+  .q-switcher-more:hover,
+  .q-switcher-more:focus-visible,
+  .q-switcher-more[aria-expanded="true"] {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
   }
   /* An edition's group of places, folded behind its heading: the heading is the button,
      its count beside it, the chevron turned while it is open. */
@@ -1344,15 +1399,6 @@
     font-variant-numeric: tabular-nums;
     font-weight: 400;
   }
-  .q-switcher-org-name {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 8px 2px;
-    font-size: 0.8125rem;
-    font-weight: 500;
-  }
   .q-switcher-place {
     display: flex;
     min-height: 2rem;
@@ -1364,15 +1410,15 @@
     font-size: 0.8125rem;
     outline-offset: -2px;
   }
-  .q-switcher-org .q-switcher-place {
-    padding-left: 2.125rem;
-  }
   .q-switcher-place:hover,
   .q-switcher-place:focus-visible {
     background-color: var(--color-base-300);
   }
   .q-switcher-place[aria-current] {
     font-weight: 500;
+  }
+  .q-switcher-none {
+    color: var(--q-muted);
   }
   .q-switcher-empty,
   .q-palette-empty {
@@ -2639,6 +2685,25 @@
       right: 0.5rem;
       left: 0.5rem;
       width: auto;
+    }
+    /* One panel at a time: the organisations, or after a › the workspaces. */
+    .q-switcher-cols > .q-switcher-main {
+      width: auto;
+      flex: 1;
+    }
+    .q-switcher-side {
+      display: none;
+      border-left: 0;
+    }
+    .q-switcher-two[data-view="workspaces"] .q-switcher-main {
+      display: none;
+    }
+    .q-switcher-two[data-view="workspaces"] .q-switcher-side {
+      display: block;
+      flex: 1;
+    }
+    .q-switcher-back {
+      display: flex;
     }
     .q-jump,
     .q-newbtn {
