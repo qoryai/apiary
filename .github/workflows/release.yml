@@ -10,9 +10,10 @@ permissions:
 # A tag vX.Y.Z publishes the image ghcr.io/qoryai/apiary as X.Y.Z, X.Y and latest, for
 # linux/amd64 and linux/arm64, and the GitHub release with compose.yaml, env.example and
 # apiary.yaml attached: env.example a copy of .env.example naming X.Y.Z in APIARY_VERSION,
-# apiary.yaml a copy of the AWS template, deploy/aws/apiary.yaml, with X.Y.Z as
-# ApiaryVersion's default. The image's build is ci.yml's: the same labels, build argument
-# and cache. Nothing else publishes an image, or the template.
+# apiary.yaml a copy of the AWS template, deploy/aws/apiary.yaml, naming X.Y.Z as Apiary
+# Community's version, which scripts/aws-template-release.py writes in. The image's build is
+# ci.yml's: the same labels, build argument and cache. Nothing else publishes an image, or
+# the template.
 #
 # env.example has no leading period: GitHub renames asset names with a leading period.
 jobs:
@@ -48,15 +49,16 @@ jobs:
             echo ".env.example has no single empty APIARY_VERSION= line to write env.example from" >&2; exit 1; }
 
       - name: Check the template the release publishes
-        # The release writes the version in as the default of the template's one
-        # ApiaryVersion parameter, which in the repository has none.
+        # The release writes the version into a copy of the template, whose Release mapping
+        # in the repository names none; the script refuses a template it cannot write
+        # every place of exactly once.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           test -f deploy/aws/stack-policy.json || { echo "deploy/aws/stack-policy.json is missing" >&2; exit 1; }
-          [ "$(grep -cx '  ApiaryVersion:' deploy/aws/apiary.yaml)" = 1 ] || {
-            echo "deploy/aws/apiary.yaml has no single ApiaryVersion parameter to write the default in" >&2; exit 1; }
-          if awk '/^  ApiaryVersion:$/ { p = 1; next } p && /^  [^ ]/ { exit } p && /^    Default:/ { found = 1 } END { exit !found }' deploy/aws/apiary.yaml; then
-            echo "deploy/aws/apiary.yaml already gives ApiaryVersion a default" >&2; exit 1
-          fi
+          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary.yaml"
+          python3 scripts/aws-template-release.py "$RUNNER_TEMP/apiary.yaml" \
+            --edition-default "Apiary Community" --community-version "$VERSION" --pro-version ""
 
   # Each platform on a runner of its own architecture, pushed by digest alone: no tag
   # names an image until both are built.
@@ -168,8 +170,10 @@ jobs:
           cp compose.yaml dist/compose.yaml
           sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/env.example
           grep -qx "APIARY_VERSION=$VERSION" dist/env.example
-          sed "s/^  ApiaryVersion:\$/&\n    Default: \"$VERSION\"/" deploy/aws/apiary.yaml > dist/apiary.yaml
-          grep -x -A1 '  ApiaryVersion:' dist/apiary.yaml | grep -qx "    Default: \"$VERSION\""
+          cp deploy/aws/apiary.yaml dist/apiary.yaml
+          python3 scripts/aws-template-release.py dist/apiary.yaml \
+            --edition-default "Apiary Community" --community-version "$VERSION" --pro-version ""
+          grep -qx "      CommunityVersion: \"$VERSION\"" dist/apiary.yaml
           cp deploy/aws/stack-policy.json dist/stack-policy.json
 
       # The template job publishes these same files to S3.
