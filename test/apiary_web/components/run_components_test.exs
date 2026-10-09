@@ -1,5 +1,6 @@
 defmodule ApiaryWeb.RunComponentsTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
 
   import Phoenix.Component
   import Phoenix.LiveViewTest
@@ -14,31 +15,71 @@ defmodule ApiaryWeb.RunComponentsTest do
     |> String.trim()
   end
 
+  # Forager's own end reasons, reserved in the contract's run.exited, and the three names
+  # three of them had before; and the codes of its run.refused.
+  @reserved ~w(timeout quiet credential_expired stopped session_lost gateway_lost batch_refused
+               credential_check_unreachable credential_check_invalid run_closed)
+  @earlier ~w(run_ended_at_issuer issuer_unreachable issuer_answer_invalid)
+  @refusals ~w(bad_request unsupported_contract_version invalid_request rate_limited unavailable
+               key_invalid key_limit instance_limit secrets_not_allowed run_closed session_lost
+               batch_refused credential_expired stopped run_configuration_superseded
+               apiary_public_key_missing answer_unsigned unauthorized labels_changed
+               server_needs_wall mount_contains_forager_files mount_mode_conflict
+               mount_shared_with_run mount_through_link engine_unreachable
+               run_configuration_invalid tool_unknown image_unknown variable_reserved
+               placeholder_conflict run_credential_refused target_differs_from_credential
+               differs_from_credential run_id_used not_found credential_check_unreachable
+               credential_check_invalid)
+
   describe "run_state" do
-    test "every state says its word, and only a live running badge ripples" do
-      for {state, word} <- [
-            {"pending", "Pending"},
-            {"running", "Running"},
-            {"succeeded", "Succeeded"},
-            {"failed", "Failed"},
-            {"timed_out", "Timed out"},
-            {"lost", "Lost"},
-            {"ended", "Ended"}
-          ] do
-        html = render_component(&RunComponents.run_state/1, state: state)
-        assert String.starts_with?(text(html), word)
+    test "every state says its word, with its mark and its colour" do
+      for {state, word, glyph, colour} <- [
+            {"pending", "Pending", nil, nil},
+            {"running", "Running", nil, "bg-info-soft"},
+            {"completed", "Completed", "hero-check-micro", "bg-success-soft"},
+            {"failed", "Failed", "hero-x-mark-micro", "bg-error-soft"},
+            {"cancelled", "Cancelled", "hero-stop-micro", nil},
+            {"lost", "Lost", "hero-signal-slash-micro", "bg-primary-soft"}
+          ],
+          name <- [state, String.to_atom(state)] do
+        html = render_component(&RunComponents.run_state/1, state: name)
+        assert text(html) == word, state
+        assert RunComponents.state_label(name) == word
+
+        if glyph,
+          do: assert(html =~ ~s(class="#{glyph}), state),
+          else: refute(html =~ "hero-", state)
+
+        if colour,
+          do: assert(html =~ colour, state),
+          else: refute(html =~ "-soft", state)
+
         assert html =~ "q-state-running" == (state == "running")
+        assert html =~ "q-state-pending" == (state == "pending")
       end
     end
 
-    test "the colours follow the decision table" do
-      assert render_component(&RunComponents.run_state/1, state: "running") =~ "bg-info-soft"
-      assert render_component(&RunComponents.run_state/1, state: "succeeded") =~ "bg-success-soft"
-      assert render_component(&RunComponents.run_state/1, state: "failed") =~ "bg-error-soft"
-      assert render_component(&RunComponents.run_state/1, state: "timed_out") =~ "bg-error-soft"
-      assert render_component(&RunComponents.run_state/1, state: "lost") =~ "bg-primary-soft"
-      refute render_component(&RunComponents.run_state/1, state: "pending") =~ "-soft"
-      assert render_component(&RunComponents.run_state/1, state: "pending") =~ "q-state-pending"
+    test "a cancelled run's mark is the stop, grey, not the denial's" do
+      html = render_component(&RunComponents.run_state/1, state: "cancelled")
+      assert html =~ "hero-stop-micro"
+      refute html =~ "hero-no-symbol"
+      refute html =~ "-soft"
+    end
+
+    test "a state stored under its earlier name reads as the state that took it in" do
+      for {earlier, now} <- [
+            {"succeeded", "completed"},
+            {"timed_out", "cancelled"},
+            {"ended", "cancelled"}
+          ] do
+        assert RunComponents.state_label(earlier) == RunComponents.state_label(now)
+
+        assert RunComponents.state_label(String.to_atom(earlier)) ==
+                 RunComponents.state_label(now)
+
+        assert render_component(&RunComponents.run_state/1, state: earlier) ==
+                 render_component(&RunComponents.run_state/1, state: now)
+      end
     end
 
     test "a failed run shows its exit code, or its signal instead" do
@@ -56,67 +97,231 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(render_component(&RunComponents.run_state/1, state: "failed", exit_code: -1)) ==
                "Failed"
 
-      assert text(render_component(&RunComponents.run_state/1, state: "succeeded", exit_code: 0)) ==
-               "Succeeded"
+      assert text(render_component(&RunComponents.run_state/1, state: "completed", exit_code: 0)) ==
+               "Completed"
     end
 
-    test "an ended run is grey" do
-      html = render_component(&RunComponents.run_state/1, state: "ended")
-      refute html =~ "-soft"
-      assert text(html) == "Ended"
+    test "a row's mark: a completed run's word is for a screen reader, a cancelled run's is grey" do
+      for state <- ~w(completed succeeded) do
+        html = render_component(&RunComponents.run_mark/1, state: state)
+        assert html =~ "q-st-#{state}"
+        assert html =~ ~s(class="q-st-w sr-only")
+        assert text(html) == "Completed"
+      end
+
+      for state <- ~w(cancelled timed_out ended) do
+        html = render_component(&RunComponents.run_mark/1, state: state)
+        assert html =~ "q-st-#{state}"
+        refute html =~ "sr-only"
+        assert text(html) == "Cancelled"
+      end
     end
 
-    test "reason_words says why a run ended, the quiet period as a duration reads" do
+    test "an ended run's sentence says its state" do
+      for {state, run, sentence} <- [
+            {"completed", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
+            {"succeeded", %{duration_ms: 720_000}, "Completed 12 m 00 s after it started"},
+            {"completed", %{}, "Completed"},
+            {"cancelled", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
+            {"timed_out", %{duration_ms: 720_000}, "Cancelled after 12 m 00 s"},
+            {"ended", %{}, "Cancelled"},
+            {"failed", %{exit_code: 1}, "Failed with exit 1"}
+          ] do
+        html = render_component(&RunComponents.alive/1, state: state, run: run)
+        assert text(html) == sentence, "#{state}: #{text(html)}"
+      end
+    end
+
+    test "reason_words says Forager's own reasons in words of their own" do
       for {reason, words} <- [
-            {"timeout", "timed out"},
-            {"gateway_lost", "gateway lost"},
-            {"session_lost", "session lost"},
-            {"issuer_unreachable", "issuer unreachable"},
-            {"issuer_answer_invalid", "issuer answer invalid"},
-            {"credential_expired", "run credential expired"},
-            {"run_ended_at_issuer", "the issuer reported the run ended"}
+            {"timeout", "time limit reached"},
+            {"credential_expired", "permission to run expired"},
+            {"stopped", "stopped, no outcome given"},
+            {"session_lost", "stopped responding"},
+            {"gateway_lost", "end not recorded"},
+            {"batch_refused", "events refused"},
+            {"credential_check_unreachable",
+             "couldn't check whether the run may go on: no answer"},
+            {"credential_check_invalid",
+             "couldn't check whether the run may go on: unreadable answer"}
           ] do
         assert RunComponents.reason_words(%{reason: reason, quiet_seconds: nil}) == words
       end
 
+      assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
+    end
+
+    test "a refused batch reads events refused, whatever the state" do
+      for state <- [nil, "failed", :failed, "lost"] do
+        assert RunComponents.reason_words(%{reason: "batch_refused", state: state}) ==
+                 "events refused"
+      end
+    end
+
+    test "stopped beside an outcome says only that the run was stopped" do
+      for state <- ["completed", :completed, "succeeded", "failed", :failed] do
+        assert RunComponents.reason_words(%{reason: "stopped", state: state}) == "stopped"
+      end
+
+      for state <- [nil, "cancelled", :cancelled] do
+        assert RunComponents.reason_words(%{reason: "stopped", state: state}) ==
+                 "stopped, no outcome given"
+      end
+    end
+
+    test "a reason stored under its earlier name reads as the new one" do
+      for {earlier, now} <- [
+            {"issuer_unreachable", "credential_check_unreachable"},
+            {"issuer_answer_invalid", "credential_check_invalid"}
+          ],
+          state <- [nil, "failed"] do
+        assert RunComponents.reason_words(%{reason: earlier, state: state}) ==
+                 RunComponents.reason_words(%{reason: now, state: state})
+      end
+
+      # The earlier name came with no outcome, whatever state its exit said.
+      for state <- [nil, "failed", "cancelled", "ended"] do
+        assert RunComponents.reason_words(%{reason: "run_ended_at_issuer", state: state}) ==
+                 "stopped, no outcome given"
+      end
+    end
+
+    test "a starter's code is shown as given, with spaces for underscores" do
+      for {code, words} <- [
+            {"no_longer_needed", "no longer needed"},
+            {"checks_failed", "checks failed"},
+            {"all_checks_passed", "all checks passed"},
+            {"example_reason", "example reason"},
+            {"done", "done"}
+          ],
+          state <- ["completed", "failed", "cancelled", :cancelled] do
+        assert RunComponents.reason_words(%{reason: code, state: state}) == words
+      end
+
+      # A value that is no code is read as no reason.
+      for value <- ["Checks failed", "checks-failed", "_x", "", String.duplicate("a", 65)] do
+        assert RunComponents.reason_words(%{reason: value, state: "failed"}) == nil, value
+      end
+    end
+
+    test "the quiet period reads as no activity, as a duration reads" do
       for {seconds, words} <- [
-            {1800, "quiet for 30 minutes"},
-            {60, "quiet for 1 minute"},
-            {600, "quiet for 10 minutes"},
-            {3600, "quiet for 1 hour"},
-            {7200, "quiet for 2 hours"},
-            {5400, "quiet for 90 minutes"},
-            {45, "quiet for 45 seconds"},
-            {1, "quiet for 1 second"},
-            {1830, "quiet for 1,830 seconds"}
+            {1800, "no activity for 30 minutes"},
+            {60, "no activity for 1 minute"},
+            {600, "no activity for 10 minutes"},
+            {3600, "no activity for 1 hour"},
+            {7200, "no activity for 2 hours"},
+            {5400, "no activity for 90 minutes"},
+            {45, "no activity for 45 seconds"},
+            {1, "no activity for 1 second"},
+            {1830, "no activity for 1,830 seconds"}
           ] do
         assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: seconds}) == words
       end
 
       assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: "unheard of", quiet_seconds: nil}) == nil
-      assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: "quiet"}) == nil
     end
 
-    # Every reason of the contract's run.exited reaches Qory Apiary but two, which stay in
-    # the session's own record; each that reaches it has words.
-    @tag :contract
-    test "reason_words has words for every reason of the contract that reaches Qory Apiary" do
-      reasons =
-        Apiary.ContractFixtures.contract_dir()
-        |> Path.join("events/run.exited.schema.json")
-        |> File.read!()
-        |> Jason.decode!()
-        |> get_in(["properties", "reason", "enum"])
+    test "a run stored as refused, failed with no exit and the code as its reason, did not start" do
+      refused = %Apiary.Runs.Run{state: "failed", exited_at: nil, reason: "image_unknown"}
+      assert RunComponents.reason_words(refused) == "did not start: image_unknown"
 
-      assert length(reasons) == 10
-      assert "run_closed" in reasons and "batch_refused" in reasons
+      assert RunComponents.reason_words(%{refused | reason: "issuer_unreachable"}) ==
+               "did not start: credential_check_unreachable"
 
-      for reason <- reasons -- ["run_closed", "batch_refused"] do
+      assert RunComponents.reason_words(%{refused | reason: nil}) == "did not start"
+
+      # a failed run that exited reads its reason as an end
+      exited = %{refused | exited_at: ~U[2026-01-01 00:00:00Z], reason: "no_longer_needed"}
+      assert RunComponents.reason_words(exited) == "no longer needed"
+    end
+
+    test "a run refused at its start did not start, its code as given" do
+      assert RunComponents.reason_words(%{refused: "image_unknown"}) ==
+               "did not start: image_unknown"
+
+      assert RunComponents.reason_words(%{refused: "example_server_code"}) ==
+               "did not start: example_server_code"
+
+      assert RunComponents.reason_words(%{refused: "issuer_unreachable"}) ==
+               "did not start: credential_check_unreachable"
+
+      assert RunComponents.reason_words(%{refused: "run_ended_at_issuer"}) ==
+               "did not start: stopped"
+
+      assert RunComponents.reason_words(%{refused: nil}) == "did not start"
+    end
+
+    property "no end reason's words name the issuer" do
+      check all(
+              code <- member_of(@reserved ++ @earlier ++ @refusals),
+              state <-
+                member_of(
+                  [nil] ++
+                    ~w(pending running completed failed cancelled lost succeeded timed_out ended) ++
+                    [:completed, :failed, :cancelled]
+                ),
+              seconds <- one_of([constant(nil), positive_integer()]),
+              refused? <- boolean()
+            ) do
+        run =
+          if refused?,
+            do: %{refused: code},
+            else: %{reason: code, state: state, quiet_seconds: seconds}
+
+        words = RunComponents.reason_words(run)
+        refute words && words =~ ~r/issuer/i, inspect({run, words})
+      end
+    end
+
+    test "every reason of Forager's that reaches Qory Apiary has words" do
+      for reason <- (@reserved -- ["run_closed"]) ++ @earlier do
         assert is_binary(RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})),
                reason
       end
+    end
+
+    @tag :contract
+    test "every code of the contract's run.refused, and every reason it lists, has words with no issuer" do
+      dir = Apiary.ContractFixtures.contract_dir()
+
+      schema = fn file ->
+        dir |> Path.join("events/#{file}.schema.json") |> File.read!() |> Jason.decode!()
+      end
+
+      refusals = get_in(schema.("run.refused"), ["then", "properties", "code", "enum"])
+      assert refusals != []
+
+      # A contract with the reasons as a list names them there; one with an open code names
+      # Forager's own in its description, which @reserved holds.
+      reasons = get_in(schema.("run.exited"), ["properties", "reason", "enum"]) || @reserved
+
+      for code <- refusals do
+        words = RunComponents.reason_words(%{refused: code})
+        assert words =~ "did not start: " and not (words =~ "issuer"), code
+      end
+
+      for reason <- reasons -- ["run_closed", "batch_refused"] do
+        words = RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})
+        assert is_binary(words) and not (words =~ "issuer"), reason
+      end
+    end
+
+    test "the preview says why a run ended, else its exit" do
+      run = %{state: "failed", reason: nil, quiet_seconds: nil, exit_code: 1, signal: nil}
+
+      assert RunComponents.exit_note(run) == "exit 1"
+      assert RunComponents.exit_note(%{run | reason: "checks_failed"}) == "checks failed"
+      assert RunComponents.exit_note(%{run | exit_code: -1, signal: "SIGKILL"}) == "SIGKILL"
+      assert RunComponents.exit_note(%{run | exit_code: -1}) == nil
+      assert RunComponents.exit_note(%{run | state: "completed", exit_code: 0}) == "exit 0"
+
+      assert RunComponents.exit_note(%{run | state: "cancelled", reason: "timeout"}) ==
+               "time limit reached"
+
+      assert RunComponents.exit_note(%{run | state: "cancelled", exit_code: 143}) == nil
     end
 
     test "a quiet running run turns amber, stops rippling and says for how long" do

@@ -196,9 +196,10 @@ defmodule Apiary.Runs.LivenessTest do
       end)
     end
 
-    test "a replayed backlog keeps a lost run lost, and on the Overview, until its exit", %{
-      scope: scope
-    } do
+    test "a replayed backlog keeps a lost run lost, and on the Overview; an exit whose end was not recorded keeps it so for good",
+         %{
+           scope: scope
+         } do
       run = lost_in_an_outage(scope)
       since = ago(7 * 86_400)
       assert [%Run{id: id}] = Runs.lost_since(scope, since)
@@ -224,8 +225,14 @@ defmodule Apiary.Runs.LivenessTest do
         received_at: @now
       )
 
-      assert %Run{state: "failed", reason: "gateway_lost", lost_at: nil} = project!(run)
-      assert Runs.lost_since(scope, since) == []
+      # Lost from the exit's time, and final: a heartbeat after it revives nothing.
+      lost_at = ago(600)
+      assert %Run{state: "lost", reason: "gateway_lost", lost_at: ^lost_at} = project!(run)
+      assert Enum.map(Runs.lost_since(scope, since), & &1.id) == [run.id]
+
+      heartbeat(run, 104, ago(5), @now)
+      assert %Run{state: "lost", lost_at: ^lost_at} = project!(run)
+      assert Liveness.check(DateTime.add(@now, 3600, :second)) == []
     end
 
     test "a rebuild gives the same offset, the same last heartbeat and, once checked, the same state",
@@ -368,7 +375,7 @@ defmodule Apiary.Runs.LivenessTest do
       event_fixture(recent, 9, "run.exited", exit, received_at: ago(9))
 
       assert Liveness.sweep(@now) == 1
-      assert state(left) == "succeeded"
+      assert state(left) == "completed"
       assert state(recent) == "running"
       assert Liveness.sweep(@now) == 0
     end
@@ -387,7 +394,7 @@ defmodule Apiary.Runs.LivenessTest do
       )
 
       assert Liveness.check(@now) == []
-      assert state(run) == "succeeded"
+      assert state(run) == "completed"
     end
 
     test "is bounded, oldest first, and the rest waits for the next check", %{scope: scope} do
@@ -475,13 +482,11 @@ defmodule Apiary.Runs.LivenessTest do
 
     event_fixture(run, 9, "run.exited", %{
       "state" => "failed",
-      "exit_code" => -1,
-      "reason" => "gateway_lost",
+      "exit_code" => 1,
       "duration_ms" => 1
     })
 
-    assert {:ok, %Run{state: "failed", reason: "gateway_lost", lost_at: nil}} =
-             Projector.project(run)
+    assert {:ok, %Run{state: "failed", exit_code: 1, lost_at: nil}} = Projector.project(run)
 
     assert Liveness.check(DateTime.add(@now, 3600, :second)) == []
   end

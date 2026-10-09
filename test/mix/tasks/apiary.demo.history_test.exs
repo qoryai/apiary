@@ -54,7 +54,7 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
              1
 
     states = runs |> Enum.map(& &1.state) |> Enum.uniq()
-    assert "succeeded" in states
+    assert "completed" in states
     assert "failed" in states
 
     # The runs happened over the days asked for, not at once.

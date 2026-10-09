@@ -504,7 +504,7 @@ defmodule ApiaryWeb.TargetLive.Index do
       </span>
       <.relative_time at={@last.at} />
       <span
-        :if={@last.state not in ~w(succeeded ended)}
+        :if={@last.state not in ~w(succeeded completed ended)}
         class={["q-tgt-lw", "q-sdot-#{@last.state}"]}
         aria-hidden="true"
       >

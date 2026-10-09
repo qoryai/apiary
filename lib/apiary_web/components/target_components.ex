@@ -137,7 +137,7 @@ defmodule ApiaryWeb.TargetComponents do
 
   def state_mark(assigns) do
     assigns =
-      assign(assigns, :quiet, assigns.state in ~w(succeeded ended) and !assigns.word)
+      assign(assigns, :quiet, assigns.state in ~w(succeeded completed ended) and !assigns.word)
 
     ~H"""
     <span class={["q-sdot", "q-sdot-#{@state}", @class]} {@rest}>

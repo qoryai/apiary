@@ -138,7 +138,7 @@ defmodule Apiary.TargetsTest do
              ]
 
       [shop, api, mirror, blog] = rows
-      assert shop.last.state == "succeeded"
+      assert shop.last.state == "completed"
       assert shop.runs == 2 and shop.ended_well == 1 and shop.ended_badly == 1
       assert length(shop.days) == 14 and Enum.sum(shop.days) == 2
       assert List.last(shop.days) == 1
@@ -146,7 +146,7 @@ defmodule Apiary.TargetsTest do
       refute api.shared or blog.shared
       assert api.denied == 2
       # Outside the window: a last run, and nothing counted in it.
-      assert mirror.runs == 0 and mirror.denied == 0 and mirror.last.state == "succeeded"
+      assert mirror.runs == 0 and mirror.denied == 0 and mirror.last.state == "completed"
       assert Enum.sum(blog.days) == 0
     end
 

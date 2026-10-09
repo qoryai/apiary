@@ -48,8 +48,17 @@ defmodule Apiary.Runs.Fold do
 
   What opened the run is `opened_by` of its `run.started`, `session` or `gateway`. A run a
   gateway opened has no session: its start says no runtime, command or host, and its exit
-  no state and no exit code, so the exit's reason decides its state (`exit_state/2`). An
-  exit with the reason `quiet` says the quiet period, `quiet_seconds`.
+  no exit code. An exit with the reason `quiet` says the quiet period, `quiet_seconds`.
+  What the start says of the run credential, `credential`, is not read: `starter`, `issuer`
+  as an older Forager wrote it, or `none`.
+
+  How the run ended is its exit's `state` and `reason`, the same rule for a session's run
+  and a gateway's (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
+  any other value is absent; the reason is a code, a lower-case letter then up to 63
+  lower-case letters, digits and `_`, and anything else is absent. An exit that maps to
+  lost sets `lost_at` to the exit's time. A run that did not start, `dev.qory.run.refused`,
+  is failed, its `reason` the refusal's code, and has no exit time; an exit decides over
+  it. Either is final: no start or heartbeat folded after it changes the state.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
   own, the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -82,6 +91,7 @@ defmodule Apiary.Runs.Fold do
   @resized "dev.qory.run.resized"
   @egress "dev.qory.run.egress"
   @exited "dev.qory.run.exited"
+  @refused "dev.qory.run.refused"
   @result "dev.qory.session.result"
 
   @forager_version "forager_version"
@@ -98,7 +108,7 @@ defmodule Apiary.Runs.Fold do
   def ranks(@ping), do: [@ping, @forager_version]
   def ranks(@started), do: [@started, @forager_version, @terminal_rank]
   def ranks(@resized), do: [@terminal_rank]
-  def ranks(type) when type in [@policy_applied, @heartbeat, @exited], do: [type]
+  def ranks(type) when type in [@policy_applied, @heartbeat, @exited, @refused], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
@@ -130,12 +140,23 @@ defmodule Apiary.Runs.Fold do
   # and DEL, C1, and the line and paragraph separators.
   @control ~r/[\x{00}-\x{1F}\x{7F}-\x{9F}\x{2028}\x{2029}]/u
 
-  @terminal ~w(succeeded ended failed timed_out)
+  # The states no start or heartbeat folded later changes, with the old names an older
+  # release stored them under (`Apiary.Runs.Run.old_states/0`).
+  @terminal ~w(completed failed cancelled succeeded ended timed_out)
   @openers ~w(session gateway)
-  # The reasons of an exit without a state that end a run neither well nor by a failure of
-  # its own: a run a gateway opened was quiet, its run credential expired, or its issuer
-  # said it ended.
-  @ended_reasons ~w(quiet credential_expired run_ended_at_issuer)
+  # A reason: an open code of Forager's or of the run's starter.
+  @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
+  # The reasons of a failed exit that say nobody knows how the run ended: the session went
+  # silent, or the end was never recorded.
+  @lost_reasons ~w(session_lost gateway_lost)
+  # The reasons of the failed exit an older Forager, under the contract before the outcome,
+  # wrote when it stopped a run itself, a session's run or a gateway's: its time limit, no
+  # activity, its run credential expired, or its starter ended it. Such an exit is stored,
+  # and a rebuild folds it again.
+  @stopped_reasons ~w(timeout quiet credential_expired run_ended_at_issuer)
+  # The reasons of an exit without a state, stored under that contract, that cancel the run:
+  # its time limit, no activity, its run credential expired, or its starter ended it.
+  @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
 
   defstruct run: %{},
@@ -343,19 +364,29 @@ defmodule Apiary.Runs.Fold do
 
   defp event(acc, %{type: @exited, data: data} = event) do
     ranked(acc, event, fn run ->
-      reason = string(data, "reason")
+      reason = code(data, "reason")
+      state = exit_state(string(data, "state"), reason)
 
-      run
-      |> Map.merge(%{
+      Map.merge(run, %{
+        state: state,
         exited_at: event.time,
         exit_code: integer(data, "exit_code", -@int4..@int4),
         signal: string(data, "signal", 64),
         reason: reason,
         quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
-        duration_ms: integer(data, "duration_ms", 0..@int8)
+        duration_ms: integer(data, "duration_ms", 0..@int8),
+        lost_at: if(state == "lost", do: event.time)
       })
-      |> Map.put(:state, exit_state(string(data, "state"), reason))
-      |> Map.put(:lost_at, nil)
+    end)
+  end
+
+  # A run that did not start is failed, with the refusal's code; an exit decides over it, in
+  # whichever order the two are folded.
+  defp event(acc, %{type: @refused, data: data} = event) do
+    ranked(acc, event, fn run ->
+      if exited?(run),
+        do: run,
+        else: Map.merge(run, %{state: "failed", reason: code(data, "code"), lost_at: nil})
     end)
   end
 
@@ -402,30 +433,49 @@ defmodule Apiary.Runs.Fold do
   end
 
   @doc """
-  The run state a `dev.qory.run.exited` with this `state` and `reason` means. A session's
-  exit says its state: succeeded, or failed, timed out with the reason `timeout`. An exit
-  without one, a run a gateway opened, reads its reason: `quiet`, `credential_expired` and
-  `run_ended_at_issuer` are ended, `timeout` timed out, and the rest, `gateway_lost`,
-  `session_lost`, `issuer_unreachable` and `issuer_answer_invalid` among them, failed.
+  The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
+  that applies, whoever opened the run:
+
+    1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
+       cancelled: the exit an older Forager, under the contract before the outcome, wrote
+       when it stopped a run itself.
+    2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
+    3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
+    4. Without a state, as an older Forager wrote a gateway's exit, the reason decides:
+       `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
+       cancelled, `session_lost` and `gateway_lost` lost, and any other reason, or none,
+       failed.
+
+  A state other than the three is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("succeeded", _reason), do: "succeeded"
-  def exit_state("failed", "timeout"), do: "timed_out"
-  def exit_state(nil, reason) when reason in @ended_reasons, do: "ended"
-  def exit_state(nil, "timeout"), do: "timed_out"
+  def exit_state("failed", reason) when reason in @stopped_reasons, do: "cancelled"
+  def exit_state("failed", reason) when reason in @lost_reasons, do: "lost"
+  def exit_state("succeeded", _reason), do: "completed"
+  def exit_state("failed", _reason), do: "failed"
+  def exit_state("cancelled", _reason), do: "cancelled"
+  def exit_state(_state, reason) when reason in @cancelled_reasons, do: "cancelled"
+  def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  @doc """
-  The reasons of an exit that end a run neither well nor by a failure of its own:
-  `quiet`, `credential_expired` and `run_ended_at_issuer`. Without a state, such an exit
-  ends the run `ended` (`exit_state/2`).
-  """
-  @spec ended_reasons() :: [String.t()]
-  def ended_reasons, do: @ended_reasons
+  defp started_state(run) do
+    if ended?(run), do: run, else: %{run | state: "running", lost_at: nil}
+  end
 
-  defp started_state(%{state: state} = run) when state in @terminal, do: run
+  # A run whose exit or refusal said how it ended. A run Apiary marked lost by its own
+  # check has neither, and a start or a heartbeat revives it.
+  defp ended?(%{state: state}) when state in @terminal, do: true
+  defp ended?(run), do: exited?(run)
 
-  defp started_state(run), do: %{run | state: "running", lost_at: nil}
+  defp exited?(run), do: Map.get(run, :exited_at) != nil
+
+  # A code, as the contract writes a reason: anything else is absent.
+  defp code(data, key) do
+    case string(data, key, :infinity) do
+      code when is_binary(code) -> if Regex.match?(@reason, code), do: code
+      nil -> nil
+    end
+  end
 
   # What opened the run, one of the two the contract names, or nil.
   defp opened_by(data) do
@@ -494,8 +544,9 @@ defmodule Apiary.Runs.Fold do
 
   defp count_beat(acc), do: acc
 
-  defp revive(%{state: state} = run) when state in ["lost", "pending"],
-    do: %{run | state: "running", lost_at: nil}
+  defp revive(%{state: state} = run) when state in ["lost", "pending"] do
+    if exited?(run), do: run, else: %{run | state: "running", lost_at: nil}
+  end
 
   defp revive(run), do: run
 

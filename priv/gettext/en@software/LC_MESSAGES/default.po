@@ -3317,6 +3317,12 @@ msgstr ""
 msgid "Cancel the deletion of %{name}"
 msgstr ""
 
+#: lib/apiary/runs/filters.ex
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled a command to connect a node"
@@ -3325,6 +3331,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled a workspace's deletion"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled after %{duration}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3701,6 +3712,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Compared with the policy applied at %{sequence}: %{difference}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Completed"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Completed %{duration} after it started"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -4645,7 +4666,6 @@ msgstr ""
 msgid "End of the record."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ended"
@@ -4784,6 +4804,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every alive state"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every cancelled state"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -7504,6 +7529,16 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "No runs cancelled %{range}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No runs cancelled."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "No runs ended badly %{range}."
 msgstr ""
 
@@ -10183,16 +10218,6 @@ msgstr ""
 msgid "Subjects"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Succeeded"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Succeeded %{duration} after it started"
-msgstr ""
-
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Succeeded."
@@ -11564,16 +11589,6 @@ msgstr ""
 msgid "Time zone"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Timed out"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Timed out after %{duration}"
-msgstr ""
-
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Timed out."
@@ -12751,6 +12766,11 @@ msgstr ""
 msgid "by rule"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "cancelled"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "contract %{version}"
@@ -12759,6 +12779,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "copy the item's link"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "couldn't check whether the run may go on: no answer"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "couldn't check whether the run may go on: unreadable answer"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -12808,6 +12838,16 @@ msgstr ""
 msgid "details"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "did not start"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "did not start: %{code}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "digest"
@@ -12821,6 +12861,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "elapsed %{seconds} s"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "end not recorded"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -12861,6 +12906,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "esc"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "events refused"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -12917,8 +12967,6 @@ msgstr ""
 msgid "gateway (no session)"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "gateway lost"
@@ -13006,15 +13054,11 @@ msgstr ""
 msgid "is taken out of the paths in force for the host."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "issuer answer invalid"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "issuer unreachable"
@@ -13153,6 +13197,27 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "next and previous item"
 msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no activity for %{number} hour"
+msgid_plural "no activity for %{number} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no activity for %{number} minute"
+msgid_plural "no activity for %{number} minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no activity for %{number} second"
+msgid_plural "no activity for %{number} seconds"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -13321,6 +13386,11 @@ msgstr ""
 msgid "path"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "permission to run expired"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "plain setting"
@@ -13340,27 +13410,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "qory printed a fingerprint on %{name} when it ran the command. If it isn't this one, revoke the key on the Access key tab."
 msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "quiet for %{number} hour"
-msgid_plural "quiet for %{number} hours"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "quiet for %{number} minute"
-msgid_plural "quiet for %{number} minutes"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "quiet for %{number} second"
-msgid_plural "quiet for %{number} seconds"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -13400,7 +13449,6 @@ msgstr ""
 msgid "run %{id}"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "run credential expired"
@@ -13416,8 +13464,6 @@ msgstr ""
 msgid "secret · shown once"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "session lost"
@@ -13447,6 +13493,21 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "starting or running"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "stopped"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "stopped responding"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "stopped, no outcome given"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -13483,7 +13544,6 @@ msgstr ""
 msgid "terminal"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "the issuer reported the run ended"
@@ -13561,10 +13621,9 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "timed out"
+msgid "time limit reached"
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "timeout"

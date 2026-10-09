@@ -31,7 +31,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
     # The header, from the row.
-    assert html =~ "Succeeded"
+    assert html =~ "Completed"
     assert html =~ "acme/shop"
     assert html =~ "dev-laptop"
 

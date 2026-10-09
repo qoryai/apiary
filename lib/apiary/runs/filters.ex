@@ -43,12 +43,13 @@ defmodule Apiary.Runs.Filters do
 
   alias Apiary.Runs.Run
 
-  # The three families every surface reads the states as, in the order they are shown.
-  # Only their states go in a URL: `state=failed,timed_out,lost`. The three families every
-  # surface counts runs in (`Apiary.Runs.Run`): one definition.
+  # The four families the states read as, in the order they are shown. Only their states
+  # go in a URL: `state=failed,lost`. The families runs are counted in (`Apiary.Runs.Run`):
+  # one definition.
   @families [
     %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
+    %{key: "cancelled", label: gettext_noop("Cancelled"), states: Run.cancelled_states()},
     %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
   ]
   @family_keys Enum.map(@families, & &1.key)
@@ -153,10 +154,12 @@ defmodule Apiary.Runs.Filters do
   @type family :: %{key: String.t(), label: String.t(), states: [String.t()]}
 
   @doc """
-  The three families the states read as, in the order they are shown: alive (`pending`,
-  `running`), ended well (`succeeded`, `ended`) and ended badly (`failed`, `timed_out`,
-  `lost`). Every state is in exactly one. The labels are in the domain's words:
-  translated here, at call time, because the list is made at compile time.
+  The four families the states read as, in the order they are shown: alive (`pending`,
+  `running`), ended well (`completed`), cancelled (`cancelled`) and ended badly (`failed`,
+  `lost`). Every state is in exactly one; a name an older release stored is in none, and is
+  read as its new state where runs are counted and listed (`Apiary.Runs.Run.with_old_names/1`).
+  The labels are in the domain's words: translated here, at call time, because the list is
+  made at compile time.
   """
   @spec families() :: [family()]
   def families,
@@ -169,7 +172,7 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The keys of the families these states are, in the families' order, when the states are
   exactly one or more whole families; nil otherwise (a part of a family, or nothing). This
-  is what lets a token and the empty state say "ended badly" for the three states.
+  is what lets a token and the empty state say "ended badly" for its two states.
   """
   @spec families_of([String.t()]) :: [String.t()] | nil
   def families_of(states) when is_list(states) do

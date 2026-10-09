@@ -46,7 +46,9 @@ defmodule ApiaryWeb.RunPageComponents do
 
   alias Phoenix.LiveView.JS
 
-  @ended_reasons Apiary.Runs.Fold.ended_reasons()
+  # The reasons whose exit the timeline ends as "Run ended", whatever the run's state: it was
+  # quiet, its run credential expired, or its starter ended it.
+  @ended_reasons ~w(quiet credential_expired run_ended_at_issuer)
 
   @background_tip gettext_noop(
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
@@ -865,8 +867,8 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # A run that was quiet, whose run credential expired or whose issuer reported it ended,
-  # ended: why, in words, then how long it ran.
+  # A run that was quiet, whose run credential expired or whose starter stopped it with no
+  # outcome ended: why, in words, then how long it ran.
   defp item_body(%{item: %{kind: :run_exited, reason: reason}} = assigns)
        when reason in @ended_reasons do
     ~H"""
@@ -1217,17 +1219,16 @@ defmodule ApiaryWeb.RunPageComponents do
   @doc "The source of a policy in words, for the Details tab too."
   def policy_source_words(source), do: policy_source(source)
 
-  defp exit_words(%{reason: "timeout"}), do: gettext("timeout")
-  defp exit_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
-  defp exit_words(%{reason: "session_lost"}), do: gettext("session lost")
-  defp exit_words(%{reason: "issuer_unreachable"}), do: gettext("issuer unreachable")
-  defp exit_words(%{reason: "issuer_answer_invalid"}), do: gettext("issuer answer invalid")
-  defp exit_words(%{signal: signal}) when is_binary(signal), do: signal
+  # How the run exited: why, in words (`RunComponents.reason_words/1`), else its signal or
+  # its exit code.
+  defp exit_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
 
-  defp exit_words(%{exit_code: code}) when is_integer(code),
+  defp exit_code_words(%{signal: signal}) when is_binary(signal), do: signal
+
+  defp exit_code_words(%{exit_code: code}) when is_integer(code),
     do: gettext("exit %{code}", code: code)
 
-  defp exit_words(_item), do: gettext("n/a")
+  defp exit_code_words(_item), do: gettext("n/a")
 
   defp result_words(item) do
     [

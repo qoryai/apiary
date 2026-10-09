@@ -1173,7 +1173,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         lost,
         31,
         "run.exited",
-        %{"state" => "failed", "exit_code" => -1, "reason" => "gateway_lost", "duration_ms" => 1},
+        %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1},
         time: DateTime.add(now, -2900, :second),
         received_at: now
       )
