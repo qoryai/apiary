@@ -54,6 +54,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   whatever its state, and "Run exited" otherwise. A session run's Exit in the rail says a
   lost gateway or session, an expired run credential and the issuer's end in those words,
   never as `-1`, and the header after its state adds no exit for them.
+- A run the gateway ended because it could not reach the issuer, or the issuer gave it no
+  valid answer, is Failed, on a session's run and on one a gateway opened, and says so in
+  words: issuer unreachable, or issuer answer invalid, after its state, under State in the
+  rail, as a session run's Exit and in the timeline's "Run exited", never as `-1`.
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
@@ -64,7 +68,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
   the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
-  6cd1448.
+  ef13c11.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint and the run configuration each spend a bucket of their own, 50
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a

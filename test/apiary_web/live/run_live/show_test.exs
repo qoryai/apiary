@@ -2150,6 +2150,31 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert has_element?(lv, "#e-3 .#{glyph}")
       end
     end
+
+    test "the issuer unreachable or its answer invalid: Failed, and why after it, under it and in the timeline",
+         %{conn: conn, scope: scope} do
+      for {reason, words} <- [
+            {"issuer_unreachable", "issuer unreachable"},
+            {"issuer_answer_invalid", "issuer answer invalid"}
+          ] do
+        run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 130_000})
+        assert run.state == "failed"
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state.q-sdot-failed", "Failed")
+        assert has_element?(lv, "#run-meta #run-state + #run-reason", words)
+        refute has_element?(lv, "#run-meta", "exit")
+        assert has_element?(lv, "#run-facts #rail-reason", words)
+        refute "Exit" in run_terms(lv)
+        assert has_element?(lv, "#e-3", "Run exited")
+        assert has_element?(lv, "#e-3", words)
+        assert has_element?(lv, "#e-3", "2 m 10 s")
+        refute has_element?(lv, "#e-3", "n/a")
+        assert has_element?(lv, "#e-3 .hero-x-mark-micro")
+      end
+    end
   end
 
   describe "a run with a session, beside one with none" do
@@ -2260,6 +2285,40 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{words}\s*</dd>}
         assert has_element?(lv, "#e-2", "Run ended")
         assert has_element?(lv, "#e-2", words)
+        refute html =~ "exit -1"
+      end
+    end
+
+    test "the issuer unreachable or its answer invalid is said as a session run's exit, and it is Failed",
+         %{conn: conn, scope: scope} do
+      for {reason, words} <- [
+            {"issuer_unreachable", "issuer unreachable"},
+            {"issuer_answer_invalid", "issuer answer invalid"}
+          ] do
+        exit = %{
+          "state" => "failed",
+          "exit_code" => -1,
+          "signal" => "SIGTERM",
+          "reason" => reason,
+          "duration_ms" => 130_000
+        }
+
+        run = projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
+        assert run.state == "failed"
+
+        {:ok, lv, html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state.q-sdot-failed", "Failed")
+        assert has_element?(lv, "#run-meta #run-state + #run-reason", words)
+        refute has_element?(lv, "#run-meta", "exit")
+        assert has_element?(lv, "#run-facts #rail-reason", words)
+        assert "Exit" in run_terms(lv)
+        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{words}\s*</dd>}
+        assert has_element?(lv, "#e-2", "Run exited")
+        assert has_element?(lv, "#e-2", words)
+        assert has_element?(lv, "#e-2", "2 m 10 s")
+        refute has_element?(lv, "#e-2", "SIGTERM")
         refute html =~ "exit -1"
       end
     end

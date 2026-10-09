@@ -2667,6 +2667,8 @@ defmodule ApiaryWeb.RunLive.Show do
   defp exit_value(%Run{reason: "timeout"}), do: gettext("timeout")
   defp exit_value(%Run{reason: "gateway_lost"}), do: gettext("gateway lost")
   defp exit_value(%Run{reason: "session_lost"}), do: gettext("session lost")
+  defp exit_value(%Run{reason: "issuer_unreachable"}), do: gettext("issuer unreachable")
+  defp exit_value(%Run{reason: "issuer_answer_invalid"}), do: gettext("issuer answer invalid")
   defp exit_value(%Run{reason: "credential_expired"}), do: gettext("run credential expired")
 
   defp exit_value(%Run{reason: "run_ended_at_issuer"}),

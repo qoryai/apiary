@@ -207,6 +207,22 @@ defmodule Apiary.Contract.SignedFixturesTest do
              {"failed", "gateway_lost", nil, nil}
   end
 
+  test "a refusal of the server's with its status is stored as sent, a code the list does not hold included" do
+    %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+
+    for {file, code} <- [
+          {"refused-not-found.json", "not_found"},
+          {"refused-unlisted-server-code.json", "example_server_code"}
+        ] do
+      Repo.delete_all(Run)
+      conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> file))
+      assert conn.status == 202, file
+
+      assert [%Event{type: "dev.qory.run.refused", data: data}] = Repo.all(Event)
+      assert data == %{"code" => code, "status" => 404}, file
+    end
+  end
+
   test "fixtures/invalid/batch-*.json are refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 

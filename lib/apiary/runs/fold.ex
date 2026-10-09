@@ -406,7 +406,7 @@ defmodule Apiary.Runs.Fold do
   exit says its state: succeeded, or failed, timed out with the reason `timeout`. An exit
   without one, a run a gateway opened, reads its reason: `quiet`, `credential_expired` and
   `run_ended_at_issuer` are ended, `timeout` timed out, and the rest, `gateway_lost`,
-  `session_lost` and `run_closed` among them, failed.
+  `session_lost`, `issuer_unreachable` and `issuer_answer_invalid` among them, failed.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
   def exit_state("succeeded", _reason), do: "succeeded"

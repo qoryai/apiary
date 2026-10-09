@@ -1133,6 +1133,8 @@ defmodule Apiary.Runs.FoldTest do
             {"run_closed", "failed"},
             {"gateway_lost", "failed"},
             {"session_lost", "failed"},
+            {"issuer_unreachable", "failed"},
+            {"issuer_answer_invalid", "failed"},
             {"unheard of", "failed"},
             {nil, "failed"}
           ] do
@@ -1160,6 +1162,10 @@ defmodule Apiary.Runs.FoldTest do
              "failed"},
             {%{"state" => "failed", "exit_code" => -1, "reason" => "run_closed"}, "failed"},
             {%{"state" => "failed", "exit_code" => -1, "reason" => "session_lost"}, "failed"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "issuer_unreachable"},
+             "failed"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "issuer_answer_invalid"},
+             "failed"},
             {%{"state" => "succeeded", "reason" => "credential_expired"}, "succeeded"},
             {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout"}, "timed_out"}
           ] do
@@ -1195,6 +1201,24 @@ defmodule Apiary.Runs.FoldTest do
 
       %{run: run} = Fold.fold(run, [heartbeat(20, 600)], %{"dev.qory.run.exited" => 18})
       assert run.state == "ended"
+    end
+
+    # The contract's own exits of a session's run the gateway ends because of the issuer,
+    # the data of its fixtures: failed, with the reason kept.
+    @tag :contract
+    test "the gateway's exit of a session's run, the issuer unreachable or its answer invalid, is failed" do
+      for {file, reason} <- [
+            {"invalid/link-batch-exited-issuer-unreachable.json", "issuer_unreachable"},
+            {"invalid/link-batch-exited-issuer-answer-invalid.json", "issuer_answer_invalid"}
+          ] do
+        [%{"type" => "dev.qory.run.exited", "data" => data}] =
+          Apiary.ContractFixtures.contract_json!(file)
+
+        assert data["reason"] == reason
+
+        %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
+        assert {run.state, run.reason, run.exit_code} == {"failed", reason, -1}, file
+      end
     end
   end
 

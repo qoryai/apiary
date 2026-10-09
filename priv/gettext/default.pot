@@ -12976,6 +12976,20 @@ msgstr ""
 msgid "is taken out of the paths in force for the host."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "issuer answer invalid"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "issuer unreachable"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "its own"

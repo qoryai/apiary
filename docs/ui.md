@@ -1341,8 +1341,9 @@ page has no breadcrumb of its own.
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
 - **The end reason** is in words (`RunComponents.reason_words/1`), the same in the meta
-  line and under State in the rail: timed out, gateway lost, session lost, quiet
-  for a period, run credential expired, and the issuer reported the run ended
+  line and under State in the rail: timed out, gateway lost, session lost, issuer
+  unreachable, issuer answer invalid, quiet for a period, run credential expired, and
+  the issuer reported the run ended
   ([contract-assumptions.md](contract-assumptions.md), How a run ends). The quiet period
   reads in whole hours, else whole minutes, else seconds: 1800 seconds is "quiet for 30
   minutes". The meta line leaves out the exit where it reads as the words ("gateway

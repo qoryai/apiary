@@ -143,6 +143,8 @@ defmodule ApiaryWeb.RunComponents do
   def reason_words(%{reason: "timeout"}), do: gettext("timed out")
   def reason_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
   def reason_words(%{reason: "session_lost"}), do: gettext("session lost")
+  def reason_words(%{reason: "issuer_unreachable"}), do: gettext("issuer unreachable")
+  def reason_words(%{reason: "issuer_answer_invalid"}), do: gettext("issuer answer invalid")
   def reason_words(%{reason: "credential_expired"}), do: gettext("run credential expired")
 
   def reason_words(%{reason: "run_ended_at_issuer"}),

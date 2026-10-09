@@ -1220,6 +1220,8 @@ defmodule ApiaryWeb.RunPageComponents do
   defp exit_words(%{reason: "timeout"}), do: gettext("timeout")
   defp exit_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
   defp exit_words(%{reason: "session_lost"}), do: gettext("session lost")
+  defp exit_words(%{reason: "issuer_unreachable"}), do: gettext("issuer unreachable")
+  defp exit_words(%{reason: "issuer_answer_invalid"}), do: gettext("issuer answer invalid")
   defp exit_words(%{signal: signal}) when is_binary(signal), do: signal
 
   defp exit_words(%{exit_code: code}) when is_integer(code),
