@@ -71,6 +71,8 @@ defmodule ApiaryWeb.RunComponentsTest do
             {"timeout", "timed out"},
             {"gateway_lost", "gateway lost"},
             {"session_lost", "session lost"},
+            {"issuer_unreachable", "issuer unreachable"},
+            {"issuer_answer_invalid", "issuer answer invalid"},
             {"credential_expired", "run credential expired"},
             {"run_ended_at_issuer", "the issuer reported the run ended"}
           ] do
@@ -95,6 +97,26 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
       assert RunComponents.reason_words(%{reason: "unheard of", quiet_seconds: nil}) == nil
       assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
+    end
+
+    # Every reason of the contract's run.exited reaches Qory Apiary but two, which stay in
+    # the session's own record; each that reaches it has words.
+    @tag :contract
+    test "reason_words has words for every reason of the contract that reaches Qory Apiary" do
+      reasons =
+        Apiary.ContractFixtures.contract_dir()
+        |> Path.join("events/run.exited.schema.json")
+        |> File.read!()
+        |> Jason.decode!()
+        |> get_in(["properties", "reason", "enum"])
+
+      assert length(reasons) == 10
+      assert "run_closed" in reasons and "batch_refused" in reasons
+
+      for reason <- reasons -- ["run_closed", "batch_refused"] do
+        assert is_binary(RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})),
+               reason
+      end
     end
 
     test "a quiet running run turns amber, stops rippling and says for how long" do
