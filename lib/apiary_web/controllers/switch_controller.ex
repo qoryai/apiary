@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.SwitchController do
   @moduledoc """
-  Where the switcher's links lead (`ApiaryWeb.Layouts`): to a workspace, the page the
-  reader is on, as it is in that workspace; to an organisation, the same in the workspace
-  the person last used there. Not a page: a redirect.
+  Where the links of the breadcrumb's menus lead (`ApiaryWeb.Layouts`): to a workspace,
+  the page the reader is on, as it is in that workspace; to an organisation, the same in
+  the workspace the person last used there. Every link of the organisation menu and the
+  workspace menu comes here. Not a page: a redirect.
 
       GET /:org/:workspace/switch/:section?page=<path>
       GET /:org/-/switch/:section?page=<path>
