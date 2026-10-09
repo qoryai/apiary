@@ -194,10 +194,14 @@ defmodule ApiaryWeb.RunComponents do
   value that is no code.
   """
   @spec reason_words(map()) :: String.t() | nil
-  def reason_words(%Run{state: "failed", exited_at: nil, reason: code}),
-    do: reason_words(%{refused: code})
+  def reason_words(%Run{} = run) do
+    if Run.refused?(run), do: refusal_words(run.reason), else: given_words(run)
+  end
 
-  def reason_words(%{refused: code}) do
+  def reason_words(%{refused: code}), do: refusal_words(code)
+  def reason_words(run), do: given_words(run)
+
+  defp refusal_words(code) do
     case refusal_code(code) do
       nil -> gettext("did not start")
       code -> gettext("did not start: %{code}", code: code)
@@ -206,13 +210,13 @@ defmodule ApiaryWeb.RunComponents do
 
   # The starter's end under the earlier name came with no outcome, whatever the state the
   # exit said.
-  def reason_words(%{reason: "run_ended_at_issuer"}), do: gettext("stopped, no outcome given")
+  defp given_words(%{reason: "run_ended_at_issuer"}), do: gettext("stopped, no outcome given")
 
-  def reason_words(%{reason: reason} = run) when is_binary(reason) do
+  defp given_words(%{reason: reason} = run) when is_binary(reason) do
     if reason =~ @reason_code, do: words_of(Map.get(@earlier_reasons, reason, reason), run)
   end
 
-  def reason_words(_run), do: nil
+  defp given_words(_run), do: nil
 
   @doc """
   A run's end reason as the run page's header and rail show it, `reason_words/1` in a span,
