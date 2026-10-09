@@ -118,6 +118,9 @@ RUN chown nobody /app
 # set runner ENV
 ENV MIX_ENV="prod"
 
+# No erl_crash.dump: it holds every process's memory, the database password among it.
+ENV ERL_CRASH_DUMP_BYTES=0
+
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/apiary ./
 

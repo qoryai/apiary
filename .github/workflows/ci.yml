@@ -257,9 +257,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
 
       # The keys directory belongs to nobody, the release carries the commit it was built
-      # from, and RDS's certificate bundle is the one the Dockerfile pins.
+      # from, RDS's certificate bundle is the one the Dockerfile pins, and the VM writes no
+      # crash dump.
       - name: Check the image
         run: |
+          docker image inspect apiary:ci --format '{{range .Config.Env}}{{println .}}{{end}}' |
+            grep -qx 'ERL_CRASH_DUMP_BYTES=0' || {
+            echo "the image does not set ERL_CRASH_DUMP_BYTES=0" >&2; exit 1; }
+
           docker run --rm apiary:ci ls -ld /var/lib/apiary/keys
           owner="$(docker run --rm apiary:ci stat -c %U /var/lib/apiary/keys)"
           [ "$owner" = nobody ] || {
