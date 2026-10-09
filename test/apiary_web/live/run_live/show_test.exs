@@ -693,6 +693,40 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "No session events arrived."
     end
 
+    test "a running run with no session events, heard of over a minute ago: the hooks sentence",
+         %{conn: conn, scope: scope} do
+      ago = DateTime.add(DateTime.utc_now(), -120, :second)
+      run = projected(scope, [{1, "run.started", started_data(), time: ago}])
+      Apiary.Repo.update_all(Apiary.Runs.Run, set: [inserted_at: ago, last_event_at: ago])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state", "Running")
+      assert html =~ "No session events arrived."
+      assert has_element?(lv, "#run-meta #run-duration-line")
+    end
+
+    test "a run that did not start: no sentence on session events, and no n/a for its duration",
+         %{conn: conn, scope: scope} do
+      for started <- [started_data(), gateway_started_data()] do
+        run =
+          projected(scope, [
+            {1, "run.started", started},
+            {2, "run.refused", %{"code" => "image_unknown"}}
+          ])
+
+        {:ok, lv, html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state", "Failed")
+        refute html =~ "No session events arrived."
+        refute has_element?(lv, ".q-limits")
+        refute has_element?(lv, "#run-meta #run-duration-line")
+        refute has_element?(lv, "#run-meta", "n/a")
+      end
+    end
+
     test "a young live run has no limits sentence yet, only the live end", %{
       conn: conn,
       scope: scope

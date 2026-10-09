@@ -167,7 +167,11 @@ defmodule ApiaryWeb.RunLive.Show do
                     <span class="sr-only">{gettext("Started")}</span>
                     <.relative_time id="run-started" at={@run.started_at} />
                   </span>
-                  <span id="run-duration-line"><.run_duration run={@run} quiet={@quiet_for != nil} /></span>
+                  <%!-- A run that was refused never ran: it has no duration to say, not even n/a. --%>
+                  <span :if={!Run.refused?(@run)} id="run-duration-line"><.run_duration
+                    run={@run}
+                    quiet={@quiet_for != nil}
+                  /></span>
                   <.link
                     :if={@counts.denied > 0}
                     id="run-denied"
@@ -1749,6 +1753,12 @@ defmodule ApiaryWeb.RunLive.Show do
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 
   defp limit_reason(%Run{} = run, index) do
+    # A run that was refused never started: no session was there to send events, so their
+    # absence says nothing about the hooks, a wall or the runtime.
+    if Run.refused?(run), do: nil, else: session_limit(run, index)
+  end
+
+  defp session_limit(run, index) do
     # By this server's clock, from when it first heard of the run: never Forager's.
     settled? = not alive?(run) or older_than?(run.inserted_at, 60)
 

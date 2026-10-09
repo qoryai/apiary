@@ -1355,8 +1355,9 @@ page has no breadcrumb of its own.
   Completed · all checks passed), the runtime's exit for a session's run that failed with
   no words ("exit 1", "SIGKILL"), how alive the run is while it runs, the target (its
   page), the runtime, the host, when it
-  started, how long it took and its denials, in red, which lead to its denied
-  connections. At the right: the ⋯ menu (Copy run id, Raw log, Download log), and no
+  started, how long it took (left out for a run that did not start, which never ran) and
+  its denials, in red, which lead to its denied connections. At the right: the ⋯ menu
+  (Copy run id, Raw log, Download log), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
   cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
