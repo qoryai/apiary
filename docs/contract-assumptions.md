@@ -253,11 +253,12 @@ deny holds in either mode, since `egress.deny` is decided first: under `observe`
 denies what `deny` names and nothing else, and `allow` says what `enforce` would reach. A
 workspace whose policy nobody has made serves none: `404` `{"error":"not_found"}`, nothing
 rendered; discovery named it no `run` section, so the gateway does not ask. The endpoint
-spends a token of the key's rate limit, the events endpoint's bucket:
-`429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to the gateway is no run
-or a reload that failed and is tried again on the next answer. After the `429`, as on the
-events endpoint, a contract version other than `1` is `400 unsupported_contract_version`,
-and nothing is read.
+spends a token of the key's rate limit for the run configuration, a bucket of its own,
+apart from the events endpoint's, so a gateway flushing a backlog of events still gets a
+new run's configuration: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which
+to the gateway is no run or a reload that failed and is tried again on the next answer.
+After the `429`, as on the events endpoint, a contract version other than `1` is
+`400 unsupported_contract_version`, and nothing is read.
 
 Rendering is canonical: members in a fixed order (`mode`, `allow`, `deny`, `paths`), no
 whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule the gateway
@@ -484,7 +485,11 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   the `413`, the `415`, the `400` of a header sent twice and the `401` spends a token,
   whatever it is answered after that: a `400`, a `409` and a `410` count like a `202`, so a
   key that keeps sending what is refused is slowed like any other. What is refused before,
-  and so an unauthenticated request, spends nothing. Discovery spends none.
+  and so an unauthenticated request, spends nothing. Discovery spends none. The run
+  configuration spends a bucket of its own, per access key and per node, the same 50 a
+  second and 100 at once
+  (`config :apiary, ApiaryWeb.Contract.RunConfigurationController, rate: 50, burst: 100`):
+  a gateway fetches it once per run and on a reload, and a flush of events never spends it.
 - A batch holds at most 1000 events, `data` nests at most 64 levels, `time` is in the years
   1970 to 9999, and `sequence` starts at `0000000001`; anything else is `400`
   `invalid_request`.

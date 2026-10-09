@@ -5,7 +5,10 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   `ApiaryWeb.Contract.SignedRequest`, as discovery is, which verifies the request, refuses
   what the contract refuses before the configuration (the key's rate limit, a contract
   revision not served, a stale timestamp) and signs the
-  answer. Every query parameter is one of the run's labels, and the gateway sends every
+  answer. The key's rate limit here is a bucket of its own, apart from the events
+  endpoint's: 50 requests a second and 100 at once
+  (`config :apiary, ApiaryWeb.Contract.RunConfigurationController`), so a gateway flushing
+  a backlog of events still gets a new run's configuration. Every query parameter is one of the run's labels, and the gateway sends every
   label of the run. The workspace's domain (`Apiary.Lingo.Domain`) says which of them name
   the target.
 

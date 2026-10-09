@@ -140,7 +140,7 @@ On every endpoint, the first refusal that applies is the answer:
    `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice;
 4. `401`, any failure of authentication (below);
 5. `429` `rate_limited`, the key's rate is spent (the events endpoint and the run
-   configuration);
+   configuration, each from a bucket of its own);
 6. `400` `bad_request`, signed, an instance id absent or outside its pattern;
 7. `400` `unsupported_contract_version`;
 8. `400` `invalid_request`, a body the contract refuses (the events endpoint);
@@ -268,7 +268,7 @@ baseline.
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | nobody has made the workspace's policy; discovery named no `run` section, so the gateway does not ask | `{"error":"not_found"}` |
 | `404` | the `security` feature is off for the key's workspace or organisation, or for the instance; a gateway asks only when it went off after a discovery that named a `run` section. The endpoint is absent: a request that verifies is answered, signed, as a path that does not exist. On an instance without the feature, a request with no signature is answered as one too, unsigned, before anything is verified | `Not Found`, as `text/html`, whatever the request accepts; to a request with no signature, what a path that does not exist answers in the format it accepts |
-| `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
+| `429` | the key's rate for the run configuration is spent: 50 requests a second, 100 at once, per server node, from a bucket of its own, so events the gateway delivers never spend it; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
 To the gateway anything but `200` is no run, or a reload that failed and is tried again on the

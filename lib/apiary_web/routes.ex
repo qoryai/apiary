@@ -15,10 +15,10 @@ defmodule ApiaryWeb.Routes do
       organisation_routes()
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
-    `:contract` (a signed request of the server contract), `:contract_limited` (the same,
-    held to the key's rate limit) and `:path_scope` (the reserved names,
-    `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
-    pipe through imported. First, since the others pipe through them.
+    `:contract` (a signed request of the server contract), `:contract_events` and
+    `:contract_run_configuration` (the same, each held to a bucket of the key's rate
+    limit) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
+    plugs of `ApiaryWeb.UserAuth` the routes pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
     `/.well-known` and `/v1`, enrolment among it, and, where `:dev_routes` is set, `/dev`.
   - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
@@ -113,11 +113,17 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.SignedRequest
       end
 
-      # The same, for the events endpoint and the run configuration, which a key's rate
-      # limit holds.
-      pipeline :contract_limited do
+      # The same, for the events endpoint, which spends the key's bucket of the rate limit.
+      pipeline :contract_events do
         plug :accepts, ["json"]
-        plug ApiaryWeb.Contract.SignedRequest, rate_limit: true
+        plug ApiaryWeb.Contract.SignedRequest, rate_limit: :events
+      end
+
+      # The same, for the run configuration, which spends a bucket of the key's own, apart
+      # from the events endpoint's.
+      pipeline :contract_run_configuration do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest, rate_limit: :run_configuration
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -167,9 +173,14 @@ defmodule ApiaryWeb.Routes do
       end
 
       scope "/v1", ApiaryWeb.Contract do
-        pipe_through :contract_limited
+        pipe_through :contract_events
 
         post "/events", EventsController, :create
+      end
+
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract_run_configuration
+
         get "/run-configuration", RunConfigurationController, :show
       end
 

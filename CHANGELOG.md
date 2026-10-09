@@ -65,6 +65,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
   the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
   04545d3.
+- A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
+  it: the events endpoint and the run configuration each spend a bucket of their own, 50
+  requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
+  new run's configuration. Discovery is not limited.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run

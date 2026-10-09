@@ -27,9 +27,11 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        is looked up), a key the instance does not hold, has revoked, or that is not a
        node's key, a row that fails its integrity check, a signature that is not 64 bytes
        of strict base64url or does not verify (cofactorless, `Apiary.Contract.Ed25519`);
-    4. `429` `rate_limited` with `Retry-After`, when the plug is given `rate_limit: true`
-       (the events endpoint and the run configuration, from one bucket per key,
-       `Apiary.Runs.RateLimit`; discovery is not limited);
+    4. `429` `rate_limited` with `Retry-After`, when the plug is given a bucket of the
+       key's rate limit (`Apiary.Runs.RateLimit`): `rate_limit: :events` for the events
+       endpoint, `rate_limit: :run_configuration` for the run configuration, which has a
+       bucket of its own, so a backlog of events never refuses a run its configuration;
+       discovery is not limited;
     5. `400` `bad_request` for an instance id absent or outside
        `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
     6. `400` `unsupported_contract_version` (`ApiaryWeb.Contract.ContractVersion`);
@@ -73,7 +75,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   alias Apiary.Nodes
   alias Apiary.Nodes.Node
   alias Apiary.Runs.RateLimit
-  alias ApiaryWeb.Contract.{ContractVersion, SignedAnswer}
+  alias ApiaryWeb.Contract.{ContractVersion, RunConfigurationController, SignedAnswer}
 
   @window_seconds 300
   @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
@@ -96,7 +98,16 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   # key of the seed of 32 zero bytes: a key nobody holds as theirs.
   @unknown_key elem(:crypto.generate_key(:eddsa, :ed25519, <<0::256>>), 0)
 
-  def init(opts), do: Keyword.validate!(opts, rate_limit: false)
+  @buckets [false, :events, :run_configuration]
+
+  def init(opts) do
+    opts = Keyword.validate!(opts, rate_limit: false)
+
+    unless opts[:rate_limit] in @buckets,
+      do: raise(ArgumentError, "rate_limit is one of #{inspect(@buckets)}")
+
+    opts
+  end
 
   def call(conn, opts) do
     with :ok <- content_type(conn),
@@ -224,12 +235,22 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   defp target(%Plug.Conn{request_path: path, query_string: query}), do: path <> "?" <> query
 
   defp rate(%AccessKey{id: id}, opts) do
-    with true <- Keyword.fetch!(opts, :rate_limit),
-         {:error, seconds} <- RateLimit.check(id) do
-      {:rate_limited, seconds}
-    else
-      _ -> :ok
+    case spend(Keyword.fetch!(opts, :rate_limit), id) do
+      {:error, seconds} -> {:rate_limited, seconds}
+      _ok -> :ok
     end
+  end
+
+  # The events endpoint spends the key's bucket, under `Apiary.Runs.RateLimit`'s own
+  # configuration; the run configuration a bucket of its own, under
+  # `ApiaryWeb.Contract.RunConfigurationController`'s.
+  defp spend(false, _id), do: :ok
+  defp spend(:events, id), do: RateLimit.check(id)
+
+  defp spend(:run_configuration, id) do
+    limit = Application.get_env(:apiary, RunConfigurationController, [])
+    limit = Keyword.merge([rate: 50, burst: 100], Keyword.take(limit, [:rate, :burst]))
+    RateLimit.check({:run_configuration, id}, limit)
   end
 
   defp instance_id(instance_id) when is_binary(instance_id) do
