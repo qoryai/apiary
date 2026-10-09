@@ -139,18 +139,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     } do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
 
-      for rest <- ["/policy", "/policy/targets", "/policy/history"] do
+      for rest <- ["/policy", "/policy/targets", "/policy/history", "/policy/document"] do
         view = open(conn, scope, rest)
         assert crumbs(view) == [{"Policy", nil}]
         assert has_element?(view, "#breadcrumb [aria-current=page]", "Policy")
       end
 
-      # The Document tab is the current version's page: Policy leads back from it.
-      assert {:error, {:live_redirect, %{to: version}}} =
-               live(conn, workspace_path(scope, "/policy/document"))
-
-      assert version == workspace_path(scope, "/policy/versions/1")
-
+      # A version opened from the history is a page under Policy: Policy leads back.
       assert crumbs(open(conn, scope, "/policy/versions/1")) == [
                {"Policy", workspace_path(scope, "/policy")},
                {"Version 1", nil}
@@ -903,22 +898,74 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       conn: conn,
       scope: scope
     } do
-      for rest <- ~w(/policy /policy/targets /policy/history) do
+      for rest <- ~w(/policy /policy/targets /policy/history /policy/document) do
         view = open(conn, scope, rest)
         [header, card, tabs] = order(view, ~w(policy-header policy-mode policy-tabs))
         assert header < card and card < tabs, rest
       end
 
-      # The Document tab is the version in force: the version states its own mode.
-      assert {:error, {:live_redirect, %{to: to}}} =
-               live(conn, workspace_path(scope, "/policy/document"))
+      # A version opened from the history and the export state their own mode: no card,
+      # the version in force as well as an older one.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
 
-      assert to == workspace_path(scope, "/policy/versions/1")
-
-      for rest <- ~w(/policy/versions/1 /policy/versions/1/export) do
+      for rest <- ~w(/policy/versions/1 /policy/versions/2 /policy/versions/2/export) do
         view = open(conn, scope, rest)
         refute has_element?(view, "#policy-mode"), rest
       end
+    end
+
+    test "the Document tab shows the document in force under the card, and a mode change in place",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+      view |> element("#policy-tabs-document") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy/document"))
+
+      # The page's own header, the card and the tabs, then the version in force.
+      [header, card, tabs, version] =
+        order(view, ~w(policy-header policy-mode policy-tabs policy-version-h))
+
+      assert header < card and card < tabs and tabs < version
+      assert has_element?(view, "#policy-tabs-document[aria-current=page]")
+      assert has_element?(view, "h1", "Policy")
+      assert has_element?(view, "h2#policy-version-h", "Version 1")
+      assert text(view, "#policy-page") =~ "In force"
+      assert text(view, "#version-strip") =~ "Mode observe"
+      assert text(view, "#policy-mode-value") == "Observe"
+      assert page_title(view) =~ "Version 1 · Policy"
+
+      assert has_element?(
+               view,
+               "#version-export[href='#{workspace_path(scope, "/policy/versions/1/export")}']",
+               "Export"
+             )
+
+      # Its views stay on the tab.
+      view |> element("#version-view button", "Document") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy/document?view=document"))
+      assert text(view, "#version-pretty") =~ ~s("mode" : "observe")
+
+      # Enforce, saved from the card: the new version, its number and its mode, in place.
+      pick_mode(view, "enforce")
+      set_mode(view)
+      assert Policy.get_mode(scope) == "enforce"
+
+      assert has_element?(view, "#policy-mode")
+      assert text(view, "#policy-mode-value") == "Enforce"
+      assert has_element?(view, "#policy-tabs-document[aria-current=page]")
+      assert has_element?(view, "h2#policy-version-h", "Version 2")
+      assert text(view, "#version-strip") =~ "Mode enforce"
+      assert text(view, "#version-pretty") =~ ~s("mode" : "enforce")
+      assert has_element?(view, "#ver-2[aria-current=page]")
+      assert page_title(view) =~ "Version 2 · Policy"
+
+      # And back to observe, from elsewhere: the page follows the change too.
+      {:ok, _} = Policy.set_mode(scope, "observe")
+      _ = render(view)
+
+      assert text(view, "#policy-mode-value") == "Observe"
+      assert has_element?(view, "h2#policy-version-h", "Version 3")
+      assert text(view, "#version-strip") =~ "Mode observe"
+      assert text(view, "#version-pretty") =~ ~s("mode" : "observe")
     end
 
     test "Change mode opens the choices in place: native radios, the current one checked",
@@ -1383,11 +1430,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       :ok
     end
 
-    test "the document tab opens the current one", %{conn: conn, scope: scope} do
-      to = workspace_path(scope, "/policy/versions/2")
+    test "the document tab shows the current one in place", %{conn: conn, scope: scope} do
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy/document")
 
-      assert {:error, {:live_redirect, %{to: ^to}}} =
-               live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy/document")
+      render_async(view, 5_000)
+      assert has_element?(view, "h2#policy-version-h", "Version 2")
+      assert has_element?(view, "#ver-2[aria-current=page]")
+      assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
+
+      # Its Export opens the export, and Done goes back to the version's page.
+      view |> element("#version-export") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy/versions/2/export"))
+      assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
     end
 
     test "changes from the one before, the document, and the bytes as served",

@@ -61,7 +61,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     assert html =~ "tracker.example.net"
 
     {:ok, lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
     assert has_element?(lv, "#run-id", run.run_id)
 
