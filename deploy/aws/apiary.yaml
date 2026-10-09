@@ -107,6 +107,13 @@ Rules:
     Assertions:
       - Assert: !Not [!Equals [!Ref CertificateArn, ""]]
         AssertDescription: An ACM certificate ARN is required when no hosted zone is given.
+  # A restored database keeps the snapshot's password and holds what the old keys
+  # encrypted: with new keys no task boots.
+  KeysWithDatabaseSnapshot:
+    RuleCondition: !Not [!Equals [!Ref DatabaseSnapshot, ""]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref KeysFromStack, ""]]
+        AssertDescription: "A database snapshot needs the keys of the stack it came from: set Keys of a deleted stack."
 
 Conditions:
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
@@ -307,7 +314,9 @@ Resources:
         HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
 
   # The secrets Qory makes at first start on compose, made here by Secrets Manager before
-  # the task starts. Deleting the stack, or a replacement in an update, keeps every one:
+  # the task starts. A create that rolls back deletes them, so a retry under the same stack
+  # name makes them anew; once a stack exists, deleting it, or a replacement in an update,
+  # keeps every one (UpdateReplacePolicy has no RetainExceptOnCreate):
   # without APIARY_ENCRYPTION_SECRET no access key verifies and no stored secret reads, and
   # without APIARY_SIGNING_SECRET every machine's pin breaks. Their properties never change
   # from one release to the next (CI compares them with the previous release's template):
@@ -319,7 +328,7 @@ Resources:
   SecretKeyBase:
     Type: AWS::SecretsManager::Secret
     Condition: CreateSecrets
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub ${AWS::StackName}/secret-key-base
@@ -331,7 +340,7 @@ Resources:
   EncryptionSecret:
     Type: AWS::SecretsManager::Secret
     Condition: CreateSecrets
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub ${AWS::StackName}/encryption-secret
@@ -346,7 +355,7 @@ Resources:
   SigningSecret:
     Type: AWS::SecretsManager::Secret
     Condition: CreateSecrets
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub ${AWS::StackName}/signing-secret
@@ -361,7 +370,7 @@ Resources:
   DatabasePassword:
     Type: AWS::SecretsManager::Secret
     Condition: CreateSecrets
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub ${AWS::StackName}/database-password
@@ -373,7 +382,7 @@ Resources:
   SmtpPasswordSecret:
     Type: AWS::SecretsManager::Secret
     Condition: CreateSmtpPassword
-    DeletionPolicy: Retain
+    DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub ${AWS::StackName}/smtp-password
