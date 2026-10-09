@@ -1719,8 +1719,9 @@ defmodule Apiary.Runs do
   not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
   ended, failed or timed out keeps the end its events gave it. A close is final: no event reopens
   the run, and closing a closed run changes nothing. A run a gateway opened, with no session,
-  is never closed once its start says so: the one who starts a run ends it (`closable?/1`).
-  A run whose start has not arrived yet does not say who opened it, and may still be closed.
+  is never closed once its projected start says so: the one who starts a run ends it
+  (`closable?/1`). Until its start is projected, a run does not say who opened it, and may
+  still be closed.
 
   `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`
   when the run is not one of the scope's workspace, `{:error, :opened_by_gateway}` when a
