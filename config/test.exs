@@ -79,6 +79,10 @@ config :apiary, Apiary.Runs.Projector, async: false
 config :apiary, Apiary.Runs.Liveness, enabled: false
 config :apiary, Apiary.Retention.Scheduler, enabled: false
 
+# The key check at boot would record the test keys outside any test's sandbox; the tests
+# of Apiary.KeyCheck call it themselves.
+config :apiary, Apiary.KeyCheck, enabled: false
+
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual

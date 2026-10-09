@@ -11,8 +11,9 @@ defmodule Apiary.Release do
   one the instance's first user signed up with
   (`c:Apiary.Edition.instance_organisation_id/0`, `Apiary.Access.instance_admin?/1`):
   `grant_instance_admin/2` and `revoke_instance_admin/1` make and unmake one, for a
-  scripted install, which claims a fresh instance, and for recovery when none is left. An
-  edition's own commands run the way these do (`run/1`).
+  scripted install, which claims a fresh instance, and for recovery when none is left.
+  `accept_signing_key/0` records a new signing key's fingerprint, for the boot's key
+  check (`Apiary.KeyCheck`). An edition's own commands run the way these do (`run/1`).
   """
   @app :apiary
 
@@ -366,6 +367,30 @@ defmodule Apiary.Release do
       user ->
         {:ok, user}
     end
+  end
+
+  @doc """
+  Records the fingerprint of the current signing key, the one `APIARY_SIGNING_SECRET`
+  makes, as the instance's, for a change of signing key on purpose:
+  `bin/apiary eval 'Apiary.Release.accept_signing_key()'`. The boot's key check
+  (`Apiary.KeyCheck`) then starts with the new key, and every machine has to pin it again.
+  `eval` does not start the application, so the check that refused the boot does not
+  refuse this; and a refused boot leaves no running container, so it runs in a one-off
+  container of the same release. The check of `APIARY_ENCRYPTION_SECRET` is left as it
+  is. Prints the new fingerprint, public by design, and returns `{:ok, fingerprint}`.
+  """
+  @spec accept_signing_key() :: {:ok, String.t()}
+  def accept_signing_key do
+    run(fn ->
+      fingerprint = Apiary.KeyCheck.accept_signing_key()
+
+      IO.puts(
+        "The signing key with fingerprint #{fingerprint} is now the instance's. " <>
+          "Pin it on every machine again."
+      )
+
+      {:ok, fingerprint}
+    end)
   end
 
   @doc """
