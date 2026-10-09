@@ -134,7 +134,7 @@ defmodule ApiaryWeb.RunLive.Show do
               <div class="q-run-meta-wrap">
                 <p id="run-meta" class="q-run-meta">
                   <.state_mark id="run-state" state={@run.state} word />
-                  <span :if={meta_reason(@run)} id="run-reason">{meta_reason(@run)}</span>
+                  <span :if={reason_words(@run)} id="run-reason">{reason_words(@run)}</span>
                   <.alive
                     :if={@run.state in ~w(pending running)}
                     state={@run.state}
@@ -145,8 +145,8 @@ defmodule ApiaryWeb.RunLive.Show do
                     run={@run}
                   />
                   <span :if={
-                    ended?(@run) && !Run.no_session?(@run) &&
-                      exit_value(@run) not in ["0", gettext("n/a"), reason_words(@run)]
+                    ended?(@run) && !Run.no_session?(@run) && !reason_words(@run) &&
+                      exit_value(@run) not in ["0", gettext("n/a")]
                   }>
                     {gettext("exit %{code}", code: exit_value(@run))}
                   </span>
@@ -2655,14 +2655,6 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
   defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
-
-  # Why the run ended, in words, for the meta line: nothing where the words only repeat the
-  # state ("timed out" beside Timed out).
-  @repeats %{"timeout" => "timed_out"}
-
-  defp meta_reason(%Run{reason: reason, state: state} = run) do
-    if @repeats[reason] != state, do: reason_words(run)
-  end
 
   defp exit_value(%Run{reason: "timeout"}), do: gettext("timeout")
   defp exit_value(%Run{reason: "gateway_lost"}), do: gettext("gateway lost")

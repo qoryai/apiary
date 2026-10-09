@@ -87,7 +87,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     view = open(conn, scope)
     row = "#target-#{quiet.id}"
 
-    assert has_element?(view, "#{row} .q-sdot-ended .sr-only", "Ended")
+    assert has_element?(view, "#{row} .q-sdot-ended .sr-only", "Cancelled")
     refute has_element?(view, "#{row} .q-tgt-lw")
   end
 

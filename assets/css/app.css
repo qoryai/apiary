@@ -4118,16 +4118,27 @@
   .q-st-quiet > i {
     background-color: var(--color-warning);
   }
+  /* A row stored under a state's earlier name looks as the state that took it in:
+     succeeded as completed, timed_out and ended as cancelled. */
+  .q-st-completed > i,
   .q-st-succeeded > i {
     background-color: var(--color-success);
   }
-  .q-st-failed,
-  .q-st-timed_out {
+  .q-st-failed {
     color: var(--color-error);
   }
-  .q-st-failed > i,
-  .q-st-timed_out > i {
+  .q-st-failed > i {
     background-color: var(--color-error);
+  }
+  .q-st-cancelled,
+  .q-st-timed_out,
+  .q-st-ended {
+    color: var(--q-muted);
+  }
+  .q-st-cancelled > i,
+  .q-st-timed_out > i,
+  .q-st-ended > i {
+    background-color: var(--q-border-field);
   }
   .q-st-lost {
     color: var(--q-primary-soft-content);
@@ -5657,7 +5668,10 @@
     font-size: 0.8125rem;
     font-weight: 500;
   }
+  .q-run-meta .q-sdot-completed,
   .q-run-meta .q-sdot-succeeded,
+  .q-run-meta .q-sdot-cancelled,
+  .q-run-meta .q-sdot-timed_out,
   .q-run-meta .q-sdot-ended,
   .q-run-meta .q-sdot-pending {
     color: var(--color-base-content);
@@ -9185,6 +9199,7 @@
     border-radius: 9999px;
     background-color: var(--q-border-field);
   }
+  .q-rs-completed .q-rs-dot,
   .q-rs-succeeded .q-rs-dot {
     background-color: var(--color-success);
   }
@@ -9202,12 +9217,10 @@
     background-color: var(--color-warning);
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-warning) 25%, transparent);
   }
-  .q-rs-failed,
-  .q-rs-timed_out {
+  .q-rs-failed {
     color: var(--color-error);
   }
-  .q-rs-failed .q-rs-dot,
-  .q-rs-timed_out .q-rs-dot {
+  .q-rs-failed .q-rs-dot {
     background-color: var(--color-error);
   }
   .q-rs-lost {
@@ -9510,6 +9523,7 @@
     border-radius: 9999px;
     background-color: var(--q-border-field);
   }
+  .q-sdot-completed > i,
   .q-sdot-succeeded > i {
     background-color: var(--color-success);
   }
@@ -9531,12 +9545,10 @@
     background: none;
     box-shadow: inset 0 0 0 1.5px var(--q-border-field);
   }
-  .q-sdot-failed,
-  .q-sdot-timed_out {
+  .q-sdot-failed {
     color: var(--color-error);
   }
-  .q-sdot-failed > i,
-  .q-sdot-timed_out > i {
+  .q-sdot-failed > i {
     background-color: var(--color-error);
   }
   .q-sdot-lost {

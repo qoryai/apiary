@@ -221,11 +221,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), exit: %{"state" => "succeeded", "exit_code" => 0})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(run)} .q-st-succeeded .q-st-w.sr-only", "Succeeded")
+      assert has_element?(view, "#{row(run)} .q-st-succeeded .q-st-w.sr-only", "Completed")
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run a gateway opened that ended quiet: Ended, grey, no session for its runtime, counted with the runs that ended well",
+    test "a run a gateway opened that ended quiet: Cancelled, grey, no session for its runtime, counted with the runs that ended well",
          %{conn: conn, scope: scope} do
       ended =
         started_run(
@@ -240,7 +240,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, scope)
       cells = text(view, row(ended))
 
-      assert has_element?(view, "#{row(ended)} .q-st-ended .q-st-w:not(.sr-only)", "Ended")
+      assert has_element?(view, "#{row(ended)} .q-st-ended .q-st-w:not(.sr-only)", "Cancelled")
       refute has_element?(view, "#{row(ended)} .q-st-ended [data-tip]")
       assert has_element?(view, "#{row(ended)} td.q-rl-c4.q-rl-faint", "no session")
       assert has_element?(view, "#{row(ended)} td.q-rl-host", "n/a")
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
 
       assert text(view, "#filter-state-form") =~
-               "Ended well Succeeded Ended 1 Ended badly Failed 1"
+               "Ended well Completed Cancelled 1 Ended badly Failed 1"
 
       view = open(conn, runs(scope, "?state=ended"))
       assert has_element?(view, row(ended))
@@ -684,7 +684,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Pending Running 1 Ended well Succeeded Ended Ended badly Failed 1 Timed out Lost"
+               "Alive Pending Running 1 Ended well Completed Cancelled Ended badly Failed 1 Cancelled Lost"
 
       refute has_element?(view, "#{form} input[name='state[]'][value=closed]")
 
@@ -1656,7 +1656,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       {:ok, _} = Projector.project(run)
 
-      assert text(view, row(run)) =~ "Succeeded"
+      assert text(view, row(run)) =~ "Completed"
       assert text(view, row(run)) =~ "30 s"
       render_async(view)
       assert text(view, "#runs-view-alive") == "Alive 0"
