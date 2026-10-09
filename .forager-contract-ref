@@ -1,4 +1,4 @@
 # The commit of qoryai/forager whose contracts/forager/v1 the :contract tests replay, in CI and
 # in development (Apiary.ContractFixtures.contract_dir/0): a commit on Forager's next
-# branch, pinned by its id, the contract that names Forager, its version and the gateway.
-a08473db179715e41740d4b8b19bf5aa1904bb87
+# branch, pinned by its id: the contract in which a gateway may open a run with no session.
+505a86db16b8aca337286708a34a4062d09abf61

@@ -175,6 +175,21 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.denied_count == 0
     end
 
+    test "no-session is a run a gateway opened, with no session, that ended quiet", %{
+      access_key: access_key
+    } do
+      assert {:ok, run} = Demo.replay(access_key, file("no-session"))
+
+      assert {run.state, run.opened_by, run.reason, run.quiet_seconds} ==
+               {"ended", "gateway", "quiet", 600}
+
+      assert {run.runtime, run.command, run.host, run.exit_code} == {nil, nil, nil, nil}
+      assert run.duration_ms == 635_000
+      assert run.labels["run_key"] == "rk-0001"
+      assert {run.target_system, run.target_path} == {"github.com", "example-org/example-repo"}
+      assert run.denied_count == 1
+    end
+
     test "ping-only is a run the workspace knows by its subject and nothing else", %{
       access_key: access_key
     } do

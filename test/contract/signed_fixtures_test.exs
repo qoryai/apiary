@@ -19,7 +19,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{ContractSchema, Repo, SigningKey}
-  alias Apiary.Runs.{Event, Run}
+  alias Apiary.Runs.{Event, Projector, Run}
 
   @moduletag :contract
 
@@ -173,6 +173,38 @@ defmodule Apiary.Contract.SignedFixturesTest do
       assert conn.status == 202, Path.basename(file)
       assert signed_answer?(conn), Path.basename(file)
     end
+  end
+
+  test "the batches of a run a gateway opened: no session, and it ends quiet, or failed when the gateway was lost" do
+    %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+
+    project = fn files ->
+      Repo.delete_all(Run)
+
+      for file <- files do
+        conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> file))
+        assert conn.status == 202, file
+      end
+
+      {:ok, run} = Projector.project(Repo.one!(Run))
+      run
+    end
+
+    run = project.(["gateway-first.json", "gateway-quiet.json"])
+
+    assert run.opened_by == "gateway"
+    assert Run.no_session?(run)
+    assert {run.runtime, run.command, run.host} == {nil, nil, nil}
+    assert run.labels["run_key"] == "rk-0001"
+    assert {run.state, run.reason, run.quiet_seconds} == {"ended", "quiet", 1800}
+    assert {run.exit_code, run.duration_ms} == {nil, 1_804_900}
+
+    run = project.(["gateway-first.json", "gateway-lost.json"])
+
+    assert run.opened_by == "gateway"
+
+    assert {run.state, run.reason, run.quiet_seconds, run.exit_code} ==
+             {"failed", "gateway_lost", nil, nil}
   end
 
   test "fixtures/invalid/batch-*.json are refused, signed, as invalid_request" do

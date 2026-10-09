@@ -141,6 +141,7 @@ defmodule Apiary.ContractFixtures do
          "interval_seconds" => 30
        }),
        wire_event(subject, 2, "run.started", %{
+         "opened_by" => "session",
          "runtime" => "claude",
          "runtime_version" => "2.1.0",
          "command" => "claude",

@@ -235,6 +235,9 @@ ledger, and leaves the check `browser`, or `code` with its enrolment code.
 `about_subjects` and `about_details`, NULL for every existing row, `about_subjects` `[]`.
 `20261009090000_drop_the_task_of_a_run` drops `runs.task`; rolled back, it restores the
 column from each run's `task` label.
+`20261009160000_say_what_opened_a_run` adds `runs.opened_by` (`session` or `gateway`, with
+its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs.state` be
+`ended`; rolled back, a run that ended is failed.
 
 ### Upgrading
 

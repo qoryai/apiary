@@ -447,6 +447,19 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   lists the short id, and the Overview its command line, else its short id. Nothing of
   `about` is part of the run configuration request, which carries the labels alone, so it
   never decides a run's policy.
+- What opened a run is `opened_by` of `dev.qory.run.started`: `session`, a Forager session
+  around a runtime, or `gateway`, a gateway with no session, whose start carries no runtime,
+  command, arguments, directory, terminal, host, wall or image (`Apiary.Runs.Fold`). A value
+  the contract does not name is read as absent. Its `forager_version` is the gateway's.
+- A run's end is read from its `dev.qory.run.exited`. With a `state`, a session's exit,
+  `succeeded` is succeeded, and `failed` is timed out with the reason `timeout` and failed
+  otherwise, whatever the reason. Without one, as a run a gateway opened ends, the reason
+  decides: `quiet`, `credential_expired` and `run_ended_at_issuer` are ended, a state of its
+  own that counts with the runs that ended well; `timeout` is timed out; `run_closed` is
+  closed; `gateway_lost`, `session_lost`, another reason or none are failed. `exit_code` is
+  read when present. A quiet exit's `quiet_seconds` is kept with the run. A run a gateway
+  opened is held to its heartbeats like any other: three intervals without one and it is
+  lost, which for such a run means the gateway stopped sending for it.
 - When the run configuration cannot be read the endpoint answers `503
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.
