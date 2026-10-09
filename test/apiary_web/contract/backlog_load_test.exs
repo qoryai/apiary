@@ -130,8 +130,8 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
 
     runs = for i <- 1..@runs, do: open_before_the_outage(ctx, i, outage)
 
-    # A check 120 s into the outage, three intervals after each run's last heartbeat,
-    # finds every run lost.
+    # A check 120 s into the outage, four intervals after each run's last heartbeat at its
+    # start (a run is lost after three), finds every run lost.
     lost = Liveness.check(lost_at) |> Enum.map(& &1.id) |> MapSet.new()
     assert MapSet.subset?(MapSet.new(runs, & &1.run.id), lost)
 
@@ -527,16 +527,17 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   # under one delivery id, the second 1 s after the first ends and the third 2 s after the
   # second, again only after no answer, a 5xx or a signed 429 `rate_limited`, without
   # reading Retry-After, and none started more than 6 s after the run request. A ping still
-  # refused is no run. The configuration is asked right after the ping's first try,
-  # whatever its answer, so that it too is asked while the bucket is empty.
+  # refused is no run. Unlike Forager, which asks for the configuration only once the ping
+  # is accepted, with tries of its own, the test asks for it once, right after the ping's
+  # first try and whatever its answer, so that it too is asked while the bucket is empty.
   defp probe(%{stats: stats} = flush, after_batches) do
     if :counters.get(stats.counters, index(:accepted)) < after_batches do
       Process.sleep(10)
       probe(flush, after_batches)
     else
-      refused_before = :counters.get(stats.counters, index(:rate_limited))
       forget_refusals()
       after_429 = receive(do: (:refused -> true), after: (30_000 -> false))
+      refused_before = :counters.get(stats.counters, index(:rate_limited))
       requested = System.monotonic_time(:millisecond)
 
       {subject, [ping, _started]} = first_events()
