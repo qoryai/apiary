@@ -16,7 +16,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   days and in working hours, with a nightly batch at two. A few repositories take most of
   the runs and most take a handful; some are new this month and some went quiet months
   ago; one run in thirty names no repository. `--seed` (1) makes the plan repeatable: the
-  same seed gives the same runs, under new ids every time.
+  same seed gives the same runs, under new ids every time, on the same day. `--until`, a
+  UTC time in ISO 8601, ends the history then instead of now: with it, the same seed gives
+  the same runs on any day, and a run still running at a time long past is found lost at
+  once.
 
   Each run is a record Forager could have sent: its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
@@ -64,6 +67,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     repositories: :integer,
     days: :integer,
     seed: :integer,
+    until: :string,
     concurrency: :integer,
     skip_members: :boolean
   ]
@@ -285,7 +289,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     concurrency = Keyword.get(opts, :concurrency, 6)
 
     :rand.seed(:exsss, {seed, 1_234, 5_678})
-    now = DateTime.utc_now()
+    now = until!(opts[:until])
     scope = owner_scope!(opts[:workspace])
     %Scope{organisation: organisation, workspace: workspace} = scope
 
@@ -312,6 +316,15 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     #{ApiaryWeb.Endpoint.url()}/#{organisation.slug}/#{workspace.slug}/runs\
     """)
+  end
+
+  defp until!(nil), do: DateTime.utc_now()
+
+  defp until!(until) do
+    case DateTime.from_iso8601(until) do
+      {:ok, time, 0} -> time
+      _ -> Mix.raise("--until takes a UTC time in ISO 8601, such as 2026-06-01T12:00:00Z")
+    end
   end
 
   ## The workspace and its owner

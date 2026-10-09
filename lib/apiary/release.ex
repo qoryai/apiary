@@ -202,6 +202,9 @@ defmodule Apiary.Release do
   The organisation's name is required then, `{:error, :organisation_name_required}`
   without it. Should a sign-up on the web have come first, the command does what it does
   on any instance that has its organisation.
+
+  The claim is `Apiary.FirstAdmin.claim/3`, which the boot runs at the first start when
+  `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` are set.
   """
   def grant_instance_admin(email, organisation_name \\ nil) when is_binary(email) do
     run(fn -> grant_instance_admin_now(String.trim(email), organisation_name) end)
@@ -223,30 +226,14 @@ defmodule Apiary.Release do
   end
 
   defp claim_instance(email, name) do
-    case Apiary.Organisations.sign_up_user(%{email: email, organisation_name: name}, nil,
-           first_only: true,
-           actor: :instance,
-           origin: %{worker: "Apiary.Release.grant_instance_admin/2"}
-         ) do
-      {:ok, %{user: user}} ->
-        case send_log_in_link(user) do
-          :ok ->
-            IO.puts(
-              "The account #{user.id} is the instance's first admin; " <>
-                "its log-in link is on its way."
-            )
+    case Apiary.FirstAdmin.claim(email, name, %{worker: "Apiary.Release.grant_instance_admin/2"}) do
+      {:ok, user, :sent} ->
+        IO.puts(Apiary.FirstAdmin.message(user, :sent))
+        {:ok, :created}
 
-            {:ok, :created}
-
-          :error ->
-            IO.puts(
-              "The account #{user.id} is the instance's first admin, but its log-in link " <>
-                "could not be sent. Check the mail settings, then ask for a link at " <>
-                "#{public_url()}/users/log-in."
-            )
-
-            {:ok, :created_without_mail}
-        end
+      {:ok, user, :not_sent} ->
+        IO.puts(Apiary.FirstAdmin.message(user, :not_sent))
+        {:ok, :created_without_mail}
 
       # Someone signed up on the web a moment before: the instance has its admin.
       {:error, :instance_claimed} ->
@@ -256,20 +243,6 @@ defmodule Apiary.Release do
         IO.puts("Not created: #{changeset_errors(changeset)}.")
         {:error, :invalid}
     end
-  end
-
-  # The log-in link, sent as the sign-up page sends it. A failure says nothing of why: the
-  # relay's reason may quote the message, which holds the address and the link.
-  defp send_log_in_link(user) do
-    case Apiary.Accounts.deliver_login_instructions(
-           user,
-           &"#{public_url()}/users/log-in/#{&1}"
-         ) do
-      {:ok, _email} -> :ok
-      _error -> :error
-    end
-  rescue
-    _exception -> :error
   end
 
   defp grant_existing(email) do
@@ -293,31 +266,14 @@ defmodule Apiary.Release do
   end
 
   # A changeset's errors by field, with the messages and no value: the address stays off
-  # the terminal's scrollback.
+  # the terminal's scrollback. Each message is filled in by
+  # `Apiary.FirstAdmin.error_messages/1`, which never turns an option such as a list of
+  # fields into text.
   defp changeset_errors(changeset) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
+    |> Apiary.FirstAdmin.error_messages()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Enum.map_join("; ", fn {field, messages} -> "#{field} #{Enum.join(messages, ", ")}" end)
-  end
-
-  # The instance's address for a link in mail: the endpoint's, when it runs, else the one
-  # its configuration gives, as `bin/apiary eval` starts no endpoint.
-  defp public_url do
-    if :persistent_term.get({Phoenix.Endpoint, ApiaryWeb.Endpoint}, nil) do
-      ApiaryWeb.Endpoint.url()
-    else
-      url = Application.get_env(@app, ApiaryWeb.Endpoint, [])[:url] || []
-
-      URI.to_string(%URI{
-        scheme: url[:scheme] || "https",
-        host: url[:host] || "localhost",
-        port: url[:port]
-      })
-    end
   end
 
   @doc """
@@ -374,20 +330,19 @@ defmodule Apiary.Release do
   makes, as the instance's, for a change of signing key on purpose:
   `bin/apiary eval 'Apiary.Release.accept_signing_key()'`. The boot's key check
   (`Apiary.KeyCheck`) then starts with the new key, and every machine has to pin it again.
-  `eval` does not start the application, so the check that refused the boot does not
-  refuse this; and a refused boot leaves no running container, so it runs in a one-off
-  container of the same release. The check of `APIARY_ENCRYPTION_SECRET` is left as it
-  is. Prints the new fingerprint, public by design, and returns `{:ok, fingerprint}`.
+  The way the docs give is `APIARY_ACCEPT_SIGNING_FINGERPRINT`, which the key check reads
+  at boot; this command stays for support. `eval` does not start the application, so the
+  check that refused the boot does not refuse this; and a refused boot leaves no running
+  container, so it runs in a one-off container of the same release. The check of
+  `APIARY_ENCRYPTION_SECRET` is left as it is. Prints the new fingerprint, public by
+  design, and returns `{:ok, fingerprint}`.
   """
   @spec accept_signing_key() :: {:ok, String.t()}
   def accept_signing_key do
     run(fn ->
       fingerprint = Apiary.KeyCheck.accept_signing_key()
 
-      IO.puts(
-        "The signing key with fingerprint #{fingerprint} is now the instance's. " <>
-          "Pin it on every machine again."
-      )
+      IO.puts(Apiary.KeyCheck.accepted_message(fingerprint))
 
       {:ok, fingerprint}
     end)

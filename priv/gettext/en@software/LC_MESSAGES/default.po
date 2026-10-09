@@ -3835,6 +3835,7 @@ msgstr ""
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copied"
@@ -4462,12 +4463,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Deny rules and locks are already applied: the text lists what remains allowed."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "Deny rules and locks are not in the document: they decide what it lists."
+msgid "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex

@@ -4,7 +4,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
   (`ApiaryWeb.TargetLive.Show`, `…/-/policy`): the effective list, one row per host in
   force with where it came from, the rules that lost hung under the rule that beat them;
   the hosts the harness declared; the target's own history (`…/-/policy/history`),
-  versions (`…/-/policy/versions/:n`, with `/export`) and document.
+  versions (`…/-/policy/versions/:n`, with `/export`) and the document in force
+  (`…/-/policy/document`: its own version, or the workspace's while it is served the
+  workspace's, shown in place under the mode card and read again after a change).
 
   Not a page of its own: the target's page mounts it with the target it found in its own
   workspace (`mount/2`), puts the tab's action in `:action` (`:rules`, `:history`,
@@ -38,6 +40,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       |> assign(reload: &load/1, list_query: %RuleList{}, ruled_host: nil, allowed: %{})
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(composer_open: false, summary: nil, would: nil, params: %{}, shown: nil)
+      |> assign(:version_base, nil)
 
     if connected?(socket),
       do: socket |> load() |> assign(loaded: true, network: network_path(socket, target)),
@@ -110,6 +113,32 @@ defmodule ApiaryWeb.PolicyLive.Target do
       )
     end)
     |> load_record()
+    |> follow_document()
+  end
+
+  # The Document view shows the version in force: after a change, read again with the tab,
+  # it shows the new one in place, the target's first own version too.
+  defp follow_document(%{assigns: %{loaded: true, action: :document}} = socket),
+    do: document(socket)
+
+  defp follow_document(socket), do: socket
+
+  # A target served the workspace's policy shows the workspace's version, its links the
+  # workspace's.
+  defp document(socket) do
+    %{version: version, baseline?: baseline?, current_scope: scope} = socket.assigns
+    holder = if baseline?, do: nil, else: socket.assigns.holder
+
+    with %{version: n} <- version,
+         {:ok, v} <- Common.version(socket, n, socket.assigns.params, holder: holder) do
+      assign(socket,
+        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
+        version_base: if(baseline?, do: Common.base(scope, nil), else: socket.assigns.base),
+        page_title: gettext("Version %{version} · %{title}", version: n, title: title(socket))
+      )
+    else
+      _ -> socket
+    end
   end
 
   # Who set the target's own mode, and when: the newest change of its mode on the first
@@ -206,22 +235,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
     assign(socket, history: history, open_change: open, diff: diff, summary: summary(socket))
   end
 
+  # The document in force, under the card and the views; with none yet, the tab.
   defp apply_action(socket, :document, _params) do
-    scope = socket.assigns.current_scope
-
-    to =
-      case socket.assigns do
-        %{version: %{version: n}, baseline?: false} ->
-          "#{socket.assigns.base}/versions/#{n}"
-
-        %{version: %{version: n}} ->
-          ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}"
-
-        _ ->
-          socket.assigns.base
-      end
-
-    push_navigate(socket, to: to, replace: true)
+    case socket.assigns.version do
+      %{version: _} -> socket |> assign(:v, nil) |> document()
+      _ -> push_navigate(socket, to: socket.assigns.base, replace: true)
+    end
   end
 
   defp apply_action(socket, action, %{"n" => n} = params) when action in [:version, :export] do
@@ -774,7 +793,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
               />
             </small>
           </span>
+          <%!-- On the Document view the document's own bar is the one place: Copy, Download. --%>
           <.button
+            :if={@action != :document}
             id="policy-export-button"
             navigate={
               if @baseline?,
@@ -807,10 +828,24 @@ defmodule ApiaryWeb.PolicyLive.Target do
         now={@now}
       />
       <.version_view :if={@action == :version && @v} v={@v} base={@base} now={@now} />
+      <Show.version_head
+        :if={@action == :document && @v}
+        v={@v}
+        base={@version_base}
+        heading="h2"
+        away={@baseline?}
+        export={false}
+      />
+      <.version_view
+        :if={@action == :document && @v}
+        v={@v}
+        base={@version_base}
+        now={@now}
+      />
       <.export_page
         :if={@action == :export && @v && @export}
         export={@export}
-        done={"#{@base}/versions/#{@v.configuration.version}"}
+        done={"#{@base}/document"}
         heading="h2"
       />
       <.empty_state
@@ -1045,7 +1080,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <.link
         :if={@document}
         patch={"#{@base}/document"}
-        aria-current={@action in [:version, :export] && "page"}
+        aria-current={@action in [:document, :version, :export] && "page"}
       >
         {gettext("Document")}
       </.link>

@@ -245,9 +245,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "Open acme/shop's v1"
              )
 
-      # the details tab names both
+      # Details names both
       {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
       assert text(view, "#policy-in-force") =~ "v1 · of acme/shop"
@@ -445,7 +445,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "the same hosts are allowed; denies 2 hosts more and 1 host fewer."
 
       {:ok, _view, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       details = html |> String.replace(~r/<[^>]+>/, " ") |> String.replace(~r/\s+/, " ")
       assert details =~ "Allowed hosts api.example"

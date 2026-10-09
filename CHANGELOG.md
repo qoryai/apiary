@@ -9,7 +9,7 @@ restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
-The first release of the open core of Qory Apiary: the free edition, complete for one
+The first release of the open core of Qory Apiary: Apiary Community, complete for one
 team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Added
@@ -19,6 +19,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
   `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
   instance and change its admins.
+- `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, both optional and empty in
+  `.env.example`, claim a new instance at its first start, before it serves a page: the
+  instance's first sign-up, as `grant_instance_admin/2` makes it, which emails the log-in
+  link, and claims the instance even when the email does not go out. On an instance that
+  has its organisation, a restored one included, the boot ignores them: it checks neither,
+  creates and grants nothing, and sends no email. One set and the other empty, or a value
+  the sign-up refuses, stops the boot of an instance nobody has signed up to with a
+  message naming the variable.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces
@@ -268,8 +276,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `APIARY_ENCRYPTION_SECRET`, which tells nothing of it, and its signing key's
   fingerprint, and a later boot with another of either stops with a message that says
   which, where it served before with no access key verifying or every machine refusing its
-  answers. `Apiary.Release.accept_signing_key/0`, run in a one-off container, makes a new
-  signing key the instance's on purpose.
+  answers. `APIARY_ACCEPT_SIGNING_FINGERPRINT`, set to the fingerprint the refusal names,
+  makes a new signing key the instance's on purpose at the next boot; any other value
+  changes nothing, and it never accepts another `APIARY_ENCRYPTION_SECRET`.
+  `Apiary.Release.accept_signing_key/0` does the same in a one-off container.
 - The image, `ghcr.io/qoryai/apiary`, from the `Dockerfile`: CI builds it on every pull
   request and push, for `linux/amd64` and `linux/arm64`, and publishes nothing; only a
   release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the
@@ -277,7 +287,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `GET /health` reports it as `revision`, `null` in an image built without one, beside
   `version`, which its `503` has too. It writes no `erl_crash.dump`
   (`ERL_CRASH_DUMP_BYTES=0`), so a boot that stops leaves no copy of the release's memory,
-  secrets included, on the container's disk.
+  secrets included, on the container's disk. Its base is Debian from
+  `public.ecr.aws/docker/library`, Amazon's public copy of Docker's official images, from
+  which CI also pulls the Postgres, nginx and Docker images it runs; the jobs that still pull
+  from Docker Hub log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
   in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
   `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.

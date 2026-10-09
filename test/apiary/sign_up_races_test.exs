@@ -12,7 +12,7 @@ defmodule Apiary.SignUpRacesTest do
 
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.User
-  alias Apiary.Organisations.{Invitation, Organisation}
+  alias Apiary.Organisations.{Invitation, Membership, Organisation}
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
@@ -118,6 +118,59 @@ defmodule Apiary.SignUpRacesTest do
         other ->
           flunk("both or neither were first: #{inspect(other)}")
       end
+
+      Repo.delete_all(from o in Organisation, where: o.id == ^first.id)
+      Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
+    end
+  end
+
+  test "of two boots at once with FIRST_ADMIN_EMAIL, one claims and the other moves on", ctx do
+    on_exit(fn ->
+      Application.delete_env(:apiary, :first_admin_email_setting)
+      Application.delete_env(:apiary, :first_organisation_name_setting)
+    end)
+
+    for round <- 1..4 do
+      Apiary.EditionKit.hide_instance_organisation()
+
+      email = "first-#{round}-#{System.unique_integer([:positive])}@example.com"
+      Application.put_env(:apiary, :first_admin_email_setting, email)
+      Application.put_env(:apiary, :first_organisation_name_setting, "Claimed at boot")
+
+      results =
+        1..2
+        |> Enum.map(fn _ ->
+          Task.async(fn ->
+            :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+
+            ExUnit.CaptureLog.with_log(fn ->
+              try do
+                Apiary.FirstAdmin.start_link()
+              catch
+                :exit, reason -> {:exit, reason}
+              end
+            end)
+          end)
+        end)
+        |> Task.await_many(10_000)
+
+      claimed = Apiary.Accounts.get_user_by_email(email)
+      if claimed, do: created_user(claimed)
+      first = Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+      created_organisation(first)
+
+      # Both boots go on, and neither says anything went wrong.
+      assert [{:ignore, _}, {:ignore, _}] = results
+      for {_result, log} <- results, do: refute(log =~ "[error]")
+
+      assert first.name == "Claimed at boot"
+      assert %{level: :owner} = Repo.get_by(Membership, organisation_id: first.id)
+      assert Repo.get_by(Membership, organisation_id: first.id).user_id == claimed.id
+
+      assert Repo.aggregate(
+               from(o in Organisation, where: o.name == "Claimed at boot"),
+               :count
+             ) == 1
 
       Repo.delete_all(from o in Organisation, where: o.id == ^first.id)
       Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
