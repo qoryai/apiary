@@ -42,6 +42,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   offers no Close, on its page or as a lost run on the Overview, and the server refuses to
   close it once its start is projected. A run through a separate gateway belongs to the
   gateway's node and instance, and its Host is the agent's machine.
+- A session's run whose credential came from an issuer, as for a run through a separate
+  gateway, offers no Close either, on its page or as a lost run on the Overview, and the
+  server refuses to close it once its start says so: it ends by its runtime's exit or at
+  the gateway. A run `qory run` starts on one machine has no run credential and keeps
+  Close, as does a run whose start is not yet projected.
 - How a run ended, in words, under State in the run's rail, and after its state on the
   run page where they say more than the state: timed out, closed, gateway lost, session
   lost, quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
@@ -270,6 +275,9 @@ renames them back.
 `20261009160000_say_what_opened_a_run` adds `runs.opened_by` (`session` or `gateway`, with
 its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs.state` be
 `ended`; rolled back, a run that ended is failed.
+`20261009180000_say_where_a_run_credential_came_from` adds `runs.credential_from`
+(`issuer` or `none`, with its check), NULL for every existing row; rolled back, it drops
+the column.
 
 ### Upgrading
 

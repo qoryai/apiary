@@ -60,6 +60,23 @@ defmodule Apiary.Runs.SchemaTest do
     end
   end
 
+  test "the database takes where a run's credential came from, issuer or none, and nothing else" do
+    %{scope: scope} = sign_up_fixture()
+
+    for source <- ["issuer", "none", nil] do
+      run = run_fixture(scope, %{credential_from: source})
+      assert %Run{credential_from: ^source} = Repo.get!(Run, run.id)
+    end
+
+    run = run_fixture(scope)
+
+    assert_raise Postgrex.Error, ~r/runs_credential_from_check/, fn ->
+      Repo.query!("UPDATE runs SET credential_from = 'robot' WHERE id = $1", [
+        Ecto.UUID.dump!(run.id)
+      ])
+    end
+  end
+
   test "the subject is unique within a workspace, and free in another" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()

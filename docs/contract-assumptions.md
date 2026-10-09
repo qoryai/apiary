@@ -354,6 +354,18 @@ The run keeps `opened_by`, and a run a gateway opened is shown as a run with no 
 no runtime, no host, no command and no exit code, since the record holds none
 ([ui.md](ui.md), The run page).
 
+`dev.qory.run.started` also says where the run's credential came from, in `credential`,
+which the contract requires and the gateway decides:
+
+- `issuer`: an issuer gave the run its run credential, for a session's run through a
+  separate gateway and for every run a gateway opened.
+- `none`: the run has no run credential, for a run on a gateway's local link, as `qory run`
+  starts one on one machine.
+
+The run keeps it as `credential_from`, a name apart from the `credential` of
+`dev.qory.run.egress`, the name of the credential the proxy set on a request. No page
+shows it; it decides whether the workspace may close the run (How a run ends).
+
 A run through a separate gateway belongs to the gateway's node, instance and key, since
 the gateway is the node toward the server: it sends the ping and delivers every event of
 the run under its own access key. The machines behind it hold no access key. For a
@@ -363,7 +375,9 @@ the run's Node is the gateway's and its Host the agent's machine.
 ## How a run ends
 
 `dev.qory.run.exited` carries `reason` when the run ended other than by the runtime's own
-exit, one of seven:
+exit. The contract names eight; Qory Apiary receives seven of them. The eighth,
+`batch_refused`, and the codes of a gateway's `410` in `dev.qory.run.refused` stay in the
+session's own record, which never reaches Qory Apiary:
 
 | `reason` | What Qory saw | Words | State without `state` |
 |---|---|---|---|
@@ -380,18 +394,24 @@ the quiet period the gateway applied, which the words say as a duration reads: 1
 seconds is "quiet for 30 minutes". The words stand under State in the run page's Details
 rail, and follow the state in its meta line where they say more than the state.
 
-`state` and `exit_code` are optional. A session's run carries both, `failed` and `-1`
-with `gateway_lost` and `session_lost`; a run a gateway opened carries neither, whatever
-its reason. When `state` is there it decides as it always has: `succeeded` is Succeeded,
-`failed` with `timeout` is Timed out, and any other `failed` is Failed. When it is not,
-the reason decides, by the last column above; the contract fixes no state per reason and
-leaves each receiver its own. Ended is a state of its own: the run ended, and nothing
-checked an outcome. It counts with the runs that ended well, never with those that ended
-badly. A run the workspace closed stays Closed whatever its `dev.qory.run.exited` says.
-The one who starts a run ends it: the workspace closes a run a session opened, never one
-whose projected `dev.qory.run.started` says a gateway opened, which ends by its own
-`dev.qory.run.exited` (`Apiary.Runs.close_run/2` refuses it, `{:error, :opened_by_gateway}`).
-Until that start is projected, a run does not say who opened it, and a close is taken.
+`state` and `exit_code` are optional. A session's run carries both, and a run a gateway
+opened carries neither, whatever its reason. The schema (`run.exited.schema.json`) fixes
+`failed` and `-1` with `gateway_lost` alone; the gateway writes them too for a session's
+run it ends with `session_lost`, `credential_expired` or `run_ended_at_issuer`. When
+`state` is there it decides as it always has: `succeeded` is Succeeded, `failed` with
+`timeout` is Timed out, and any other `failed` is Failed. When it is not, the reason
+decides, by the last column above; the contract fixes no state per reason and leaves each
+receiver its own. Ended is a state of its own: the run ended, and nothing checked an
+outcome. It counts with the runs that ended well, never with those that ended badly. A run
+the workspace closed stays Closed whatever its `dev.qory.run.exited` says. The one who
+starts a run ends it: the workspace closes a run a session opened, never one whose
+projected `dev.qory.run.started` says a gateway opened it or says `credential` `issuer`. A
+run a gateway opened ends by its own `dev.qory.run.exited`; a session's run whose
+credential came from an issuer ends by its runtime's exit or at the gateway
+(`Apiary.Runs.close_run/2` refuses both, `{:error, :ended_by_its_starter}`). A session's
+run with `credential` `none`, as `qory run` starts one on one machine, may be closed.
+Until its start is projected, a run says neither who opened it nor where its credential
+came from, and a close is taken.
 
 ## Liveness
 
@@ -525,6 +545,8 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   never decides a run's policy.
 - An `opened_by` the contract does not name is read as absent, and the run is shown as one
   with a session (`Apiary.Runs.Fold`, `Apiary.Runs.Run.no_session?/1`).
+- A `credential` the contract does not name is read as absent, and the run may be closed
+  as one whose start says none (`Apiary.Runs.Fold`, `Apiary.Runs.closable?/1`).
 - Without a `state`, the reason decides the run's state, as How a run ends sets out: the
   contract fixes none. A reason it does not name, or none, is failed
   (`Apiary.Runs.Fold.exit_state/2`).

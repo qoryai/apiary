@@ -1923,9 +1923,9 @@ defmodule ApiaryWeb.RunLive.Show do
           |> refresh_run()
           |> put_flash(:error, gettext("This run has ended; its record keeps the end it posted."))
 
-        # The page offers no Close for a run a gateway opened: an event that asks for one
-        # anyway changes nothing.
-        {:error, :opened_by_gateway} ->
+        # The page offers no Close for a run a gateway opened or one whose credential came
+        # from an issuer: an event that asks for one anyway changes nothing.
+        {:error, :ended_by_its_starter} ->
           socket
 
         {:error, :forbidden} ->

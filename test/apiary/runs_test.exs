@@ -119,7 +119,7 @@ defmodule Apiary.RunsTest do
         run = run_fixture(scope, %{state: state, opened_by: "gateway"})
         refute Runs.closable?(run)
 
-        assert {:error, :opened_by_gateway} = Runs.close_run(scope, run)
+        assert {:error, :ended_by_its_starter} = Runs.close_run(scope, run)
 
         after_close = Repo.get!(Run, run.id)
         assert after_close.state == state
@@ -131,9 +131,57 @@ defmodule Apiary.RunsTest do
       refute_receive {:run_changed, _}
     end
 
-    test "a run a session opened closes, from every state without an end", %{scope: scope} do
-      for opened_by <- ["session", nil], state <- Runs.closable_states() do
-        run = run_fixture(scope, %{state: state, opened_by: opened_by})
+    test "a run whose credential came from an issuer is refused: the one who starts a run ends it",
+         %{scope: scope} do
+      Runs.subscribe(scope)
+
+      for state <- Runs.closable_states() do
+        run =
+          run_fixture(scope, %{state: state, opened_by: "session", credential_from: "issuer"})
+
+        refute Runs.closable?(run)
+
+        assert {:error, :ended_by_its_starter} = Runs.close_run(scope, run)
+
+        after_close = Repo.get!(Run, run.id)
+        assert after_close.state == state
+        assert after_close.closed_at == nil
+        assert after_close.closed_by_id == nil
+        refute Runs.closed?(scope.workspace.id, run.run_id)
+      end
+
+      refute_receive {:run_changed, _}
+    end
+
+    test "a run whose start said issuer after it was read is refused, and its row is unchanged",
+         %{scope: scope} do
+      stale = run_fixture(scope, %{state: "running", opened_by: "session"})
+      assert Runs.closable?(stale)
+
+      Repo.update!(Ecto.Changeset.change(stale, credential_from: "issuer"))
+
+      assert {:error, :ended_by_its_starter} = Runs.close_run(scope, stale)
+
+      after_close = Repo.get!(Run, stale.id)
+
+      assert {after_close.state, after_close.closed_at, after_close.closed_by_id} ==
+               {"running", nil, nil}
+
+      refute Runs.closed?(scope.workspace.id, stale.run_id)
+    end
+
+    test "a run a session opened closes, from every state without an end, unless its credential came from an issuer",
+         %{scope: scope} do
+      for opened_by <- ["session", nil],
+          credential_from <- ["none", nil],
+          state <- Runs.closable_states() do
+        run =
+          run_fixture(scope, %{
+            state: state,
+            opened_by: opened_by,
+            credential_from: credential_from
+          })
+
         assert Runs.closable?(run)
         assert {:ok, %Run{state: "closed"}} = Runs.close_run(scope, run)
       end
@@ -141,7 +189,8 @@ defmodule Apiary.RunsTest do
   end
 
   describe "closable?/1" do
-    test "a run without an end that no gateway opened", %{scope: scope} do
+    test "a run without an end that no gateway opened and whose credential came from no issuer",
+         %{scope: scope} do
       for state <- ~w(succeeded ended failed timed_out closed),
           opened_by <- ["session", "gateway"] do
         refute Runs.closable?(run_fixture(scope, %{state: state, opened_by: opened_by}))
@@ -149,6 +198,32 @@ defmodule Apiary.RunsTest do
 
       assert Runs.closable?(run_fixture(scope, %{state: "lost", opened_by: "session"}))
       refute Runs.closable?(run_fixture(scope, %{state: "lost", opened_by: "gateway"}))
+
+      for credential_from <- ["none", nil] do
+        assert Runs.closable?(
+                 run_fixture(scope, %{
+                   state: "lost",
+                   opened_by: "session",
+                   credential_from: credential_from
+                 })
+               )
+      end
+
+      refute Runs.closable?(
+               run_fixture(scope, %{
+                 state: "lost",
+                 opened_by: "session",
+                 credential_from: "issuer"
+               })
+             )
+
+      refute Runs.closable?(
+               run_fixture(scope, %{
+                 state: "lost",
+                 opened_by: "gateway",
+                 credential_from: "issuer"
+               })
+             )
     end
   end
 

@@ -1181,6 +1181,67 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
     end
 
+    test "a lost run whose credential came from an issuer offers Open, never Close, and a crafted close is refused",
+         %{conn: conn, scope: scope} do
+      lost = lost_run(scope, %{opened_by: "session", credential_from: "issuer"})
+
+      kept =
+        for source <- ["none", nil] do
+          lost_run(scope, %{
+            about_title: "weekly-sync-#{source || "unsaid"}",
+            opened_by: "session",
+            credential_from: source
+          })
+        end
+
+      view = open(conn, scope)
+
+      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+
+      assert has_element?(
+               view,
+               "a#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']" <>
+                 "[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
+               "Open"
+             )
+
+      refute has_element?(view, "button#att-run-#{lost.run_id}-act")
+
+      for run <- kept do
+        assert has_element?(
+                 view,
+                 "button#att-run-#{run.run_id}-act[aria-label='Close #{run.about_title}']",
+                 "Close"
+               )
+      end
+
+      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
+      refute has_element?(view, "#close-run")
+      render_hook(view, "close_confirm", %{})
+
+      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
+      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
+    end
+
+    test "a lost run whose start says issuer between its Close question and the answer is refused, and stays lost",
+         %{conn: conn, scope: scope} do
+      lost = lost_run(scope, %{opened_by: "session"})
+      view = open(conn, scope)
+
+      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
+      assert has_element?(view, "#close-run")
+
+      # Its start is projected meanwhile, and says its credential came from an issuer.
+      Repo.update_all(from(r in Run, where: r.id == ^lost.id), set: [credential_from: "issuer"])
+
+      render_hook(view, "close_confirm", %{})
+
+      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
+      assert view |> element("#flash-group") |> render() =~ "The run could not be closed."
+      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
+    end
+
     test "a lost run's Close question isolates its title, so a bidi override flips nothing",
          %{conn: conn, scope: scope} do
       title = "nightly\u202Erorrim"

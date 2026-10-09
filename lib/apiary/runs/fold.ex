@@ -114,6 +114,7 @@ defmodule Apiary.Runs.Fold do
 
   @terminal ~w(succeeded ended failed timed_out)
   @openers ~w(session gateway)
+  @credential_sources ~w(issuer none)
   # The reasons of an exit without a state that end a run neither well nor by a failure of
   # its own: a run a gateway opened was quiet, its run credential expired, or its issuer
   # said it ended.
@@ -170,6 +171,7 @@ defmodule Apiary.Runs.Fold do
       run
       |> Map.merge(%{
         opened_by: opened_by(data),
+        credential_from: credential_from(data),
         runtime: string(data, "runtime"),
         runtime_version: string(data, "runtime_version"),
         command: string(data, "command", @long_text),
@@ -380,6 +382,14 @@ defmodule Apiary.Runs.Fold do
   defp opened_by(data) do
     case string(data, "opened_by", 64) do
       opener when opener in @openers -> opener
+      _ -> nil
+    end
+  end
+
+  # Where the run's credential came from, one of the two the contract names, or nil.
+  defp credential_from(data) do
+    case string(data, "credential", 64) do
+      source when source in @credential_sources -> source
       _ -> nil
     end
   end
