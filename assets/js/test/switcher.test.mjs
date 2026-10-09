@@ -8,6 +8,7 @@ import assert from "node:assert/strict"
 import {
   REST,
   afterFocusLost,
+  pointerAction,
   filterOrganisations,
   filterWorkspaces,
   keyAction,
@@ -136,4 +137,11 @@ test("focus lost for nowhere: kept inside, given back from the page, else the me
   assert.equal(afterFocusLost({inside: true, onPage: false}), "keep")
   // Focus went to something else on the page.
   assert.equal(afterFocusLost({inside: false, onPage: false}), "close")
+})
+
+test("a pointer pressed in the open menu keeps it, on a chevron is the chevron's, elsewhere closes it", () => {
+  assert.equal(pointerAction({inMenu: true, onChevron: false}), "keep")
+  assert.equal(pointerAction({inMenu: false, onChevron: true}), "chevron")
+  // The breadcrumb's own segments, its separators and avatars, and the rest of the page.
+  assert.equal(pointerAction({inMenu: false, onChevron: false}), "close")
 })

@@ -15,8 +15,9 @@
 // organisation in, and an empty search folds them back as they were. ↓ from the search goes
 // to the first row, ↑ and ↓ move within a panel, Enter in the search follows the first
 // match; → and ← move between an organisation and its workspaces; Escape closes and gives
-// focus back to the chevron; focus or a pointer leaving closes, but not a tap on a button
-// that takes no focus (Safari, iOS), after which focus goes back into the menu.
+// focus back to the chevron. Focus or a pointer leaving the open menu and the chevrons
+// closes it, the breadcrumb's own segments included; a tap on a button of the menu that
+// takes no focus (Safari, iOS) does not, and focus goes back into the menu.
 //
 // On a workspace's page every link of the menus carries the page, the path after its
 // /:org/:workspace (`data-page-base`), as `?page=`, written when the menu opens and again
@@ -90,6 +91,12 @@ export const step = (action, at, count) => {
 export const afterFocusLost = ({inside, onPage}) =>
   inside ? "keep" : onPage ? "refocus" : "close"
 
+// What a pointer pressed anywhere on the page does to an open menu: nothing inside it; on a
+// chevron, what the chevron's click says (it opens the other menu, or closes this one);
+// anywhere else, the breadcrumb's own segments included, it closes.
+export const pointerAction = ({inMenu, onChevron}) =>
+  inMenu ? "keep" : onChevron ? "chevron" : "close"
+
 const shown = el => el.offsetParent !== null
 
 export const Switcher = {
@@ -118,7 +125,7 @@ export const Switcher = {
     this.el.addEventListener("focusout", e => {
       if (!this.menu) return
       if (e.relatedTarget) {
-        if (!this.el.contains(e.relatedTarget)) this.close(false)
+        if (!this.ours(e.relatedTarget)) this.close(false)
         return
       }
       clearTimeout(this.lost)
@@ -126,17 +133,24 @@ export const Switcher = {
         if (!this.menu) return
         const now = document.activeElement
         // A control hidden with focus on it holds it nowhere the reader sees.
-        const hidden = this.el.contains(now) && !shown(now)
+        const hidden = this.menu.contains(now) && !shown(now)
         const then = afterFocusLost({
-          inside: this.el.contains(now) && !hidden,
+          inside: this.ours(now) && !hidden,
           onPage: !now || now === document.body || hidden,
         })
         if (then === "refocus") this.refocus()
         else if (then === "close") this.close(false)
       }, 120)
     })
+    // Pressed before focus moves, so a press that closes the menu leaves no focus to give
+    // back (`close/1` clears the wait).
     this.outside = e => {
-      if (this.menu && !this.el.contains(e.target)) this.close(false)
+      if (!this.menu) return
+      const then = pointerAction({
+        inMenu: this.menu.contains(e.target),
+        onChevron: !!e.target.closest?.("[data-switcher-open]"),
+      })
+      if (then === "close") this.close(false)
     }
     document.addEventListener("pointerdown", this.outside)
   },
@@ -212,6 +226,11 @@ export const Switcher = {
 
   search() {
     return this.menu.querySelector("input")
+  },
+
+  // Whether `el` is the open menu's or a chevron's, where focus stays with the menu open.
+  ours(el) {
+    return !!el && (this.menu.contains(el) || !!el.closest?.("[data-switcher-open]"))
   },
 
   // The organisation menu's right panel; none in the workspace menu.
