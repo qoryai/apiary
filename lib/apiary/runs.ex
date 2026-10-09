@@ -1706,15 +1706,24 @@ defmodule Apiary.Runs do
   def closable_states, do: @closable_states
 
   @doc """
+  Whether the run may be closed: it has not ended, and no gateway opened it with no session.
+  The one who starts a run ends it, so a run a gateway opened ends by its own exit, never by
+  a close.
+  """
+  @spec closable?(Run.t()) :: boolean()
+  def closable?(%Run{} = run), do: run.state in @closable_states and not Run.no_session?(run)
+
+  @doc """
   Closes the run: the workspace takes no more events for it and the receiver answers
   `410` (`run.close`, which every member may). Only a run that has
   not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
   ended, failed or timed out keeps the end its events gave it. A close is final: no event reopens
-  the run, and closing a closed run changes nothing.
+  the run, and closing a closed run changes nothing. A run a gateway opened, with no session,
+  is never closed: the one who starts a run ends it (`closable?/1`).
 
   `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`
-  when the run is not one of the scope's workspace, `{:error, :not_closable}` when it has
-  ended.
+  when the run is not one of the scope's workspace, `{:error, :opened_by_gateway}` when a
+  gateway opened it, `{:error, :not_closable}` when it has ended.
   """
   def close_run(%Scope{user: user, workspace: workspace} = scope, %Run{id: id}) do
     Repo.transact(fn ->
@@ -1723,8 +1732,12 @@ defmodule Apiary.Runs do
 
         # The state it had, for the audit entry, read under the row's lock; the update
         # keeps the state in its WHERE all the same, so an exit that lands between a read
-        # and this write is not overwritten.
-        closable = from r in in_scope(scope), where: r.id == ^id and r.state in ^@closable_states
+        # and this write is not overwritten. A run a gateway opened is never in it.
+        closable =
+          from r in in_scope(scope),
+            where: r.id == ^id and r.state in ^@closable_states,
+            where: is_nil(r.opened_by) or r.opened_by != "gateway"
+
         before = Repo.one(from r in closable, select: r.state, lock: "FOR UPDATE")
 
         case Repo.update_all(from(r in closable, select: r),
@@ -1741,6 +1754,7 @@ defmodule Apiary.Runs do
           {0, _} ->
             case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
               %Run{state: "closed"} = run -> {:ok, run}
+              %Run{opened_by: "gateway"} -> {:error, :opened_by_gateway}
               %Run{} -> {:error, :not_closable}
               nil -> {:error, :not_found}
             end

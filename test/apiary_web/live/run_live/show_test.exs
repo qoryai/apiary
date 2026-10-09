@@ -1684,6 +1684,49 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert Runs.close_run(scope, run_fixture(scope_fixture())) == {:error, :not_found}
     end
 
+    test "a run a gateway opened offers no Close, and a crafted close changes nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      for state <- ~w(running lost) do
+        run = projected(scope, [{1, "run.started", gateway_started_data()}])
+        assert run.opened_by == "gateway"
+
+        if state == "lost", do: Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+        assert has_element?(lv, "#run-opened-by", "gateway (no session)")
+        refute has_element?(lv, "#close-run-button")
+
+        render_hook(lv, "close", %{})
+        refute has_element?(lv, "#close-run")
+
+        # The page lives on, and the run keeps its state.
+        assert render_hook(lv, "close_confirm", %{}) =~ "run-title"
+        assert Process.alive?(lv.pid)
+
+        after_close = Runs.get_run!(scope, run.id)
+        assert after_close.state == state
+        assert after_close.closed_at == nil
+        refute has_element?(lv, "#run-announcer", "Run closed.")
+      end
+    end
+
+    test "a lost run a session opened still offers Close", %{conn: conn, scope: scope} do
+      run = projected(scope, [{1, "run.started", started_data()}])
+      Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      lv |> element("#close-run-button") |> render_click()
+      lv |> element("#close-run-confirm", "Yes, close") |> render_click()
+
+      assert Runs.get_run!(scope, run.id).state == "closed"
+    end
+
     test "close and close_confirm on a page without a run do nothing", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, "#{workspace_path(scope)}/runs/#{Ecto.UUID.generate()}")
 

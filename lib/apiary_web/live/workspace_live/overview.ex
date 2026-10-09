@@ -918,8 +918,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("close_ask", %{"id" => id}, socket) do
     case find_item(socket, id) do
-      %{kind: :lost, run: run, resolved: nil} -> {:noreply, assign(socket, :confirm_close, run)}
-      _ -> {:noreply, socket}
+      %{kind: :lost, run: %Run{} = run, resolved: nil} ->
+        if Runs.closable?(run),
+          do: {:noreply, assign(socket, :confirm_close, run)},
+          else: {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 

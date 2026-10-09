@@ -712,7 +712,8 @@ what needs the reader, then what their agents did, and never grows with the data
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read. A lost run's Close asks on its own line: the row becomes its
   `inline_confirm/1` ("Close nightly-mirror?", what a close does, Yes, close and Cancel),
-  never a dialog; Cancel or Escape gives the row back with the focus on its Close.
+  never a dialog; Cancel or Escape gives the row back with the focus on its Close. A lost
+  run a gateway opened offers Open instead: the one who starts a run ends it.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
@@ -1305,8 +1306,9 @@ page has no breadcrumb of its own.
   (Ended · quiet for 30 minutes, but not "timed out" beside Timed out), how alive the run
   is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
-  connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
-  run id, Raw log, Download log). Close run asks in place: the button becomes its
+  connections. At the right: Close run while the run may be closed, never on a run a
+  gateway opened (the one who starts a run ends it), and a ⋯ menu (Copy run id, Raw log,
+  Download log). Close run asks in place: the button becomes its
   `inline_confirm/1`, "Close this run?", that a close is final, Yes, close and Cancel,
   never a dialog; Cancel or Escape brings the button back with the focus. The seven
   cells of v1 are the rail's. A run that ended badly says how under the meta line, in one

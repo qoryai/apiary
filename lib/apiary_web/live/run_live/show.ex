@@ -1399,7 +1399,7 @@ defmodule ApiaryWeb.RunLive.Show do
     assign(socket,
       run: run,
       quiet_for: quiet_for(run),
-      closable: run.state in Runs.closable_states() and Access.can?(scope, :"run.close", run),
+      closable: Runs.closable?(run) and Access.can?(scope, :"run.close", run),
       page_title: run_title(run, socket.assigns.live_action)
     )
   end
@@ -1893,8 +1893,8 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  def handle_event("close", _params, %{assigns: %{run: %Run{state: state}}} = socket) do
-    {:noreply, assign(socket, confirm_close: state in Runs.closable_states())}
+  def handle_event("close", _params, %{assigns: %{run: %Run{} = run}} = socket) do
+    {:noreply, assign(socket, confirm_close: Runs.closable?(run))}
   end
 
   # Cancel, or Escape while the question is out: the button comes back with the focus.
@@ -1922,6 +1922,11 @@ defmodule ApiaryWeb.RunLive.Show do
           socket
           |> refresh_run()
           |> put_flash(:error, gettext("This run has ended; its record keeps the end it posted."))
+
+        # The page offers no Close for a run a gateway opened: an event that asks for one
+        # anyway changes nothing.
+        {:error, :opened_by_gateway} ->
+          socket
 
         {:error, :forbidden} ->
           forbidden(socket)

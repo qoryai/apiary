@@ -388,6 +388,9 @@ the reason decides, by the last column above; the contract fixes no state per re
 leaves each receiver its own. Ended is a state of its own: the run ended, and nothing
 checked an outcome. It counts with the runs that ended well, never with those that ended
 badly. A run the workspace closed stays Closed whatever its `dev.qory.run.exited` says.
+The one who starts a run ends it: the workspace closes only a run a session opened, and a
+run a gateway opened ends by its own `dev.qory.run.exited` (`Apiary.Runs.close_run/2`
+refuses it, `{:error, :opened_by_gateway}`).
 
 ## Liveness
 

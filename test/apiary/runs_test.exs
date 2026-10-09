@@ -109,6 +109,47 @@ defmodule Apiary.RunsTest do
       assert {:error, :forbidden} = Runs.close_run(member.scope, run)
       assert Repo.get!(Run, run.id).state == "pending"
     end
+
+    test "a run a gateway opened is refused: the one who starts a run ends it", %{
+      scope: scope
+    } do
+      Runs.subscribe(scope)
+
+      for state <- Runs.closable_states() do
+        run = run_fixture(scope, %{state: state, opened_by: "gateway"})
+        refute Runs.closable?(run)
+
+        assert {:error, :opened_by_gateway} = Runs.close_run(scope, run)
+
+        after_close = Repo.get!(Run, run.id)
+        assert after_close.state == state
+        assert after_close.closed_at == nil
+        assert after_close.closed_by_id == nil
+        refute Runs.closed?(scope.workspace.id, run.run_id)
+      end
+
+      refute_receive {:run_changed, _}
+    end
+
+    test "a run a session opened closes, from every state without an end", %{scope: scope} do
+      for opened_by <- ["session", nil], state <- Runs.closable_states() do
+        run = run_fixture(scope, %{state: state, opened_by: opened_by})
+        assert Runs.closable?(run)
+        assert {:ok, %Run{state: "closed"}} = Runs.close_run(scope, run)
+      end
+    end
+  end
+
+  describe "closable?/1" do
+    test "a run without an end that no gateway opened", %{scope: scope} do
+      for state <- ~w(succeeded ended failed timed_out closed),
+          opened_by <- ["session", "gateway"] do
+        refute Runs.closable?(run_fixture(scope, %{state: state, opened_by: opened_by}))
+      end
+
+      assert Runs.closable?(run_fixture(scope, %{state: "lost", opened_by: "session"}))
+      refute Runs.closable?(run_fixture(scope, %{state: "lost", opened_by: "gateway"}))
+    end
   end
 
   describe "closed?/2" do

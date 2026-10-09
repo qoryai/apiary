@@ -861,10 +861,20 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # A run a gateway opened is ended by the one who started it: its row offers Open, never
+  # Close.
   defp attention_act(%{item: %{kind: :lost}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :close?,
+        Apiary.Runs.closable?(assigns.item.run) and
+          Apiary.Access.can?(assigns.scope, :"run.close", assigns.item.run)
+      )
+
     ~H"""
     <button
-      :if={Apiary.Access.can?(@scope, :"run.close", @item.run)}
+      :if={@close?}
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
@@ -874,7 +884,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Close")}
     </button>
     <.link
-      :if={!Apiary.Access.can?(@scope, :"run.close", @item.run)}
+      :if={!@close?}
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"

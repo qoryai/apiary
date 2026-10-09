@@ -247,7 +247,8 @@ it hold no access key and need no node: their runs reach Qory Apiary through the
 A run through the gateway belongs to the gateway's node and instance, and its key is the
 gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
 for a program that reports no session has no host and no runtime; its page says it has no
-session.
+session. The one who starts a run ends it: such a run ends by the end the gateway reports,
+and neither its page nor the Overview offers **Close** for it.
 <!-- feature: secrets -->
 
 Leave **Stored secrets** at **Not allowed** when you add a separate gateway's key. Qory
