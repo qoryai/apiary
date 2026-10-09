@@ -1,0 +1,627 @@
+# Qory Apiary on AWS: one Fargate task behind an Application Load Balancer, RDS for
+# PostgreSQL, and the secrets Qory makes at first start kept in Secrets Manager.
+#
+# A release publishes this template with ApiaryVersion's default set to that release. Here,
+# in the repository, ApiaryVersion has no default: an upload by hand names a release.
+#
+# Upgrade with the console's Update, or with `aws cloudformation deploy`, which keep the
+# parameters they are not given. KeysFromStack and DatabaseSnapshot keep their values for
+# the life of the stack: an update that drops DatabaseSnapshot replaces the restored
+# database with an empty one. The stack policy, deploy/aws/stack-policy.json in the
+# repository, refuses any update that would replace or delete the database or a key's
+# secret; the ProtectCommand output carries the same policy and sets it.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Qory Apiary on ECS Fargate, with RDS for PostgreSQL, an Application Load Balancer and Secrets Manager.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Address }
+        Parameters: [DomainName, HostedZoneId, CertificateArn]
+      - Label: { default: Mail }
+        Parameters: [SmtpRelay, SmtpPort, SmtpUsername, SmtpPassword, MailFrom]
+      - Label: { default: Version }
+        Parameters: [ApiaryVersion, ApiaryImage, RegistryCredentialsSecretArn]
+      - Label: { default: Size }
+        Parameters: [DatabaseInstanceClass, CpuArchitecture]
+      - Label: { default: Restore }
+        Parameters: [KeysFromStack, DatabaseSnapshot]
+    ParameterLabels:
+      DomainName: { default: Domain name }
+      HostedZoneId: { default: Route 53 hosted zone (optional) }
+      CertificateArn: { default: ACM certificate ARN (when no hosted zone) }
+      SmtpRelay: { default: SMTP relay host }
+      SmtpPort: { default: SMTP port }
+      SmtpUsername: { default: SMTP username }
+      SmtpPassword: { default: SMTP password }
+      MailFrom: { default: Sender address (optional) }
+      ApiaryVersion: { default: Version (image tag) }
+      ApiaryImage: { default: Image }
+      RegistryCredentialsSecretArn: { default: Registry credentials secret ARN (private images only) }
+      DatabaseInstanceClass: { default: Database instance class }
+      CpuArchitecture: { default: CPU architecture }
+      KeysFromStack: { default: Keys of a deleted stack (optional) }
+      DatabaseSnapshot: { default: Database snapshot to restore (optional) }
+
+Parameters:
+  DomainName:
+    Type: String
+    MinLength: 1
+    Description: For example qory.example.com.
+  HostedZoneId:
+    Type: String
+    Default: ""
+    Description: "A Route 53 hosted zone for the domain: the stack makes the certificate and the record."
+  CertificateArn:
+    Type: String
+    Default: ""
+    Description: An ACM certificate for the domain, in this region. Required when no hosted zone is given.
+  SmtpRelay:
+    Type: String
+    MinLength: 1
+  SmtpPort:
+    Type: Number
+    Default: 587
+  SmtpUsername:
+    Type: String
+    Default: ""
+  SmtpPassword:
+    Type: String
+    Default: ""
+    NoEcho: true
+  MailFrom:
+    Type: String
+    Default: ""
+    Description: Empty means qory@ and the domain name.
+  ApiaryVersion:
+    Type: String
+    MinLength: 1
+    Description: The image tag.
+  ApiaryImage:
+    Type: String
+    Default: ghcr.io/qoryai/apiary
+    Description: "Qory Apiary Pro: ghcr.io/qoryai/apiary-pro."
+  RegistryCredentialsSecretArn:
+    Type: String
+    Default: ""
+    Description: 'Qory Apiary Pro: a Secrets Manager secret holding {"username": ..., "password": ...}.'
+  DatabaseInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  CpuArchitecture:
+    Type: String
+    Default: X86_64
+    AllowedValues: [X86_64, ARM64]
+  KeysFromStack:
+    Type: String
+    Default: ""
+    Description: The name of a deleted stack whose kept key secrets this stack uses instead of generating new ones. Keep it as it was on every later update.
+  DatabaseSnapshot:
+    Type: String
+    Default: ""
+    Description: A snapshot to restore the database from, such as a deleted stack's final snapshot. Keep it as it was on every later update.
+
+Rules:
+  CertificateWithoutHostedZone:
+    RuleCondition: !Equals [!Ref HostedZoneId, ""]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref CertificateArn, ""]]
+        AssertDescription: An ACM certificate ARN is required when no hosted zone is given.
+
+Conditions:
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
+  CreateCertificate: !And
+    - !Equals [!Ref CertificateArn, ""]
+    - !Condition HasHostedZone
+  HasSmtpUsername: !Not [!Equals [!Ref SmtpUsername, ""]]
+  HasSmtpPassword: !Not [!Equals [!Ref SmtpPassword, ""]]
+  HasMailFrom: !Not [!Equals [!Ref MailFrom, ""]]
+  HasRegistryCredentials: !Not [!Equals [!Ref RegistryCredentialsSecretArn, ""]]
+  # With KeysFromStack, the stack makes no secret: it reads the ones the named stack kept.
+  CreateSecrets: !Equals [!Ref KeysFromStack, ""]
+  CreateSmtpPassword: !And
+    - !Condition CreateSecrets
+    - !Condition HasSmtpPassword
+  RestoreDatabase: !Not [!Equals [!Ref DatabaseSnapshot, ""]]
+
+Resources:
+  # The network: two zones, the load balancer and the task in public subnets, the database
+  # in isolated ones (the VPC's main route table, with no route out). No NAT gateway: the
+  # task has a public address and admits only the load balancer.
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  IsolatedSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  IsolatedSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Qory Apiary load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIpv6: "::/0" }
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIpv6: "::/0" }
+
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Qory Apiary task
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 4100
+          ToPort: 4100
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Qory Apiary database
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref TaskSecurityGroup
+
+  # The load balancer. The idle timeout keeps the console's WebSockets open; /health is
+  # plain HTTP on 4100 and answers once migrations have run.
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      Subnets: [!Ref PublicSubnet1, !Ref PublicSubnet2]
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "120"
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      TargetType: ip
+      Protocol: HTTP
+      Port: 4100
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 15
+      Matcher:
+        HttpCode: "200"
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "30"
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTPS
+      Port: 443
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !If [CreateCertificate, !Ref Certificate, !Ref CertificateArn]
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Condition: CreateCertificate
+    Properties:
+      DomainName: !Ref DomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZone
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt LoadBalancer.DNSName
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+
+  # The secrets Qory makes at first start on compose, made here by Secrets Manager before
+  # the task starts. Deleting the stack, or a replacement in an update, keeps every one:
+  # without APIARY_ENCRYPTION_SECRET no access key verifies and no stored secret reads, and
+  # without APIARY_SIGNING_SECRET every machine's pin breaks. Their properties never change
+  # from one release to the next (CI compares them with the previous release's template):
+  # a replaced secret would be generated anew.
+  #
+  # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory reads: every other
+  # character excluded, and no character type required, so each character is drawn from
+  # the same 16.
+  SecretKeyBase:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateSecrets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${AWS::StackName}/secret-key-base
+      GenerateSecretString:
+        PasswordLength: 86
+        ExcludePunctuation: true
+        IncludeSpace: false
+
+  EncryptionSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateSecrets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${AWS::StackName}/encryption-secret
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludeCharacters: ghijklmnopqrstuvwxyz
+        ExcludeUppercase: true
+        ExcludePunctuation: true
+        IncludeSpace: false
+        RequireEachIncludedType: false
+
+  SigningSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateSecrets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${AWS::StackName}/signing-secret
+      GenerateSecretString:
+        PasswordLength: 64
+        ExcludeCharacters: ghijklmnopqrstuvwxyz
+        ExcludeUppercase: true
+        ExcludePunctuation: true
+        IncludeSpace: false
+        RequireEachIncludedType: false
+
+  DatabasePassword:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateSecrets
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${AWS::StackName}/database-password
+      GenerateSecretString:
+        PasswordLength: 40
+        ExcludePunctuation: true
+        IncludeSpace: false
+
+  SmtpPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: CreateSmtpPassword
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Name: !Sub ${AWS::StackName}/smtp-password
+      SecretString: !Ref SmtpPassword
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Qory Apiary database
+      SubnetIds: [!Ref IsolatedSubnet1, !Ref IsolatedSubnet2]
+
+  # Restored from DatabaseSnapshot when it is set, which every later update must pass
+  # unchanged: CloudFormation replaces a restored instance whose DBSnapshotIdentifier
+  # changes or goes. A restored instance keeps the snapshot's user, database, password and
+  # encryption. The password is read once, by each task at its start: no rotation.
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: "18"
+      DBInstanceClass: !Ref DatabaseInstanceClass
+      AllocatedStorage: "20"
+      StorageType: gp3
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      DBSnapshotIdentifier: !If [RestoreDatabase, !Ref DatabaseSnapshot, !Ref AWS::NoValue]
+      StorageEncrypted: !If [RestoreDatabase, !Ref AWS::NoValue, true]
+      DBName: !If [RestoreDatabase, !Ref AWS::NoValue, apiary]
+      MasterUsername: !If [RestoreDatabase, !Ref AWS::NoValue, apiary]
+      MasterUserPassword: !If
+        - RestoreDatabase
+        - !Ref AWS::NoValue
+        - !If
+          - CreateSecrets
+          - !Sub "{{resolve:secretsmanager:${DatabasePassword}}}"
+          - !Sub "{{resolve:secretsmanager:${KeysFromStack}/database-password}}"
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /qory/${AWS::StackName}
+      RetentionInDays: 30
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+
+  # Pulls the image, writes the logs, and reads the secrets into the container's
+  # environment: this stack's, or with KeysFromStack the ones that stack kept (the -* is
+  # the suffix Secrets Manager adds to a secret's name).
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !If
+                  - CreateSecrets
+                  - - !Ref SecretKeyBase
+                    - !Ref EncryptionSecret
+                    - !Ref SigningSecret
+                    - !Ref DatabasePassword
+                    - !If [CreateSmtpPassword, !Ref SmtpPasswordSecret, !Ref AWS::NoValue]
+                  - - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/secret-key-base-*
+                    - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/encryption-secret-*
+                    - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/signing-secret-*
+                    - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/database-password-*
+                    - !If
+                      - HasSmtpPassword
+                      - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/smtp-password-*
+                      - !Ref AWS::NoValue
+              - !If
+                - HasRegistryCredentials
+                - Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref RegistryCredentialsSecretArn
+                - !Ref AWS::NoValue
+
+  # ECS Exec's channels, for ClaimCommand.
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ecs-exec
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: "*"
+
+  # Part 1's settings, from the parameters and Secrets Manager. The database's certificate
+  # is checked against the RDS bundle the image carries.
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      RuntimePlatform:
+        OperatingSystemFamily: LINUX
+        CpuArchitecture: !Ref CpuArchitecture
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: apiary
+          Image: !Sub ${ApiaryImage}:${ApiaryVersion}
+          Essential: true
+          PortMappings:
+            - ContainerPort: 4100
+              Protocol: tcp
+          LinuxParameters:
+            InitProcessEnabled: true
+          RepositoryCredentials: !If
+            - HasRegistryCredentials
+            - CredentialsParameter: !Ref RegistryCredentialsSecretArn
+            - !Ref AWS::NoValue
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: apiary
+          Environment:
+            - Name: PUBLIC_URL
+              Value: !Sub https://${DomainName}
+            - Name: DATABASE_URL
+              Value: !Sub postgres://apiary@${Database.Endpoint.Address}:5432/apiary?sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem
+            - Name: TRUSTED_PROXIES
+              Value: 10.0.0.0/16
+            - Name: SMTP_RELAY
+              Value: !Ref SmtpRelay
+            - Name: SMTP_PORT
+              Value: !Ref SmtpPort
+            - !If
+              - HasSmtpUsername
+              - Name: SMTP_USERNAME
+                Value: !Ref SmtpUsername
+              - !Ref AWS::NoValue
+            - !If
+              - HasMailFrom
+              - Name: MAIL_FROM
+                Value: !Ref MailFrom
+              - !Ref AWS::NoValue
+          # A secret given by name is read from this account and region.
+          Secrets:
+            - Name: SECRET_KEY_BASE
+              ValueFrom: !If [CreateSecrets, !Ref SecretKeyBase, !Sub "${KeysFromStack}/secret-key-base"]
+            - Name: APIARY_ENCRYPTION_SECRET
+              ValueFrom: !If [CreateSecrets, !Ref EncryptionSecret, !Sub "${KeysFromStack}/encryption-secret"]
+            - Name: APIARY_SIGNING_SECRET
+              ValueFrom: !If [CreateSecrets, !Ref SigningSecret, !Sub "${KeysFromStack}/signing-secret"]
+            - Name: DATABASE_PASSWORD
+              ValueFrom: !If [CreateSecrets, !Ref DatabasePassword, !Sub "${KeysFromStack}/database-password"]
+            - !If
+              - HasSmtpPassword
+              - Name: SMTP_PASSWORD
+                ValueFrom: !If [CreateSecrets, !Ref SmtpPasswordSecret, !Sub "${KeysFromStack}/smtp-password"]
+              - !Ref AWS::NoValue
+
+  # One task. An upgrade starts the new task beside the old one, which serves until the new
+  # one has migrated under Ecto's lock and answers /health; the old release runs on the new
+  # schema meanwhile, as migrations written expand/contract allow. A new task that never
+  # becomes healthy trips the circuit breaker, which rolls the service back, and the stack
+  # update with it. The grace period covers a long migration, during which nothing listens.
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: [HttpsListener, HttpListener]
+    Properties:
+      ServiceName: apiary
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: 1
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 600
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref PublicSubnet1, !Ref PublicSubnet2]
+          SecurityGroups: [!Ref TaskSecurityGroup]
+      LoadBalancers:
+        - ContainerName: apiary
+          ContainerPort: 4100
+          TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  Url:
+    Description: Qory's address.
+    Value: !Sub https://${DomainName}
+  LoadBalancerDnsName:
+    Description: Point the domain here with a CNAME when no hosted zone was given.
+    Value: !GetAtt LoadBalancer.DNSName
+  ClaimCommand:
+    Description: "Before the address is public, run it with your address and organisation in place of you@example.com and Acme: it makes you the instance's admin. It needs the AWS CLI's Session Manager plugin."
+    Value: !Sub 'aws ecs execute-command --region ${AWS::Region} --cluster ${Cluster} --task $(aws ecs list-tasks --region ${AWS::Region} --cluster ${Cluster} --service-name ${Service.Name} --query ''taskArns[0]'' --output text) --container apiary --interactive --command "/app/bin/apiary eval ''Apiary.Release.grant_instance_admin(\"you@example.com\", \"Acme\")''"'
+  # The policy of stack-policy.json, which CI keeps the same.
+  ProtectCommand:
+    Description: "Run it once, right after creation: it sets the stack policy, which refuses any update that would replace or delete the database or a key's secret."
+    Value: !Sub 'aws cloudformation set-stack-policy --region ${AWS::Region} --stack-name ${AWS::StackName} --stack-policy-body ''{"Statement":[{"Effect":"Allow","Action":"Update:*","Principal":"*","Resource":"*"},{"Effect":"Deny","Action":["Update:Replace","Update:Delete"],"Principal":"*","Resource":["LogicalResourceId/Database","LogicalResourceId/SecretKeyBase","LogicalResourceId/EncryptionSecret","LogicalResourceId/SigningSecret","LogicalResourceId/DatabasePassword"]}]}'''
+  AcceptSigningKeyCommand:
+    Description: "Makes a changed APIARY_SIGNING_SECRET the instance's, in a one-off task, after a boot stopped on it. Its output is in the log group: aws logs tail <LogGroup> --since 10m"
+    Value: !Sub 'aws ecs run-task --region ${AWS::Region} --cluster ${Cluster} --launch-type FARGATE --task-definition ${TaskDefinition} --network-configuration ''awsvpcConfiguration={subnets=[${PublicSubnet1},${PublicSubnet2}],securityGroups=[${TaskSecurityGroup}],assignPublicIp=ENABLED}'' --overrides ''{"containerOverrides":[{"name":"apiary","command":["/app/bin/apiary","eval","Apiary.Release.accept_signing_key()"]}]}'''
+  LogGroup:
+    Description: The task's log group, kept 30 days.
+    Value: !Ref LogGroup
+  KeysSecrets:
+    Description: The key secrets, kept when the stack is deleted, to copy apart from the database's backups.
+    Value: !If
+      - CreateSecrets
+      - !Join [",", [!Ref SecretKeyBase, !Ref EncryptionSecret, !Ref SigningSecret, !Ref DatabasePassword]]
+      - !Sub ${KeysFromStack}/secret-key-base,${KeysFromStack}/encryption-secret,${KeysFromStack}/signing-secret,${KeysFromStack}/database-password
+  Database:
+    Description: The RDS instance's identifier, for snapshots.
+    Value: !Ref Database

@@ -76,6 +76,55 @@ jobs:
           MIX_ENV: prod
         run: mix assets.deploy
 
+      # The AWS template, deploy/aws/apiary.yaml: cfn-lint, at the version pinned here, in
+      # a virtual environment of its own; scripts/aws-template-check.py reads the template
+      # with cfn-lint's decoder.
+      - name: Install cfn-lint
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cfn-lint"
+          "$RUNNER_TEMP/cfn-lint/bin/pip" install --quiet cfn-lint==1.57.0
+          echo "$RUNNER_TEMP/cfn-lint/bin" >> "$GITHUB_PATH"
+
+      - name: Lint the AWS template
+        run: cfn-lint deploy/aws/apiary.yaml
+
+      # Every resource stack-policy.json names is the template's, the database and the four
+      # key secrets are all guarded, and the ProtectCommand output sets the same policy.
+      - name: Check the stack policy against the template
+        run: python scripts/aws-template-check.py policy
+
+      # update-stack resets every parameter it is not given to its default, DatabaseSnapshot
+      # included, which replaces a restored database with an empty one. The guides name
+      # aws cloudformation deploy and the console's Update, which keep them.
+      - name: Check no guide names update-stack
+        run: |
+          if grep -rn 'update-stack' guides docs README.md; then
+            echo "a guide names update-stack; name aws cloudformation deploy or the console's Update" >&2
+            exit 1
+          fi
+
+      # A changed property can replace a secret, and a replaced secret is generated anew, so
+      # the five secrets stay as the previous release's template has them. The previous
+      # release is the repository's latest, as GitHub names it (the newest that is neither a
+      # draft nor a prerelease), and its template the apiary.yaml attached to it. With no
+      # release, or a release without one, there is nothing to compare with.
+      - name: Check the secrets against the previous release's template
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>"$RUNNER_TEMP/release.err"); then
+            grep -q 'HTTP 404' "$RUNNER_TEMP/release.err" || { cat "$RUNNER_TEMP/release.err" >&2; exit 1; }
+            echo "::notice::No release yet: the template's secrets have no previous release to compare with."
+            exit 0
+          fi
+          assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if ! grep -qx apiary.yaml <<< "$assets"; then
+            echo "::notice::Release $tag has no apiary.yaml attached: the template's secrets have nothing to compare with."
+            exit 0
+          fi
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern apiary.yaml --dir "$RUNNER_TEMP/previous"
+          python scripts/aws-template-check.py secrets "$RUNNER_TEMP/previous/apiary.yaml"
+
   test:
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Elixir tests · checked by the push run' || format('Elixir tests ({0})', matrix.name) }}"
     if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}

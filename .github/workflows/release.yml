@@ -8,10 +8,11 @@ permissions:
   contents: read
 
 # A tag vX.Y.Z publishes the image ghcr.io/qoryai/apiary as X.Y.Z, X.Y and latest, for
-# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml and env.example
-# attached, the latter a copy of .env.example naming X.Y.Z in APIARY_VERSION. The image's
-# build is ci.yml's: the same labels, build argument and cache. Nothing else publishes an
-# image.
+# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml, env.example and
+# apiary.yaml attached: env.example a copy of .env.example naming X.Y.Z in APIARY_VERSION,
+# apiary.yaml a copy of the AWS template, deploy/aws/apiary.yaml, with X.Y.Z as
+# ApiaryVersion's default. The image's build is ci.yml's: the same labels, build argument
+# and cache. Nothing else publishes an image, or the template.
 #
 # env.example has no leading period: GitHub renames asset names with a leading period.
 jobs:
@@ -45,6 +46,17 @@ jobs:
           test -f compose.yaml || { echo "compose.yaml is missing" >&2; exit 1; }
           [ "$(grep -cx 'APIARY_VERSION=' .env.example)" = 1 ] || {
             echo ".env.example has no single empty APIARY_VERSION= line to write env.example from" >&2; exit 1; }
+
+      - name: Check the template the release publishes
+        # The release writes the version in as the default of the template's one
+        # ApiaryVersion parameter, which in the repository has none.
+        run: |
+          test -f deploy/aws/stack-policy.json || { echo "deploy/aws/stack-policy.json is missing" >&2; exit 1; }
+          [ "$(grep -cx '  ApiaryVersion:' deploy/aws/apiary.yaml)" = 1 ] || {
+            echo "deploy/aws/apiary.yaml has no single ApiaryVersion parameter to write the default in" >&2; exit 1; }
+          if awk '/^  ApiaryVersion:$/ { p = 1; next } p && /^  [^ ]/ { exit } p && /^    Default:/ { found = 1 } END { exit !found }' deploy/aws/apiary.yaml; then
+            echo "deploy/aws/apiary.yaml already gives ApiaryVersion a default" >&2; exit 1
+          fi
 
   # Each platform on a runner of its own architecture, pushed by digest alone: no tag
   # names an image until both are built.
@@ -156,6 +168,19 @@ jobs:
           cp compose.yaml dist/compose.yaml
           sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/env.example
           grep -qx "APIARY_VERSION=$VERSION" dist/env.example
+          sed "s/^  ApiaryVersion:\$/&\n    Default: \"$VERSION\"/" deploy/aws/apiary.yaml > dist/apiary.yaml
+          grep -x -A1 '  ApiaryVersion:' dist/apiary.yaml | grep -qx "    Default: \"$VERSION\""
+          cp deploy/aws/stack-policy.json dist/stack-policy.json
+
+      # The template job publishes these same files to S3.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aws-template
+          path: |
+            dist/apiary.yaml
+            dist/stack-policy.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Publish the release
         uses: softprops/action-gh-release@v3
@@ -164,3 +189,53 @@ jobs:
           files: |
             dist/compose.yaml
             dist/env.example
+            dist/apiary.yaml
+
+  # The release's template, to the public S3 bucket the Launch Stack link reads:
+  # apiary/X.Y.Z/apiary.yaml with the stack policy beside it, then apiary/latest/apiary.yaml.
+  # The bucket and the AWS role this job assumes, through GitHub's OIDC with no stored key,
+  # are the repository variables AWS_TEMPLATE_BUCKET (<bucket>) and AWS_TEMPLATE_ROLE_ARN
+  # (arn:aws:iam::<account>:role/<role>). With either unset, the job publishes nothing and
+  # says so: the template is then the one attached to the release.
+  template:
+    name: Publish the AWS template
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      BUCKET: ${{ vars.AWS_TEMPLATE_BUCKET }}
+      ROLE_ARN: ${{ vars.AWS_TEMPLATE_ROLE_ARN }}
+    steps:
+      - name: Check the bucket and the role are set
+        id: target
+        run: |
+          if [ -n "$BUCKET" ] && [ -n "$ROLE_ARN" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::AWS_TEMPLATE_BUCKET or AWS_TEMPLATE_ROLE_ARN is not set: the template is attached to the release and published to no bucket."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v8
+        if: steps.target.outputs.publish == 'true'
+        with:
+          name: aws-template
+          path: dist
+
+      # The credentials are asked for in us-east-1; the AWS CLI follows S3 to the bucket's
+      # own region.
+      - uses: aws-actions/configure-aws-credentials@v6
+        if: steps.target.outputs.publish == 'true'
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Upload the template
+        if: steps.target.outputs.publish == 'true'
+        run: |
+          aws s3 cp dist/apiary.yaml "s3://$BUCKET/apiary/$VERSION/apiary.yaml"
+          aws s3 cp dist/stack-policy.json "s3://$BUCKET/apiary/$VERSION/stack-policy.json"
+          aws s3 cp dist/apiary.yaml "s3://$BUCKET/apiary/latest/apiary.yaml"
