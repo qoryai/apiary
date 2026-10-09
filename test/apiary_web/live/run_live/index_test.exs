@@ -468,6 +468,41 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, row(lost)) =~ "at least 41 m 30 s"
     end
 
+    test "a run that ended Lost by its exit shows the duration its exit gave; a silent one keeps at least",
+         %{conn: conn, scope: scope} do
+      session_lost =
+        started_run(scope, shop(),
+          exit: %{
+            "state" => "failed",
+            "exit_code" => -1,
+            "reason" => "session_lost",
+            "duration_ms" => 720_000
+          }
+        )
+
+      gateway_lost =
+        started_run(scope, shop("gitlab.example"),
+          exit: %{
+            "state" => "failed",
+            "exit_code" => -1,
+            "reason" => "gateway_lost",
+            "duration_ms" => 720_000
+          }
+        )
+
+      silent = started_run(scope, %{}, ago: 4000, heartbeat: {3000, 2490, 30})
+      Liveness.check()
+      view = open(conn, scope)
+
+      for run <- [session_lost, gateway_lost] do
+        assert has_element?(view, "#{row(run)} .q-st-lost")
+        assert text(view, "#{row(run)} .q-rl-dur") == "12 m 00 s"
+      end
+
+      assert has_element?(view, "#{row(silent)} .q-st-lost")
+      assert text(view, "#{row(silent)} .q-rl-dur") =~ ~r/^at least 41 m 30 s/
+    end
+
     test "another workspace's runs are not listed", %{conn: conn, scope: scope} do
       mine = started_run(scope, shop())
       theirs = started_run(scope_fixture(), shop())

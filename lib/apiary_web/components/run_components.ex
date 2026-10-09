@@ -1866,12 +1866,19 @@ defmodule ApiaryWeb.RunComponents do
   attr :quiet, :boolean, required: true
 
   @doc """
-  How long a run ran, as its row and its preview say it: the duration its exit gave; for a
-  running run the time since it started, ticking; for a quiet or lost one "at
-  least" what it last reported; nothing for a run that has only pinged.
+  How long a run ran, as its row and its preview say it: the duration its exit gave, as the
+  run page says it, also for a run its exit said was lost; for a running run the time since
+  it started, ticking; for a quiet one, or one Apiary marked lost, "at least" what it last
+  reported; nothing for a run that has only pinged.
   """
   def run_length(%{run: %{state: state}} = assigns)
       when state in ~w(succeeded completed ended failed timed_out cancelled) do
+    ~H"""
+    <.duration ms={@run.duration_ms} />
+    """
+  end
+
+  def run_length(%{run: %{state: "lost", duration_ms: ms}} = assigns) when is_integer(ms) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """
