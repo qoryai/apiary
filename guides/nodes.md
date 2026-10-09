@@ -237,6 +237,41 @@ Every run records its node and its instance. A run's page names both, beside its
 key; the node's **Overview** lists its recent runs; and on **Runs**, `node:build-01` in the
 filter, or **Node** in the Filter menu, keeps a node's runs alone.
 
+## After an outage
+
+When the machines could not reach Qory Apiary for a while, each gateway keeps what its
+runs recorded and sends it once Qory Apiary answers again. Qory Apiary reads a heartbeat
+by when it was recorded, not when it arrived, so the catch-up shows what happened:
+
+- A run that ended during the outage stays **Lost**, and under **To review** on the
+  Overview, until its end arrives; then it shows how it ended. A run that is still alive
+  comes back as soon as its recent heartbeats arrive.
+- The alive counts, in the sidebar and on the Overview, count only the runs alive now.
+- An access key's **Last heartbeat** is when its newest heartbeat was recorded, allowing 5
+  minutes for the machine's clock, and never later than it arrived.
+- A new run opens during a catch-up, on a node or pool the catching-up runs had filled
+  too: old heartbeats hold no instance's place. Its ping spends the key's rate with the
+  catch-up, so it can be refused for a moment; the gateway sends it again, up to 3 tries
+  in all, and a run whose ping is refused on every try does not open.
+  <!-- feature: security -->
+  Its run configuration has a rate of its own, which a catch-up never spends.
+  <!-- /feature -->
+- Every event is kept, however late it arrives, while its run is: retention keeps a lost
+  run for 7 days after it was lost, however short its settings
+  ([Retention](retention.md)).
+
+Three limits stay:
+
+- After an outage shorter than about 6½ minutes, a run that ended during it can look alive
+  again for a moment, at most three heartbeat intervals, 90 seconds.
+- A session's run whose heartbeats all arrive late, because the outage began before its
+  first one, comes back while they arrive, and is lost again three heartbeat intervals
+  after the last, unless its end arrives first. Its heartbeats move its key's **Last
+  heartbeat** to their arrival.
+- A run whose machine's clock ran more than about 6½ minutes ahead and was then set back
+  reads **Lost** until its end arrives; a little less, and it can read Lost between its
+  heartbeats.
+
 ## A separate gateway
 
 A gateway on a machine of its own, which the agents on other machines connect through, is

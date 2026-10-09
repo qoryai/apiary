@@ -23,11 +23,13 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   `{"error":"not_found"}`, and nothing is rendered. Discovery names no `run` section for
   such a workspace, so the gateway does not ask.
 
-  Never a `304`: to the gateway anything but `200` is no run, so `If-None-Match` is not
-  read. A parameter sent as anything but a string, or longer than a label may be, names
-  no target and gets the baseline (of one sent twice the last is read); nothing of the query is logged or
-  repeated. When the configuration cannot be read the answer is `503`, which is no run:
-  the gateway fails closed, as the contract has it.
+  Never a `304`: to the gateway any answer but `200` is no run, a `5xx` or a `429` once
+  the tries it makes as a run opens are spent, and a `304` is final, so `If-None-Match` is
+  not read. A parameter sent as anything but a string, or longer than a label may be,
+  names no target and gets the baseline (of one sent twice the last is read); nothing of
+  the query is logged or repeated. When the configuration cannot be read the answer is
+  `503`, which the gateway asks again within those tries, and which, to the last of them,
+  is no run: the gateway fails closed, as the contract has it.
   """
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :security
