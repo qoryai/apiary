@@ -1110,8 +1110,8 @@ defmodule Apiary.Policy do
 
   @doc """
   The effective policy as text for a node without a server: `forager_file`, the `egress`
-  section of `~/.config/qory/forager.yaml`, which holds the mode and the hosts; and
-  `policy_file`, a document in the contract's policy format for `qory run --policy`, when
+  section under `gateway:` of `~/.config/qory/forager.yaml`, which holds the mode and the
+  hosts; and `policy_file`, a document in the contract's policy format for `qory run --policy`, when
   the policy holds paths, which the Forager file's section cannot say (nil otherwise). `notes` are sentences for the page.
   """
   @spec export(Scope.t(), holder) ::

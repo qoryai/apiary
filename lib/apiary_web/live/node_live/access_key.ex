@@ -930,19 +930,19 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp server_lines, do: AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
 
-  # The Forager file's two lines a machine needs beside its key's own variables: the
-  # address alone.
-  defp address_file, do: "server:\n" <> server_lines().url <> "\n"
+  # The Forager file's lines a machine needs beside its key's own variables: the
+  # address alone, under `gateway:` and `server:`.
+  defp address_file, do: "gateway:\n  server:\n" <> under_gateway(server_lines().url) <> "\n"
 
-  # A key connected with a command: the Forager file's `server` section as the command
-  # wrote it, each line marked as the server's or the key's.
+  # A key connected with a command: the Forager file's `server` section under `gateway:`
+  # as the command wrote it, each line marked as the server's or the key's.
   defp command_file(key) do
     %{url: url, public_key: [pin_head | pins]} = server_lines()
 
     marked = [
-      {url, "# Qory Apiary"},
-      {AccessKeys.key_line(key), "# this key"},
-      {pin_head, "# Qory Apiary's public key"}
+      {under_gateway(url), "# Qory Apiary"},
+      {under_gateway(AccessKeys.key_line(key)), "# this key"},
+      {under_gateway(pin_head), "# Qory Apiary's public key"}
     ]
 
     width = marked |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
@@ -950,8 +950,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     lines =
       Enum.map(marked, fn {line, mark} -> String.pad_trailing(line, width + 2) <> mark end)
 
-    Enum.join(["server:" | lines] ++ pins, "\n") <> "\n"
+    Enum.join(["gateway:", "  server:" | lines] ++ Enum.map(pins, &under_gateway/1), "\n") <>
+      "\n"
   end
+
+  # A line of `Apiary.AccessKeys`, indented as it sits under `server:`, moved under
+  # `gateway:`.
+  defp under_gateway(line), do: "  " <> line
 
   defp variable_line({name, value}), do: "#{name}=#{value}\n"
 

@@ -1269,11 +1269,12 @@ defmodule Apiary.PolicyTest do
 
       assert forager_file == """
              # ~/.config/qory/forager.yaml
-             egress:
-               mode: enforce
-               allow:
-                 - "api.example"
-                 - "*.example"
+             gateway:
+               egress:
+                 mode: enforce
+                 allow:
+                   - "api.example"
+                   - "*.example"
              """
     end
 
@@ -1288,13 +1289,14 @@ defmodule Apiary.PolicyTest do
 
       assert forager_file == """
              # ~/.config/qory/forager.yaml
-             egress:
-               mode: observe
-               allow:
-                 - "*.example"
-               deny:
-                 - "tracker.example"
-                 - "*.ads.example"
+             gateway:
+               egress:
+                 mode: observe
+                 allow:
+                   - "*.example"
+                 deny:
+                   - "tracker.example"
+                   - "*.ads.example"
              """
 
       assert note =~ "only a host in deny is denied"

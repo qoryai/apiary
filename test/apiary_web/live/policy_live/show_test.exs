@@ -1493,7 +1493,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#export-lead") =~ "as of version 3"
       assert text(view, "#export-policy-text") =~ "# #{configuration.digest}"
       assert text(view, "#export-policy-text") =~ "/acme/shop.git/*"
-      assert text(view, "#export-forager-text") =~ "~/.config/qory/forager.yaml egress"
+
+      assert text(view, "#export-forager-text") =~
+               "~/.config/qory/forager.yaml gateway : egress : mode"
 
       assert has_element?(
                view,
