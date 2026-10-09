@@ -133,7 +133,12 @@ msgstr[1] "%{count} chosen repositories"
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "%{count} places match."
+msgid "%{count} organisations match."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} workspaces match."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -1600,6 +1605,11 @@ msgstr ""
 msgid "%{person} got it at %{time}. It works once, until %{expires}. It was shown once: if it's lost, cancel it and get a new one."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{product} menu"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{rate}, bursts of %{burst}"
@@ -1975,7 +1985,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "1 place matches."
+msgid "1 organisation matches."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1997,6 +2007,11 @@ msgstr "1 repository sets its own and enforces."
 #, elixir-autogen, elixir-format
 msgid "1 target sets its own and observes."
 msgstr "1 repository sets its own and observes."
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "1 workspace matches."
+msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5076,6 +5091,16 @@ msgstr ""
 msgid "Find a variable by name or value"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Find a workspace"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Find a workspace…"
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "Find an action"
@@ -7603,6 +7628,11 @@ msgstr ""
 msgid "No version yet"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace matches."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "No workspace or target may observe: %{name} requires enforce."
@@ -8770,16 +8800,6 @@ msgstr ""
 msgid "Qory Apiary links no stored secret to it. The workspace's secrets are in %{secrets}."
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary menu"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary menu, version %{version}"
-msgstr ""
-
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
@@ -8865,11 +8885,6 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Reason"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Recent"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -9947,6 +9962,11 @@ msgstr ""
 msgid "Show the rule"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Show the workspaces of %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/narrowing.ex
 #, elixir-autogen, elixir-format
 msgid "Showing %{name} only, on %{first} and %{last}."
@@ -10232,12 +10252,17 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "Switch organisation or workspace"
+msgid "Switch organisation"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch organisation, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Switch workspace"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -12231,6 +12256,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Workspaces"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Workspaces of %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

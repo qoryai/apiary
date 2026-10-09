@@ -2,10 +2,11 @@ defmodule ApiaryWeb.Edition.Core do
   @moduledoc """
   The core's web edition, and the default (`ApiaryWeb.Edition`): the console's pages as
   the core has them, with nothing added. No navigation entry, group, count, entry of New,
-  switcher entry, account menu entry, Instance section, group of places or place, or
-  settings tab beyond the core's, every slot empty, no words for a reader, a
-  refusal or actions beyond the core's, no level above a workspace's policy to link to,
-  no reserved name beyond the core's, and no Gettext backend beside the core's own.
+  entry of the organisation menu or the workspace menu, account menu entry, Instance
+  section, group of places or place, or settings tab beyond the core's, every slot empty,
+  no words for a reader, a refusal or actions beyond the core's, no level above a
+  workspace's policy to link to, no reserved name beyond the core's, the product named
+  Qory Apiary, and no Gettext backend beside the core's own.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
   callback it does not override.
@@ -24,6 +25,9 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def switcher_entries(_scope), do: []
+
+  @impl true
+  def workspace_switcher_entries(_scope), do: []
 
   @impl true
   def account_menu_entries(_scope), do: []
@@ -60,6 +64,9 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def reserved_slugs, do: %{}
+
+  @impl true
+  def product_name, do: "Qory Apiary"
 
   @impl true
   def gettext_backend, do: nil

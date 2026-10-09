@@ -63,6 +63,7 @@ defmodule Apiary.Deletion.Tables do
     {"invitations", :workspace},
     {"memberships", :organisation},
     {"audit_entries", :workspace},
+    {"last_workspaces", :workspace},
     {"workspaces", :organisation}
   ]
 

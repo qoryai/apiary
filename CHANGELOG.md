@@ -186,14 +186,17 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   for a moment; and a session's run whose heartbeats all arrive late, because the outage
   began before its first one, still comes back for a few minutes.
 - The console's shell: a top bar that says where a page is, the organisation first, and
-  switches to any organisation or workspace with a search, Search or jump to (⌘K) for
-  pages, repositories, runs and places, New, which offers a workspace's page a new
-  node and an organisation's an invitation, and a sidebar of the page's workspace,
-  organisation or account, which folds to icons, with the Qory Apiary menu (docs,
-  changelog, source, version) at its foot. A workspace's settings, an organisation's and
-  your own are each a place of their own with their own sections, GitHub's way, and
-  deleting a workspace, an organisation or your account is the danger zone at the end of
-  its General page or Profile.
+  switches from it, keeping the page you're on, or its list where the page is one item's
+  (the organisation's menu lists the organisations beside the workspaces of the one
+  pointed at, an organisation opening in the workspace you last used there, and the
+  workspace's menu the organisation's workspaces, each with a search), Search or jump to
+  (⌘K) for pages, repositories, runs and places, New, which offers a workspace's page a
+  new node and an organisation's an invitation, and a sidebar of the page's workspace,
+  organisation or account, which folds to icons, with the Qory Apiary menu (docs, the
+  changelog with the version, source) at its foot. A workspace's settings, an
+  organisation's and your own are each a place of their own with their own sections,
+  GitHub's way, and deleting a workspace, an organisation or your account is the danger
+  zone at the end of its General page or Profile.
   Pages start at one left edge and use the width of the screen: lists up to 1680 px, a
   run's page all of it, forms 720 px.
   Each name in the top bar's path is cut short with an ellipsis where it does not fit; on

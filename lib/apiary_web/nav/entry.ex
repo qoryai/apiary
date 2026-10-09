@@ -2,7 +2,9 @@ defmodule ApiaryWeb.Nav.Entry do
   @moduledoc """
   An entry of the console's navigation, as data: a link of the sidebar, which the core and
   the edition (`c:ApiaryWeb.Edition.nav_entries/1`) each give, one of the organisation
-  switcher's below the places it switches to (`c:ApiaryWeb.Edition.switcher_entries/1`),
+  menu's below the places it switches to (`c:ApiaryWeb.Edition.switcher_entries/1`) or of
+  the workspace menu's below its workspaces
+  (`c:ApiaryWeb.Edition.workspace_switcher_entries/1`),
   or a section of the settings (`ApiaryWeb.SettingsComponents`, and the edition's of the
   organisation's, `c:ApiaryWeb.Edition.settings_tabs/1`), of the Instance level
   (`c:ApiaryWeb.Edition.instance_sections/1`) or of the account menu
@@ -19,7 +21,8 @@ defmodule ApiaryWeb.Nav.Entry do
     outside the sidebar.
   - `key`: names the entry. A page passes it as its `nav` to be marked the current one,
     and it gives the DOM id: `nav-<key>` in the sidebar, `organisation-menu-<key>` in the
-    switcher, `settings-tab-<key>` in the list of a page of settings.
+    organisation menu, `workspace-menu-<key>` in the workspace menu, `settings-tab-<key>`
+    in the list of a page of settings.
   - `label`: its words, translated by whoever gives the entry.
   - `long_label`: its words where nothing around it says whose page it is, as the
     palette's Go to lists it beside the pages of every scope ("Organisation policy" where

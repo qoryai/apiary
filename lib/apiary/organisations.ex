@@ -43,6 +43,7 @@ defmodule Apiary.Organisations do
 
   alias Apiary.Organisations.{
     Invitation,
+    LastWorkspace,
     Membership,
     Organisation,
     Slug,
@@ -98,10 +99,12 @@ defmodule Apiary.Organisations do
   workspaces the edition says (`c:Apiary.Edition.reached_workspaces/2`). What each may do
   there is `Apiary.Access`'s answer.
 
-  Without a workspace slug, for an organisation's own page, the workspace is the one
-  `last_workspace:` names, the workspace the session remembers as last opened, while the
-  user reaches it and it is in this organisation; otherwise the oldest they reach; none
-  for one who reaches no workspace yet, who still gets `{:ok, scope}`.
+  Without a workspace slug, for an organisation's own page and the switcher's link to the
+  organisation, the workspace is the one `last_workspace:` names, the workspace the
+  session remembers as last opened, while the user reaches it and it is in this
+  organisation; otherwise the one they last used in this organisation
+  (`remember_workspace/1`), while they reach it; otherwise the oldest they reach; none for
+  one who reaches no workspace yet, who still gets `{:ok, scope}`.
 
   `:error` when a slug names nothing and when it names an organisation the user does not
   reach or a workspace they do not reach: one answer for all, so a slug does not tell
@@ -186,25 +189,77 @@ defmodule Apiary.Organisations do
     do: {:ok, home_workspace(scope, last_workspace_id)}
 
   # The workspace of an organisation's page: the one the person opened last, while they
-  # reach it, else the oldest they reach; `{workspace, what the edition says}`, or nil.
+  # reach it; else, asked with a scope, the one they last used in this organisation
+  # (`remember_workspace/1`), while they reach it; else the oldest they reach.
+  # `{workspace, what the edition says}`, or nil.
   defp home_workspace(scope_or_membership, last_workspace_id) do
-    last =
-      case Ecto.UUID.cast(last_workspace_id) do
-        {:ok, id} ->
-          scope_or_membership
-          |> reached_query()
-          |> where([workspace: w], w.id == ^id)
-          |> Repo.one()
+    reached = reached_query(scope_or_membership)
 
-        :error ->
-          nil
-      end
+    row =
+      reached_by_id(reached, last_workspace_id) || last_used(reached, scope_or_membership) ||
+        reached |> oldest() |> Repo.one()
 
-    case last || scope_or_membership |> reached_query() |> oldest() |> Repo.one() do
-      nil -> nil
-      row -> place(row)
+    row && place(row)
+  end
+
+  defp reached_by_id(query, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> query |> where([workspace: w], w.id == ^id) |> Repo.one()
+      :error -> nil
     end
   end
+
+  # The reached workspace the scope's person last used in the organisation. The query
+  # leaves out a workspace marked for deletion, as it leaves out one they no longer reach.
+  defp last_used(query, %Scope{user: %User{id: user_id}}) do
+    from([workspace: w] in query,
+      join: l in LastWorkspace,
+      on: l.workspace_id == w.id and l.organisation_id == w.organisation_id,
+      where: l.user_id == ^user_id
+    )
+    |> exclude(:order_by)
+    |> Repo.one()
+  end
+
+  defp last_used(_query, %Membership{}), do: nil
+
+  @doc """
+  remember_workspace/1 records the scope's workspace as the one its person last used in
+  its organisation (`Apiary.Organisations.LastWorkspace`), which the organisation's page
+  opens while they reach it (`resolve_scope/4`): one row per person and organisation,
+  changed only when the workspace differs. A scope without a person or a workspace records
+  nothing.
+  """
+  @spec remember_workspace(Scope.t() | nil) :: :ok
+  def remember_workspace(%Scope{
+        user: %User{id: user_id},
+        organisation: %Organisation{id: organisation_id},
+        workspace: %Workspace{id: workspace_id}
+      }) do
+    now = DateTime.utc_now()
+
+    Repo.insert_all(
+      LastWorkspace,
+      [
+        %{
+          user_id: user_id,
+          organisation_id: organisation_id,
+          workspace_id: workspace_id,
+          updated_at: now
+        }
+      ],
+      on_conflict:
+        from(l in LastWorkspace,
+          where: l.workspace_id != ^workspace_id,
+          update: [set: [workspace_id: ^workspace_id, updated_at: ^now]]
+        ),
+      conflict_target: [:user_id, :organisation_id]
+    )
+
+    :ok
+  end
+
+  def remember_workspace(_scope), do: :ok
 
   # The one workspace of the query that was created first: where the person has opened
   # none yet, an organisation's pages open its oldest, the one it was made with while it

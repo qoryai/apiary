@@ -43,20 +43,41 @@ page, the one the person came from (Two levels, below).
   **New** and the **account menu**. The bar has no mark: Qory Apiary is the sidebar's
   foot. A page's title stays its `<h1>`; the breadcrumb is navigation. A page without a
   person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
-- **The switcher.** With more than one place to go, or an edition's entry after the places
-  (`ApiaryWeb.Edition.switcher_entries/1`), the chevrons beside the organisation and the
-  workspace open one dropdown under them (a disclosure: the chevron's `aria-expanded` and
-  `aria-controls`, the panel a named `role="group"`; the `Switcher` hook): a search that filters
-  as the reader types, the places opened last (kept in `localStorage`), then each
-  organisation with its workspaces, a link to each at the section the reader is on where
-  that workspace has it, else its overview (a section of a feature goes through
-  `/:org/:workspace/switch/:section`, `ApiaryWeb.SwitchController`, which asks the
-  destination's own scope when it is followed), and
-  the edition's groups of places under their own headings
-  (`ApiaryWeb.Edition.place_group/1`), each folded behind its heading, a button with the
-  group's count, unless the reader's place is in it; a search opens every group it finds a
-  place in. ↑ and ↓ move, Enter opens the first match, Escape
-  closes and gives focus back. With one place the segments are links and nothing more.
+- **The organisation menu and the workspace menu.** The chevron beside the organisation
+  opens the organisation menu, and the one beside the workspace the workspace menu, each a
+  dropdown of its own under its segment (a disclosure: the chevron's `aria-expanded` and
+  `aria-controls`, the panel a named `role="group"`; the `Switcher` hook). A menu shows only
+  when there is another place to go or an entry: the organisation menu with more than one
+  place, or an edition's entry after the places (`ApiaryWeb.Edition.switcher_entries/1`);
+  the workspace menu with another workspace of the organisation, or an edition's entry for
+  it (`ApiaryWeb.Edition.workspace_switcher_entries/1`). So an instance with one
+  organisation and one workspace shows neither, and the segments are links and nothing
+  more.
+  The organisation menu has a search, then two panels that each scroll on their own: on
+  the left the organisations the person reaches, by name, their own first and the
+  edition's groups of places under their own headings (`ApiaryWeb.Edition.place_group/1`),
+  each folded behind its heading, a button with the group's count, unless the page's
+  organisation is in it; on the right, under a heading that names it, the workspaces of
+  the organisation pointed at, by name. On opening, the page's organisation is pointed at
+  and scrolled to; then the one with focus, or the one under the mouse once it has rested
+  there for 100 ms, so a pointer crossing others on its way to the right panel changes
+  nothing. Each organisation's `›` shows its workspaces. An organisation's link lands in
+  the workspace the person last used there; a workspace's lands in that workspace. At its
+  foot are Your organisations and the edition's entries.
+  The workspace menu has a search, then this organisation's workspaces by name, and no
+  other organisation's; at its foot, the edition's entries for it.
+  Every link goes through `/:org/:workspace/switch/:section` or `/:org/-/switch/:section`
+  (`ApiaryWeb.SwitchController`), which asks the destination's own scope when it is
+  followed and lands on the reader's page there, its list page where the page names one
+  thing by its id, else the section, else the overview; from an organisation's own page,
+  on the overview. The search filters as the reader types: the organisation menu by an
+  organisation's name and slug, keeping one with a matching workspace with only those
+  workspaces, and opening every group it finds one in; the workspace menu by a
+  workspace's name and slug. ↓ from the search goes to the first row, ↑ and ↓ move within
+  a panel, → and ← between an organisation and its workspaces, Enter in the search follows
+  the first match, Escape closes and gives focus back. On a phone a menu is a sheet under
+  the bar showing one panel at a time: `›` shows an organisation's workspaces in place of
+  the organisations, under a button back to them, Organisations.
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
   `Palette` hook, which asks `ApiaryWeb.JumpController` what matches, 150 ms after the
   reader stops typing, at the sidebar's level: `/:org/:workspace/jump` where the sidebar is
@@ -103,14 +124,15 @@ page, the one the person came from (Two levels, below).
   bare Settings, and so its tooltip while folded; the current entry on every page of them
   (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
-  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
-  version, opening upward to what is about the product rather than the person: first, only
+  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the edition's
+  name (`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), no version,
+  opening upward to what is about the product rather than the person: first, only
   for whoever may open a section of the Instance level
   (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
   settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
-  Changelog (on an instance with every feature), a rule and Source on GitHub; and at the
-  right of it the fold. Folded, and from the bar on a page without a sidebar, it is the
-  same menu.
+  Changelog with the running version faint at its right (`#brand-version`), a rule and
+  Source on GitHub; and at the right of it the fold. Folded, and from the bar on a page
+  without a sidebar, it is the same menu.
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
   or of the Instance opens the level's sections as a **second column** beside the sidebar

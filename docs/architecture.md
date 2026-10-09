@@ -345,14 +345,16 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   (`ApiaryWeb.Routes`) with its own routes in the core's `live_session`s, may serve a page
   of its own at a core path (`except:`), and is the one the endpoint dispatches to
   (`ApiaryWeb.Edition.router/0`); navigation entries, their groups and their counts
-  (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the switcher's entries, the scope
-  a place of its own gives and the heading it lists such a place under
-  (`switcher_entries/1`, `place_scope/2`, `place_group/1`); what a page says to a person it lets in without
-  a membership, and of a refusal of its own (`reader_sentence/2`, `refusal_sentence/1`);
-  settings sections (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
-  the named places of the core's pages (`slot/2`, `ApiaryWeb.Extension`); the words for
-  its actions in the audit log (`activity_describer/0`); and the names its own paths
-  take (`reserved_slugs/0`).
+  (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the entries of the breadcrumb's
+  organisation menu and workspace menu, and the heading the organisation menu lists a
+  place of its own under (`switcher_entries/1`, `workspace_switcher_entries/1`,
+  `place_group/1`; `place_scope/2`, which the core no longer asks); what a page says to
+  a person it lets in without a membership, and of a refusal of its own
+  (`reader_sentence/2`, `refusal_sentence/1`); settings sections (`settings_tabs/1`,
+  `ApiaryWeb.SettingsComponents`); what it renders in the named places of the core's
+  pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
+  (`activity_describer/0`); the names its own paths take (`reserved_slugs/0`); and the
+  product's name on the Qory Apiary menu's button (`product_name/0`).
 
 A core page never names a module of an edition: it links to the edition's pages only
 through the places the core gives it, slots, settings tabs and navigation entries, and a
