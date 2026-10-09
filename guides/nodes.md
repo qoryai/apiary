@@ -249,8 +249,8 @@ for a program that reports no session has no host and no runtime; its page says 
 session.
 <!-- feature: secrets -->
 
-Keep **Stored secrets** **Not allowed** on a separate gateway's key: a gateway that serves
-other machines is not allowed stored secrets.
+Leave **Stored secrets** at **Not allowed** when you add a separate gateway's key. Qory
+Apiary does not check this: to it, a separate gateway's key is a node's key like any other.
 <!-- /feature -->
 
 ## Revoking a key

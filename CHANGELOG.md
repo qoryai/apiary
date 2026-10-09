@@ -34,11 +34,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   is Ended, a grey dot and the word, counted with the runs that ended well; the runs
   list's state filter offers it, and its Runtime column says "no session". Its page says
   why it ended in words after the state; its Terminal tab is the terminal, empty, with a
-  note that the run has no session and its controls disabled; its timeline starts "by a
-  gateway with no session" and ends "Run ended"; and its Details say what opened it and
-  which Forager reported it, with no Command section, and its Session "none". A run
-  through a separate gateway belongs to the gateway's node and instance, and its Host is
-  the agent's machine.
+  note that the run has no session, and search, follow, wrap, the text size and the
+  download disabled; its timeline starts "by a gateway with no session" and ends "Run
+  ended"; and its Details say what opened it and which Forager reported it, with no
+  Command section, and its Session "none". A run through a separate gateway belongs to the
+  gateway's node and instance, and its Host is the agent's machine.
 - How a run ended, in words, under State in the run's rail, and after its state on the
   run page where they say more than the state: timed out, closed, gateway lost, session
   lost, quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
