@@ -1,9 +1,9 @@
 defmodule Apiary.ContractFixtures do
   @moduledoc """
   Test helpers for the receiving side of the server contract: events as they
-  are on the wire, requests signed as a runner signs them under a node's access key, a
+  are on the wire, requests signed as the gateway signs them under a node's access key, a
   check of the server's signed answers, the contract's fixture keys held as a receiver
-  under test holds them, where the runner's contract directory is, and its fixtures: the
+  under test holds them, where Forager's contract directory is, and its fixtures: the
   Ed25519 keys, known answers, signed requests and enrolments.
   """
 
@@ -17,8 +17,8 @@ defmodule Apiary.ContractFixtures do
   @content_type "application/cloudevents-batch+json"
   @published_key_id "ak_f1xt0re000000000"
   @instance_id "i_gYKDhIWGh4iJiouMjY6PkA"
-  @sibling "../../runner/main"
-  @contract "contracts/runner/v1"
+  @sibling "../../forager/main"
+  @contract "contracts/forager/v1"
 
   def content_type, do: @content_type
   def published_key_id, do: @published_key_id
@@ -27,7 +27,7 @@ defmodule Apiary.ContractFixtures do
   def instance_id, do: @instance_id
 
   @doc """
-  A node's access key that signs requests as a runner does: a node of the scope's
+  A node's access key that signs requests as the gateway does: a node of the scope's
   workspace (`attrs` `:node`, else a new node, kind `node`), with a key made in a browser
   on it.
   Returns `%{access_key: key, secret: seed, node: node}`: the key as a verified
@@ -70,7 +70,7 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  sign_request/6 is the `X-Qory-Signature-Ed25519` a runner sends: the Ed25519 signature
+  sign_request/6 is the `X-Qory-Signature-Ed25519` the gateway sends: the Ed25519 signature
   under `seed` of the request string (`Apiary.Contract.SignedMessage.request/5`), in
   base64url without padding. A `seed` that is not 32 bytes, such as "not the secret", is
   taken as the seed of its SHA-256: a key that is not the access key's, for a test of a
@@ -125,7 +125,7 @@ defmodule Apiary.ContractFixtures do
       "subject" => subject,
       "time" => Keyword.get(opts, :time, "2026-09-16T12:00:00.000Z"),
       "sequence" => sequence |> Integer.to_string() |> String.pad_leading(10, "0"),
-      "dataschema" => "https://qory.dev/contracts/runner/v1/events/#{type}.schema.json",
+      "dataschema" => "https://qory.dev/contracts/forager/v1/events/#{type}.schema.json",
       "data" => data
     }
   end
@@ -135,7 +135,7 @@ defmodule Apiary.ContractFixtures do
     {subject,
      [
        wire_event(subject, 1, "ping", %{
-         "runner_version" => "0.4.0",
+         "forager_version" => "0.4.0",
          "events" => ["*"],
          "contract_version" => 1,
          "interval_seconds" => 30
@@ -147,7 +147,7 @@ defmodule Apiary.ContractFixtures do
          "args" => ["--print", "hello"],
          "dir" => "/work/shop",
          "interactive" => false,
-         "runner_version" => "0.4.0",
+         "forager_version" => "0.4.0",
          "host" => "dev-laptop",
          "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"}
        })
@@ -155,7 +155,7 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  Posts `body` (a binary, or events to encode) to the events endpoint as a runner does:
+  Posts `body` (a binary, or events to encode) to the events endpoint as the gateway does:
   under `key_id`, signed with the Ed25519 `seed`, from the instance `instance_id/0`, with
   `X-Qory-Contract-Version: 1`. Options: `:signature`, `:instance_id` (nil for none),
   `:instance_name`, `:content_type` (nil for none), `:contract_version` (nil for none),
@@ -178,7 +178,7 @@ defmodule Apiary.ContractFixtures do
         {"x-qory-instance-id", instance_id},
         {"x-qory-instance-name", Keyword.get(opts, :instance_name, "build-01")},
         {"x-qory-signature-ed25519", signature},
-        {"user-agent", Keyword.get(opts, :user_agent, "qory-runner/0.4.0")},
+        {"user-agent", Keyword.get(opts, :user_agent, "qory-forager/0.4.0")},
         {"content-type", Keyword.get(opts, :content_type, @content_type)},
         {"x-qory-contract-version", Keyword.get(opts, :contract_version, "1")},
         {"x-qory-delivery", Keyword.get_lazy(opts, :delivery, &Ecto.UUID.generate/0)},
@@ -195,7 +195,7 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  A signed GET of `target`, a path with its query exactly as it is sent, as a runner
+  A signed GET of `target`, a path with its query exactly as it is sent, as the gateway
   sends it: under `key_id`, signed with the Ed25519 `seed`, from the instance
   `instance_id/0`, with `X-Qory-Contract-Version: 1`. Options: `:timestamp` (nil for
   none, signed as an empty line), `:signature`, `:instance_id` (nil for none),
@@ -226,7 +226,7 @@ defmodule Apiary.ContractFixtures do
       {"x-qory-instance-name", "build-01"},
       {"x-qory-timestamp", timestamp},
       {"x-qory-signature-ed25519", signature},
-      {"user-agent", Keyword.get(opts, :user_agent, "qory-runner/0.4.0")}
+      {"user-agent", Keyword.get(opts, :user_agent, "qory-forager/0.4.0")}
     ]
     |> Enum.reject(fn {_name, value} -> is_nil(value) end)
     |> Enum.reduce(conn, fn {name, value}, conn -> put_req_header(conn, name, value) end)
@@ -235,23 +235,23 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The runner's contract directory: `RUNNER_CONTRACT_DIR`, else the contract at the
-  commit in `.runner-contract-ref`, taken once from the sibling checkout of qoryai/runner
-  (`../../runner/main`) with `git archive` into the build directory, whatever that
+  Forager's contract directory: `FORAGER_CONTRACT_DIR`, else the contract at the
+  commit in `.forager-contract-ref`, taken once from the sibling checkout of qoryai/forager
+  (`../../forager/main`) with `git archive` into the build directory, whatever that
   checkout has checked out; else nil. The checkout is only read.
   """
   def contract_dir do
-    case System.get_env("RUNNER_CONTRACT_DIR") do
+    case System.get_env("FORAGER_CONTRACT_DIR") do
       dir when dir in [nil, ""] -> pinned_dir()
       dir -> if File.dir?(dir), do: Path.expand(dir)
     end
   end
 
-  @doc "The commit of qoryai/runner in `.runner-contract-ref`."
+  @doc "The commit of qoryai/forager in `.forager-contract-ref`."
   def pinned_ref do
     Mix.Project.project_file()
     |> Path.dirname()
-    |> Path.join(".runner-contract-ref")
+    |> Path.join(".forager-contract-ref")
     |> File.read!()
     |> String.split("\n")
     |> Enum.map(&String.trim/1)
@@ -260,7 +260,7 @@ defmodule Apiary.ContractFixtures do
 
   defp pinned_dir do
     ref = pinned_ref()
-    root = Path.join([Mix.Project.build_path(), "runner-contract", ref])
+    root = Path.join([Mix.Project.build_path(), "forager-contract", ref])
     dir = Path.join(root, @contract)
     sibling = Path.expand(@sibling, Path.dirname(Mix.Project.project_file()))
 
@@ -294,12 +294,12 @@ defmodule Apiary.ContractFixtures do
     end
   end
 
-  @doc "contract_json!/1 decodes `fixtures/<path>` of the runner's contract directory."
+  @doc "contract_json!/1 decodes `fixtures/<path>` of Forager's contract directory."
   def contract_json!(path), do: path |> contract_file!() |> Jason.decode!()
 
-  @doc "contract_file!/1 reads `fixtures/<path>` of the runner's contract directory as bytes."
+  @doc "contract_file!/1 reads `fixtures/<path>` of Forager's contract directory as bytes."
   def contract_file!(path) do
-    dir = contract_dir() || raise "no runner contract directory"
+    dir = contract_dir() || raise "no Forager contract directory"
     dir |> Path.join("fixtures") |> Path.join(path) |> File.read!()
   end
 
@@ -358,7 +358,7 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  signed_fixtures/0 is every `fixtures/signed/*.json` of the runner's contract
+  signed_fixtures/0 is every `fixtures/signed/*.json` of Forager's contract
   directory, decoded, by file name, sorted; empty without the directory.
   """
   def signed_fixtures do

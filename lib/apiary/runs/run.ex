@@ -33,14 +33,14 @@ defmodule Apiary.Runs.Run do
     field :about_details, :map
     field :runtime, :string
     field :runtime_version, :string
-    field :runner_version, :string
+    field :forager_version, :string
     field :contract_version, :integer
     field :command, :string
     field :args, {:array, :string}, default: []
     field :dir, :string
     field :interactive, :boolean
     # The pseudo-terminal's size as the record last said it: `terminal` of `run.started`,
-    # then each `run.resized`. Null on pipes, and when the runner reported no size.
+    # then each `run.resized`. Null on pipes, and when Forager reported no size.
     field :terminal_cols, :integer
     field :terminal_rows, :integer
     field :host, :string

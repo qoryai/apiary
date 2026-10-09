@@ -40,7 +40,7 @@ defmodule Apiary.Runs.Projector do
 
   # What the fold may change on the run's row.
   @folded_fields ~w(
-    state runner_version contract_version runtime runtime_version command args dir
+    state forager_version contract_version runtime runtime_version command args dir
     interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
     target_system target_path started_at exited_at exit_code
@@ -50,7 +50,7 @@ defmodule Apiary.Runs.Projector do
 
   # What `rebuild/1` puts back before projecting again: everything the fold writes,
   # except the two versions, which the receiver also records from the request.
-  @rebuilt_fields @folded_fields -- [:state, :runner_version, :contract_version]
+  @rebuilt_fields @folded_fields -- [:state, :forager_version, :contract_version]
 
   @pass_size 1000
 

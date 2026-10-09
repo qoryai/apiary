@@ -34,7 +34,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   defp events(run),
     do: Repo.all(from e in Event, where: e.run_id == ^run.id, order_by: e.sequence)
 
-  # A delivery signed as the runner signs it, with `versions` as its X-Qory-Contract-Version
+  # A delivery signed as the gateway signs it, with `versions` as its X-Qory-Contract-Version
   # headers: none, one or several.
   defp post_with_versions(key, secret, batch, versions) do
     sent = for version <- versions, do: {"x-qory-contract-version", version}
@@ -71,12 +71,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "the ping alone is answered 202 and the versions are recorded on the key",
          %{conn: conn, scope: scope, key: key, secret: secret} do
       {subject, [ping, _]} = first_events()
-      conn = signed_post(conn, key.key_id, secret, [ping], user_agent: "qory-runner/0.4.1")
+      conn = signed_post(conn, key.key_id, secret, [ping], user_agent: "qory-forager/0.4.1")
       assert response(conn, 202)
 
       key = Repo.get!(AccessKey, key.id)
       assert key.last_used_at
-      assert key.last_runner_version == "0.4.1"
+      assert key.last_forager_version == "0.4.1"
       assert key.last_contract_version == 1
       assert key.last_heartbeat_at == nil
 
@@ -85,11 +85,11 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert run.state == "pending"
     end
 
-    test "a heartbeat is recorded on the key by the server's clock, not the runner's",
+    test "a heartbeat is recorded on the key by the server's clock, not Forager's",
          %{key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
-      # A runner whose clock is a century ahead does not pin the key's heartbeat.
+      # Forager on a machine whose clock is a century ahead does not pin the key's heartbeat.
       future = wire_event(subject, 1, "run.heartbeat", beat, time: "2126-01-01T00:00:00Z")
 
       before = DateTime.utc_now()
@@ -111,7 +111,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
                :lt
     end
 
-    test "a delivery whose User-Agent names no runner version leaves the one the key has recorded",
+    test "a delivery whose User-Agent names no Forager version leaves the one the key has recorded",
          %{key: key, secret: secret} do
       {subject, [ping, _]} = first_events()
       assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
@@ -123,7 +123,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              |> response(202)
 
       key = Repo.get!(AccessKey, key.id)
-      assert key.last_runner_version == "0.4.0"
+      assert key.last_forager_version == "0.4.0"
       assert key.last_contract_version == 1
     end
 
@@ -140,13 +140,13 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert build_conn()
              |> signed_post(key.key_id, secret, batch,
                delivery: delivery,
-               user_agent: "qory-runner/9.9.9"
+               user_agent: "qory-forager/9.9.9"
              )
              |> response(202)
 
       key = Repo.get!(AccessKey, key.id)
       assert key.last_used_at == used
-      assert key.last_runner_version == "0.4.0"
+      assert key.last_forager_version == "0.4.0"
     end
 
     test "sent again, byte for byte, is answered 202 and stores nothing twice",
@@ -220,7 +220,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert Repo.aggregate(from(d in Delivery, where: d.access_key_id == ^key.id), :count) == 1
     end
 
-    test "the run configuration digest the runner holds is kept when it has the shape",
+    test "the run configuration digest the gateway holds is kept when it has the shape",
          %{scope: scope, key: key, secret: secret} do
       {subject, [ping, started]} = first_events()
       digest = "sha256=" <> String.duplicate("ab", 32)

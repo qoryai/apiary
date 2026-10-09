@@ -90,7 +90,7 @@ defmodule Apiary.Runs.ProjectorTest do
       assert {:ok, %Run{} = projected} = Projector.project(run)
 
       assert projected.state == "succeeded"
-      assert projected.runner_version == "v0.4.0"
+      assert projected.forager_version == "v0.4.0"
       assert projected.contract_version == 1
       assert projected.runtime == "claude"
       assert projected.args == ["-p", "fix the build"]
@@ -424,12 +424,12 @@ defmodule Apiary.Runs.ProjectorTest do
       end
     end
 
-    test "the later of ping and run.started says the runner's version, in any order", %{
+    test "the later of ping and run.started says Forager's version, in any order", %{
       scope: scope
     } do
       events = [
-        {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1}},
-        {2, "run.started", started_data(%{"runner_version" => "v0.4.1"})}
+        {1, "ping", %{"forager_version" => "v0.4.0", "contract_version" => 1}},
+        {2, "run.started", started_data(%{"forager_version" => "v0.4.1"})}
       ]
 
       for order <- [events, Enum.reverse(events)] do
@@ -440,7 +440,7 @@ defmodule Apiary.Runs.ProjectorTest do
           {:ok, _} = Projector.project(run)
         end
 
-        assert Repo.get!(Run, run.id).runner_version == "v0.4.1"
+        assert Repo.get!(Run, run.id).forager_version == "v0.4.1"
       end
     end
 
@@ -553,7 +553,7 @@ defmodule Apiary.Runs.ProjectorTest do
       huge = 99_999_999_999_999_999_999
 
       events_fixture(run, [
-        {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => huge}},
+        {1, "ping", %{"forager_version" => "v0.4.0", "contract_version" => huge}},
         {2, "run.started", started_data()},
         {3, "run.heartbeat", %{"elapsed_seconds" => huge, "interval_seconds" => 2_000_000_000}},
         {4, "run.egress", egress_data(%{"port" => huge})},

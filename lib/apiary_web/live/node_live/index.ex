@@ -311,11 +311,11 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp node_path(scope, node), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}"
 
   # The runner's version a node's line says: its running instance's, else the last seen's.
-  defp runner_version(%{running: [%{runner_version: version} | _]}) when is_binary(version),
+  defp forager_version(%{running: [%{forager_version: version} | _]}) when is_binary(version),
     do: version
 
-  defp runner_version(%{last: %{last_runner_version: version}}), do: version
-  defp runner_version(_activity), do: nil
+  defp forager_version(%{last: %{last_forager_version: version}}), do: version
+  defp forager_version(_activity), do: nil
 
   @impl true
   # A form is a page of the Nodes section, as Add integration is of Settings: the
@@ -621,9 +621,9 @@ defmodule ApiaryWeb.NodeLive.Index do
           <:col :let={row} label={gettext("Runner")} kind="faint" from="md">
             <%= case row do %>
               <% {:node, node} -> %>
-                {runner_version(@activity[node.id])}
+                {forager_version(@activity[node.id])}
               <% {:instance, _node, instance} -> %>
-                {instance.runner_version}
+                {instance.forager_version}
               <% _more -> %>
             <% end %>
           </:col>

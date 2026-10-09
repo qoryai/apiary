@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     %{scope: scope, key: key, secret: secret}
   end
 
-  # Discovery, as the runner fetches it unless told otherwise (`:path` for another target;
+  # Discovery, as the gateway fetches it unless told otherwise (`:path` for another target;
   # the rest as `Apiary.ContractFixtures.signed_get/5` reads them).
   defp signed_get(conn, key_id, secret, opts \\ []) do
     {path, opts} = Keyword.pop(opts, :path, @path)
@@ -29,7 +29,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
       key_id,
       secret,
       path,
-      Keyword.put_new(opts, :user_agent, "qory-runner/0.9.1")
+      Keyword.put_new(opts, :user_agent, "qory-forager/0.9.1")
     )
   end
 
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert conn.resp_body =~ ~r/\A\{"version":1,"node_id":"nd_[^"]+","events":/
 
     # No run section until somebody has made the workspace's policy: until then its
-    # machines keep the policy of their own runner file.
+    # machines keep the policy of their own Forager file.
     refute Map.has_key?(json_response(conn, 200), "run")
 
     [digest] = get_resp_header(conn, "x-qory-configuration")
@@ -148,16 +148,16 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
   test "success touches the key", %{conn: conn, key: key, secret: secret} do
     assert key!(key).last_used_at == nil
-    signed_get(conn, key.key_id, secret, contract_version: 1, user_agent: "qory-runner/1.2.3")
+    signed_get(conn, key.key_id, secret, contract_version: 1, user_agent: "qory-forager/1.2.3")
 
     touched = key!(key)
     assert touched.last_used_at
-    assert touched.last_runner_version == "1.2.3"
+    assert touched.last_forager_version == "1.2.3"
     assert touched.last_contract_version == 1
 
     signed_get(build_conn(), key.key_id, secret, user_agent: "curl/8.0")
     touched = key!(key)
-    assert touched.last_runner_version == nil
+    assert touched.last_forager_version == nil
     assert touched.last_contract_version == 1
   end
 
@@ -192,14 +192,14 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     key: key,
     secret: secret
   } do
-    long = "qory-runner/" <> String.duplicate("9", 5_000)
+    long = "qory-forager/" <> String.duplicate("9", 5_000)
 
     assert %{"version" => 1} =
              conn |> signed_get(key.key_id, secret, user_agent: long) |> json_response(200)
 
     touched = key!(key)
     assert touched.last_used_at
-    assert touched.last_runner_version == String.duplicate("9", 80)
+    assert touched.last_forager_version == String.duplicate("9", 80)
   end
 
   test "a User-Agent that is not printable text succeeds and records no version", %{
@@ -208,13 +208,13 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     secret: secret
   } do
     for user_agent <- [
-          "qory-runner/" <> <<0xFF, 0xFE>>,
-          "qory-runner/1.0\e[31m",
-          "qory-runner/1\0"
+          "qory-forager/" <> <<0xFF, 0xFE>>,
+          "qory-forager/1.0\e[31m",
+          "qory-forager/1\0"
         ] do
       conn = signed_get(conn, key.key_id, secret, user_agent: user_agent)
       assert %{"version" => 1} = json_response(conn, 200)
-      assert key!(key).last_runner_version == nil
+      assert key!(key).last_forager_version == nil
     end
   end
 

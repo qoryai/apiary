@@ -1,4 +1,0 @@
-# The commit of qoryai/runner whose contracts/runner/v1 the :contract tests replay, in CI and
-# in development (Apiary.ContractFixtures.contract_dir/0): a commit on the runner's main
-# branch, pinned by its id, the contract with Ed25519 access keys and what a run is about.
-cce6962445b57661cab820e4552a799f99c66aa8

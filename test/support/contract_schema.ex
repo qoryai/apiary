@@ -1,13 +1,13 @@
 defmodule Apiary.ContractSchema do
   @moduledoc """
-  The server contract's JSON Schemas, read from the runner's contract directory
+  The server contract's JSON Schemas, read from Forager's contract directory
   (`Apiary.ContractFixtures.contract_dir/0`) and built for validation. Test support:
   the apiary itself checks an event's envelope and stores `data` as received.
   """
 
   @behaviour JSV.Resolver
 
-  @base "https://qory.dev/contracts/runner/v1/"
+  @base "https://qory.dev/contracts/forager/v1/"
 
   @doc "The validator of one event, `event.schema.json` with the data schema of each type."
   def event!(contract_dir) do

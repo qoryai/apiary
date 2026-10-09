@@ -68,7 +68,7 @@ defmodule Apiary.RunEventsFixtures do
     [
       {1, "ping",
        %{
-         "runner_version" => "v0.4.0",
+         "forager_version" => "v0.4.0",
          "contract_version" => 1,
          "events" => [],
          "interval_seconds" => 30
@@ -119,7 +119,7 @@ defmodule Apiary.RunEventsFixtures do
         "args" => ["-p", "fix the build"],
         "dir" => "/work",
         "interactive" => false,
-        "runner_version" => "v0.4.0",
+        "forager_version" => "v0.4.0",
         "host" => "dev-laptop",
         "labels" => %{
           "forge" => "git.example.com",

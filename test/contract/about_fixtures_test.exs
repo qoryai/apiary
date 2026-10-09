@@ -1,12 +1,12 @@
 defmodule Apiary.Contract.AboutFixturesTest do
   @moduledoc """
-  Folds every `fixtures/run/about-*.json` of the server contract, from the runner's
-  contract directory at the commit in `.runner-contract-ref`, as the `about` of a
+  Folds every `fixtures/run/about-*.json` of the server contract, from Forager's
+  contract directory at the commit in `.forager-contract-ref`, as the `about` of a
   `dev.qory.run.started` (`Apiary.Runs.Fold`):
 
     * an accepted one keeps every member as given;
     * a refused one, `about-refused-<reason>.json`, loses the part its name says breaks a
-      rule, and keeps the rest. The runner refuses the whole run for it; the fold, which
+      rule, and keeps the rest. Forager refuses the whole run for it; the fold, which
       reads what was stored, drops the part alone.
 
   A fixture this test does not know fails it, so a new rule is read here too.
@@ -36,7 +36,7 @@ defmodule Apiary.Contract.AboutFixturesTest do
       "args" => [],
       "dir" => "/work",
       "interactive" => false,
-      "runner_version" => "0.4.0",
+      "forager_version" => "0.4.0",
       "host" => "dev-laptop",
       "about" => about
     }
@@ -76,7 +76,7 @@ defmodule Apiary.Contract.AboutFixturesTest do
       "too-many-subjects" -> {kind, title, Enum.take(subjects, 16), details}
       "unknown-member" -> {kind, title, subjects, details}
       # A name given twice is gone once the event is decoded, the last value kept: the
-      # runner refuses it, and the fold cannot see it.
+      # Forager refuses it, and the fold cannot see it.
       "details-duplicate-key" -> {kind, title, subjects, details}
     end
   end

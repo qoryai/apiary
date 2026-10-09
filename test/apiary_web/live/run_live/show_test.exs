@@ -366,7 +366,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run =
-        projected(scope, [{1, "ping", %{"runner_version" => "0.10.0", "contract_version" => 1}}])
+        projected(scope, [{1, "ping", %{"forager_version" => "0.10.0", "contract_version" => 1}}])
 
       for path <- ["", "/terminal", "/network"] do
         {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}#{path}")

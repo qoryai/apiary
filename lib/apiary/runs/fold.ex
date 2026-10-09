@@ -17,7 +17,7 @@ defmodule Apiary.Runs.Fold do
   The fold tolerates any order of arrival. What decides between two events is always the
   sequence, never a clock and never the order in which they were folded: `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
-  (`ranks/0`); `run.started` and `ping` also share the rank of the `runner_version`, which
+  (`ranks/0`); `run.started` and `ping` also share the rank of the `forager_version`, which
   the later of the two decides, and `run.started` and `run.resized` share the rank of the
   terminal's size, which the later of them decides: `terminal_cols` and `terminal_rows`
   are the size the record last said, `terminal` of the start on a pseudo-terminal, then
@@ -37,7 +37,7 @@ defmodule Apiary.Runs.Fold do
   it (compact, with `<`, `>` and `&` written as `\\u003c`, `\\u003e` and `\\u0026`), nested
   at most 4 levels deep, each key at any level 1 to 64 bytes; a key or a string that
   breaks a rule anywhere in it drops it whole. A member name given twice in `details`
-  cannot be seen once the event is decoded, which keeps the last; the runner refuses it
+  cannot be seen once the event is decoded, which keeps the last; Forager refuses it
   before it sends. A subject is kept when its `type` matches `^[a-z0-9]+([ _.-][a-z0-9]+)*$`
   in at most 64 bytes and its `ref` is 1 to 256 bytes; its `title` (1 to 256 bytes) and
   `url` (at most 2048 bytes, absolute `http` or `https` with a host and no user name or
@@ -45,10 +45,10 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
+  Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
   with the highest sequence, because the lost-run check compares it with the server's
-  clock and a runner's clock may be anywhere.
+  clock and Forager's clock may be anywhere.
   """
 
   @ping "dev.qory.ping"
@@ -61,7 +61,7 @@ defmodule Apiary.Runs.Fold do
   @exited "dev.qory.run.exited"
   @result "dev.qory.session.result"
 
-  @runner_version "runner_version"
+  @forager_version "forager_version"
   @terminal_rank "terminal"
 
   # The most a result may say a session cost, in dollars, before the value is read as
@@ -72,14 +72,14 @@ defmodule Apiary.Runs.Fold do
   The ranks an event of `type` competes in, which the projector seeds `latest` with; none
   for a type that is folded without ranking.
   """
-  def ranks(@ping), do: [@ping, @runner_version]
-  def ranks(@started), do: [@started, @runner_version, @terminal_rank]
+  def ranks(@ping), do: [@ping, @forager_version]
+  def ranks(@started), do: [@started, @forager_version, @terminal_rank]
   def ranks(@resized), do: [@terminal_rank]
   def ranks(type) when type in [@policy_applied, @heartbeat, @exited], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
-  def rank_types(@runner_version), do: [@ping, @started]
+  def rank_types(@forager_version), do: [@ping, @started]
   def rank_types(@terminal_rank), do: [@started, @resized]
   def rank_types(type), do: [type]
 
@@ -146,12 +146,12 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @ping, data: data} = event) do
     acc
     |> ranked(event, &%{&1 | contract_version: integer(data, "contract_version", 0..@int4)})
-    |> runner_version(event)
+    |> forager_version(event)
   end
 
   defp event(acc, %{type: @started, data: data} = event) do
     acc
-    |> runner_version(event)
+    |> forager_version(event)
     |> terminal_size(event, terminal(data))
     |> ranked(event, fn run ->
       labels = labels(data)
@@ -346,13 +346,13 @@ defmodule Apiary.Runs.Fold do
 
   defp started_state(run), do: %{run | state: "running", lost_at: nil}
 
-  # `ping` and `run.started` both say the runner's version: the later of the two decides.
-  defp runner_version(acc, %{sequence: sequence, data: data}) do
-    if sequence > Map.get(acc.latest, @runner_version, 0) do
+  # `ping` and `run.started` both say Forager's version: the later of the two decides.
+  defp forager_version(acc, %{sequence: sequence, data: data}) do
+    if sequence > Map.get(acc.latest, @forager_version, 0) do
       %{
         acc
-        | run: %{acc.run | runner_version: string(data, "runner_version", 255)},
-          latest: Map.put(acc.latest, @runner_version, sequence)
+        | run: %{acc.run | forager_version: string(data, "forager_version", 255)},
+          latest: Map.put(acc.latest, @forager_version, sequence)
       }
     else
       acc

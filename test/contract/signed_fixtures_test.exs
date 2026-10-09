@@ -1,7 +1,7 @@
 defmodule Apiary.Contract.SignedFixturesTest do
   @moduledoc """
-  Replays the contract's signed requests, `fixtures/signed/*.json` of the runner's
-  contract directory at the commit in `.runner-contract-ref`: one request per file, signed
+  Replays the contract's signed requests, `fixtures/signed/*.json` of Forager's
+  contract directory at the commit in `.forager-contract-ref`: one request per file, signed
   with Ed25519 under the contract's fixture access key, with the status a receiver answers
   and, for a coded refusal, its code. The receiver holds the fixture access key under
   `ak_f1xt0re000000000` on a node, and sets its clock to the second the fixtures are

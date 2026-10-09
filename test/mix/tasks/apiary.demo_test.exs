@@ -86,7 +86,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert Enum.map(run.about_subjects, &{&1["type"], &1["ref"]}) ==
                [{"ticket", "SHOP-128"}, {"pull request", "#412"}]
 
-      assert run.runner_version == "0.10.0"
+      assert run.forager_version == "0.10.0"
       assert run.contract_version == 1
       assert run.heartbeat_interval_seconds == 60
       assert run.elapsed_seconds == 180
@@ -182,7 +182,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       assert run.state == "pending"
       assert {run.started_at, run.runtime, run.target_id} == {nil, nil, nil}
-      assert run.runner_version == "0.10.0"
+      assert run.forager_version == "0.10.0"
     end
 
     test "unassigned has no labels and no wall, and was only observed", %{

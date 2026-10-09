@@ -66,7 +66,7 @@ defmodule ApiaryWeb.Contract.EventsController do
   defp put_configuration(conn, _node, _unknown), do: conn
 
   # Absent for a workspace that is not managed, and when it could not be read: a header
-  # absent means nothing to a runner.
+  # absent means nothing to the gateway.
   defp put_run_configuration(conn, digest) when is_binary(digest),
     do: put_resp_header(conn, "x-qory-run-configuration", digest)
 
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.Contract.EventsController do
     %{
       delivery_id: single(conn, "x-qory-delivery"),
       run_configuration: single(conn, "x-qory-run-configuration"),
-      runner_version: SignedRequest.runner_version(conn),
+      forager_version: SignedRequest.forager_version(conn),
       contract_version: conn.assigns.contract_version,
       instance_id: conn.assigns.instance_id
     }

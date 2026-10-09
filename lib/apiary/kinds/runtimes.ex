@@ -1,17 +1,17 @@
 defmodule Apiary.Kinds.Runtimes do
   @moduledoc """
-  Runtimes is the catalogue of the runtimes a workspace can set up: the runner contract's
-  `contracts/runner/v1/runtimes.json`, vendored byte for byte as
-  `priv/contract/runtimes.json` at the commit in `.runner-contract-ref`. The runner
+  Runtimes is the catalogue of the runtimes a workspace can set up: the Forager contract's
+  `contracts/forager/v1/runtimes.json`, vendored byte for byte as
+  `priv/contract/runtimes.json` at the commit in `.forager-contract-ref`. Forager
   generates it from its built-in descriptors, in name order; per runtime it has its
   `name`, such as `claude`, a `title`, its `reserves`, its `denies`, its
   `credential_files`, its `declares` (each with its `id`, `title`, the variable `name` it
   sets, its `hosts`, its `auth`, as the contract's `auth.schema.json` has it, and its
   `paths`, which may be absent), and its `one_of` groups (each with `id`, `required` and
-  `of`). A test compares the file with the runner's contract directory.
+  `of`). A test compares the file with Forager's contract directory.
 
   The catalogue is read when the application is compiled: a runtime is added by a
-  release. Every list of a runtime is read with `Map.fetch!/2`, since the runner always
+  release. Every list of a runtime is read with `Map.fetch!/2`, since Forager always
   writes them, so a key the contract renames fails the compile instead of reading as an
   empty list.
 

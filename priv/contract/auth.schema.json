@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://qory.dev/contracts/runner/v1/auth.schema.json",
+  "$id": "https://qory.dev/contracts/forager/v1/auth.schema.json",
   "title": "Authentication scheme",
   "description": "How a secret value is set on a request, from the closed set of schemes the proxy implements. bearer sets Authorization: Bearer and the value. header sets the header in header to the value. basic sets Authorization: Basic with the username in username and the value as the password.",
   "type": "object",
