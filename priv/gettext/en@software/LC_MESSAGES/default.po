@@ -4704,6 +4704,7 @@ msgstr ""
 msgid "End of the record."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ended"
@@ -10201,6 +10202,11 @@ msgstr ""
 msgid "Stored secrets"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "Stored secrets, variables and integrations, in each workspace's settings."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Stream"
@@ -12821,6 +12827,11 @@ msgstr ""
 msgid "by rule"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "closed"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "contract %{version}"
@@ -12982,6 +12993,7 @@ msgstr ""
 msgid "from %{from} to %{to}"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -13386,6 +13398,27 @@ msgstr ""
 msgid "qory printed a fingerprint on %{name} when it ran the command. If it isn't this one, revoke the key on the Access key tab."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "quiet for %{number} hour"
+msgid_plural "quiet for %{number} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "quiet for %{number} minute"
+msgid_plural "quiet for %{number} minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "quiet for %{number} second"
+msgid_plural "quiet for %{number} seconds"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reads requests to %{hosts}"
@@ -13424,6 +13457,11 @@ msgstr ""
 msgid "run %{id}"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "run credential expired"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "secret variable environment token value"
@@ -13432,6 +13470,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "session lost"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13492,6 +13535,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "terminal"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "the issuer reported the run ended"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -13562,6 +13610,11 @@ msgstr "this repository's own"
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "through #%{sequence}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "timed out"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

@@ -156,8 +156,8 @@ defmodule Apiary.Runs.Filters do
 
   @doc """
   The three families the states read as, in the order they are shown: alive (`pending`,
-  `running`), ended well (`succeeded`) and ended badly (`failed`, `timed_out`, `lost`,
-  `closed`). Every state is in exactly one. The labels are in the domain's words:
+  `running`), ended well (`succeeded`, `ended`) and ended badly (`failed`, `timed_out`,
+  `lost`, `closed`). Every state is in exactly one. The labels are in the domain's words:
   translated here, at call time, because the list is made at compile time.
   """
   @spec families() :: [family()]

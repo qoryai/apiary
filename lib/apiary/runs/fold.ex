@@ -45,6 +45,11 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
+  What opened the run is `opened_by` of its `run.started`, `session` or `gateway`. A run a
+  gateway opened has no session: its start says no runtime, command or host, and its exit
+  no state and no exit code, so the exit's reason decides its state (`exit_state/2`). An
+  exit with the reason `quiet` says the quiet period, `quiet_seconds`.
+
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
   with the highest sequence, because the lost-run check compares it with the server's
@@ -107,7 +112,12 @@ defmodule Apiary.Runs.Fold do
   # and DEL, C1, and the line and paragraph separators.
   @control ~r/[\x{00}-\x{1F}\x{7F}-\x{9F}\x{2028}\x{2029}]/u
 
-  @terminal ~w(succeeded failed timed_out)
+  @terminal ~w(succeeded ended failed timed_out)
+  @openers ~w(session gateway)
+  # The reasons of an exit without a state that end a run neither well nor by a failure of
+  # its own: a run a gateway opened was quiet, its run credential expired, or its issuer
+  # said it ended.
+  @ended_reasons ~w(quiet credential_expired run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
 
   defstruct run: %{},
@@ -159,6 +169,7 @@ defmodule Apiary.Runs.Fold do
 
       run
       |> Map.merge(%{
+        opened_by: opened_by(data),
         runtime: string(data, "runtime"),
         runtime_version: string(data, "runtime_version"),
         command: string(data, "command", @long_text),
@@ -284,6 +295,7 @@ defmodule Apiary.Runs.Fold do
         exit_code: integer(data, "exit_code", -@int4..@int4),
         signal: string(data, "signal", 64),
         reason: reason,
+        quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8)
       })
       |> Map.update!(:state, &exited_state(&1, string(data, "state"), reason))
@@ -333,9 +345,19 @@ defmodule Apiary.Runs.Fold do
       do: Decimal.normalize(cost)
   end
 
-  @doc "The run state an `dev.qory.run.exited` with this `state` and `reason` means."
+  @doc """
+  The run state a `dev.qory.run.exited` with this `state` and `reason` means. A session's
+  exit says its state: succeeded, or failed, timed out with the reason `timeout`. An exit
+  without one, a run a gateway opened, reads its reason: `quiet`, `credential_expired` and
+  `run_ended_at_issuer` are ended, `timeout` timed out, `run_closed` closed, and the rest,
+  `gateway_lost` and `session_lost` among them, failed.
+  """
+  @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
   def exit_state("succeeded", _reason), do: "succeeded"
   def exit_state("failed", "timeout"), do: "timed_out"
+  def exit_state(nil, reason) when reason in @ended_reasons, do: "ended"
+  def exit_state(nil, "timeout"), do: "timed_out"
+  def exit_state(nil, "run_closed"), do: "closed"
   def exit_state(_state, _reason), do: "failed"
 
   defp exited_state("closed", _state, _reason), do: "closed"
@@ -345,6 +367,14 @@ defmodule Apiary.Runs.Fold do
     do: run
 
   defp started_state(run), do: %{run | state: "running", lost_at: nil}
+
+  # What opened the run, one of the two the contract names, or nil.
+  defp opened_by(data) do
+    case string(data, "opened_by", 64) do
+      opener when opener in @openers -> opener
+      _ -> nil
+    end
+  end
 
   # `ping` and `run.started` both say Forager's version: the later of the two decides.
   defp forager_version(acc, %{sequence: sequence, data: data}) do

@@ -7,6 +7,7 @@ defmodule Apiary.Runs.FoldTest do
     state: "pending",
     forager_version: nil,
     contract_version: nil,
+    opened_by: nil,
     runtime: nil,
     runtime_version: nil,
     command: nil,
@@ -28,6 +29,7 @@ defmodule Apiary.Runs.FoldTest do
     exit_code: nil,
     signal: nil,
     reason: nil,
+    quiet_seconds: nil,
     duration_ms: nil,
     last_heartbeat_at: nil,
     elapsed_seconds: nil,
@@ -63,6 +65,7 @@ defmodule Apiary.Runs.FoldTest do
       "run.started",
       Map.merge(
         %{
+          "opened_by" => "session",
           "runtime" => "claude",
           "runtime_version" => "2.1.0",
           "command" => "claude",
@@ -166,6 +169,7 @@ defmodule Apiary.Runs.FoldTest do
 
       assert run.state == "running"
       assert run.started_at == at(2)
+      assert run.opened_by == "session"
       assert run.runtime == "claude"
       assert run.runtime_version == "2.1.0"
       assert run.command == "claude"
@@ -179,6 +183,40 @@ defmodule Apiary.Runs.FoldTest do
       assert run.target_system == "git.example.com"
       assert run.target_path == "acme/shop"
       assert run.labels["task"] == "issue-12"
+    end
+
+    test "a gateway's start says no session: no runtime, command, host or terminal" do
+      start =
+        event(2, "run.started", %{
+          "opened_by" => "gateway",
+          "forager_version" => "0.6.0",
+          "labels" => %{
+            "forge" => "git.example.com",
+            "repository" => "example-org/example-repo",
+            "run_key" => "rk-0001"
+          },
+          "about" => %{"details" => %{"requester" => "example-requester"}}
+        })
+
+      %{run: run} = Fold.fold(@run, [start])
+
+      assert run.opened_by == "gateway"
+      assert Apiary.Runs.Run.no_session?(run)
+      assert run.state == "running"
+      assert run.forager_version == "0.6.0"
+      assert {run.runtime, run.command, run.args, run.dir, run.host} == {nil, nil, [], nil, nil}
+      assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
+      assert run.labels["run_key"] == "rk-0001"
+      assert run.target_path == "example-org/example-repo"
+      assert run.about_details == %{"requester" => "example-requester"}
+    end
+
+    test "an opener the contract does not name is read as absent" do
+      for opener <- ["robot", "", 1, nil] do
+        %{run: run} = Fold.fold(@run, [started(2, %{"opened_by" => opener})])
+        assert run.opened_by == nil
+        refute Apiary.Runs.Run.no_session?(run)
+      end
     end
 
     test "the workspace's domain names the target, by its own labels" do
@@ -967,6 +1005,79 @@ defmodule Apiary.Runs.FoldTest do
 
       assert run.state == "succeeded"
       assert run.lost_at == nil
+    end
+
+    test "an exit without a state, a gateway's, reads its reason" do
+      for {reason, state} <- [
+            {"quiet", "ended"},
+            {"credential_expired", "ended"},
+            {"run_ended_at_issuer", "ended"},
+            {"timeout", "timed_out"},
+            {"run_closed", "closed"},
+            {"gateway_lost", "failed"},
+            {"session_lost", "failed"},
+            {"unheard of", "failed"},
+            {nil, "failed"}
+          ] do
+        data =
+          %{"reason" => reason, "duration_ms" => 1_804_900}
+          |> Map.merge(if reason == "quiet", do: %{"quiet_seconds" => 1800}, else: %{})
+          |> Map.reject(fn {_key, value} -> is_nil(value) end)
+
+        %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
+
+        assert run.state == state, inspect(reason)
+        assert run.reason == reason
+        assert run.exit_code == nil
+        assert run.exited_at == at(18)
+        assert run.duration_ms == 1_804_900
+      end
+    end
+
+    test "with a state, the state decides, whatever the reason" do
+      for {data, state} <- [
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "quiet"}, "failed"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "credential_expired"},
+             "failed"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "run_ended_at_issuer"},
+             "failed"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "run_closed"}, "failed"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "session_lost"}, "failed"},
+            {%{"state" => "succeeded", "reason" => "credential_expired"}, "succeeded"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout"}, "timed_out"}
+          ] do
+        %{run: run} = Fold.fold(%{@run | state: "running"}, [exited(18, data)])
+        assert run.state == state, inspect(data)
+      end
+    end
+
+    test "keeps the quiet period of a quiet exit, and reads one out of range as absent" do
+      quiet = fn seconds ->
+        data = %{"reason" => "quiet", "quiet_seconds" => seconds, "duration_ms" => 5}
+        Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)]).run
+      end
+
+      assert quiet.(1800).quiet_seconds == 1800
+      assert quiet.(1).quiet_seconds == 1
+
+      for seconds <- [0, -1, 2_147_483_648, "1800", 1.5] do
+        assert quiet.(seconds).quiet_seconds == nil
+        assert quiet.(seconds).state == "ended"
+      end
+
+      assert Fold.fold(@run, [exited(18, %{"state" => "succeeded"})]).run.quiet_seconds == nil
+    end
+
+    test "an ended run is final: a later start or heartbeat does not undo it" do
+      data = %{"reason" => "quiet", "quiet_seconds" => 1800, "duration_ms" => 5}
+      %{run: run} = Fold.fold(%{@run | state: "running"}, [event(18, "run.exited", data)])
+      assert run.state == "ended"
+
+      %{run: run} = Fold.fold(run, [started(2)], %{"dev.qory.run.exited" => 18})
+      assert run.state == "ended"
+
+      %{run: run} = Fold.fold(run, [heartbeat(20, 600)], %{"dev.qory.run.exited" => 18})
+      assert run.state == "ended"
     end
 
     test "a closed run stays closed and keeps the result" do

@@ -1301,7 +1301,7 @@ defmodule Apiary.Runs do
             ),
           runs: count(r.id),
           alive: filter(count(r.id), r.state in ^Run.alive_states()),
-          ended_well: filter(count(r.id), r.state == "succeeded"),
+          ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: type(coalesce(sum(r.denied_count), 0), :integer),
           cost: sum(r.cost_usd),
@@ -1709,7 +1709,7 @@ defmodule Apiary.Runs do
   Closes the run: the workspace takes no more events for it and the receiver answers
   `410` (`run.close`, which every member may). Only a run that has
   not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
-  failed or timed out keeps the end its events gave it. A close is final: no event reopens
+  ended, failed or timed out keeps the end its events gave it. A close is final: no event reopens
   the run, and closing a closed run changes nothing.
 
   `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`

@@ -23,7 +23,8 @@ defmodule ApiaryWeb.RunComponentsTest do
             {"failed", "Failed"},
             {"timed_out", "Timed out"},
             {"lost", "Lost"},
-            {"closed", "Closed"}
+            {"closed", "Closed"},
+            {"ended", "Ended"}
           ] do
         html = render_component(&RunComponents.run_state/1, state: state)
         assert String.starts_with?(text(html), word)
@@ -58,6 +59,43 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       assert text(render_component(&RunComponents.run_state/1, state: "succeeded", exit_code: 0)) ==
                "Succeeded"
+    end
+
+    test "an ended run is grey, as a closed one is" do
+      html = render_component(&RunComponents.run_state/1, state: "ended")
+      refute html =~ "-soft"
+      assert text(html) == "Ended"
+    end
+
+    test "reason_words says why a run ended, the quiet period as a duration reads" do
+      for {reason, words} <- [
+            {"timeout", "timed out"},
+            {"run_closed", "closed"},
+            {"gateway_lost", "gateway lost"},
+            {"session_lost", "session lost"},
+            {"credential_expired", "run credential expired"},
+            {"run_ended_at_issuer", "the issuer reported the run ended"}
+          ] do
+        assert RunComponents.reason_words(%{reason: reason, quiet_seconds: nil}) == words
+      end
+
+      for {seconds, words} <- [
+            {1800, "quiet for 30 minutes"},
+            {60, "quiet for 1 minute"},
+            {600, "quiet for 10 minutes"},
+            {3600, "quiet for 1 hour"},
+            {7200, "quiet for 2 hours"},
+            {5400, "quiet for 90 minutes"},
+            {45, "quiet for 45 seconds"},
+            {1, "quiet for 1 second"},
+            {1830, "quiet for 1,830 seconds"}
+          ] do
+        assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: seconds}) == words
+      end
+
+      assert RunComponents.reason_words(%{reason: "quiet", quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: nil, quiet_seconds: nil}) == nil
+      assert RunComponents.reason_words(%{reason: "unheard of", quiet_seconds: nil}) == nil
     end
 
     test "a quiet running run turns amber, stops rippling and says for how long" do

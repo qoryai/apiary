@@ -62,7 +62,7 @@ defmodule ApiaryWeb.RunComponents do
   ## Run state
 
   @doc """
-  The badge of a run's state, one family for the seven states. `quiet_for` (seconds since
+  The badge of a run's state, one family for the eight states. `quiet_for` (seconds since
   the last heartbeat, set by the server once it is over one interval) turns a running badge
   amber and adds the note beside it.
   """
@@ -139,6 +139,52 @@ defmodule ApiaryWeb.RunComponents do
   def state_label("timed_out"), do: gettext("Timed out")
   def state_label("lost"), do: gettext("Lost")
   def state_label("closed"), do: gettext("Closed")
+  def state_label("ended"), do: gettext("Ended")
+
+  @doc """
+  Why the run ended, in words, from its exit's `reason` (and `quiet_seconds` for `quiet`):
+  "timed out", "quiet for 30 minutes", "the issuer reported the run ended". Nil for a run
+  whose exit gave no reason, or one these words do not know.
+  """
+  @spec reason_words(map()) :: String.t() | nil
+  def reason_words(%{reason: "timeout"}), do: gettext("timed out")
+  def reason_words(%{reason: "run_closed"}), do: gettext("closed")
+  def reason_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
+  def reason_words(%{reason: "session_lost"}), do: gettext("session lost")
+  def reason_words(%{reason: "credential_expired"}), do: gettext("run credential expired")
+
+  def reason_words(%{reason: "run_ended_at_issuer"}),
+    do: gettext("the issuer reported the run ended")
+
+  def reason_words(%{reason: "quiet", quiet_seconds: seconds})
+      when is_integer(seconds) and seconds > 0,
+      do: quiet_words(seconds)
+
+  def reason_words(_run), do: nil
+
+  # The quiet period as a duration reads: in hours or minutes when it is a whole number of
+  # them, else in seconds.
+  defp quiet_words(seconds) when rem(seconds, 3600) == 0 do
+    hours = div(seconds, 3600)
+
+    ngettext("quiet for %{number} hour", "quiet for %{number} hours", hours,
+      number: Format.number(hours)
+    )
+  end
+
+  defp quiet_words(seconds) when rem(seconds, 60) == 0 do
+    minutes = div(seconds, 60)
+
+    ngettext("quiet for %{number} minute", "quiet for %{number} minutes", minutes,
+      number: Format.number(minutes)
+    )
+  end
+
+  defp quiet_words(seconds) do
+    ngettext("quiet for %{number} second", "quiet for %{number} seconds", seconds,
+      number: Format.number(seconds)
+    )
+  end
 
   # A translated sentence with one element in it. `text` is the sentence, translated with the
   # element's binding set to `hole/0`; the slot is rendered where the binding stood.
