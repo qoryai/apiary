@@ -1680,6 +1680,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       end
     end
 
+    test "a deny rule is in the document, and the note under it says nothing otherwise",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example"})
+
+      for rest <- ~w(/policy/document /policy/versions/3) do
+        view = open(conn, scope, rest)
+        assert text(view, "#version-doc") =~ ~s("deny"), rest
+        assert text(view, "#version-doc") =~ ~s("tracker.example"), rest
+        refute text(view, "#version-doc-note") =~ "Deny rules", rest
+        refute text(view, "#version-doc-note") =~ "what it lists", rest
+      end
+    end
+
     test "with no paths there is no policy file: the bar has Copy alone",
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/document")

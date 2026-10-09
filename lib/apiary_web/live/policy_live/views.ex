@@ -322,7 +322,6 @@ defmodule ApiaryWeb.PolicyLive.Views do
                 class="q-tip-wide"
               /><span :if={part != :digest}>{part}</span>
             <% end %>
-            {gettext("Deny rules and locks are not in the document: they decide what it lists.")}
           </p>
         </div>
 
