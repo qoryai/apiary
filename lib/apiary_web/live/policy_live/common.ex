@@ -1676,9 +1676,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc "The export of the holder's effective policy, with the scope, version and digest as comments."
-  def export(socket, configuration, opts \\ []) do
+  def export(socket, configuration) do
     scope = socket.assigns.current_scope
-    holder = Keyword.get(opts, :holder, socket.assigns.holder)
+    holder = socket.assigns.holder
     {:ok, export} = Policy.export(scope, holder)
 
     subject =

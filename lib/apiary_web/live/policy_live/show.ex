@@ -110,14 +110,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp document(socket) do
     with %{version: n} <- socket.assigns.version,
          {:ok, v} <- Common.version(socket, n, socket.assigns.params) do
-      export = Common.export(socket, v.configuration)
-
       assign(socket,
-        v:
-          Map.merge(v, %{
-            path: "#{socket.assigns.base}/document",
-            download: export.policy_file && %{name: export.file_name, file: export.policy_file}
-          }),
+        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
         page_title: gettext("Version %{version} · Policy", version: n)
       )
     else

@@ -131,14 +131,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     with %{version: n} <- version,
          {:ok, v} <- Common.version(socket, n, socket.assigns.params, holder: holder) do
-      export = Common.export(socket, v.configuration, holder: holder)
-
       assign(socket,
-        v:
-          Map.merge(v, %{
-            path: "#{socket.assigns.base}/document",
-            download: export.policy_file && %{name: export.file_name, file: export.policy_file}
-          }),
+        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
         version_base: if(baseline?, do: Common.base(scope, nil), else: socket.assigns.base),
         page_title: gettext("Version %{version} · %{title}", version: n, title: title(socket))
       )

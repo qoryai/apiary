@@ -285,17 +285,12 @@ defmodule ApiaryWeb.PolicyLive.Views do
                   <span class="sr-only" aria-live="polite"></span>
                 </button>
               </span>
-              <.tooltip
-                :if={@v[:download]}
-                tip={gettext("Download")}
-                placement="bottom"
-                class="q-tip-end"
-              >
+              <.tooltip tip={gettext("Download")} placement="bottom" class="q-tip-end">
                 <a
                   id="version-download"
                   class="btn btn-ghost btn-xs btn-square"
-                  href={download_href(@v.download.file)}
-                  download={@v.download.name}
+                  href={document_href(@v.configuration.document)}
+                  download="run-configuration.json"
                   aria-label={gettext("Download")}
                 >
                   <.icon name="hero-arrow-down-tray" class="size-4" />
@@ -397,9 +392,16 @@ defmodule ApiaryWeb.PolicyLive.Views do
     """
   end
 
-  # The policy file as a download of its own, the export page's and the Document view's.
+  # The export page's policy file as a download of its own.
   defp download_href(file),
     do: "data:text/yaml;charset=utf-8," <> URI.encode(file, &URI.char_unreserved?/1)
+
+  # The Document view's download: the document as served, byte for byte. In base64, which
+  # grows it by a third whatever it holds, where escaping JSON's punctuation can triple it:
+  # a document is at most 1 MiB (`Apiary.Policy`'s `@document_max`), so its address stays
+  # under 1.4 MB, inside the 2 MB a browser keeps of an address.
+  defp document_href(document),
+    do: "data:application/json;base64," <> Base.encode64(document)
 
   # The version in force is listed as the Document view, an older one as its own page.
   defp entry_path(base, %{latest: n} = v, %{version: n}), do: v[:path] || "#{base}/document"
@@ -500,7 +502,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
         {gettext("Keep a policy file outside the checkout.")}
         {pgettext(
           "plain",
-          "Deny rules and locks are already applied: the text lists what remains allowed."
+          "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
         )}
       </p>
 

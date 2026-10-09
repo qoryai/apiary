@@ -47,6 +47,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     |> hd()
   end
 
+  # What the Document view's Download saves: the bytes its data URI carries.
+  defp downloaded(view) do
+    "data:application/json;base64," <> data = attribute(view, "#version-download", "href")
+    Base.decode64!(data)
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -1594,7 +1600,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "#export-download[download$='-policy.yaml'][href^='data:text/yaml']"
              )
 
-      assert text(view, "#policy-export") =~ "Deny rules and locks are already applied"
+      assert text(view, "#policy-export") =~
+               "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 
       # The page's h1 takes the focus it is sent, as the page header's does.
       assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")
@@ -1655,21 +1662,27 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(
                view,
-               "#{bar} a#version-download.btn-square[aria-label=Download][download$='-policy.yaml'][href^='data:text/yaml']"
+               "#{bar} a#version-download.btn-square[aria-label=Download][download='run-configuration.json'][href^='data:application/json;base64,']"
              )
+
+      # Download saves the document as served: the bytes Copy copies.
+      assert downloaded(view) == configuration.document
 
       assert has_element?(view, "#{bar} .tooltip[data-tip=Download] #version-download")
       [copy, download] = order(view, ~w(version-copy version-download))
       assert copy < download
       refute has_element?(view, "#{bar}", "Copy document")
 
-      # The same file the export page downloads.
+      # The export page keeps its policy file and its own Download.
       export = open(conn, scope, "/policy/versions/3/export")
 
-      for attribute <- ~w(href download) do
-        assert attribute(view, "#version-download", attribute) ==
-                 attribute(export, "#export-download", attribute)
-      end
+      assert has_element?(
+               export,
+               "#export-download[download$='-policy.yaml'][href^='data:text/yaml']"
+             )
+
+      refute attribute(export, "#export-download", "href") ==
+               attribute(view, "#version-download", "href")
 
       # The one place: no Export in the page's header or the version's head on this tab.
       refute has_element?(view, "#policy-export-button")
@@ -1705,12 +1718,22 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       end
     end
 
-    test "with no paths there is no policy file: the bar has Copy alone",
+    test "with hosts alone, Download is on the bar too: the document as served",
          %{conn: conn, scope: scope} do
+      {:ok, configuration} = Policy.get_configuration(scope, nil, 2)
       view = open(conn, scope, "/policy/document")
-      assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
-      assert has_element?(view, "#version-doc .q-docwell-bar .tooltip.q-tip-end #version-copy")
-      refute has_element?(view, "#version-download")
+      bar = "#version-doc .q-docwell-bar"
+      assert has_element?(view, "#{bar} .tooltip.q-tip-end #version-copy[aria-label=Copy]")
+
+      assert has_element?(
+               view,
+               "#{bar} .tooltip.q-tip-end[data-tip=Download] a#version-download[aria-label=Download][download='run-configuration.json']"
+             )
+
+      assert downloaded(view) == configuration.document
+
+      # The export page has no policy file here, and so no Download of its own.
+      refute has_element?(open(conn, scope, "/policy/versions/2/export"), "#export-download")
     end
 
     test "only the version in force is exported", %{conn: conn, scope: scope} do
