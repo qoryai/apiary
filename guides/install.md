@@ -182,7 +182,7 @@ Generate one with: openssl rand -base64 32
 ```
 
 ```text
-APIARY_SIGNING_SECRET is a value the runner contract publishes in its fixtures, so anyone could sign as this instance. Generate one with: openssl rand -base64 32
+APIARY_SIGNING_SECRET is a value the Forager contract publishes in its fixtures, so anyone could sign as this instance. Generate one with: openssl rand -base64 32
 ```
 
 ### Public address and port
@@ -211,7 +211,7 @@ For example: https://qory.example
 
 ```text
 environment variable PUBLIC_URL must be a scheme and a host, with a port when it has one,
-and nothing after: no path, no query. Runners refuse a server URL that has more.
+and nothing after: no path, no query. Forager refuses a server URL that has more.
 For example: https://qory.example
 ```
 

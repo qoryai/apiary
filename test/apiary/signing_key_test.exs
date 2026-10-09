@@ -182,7 +182,7 @@ defmodule Apiary.SigningKeyTest do
               error = assert_raise ArgumentError, fun
 
               assert error.message ==
-                       "APIARY_SIGNING_SECRET is a value the runner contract publishes " <>
+                       "APIARY_SIGNING_SECRET is a value the Forager contract publishes " <>
                          "in its fixtures, so anyone could sign as this instance. " <>
                          "Generate one with: openssl rand -base64 32"
 

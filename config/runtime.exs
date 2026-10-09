@@ -47,7 +47,7 @@ parse_public_url = fn value ->
         not is_nil(uri.userinfo) ->
       raise """
       environment variable PUBLIC_URL must be a scheme and a host, with a port when it has one,
-      and nothing after: no path, no query. Runners refuse a server URL that has more.
+      and nothing after: no path, no query. Forager refuses a server URL that has more.
       For example: https://qory.example
       """
 

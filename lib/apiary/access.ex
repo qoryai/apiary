@@ -249,12 +249,12 @@ defmodule Apiary.Access do
     Action.new(:"run.post_events", "post a run's events",
       feature: :observability,
       roles: [:access_key],
-      audited: {:not, "the events a runner posts are the record, not the audit trail"}
+      audited: {:not, "the events the gateway posts are the record, not the audit trail"}
     ),
     Action.new(:"run_configuration.fetch", "fetch the run configuration",
       feature: :security,
       roles: [:access_key],
-      audited: {:not, "a runner's fetch reads the policy and changes nothing"}
+      audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     )
   ]
 
@@ -264,7 +264,7 @@ defmodule Apiary.Access do
     member: "a person at member, in the workspaces their level reaches",
     admin: "a person at admin, in every workspace; over members only",
     owner: "a person at owner, in every workspace",
-    access_key: "a runner, with a key of the workspace",
+    access_key: "a gateway, with a key of the workspace",
     instance: "the instance itself, in a job no person enqueued"
   ]
 

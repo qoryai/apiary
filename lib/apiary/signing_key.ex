@@ -195,12 +195,12 @@ defmodule Apiary.SigningKey do
   end
 
   defp message(:fixture) do
-    "#{@variable} is a value the runner contract publishes in its fixtures, so anyone " <>
+    "#{@variable} is a value the Forager contract publishes in its fixtures, so anyone " <>
       "could sign as this instance. Generate one with: openssl rand -base64 32"
   end
 
   defp message(:key) do
-    "#{@variable} makes a public key the runner contract's key checks refuse. " <>
+    "#{@variable} makes a public key the Forager contract's key checks refuse. " <>
       "Generate one with: openssl rand -base64 32"
   end
 
