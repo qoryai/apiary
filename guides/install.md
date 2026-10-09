@@ -128,7 +128,7 @@ without it and exits with the message shown.
 
 ```text
 environment variable DATABASE_URL is missing.
-For example: ecto://USER:PASS@HOST/DATABASE
+For example: postgres://USER:PASS@HOST/DATABASE
 ```
 
 ### Secrets
