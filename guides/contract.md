@@ -266,6 +266,7 @@ baseline.
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | nobody has made the workspace's policy; discovery named no `run` section, so the gateway does not ask | `{"error":"not_found"}` |
+| `404` | the `security` feature is off for the key's workspace or organisation, or for the instance; a gateway asks only when it went off after a discovery that named a `run` section. The endpoint is absent: a request that verifies is answered, signed, as a path that does not exist. On an instance without the feature, a request with no signature is answered as one too, unsigned, before anything is verified | `Not Found`, as `text/html`, whatever the request accepts; to a request with no signature, what a path that does not exist answers in the format it accepts |
 | `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
