@@ -5,28 +5,64 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
+# A tag vX.Y.Z publishes the image ghcr.io/qoryai/apiary as X.Y.Z, X.Y and latest, for
+# linux/amd64 and linux/arm64, and the GitHub release with compose.yaml and .env.example
+# attached, the latter naming X.Y.Z in APIARY_VERSION. The image's build is ci.yml's: the
+# same labels, build argument and cache. Nothing else publishes an image.
 jobs:
-  release:
-    name: Build and publish the image
+  check:
+    name: Check the tag
     # Releases are published from the GitHub mirror, where the image is pulled from.
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Check the tag against mix.exs
+        id: version
         # The release reports the version in mix.exs, so the tag has to be that version.
         run: |
           version="${GITHUB_REF_NAME#v}"
           grep -q "version: \"$version\"" mix.exs || {
             echo "mix.exs does not carry version $version" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Take the release body from the changelog
+      - name: Check the changelog has the release's section
         # A tag without a section in CHANGELOG.md does not publish.
         run: scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" release-notes.md
+
+      - name: Check the files the release attaches
+        # The copy of .env.example the release attaches names the version, in the one
+        # APIARY_VERSION= line the repository's copy leaves empty.
+        run: |
+          test -f compose.yaml || { echo "compose.yaml is missing" >&2; exit 1; }
+          [ "$(grep -cx 'APIARY_VERSION=' .env.example)" = 1 ] || {
+            echo ".env.example has no single empty APIARY_VERSION= line" >&2; exit 1; }
+
+  # Each platform on a runner of its own architecture, pushed by digest alone: no tag
+  # names an image until both are built.
+  image:
+    name: Build the image (${{ matrix.platform }})
+    needs: check
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@v4
 
@@ -36,20 +72,92 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            APIARY_REVISION=${{ github.sha }}
           labels: |
-            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.version=${{ needs.check.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+
+      - name: Keep the digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish the image and the release
+    needs: [check, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # One manifest for both platforms, under X.Y.Z, X.Y and latest, without the v.
+      - name: Tag the image
+        working-directory: digests
+        run: |
+          sources=()
+          for digest in *; do sources+=("${IMAGE}@sha256:${digest}"); done
+          [ "${#sources[@]}" = 2 ] || { echo "expected 2 digests, got ${#sources[@]}" >&2; exit 1; }
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${VERSION}" \
+            --tag "${IMAGE}:${VERSION%.*}" \
+            --tag "${IMAGE}:latest" \
+            "${sources[@]}"
+          docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+
+      - name: Take the release body from the changelog
+        run: scripts/changelog-section.sh "$VERSION" release-notes.md
+
+      - name: Write the files the release attaches
+        run: |
+          mkdir dist
+          cp compose.yaml dist/compose.yaml
+          sed "s/^APIARY_VERSION=\$/APIARY_VERSION=$VERSION/" .env.example > dist/.env.example
+          grep -qx "APIARY_VERSION=$VERSION" dist/.env.example
 
       - name: Publish the release
         uses: softprops/action-gh-release@v3
         with:
           body_path: release-notes.md
+          files: |
+            dist/compose.yaml
+            dist/.env.example
