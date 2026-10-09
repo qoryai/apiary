@@ -532,6 +532,8 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation sends in 24 hours: a whole number from `1`. Not set, or empty, is `20`. |
+| `FIRST_ADMIN_EMAIL` | none | Optional. The first admin's address, used once, at the instance's first start, with `FIRST_ORGANISATION_NAME` ([The instance admins](#the-instance-admins)). Not set, or empty, with `FIRST_ORGANISATION_NAME` empty too, leaves the first sign-up to the web. |
+| `FIRST_ORGANISATION_NAME` | none | Optional. The name of the instance's organisation, created with the first admin at the first start; the same rules as an organisation's name on the sign-up page. |
 
 The first person who signs up on a new instance creates its organisation, with its
 workspace **Main**, and is its owner. The instance has that one organisation and that one
@@ -607,8 +609,36 @@ bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com")'
 bin/apiary eval 'Apiary.Release.revoke_instance_admin("dana@example.com")'
 ```
 
-**Claim a fresh instance before its address is public** with the first, given the name of
-your organisation too:
+**Claim a fresh instance at its first start** with `FIRST_ADMIN_EMAIL` and
+`FIRST_ORGANISATION_NAME`, both optional. With `compose.yaml`, set them in `.env` before
+the first `docker compose up -d`:
+
+```sh
+FIRST_ADMIN_EMAIL=you@example.com
+FIRST_ORGANISATION_NAME=Acme
+```
+
+On an instance nobody has signed up to, the first start claims it before it serves a
+page, so no sign-up on the web can come first: it is the instance's first sign-up, as the
+command below makes it, and emails you your log-in link. Should the email not go out, the
+instance is claimed all the same, and the log says to ask for a link at `/users/log-in`
+once the mail settings work; it never writes the address or the link. On an instance that
+has its organisation, a restored one included, the two are not read: changing them later
+changes nothing, and later admins are invited in Qory. Of two starts at once, one claims
+and the other starts as on any instance. Both empty, the first sign-up is the web's. One
+set and the other empty, or a value the sign-up page would refuse, stops the boot with a
+message that names the variable and not the value:
+
+```text
+environment variable FIRST_ORGANISATION_NAME is empty, and FIRST_ADMIN_EMAIL is set. Set both to claim this instance at its first start, or neither.
+```
+
+```text
+environment variable FIRST_ADMIN_EMAIL is not valid: must have the @ sign and no spaces.
+```
+
+**Claim a fresh instance before its address is public** with the first command too, given
+the name of your organisation:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'

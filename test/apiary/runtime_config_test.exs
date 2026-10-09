@@ -502,4 +502,36 @@ defmodule Apiary.RuntimeConfigTest do
     assert mailer[:auth] == :always
     assert mailer[:username] == "relay-user"
   end
+
+  describe "FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME" do
+    setup do
+      previous = Map.new(~w(FIRST_ADMIN_EMAIL FIRST_ORGANISATION_NAME), &{&1, System.get_env(&1)})
+      System.put_env("MAIL_TO_LOG", "true")
+
+      on_exit(fn ->
+        Enum.each(previous, fn
+          {name, nil} -> System.delete_env(name)
+          {name, value} -> System.put_env(name, value)
+        end)
+      end)
+    end
+
+    test "are read in production as they are set, for the boot step to check" do
+      System.put_env("FIRST_ADMIN_EMAIL", "you@example.com")
+      System.put_env("FIRST_ORGANISATION_NAME", "Acme")
+      config = Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
+
+      assert get_in(config, [:apiary, :first_admin_email_setting]) == "you@example.com"
+      assert get_in(config, [:apiary, :first_organisation_name_setting]) == "Acme"
+    end
+
+    test "are not read under test" do
+      System.put_env("FIRST_ADMIN_EMAIL", "you@example.com")
+      System.put_env("FIRST_ORGANISATION_NAME", "Acme")
+      config = Config.Reader.read!("config/runtime.exs", env: :test, target: :host)
+
+      refute Keyword.has_key?(config[:apiary] || [], :first_admin_email_setting)
+      refute Keyword.has_key?(config[:apiary] || [], :first_organisation_name_setting)
+    end
+  end
 end

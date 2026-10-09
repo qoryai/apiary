@@ -89,6 +89,18 @@ if config_env() != :test do
   config :apiary, :invitations_per_day_setting, System.get_env("INVITATIONS_PER_DAY")
 end
 
+# FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME claim an instance nobody has signed up to
+# at its first start, before the endpoint serves: the instance's first sign-up, with that
+# address and that organisation's name, which mails the account its log-in link. Both
+# optional; both empty leaves the first sign-up to the web. Used once: on an instance that
+# has its organisation they are not read. `Apiary.FirstAdmin` checks them at boot and stops
+# a boot with one set and the other empty, or with a value the sign-up refuses. Not read
+# under test, as INVITATIONS_PER_DAY is not.
+if config_env() != :test do
+  config :apiary, :first_admin_email_setting, System.get_env("FIRST_ADMIN_EMAIL")
+  config :apiary, :first_organisation_name_setting, System.get_env("FIRST_ORGANISATION_NAME")
+end
+
 # TRUSTED_PROXIES names the reverse proxies whose X-Forwarded-For the audit trail believes
 # for a request's address: addresses or CIDR ranges separated by commas, none when unset.
 # `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.

@@ -19,6 +19,13 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
   `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
   instance and change its admins.
+- `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, both optional and empty in
+  `.env.example`, claim a new instance at its first start, before it serves a page: the
+  instance's first sign-up, as `grant_instance_admin/2` makes it, which emails the log-in
+  link, and claims the instance even when the email does not go out. On an instance that
+  has its organisation, a restored one included, they are not read. One set and the other
+  empty, or a value the sign-up refuses, stops the boot with a message naming the
+  variable.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces

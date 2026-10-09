@@ -69,6 +69,9 @@ beside it:
   the core's own, and the default.
 - `Apiary.Release` and `Apiary.Release.Migrator`: what the release runs at boot, and the
   commands for whoever runs the instance (`bin/apiary eval "Apiary.Release.…"`).
+- `Apiary.FirstAdmin`: the claim of an instance nobody has signed up to, the release
+  command's and the boot's, which runs it with `FIRST_ADMIN_EMAIL` and
+  `FIRST_ORGANISATION_NAME` just before the endpoint starts.
 
 The web side is under `lib/apiary_web/`:
 
@@ -254,6 +257,15 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   sign-up, `first_only: true` to `sign_up_user/3`, under the same lock: of it and a
   sign-up on the web, one creates the instance's organisation, and the command then
   grants as it would on any instance.
+- **The claim at first start.** `Apiary.FirstAdmin`, a child of the application's
+  supervisor after `Apiary.KeyCheck` and the edition's processes and just before
+  `ApiaryWeb.Endpoint`, runs the command's claim (`Apiary.FirstAdmin.claim/3`, the same
+  `sign_up_user/3` with `first_only: true` and `actor: :instance`, so the edition's part
+  of a first sign-up applies) when `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` are
+  set and the instance has no organisation; its entry's worker is `Apiary.FirstAdmin`. On
+  any other boot it reads nothing. Of two boots at once, the second's sign-up answers
+  `{:error, :instance_claimed}` and the boot goes on, granting nothing. One set and the
+  other empty, or a value the sign-up refuses, stops the boot.
 
 ## Suspending a member
 

@@ -47,36 +47,44 @@ defmodule Apiary.Application do
     # workspace ids and without its arguments.
     Apiary.Job.Log.attach()
 
-    # The edition's processes, once the core's are up and before requests come.
-    children =
-      [
-        ApiaryWeb.Telemetry,
-        Apiary.Repo,
-        {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
-        {Phoenix.PubSub, name: Apiary.PubSub},
-        {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
-        Apiary.Runs.RateLimit,
-        Apiary.Nodes.Throttle
-      ] ++
-        migrator() ++
-        key_check() ++
-        [
-          # The job queue, after the migrator so its tables exist when it
-          # starts. `Apiary.Job` is what every job runs inside.
-          {Oban, oban()}
-        ] ++
-        liveness() ++
-        retention() ++
-        Apiary.Edition.children() ++
-        [
-          # Start to serve requests, typically the last entry
-          ApiaryWeb.Endpoint
-        ]
+    children = children()
 
     # See https://elixir.hexdocs.pm/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Apiary.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  @doc false
+  # The supervisor's children, in the order they start. The edition's processes come once
+  # the core's are up and before requests come; the first admin's claim
+  # (`Apiary.FirstAdmin`) after them, and just before the endpoint, so no web sign-up can
+  # come before it.
+  def children do
+    [
+      ApiaryWeb.Telemetry,
+      Apiary.Repo,
+      {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: Apiary.PubSub},
+      {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
+      Apiary.Runs.RateLimit,
+      Apiary.Nodes.Throttle
+    ] ++
+      migrator() ++
+      key_check() ++
+      [
+        # The job queue, after the migrator so its tables exist when it
+        # starts. `Apiary.Job` is what every job runs inside.
+        {Oban, oban()}
+      ] ++
+      liveness() ++
+      retention() ++
+      Apiary.Edition.children() ++
+      [
+        Apiary.FirstAdmin,
+        # Start to serve requests, typically the last entry
+        ApiaryWeb.Endpoint
+      ]
   end
 
   # Oban's configuration with the crontab built here, the core's and the edition's, so an
