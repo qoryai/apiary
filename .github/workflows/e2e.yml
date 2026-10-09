@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -42,6 +42,21 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v7
+
+      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
+      # share theirs. What this job still pulls from Docker Hub is pulled as the account in
+      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them nothing is
+      # logged in and the pulls stay anonymous.
+      - name: Log in to Docker Hub, when its token is set
+        env:
+          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
+        run: |
+          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
+            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
+            exit 0
+          fi
+          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
 
       # The node's command is built from source: qory at the ref in .qory-e2e-ref, against
       # Forager at the ref in .forager-e2e-ref, the Forager that qory is written for. The

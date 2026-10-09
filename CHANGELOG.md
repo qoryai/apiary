@@ -287,7 +287,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `GET /health` reports it as `revision`, `null` in an image built without one, beside
   `version`, which its `503` has too. It writes no `erl_crash.dump`
   (`ERL_CRASH_DUMP_BYTES=0`), so a boot that stops leaves no copy of the release's memory,
-  secrets included, on the container's disk.
+  secrets included, on the container's disk. Its base is Debian from
+  `public.ecr.aws/docker/library`, Amazon's public copy of Docker's official images, from
+  which CI also pulls the Postgres, nginx and Docker images it runs; the jobs that still pull
+  from Docker Hub log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
   in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
   `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.
