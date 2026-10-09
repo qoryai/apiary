@@ -2550,6 +2550,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "Run cancelled: time limit reached."},
             {{"run.exited", %{"state" => "cancelled", "reason" => "no_longer_needed"}},
              "Run cancelled: no longer needed."},
+            {{"run.exited", %{"state" => "cancelled", "exit_code" => -1}}, "Run cancelled."},
             {{"run.exited",
               %{"state" => "failed", "reason" => "session_lost", "exit_code" => -1}},
              "Run lost: stopped responding."},

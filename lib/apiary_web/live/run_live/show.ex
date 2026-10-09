@@ -2469,7 +2469,9 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp state_sentence("cancelled", run) do
-    if words = reason_words(run), do: gettext("Run cancelled: %{reason}.", reason: words)
+    if words = reason_words(run),
+      do: gettext("Run cancelled: %{reason}.", reason: words),
+      else: gettext("Run cancelled.")
   end
 
   # Lost by its exit: why, in words. Lost by the liveness check: how long it was silent.

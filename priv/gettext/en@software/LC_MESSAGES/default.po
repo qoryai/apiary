@@ -9394,6 +9394,11 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Run cancelled."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Run cancelled: %{reason}."
 msgstr ""
 
