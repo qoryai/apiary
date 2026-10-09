@@ -16,10 +16,11 @@ concurrency:
 # and the tests, under each set of features.
 #
 # A pull request whose head is next, of this repository, skips both: the push to next runs
-# them on the same commit, the pull request's head. A skipped job takes a name of its own,
-# "… · checked by the push run", so a required check is answered only by the push run's
-# job on that commit. A fork's branch named next is not this repository's, and its pull
-# request runs them.
+# them on the same commit, the pull request's head. GitHub does not evaluate the name of a
+# job its if skips: the skipped job's check shows its name: expression as written, which is
+# never a required check's name, so a required check is answered only by the push run's job
+# on that commit. The push run's jobs carry the readable names. A fork's branch named next
+# is not this repository's, and its pull request runs them.
 jobs:
   checks:
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Checks · checked by the push run' || 'Checks' }}"

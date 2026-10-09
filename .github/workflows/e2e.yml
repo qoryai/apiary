@@ -16,9 +16,11 @@ concurrency:
 jobs:
   live-reload:
     # A pull request whose head is next, of this repository, skips the job: the push to
-    # next runs it on the same commit. The skipped job takes a name of its own, "… · checked
-    # by the push run", so a required check is answered only by the push run's job on that
-    # commit. A fork's branch named next is not this repository's.
+    # next runs it on the same commit. GitHub does not evaluate the name of a job its if
+    # skips: the skipped job's check shows its name: expression as written, which is never
+    # a required check's name, so a required check is answered only by the push run's job
+    # on that commit. The push run's job carries the readable name. A fork's branch named
+    # next is not this repository's.
     name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Live reload behind a wall · checked by the push run' || 'Live reload behind a wall' }}"
     if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
