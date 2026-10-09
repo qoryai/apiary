@@ -72,7 +72,9 @@ for name in SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET APIARY_SIGNING_SECRET DATAB
   eval "set_value=\${$name:-}"
   value=$(held "$name")
 
-  if [ -n "$set_value" ]; then
+  if [ -n "$set_value" ] && [ -n "$value" ]; then
+    printf '%s is set in the environment, which wins; the file keeps its own.\n' "$name"
+  elif [ -n "$set_value" ]; then
     printf '%s is set in the environment: not generated, not kept here.\n' "$name"
   elif [ -n "$value" ]; then
     kept=yes
