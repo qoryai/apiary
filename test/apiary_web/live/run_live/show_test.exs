@@ -2302,5 +2302,32 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#e-2", "session lost")
       refute html =~ "exit -1"
     end
+
+    test "an expired run credential or the issuer's end is said as a session run's exit too",
+         %{conn: conn, scope: scope} do
+      for {reason, words} <- [
+            {"credential_expired", "run credential expired"},
+            {"run_ended_at_issuer", "the issuer reported the run ended"}
+          ] do
+        run =
+          projected(scope, [
+            {1, "run.started", started_data()},
+            {2, "run.exited", %{"state" => "failed", "exit_code" => -1, "reason" => reason}}
+          ])
+
+        {:ok, lv, html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state", "Failed")
+        assert has_element?(lv, "#run-reason", words)
+        refute has_element?(lv, "#run-meta", "exit")
+        assert has_element?(lv, "#rail-reason", words)
+        assert "Exit" in run_terms(lv)
+        assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*#{words}\s*</dd>}
+        assert has_element?(lv, "#e-2", "Run ended")
+        assert has_element?(lv, "#e-2", words)
+        refute html =~ "exit -1"
+      end
+    end
   end
 end

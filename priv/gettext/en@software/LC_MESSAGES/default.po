@@ -13493,6 +13493,7 @@ msgid "run %{id}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "run credential expired"
 msgstr ""
@@ -13575,6 +13576,7 @@ msgid "terminal"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "the issuer reported the run ended"
 msgstr ""
