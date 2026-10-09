@@ -262,17 +262,25 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert json_response(conn, 401) == @unauthorized
   end
 
-  test "a stale or malformed timestamp is 401, unsigned", %{conn: conn, key: key, secret: secret} do
+  test "a stale or malformed timestamp is 401, unsigned", %{key: key, secret: secret} do
+    # Each integer is seconds from the clock, read just before its request. The server
+    # reads its clock a moment later, so each timestamp arrives a little older: -301 and
+    # 299 sit one second from the window's edge, since that moves them away from it;
+    # -290 and 310, which it moves towards the edge, keep 10 seconds from it.
+    stamped = fn offset -> System.os_time(:second) + offset end
     now = System.os_time(:second)
 
-    for timestamp <- [now - 301, now + 301, "soon", "12.5", "", "+#{now}", " #{now}", nil] do
+    for timestamp <- [-301, 310, "soon", "12.5", "", "+#{now}", " #{now}", nil] do
+      timestamp = if is_integer(timestamp), do: stamped.(timestamp), else: timestamp
       conn = signed_get(build_conn(), key.key_id, secret, timestamp: timestamp)
       assert json_response(conn, 401) == @unauthorized
       assert unsigned_answer?(conn)
     end
 
-    assert json_response(signed_get(conn, key.key_id, secret, timestamp: now - 299), 200)
-    assert json_response(signed_get(build_conn(), key.key_id, secret, timestamp: now + 299), 200)
+    for offset <- [-290, 299] do
+      conn = signed_get(build_conn(), key.key_id, secret, timestamp: stamped.(offset))
+      assert json_response(conn, 200)
+    end
   end
 
   test "an unknown key is 401", %{conn: conn, secret: secret} do
