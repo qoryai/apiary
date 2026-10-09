@@ -44,6 +44,10 @@ exclude =
   exclude ++
     for(feature <- off, do: {:needs, feature}) ++ if(off == [], do: [], else: [:with_features])
 
+# The tests tagged :load measure the receiver under a gateway's backlog, for long and outside
+# the sandbox: they run only when asked for, with `mix test --only load`.
+exclude = exclude ++ [:load]
+
 ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
 
 # The instance has had its first sign-up, committed before the sandbox takes over: a
