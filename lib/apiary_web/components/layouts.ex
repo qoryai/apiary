@@ -2110,22 +2110,54 @@ defmodule ApiaryWeb.Layouts do
   defp of_feature?(%Entry{action: action}), do: not is_nil(Access.feature(action))
 
   @doc """
-  switch_target/2 is where the switcher's link to a workspace leads once followed, asked
-  with the scope of that workspace: the page of the navigation entry named `key` where the
-  reader may open it there, its feature on there too, else the workspace's overview.
+  switch_target/3 is where the switcher's link to a workspace leads once followed, asked
+  with the scope of that workspace: where the reader may open the workspace's navigation
+  entry named `key` there, its feature on there too, `page` when given, the path of the
+  reader's page as it is there (`ApiaryWeb.SwitchController`), else the entry's page;
+  else the workspace's overview. An entry of an organisation's pages is no workspace's, and
+  leads to the overview.
   """
-  @spec switch_target(Apiary.Accounts.Scope.t(), String.t()) :: String.t()
-  def switch_target(scope, key) do
+  @spec switch_target(Apiary.Accounts.Scope.t(), String.t(), String.t() | nil) :: String.t()
+  def switch_target(scope, key, page \\ nil) do
     found =
       Enum.find(palette_entries(scope), fn {entry, _path} ->
-        entry.place in [:workspace, :organisation] and Atom.to_string(entry.key) == key
+        entry.place == :workspace and Atom.to_string(entry.key) == key
       end)
 
     case found do
-      {_entry, path} -> path
+      {_entry, path} -> page || path
       nil -> ~p"/#{scope.organisation}/#{scope.workspace}"
     end
   end
+
+  @doc """
+  switch_workspace_path/3 is the switcher's link to `workspace` of `organisation`, from a
+  page whose navigation entry is `nav`: `GET /:org/:workspace/switch/:section`
+  (`ApiaryWeb.SwitchController`), which lands on the reader's page there, given as
+  `?page=` the path after the page's own `/:org/:workspace`, which the menu adds when it
+  opens; else on the section, else the overview. A link from an organisation's page, with
+  no `page`, lands on the overview. Without a workspace, for an organisation the person
+  reaches none of, the organisation's own path, which says so.
+  """
+  @spec switch_workspace_path(atom | nil, struct, struct | nil) :: String.t()
+  def switch_workspace_path(_nav, organisation, nil), do: ~p"/#{organisation}"
+
+  def switch_workspace_path(nav, organisation, workspace),
+    do: ~p"/#{organisation}/#{workspace}/switch/#{switch_section(nav)}"
+
+  @doc """
+  switch_organisation_path/2 is the switcher's link to `organisation`, from a page whose
+  navigation entry is `nav`: `GET /:org/-/switch/:section`, which lands in the workspace
+  the person last used there (`Apiary.Organisations.resolve_scope/4`), at the page as
+  `switch_workspace_path/3`'s link does, `?page=` too; in the organisation's own path where
+  they reach no workspace.
+  """
+  @spec switch_organisation_path(atom | nil, struct) :: String.t()
+  def switch_organisation_path(nav, organisation),
+    do: ~p"/#{organisation}/-/switch/#{switch_section(nav)}"
+
+  defp switch_section(nil), do: :overview
+  defp switch_section(nav), do: nav
 
   # The scope a place of the switcher gives in `workspace`, as
   # `Apiary.Organisations.resolve_scope/4` would load it: the edition's, for a place of its

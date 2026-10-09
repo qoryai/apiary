@@ -380,12 +380,15 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/jump", JumpController, :show
         end
 
-        # The switcher's link to a workspace at the section the reader is on, sent on to
-        # that section there, or to the workspace's overview where it has no such page:
-        # whether it has one is the destination's own answer, read when it is followed.
+        # The switcher's links: to a workspace, and to an organisation, in the workspace
+        # the person last used there (`-` is no workspace's slug), sent on to the page the
+        # reader is on, its list page, its section or the workspace's overview: what that
+        # workspace has is its own answer, read when the link is followed. The
+        # organisation's first, whose `-` the workspace's `:workspace` would take.
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
 
+          get "/:org/-/switch/:section", SwitchController, :show
           get "/:org/:workspace/switch/:section", SwitchController, :show
         end
 
