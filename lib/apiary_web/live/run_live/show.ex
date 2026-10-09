@@ -134,7 +134,7 @@ defmodule ApiaryWeb.RunLive.Show do
               <div class="q-run-meta-wrap">
                 <p id="run-meta" class="q-run-meta">
                   <.state_mark id="run-state" state={@run.state} word />
-                  <span :if={reason_words(@run)} id="run-reason">{reason_words(@run)}</span>
+                  <.end_reason run={@run} id="run-reason" />
                   <.alive
                     :if={@run.state in ~w(pending running)}
                     state={@run.state}
@@ -812,9 +812,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd>
             <.state_mark state={@run.state} word />
             <span :if={@run.state == "pending"} class="q-rail-sub">{gettext("Ping only")}</span>
-            <span :if={reason_words(@run)} id="rail-reason" class="q-rail-sub">
-              {reason_words(@run)}
-            </span>
+            <.end_reason run={@run} id="rail-reason" class="q-rail-sub" />
           </dd>
           <%!-- A run with no session: what opened it, and none of a session's facts (exit,
                runtime, host, wall); the Forager that reported it is here, as there is no

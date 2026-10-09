@@ -2545,6 +2545,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert words_of(lv, "#run-meta #run-state") == "Failed"
         assert words_of(lv, "#run-meta #run-reason") == "did not start: image_unknown"
         assert words_of(lv, "#run-facts #rail-reason") == "did not start: image_unknown"
+        # the code in mono, as the timeline's item has it; the words around it are not
+        for reason <- ["#run-meta #run-reason", "#run-facts #rail-reason"] do
+          assert words_of(lv, "#{reason} .font-mono") == "image_unknown"
+        end
+
         refute exit_row(lv)
         refute "Exit" in run_terms(lv)
         refute words_of(lv, "#run-meta") =~ "exit"

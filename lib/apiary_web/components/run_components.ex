@@ -187,8 +187,8 @@ defmodule ApiaryWeb.RunComponents do
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one: "did not start: image_unknown".
-  A run the fold stored as refused, failed with no exit and the refusal's code as its
-  reason, reads the same.
+  A run the fold stored as refused (`Apiary.Runs.Run.refused?/1`), failed with no exit and
+  the refusal's code as its reason, reads the same.
 
   Nil when there is no reason, for `run_closed`, for `quiet` without its period, and for a
   value that is no code.
@@ -213,6 +213,33 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   def reason_words(_run), do: nil
+
+  @doc """
+  A run's end reason as the run page's header and rail show it, `reason_words/1` in a span,
+  with the refusal's code of a run that did not start in mono, as the timeline's item has
+  it: "did not start: `image_unknown`". Nothing when there is no reason.
+  """
+  attr :run, :map, required: true
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+
+  def end_reason(assigns) do
+    code = if Run.refused?(assigns.run), do: refusal_code(assigns.run.reason)
+
+    {before, rest} =
+      if code,
+        do: split_at_hole(gettext("did not start: %{code}", code: hole())),
+        else: {reason_words(assigns.run), ""}
+
+    assigns = assign(assigns, before: before, code: code, rest: rest)
+
+    ~H"""
+    <span :if={@before} id={@id} class={@class}>{@before}<span
+      :if={@code}
+      class="font-mono"
+    >{@code}</span>{@rest}</span>
+    """
+  end
 
   @doc """
   The code of a `dev.qory.run.refused` as the run page shows it, an earlier name read as the
@@ -288,15 +315,17 @@ defmodule ApiaryWeb.RunComponents do
   slot :inner_block, required: true
 
   defp spliced(assigns) do
-    {before, rest} =
-      case String.split(assigns.text, @hole, parts: 2) do
-        [before, rest] -> {before, rest}
-        [before] -> {before, ""}
-      end
-
+    {before, rest} = split_at_hole(assigns.text)
     assigns = assign(assigns, before: before, rest: rest)
 
     ~H"{@before}{render_slot(@inner_block)}{@rest}"
+  end
+
+  defp split_at_hole(text) do
+    case String.split(text, @hole, parts: 2) do
+      [before, rest] -> {before, rest}
+      [before] -> {before, ""}
+    end
   end
 
   defp hole, do: @hole
