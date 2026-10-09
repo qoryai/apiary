@@ -30,7 +30,7 @@ pruned until an owner or an admin asks for it.
 
 Retention works on whole runs, so a timeline is never half there.
 
-A run is due when it is not alive (it succeeded, ended, failed, timed out or was lost) and
+A run is due when it is not alive (it completed, failed, was cancelled or was lost) and
 the server last received an event of it before the cut-off. Only the server's
 clock is compared, never the time Forager wrote into an event. A run that is still running
 is never pruned, however long it has run. A run that was lost is not due until 7 days after
