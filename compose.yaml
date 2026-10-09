@@ -1,0 +1,64 @@
+# Qory Apiary and its Postgres, from the published image. Put .env beside this file (from
+# .env.example), then: docker compose up -d
+# To upgrade: set APIARY_VERSION in .env, then: docker compose pull && docker compose up -d
+name: qory
+
+x-apiary-image: &apiary-image
+  ${APIARY_IMAGE:-ghcr.io/qoryai/apiary}:${APIARY_VERSION:?set APIARY_VERSION in .env}
+
+services:
+  # Runs once at every start and exits: generates the keys the volume does not hold yet,
+  # and never changes one it holds.
+  keys:
+    image: *apiary-image
+    command: ["/app/bin/keys"]
+    env_file: .env
+    volumes:
+      - keys:/var/lib/apiary/keys
+    restart: "no"
+
+  # The bundled Postgres, in the profile `postgres` that .env turns on.
+  postgres:
+    image: postgres:18
+    profiles: [postgres]
+    restart: unless-stopped
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: apiary
+      POSTGRES_DB: apiary
+      POSTGRES_PASSWORD_FILE: /run/apiary-keys/postgres-password
+    volumes:
+      # postgres:18 keeps its data under /var/lib/postgresql/<major>; mount the parent.
+      - postgres-data:/var/lib/postgresql
+      - keys:/run/apiary-keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apiary -d apiary"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  apiary:
+    image: *apiary-image
+    restart: unless-stopped
+    init: true
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+        required: false
+    env_file: .env
+    environment:
+      # The bundled Postgres, unless .env names another; its password is in the volume `keys`.
+      DATABASE_URL: ${DATABASE_URL:-postgres://apiary@postgres/apiary}
+    volumes:
+      - keys:/var/lib/apiary/keys:ro
+    ports:
+      # To the reverse proxy on this machine only. compose.override.yaml changes it.
+      - "127.0.0.1:4100:4100"
+
+volumes:
+  postgres-data:
+  keys:

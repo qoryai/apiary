@@ -12,8 +12,9 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Four jobs side by side: Checks, the checks that do not depend on the features, run once;
-# the tests, under each set of features; the image, on each platform; and Database over TLS.
+# Five jobs side by side: Checks, the checks that do not depend on the features, run once;
+# the tests, under each set of features; the image, on each platform; Database over TLS;
+# and Compose install and upgrade.
 #
 # A pull request whose head is next, of this repository, skips them: the push to next runs
 # them on the same commit, the pull request's head. GitHub does not evaluate the name of a
@@ -322,3 +323,314 @@ jobs:
       - name: Remove the Postgres with TLS
         if: always()
         run: docker rm -f "$TLS_CONTAINER"
+
+  # compose.yaml and .env.example as a person runs them, against the image built here, on
+  # fresh volumes: the install, a second start, a stop and start, the development path of a
+  # checkout, the upgrade from the image of the base commit (a pull request's base branch
+  # head, a push's parent) and, once a release exists, from ghcr.io/qoryai/apiary:latest,
+  # and an external Postgres over TLS with the profile postgres off. Images built here are
+  # named apiary, never the package's name. The keys are compared by checksum and masked in
+  # the log; no value is printed.
+  compose:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Compose install and upgrade · checked by the push run' || 'Compose install and upgrade' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      EXTERNAL_NETWORK: apiary-external-${{ github.run_id }}-${{ github.run_attempt }}
+      EXTERNAL_DATABASE: apiary-external-database-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      # Two commits deep: the parent of what is built is the base commit. On a pull request
+      # what is built is GitHub's merge commit, whose first parent is the base branch head.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # The builder loads what it builds into the runner's Docker, so the development path
+      # below runs `docker build` as a person types it, on this builder's layers.
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: default-load=true
+
+      # The image job's cache, read only: the image job saves it.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: apiary:ci
+          build-args: |
+            APIARY_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=image-amd64
+
+      # A base commit from before bin/keys has no compose.yaml to upgrade from, and the
+      # upgrade from it is skipped.
+      - name: Check out the base commit
+        id: base
+        run: |
+          base="$(git rev-parse HEAD^1)"
+          git worktree add --detach "$RUNNER_TEMP/base" "$base"
+          echo "BASE_SHA=$base" >> "$GITHUB_ENV"
+          if [ -f "$RUNNER_TEMP/base/rel/overlays/bin/keys" ]; then
+            echo "keys=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The base commit $base has no bin/keys: the upgrade from it is skipped."
+          fi
+
+      - name: Build the image of the base commit
+        if: steps.base.outputs.keys == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/base
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: apiary:base
+          build-args: |
+            APIARY_REVISION=${{ env.BASE_SHA }}
+          cache-from: type=gha,scope=image-amd64
+
+      - name: Write the checks the steps below share
+        run: |
+          cat > "$RUNNER_TEMP/compose-checks.sh" <<'SH'
+          keys_file=/var/lib/apiary/keys/apiary.env
+
+          # mask_keys: every value in the volume keys, masked in the log from here on.
+          mask_keys() {
+            docker run --rm -v qory_keys:/keys:ro apiary:ci cat /keys/apiary.env /keys/postgres-password |
+              while IFS= read -r line; do
+                [ -z "$line" ] || echo "::add-mask::${line#*=}"
+              done
+          }
+
+          # healthy REVISION: GET /health answers 200 within three minutes and reports
+          # REVISION, null for an image built without APIARY_REVISION.
+          healthy() {
+            for _ in $(seq 180); do
+              if body="$(curl -fsS http://127.0.0.1:4100/health 2>/dev/null)"; then
+                echo "/health: $body"
+                [ "$(jq -r .revision <<<"$body")" = "$1" ] || {
+                  echo "/health does not report the revision $1" >&2; exit 1; }
+                return 0
+              fi
+              sleep 1
+            done
+            echo "/health did not answer 200 within three minutes" >&2
+            docker compose ps --all
+            docker compose logs --no-color --tail 200
+            exit 1
+          }
+
+          # keys_state FILE: the names, modes, owner and checksums of the keys files in FILE,
+          # never a value; the modes are 0600 and 0644, the owner nobody.
+          keys_state() {
+            docker run --rm -v qory_keys:/keys:ro apiary:ci sh -c '
+              cd /keys &&
+                stat -c "%a %U %n" apiary.env postgres-password &&
+                cut -d= -f1 apiary.env &&
+                sha256sum apiary.env postgres-password' > "$1"
+            printf '%s\n' "600 nobody apiary.env" "644 nobody postgres-password" \
+              SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET APIARY_SIGNING_SECRET DATABASE_PASSWORD |
+              cmp -s - <(head -n 6 "$1") || {
+                echo "The keys files are not as bin/keys writes them:" >&2; head -n 6 "$1" >&2; exit 1; }
+          }
+
+          # said LINE: the service keys printed LINE, in its log since its container was made.
+          said() {
+            log="$(docker compose logs --no-log-prefix keys)"
+            grep -qxF "$1" <<<"$log" || {
+              echo "The service keys did not print: $1" >&2; exit 1; }
+          }
+
+          # keys_generated: the first start generated the four keys and said so; the files'
+          # state is kept for keys_kept.
+          keys_generated() {
+            said "Generated SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and DATABASE_PASSWORD in $keys_file."
+            keys_state "$RUNNER_TEMP/keys-first"
+          }
+
+          # keys_kept: the keys are the first start's, and the service keys said it kept them.
+          keys_kept() {
+            keys_state "$RUNNER_TEMP/keys-now"
+            cmp -s "$RUNNER_TEMP/keys-first" "$RUNNER_TEMP/keys-now" || {
+              echo "The keys are not the ones of the first start" >&2; exit 1; }
+            said "The keys in $keys_file are kept; none was generated."
+            echo "The keys are the ones of the first start."
+          }
+          SH
+
+      # .env as a release's env.example makes it, naming the image built here, with mail to
+      # the log for a trial.
+      - name: Install on fresh volumes
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' .env
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
+          docker compose up -d
+          mask_keys
+          healthy "$GITHUB_SHA"
+          keys_generated
+          [ "$(docker compose port apiary 4100)" = 127.0.0.1:4100 ] || {
+            echo "port 4100 is not published on 127.0.0.1 alone" >&2; exit 1; }
+
+      - name: Start again
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker compose up -d
+          healthy "$GITHUB_SHA"
+          keys_kept
+
+      - name: Stop and start
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker compose down
+          docker compose up -d
+          healthy "$GITHUB_SHA"
+          keys_kept
+          docker compose down -v
+
+      # README's "Run it from a checkout (for development)", as written: an image without
+      # APIARY_REVISION reports the revision null.
+      - name: Run it from a checkout (for development)
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          docker build -t apiary:dev .
+          cp .env.example .env && echo MAIL_TO_LOG=true >> .env
+          APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
+          export APIARY_IMAGE=apiary APIARY_VERSION=dev
+          mask_keys
+          healthy null
+          keys_generated
+          docker compose down -v
+
+      # The upgrade a person makes: APIARY_VERSION set in .env, then up -d, here without
+      # pull, as the new image is the local one. The new release migrates before it serves.
+      - name: Upgrade from the base commit
+        if: steps.base.outputs.keys == 'true'
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=base/' .env
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
+          docker compose up -d
+          mask_keys
+          healthy "$BASE_SHA"
+          keys_state "$RUNNER_TEMP/keys-first"
+          sed -i 's/^APIARY_VERSION=base$/APIARY_VERSION=ci/' .env
+          docker compose up -d --pull never
+          healthy "$GITHUB_SHA"
+          keys_kept
+          docker compose down -v
+
+      # Until the joint release no ghcr.io/qoryai/apiary:latest can be read, and this is
+      # skipped.
+      - name: Upgrade from the latest release
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          if ! docker manifest inspect ghcr.io/qoryai/apiary:latest > /dev/null 2>&1; then
+            echo "::notice::ghcr.io/qoryai/apiary:latest cannot be read: the upgrade from it is skipped."
+            exit 0
+          fi
+          cp .env.example .env
+          sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=latest/' .env
+          echo MAIL_TO_LOG=true >> .env
+          docker compose up -d
+          mask_keys
+          healthy "$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/qoryai/apiary:latest)"
+          keys_state "$RUNNER_TEMP/keys-first"
+          sed -i 's/^APIARY_VERSION=latest$/APIARY_VERSION=ci/' .env
+          echo APIARY_IMAGE=apiary >> .env
+          docker compose up -d --pull never
+          healthy "$GITHUB_SHA"
+          keys_kept
+          docker compose down -v
+
+      # A Postgres 18 of its own over TLS, on a network of its own under the name
+      # database.example.test, with a CA and a certificate made for the run, the CA's key
+      # deleted once the certificate is signed. .env turns the profile postgres off and names
+      # it in DATABASE_URL with sslmode=verify-full, and compose.override.yaml mounts the CA
+      # and joins the network, as a person does for a CA the system does not hold.
+      - name: Install with an external Postgres over TLS
+        run: |
+          . "$RUNNER_TEMP/compose-checks.sh"
+          tls_dir="$RUNNER_TEMP/compose-tls"
+          mkdir -p "$tls_dir"
+          (
+            cd "$tls_dir" || exit 1
+            openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=Apiary test CA" \
+              -keyout ca.key -out ca.pem
+            openssl req -newkey rsa:2048 -nodes -subj "/CN=database.example.test" \
+              -keyout server.key -out server.csr
+            printf '%s\n' "subjectAltName=DNS:database.example.test" "basicConstraints=CA:FALSE" \
+              "extendedKeyUsage=serverAuth" > server.ext
+            openssl x509 -req -in server.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 1 \
+              -extfile server.ext -out server.crt
+            rm ca.key server.csr
+          )
+
+          password="$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          docker network create "$EXTERNAL_NETWORK"
+          docker run -d --name "$EXTERNAL_DATABASE" --network "$EXTERNAL_NETWORK" \
+            --network-alias database.example.test \
+            -e POSTGRES_USER=apiary -e POSTGRES_DB=apiary -e POSTGRES_PASSWORD="$password" \
+            -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
+            postgres:18 bash -c '
+              install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
+              install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
+              exec docker-entrypoint.sh postgres -c ssl=on \
+                -c ssl_cert_file=/etc/postgresql-tls/server.crt \
+                -c ssl_key_file=/etc/postgresql-tls/server.key'
+          for _ in $(seq 60); do
+            docker exec "$EXTERNAL_DATABASE" pg_isready -U apiary -d apiary -h localhost && break
+            sleep 1
+          done
+          docker exec "$EXTERNAL_DATABASE" psql -U apiary -d apiary -tAc 'SHOW ssl' | grep -qx on
+
+          cat > compose.override.yaml <<YAML
+          services:
+            apiary:
+              networks: [default, external]
+              volumes:
+                - $tls_dir/ca.pem:/run/database-ca.pem:ro
+          networks:
+            external:
+              name: $EXTERNAL_NETWORK
+              external: true
+          YAML
+
+          cp .env.example .env
+          sed -i -e 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' -e 's/^COMPOSE_PROFILES=postgres$/COMPOSE_PROFILES=/' .env
+          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true \
+            "DATABASE_URL=postgres://apiary:$password@database.example.test:5432/apiary?sslmode=verify-full&sslrootcert=/run/database-ca.pem" >> .env
+          docker compose up -d
+          mask_keys
+          services="$(docker compose ps --all --format '{{.Service}}')"
+          ! grep -qx postgres <<<"$services" || {
+            echo "the bundled postgres runs with COMPOSE_PROFILES empty" >&2; exit 1; }
+          healthy "$GITHUB_SHA"
+          keys_generated
+
+          # Apiary's connections to it, over TLS.
+          encrypted="$(docker exec "$EXTERNAL_DATABASE" psql -U apiary -d apiary -tAc \
+            "SELECT count(*) FROM pg_stat_ssl JOIN pg_stat_activity USING (pid)
+             WHERE usename = 'apiary' AND ssl AND pid <> pg_backend_pid()")"
+          [ "$encrypted" -gt 0 ] || { echo "no connection of Apiary's is encrypted" >&2; exit 1; }
+          echo "Apiary's connections over TLS: $encrypted"
+
+      # .env and compose.override.yaml are the run's; down needs an APIARY_VERSION, which
+      # the shell gives when .env does not.
+      - name: Tear down
+        if: always()
+        run: |
+          touch .env
+          APIARY_IMAGE=apiary APIARY_VERSION=ci docker compose down -v --remove-orphans || true
+          docker rm -f "$EXTERNAL_DATABASE" || true
+          docker network rm "$EXTERNAL_NETWORK" || true
+          rm -f .env compose.override.yaml
