@@ -1,52 +1,35 @@
 # From nothing to a first run
 
-This page takes a machine with Docker and nothing else to a running Qory Apiary with one
-run on its runs page. It is a trial on one machine: Qory Apiary is reached at
-`http://localhost:4100`, and emails are written to the log instead of being sent. For an
-installation other people sign in to, read [Install and configure](install.md) and the
-[hosting checklist](hosting-checklist.md).
+This page takes a machine with Docker and `git` to a running Qory Apiary with one run on
+its runs page. It is a trial on one machine, run from a checkout of the repository with an
+image built on the machine: Qory Apiary is reached at `http://localhost:4100`, and emails
+are written to the log instead of being sent. For an installation other people sign in to,
+read [Install and configure](install.md) and the [hosting checklist](hosting-checklist.md).
 
-You need Docker with the `docker compose` command, `git` and `openssl`. From step 5 on you
-need the `qory` command, one that has `qory access-key`, on the same machine.
+You need Docker with the `docker compose` command, and `git`. From step 5 on you need the
+`qory` command, one that has `qory access-key`, on the same machine.
 
-## 1. Get the source
+## Run it from a checkout (for development)
+
+### 1. Get the source
 
 Clone the repository of Qory Apiary and enter the checkout:
 
 ```sh
-git clone https://github.com/qoryai/apiary.git qory-server
-cd qory-server
+git clone https://github.com/qoryai/apiary.git && cd apiary
 ```
 
-## 2. Write `.env`
+### 2. Build the image and write `.env`
 
 ```sh
-cp .env.example .env
+docker build -t apiary:dev .
+cp .env.example .env && echo MAIL_TO_LOG=true >> .env
 ```
 
-Generate four values:
-
-```sh
-openssl rand -hex 24       # the database password
-openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least Qory Apiary accepts
-openssl rand -base64 32    # APIARY_ENCRYPTION_SECRET: 32 bytes in base64, 44 characters
-openssl rand -base64 32    # APIARY_SIGNING_SECRET: another 32 bytes, never the same value
-```
-
-Open `.env` and set these lines. The database password appears twice, and the two must
-match; a password in hexadecimal needs no escaping inside the URL.
-
-```text
-POSTGRES_PASSWORD=<the database password>
-DATABASE_URL=ecto://apiary:<the database password>@postgres/apiary
-SECRET_KEY_BASE=<the second value>
-APIARY_ENCRYPTION_SECRET=<the third value>
-APIARY_SIGNING_SECRET=<the fourth value>
-PUBLIC_URL=http://localhost:4100
-MAIL_TO_LOG=true
-```
-
-Leave `SMTP_RELAY` empty and every other line as it is.
+The build takes a few minutes. The image is `apiary:dev`, never the name of the published
+image. `.env` needs nothing else for a trial: `PUBLIC_URL` is `http://localhost:4100`
+already, `SMTP_RELAY` stays empty, and `MAIL_TO_LOG=true` writes every email to the log.
+It holds no secret: the keys are generated at first start.
 
 > #### MAIL_TO_LOG is for a trial on one machine only {: .warning}
 >
@@ -54,32 +37,44 @@ Leave `SMTP_RELAY` empty and every other line as it is.
 > invitation links are credentials, and with this setting they reach the log and everyone
 > and everything that reads it. Never set it on an installation other people sign in to.
 
-Keep `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and `SECRET_KEY_BASE` somewhere safe
-if you mean to keep this installation; [Backup and restore](backup.md) says what is lost
-without them.
-
-## 3. Start it
+### 3. Start it
 
 ```sh
-docker compose up --build
+APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
 ```
 
-The first start builds the image, which takes a few minutes. Compose starts Postgres 18
-with a volume, waits until it is healthy, then starts the `apiary` service, which runs the
-database migrations and listens on port 4100. A required variable that is missing or
-malformed stops the boot with a message that names it.
+`APIARY_IMAGE` and `APIARY_VERSION` name the image you built, in place of the published
+`ghcr.io/qoryai/apiary`; the shell's values win over `.env`'s. Every later `docker compose`
+command reads them too, `docker compose logs` included, so set them in the shell for those
+first:
 
-From a second terminal, check that it serves:
+```sh
+export APIARY_IMAGE=apiary APIARY_VERSION=dev
+```
+
+Compose first runs the service `keys`, which generates `SECRET_KEY_BASE`,
+`APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and the database password into the
+volume `keys` and exits. It then starts Postgres 18 with a volume, waits until it is
+healthy, and starts the `apiary` service, which runs the database migrations and listens
+on port 4100 of `127.0.0.1`. A required variable that is missing or malformed stops the
+boot with a message that names it, in `docker compose logs apiary`.
+
+Check that it serves, once the migrations have run, a few seconds after the start:
 
 ```sh
 curl http://localhost:4100/health
 ```
 
 ```text
-{"status":"ok","database":"ok","version":"0.1.0"}
+{"status":"ok","database":"ok","version":"0.1.0","revision":null}
 ```
 
-The members of the object may come in another order, and the version is the release's.
+The members of the object may come in another order. `version` is the release's, and
+`revision` the commit the image was built from: `null` here, since a `docker build` of
+your own names none.
+
+Keep a copy of the keys if you mean to keep this installation:
+[Backup and restore](backup.md) says how, and what is lost without them.
 
 ## 4. Sign up
 
@@ -99,7 +94,7 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your workspace. Until a run reaches it, the
 overview is one box, **Send your first run**: Add a node, Connect it, See runs here.
-Steps 5 to 8 below are those steps.
+Steps 5 to 7 below are those steps.
 
 Signing up created an organisation with the name you gave, one workspace in it named
 *Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
@@ -239,5 +234,6 @@ version.
   section.
 <!-- /feature -->
 - `qory run --local` records to files only and does not contact Qory Apiary.
-- To stop the trial: `docker compose down`. The database stays in the `postgres-data`
-  volume; `docker compose down --volumes` deletes it.
+- To stop the trial: `docker compose down`. The database stays in the volume
+  `postgres-data`, and the keys in the volume `keys`; `docker compose down --volumes`
+  deletes both.

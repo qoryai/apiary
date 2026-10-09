@@ -11,11 +11,12 @@ defmodule Apiary.DatabaseUrl do
   | none | Not encrypted, unless Ecto's own `ssl=true` asks for TLS, checked against the system's CAs. |
   | `disable` | Not encrypted. |
   | `verify-full` | Encrypted; the server's certificate and host name are checked, against the system's CAs, or against the file `sslrootcert=/path/to/ca.pem` names. `sslrootcert=system` is the system's CAs. |
-  | `require` | Encrypted; the server's certificate is not checked, as libpq means it. Said once at boot, as a warning (`boot/0`). |
+  | `require` | Encrypted; the server's certificate is not checked, with or without `sslrootcert`, where libpq checks it against an `sslrootcert` file. Said once at boot, as a warning (`boot/0`). |
 
   Any other `sslmode` (`prefer`, `allow`, `verify-ca` among them) stops the boot, and so
   does an `sslrootcert` file that cannot be read under `verify-full`. Outside `verify-full`
-  `sslrootcert` is not read. When the URL names an `sslmode`, it alone decides: `sslmode`,
+  `sslrootcert` is not read, also without an `sslmode`, where libpq takes
+  `sslrootcert=system` as `verify-full`. When the URL names an `sslmode`, it alone decides: `sslmode`,
   `sslrootcert` and Ecto's `ssl` are taken out of the URL before Ecto reads it, and the
   `sslmode` becomes the repository's `ssl:` option.
 

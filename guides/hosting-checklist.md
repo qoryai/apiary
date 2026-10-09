@@ -16,11 +16,13 @@ being one. Every variable named here is described in [Install and configure](ins
   is not set: with it, log-in links and invitation links, which are credentials, are
   written to the log. Send yourself a log-in link before inviting anybody, and check that
   `MAIL_FROM` is an address your relay may send from.
-- **The three keys, kept.** `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and
-  `APIARY_SIGNING_SECRET` are generated once, each on its own, and stored where the
-  database backups are stored, not only in the `.env` of the machine.
+- **The three keys, kept.** With `compose.yaml` the service `keys` generates
+  `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` at first
+  start, each on its own, into the volume `keys`. Copy them out once
+  ([Backup and restore](backup.md#the-keys)) and store the copy where the database backups
+  are stored, not only in the volume, which `docker compose down --volumes` deletes.
   `APIARY_ENCRYPTION_SECRET` never changes once an access key exists: without it, no
-  access key is trusted.
+  access key is trusted, and the instance does not start with another.
   <!-- feature: secrets -->
   Losing it also loses every stored secret value.
   <!-- /feature -->
@@ -46,15 +48,17 @@ being one. Every variable named here is described in [Install and configure](ins
   release's download links, which its author chooses on GitLab and Codeberg, are still
   followed to any public https host: [Install and configure](install.md#integrations).
 <!-- /feature -->
-- **The port is not public.** Publish the release's port to the reverse proxy only. In the
-  compose file that is `127.0.0.1:4100:4100` in place of `4100:4100` when the proxy runs
-  on the same machine.
+- **The port is not public.** Publish the release's port to the reverse proxy only.
+  `compose.yaml` publishes it on `127.0.0.1:4100` alone, for a proxy on the same machine;
+  for a proxy elsewhere, publish it in a `compose.override.yaml` on an address only that
+  proxy reaches ([Install and configure](install.md#compose-only)).
 
 ## When it is up
 
 - **Health.** Point the load balancer or the monitor at `GET /health`: `200` with
-  `"status":"ok"` when the database answers, `503` when it does not. It needs no
-  credentials and says nothing about any workspace.
+  `"status":"ok"` when the database answers, `503` when it does not, both with the
+  release's `version` and `revision`. It needs no credentials and says nothing about any
+  workspace.
 - **Logs.** The release writes one JSON object per line on stdout. Ship them as they are.
   A line never holds a request's headers or body, and the paths that carry a credential
   are rewritten before they are logged.

@@ -246,6 +246,42 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
   development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.
+- The two 32-byte keys, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET`, in hex
+  too (64 characters, either case), beside base64 (44 characters): both decode to the same
+  bytes, and the boot compares the bytes.
+- A key variable left blank counts as not set: a blank `SECRET_KEY_BASE` or
+  `APIARY_ENCRYPTION_SECRET` now stops the boot as missing, unless the keys file holds it.
+- The key check at boot. The instance records, at its first boot, a check value of
+  `APIARY_ENCRYPTION_SECRET`, which tells nothing of it, and its signing key's
+  fingerprint, and a later boot with another of either stops with a message that says
+  which, where it served before with no access key verifying or every machine refusing its
+  answers. `Apiary.Release.accept_signing_key/0`, run in a one-off container, makes a new
+  signing key the instance's on purpose.
+- The image, `ghcr.io/qoryai/apiary`, from the `Dockerfile`: CI builds it on every pull
+  request and push, for `linux/amd64` and `linux/arm64`, and publishes nothing; only a
+  release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the
+  commit it was built from as the label `org.opencontainers.image.revision`, and
+  `GET /health` reports it as `revision`, `null` in an image built without one, beside
+  `version`, which its `503` has too.
+- `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
+  in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
+  `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.
+  `.env.example` holds no secret, and no `POSTGRES_PASSWORD`. CI runs it as a person
+  does: the install, a restart, the upgrade from the base commit's image, the path from a
+  checkout, and an external Postgres over TLS.
+- The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
+  generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
+  `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps
+  what the file holds, skips what the environment sets, and prints no value. The release
+  reads the file where the environment does not set a name; the environment always wins.
+- `DATABASE_URL` takes libpq's `sslmode`, `disable`, `require` or `verify-full`, and
+  `sslrootcert`, a file or `system`, as managed Postgres services print them:
+  `verify-full` checks the server's certificate and host name, `require` encrypts without
+  checking and says so at boot, and any other `sslmode` stops the boot. `DATABASE_PASSWORD`
+  is the password when the URL has none.
+- The certificate authorities of Amazon RDS in the image, at
+  `/app/certs/rds-global-bundle.pem`, pinned by checksum, for a `DATABASE_URL` with
+  `sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem`.
 - A `Content-Security-Policy` on every page of the console, the storybook and the
   documentation: only the console's own scripts run, and a script injected into a page,
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
@@ -296,6 +332,9 @@ renames them back.
 `20261009160000_say_what_opened_a_run` adds `runs.opened_by` (`session` or `gateway`, with
 its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs.state` be
 `ended`; rolled back, a run that ended is failed.
+`20261009230000_record_the_instances_keys` adds `instance_settings.encryption_secret_check`
+(32 bytes) and `instance_settings.signing_key_fingerprint` (22 characters), NULL until the
+first boot after it records them.
 
 ### Upgrading
 
