@@ -128,11 +128,12 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The word of a state, as the badge says it."
   def state_label("pending"), do: gettext("Pending")
   def state_label("running"), do: gettext("Running")
-  def state_label("succeeded"), do: gettext("Succeeded")
+  def state_label(state) when state in ~w(succeeded completed), do: gettext("Succeeded")
   def state_label("failed"), do: gettext("Failed")
   def state_label("timed_out"), do: gettext("Timed out")
   def state_label("lost"), do: gettext("Lost")
   def state_label("ended"), do: gettext("Ended")
+  def state_label("cancelled"), do: gettext("Cancelled")
 
   @doc """
   Why the run ended, in words, from its exit's `reason` (and `quiet_seconds` for `quiet`):
@@ -201,12 +202,12 @@ defmodule ApiaryWeb.RunComponents do
 
   defp state_color("running", true), do: "warning"
   defp state_color("running", false), do: "info"
-  defp state_color("succeeded", _), do: "success"
+  defp state_color(state, _) when state in ~w(succeeded completed), do: "success"
   defp state_color(state, _) when state in ~w(failed timed_out), do: "error"
   defp state_color("lost", _), do: "warning"
   defp state_color(_state, _), do: "neutral"
 
-  defp state_glyph("succeeded"), do: "hero-check-micro"
+  defp state_glyph(state) when state in ~w(succeeded completed), do: "hero-check-micro"
   defp state_glyph("failed"), do: "hero-x-mark-micro"
   defp state_glyph("timed_out"), do: "hero-clock-micro"
   defp state_glyph("lost"), do: "hero-signal-slash-micro"
@@ -724,10 +725,12 @@ defmodule ApiaryWeb.RunComponents do
 
   defp ended_sentence("pending", _run), do: gettext("Ping only")
 
-  defp ended_sentence("succeeded", %{duration_ms: ms}) when is_integer(ms),
-    do: gettext("Succeeded %{duration} after it started", duration: format_duration_ms(ms))
+  defp ended_sentence(state, %{duration_ms: ms})
+       when state in ~w(succeeded completed) and is_integer(ms),
+       do: gettext("Succeeded %{duration} after it started", duration: format_duration_ms(ms))
 
-  defp ended_sentence("succeeded", _run), do: gettext("Succeeded")
+  defp ended_sentence(state, _run) when state in ~w(succeeded completed),
+    do: gettext("Succeeded")
 
   defp ended_sentence("failed", %{signal: signal}) when is_binary(signal) and signal != "",
     do: gettext("Failed with %{signal}", signal: signal)
@@ -755,6 +758,7 @@ defmodule ApiaryWeb.RunComponents do
   defp ended_sentence("lost", _run), do: gettext("Lost")
 
   defp ended_sentence("ended", _run), do: gettext("Ended")
+  defp ended_sentence("cancelled", _run), do: gettext("Cancelled")
 
   ## Filter bar
 
@@ -1487,12 +1491,14 @@ defmodule ApiaryWeb.RunComponents do
 
   def run_mark(assigns) do
     assigns =
-      assign(assigns, :quiet?, assigns.state == "running" and is_integer(assigns.quiet_for))
+      assigns
+      |> assign(:quiet?, assigns.state == "running" and is_integer(assigns.quiet_for))
+      |> assign(:dot_only?, assigns.state in ~w(succeeded completed) and !assigns.word)
 
     ~H"""
     <span class={["q-st", "q-st-#{@state}", @quiet? && "q-st-quiet", @class]}>
       <i aria-hidden="true"></i>
-      <span class={["q-st-w", @state == "succeeded" && !@word && "sr-only"]}>{state_label(@state)}</span>
+      <span class={["q-st-w", @dot_only? && "sr-only"]}>{state_label(@state)}</span>
       <span :if={@code} class="q-st-code">{@code}</span>
       <span
         :if={@quiet?}
@@ -1519,11 +1525,11 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc "A run's exit as the preview says it after the state: \"exit 1\", \"SIGKILL\"; nil otherwise."
   def exit_note(%{state: state, signal: signal})
-      when state in ~w(succeeded failed) and is_binary(signal) and signal != "",
+      when state in ~w(succeeded completed failed) and is_binary(signal) and signal != "",
       do: signal
 
   def exit_note(%{state: state, exit_code: code})
-      when state in ~w(succeeded failed) and is_integer(code) and code != -1,
+      when state in ~w(succeeded completed failed) and is_integer(code) and code != -1,
       do: gettext("exit %{code}", code: code)
 
   def exit_note(_run), do: nil
@@ -1761,7 +1767,7 @@ defmodule ApiaryWeb.RunComponents do
   least" what it last reported; nothing for a run that has only pinged.
   """
   def run_length(%{run: %{state: state}} = assigns)
-      when state in ~w(succeeded ended failed timed_out) do
+      when state in ~w(succeeded completed ended failed timed_out cancelled) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """

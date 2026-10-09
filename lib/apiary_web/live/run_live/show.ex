@@ -2454,10 +2454,12 @@ defmodule ApiaryWeb.RunLive.Show do
     announce(socket, state_sentence(run), :now)
   end
 
-  defp state_sentence(%Run{state: "succeeded", duration_ms: ms}) when is_integer(ms),
-    do: gettext("Run succeeded after %{duration}.", duration: format_duration_ms(ms))
+  defp state_sentence(%Run{state: state, duration_ms: ms})
+       when state in ~w(succeeded completed) and is_integer(ms),
+       do: gettext("Run succeeded after %{duration}.", duration: format_duration_ms(ms))
 
-  defp state_sentence(%Run{state: "succeeded"}), do: gettext("Run succeeded.")
+  defp state_sentence(%Run{state: state}) when state in ~w(succeeded completed),
+    do: gettext("Run succeeded.")
 
   defp state_sentence(%Run{state: "failed", signal: signal}) when is_binary(signal),
     do: gettext("Run failed with %{signal}.", signal: signal)
@@ -2654,7 +2656,8 @@ defmodule ApiaryWeb.RunLive.Show do
   ## Words
 
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
-  defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
+  defp ended?(%Run{state: "lost"} = run), do: run.exited_at != nil
+  defp ended?(%Run{state: state}), do: state in ~w(succeeded completed failed timed_out cancelled)
 
   # Why the run ended, in words, for the meta line: nothing where the words only repeat the
   # state ("timed out" beside Timed out).

@@ -108,7 +108,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     states =
       Repo.all(from r in Run, where: r.workspace_id == ^main.id, distinct: true, select: r.state)
 
-    assert "succeeded" in states and "failed" in states and "running" in states
+    assert "completed" in states and "failed" in states and "running" in states
 
     assert count(from r in Run, where: r.workspace_id == ^main.id and is_nil(r.target_id)) > 0
 

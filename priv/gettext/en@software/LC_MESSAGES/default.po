@@ -3317,6 +3317,12 @@ msgstr ""
 msgid "Cancel the deletion of %{name}"
 msgstr ""
 
+#: lib/apiary/runs/filters.ex
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled a command to connect a node"
@@ -4784,6 +4790,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Every alive state"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every cancelled state"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -7500,6 +7511,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No runs alive."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No runs cancelled %{range}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No runs cancelled."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -12749,6 +12770,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by rule"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "cancelled"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

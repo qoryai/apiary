@@ -46,7 +46,9 @@ defmodule ApiaryWeb.RunPageComponents do
 
   alias Phoenix.LiveView.JS
 
-  @ended_reasons Apiary.Runs.Fold.ended_reasons()
+  # The reasons whose exit the timeline ends as "Run ended", whatever the run's state: it was
+  # quiet, its run credential expired, or its starter ended it.
+  @ended_reasons ~w(quiet credential_expired run_ended_at_issuer)
 
   @background_tip gettext_noop(
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."

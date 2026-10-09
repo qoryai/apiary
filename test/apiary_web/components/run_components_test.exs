@@ -99,23 +99,22 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
     end
 
-    # Every reason of the contract's run.exited reaches Qory Apiary but two, which stay in
-    # the session's own record; each that reaches it has words.
+    # The reason of the contract's run.exited is an open code, and the contract names
+    # Forager's own codes among it; these of them have words.
     @tag :contract
-    test "reason_words has words for every reason of the contract that reaches Qory Apiary" do
-      reasons =
+    test "reason_words has words for Forager's own reasons the contract names" do
+      reason =
         Apiary.ContractFixtures.contract_dir()
         |> Path.join("events/run.exited.schema.json")
         |> File.read!()
         |> Jason.decode!()
-        |> get_in(["properties", "reason", "enum"])
+        |> get_in(["properties", "reason"])
 
-      assert length(reasons) == 10
-      assert "run_closed" in reasons and "batch_refused" in reasons
+      assert reason["pattern"] == "^[a-z][a-z0-9_]{0,63}$"
 
-      for reason <- reasons -- ["run_closed", "batch_refused"] do
-        assert is_binary(RunComponents.reason_words(%{reason: reason, quiet_seconds: 1800})),
-               reason
+      for code <- ~w(timeout quiet credential_expired session_lost gateway_lost) do
+        assert reason["description"] =~ code, code
+        assert is_binary(RunComponents.reason_words(%{reason: code, quiet_seconds: 1800})), code
       end
     end
 

@@ -103,7 +103,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       # the meta line: the state as a dot and its word, the target's page, runtime, host,
       # when it started, how long it took, its denials, which lead to its connections
-      assert has_element?(lv, "#run-meta #run-state.q-sdot-succeeded", "Succeeded")
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-completed", "Succeeded")
       assert has_element?(lv, ~s(#run-meta a#run-target[href="#{target}"]), "acme/shop")
       # one system has acme/shop: the path is written alone
       refute has_element?(lv, "#run-target .q-tname-sys")
@@ -1954,7 +1954,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       %{run: demo(scope, "no-session")}
     end
 
-    test "the header: Ended and why, no runtime and no host", %{
+    test "the header: Cancelled and why, no runtime and no host", %{
       conn: conn,
       run: run,
       scope: scope
@@ -1962,7 +1962,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert has_element?(lv, "#run-meta #run-state.q-sdot-ended", "Ended")
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-cancelled", "Cancelled")
       assert has_element?(lv, "#run-meta #run-state + #run-reason", "quiet for 10 minutes")
       refute has_element?(lv, "#run-runtime")
       refute has_element?(lv, "#run-host")
@@ -2057,7 +2057,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
-      assert has_element?(lv, "#run-facts .q-sdot-ended", "Ended")
+      assert has_element?(lv, "#run-facts .q-sdot-cancelled", "Cancelled")
       assert has_element?(lv, "#run-facts #rail-reason", "quiet for 10 minutes")
       assert has_element?(lv, "#run-opened-by", "gateway (no session)")
       assert has_element?(lv, "#run-forager", "0.10.0 · contract 1")
@@ -2088,13 +2088,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       for {exit, state, header, rail} <- [
-            {%{"reason" => "credential_expired"}, "ended", "run credential expired",
+            {%{"reason" => "credential_expired"}, "cancelled", "run credential expired",
              "run credential expired"},
-            {%{"reason" => "run_ended_at_issuer"}, "ended", "the issuer reported the run ended",
-             "the issuer reported the run ended"},
-            {%{"reason" => "gateway_lost"}, "failed", "gateway lost", "gateway lost"},
-            {%{"reason" => "session_lost"}, "failed", "session lost", "session lost"},
-            {%{"reason" => "timeout"}, "timed_out", nil, "timed out"}
+            {%{"reason" => "run_ended_at_issuer"}, "cancelled",
+             "the issuer reported the run ended", "the issuer reported the run ended"},
+            {%{"reason" => "gateway_lost"}, "lost", "gateway lost", "gateway lost"},
+            {%{"reason" => "session_lost"}, "lost", "session lost", "session lost"},
+            {%{"reason" => "timeout"}, "cancelled", "timed out", "timed out"}
           ] do
         run = gateway_run(scope, exit)
 
@@ -2187,9 +2187,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      # timed out: the words repeat the state on the meta line, and stand under it in the rail
-      assert has_element?(lv, "#run-meta #run-state.q-sdot-timed_out", "Timed out")
-      refute has_element?(lv, "#run-reason")
+      # cancelled at its time limit: the words stand after the state and under it in the rail
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-cancelled", "Cancelled")
+      assert has_element?(lv, "#run-reason", "timed out")
       assert has_element?(lv, "#run-facts #rail-reason", "timed out")
       assert has_element?(lv, "#run-runtime")
       assert html =~ "Run exited"
@@ -2224,7 +2224,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert has_element?(lv, "#run-meta #run-state", "Failed")
+      assert has_element?(lv, "#run-meta #run-state", "Lost")
       assert has_element?(lv, "#run-reason", "gateway lost")
       refute has_element?(lv, "#run-meta", "exit gateway lost")
       assert has_element?(lv, "#rail-reason", "gateway lost")
@@ -2251,7 +2251,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert has_element?(lv, "#run-meta #run-state", "Failed")
+      assert has_element?(lv, "#run-meta #run-state", "Lost")
       assert has_element?(lv, "#run-reason", "session lost")
       refute has_element?(lv, "#run-meta", "exit")
       assert has_element?(lv, "#rail-reason", "session lost")
@@ -2277,7 +2277,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         {:ok, lv, html} =
           live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-        assert has_element?(lv, "#run-meta #run-state", "Failed")
+        assert has_element?(lv, "#run-meta #run-state", "Cancelled")
         assert has_element?(lv, "#run-reason", words)
         refute has_element?(lv, "#run-meta", "exit")
         assert has_element?(lv, "#rail-reason", words)

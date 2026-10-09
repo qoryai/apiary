@@ -128,12 +128,13 @@ defmodule Apiary.Contract.RecordedRunTest do
       exited = Enum.find(wire, &(&1["type"] == "dev.qory.run.exited"))
       started = Enum.find(wire, &(&1["type"] == "dev.qory.run.started"))
 
-      # A session's exit says its state and its exit code; a run a gateway opened has no
-      # session, says neither, and ends with a reason: quiet in the contract's record.
+      # Every exit says its state, a session's its exit code too; a run a gateway opened
+      # has no session and no exit code, and ends with a reason: quiet in the contract's
+      # record. The state `succeeded` is a completed run.
       expected_state =
         case exited["data"] do
+          %{"state" => "succeeded"} -> "completed"
           %{"state" => state} -> state
-          %{"reason" => "quiet"} -> "ended"
         end
 
       assert projected.state == expected_state

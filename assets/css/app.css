@@ -4118,7 +4118,8 @@
   .q-st-quiet > i {
     background-color: var(--color-warning);
   }
-  .q-st-succeeded > i {
+  .q-st-succeeded > i,
+  .q-st-completed > i {
     background-color: var(--color-success);
   }
   .q-st-failed,
@@ -5658,6 +5659,7 @@
     font-weight: 500;
   }
   .q-run-meta .q-sdot-succeeded,
+  .q-run-meta .q-sdot-completed,
   .q-run-meta .q-sdot-ended,
   .q-run-meta .q-sdot-pending {
     color: var(--color-base-content);
@@ -9185,7 +9187,8 @@
     border-radius: 9999px;
     background-color: var(--q-border-field);
   }
-  .q-rs-succeeded .q-rs-dot {
+  .q-rs-succeeded .q-rs-dot,
+  .q-rs-completed .q-rs-dot {
     background-color: var(--color-success);
   }
   .q-rs-running {
@@ -9510,7 +9513,8 @@
     border-radius: 9999px;
     background-color: var(--q-border-field);
   }
-  .q-sdot-succeeded > i {
+  .q-sdot-succeeded > i,
+  .q-sdot-completed > i {
     background-color: var(--color-success);
   }
   .q-sdot-running {

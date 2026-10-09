@@ -71,7 +71,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
                    select: d.inserted_count
                )
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
       assert run.exit_code == 0
       assert run.runtime == "claude"
       assert run.wall == "docker"
@@ -169,7 +169,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     } do
       assert {:ok, run} = Demo.replay(access_key, file("timed-out"))
 
-      assert run.state == "timed_out"
+      assert run.state == "cancelled"
       assert {run.reason, run.exit_code, run.duration_ms} == {"timeout", -1, 3_600_000}
       assert {run.target_system, run.target_path} == {"github.com", "acme/shop"}
       assert run.denied_count == 0
@@ -181,7 +181,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("no-session"))
 
       assert {run.state, run.opened_by, run.reason, run.quiet_seconds} ==
-               {"ended", "gateway", "quiet", 600}
+               {"cancelled", "gateway", "quiet", 600}
 
       assert {run.runtime, run.command, run.host, run.exit_code} == {nil, nil, nil, nil}
       assert run.duration_ms == 635_000
@@ -205,7 +205,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     } do
       assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
 
-      assert run.state == "succeeded"
+      assert run.state == "completed"
 
       assert {run.target_system, run.target_path, run.labels["task"], run.wall} ==
                {nil, nil, nil, nil}

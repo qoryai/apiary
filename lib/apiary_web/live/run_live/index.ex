@@ -1481,6 +1481,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp family_checkbox_name("alive"), do: gettext("Every alive state")
   defp family_checkbox_name("ended_well"), do: gettext("Every state that ended well")
+  defp family_checkbox_name("cancelled"), do: gettext("Every cancelled state")
   defp family_checkbox_name("ended_badly"), do: gettext("Every state that ended badly")
 
   # The chosen states as family words when they are whole families ("ended badly", "alive,
@@ -1496,6 +1497,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp family_word("alive"), do: gettext("alive")
   defp family_word("ended_well"), do: gettext("ended well")
+  defp family_word("cancelled"), do: gettext("cancelled")
   defp family_word("ended_badly"), do: gettext("ended badly")
 
   # The funnel empty state's title: the family in the sentence when the states are exactly
@@ -1509,6 +1511,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp empty_family_title("alive", nil), do: gettext("No runs alive.")
   defp empty_family_title("ended_well", nil), do: gettext("No runs ended well.")
+  defp empty_family_title("cancelled", nil), do: gettext("No runs cancelled.")
   defp empty_family_title("ended_badly", nil), do: gettext("No runs ended badly.")
 
   defp empty_family_title("alive", range),
@@ -1516,6 +1519,9 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp empty_family_title("ended_well", range),
     do: gettext("No runs ended well %{range}.", range: range)
+
+  defp empty_family_title("cancelled", range),
+    do: gettext("No runs cancelled %{range}.", range: range)
 
   defp empty_family_title("ended_badly", range),
     do: gettext("No runs ended badly %{range}.", range: range)
