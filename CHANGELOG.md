@@ -84,14 +84,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
   set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the Forager file's
-  `server.url`. Opened again, it says the secret is gone, and offers nothing of it to
+  `gateway.server.url`. Opened again, it says the secret is gone, and offers nothing of it to
   copy. A key's card shows its
   Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
   browser by …") and where its secret is. An active key's card opens the page Forager
   file for the key: for a key connected with a command, the Forager file's `server`
   lines (`url`, `access_key_id`, `apiary_public_key`), each marked as Qory Apiary's or
   this key's; for a generated key, four numbered steps: where its secret belongs, then
-  `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `server.url`. The server's address
+  `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `gateway.server.url`. The server's address
   and public key are the instance's own, the same for every organisation, workspace and
   node. A public key pasted into a node is no way to give it a key: the page that took
   one, Add a public key, was removed before the release.

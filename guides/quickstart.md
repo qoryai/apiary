@@ -171,7 +171,7 @@ Apiary keeps only its public half.
    ```
 
    `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable
-   by you alone, and prints the key's fingerprint. It writes the `server` section into
+   by you alone, and prints the key's fingerprint. It writes the `gateway.server` section into
    `~/.config/qory/forager.yaml`, `$XDG_CONFIG_HOME/qory/forager.yaml` when that variable is
    set: Qory Apiary's `url`, the key's `access_key_id`, and `apiary_public_key`, Qory
    Apiary's key, which the code named and Qory Apiary's signed answer confirmed. The

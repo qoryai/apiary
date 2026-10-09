@@ -5,18 +5,19 @@ command's configuration directory: `~/.config/qory/forager.yaml`, or
 `$XDG_CONFIG_HOME/qory/forager.yaml` when that variable is set. It lives there and nowhere
 else, so a repository cannot set the policy a run is under or where its events go.
 
-Its `server` section names the Qory Apiary every run on the machine reports to, and the
-access key the machine signs with. The section needs a `qory` command that has
+Its `server` section, under `gateway:`, names the Qory Apiary every run on the machine
+reports to, and the access key the machine signs with. The section needs a `qory` command that has
 `qory access-key`, the command that makes the machine's key.
 
 ## The section
 
 ```yaml
-server:
-  url: https://apiary.example
-  access_key_id: ak_0123456789abcdef
-  apiary_public_key:
-    - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
+gateway:
+  server:
+    url: https://apiary.example
+    access_key_id: ak_0123456789abcdef
+    apiary_public_key:
+      - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
 ```
 
 You rarely write it by hand. `qory access-key enrol <server> <code>`, the command a
@@ -24,7 +25,7 @@ node's **Connect with a command** gives, writes it when it connects the machine.
 key connected that way, an active key's **Forager file** opens the page **Forager file for
 build-01**, which shows these lines with the values filled in, each marked as Qory
 Apiary's or this key's ([Nodes and their keys](nodes.md)). When the file exists already,
-add the `server` section to it. The file is read strictly: a key it does not know, or a
+add the `server` section to its `gateway` section. The file is read strictly: a key it does not know, or a
 key written twice, is refused with a message that names the file.
 
 | Key | Holds |
@@ -70,7 +71,7 @@ The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs i
 secret store; `qory access-key enrol --print` prints it instead of keeping it on the
 machine, and **Generate a key in the browser** on the node's **Access key** tab shows it
 once, with the other two, on the page **Key for …**. With the three variables set, the
-CI's `forager.yaml` needs `server.url` alone.
+CI's `forager.yaml` needs `gateway.server.url` alone.
 
 The three stay Forager's. `qory` reads them when it starts and takes them out of its
 environment before it starts anything, so no session inherits them, and naming one in
@@ -140,15 +141,16 @@ configuration document and the events endpoint are enough.
 <!-- feature: security -->
 ## The `egress` section and the workspace's policy
 
-The Forager file's `egress` section is the machine's own policy: a mode, `observe` or
+The Forager file's `egress` section, under `gateway:`, is the machine's own policy: a mode, `observe` or
 `enforce`, the hosts allowed and the hosts denied. A host in `deny` is denied in either
 mode, before `allow` is consulted; under `observe` it is the only thing denied.
 
 ```yaml
-egress:
-  mode: enforce
-  allow: [api.example, "*.internal.example"]
-  deny: [tracker.internal.example]
+gateway:
+  egress:
+    mode: enforce
+    allow: [api.example, "*.internal.example"]
+    deny: [tracker.internal.example]
 ```
 
 It applies:

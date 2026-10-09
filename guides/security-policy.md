@@ -281,12 +281,13 @@ policy of that version as text, with **Download**:
 
 ```yaml
 # ~/.config/qory/forager.yaml
-egress:
-  mode: enforce
-  allow:
-    - "api.example"
-  deny:
-    - "tracker.example"
+gateway:
+  egress:
+    mode: enforce
+    allow:
+      - "api.example"
+    deny:
+      - "tracker.example"
 ```
 
 The export is a copy: it does not follow later changes. Keep a policy file outside the
@@ -329,7 +330,7 @@ moment the workspace's policy applies:
 
 So before the first change:
 
-1. Collect what the machines' own lists say, the `egress.allow` of every Forager file.
+1. Collect what the machines' own lists say, the `gateway.egress.allow` of every Forager file.
 2. Say all of it in the workspace. The first rule you add already applies, so add the
    rest straight after it; where both sides enforce, a run reaches only the hosts both
    allow.
