@@ -67,7 +67,7 @@ defmodule Apiary.FeaturesTest do
     test "an opt-in feature is off unless a list names it" do
       assert :secrets in Features.opt_in()
 
-      for value <- [nil, "", "  ", "all", "all-security"] do
+      for value <- [nil, "", "  ", "all", all_but_a_leaf()] do
         assert {:ok, features} = Features.parse(value)
         refute :secrets in features, inspect(value)
       end
@@ -231,6 +231,13 @@ defmodule Apiary.FeaturesTest do
   # Whether another feature of `features` needs `feature`.
   defp needed?(feature, features), do: Enum.any?(features, &(feature in Features.needs(&1)))
 
+  # `all-` and a feature on by default that no other needs, of the core's and the edition's
+  # (`all-security` in the core alone).
+  defp all_but_a_leaf do
+    default = Features.all() -- Features.opt_in()
+    "all-#{Enum.find(default -- [:observability], &(not needed?(&1, default)))}"
+  end
+
   # Every feature `feature` needs, through what those need.
   defp needs_all(feature) do
     feature
@@ -267,7 +274,7 @@ defmodule Apiary.FeaturesBootTest do
   end
 
   test "boot!/0 leaves an opt-in feature off unless QORY_FEATURES names it" do
-    for value <- [nil, "", "all", "all-security"] do
+    for value <- [nil, "", "all", all_but_a_leaf()] do
       Application.put_env(:apiary, :features_setting, value)
       refute :secrets in Features.boot!(), inspect(value)
       refute Features.on?(:secrets)
@@ -283,5 +290,18 @@ defmodule Apiary.FeaturesBootTest do
     error = assert_raise ArgumentError, fn -> Features.boot!() end
     assert error.message =~ "QORY_FEATURES is not valid: security needs observability"
     assert error.message =~ "QORY_FEATURES=observability\n"
+  end
+
+  # `all-` and a feature on by default that no other needs, of the core's and the edition's
+  # (`all-security` in the core alone).
+  defp all_but_a_leaf do
+    default = Features.all() -- Features.opt_in()
+
+    leaf =
+      Enum.find(default -- [:observability], fn feature ->
+        not Enum.any?(default, &(feature in Features.needs(&1)))
+      end)
+
+    "all-#{leaf}"
   end
 end
