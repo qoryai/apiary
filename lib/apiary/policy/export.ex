@@ -2,11 +2,11 @@ defmodule Apiary.Policy.Export do
   @moduledoc """
   An effective policy as the text a node without a server is given.
 
-  The Forager file, `~/.config/qory/forager.yaml`, holds the machine's policy inline as its
-  `egress` section, which says a mode, the hosts allowed, the hosts denied and nothing
-  else. Paths are said by a policy document, the contract's own format, given to one run
-  with `qory run --policy <file>`; it narrows the machine's section and never widens it,
-  so the two are exported together and agree.
+  The Forager file, `~/.config/qory/forager.yaml`, holds the machine's policy inline as the
+  `egress` section under `gateway:`, which says a mode, the hosts allowed, the hosts denied
+  and nothing else. Paths are said by a policy document, the contract's own format, given
+  to one run with `qory run --policy <file>`; it narrows the machine's section and never
+  widens it, so the two are exported together and agree.
 
   Every scalar is written as a JSON string, which YAML reads as it is, with the line
   breaks YAML knows and JSON does not (U+0085, U+2028, U+2029) escaped.
@@ -30,8 +30,9 @@ defmodule Apiary.Policy.Export do
   defp forager_file(effective) do
     IO.iodata_to_binary([
       "# ~/.config/qory/forager.yaml\n",
-      "egress:\n",
-      egress(effective, "  ", false)
+      "gateway:\n",
+      "  egress:\n",
+      egress(effective, "    ", false)
     ])
   end
 

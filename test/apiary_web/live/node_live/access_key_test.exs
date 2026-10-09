@@ -491,17 +491,18 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         (lv |> element("#key-forager-file-yaml") |> render() |> text() |> String.trim_trailing()) <>
           "\n"
 
-      url = "  url: #{ApiaryWeb.Endpoint.url()}"
-      key_line = "  access_key_id: #{key.key_id}"
-      width = Enum.max(Enum.map([url, key_line, "  apiary_public_key:"], &String.length/1)) + 2
+      url = "    url: #{ApiaryWeb.Endpoint.url()}"
+      key_line = "    access_key_id: #{key.key_id}"
+      width = Enum.max(Enum.map([url, key_line, "    apiary_public_key:"], &String.length/1)) + 2
 
       assert yaml ==
                """
-               server:
+               gateway:
+                 server:
                #{String.pad_trailing(url, width)}# Qory Apiary
                #{String.pad_trailing(key_line, width)}# this key
-               #{String.pad_trailing("  apiary_public_key:", width)}# Qory Apiary's public key
-               #{yaml_pin}
+               #{String.pad_trailing("    apiary_public_key:", width)}# Qory Apiary's public key
+                 #{yaml_pin}
                """
 
       assert has_element?(lv, "#key-forager-file-yaml-copy", "Copy lines")
@@ -557,7 +558,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert words(lv, "#key-forager-file-steps-4") =~ "4 Point qory at Qory Apiary."
 
       assert lv |> element("#key-forager-file-url") |> render() |> text() |> String.trim() ==
-               "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
+               "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
 
       # The key's id is in its own step alone: the server's steps name no key.
       for n <- [3, 4], do: refute(words(lv, "#key-forager-file-steps-#{n}") =~ key.key_id)
@@ -1255,7 +1256,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                  "1 Point qory at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables below."
 
         assert lv |> element("#node-configure-yaml") |> render() |> text() |> String.trim() ==
-                 "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
+                 "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
 
         assert has_element?(lv, "#node-configure-yaml-copy", "Copy lines")
 
@@ -1578,7 +1579,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
                "4 Point qory at Qory Apiary. In the Forager file. It is required: without it, qory ignores the three variables."
 
       assert lv |> element("#key-generated-yaml") |> render() |> text() =~
-               "server:\n  url: #{ApiaryWeb.Endpoint.url()}"
+               "gateway:\n  server:\n    url: #{ApiaryWeb.Endpoint.url()}"
 
       assert has_element?(lv, "#key-generated-id", added.key_id)
 
