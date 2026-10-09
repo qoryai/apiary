@@ -1603,6 +1603,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-export") =~
                "Deny rules and locks are already applied: the text lists what is denied and what remains allowed."
 
+      # The notes read as sentences, a space at each join, as a browser shows the text.
+      notes =
+        view
+        |> element("#policy-export")
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.text()
+        |> String.replace(~r/\s+/, " ")
+
+      assert notes =~ "what enforce would allow. The Forager file's egress section"
+      assert notes =~ "narrows the Forager file's section. Paths need a wall"
+      assert notes =~ "refuses to start the run. Keep a policy file outside the checkout."
+
       # The page's h1 takes the focus it is sent, as the page header's does.
       assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")
       refute_push_event(view, "policy:focus", %{id: "policy-export-h"})

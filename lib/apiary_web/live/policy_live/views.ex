@@ -498,7 +498,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
       </.doc_well>
 
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-muted">
-        <span :for={note <- @export.notes}>{note}</span>
+        <span :for={note <- @export.notes}>{note}{" "}</span>
         {gettext("Keep a policy file outside the checkout.")}
         {pgettext(
           "plain",
