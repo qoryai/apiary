@@ -12,10 +12,10 @@ concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Two jobs side by side: Checks, the checks that do not depend on the features, run once;
-# and the tests, under each set of features.
+# Three jobs side by side: Checks, the checks that do not depend on the features, run once;
+# the tests, under each set of features; and the image, on each platform.
 #
-# A pull request whose head is next, of this repository, skips both: the push to next runs
+# A pull request whose head is next, of this repository, skips them: the push to next runs
 # them on the same commit, the pull request's head. GitHub does not evaluate the name of a
 # job its if skips: the skipped job's check shows its name: expression as written, which is
 # never a required check's name, so a required check is answered only by the push run's job
@@ -163,3 +163,63 @@ jobs:
             deps
             _build/test
           key: ${{ steps.restore.outputs.cache-primary-key }}
+
+  # The image, from the Dockerfile, for each platform a release publishes, each built on a
+  # runner of its own architecture: built and checked, and pushed to no registry. Only
+  # release.yml publishes an image, at a release, with the same build: the same labels,
+  # build argument and cache.
+  image:
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Image · checked by the push run' || format('Image ({0})', matrix.platform) }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Loaded into the runner's Docker for the checks below, under a name that is not the
+      # package's. The cache is the platform's own, which release.yml builds on too.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: apiary:ci
+          build-args: |
+            APIARY_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=image-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
+
+      # The keys directory belongs to nobody, the release carries the commit it was built
+      # from, and RDS's certificate bundle is the one the Dockerfile pins.
+      - name: Check the image
+        run: |
+          docker run --rm apiary:ci ls -ld /var/lib/apiary/keys
+          owner="$(docker run --rm apiary:ci stat -c %U /var/lib/apiary/keys)"
+          [ "$owner" = nobody ] || {
+            echo "/var/lib/apiary/keys belongs to $owner, not nobody" >&2; exit 1; }
+
+          revision="$(docker run --rm apiary:ci cat /app/REVISION)"
+          [ "$revision" = "$GITHUB_SHA" ] || {
+            echo "/app/REVISION holds $revision, not $GITHUB_SHA" >&2; exit 1; }
+
+          pinned="$(grep -o 'checksum=sha256:[0-9a-f]*' Dockerfile | cut -d: -f2)"
+          [ -n "$pinned" ] || { echo "the Dockerfile pins no checksum" >&2; exit 1; }
+          echo "$pinned  /app/certs/rds-global-bundle.pem" |
+            docker run --rm -i apiary:ci sha256sum -c -

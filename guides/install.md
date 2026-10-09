@@ -72,8 +72,8 @@ TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `{"status":"ok","database":"ok","version":"0.1.0"}` | the database answered; `version` is the release's |
-| `503` | `{"status":"degraded","database":"error"}` | the database did not answer |
+| `200` | `{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…"}` | the database answered; `version` is the release's, `revision` the commit its image was built from, `null` in a build without one |
+| `503` | `{"status":"degraded","database":"error","version":"0.1.0","revision":"4f2a9c1e0b…"}` | the database did not answer |
 
 ## Logs
 
