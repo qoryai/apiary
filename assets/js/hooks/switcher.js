@@ -19,6 +19,11 @@
 // closes it, the breadcrumb's own segments included; a tap on a button of the menu that
 // takes no focus (Safari, iOS) does not, and focus goes back into the menu.
 //
+// Below 768 px the bar names the page alone, and the drawer's head holds a chevron for each
+// menu too: the drawer closes (the NavDrawer hook), the menu opens as the sheet under the
+// bar, and closing it gives the focus to the control its chevron names
+// (`data-switcher-back`, the bar's menu button), the chevron being gone with the drawer.
+//
 // On a workspace's page every link of the menus carries the page, the path after its
 // /:org/:workspace (`data-page-base`), as `?page=`, written when the menu opens and again
 // as a link is followed, so the destination keeps it (ApiaryWeb.SwitchController). Every
@@ -97,7 +102,15 @@ export const afterFocusLost = ({inside, onPage}) =>
 export const pointerAction = ({inMenu, onChevron}) =>
   inMenu ? "keep" : onChevron ? "chevron" : "close"
 
+// Where the focus goes as a menu closes: its chevron, or the control the chevron names
+// (`data-switcher-back`) where there is one, found by its id.
+export const focusBack = (opener, byId) =>
+  (opener?.dataset?.switcherBack && byId(opener.dataset.switcherBack)) || opener
+
 const shown = el => el.offsetParent !== null
+
+// Every chevron that opens a menu: the breadcrumb's, and the drawer's head's.
+const chevrons = () => document.querySelectorAll("[data-switcher-open]")
 
 export const Switcher = {
   mounted() {
@@ -153,12 +166,21 @@ export const Switcher = {
       if (then === "close") this.close(false)
     }
     document.addEventListener("pointerdown", this.outside)
+    // A chevron outside the breadcrumb, in the drawer's head, opens its menu too.
+    this.elsewhere = e => {
+      const trigger = e.target.closest?.("[data-switcher-open]")
+      if (!trigger || this.el.contains(trigger)) return
+      e.preventDefault()
+      this.menu && this.opener === trigger ? this.close(true) : this.open(trigger)
+    }
+    document.addEventListener("click", this.elsewhere)
   },
 
   destroyed() {
     clearTimeout(this.rest)
     clearTimeout(this.lost)
     document.removeEventListener("pointerdown", this.outside)
+    document.removeEventListener("click", this.elsewhere)
   },
 
   onClick(e) {
@@ -207,9 +229,7 @@ export const Switcher = {
     } else {
       this.anchor(trigger)
     }
-    this.el
-      .querySelectorAll("[data-switcher-open]")
-      .forEach(t => t.setAttribute("aria-expanded", String(t === trigger)))
+    chevrons().forEach(t => t.setAttribute("aria-expanded", String(t === trigger)))
     this.search().focus()
   },
 
@@ -218,10 +238,8 @@ export const Switcher = {
     clearTimeout(this.lost)
     if (this.menu) this.menu.hidden = true
     this.menu = null
-    this.el
-      .querySelectorAll("[data-switcher-open]")
-      .forEach(t => t.setAttribute("aria-expanded", "false"))
-    if (refocus) this.opener?.focus()
+    chevrons().forEach(t => t.setAttribute("aria-expanded", "false"))
+    if (refocus) focusBack(this.opener, id => document.getElementById(id))?.focus()
   },
 
   search() {

@@ -77,7 +77,11 @@ page, the one the person came from (Two levels, below).
   a panel, → and ← between an organisation and its workspaces, Enter in the search follows
   the first match, Escape closes and gives focus back. On a phone a menu is a sheet under
   the bar showing one panel at a time: `›` shows an organisation's workspaces in place of
-  the organisations, under a button back to them, Organisations.
+  the organisations, under a button back to them, Organisations. A phone's bar names the
+  page alone, so there the drawer's head holds the organisation and, on a workspace's
+  page, the workspace (`#drawer-place`), each a button that opens its menu where it has
+  one: the drawer closes, the menu opens as the sheet under the bar, and closing it gives
+  focus to the bar's Open menu button.
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
   `Palette` hook, which asks `ApiaryWeb.JumpController` what matches, 150 ms after the
   reader stops typing, at the sidebar's level: `/:org/:workspace/jump` where the sidebar is
@@ -144,7 +148,7 @@ page, the one the person came from (Two levels, below).
   `[ Workspace settings · Main ▾ ]` (`#settings-disclosure`, `aria-expanded`,
   `aria-controls` the list), that opens the same links in place, one per line, pushing the
   page down: not a modal, not sticky. Escape on it or on a link closes it and gives it the
-  focus; a navigation renders it closed. The drawer holds the sidebar alone. The level
+  focus; a navigation renders it closed. The drawer holds none of its sections. The level
   leaves the page: a settings page's `<h1>` is its section. Each keeps the ids its
   list had: `#settings-tabs` and `settings-tab-<key>` for a level's Settings,
   `#nav-group-account` and `nav-<key>` for a person's, `#instance-tabs` and
@@ -166,16 +170,17 @@ page, the one the person came from (Two levels, below).
   the first paint by the root layout's script, and while folded each item's name is its
   title. Folded, the foot is the fold over the mark alone, which still opens the menu,
   upward and to the right; the groups are split by rules, their headings gone.
-- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button, its head a
-  Close menu button and its foot the same, without the fold. Open, it is a modal dialog
+- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button, its head the
+  organisation and the workspace, each opening its menu where it has one (above), then a
+  Close menu button, and its foot the same, without the fold. Open, it is a modal dialog
   (`role="dialog"`, `aria-modal`). The `NavDrawer` hook moves focus into the drawer, makes
   the top bar, `#shell-content` and Skip to content inert and stops the page scrolling
   behind it; the scrim, Escape, the Close menu button and any navigation close
   it, and focus returns to the menu button. It scrolls as one piece, its Close menu button
-  kept at the top, so on a short screen the foot never squeezes the main entries. It holds
-  the sidebar alone; on a settings page the foot's Workspace settings is drawn lighter, the
-  page's parent, while the disclosure under the bar (Two levels, above) names the level
-  and lists its sections. The bar names the last segment of the breadcrumb only, and before
+  kept at the top, so on a short screen the foot never squeezes the main entries. Under
+  its head it holds the sidebar alone; on a settings page the foot's Workspace settings
+  is drawn lighter, the page's parent, while the disclosure under the bar (Two levels,
+  above) names the level and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
   (`‹ Runs / Run 0191f2a4`, `‹ Secrets and variables / New secret`): the item of the one
   breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
@@ -1491,7 +1496,8 @@ and names the product Qory Apiary.
 ## Phones and touch
 
 The breakpoint is 768 px (Tailwind's `md`). Below it the sidebar is the drawer, which
-scrolls as one piece and holds the sidebar alone (The shell), the gutter is 16 px,
+scrolls as one piece and holds the sidebar alone under a head that opens the
+organisation menu and the workspace menu (The shell), the gutter is 16 px,
 controls are 40 px high and inputs take 16 px text so the browser does not zoom. The
 second column is a column from 1024 px and, below it, at every width, one disclosure under
 the top bar, `[ Workspace settings · Main ▾ ]`, whose links open in place. On a touch screen (`pointer: coarse`) a small control gets a 40 px hit area

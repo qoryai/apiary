@@ -11,6 +11,7 @@ import {
   pointerAction,
   filterOrganisations,
   filterWorkspaces,
+  focusBack,
   keyAction,
   statusWords,
   step,
@@ -144,4 +145,16 @@ test("a pointer pressed in the open menu keeps it, on a chevron is the chevron's
   assert.equal(pointerAction({inMenu: false, onChevron: true}), "chevron")
   // The breadcrumb's own segments, its separators and avatars, and the rest of the page.
   assert.equal(pointerAction({inMenu: false, onChevron: false}), "close")
+})
+
+test("a closed menu gives the focus to its chevron, or to the control a drawer's chevron names", () => {
+  const button = {id: "nav-drawer-open"}
+  const byId = id => (id === button.id ? button : null)
+  const bar = {dataset: {}}
+  const drawer = {dataset: {switcherBack: "nav-drawer-open"}}
+  assert.equal(focusBack(bar, byId), bar)
+  assert.equal(focusBack(drawer, byId), button)
+  // A control the page no longer has: the chevron itself.
+  assert.equal(focusBack({dataset: {switcherBack: "gone"}}, byId).dataset.switcherBack, "gone")
+  assert.equal(focusBack(undefined, byId), undefined)
 })

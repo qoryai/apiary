@@ -1540,14 +1540,49 @@
     gap: 1px;
     padding: 0 8px 8px;
   }
-  /* The drawer's head, below 768 px: its close button. */
+  /* The drawer's head, below 768 px: the breadcrumb's places, then its close button. */
   .q-drawer-head {
     display: flex;
     height: 3rem;
     flex: none;
     align-items: center;
     justify-content: flex-end;
+    gap: 4px;
     padding-inline: 12px;
+  }
+  /* The organisation and the workspace, where the phone's bar names the page alone: each
+     opens its menu, the sheet under the bar (`drawer_place/1`). */
+  .q-drawer-place {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  .q-drawer-switch {
+    display: inline-flex;
+    min-width: 0;
+    min-height: 2.5rem;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: var(--radius-field);
+    font-weight: 500;
+    white-space: nowrap;
+    outline-offset: -2px;
+  }
+  button.q-drawer-switch {
+    cursor: pointer;
+  }
+  button.q-drawer-switch:hover,
+  button.q-drawer-switch[aria-expanded="true"] {
+    background-color: var(--color-base-300);
+  }
+  .q-drawer-switch-chev {
+    flex: none;
+    margin-inline-start: -2px;
+    color: var(--q-faint);
   }
   /* The foot's last row: the Qory Apiary menu and, at its right, the fold. */
   .q-brand-row {
