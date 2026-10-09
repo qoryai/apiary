@@ -1355,8 +1355,9 @@ page has no breadcrumb of its own.
     and its foot (Ended · 0 B), empty, with a note in the middle of the screen in the
     terminal's own message style: "**No session.** A gateway opened this run for a
     program that reports none, so there is no terminal output. Its connections are on
-    the Network access tab." Its controls are disabled and the caption under it is left
-    out (The terminal, below).
+    the Network access tab." Search, follow, wrap, the text size and the download are
+    disabled, Focus and Full screen stay, and the caption under it is left out (The
+    terminal, below).
   - **Timeline** has no notice of its own; the lane key, Main session, and Connections
     inline are as on any run. Run started reads "by a gateway with no session". The last
     item of a run that ended quiet, with its run credential expired or by its issuer
