@@ -9162,10 +9162,27 @@
   .q-chart-tt i.q-den {
     background-color: var(--color-error);
   }
+  /* The chart as a table: five columns in a card a third of the page wide. Its headings
+     wrap and its cells sit closer than a list's, so it fits its card from 1440 px and on a
+     phone; narrower than its numbers, it scrolls sideways inside its own region. */
   .q-chart .q-chart-table {
-    overflow: hidden;
+    overflow-x: auto;
     border: 1px solid var(--q-border-subtle);
     border-radius: var(--radius-field);
+  }
+  .q-chart .q-chart-table :is(th, td) {
+    padding-inline: 0.5rem;
+  }
+  .q-chart .q-chart-table :is(th, td):first-child {
+    padding-left: 0.75rem;
+  }
+  .q-chart .q-chart-table :is(th, td):last-child {
+    padding-right: 0.75rem;
+  }
+  .q-chart .q-chart-table thead th {
+    padding-block: 0.375rem;
+    white-space: normal;
+    vertical-align: bottom;
   }
   /* ---- 3. Active targets: one line each; the target is the title ---- */
   .q-rr {
