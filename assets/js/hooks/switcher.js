@@ -15,7 +15,8 @@
 // organisation in, and an empty search folds them back as they were. ↓ from the search goes
 // to the first row, ↑ and ↓ move within a panel, Enter in the search follows the first
 // match; → and ← move between an organisation and its workspaces; Escape closes and gives
-// focus back to the chevron; focus or a pointer leaving closes.
+// focus back to the chevron; focus or a pointer leaving closes, but not a tap on a button
+// that takes no focus (Safari, iOS), after which focus goes back into the menu.
 //
 // On a workspace's page every link of the menus carries the page, the path after its
 // /:org/:workspace (`data-page-base`), as `?page=`, written when the menu opens and again
@@ -82,6 +83,13 @@ export const step = (action, at, count) => {
   return at <= 0 ? -1 : at - 1
 }
 
+// What an open menu does once focus has left one of its elements for nowhere, looked at
+// again after the tap or click that moved it has run: nothing while focus is back inside;
+// with focus fallen to the page (a tapped button, which takes none on Safari and iOS, or
+// a control hidden under it), give it to what the menu shows; else close.
+export const afterFocusLost = ({inside, onPage}) =>
+  inside ? "keep" : onPage ? "refocus" : "close"
+
 const shown = el => el.offsetParent !== null
 
 export const Switcher = {
@@ -103,11 +111,29 @@ export const Switcher = {
     // A link takes the page again as it is followed: the markup may have been patched
     // since the menu opened.
     this.el.addEventListener("pointerdown", e => {
+      this.pressed = e.target.closest("a, button, input")
       const link = e.target.closest("a[data-switch]")
       if (link) this.writePage(link)
     })
     this.el.addEventListener("focusout", e => {
-      if (this.menu && !this.el.contains(e.relatedTarget)) this.close(false)
+      if (!this.menu) return
+      if (e.relatedTarget) {
+        if (!this.el.contains(e.relatedTarget)) this.close(false)
+        return
+      }
+      clearTimeout(this.lost)
+      this.lost = setTimeout(() => {
+        if (!this.menu) return
+        const now = document.activeElement
+        // A control hidden with focus on it holds it nowhere the reader sees.
+        const hidden = this.el.contains(now) && !shown(now)
+        const then = afterFocusLost({
+          inside: this.el.contains(now) && !hidden,
+          onPage: !now || now === document.body || hidden,
+        })
+        if (then === "refocus") this.refocus()
+        else if (then === "close") this.close(false)
+      }, 120)
     })
     this.outside = e => {
       if (this.menu && !this.el.contains(e.target)) this.close(false)
@@ -117,6 +143,7 @@ export const Switcher = {
 
   destroyed() {
     clearTimeout(this.rest)
+    clearTimeout(this.lost)
     document.removeEventListener("pointerdown", this.outside)
   },
 
@@ -174,6 +201,7 @@ export const Switcher = {
 
   close(refocus) {
     clearTimeout(this.rest)
+    clearTimeout(this.lost)
     if (this.menu) this.menu.hidden = true
     this.menu = null
     this.el
@@ -240,8 +268,22 @@ export const Switcher = {
     if (!row) return
     this.point(row)
     this.menu.dataset.view = "workspaces"
-    const first = [...this.workspacesOf(row).querySelectorAll("a[data-switch]")].find(shown)
+    // An organisation with no workspace: on a phone the way back, the one control shown;
+    // elsewhere focus stays on its ›.
+    const first = [
+      ...this.workspacesOf(row).querySelectorAll("a[data-switch]"),
+      this.menu.querySelector("button[data-back]"),
+    ].find(el => el && shown(el))
     first?.focus()
+  },
+
+  // Focus back in the menu: on the control last pressed where it is still shown, else the
+  // first row of the panel shown, else the search.
+  refocus() {
+    const panel = [...this.menu.querySelectorAll("[data-panel]")].find(shown)
+    const rows = panel ? this.rows(panel) : []
+    const target = [this.pressed, ...rows].find(el => el && this.menu.contains(el) && shown(el))
+    ;(target || this.search()).focus()
   },
 
   back() {
