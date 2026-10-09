@@ -84,7 +84,8 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert [%RunConfiguration{version: 1, target_id: nil}] = Repo.all(RunConfiguration)
   end
 
-  test "a key over its rate is 429 with Retry-After, from the events endpoint's bucket", ctx do
+  test "a key over its rate is 429 with Retry-After, from the run configuration's own bucket",
+       ctx do
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
     assert fetch(ctx, "").status == 200
 
@@ -93,7 +94,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     # nothing here depends on how fast requests are made.
     bucket = Apiary.Runs.RateLimit
     later = System.monotonic_time(:millisecond) + :timer.hours(1)
-    :ets.insert(bucket, {ctx.key.id, 0, later})
+    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 0, later})
 
     conn = fetch(ctx, "")
     assert json_response(conn, 429) == %{"error" => "rate_limited"}
@@ -102,12 +103,30 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert String.to_integer(seconds) >= 1
     assert get_resp_header(conn, "x-qory-run-configuration") == []
 
-    # It is the bucket the events endpoint spends from: one token back serves one request,
-    # which spends it. Spending dates the bucket at the present, from where it refills, so
-    # the bucket is read rather than a second request timed.
-    :ets.insert(bucket, {ctx.key.id, 1000, later})
+    # One token back serves one request, which spends it. Spending dates the bucket at the
+    # present, from where it refills, so the bucket is read rather than a second request
+    # timed. The events endpoint's bucket is untouched.
+    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 1000, later})
     assert fetch(ctx, "").status == 200
-    assert [{_, 0, _}] = :ets.lookup(bucket, ctx.key.id)
+    assert [{_, 0, _}] = :ets.lookup(bucket, {:run_configuration, ctx.key.id})
+    assert :ets.lookup(bucket, ctx.key.id) == []
+  end
+
+  test "the events endpoint's bucket, spent, leaves the run configuration served", ctx do
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
+
+    bucket = Apiary.Runs.RateLimit
+    later = System.monotonic_time(:millisecond) + :timer.hours(1)
+    :ets.insert(bucket, {ctx.key.id, 0, later})
+    {_subject, batch} = first_events()
+
+    conn = signed_post(build_conn(), ctx.key.key_id, ctx.secret, batch)
+    assert json_response(conn, 429) == %{"error" => "rate_limited"}
+
+    conn = fetch(ctx, "")
+    assert conn.status == 200
+    assert get_resp_header(conn, "retry-after") == []
+    assert [{_, 0, ^later}] = :ets.lookup(bucket, ctx.key.id)
   end
 
   test "the bytes served are the bytes stored, under the stored digest", ctx do
@@ -360,5 +379,68 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
                "priv/contract/#{file} differs from the contract's: copy it from #{dir}"
       end
     end
+  end
+end
+
+defmodule ApiaryWeb.Contract.RunConfigurationRateLimitTest do
+  # The limits come from the application environment, which every test shares.
+  use ApiaryWeb.ConnCase, async: false
+
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
+  import Apiary.ContractFixtures
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.Policy
+  alias ApiaryWeb.Contract.RunConfigurationController
+
+  @path "/v1/run-configuration"
+
+  setup do
+    events = Application.get_env(:apiary, Apiary.Runs.RateLimit)
+    run_configuration = Application.get_env(:apiary, RunConfigurationController)
+    Application.put_env(:apiary, Apiary.Runs.RateLimit, rate: 0, burst: 2)
+    Application.put_env(:apiary, RunConfigurationController, rate: 0, burst: 2)
+
+    on_exit(fn ->
+      Application.put_env(:apiary, Apiary.Runs.RateLimit, events)
+      Application.put_env(:apiary, RunConfigurationController, run_configuration)
+    end)
+
+    %{scope: scope} = sign_up_fixture()
+    %{access_key: key, secret: secret} = contract_key_fixture(scope)
+    {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+    %{key: key, secret: secret}
+  end
+
+  test "a flush that spends the events endpoint's bucket leaves a new run's configuration served",
+       %{key: key, secret: secret} do
+    {_subject, batch} = first_events()
+
+    for _ <- 1..2 do
+      assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
+    end
+
+    assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(429)
+
+    conn = signed_get(build_conn(), key.key_id, secret, @path)
+    assert conn.status == 200
+    assert get_resp_header(conn, "retry-after") == []
+  end
+
+  test "the run configuration's bucket limits itself, and leaves the events endpoint's whole",
+       %{key: key, secret: secret} do
+    for _ <- 1..2 do
+      assert build_conn() |> signed_get(key.key_id, secret, @path) |> response(200)
+    end
+
+    conn = signed_get(build_conn(), key.key_id, secret, @path)
+    assert json_response(conn, 429) == %{"error" => "rate_limited"}
+    assert get_resp_header(conn, "retry-after") == ["1"]
+    assert signed_answer?(conn)
+
+    {_subject, batch} = first_events()
+    assert build_conn() |> signed_post(key.key_id, secret, batch) |> response(202)
   end
 end
