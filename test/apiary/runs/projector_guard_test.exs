@@ -12,12 +12,12 @@ defmodule Apiary.Runs.ProjectorGuardTest do
 
   defmodule RaisingFold do
     @moduledoc "The fold, except that an event carrying the poison raises, as a bug would."
-    def fold(run, events, latest, ping_offset) do
+    def fold(run, events, latest, projected) do
       if Enum.any?(events, &match?(%{data: %{"poison" => true}}, &1)) do
         raise ArgumentError, "a message that quotes poison-marker data"
       end
 
-      Fold.fold(run, events, latest, ping_offset)
+      Fold.fold(run, events, latest, projected)
     end
   end
 

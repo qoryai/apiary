@@ -15,7 +15,8 @@ defmodule Apiary.Runs.Projector do
   result and marks the events projected in the same transaction: an event is folded
   exactly once, and a pass with nothing to fold changes nothing. Events that arrive late
   with a lower sequence are folded when they arrive; the fold decides by sequence alone, so
-  the order of arrival does not show in the result.
+  the order of arrival does not show in the result, but for one revive that the next
+  lost-run check settles (`Apiary.Runs.Fold`, Times).
 
   One event never blocks a run. The fold is total, and should a pass raise all the same, its
   events are projected one by one and the one that fails is marked projected and named in
@@ -59,6 +60,7 @@ defmodule Apiary.Runs.Projector do
   @rebuilt_fields @folded_fields -- [:state, :forager_version, :contract_version]
 
   @pass_size 1000
+  @heartbeat "dev.qory.run.heartbeat"
 
   @doc """
   Projects the run's unprojected events. Returns `{:ok, run}` with the run as it is now,
@@ -290,7 +292,7 @@ defmodule Apiary.Runs.Projector do
           %{run | workspace: workspace},
           events,
           latest(id, events),
-          ping_offset(id, events)
+          projected(id, events)
         )
 
       run =
@@ -374,26 +376,59 @@ defmodule Apiary.Runs.Projector do
     end
   end
 
-  # The smallest clock offset of the run's pings already projected, for a pass that holds
-  # its `run.started` (`Apiary.Runs.Fold`); nil for any other pass, and for none.
-  defp ping_offset(id, events) do
-    if Enum.any?(events, &(&1.type == "dev.qory.run.started")) do
-      Repo.all(
-        from e in Event,
-          where: e.run_id == ^id and e.type == "dev.qory.ping" and not is_nil(e.projected_at),
-          select: {e.received_at, e.time}
-      )
-      |> Enum.map(fn {received_at, time} -> Liveness.clock_offset(received_at, time) end)
-      |> Enum.min(fn -> nil end)
-    end
+  # What the fold needs of the run's events already projected (`Apiary.Runs.Fold`), read
+  # only for a pass that can lower the run's clock offset: the smallest offset of its
+  # pings, for a pass that holds its `run.started`, and the time and arrival of its
+  # heartbeat with the highest sequence, which a lower offset counts again, for a pass
+  # that holds a ping, a start or a heartbeat.
+  defp projected(id, events) do
+    types = MapSet.new(events, & &1.type)
+    offsets? = Enum.any?(["dev.qory.ping", "dev.qory.run.started", @heartbeat], &(&1 in types))
+
+    %{
+      ping_offset: if("dev.qory.run.started" in types, do: ping_offset(id)),
+      beat: if(offsets?, do: last_beat(id))
+    }
+  end
+
+  defp ping_offset(id) do
+    Repo.all(
+      from e in Event,
+        where: e.run_id == ^id and e.type == "dev.qory.ping" and not is_nil(e.projected_at),
+        select: {e.received_at, e.time}
+    )
+    |> Enum.map(fn {received_at, time} -> Liveness.clock_offset(received_at, time) end)
+    |> Enum.min(fn -> nil end)
+  end
+
+  defp last_beat(id) do
+    Repo.one(
+      from e in Event,
+        where: e.run_id == ^id and e.type == @heartbeat and not is_nil(e.projected_at),
+        order_by: [desc: e.sequence],
+        limit: 1,
+        select: %{time: e.time, received_at: e.received_at}
+    )
   end
 
   # One `UPDATE` by the key's id, which changes nothing when the key holds a later one.
-  defp touch_heartbeat(%Run{access_key_id: key_id, last_heartbeat_at: %DateTime{} = at})
-       when is_binary(key_id),
-       do: AccessKeys.touch_heartbeat(key_id, at)
+  # After the commit, it never fails the projection: a failure is logged by run and the
+  # kind of the error.
+  defp touch_heartbeat(%Run{access_key_id: key_id, last_heartbeat_at: %DateTime{} = at} = run)
+       when is_binary(key_id) do
+    AccessKeys.touch_heartbeat(key_id, at)
+  rescue
+    error -> log_touch_failure(run, error.__struct__)
+  catch
+    kind, _reason -> log_touch_failure(run, kind)
+  end
 
   defp touch_heartbeat(_run), do: :ok
+
+  defp log_touch_failure(%Run{id: id}, what) do
+    Logger.error("key heartbeat not recorded run=#{id} error=#{inspect(what)}")
+    :ok
+  end
 
   defp last_projected(id, types) do
     Repo.one(

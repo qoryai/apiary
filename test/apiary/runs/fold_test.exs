@@ -813,6 +813,32 @@ defmodule Apiary.Runs.FoldTest do
       assert Fold.fold(lost, [without]).run.state == "lost"
     end
 
+    test "a lower offset counts the last beat again, from what was projected" do
+      # A beat folded alone counted at its arrival and revived the run; the start that
+      # brings the ping's lower offset comes after it.
+      run = %{@run | state: "running", opened_by: "gateway", last_heartbeat_at: at(3600)}
+      run = Map.put(run, :clock_offset_ms, 3_000_000)
+      beat = %{time: at(600), received_at: at(3600)}
+      projected = %{ping_offset: 100_000, beat: beat}
+      latest = %{"dev.qory.run.heartbeat" => 9}
+
+      %{run: counted} =
+        Fold.fold(run, [started(2, %{"opened_by" => "gateway"})], latest, projected)
+
+      assert counted.clock_offset_ms == 100_000
+      assert counted.last_heartbeat_at == at(600 + 100 + 300)
+
+      # The same beat folded with the lower offset already there counts the same.
+      %{run: direct} =
+        Fold.fold(
+          %{@run | state: "lost", opened_by: "gateway"} |> Map.put(:clock_offset_ms, 100_000),
+          [%{heartbeat(9, 270, 30, 600) | received_at: at(3600)}]
+        )
+
+      assert direct.last_heartbeat_at == counted.last_heartbeat_at
+      assert direct.state == "lost"
+    end
+
     test "a run a gateway opened takes its ping's offset, whichever comes first; a session's does not" do
       ping =
         event(
@@ -826,12 +852,14 @@ defmodule Apiary.Runs.FoldTest do
 
       assert Fold.fold(@run, [ping, gateway]).run.clock_offset_ms == 50_000
 
-      %{run: run} = Fold.fold(@run, [gateway], %{}, nil)
+      %{run: run} = Fold.fold(@run, [gateway])
       assert Map.get(run, :clock_offset_ms) == nil
       assert Fold.fold(run, [ping], %{"dev.qory.run.started" => 2}).run.clock_offset_ms == 50_000
 
       # Across passes, the projector hands over the offset of the pings already projected.
-      assert Fold.fold(@run, [gateway], %{"dev.qory.ping" => 1}, 50_000).run.clock_offset_ms ==
+      projected = %{ping_offset: 50_000}
+
+      assert Fold.fold(@run, [gateway], %{"dev.qory.ping" => 1}, projected).run.clock_offset_ms ==
                50_000
 
       for credential <- ["none", "issuer"] do

@@ -292,6 +292,58 @@ defmodule Apiary.Runs.LivenessTest do
       assert Enum.map(Liveness.check(@now), & &1.id) == [gateway.id]
     end
 
+    # A gateway's run, its ping live 4000 s before @now; the outage begins; its start and
+    # its 110 heartbeats, recorded 3960 to 690 s before @now, are all sent at @now, the
+    # start's batch folded before the heartbeats' or after them.
+    defp sent_late(scope, started_first?) do
+      run = run_fixture(scope, %{inserted_at: ago(4000)})
+      event_fixture(run, 1, "ping", @ping, time: ago(4000), received_at: ago(4000))
+      project!(run)
+
+      start = fn ->
+        event_fixture(run, 2, "run.started", gateway_started_data(),
+          time: ago(3990),
+          received_at: @now
+        )
+      end
+
+      beats = fn -> for k <- 1..110, do: heartbeat(run, 2 + k, ago(3990 - 30 * k), @now) end
+
+      if started_first? do
+        start.()
+        project!(run)
+        beats.()
+      else
+        beats.()
+        project!(run)
+        start.()
+      end
+
+      project!(run)
+    end
+
+    test "a gateway's run comes out the same whether its start or its heartbeats are folded first, and rebuilt",
+         %{scope: scope} do
+      fields = [:state, :clock_offset_ms, :last_heartbeat_at, :elapsed_seconds]
+      in_order = scope |> sent_late(true) |> Map.take(fields)
+      out_of_order = sent_late(scope, false)
+
+      # The last heartbeat, 690 s before @now, by the ping's offset, within the tolerance.
+      assert in_order == %{
+               state: "running",
+               clock_offset_ms: 0,
+               last_heartbeat_at: ago(390),
+               elapsed_seconds: 30 * 112
+             }
+
+      assert Map.take(out_of_order, fields) == in_order
+
+      assert {:ok, rebuilt} = Projector.rebuild(out_of_order)
+      assert Map.take(rebuilt, fields) == in_order
+
+      assert [%Run{state: "lost"}, %Run{state: "lost"}] = Liveness.check(@now)
+    end
+
     test "a run with no offset keeps the arrival rule", %{scope: scope} do
       # A run whose last heartbeat was kept by its arrival, before the offset was.
       run = run_fixture(scope, %{state: "running", last_heartbeat_at: ago(89)})

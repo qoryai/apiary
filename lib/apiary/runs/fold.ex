@@ -15,7 +15,8 @@ defmodule Apiary.Runs.Fold do
   written.
 
   The fold tolerates any order of arrival. What decides between two events is always the
-  sequence, never a clock and never the order in which they were folded: `latest` carries,
+  sequence, never a clock and never the order in which they were folded, but for one
+  revive (Times, below): `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
   (`ranks/0`); `run.started` and `ping` also share the rank of the `forager_version`, which
   the later of the two decides, and `run.started` and `run.resized` share the rank of the
@@ -59,8 +60,16 @@ defmodule Apiary.Runs.Fold do
   heartbeat of the run, whatever its sequence, and, for a run a gateway opened, its
   ping's, whose clock is the gateway's, as its heartbeats' are: a minimum, so it is the
   same in any order. A session's heartbeats are on the session's machine's clock, which
-  behind a separate gateway is not the ping's. A heartbeat revives a lost or pending run
-  only when it counts as heard within three intervals of its arrival.
+  behind a separate gateway is not the ping's. Whenever a pass folds a later heartbeat or
+  lowers the offset, the heartbeat with the highest sequence is counted again by the
+  offset as the pass leaves it, from its time and arrival (the projector hands them over
+  when that heartbeat was projected before), so `last_heartbeat_at` is the same in any
+  order of arrival and after a rebuild. A heartbeat a pass folds revives a lost or pending
+  run only when it counts as heard within three intervals of its arrival; a lower offset
+  alone revives nothing and undoes no revive. So the one order that can show is a revive
+  by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
+  a gateway's start, which revives the run itself, or from an earlier heartbeat delivered
+  after it across a clock set back between the two. The next lost-run check settles it.
   """
 
   alias Apiary.Runs.Liveness
@@ -132,6 +141,9 @@ defmodule Apiary.Runs.Fold do
   defstruct run: %{},
             latest: %{},
             ping_offset: nil,
+            beat: nil,
+            recount: false,
+            beaten: false,
             connections: %{},
             log_chunks: [],
             skipped_log_chunks: 0
@@ -140,6 +152,9 @@ defmodule Apiary.Runs.Fold do
           run: map(),
           latest: %{optional(String.t()) => integer()},
           ping_offset: integer() | nil,
+          beat: %{time: DateTime.t(), received_at: DateTime.t()} | nil,
+          recount: boolean(),
+          beaten: boolean(),
           connections: %{optional({String.t(), integer(), String.t()}) => map()},
           log_chunks: [map()],
           skipped_log_chunks: non_neg_integer()
@@ -149,22 +164,29 @@ defmodule Apiary.Runs.Fold do
   Folds `events` (maps with `type`, `time`, `sequence`, `data`, and `received_at`, else
   `time` stands for it) into `run` (any map with the run's fields, the schema struct
   included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
-  already projected, and `ping_offset` is the smallest clock offset of the pings already
-  projected, or nil.
+  already projected. `projected` says what the fold needs of the events already projected:
+  `ping_offset`, the smallest clock offset of the pings, and `beat`, the `time` and
+  `received_at` of the heartbeat with the highest sequence; each absent or nil when there
+  is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
   (host, port, path), `log_chunks` in sequence order and the count of log events skipped
   because their bytes were not base64.
   """
-  @spec fold(map(), Enumerable.t(), map(), integer() | nil) :: t()
-  def fold(run, events, latest \\ %{}, ping_offset \\ nil) do
+  @spec fold(map(), Enumerable.t(), map(), map()) :: t()
+  def fold(run, events, latest \\ %{}, projected \\ %{}) do
+    acc = %__MODULE__{
+      run: run,
+      latest: latest,
+      ping_offset: projected[:ping_offset],
+      beat: projected[:beat]
+    }
+
     acc =
       events
       |> Enum.sort_by(& &1.sequence)
-      |> Enum.reduce(
-        %__MODULE__{run: run, latest: latest, ping_offset: ping_offset},
-        &event(&2, &1)
-      )
+      |> Enum.reduce(acc, &event(&2, &1))
+      |> count_beat()
 
     %{acc | log_chunks: Enum.reverse(acc.log_chunks)}
   end
@@ -221,24 +243,29 @@ defmodule Apiary.Runs.Fold do
 
   # Ordered by sequence, timed by its own time within the run's clock offset: see the
   # moduledoc. Every heartbeat lowers the offset; the one with the highest sequence decides
-  # the rest.
-  defp event(acc, %{type: @heartbeat, data: data} = event) do
+  # the rest, and is counted once the pass is folded (`count_beat/1`).
+  defp event(acc, %{type: @heartbeat, data: data, sequence: sequence} = event) do
     received_at = received_at(event)
+    acc = put_offset(acc, Liveness.clock_offset(received_at, event.time))
 
-    acc
-    |> put_offset(Liveness.clock_offset(received_at, event.time))
-    |> ranked(event, fn run ->
-      heard_at = Liveness.heard_at(received_at, event.time, run.clock_offset_ms)
-      interval = integer(data, "interval_seconds", 1..@max_interval)
+    if sequence > Map.get(acc.latest, @heartbeat, 0) do
+      run =
+        Map.merge(acc.run, %{
+          elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
+          heartbeat_interval_seconds: integer(data, "interval_seconds", 1..@max_interval)
+        })
 
-      run
-      |> Map.merge(%{
-        last_heartbeat_at: heard_at,
-        elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
-        heartbeat_interval_seconds: interval
-      })
-      |> revive(Liveness.heard_within?(heard_at, interval, received_at))
-    end)
+      %{
+        acc
+        | run: run,
+          latest: Map.put(acc.latest, @heartbeat, sequence),
+          beat: %{time: event.time, received_at: received_at},
+          recount: true,
+          beaten: true
+      }
+    else
+      acc
+    end
   end
 
   # A resize that is not a size is nothing: the run keeps the size it had.
@@ -449,22 +476,41 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # A heartbeat heard within three intervals of its arrival says the run is alive: a lost
-  # run runs again, and so does a run whose `run.started` has not arrived yet. An exit is
-  # not undone.
-  defp revive(%{state: state} = run, true) when state in ["lost", "pending"],
+  # The heartbeat with the highest sequence, counted by the offset as the pass leaves it,
+  # whenever the pass folded a later heartbeat or lowered the offset: so the last heartbeat
+  # is that heartbeat's by the smallest offset, whatever the order the events were folded
+  # in. A heartbeat this pass folded and heard within three intervals of its arrival says
+  # the run is alive: a lost run runs again, and so does a run whose `run.started` has not
+  # arrived yet. An exit is not undone. A lower offset alone revives nothing.
+  defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
+    heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
+    run = Map.put(acc.run, :last_heartbeat_at, heard_at)
+    interval = Map.get(run, :heartbeat_interval_seconds)
+
+    if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
+      do: %{acc | run: revive(run)},
+      else: %{acc | run: run}
+  end
+
+  defp count_beat(acc), do: acc
+
+  defp revive(%{state: state} = run) when state in ["lost", "pending"],
     do: %{run | state: "running", lost_at: nil}
 
-  defp revive(run, _heard), do: run
+  defp revive(run), do: run
 
   # When this server received the event; an event that does not say is taken at its time.
   defp received_at(event), do: Map.get(event, :received_at) || event.time
 
-  defp put_offset(%{run: run} = acc, offset),
-    do: %{
-      acc
-      | run: Map.put(run, :clock_offset_ms, lower(Map.get(run, :clock_offset_ms), offset))
-    }
+  # A lower offset counts the last heartbeat again.
+  defp put_offset(%{run: run} = acc, offset) do
+    current = Map.get(run, :clock_offset_ms)
+
+    case lower(current, offset) do
+      ^current -> acc
+      lowered -> %{acc | run: Map.put(run, :clock_offset_ms, lowered), recount: true}
+    end
+  end
 
   # The ping's offset counts for a run a gateway opened, whichever of the ping and the
   # start comes first.
