@@ -9,7 +9,7 @@ restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
-The first release of the open core of Qory Apiary: the free edition, complete for one
+The first release of the open core of Qory Apiary: Apiary Community, complete for one
 team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Added
