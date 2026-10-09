@@ -676,12 +676,12 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(
                view,
-               "#organisation-menu-of-#{org} ul[aria-labelledby='organisation-menu-of-#{org}-heading'] a#switch-#{org}-#{scope.workspace.slug}[aria-current='true'][href='#{workspace_path(scope, "/switch/runs")}']"
+               "#organisation-menu-of-#{org} ul[aria-labelledby='organisation-menu-heading-#{org}'] a#switch-#{org}_#{scope.workspace.slug}[aria-current='true'][href='#{workspace_path(scope, "/switch/runs")}']"
              )
 
       assert has_element?(
                view,
-               "#organisation-menu-of-#{other.organisation.slug}[hidden] a#switch-#{other.organisation.slug}-#{other.workspace.slug}:not([aria-current])[href='#{workspace_path(other, "/switch/runs")}']"
+               "#organisation-menu-of-#{other.organisation.slug}[hidden] a#switch-#{other.organisation.slug}_#{other.workspace.slug}:not([aria-current])[href='#{workspace_path(other, "/switch/runs")}']"
              )
 
       # A phone's way back from the workspaces.
@@ -789,14 +789,14 @@ defmodule ApiaryWeb.LayoutsTest do
       # The organisation menu lists them too, under the organisation pointed at.
       assert has_element?(
                view,
-               "#organisation-menu-of-#{org} #switch-#{org}-#{scope.workspace.slug}"
+               "#organisation-menu-of-#{org} #switch-#{org}_#{scope.workspace.slug}"
              )
 
-      assert has_element?(view, "#organisation-menu-of-#{org} #switch-#{org}-#{platform.slug}")
+      assert has_element?(view, "#organisation-menu-of-#{org} #switch-#{org}_#{platform.slug}")
 
       assert has_element?(
                view,
-               "#organisation-menu-of-#{other.organisation.slug} #switch-#{other.organisation.slug}-#{other.workspace.slug}"
+               "#organisation-menu-of-#{other.organisation.slug} #switch-#{other.organisation.slug}_#{other.workspace.slug}"
              )
     end
 
@@ -856,12 +856,81 @@ defmodule ApiaryWeb.LayoutsTest do
       assert attribute(html, "a#switch-beta-org", "href") == "/beta-org/-/switch/overview"
     end
 
+    test "the menus' ids are unique, whatever the slugs they are made of", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
+      [own] = :sys.get_state(view.pid).socket.assigns.memberships
+
+      # alpha's workspace prod beside the organisation alpha-prod, and alpha-heading: each
+      # pair of slugs that joined with a hyphen would read the same.
+      made_up = fn slug, workspaces ->
+        id = Ecto.UUID.generate()
+
+        %{
+          own
+          | id: Ecto.UUID.generate(),
+            organisation_id: id,
+            organisation: %{own.organisation | id: id, name: slug, slug: slug},
+            workspaces:
+              for(
+                w <- workspaces,
+                do: %{scope.workspace | id: Ecto.UUID.generate(), name: w, slug: w}
+              )
+        }
+      end
+
+      own = %{
+        own
+        | workspaces: [
+            scope.workspace,
+            %{scope.workspace | id: Ecto.UUID.generate(), name: "heading", slug: "heading"}
+          ]
+      }
+
+      memberships = [
+        own,
+        made_up.("alpha", ["prod"]),
+        made_up.("alpha-prod", ["x"]),
+        made_up.("alpha-heading", [])
+      ]
+
+      assigns = %{scope: scope, memberships: memberships}
+
+      html =
+        rendered_to_string(~H"""
+        <ApiaryWeb.Layouts.app
+          flash={%{}}
+          current_scope={@scope}
+          memberships={@memberships}
+          place={:workspace}
+          nav={:overview}
+        >
+          <p>page</p>
+        </ApiaryWeb.Layouts.app>
+        """)
+
+      ids =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("[id]")
+        |> LazyHTML.attribute("id")
+
+      assert "switch-alpha_prod" in ids
+      assert "switch-alpha-prod" in ids
+      assert "organisation-menu-of-alpha-heading" in ids
+      assert "organisation-menu-heading-alpha" in ids
+      assert "workspace-menu-switch-heading" in ids
+      assert ids -- Enum.uniq(ids) == []
+    end
+
     test "a link leads through the switch at the section the reader is on; from an organisation's page, to the workspace's overview",
          %{conn: conn, user: user, scope: scope} do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
-      ws = "#organisation-menu a#switch-#{other.organisation.slug}-#{other.workspace.slug}"
+      ws = "#organisation-menu a#switch-#{other.organisation.slug}_#{other.workspace.slug}"
       org = "#organisation-menu a#switch-#{other.organisation.slug}"
 
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")

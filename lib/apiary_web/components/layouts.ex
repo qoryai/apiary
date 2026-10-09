@@ -1218,6 +1218,9 @@ defmodule ApiaryWeb.Layouts do
   # pointer or with focus. Every place is in the markup. A link loads the page afresh, so
   # the session remembers the workspace for `/`. Last, Your organisations and the
   # edition's entries (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
+  # An id made of slugs, which hold only a-z, 0-9 and hyphens, has its fixed words before
+  # the slug, never after, and joins an organisation's slug to a workspace's with `_`, so
+  # no two are the same (`switch-acme_prod` is never `switch-acme-prod`'s).
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
   attr :places, :list, required: true
@@ -1350,16 +1353,16 @@ defmodule ApiaryWeb.Layouts do
             phx-mounted={JS.ignore_attributes(["hidden"])}
           >
             <h3
-              id={"organisation-menu-of-#{place.organisation.slug}-heading"}
+              id={"organisation-menu-heading-#{place.organisation.slug}"}
               class="q-switcher-heading"
             >
               {gettext("Workspaces of %{name}", name: place.organisation.name)}
             </h3>
-            <ul aria-labelledby={"organisation-menu-of-#{place.organisation.slug}-heading"}>
+            <ul aria-labelledby={"organisation-menu-heading-#{place.organisation.slug}"}>
               <li :for={w <- workspaces}>
                 <.link
                   :if={w}
-                  id={"switch-#{place.organisation.slug}-#{w.slug}"}
+                  id={"switch-#{place.organisation.slug}_#{w.slug}"}
                   href={switch_workspace_path(@nav, place.organisation, w)}
                   class="q-switcher-place"
                   aria-current={current_workspace?(w, @workspace) && "true"}
