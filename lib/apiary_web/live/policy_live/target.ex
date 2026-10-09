@@ -131,8 +131,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     with %{version: n} <- version,
          {:ok, v} <- Common.version(socket, n, socket.assigns.params, holder: holder) do
+      export = Common.export(socket, v.configuration, holder: holder)
+
       assign(socket,
-        v: Map.put(v, :path, "#{socket.assigns.base}/document"),
+        v:
+          Map.merge(v, %{
+            path: "#{socket.assigns.base}/document",
+            download: export.policy_file && %{name: export.file_name, file: export.policy_file}
+          }),
         version_base: if(baseline?, do: Common.base(scope, nil), else: socket.assigns.base),
         page_title: gettext("Version %{version} · %{title}", version: n, title: title(socket))
       )
@@ -793,7 +799,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
               />
             </small>
           </span>
+          <%!-- On the Document view the document's own bar is the one place: Copy, Download. --%>
           <.button
+            :if={@action != :document}
             id="policy-export-button"
             navigate={
               if @baseline?,
@@ -832,6 +840,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         base={@version_base}
         heading="h2"
         away={@baseline?}
+        export={false}
       />
       <.version_view
         :if={@action == :document && @v}

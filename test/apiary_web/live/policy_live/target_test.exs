@@ -219,7 +219,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert_patch(view, base <> "/document")
     assert has_element?(view, "h2#policy-version-h", "Version 2")
     assert page_title(view) =~ "Version 2 · github.example/acme/shop · Policy"
-    assert has_element?(view, "#version-export[href='#{base}/versions/2/export']")
+    assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
+    refute has_element?(view, "#version-export")
+    refute has_element?(view, "#policy-export-button")
 
     # A version and its export continue the breadcrumb as on the workspace's Policy.
     page = workspace_path(scope, "/targets/github.example/acme/shop")
@@ -643,7 +645,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert has_element?(view, "h2#policy-version-h", "Version 1")
       assert text(view, "#version-strip") =~ "Mode enforce"
       assert has_element?(view, "#ver-1[href='#{path}/document'][aria-current=page]")
-      assert has_element?(view, "#version-export[href='#{path}/versions/1/export']")
+      assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
+      refute has_element?(view, "#version-export")
+      refute has_element?(view, "#policy-export-button")
       assert page_title(view) =~ "Version 1 · acme/shop · Policy"
 
       # A rule of its own, from elsewhere: the next version, in place.
@@ -983,6 +987,20 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "h2#policy-version-h[tabindex='-1']", "Version 1")
     assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
+    # The Document view has Copy and Download in the document's bar, and no Export; the
+    # file is the export page's.
+    refute has_element?(view, "#version-export")
+    refute has_element?(view, "#policy-export-button")
+    bar = "#version-doc .q-docwell-bar"
+    assert has_element?(view, "#{bar} #version-copy[aria-label=Copy]")
+
+    assert has_element?(
+             view,
+             "#{bar} a#version-download[aria-label=Download][download='acme-shop-policy.yaml'][href^='data:text/yaml']"
+           )
+
+    # The version's own page keeps its Export.
+    view = open(conn, path <> "/versions/1")
     view |> element("#version-export") |> render_click()
     assert_patch(view, path <> "/versions/1/export")
     assert has_element?(view, "h2#policy-export-h[tabindex='-1']")
@@ -1009,10 +1027,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "#ver-4[href='#{path}/document'][aria-current=page]")
     assert has_element?(view, "#ver-3[href='#{workspace_path(scope, "/policy/versions/3")}']")
 
-    assert has_element?(
-             view,
-             "#version-export[href='#{workspace_path(scope, "/policy/versions/4/export")}']"
-           )
+    # The workspace's version, Copy in its bar; the tab no Export.
+    assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
+    refute has_element?(view, "#version-export")
+    refute has_element?(view, "#policy-export-button")
 
     view |> element("#version-view button", "As served") |> render_click()
     assert_patch(view, path <> "/document?view=served")

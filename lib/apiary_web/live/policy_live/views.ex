@@ -259,7 +259,28 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <:caption>
               run-configuration.json <span class="text-faint">· {@v.caption}</span>
             </:caption>
-            <:actions>
+            <%!-- The Document view's bar, the code-block header pattern: Copy and Download as
+                 small icons with their hints. A version's own page keeps Copy document. --%>
+            <:actions :if={@v[:path]}>
+              <.copy_button
+                id="version-copy"
+                text={@v.configuration.document}
+                label={gettext("Copy")}
+                icon_only
+              />
+              <.tooltip :if={@v[:download]} tip={gettext("Download")}>
+                <a
+                  id="version-download"
+                  class="btn btn-ghost btn-xs btn-square"
+                  href={download_href(@v.download.file)}
+                  download={@v.download.name}
+                  aria-label={gettext("Download")}
+                >
+                  <.icon name="hero-arrow-down-tray" class="size-4" />
+                </a>
+              </.tooltip>
+            </:actions>
+            <:actions :if={!@v[:path]}>
               <.copy_button
                 id="version-copy"
                 text={@v.configuration.document}
@@ -289,8 +310,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
               phx-no-format
             >{@v.configuration.document}</pre>
           </.doc_well>
-          <p class="max-w-[78ch] text-[12.5px]/[18px] text-faint">
-            <span :if={@v.view != "served"}>{gettext("Shown indented for reading.")}</span>
+          <p id="version-doc-note" class="max-w-[78ch] text-[12.5px]/[18px] text-faint">
+            <span :if={@v.view != "served"}>{gettext("Shown indented for reading.")}{" "}</span>
             <%= for part <- served_sentence(byte_size(@v.configuration.document)) do %>
               <.term
                 :if={part == :digest}
@@ -354,6 +375,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
     </div>
     """
   end
+
+  # The policy file as a download of its own, the export page's and the Document view's.
+  defp download_href(file),
+    do: "data:text/yaml;charset=utf-8," <> URI.encode(file, &URI.char_unreserved?/1)
 
   # The version in force is listed as the Document view, an older one as its own page.
   defp entry_path(base, %{latest: n} = v, %{version: n}), do: v[:path] || "#{base}/document"
@@ -423,7 +448,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <a
             id="export-download"
             class="btn btn-ghost btn-xs btn-keep font-sans"
-            href={"data:text/yaml;charset=utf-8," <> URI.encode(@export.policy_file, &URI.char_unreserved?/1)}
+            href={download_href(@export.policy_file)}
             download={@export.file_name}
           >
             <.icon name="hero-arrow-down-tray" class="size-4" />{gettext("Download")}
