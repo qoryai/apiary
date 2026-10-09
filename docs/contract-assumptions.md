@@ -161,7 +161,13 @@ workspace's discovery answer carries, and, for a workspace whose policy somebody
 workspace without a policy of its own is never answered the second. No other status
 carries it. No error body repeats anything that was sent. The ping is a batch like any
 other: a `2xx` lets the run start, and a revoked key, a bad signature, an instance beyond the
-limit or an unsupported version does not.
+limit or an unsupported version does not. As a run opens, the gateway tries the ping, and
+then the run configuration, up to 3 times each, the second try 1 second after the first
+ends and the third 2 seconds after the second, none starting more than 6 seconds after the
+run was asked for (the contract, The gateway's link: Tries as a run opens). It asks again
+after no answer, a `5xx` and a signed `429` `rate_limited`, and does not read
+`Retry-After`; every other answer is final. Each try of the ping is the same delivery,
+which the server deduplicates. A run whose ping is refused on every try does not open.
 
 A batch is a non-empty JSON array of at most 1000 objects (the gateway cuts a batch at a
 hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev.qory.`),
@@ -255,10 +261,11 @@ workspace whose policy nobody has made serves none: `404` `{"error":"not_found"}
 rendered; discovery named it no `run` section, so the gateway does not ask. The endpoint
 spends a token of the key's rate limit for the run configuration, a bucket of its own,
 apart from the events endpoint's, so a gateway flushing a backlog of events still gets a
-new run's configuration: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which
-to the gateway is no run or a reload that failed and is tried again on the next answer.
-After the `429`, as on the events endpoint, a contract version other than `1` is
-`400 unsupported_contract_version`, and nothing is read.
+new run's configuration: `429 {"error":"rate_limited"}` with `Retry-After` beyond it. As a
+run opens, the gateway asks again after it, within its tries (the events endpoint, above),
+and to the last try it is no run; during a run it is a reload that failed and is tried
+again on the next answer. After the `429`, as on the events endpoint, a contract version
+other than `1` is `400 unsupported_contract_version`, and nothing is read.
 
 Rendering is canonical: members in a fixed order (`mode`, `allow`, `deny`, `paths`), no
 whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule the gateway
@@ -437,6 +444,40 @@ exit. `lost` is not final: a later heartbeat that counts within three intervals 
 arrival, or the run's `dev.qory.run.exited`, such as
 a `gateway_lost` sent later with the run's record, corrects the state.
 
+**After an outage.** A gateway that could not reach the server keeps the run's record and
+sends it once the server answers again, oldest first. Its heartbeats arrive late, and each
+counts by its own `time`, so the record reads as it happened: a run that ended during the
+outage stays `lost` until its `dev.qory.run.exited` arrives, and a run still alive runs
+again once one of its recent heartbeats arrives, one that counts within three intervals of
+its arrival. The access key's last heartbeat is the latest time its runs' heartbeats count
+at (the events endpoint, above), never later than their arrival, so a backlog's old
+heartbeats do not move it to the backlog's arrival. A run that a backlog's old heartbeats
+would hold alive is not counted alive and holds no instance of its node
+(`Apiary.Runs.Liveness.alive/2`). Every event of the record is stored however late it
+arrives, and a lost run is kept from retention for 7 days after it was lost (the events
+endpoint, above). Three limits stay, by the 300 seconds and three intervals, 90 seconds at
+Forager's default of 30:
+
+- A heartbeat that arrives within 300 seconds and three intervals of its own `time`,
+  corrected, still brings a run back, for at most three intervals after its arrival,
+  until the next check after them. So after an outage shorter than 390 seconds at
+  30-second intervals, a run that ended during it can be alive again for up to 90
+  seconds.
+- A session's run whose heartbeats all arrive late, because the outage began before its
+  first one, has no offset before them: its first heartbeat counts at its arrival and sets
+  an offset as late as the backlog, so the run runs again while its heartbeats arrive,
+  until its `dev.qory.run.exited` arrives or three intervals after the last of them. A run
+  a gateway opened takes its ping's offset, from a ping accepted before the run opened, so
+  its heartbeats bring it back only as the first limit says; its `run.started`, arriving
+  late, brings it back until the next check after a heartbeat folded behind it, or for
+  three intervals when none is.
+- A run whose machine's clock ran ahead and was then set back keeps the offset the clock
+  ahead gave, the smallest, so each heartbeat after it counts the clock's lead less 300
+  seconds before its arrival. More than 300 seconds and two intervals ahead, 360 seconds
+  at 30, the run is found lost between its heartbeats; more than 300 seconds and three,
+  390, no heartbeat brings it back, and it reads `lost` until its `dev.qory.run.exited`
+  arrives.
+
 ## Failure
 
 Every failure of authentication is `401` with the body `{"error":"unauthorized"}` and
@@ -497,7 +538,11 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   configuration spends a bucket of its own, per access key and per node, the same 50 a
   second and 100 at once
   (`config :apiary, ApiaryWeb.Contract.RunConfigurationController, rate: 50, burst: 100`):
-  a gateway fetches it once per run and on a reload, and a flush of events never spends it.
+  a gateway fetches it as a run opens, within its tries, and on a reload, and a flush of
+  events never spends it. The ping that opens a run is a batch and spends the events
+  endpoint's bucket, so while a gateway flushes a backlog on the same key, a new run's
+  ping can be refused `429` and is sent again within its tries; the run opens once a try
+  is accepted, and not at all when every try is refused.
 - A batch holds at most 1000 events, `data` nests at most 64 levels, `time` is in the years
   1970 to 9999, and `sequence` starts at `0000000001`; anything else is `400`
   `invalid_request`.
@@ -517,7 +562,8 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
 - The path is matched after percent-decoding, as the router matches it: `/v1/%65vents` is the
   events endpoint, signed and verified like it.
 - The run configuration endpoint never answers `304`, whatever `If-None-Match` says: to the
-  gateway anything but `200` is no run. The `ETag` is there for a person with `curl`.
+  gateway any answer but `200` is no run, a `5xx` or a `429` once its tries are spent, and
+  a `304` is final. The `ETag` is there for a person with `curl`.
 - A `forge` or a `repository` label names a repository when it is a string of valid UTF-8,
   not empty, at most 256 bytes, with no control character: C0, DEL, C1 (U+0085 among them),
   U+2028 and U+2029, anything that ends a line somewhere. A label that fails this is neither
@@ -560,8 +606,9 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   contract fixes none. A reason it does not name, or none, is failed
   (`Apiary.Runs.Fold.exit_state/2`).
 - When the run configuration cannot be read the endpoint answers `503
-  {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
-  but `200`.
+  {"error":"unavailable"}`, which the gateway asks again within its tries as a run opens
+  (the events endpoint, above). To the last try it is no run: the run fails closed, as it
+  does on any answer but `200`.
 - The digests in an answer to a batch are read after the commit, never rendered: one read
   that says whether the workspace's policy is managed (an index on `run_configurations`),
   then, for a managed workspace, the newest configuration of the run's repository (one

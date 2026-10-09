@@ -85,6 +85,11 @@ they are excluded and a line says so; CI checks Forager out at that commit and s
 Forager's `next` branch, pinned by its id. The end to end job builds qory against
 Forager at `.forager-e2e-ref`, pinned apart.
 
+The tests tagged `:load` measure the receiver for long and outside the sandbox, and the
+suite leaves them out (`test/test_helper.exs`). The one of a gateway's backlog flushed
+after an outage runs with `QORY_FEATURES` unset:
+`mix test --only load test/apiary_web/contract/backlog_load_test.exs`.
+
 ## Doc comments
 
 Every context, schema and plug carries a `@moduledoc`, and every public context function a
