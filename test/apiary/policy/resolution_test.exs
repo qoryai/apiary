@@ -118,7 +118,7 @@ defmodule Apiary.Policy.ResolutionTest do
       # The deny list is written only when it holds something: the same rules render the
       # same bytes as before the document had one, and it holds under either mode.
       assert policy["egress"]["deny"] == if(unquote(deny) == [], do: nil, else: unquote(deny))
-      # What the runner's proxy needs: a host in `paths` is in `allow`, and never in `deny`.
+      # What the gateway needs: a host in `paths` is in `allow`, and never in `deny`.
       assert Enum.all?(
                Map.keys(policy["egress"]["paths"] || %{}),
                &(&1 in policy["egress"]["allow"] and &1 not in unquote(deny))
@@ -377,7 +377,7 @@ defmodule Apiary.Policy.ResolutionTest do
         assert effective.mode_source == unquote(source)
 
         # The rules resolve the same under either mode: the locked deny holds, and it is
-        # in the document's deny list, which a runner decides first whatever the mode.
+        # in the document's deny list, which the gateway decides first whatever the mode.
         assert effective.allow == ["api.example"]
         assert effective.deny == ["mcp.example"]
         document = Render.document(effective)

@@ -199,7 +199,7 @@ defmodule Apiary.Kinds.ServicesTest do
     @tag :contract
     test "the vendored catalogue and auth schema are the contract's" do
       dir = Apiary.ContractFixtures.contract_dir()
-      # A local runner checkout from before the catalogue has neither file; CI, at the
+      # A local Forager checkout from before the catalogue has neither file; CI, at the
       # pinned commit, requires both.
       required? = System.get_env("CONTRACT_FIXTURES_REQUIRED") == "1"
 

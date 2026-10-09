@@ -123,7 +123,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert %{kind: :note} = reading = read(%{"host" => "files.cdn.example"}, context)
     assert flat(reading.text) =~ "Already allowed by *.cdn.example."
 
-    # A deny below an allowed suffix stands beside it: the runner decides deny first.
+    # A deny below an allowed suffix stands beside it: the gateway decides deny first.
     assert %{kind: :ok, acts: []} =
              reading = read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
 

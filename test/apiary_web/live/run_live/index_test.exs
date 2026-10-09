@@ -364,8 +364,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#{row(live_run)} time[data-tick=duration]")
       refute has_element?(view, "#{row(live_run)} .q-quiet")
 
-      # What the runner said had elapsed (90 s) plus the server time since it said so
-      # (5 s): not the 100 s since the runner's own started_at.
+      # What Forager said had elapsed (90 s) plus the server time since it said so
+      # (5 s): not the 100 s since Forager's own started_at.
       assert text(view, "#{row(live_run)} time[data-tick=duration]") =~ ~r/^1 m 3[567] s$/
 
       assert has_element?(

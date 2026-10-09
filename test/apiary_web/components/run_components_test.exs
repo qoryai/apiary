@@ -149,8 +149,8 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(render_component(&RunComponents.duration/1, at_least_seconds: 510)) =~
                ~r/^at least 8 m 30 s\. Elapsed at the last heartbeat\./
 
-      # The runner said 120 s had elapsed; the server received that 14 s ago. The runner's
-      # own started_at plays no part.
+      # Forager said 120 s had elapsed; the server received that 14 s ago. Forager's own
+      # started_at plays no part.
       html =
         render_component(&RunComponents.duration/1,
           elapsed_seconds: 120,

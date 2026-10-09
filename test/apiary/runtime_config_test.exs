@@ -183,7 +183,7 @@ defmodule Apiary.RuntimeConfigTest do
       assert get_in(prod_config(), [:apiary, :mail_from]) == "qory@qory.example"
     end
 
-    test "a path, a query or a user is refused at boot: a runner would refuse the server" do
+    test "a path, a query or a user is refused at boot: the gateway would refuse the server" do
       for url <- [
             "https://qory.example/console",
             "https://qory.example/?a=1",

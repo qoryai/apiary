@@ -16,7 +16,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Connection, Event, Ingest, LogChunk, Projector, Run}
 
-  # What the runner's request says beside its body: the revision of the contract.
+  # What the gateway's request says beside its body: the revision of the contract.
   @meta %{contract_version: 1}
 
   @moduletag :contract
@@ -98,7 +98,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   for file <- @runs do
     @file_path file
 
-    test "the record of #{file |> Path.dirname() |> Path.basename()}, posted as the runner cuts it, is the stored run",
+    test "the record of #{file |> Path.dirname() |> Path.basename()}, posted as the gateway cuts it, is the stored run",
          %{scope: scope, key: key, secret: secret} do
       lines = lines(@file_path)
       subject = subject(@file_path)

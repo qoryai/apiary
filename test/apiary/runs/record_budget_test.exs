@@ -16,7 +16,7 @@ defmodule Apiary.Runs.RecordBudgetTest do
   end
 
   describe "read budgets" do
-    # What a read costs this server is set by the number of rows, never by what a runner
+    # What a read costs this server is set by the number of rows, never by what Forager
     # put in them.
     @tag timeout: 300_000
     test "a window of 300 calls with 512 KiB responses is read in under 32 MiB", %{

@@ -1,7 +1,7 @@
 defmodule Apiary.Repo.Migrations.CreateNodeInstances do
   use Ecto.Migration
 
-  # An instance of a node (`Apiary.Nodes.Instance`): what a runner using the node's access
+  # An instance of a node (`Apiary.Nodes.Instance`): what Forager using the node's access
   # key reports itself as, by the instance id it signs. The id is a claim, kept for display,
   # the audit and the instance limit, never for authorisation, so the row carries no
   # integrity code.
@@ -11,7 +11,7 @@ defmodule Apiary.Repo.Migrations.CreateNodeInstances do
   # deletes. `(node_id, instance_id)` is unique: an instance is the node's, not its key's,
   # so one that moves to the node's replacement key stays one instance, and
   # `access_key_id` is the key it last used, cleared should that key's row go. `name` is
-  # what the runner said it is called, kept only when it matches the pattern of a name.
+  # what Forager said it is called, kept only when it matches the pattern of a name.
   # `cleared_at` and `cleared_by_id` say who last cleared it (Clear instance).
   #
   # The index on `(workspace_id, last_seen_at DESC)` serves the pages, which read the

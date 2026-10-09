@@ -13,7 +13,7 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
   alias Apiary.Runs.{Batch, Event, Ingest, Run}
   alias Ecto.Adapters.SQL.Sandbox
 
-  # What the runner's request says beside its body: the revision of the contract.
+  # What the gateway's request says beside its body: the revision of the contract.
   @meta %{contract_version: 1}
 
   setup do

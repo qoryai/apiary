@@ -210,7 +210,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     refute group(jump(conn, ~p"/#{scope.organisation}/jump", "shop"), "Repositories")
   end
 
-  test "a runner's words are text in the answer", %{conn: conn, scope: scope} do
+  test "Forager's words are text in the answer", %{conn: conn, scope: scope} do
     started_run(scope, %{"forge" => "github.example", "repository" => "acme/<b>shop</b>"},
       about: %{"title" => "<script>x</script>"}
     )

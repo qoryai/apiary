@@ -69,7 +69,7 @@ defmodule Apiary.Variables.ResolutionTest do
     assert Resolution.entry(resolution, "node_env").set_by == :target
   end
 
-  test "a name the runner keeps, or that breaks the rule, is left out from any level" do
+  test "a name Forager keeps, or that breaks the rule, is left out from any level" do
     resolution =
       Resolution.resolve([
         {:above, [v("QORY_TOKEN", "x"), v("qory_other", "x"), v("BAD-NAME", "x"), v("OK", "x")]},

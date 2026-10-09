@@ -462,7 +462,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     node = node_fixture(scope)
     instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
     # Made in a browser by the owner, so that its variables' page (`…/generated`) renders
-    # for them, as well as its runner file and its revocation.
+    # for them, as well as its Forager file and its revocation.
     %{access_key: key} = browser_key_fixture(scope, node)
     {:ok, code, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
 

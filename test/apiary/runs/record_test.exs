@@ -406,7 +406,7 @@ defmodule Apiary.Runs.RecordTest do
     test "allowed calls of one tool do not group with a plain connection to the host", %{
       scope: scope
     } do
-      # Not what a runner sends (a tool's host always goes to the tool), but a group must
+      # Not what Forager sends (a tool's host always goes to the tool), but a group must
       # never hide whose calls it holds.
       run =
         projected(scope, [
@@ -663,7 +663,7 @@ defmodule Apiary.Runs.RecordTest do
   end
 
   describe "read budgets" do
-    # What a read costs this server is set by the number of rows, never by what a runner
+    # What a read costs this server is set by the number of rows, never by what Forager
     # put in them. The window of 300 calls with 512 KiB payloads, which writes some
     # 460 MiB, is in `Apiary.Runs.RecordBudgetTest`, a module that runs alone.
     test "Show all reads one item, cut at 512 KB by the database", %{scope: scope} do

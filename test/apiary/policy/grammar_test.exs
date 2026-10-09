@@ -27,7 +27,7 @@ defmodule Apiary.Policy.GrammarTest do
     assert Grammar.path?("/ü/🐝/*")
   end
 
-  test "covers?/2 and matches?/2 are the runner's" do
+  test "covers?/2 and matches?/2 are Forager's" do
     assert Grammar.covers?("*.example", "api.example")
     assert Grammar.covers?("*.example", "*.api.example")
     refute Grammar.covers?("*.example", "example")
