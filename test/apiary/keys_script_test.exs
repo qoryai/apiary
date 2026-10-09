@@ -156,16 +156,17 @@ defmodule Apiary.KeysScriptTest do
 
     # A value in the environment wins at boot; the file's stays, so removing the variable
     # brings the generated one back rather than a new one.
-    assert {output, 0} =
-             run(dir, [{"APIARY_SIGNING_SECRET", Base.encode64(:crypto.strong_rand_bytes(32))}])
+    signing = Base.encode64(:crypto.strong_rand_bytes(32))
+    assert {output, 0} = run(dir, [{"APIARY_SIGNING_SECRET", signing}])
 
     assert output ==
              """
-             APIARY_SIGNING_SECRET is set in the environment: not generated, not kept here.
+             APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its own.
              The keys in #{keys_path(dir)} are kept; none was generated.
              """
 
     assert File.read!(keys_path(dir)) == held, "the file changed"
+    refute_leaked(output, [signing | Map.values(KeysFile.read(dir))])
   end
 
   @tag :tmp_dir
