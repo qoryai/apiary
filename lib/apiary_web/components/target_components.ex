@@ -127,9 +127,8 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   A run's state as a dot and, when the run needs a look, its word (running, pending,
-  failed, timed out, lost), and the word of a run that ended, beside its grey dot; the dot
-  alone for one that succeeded or was closed, its word there for a screen reader. `word`
-  forces the word, as a header does.
+  failed, timed out, lost); the dot alone for one that succeeded, ended or was closed, its
+  word there for a screen reader. `word` forces the word, as a header does.
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :word, :boolean, default: false, doc: "show the word whatever the state"
@@ -137,7 +136,8 @@ defmodule ApiaryWeb.TargetComponents do
   attr :rest, :global
 
   def state_mark(assigns) do
-    assigns = assign(assigns, :quiet, assigns.state in ~w(succeeded closed) and !assigns.word)
+    assigns =
+      assign(assigns, :quiet, assigns.state in ~w(succeeded ended closed) and !assigns.word)
 
     ~H"""
     <span class={["q-sdot", "q-sdot-#{@state}", @class]} {@rest}>

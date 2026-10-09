@@ -16,16 +16,20 @@ defmodule ApiaryWeb.TargetComponentsTest do
   @scope %Scope{organisation: %Organisation{slug: "acme"}, workspace: %Workspace{slug: "main"}}
   @shared MapSet.new(["acme/shop"])
 
-  test "state_mark/1 says Ended beside its grey dot, and a succeeded or closed run is its dot" do
-    html = render_component(&TargetComponents.state_mark/1, state: "ended")
-    assert html =~ "q-sdot-ended"
+  test "state_mark/1: a run that succeeded, ended or was closed is its dot, its word for a screen reader" do
+    for state <- ~w(succeeded ended closed) do
+      html = render_component(&TargetComponents.state_mark/1, state: state)
+      assert html =~ "q-sdot-#{state}"
+      assert html =~ ~s(class="sr-only")
+    end
+
+    # Ended as Closed: the word only where it is asked for, as a header does
+    html = render_component(&TargetComponents.state_mark/1, state: "ended", word: true)
     assert html =~ ">Ended</span>"
     refute html =~ "sr-only"
 
-    for state <- ~w(succeeded closed) do
-      html = render_component(&TargetComponents.state_mark/1, state: state)
-      assert html =~ ~s(class="sr-only")
-    end
+    html = render_component(&TargetComponents.state_mark/1, state: "failed")
+    refute html =~ "sr-only"
   end
 
   test "target_path/5 writes the system only for a path in the set" do
