@@ -32,7 +32,7 @@ Retention works on whole runs, so a timeline is never half there.
 
 A run is due when it is not alive (it succeeded, failed, timed out, was lost or was closed) and
 the server last received an event of it before the cut-off. Only the server's clock is
-compared, never the time a runner wrote into an event. A run that is still running is never
+compared, never the time Forager wrote into an event. A run that is still running is never
 pruned, however long it has run.
 
 - **Past the days for log output** the run loses its log: the terminal tab says *Log output
@@ -50,7 +50,7 @@ Network access page reads those rows and is unchanged.
 So are the counts on the policy pages.
 <!-- /feature -->
 
-A pruned run takes nothing more. A runner that delivers a batch of it again, from a spool
+A pruned run takes nothing more. A gateway that delivers a batch of it again, from a spool
 that outlived the retention, is answered `410` once the events are pruned, as for a run
 the workspace closed, and nothing is stored. A run that lost only its log output still
 takes its other events, without storing one twice, and no log event.

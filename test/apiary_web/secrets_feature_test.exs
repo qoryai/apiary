@@ -295,7 +295,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       assert nodes =~
                "time, so that a machine can move to a new key before the old one is revoked.\nA key is never rotated"
 
-      assert nodes =~ ~s{its **Fingerprint**;\nwith **Runner file** and **Revoke…**.}
+      assert nodes =~ ~s{its **Fingerprint**;\nwith **Forager file** and **Revoke…**.}
       assert nodes =~ "There is nothing to fill\n   in.\n2."
       assert nodes =~ "half. The key\n   is active as soon as it arrives."
     end
@@ -410,7 +410,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       end
 
       nodes = guide("nodes.md", @on)
-      assert nodes =~ "its **Fingerprint**;\nits **Stored secrets**;\nwith **Runner file**"
+      assert nodes =~ "its **Fingerprint**;\nits **Stored secrets**;\nwith **Forager file**"
 
       assert nodes =~
                "half. The key\n   gets **Stored secrets** **Not allowed**, and\n   is active"

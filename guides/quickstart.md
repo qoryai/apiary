@@ -136,7 +136,7 @@ page lists only names, value IDs and who changed each value and when. A **variab
 plain value of the workspace, such as the address of a package registry. A **locked**
 variable sets aside any value of its own a repository has for the name; no page sets a
 repository's own value. Every member reads both views; owners and admins change them. A
-name beginning `QORY_` is the runner's own and is refused.
+name beginning `QORY_` is Forager's own and is refused.
 <!-- /feature -->
 
 Your own preferences are under **Your settings › Preferences**, in the menu of your account: the
@@ -172,7 +172,7 @@ Apiary keeps only its public half.
 
    `qory` makes the key, keeps its secret in `~/.config/qory/access-key-secret`, readable
    by you alone, and prints the key's fingerprint. It writes the `server` section into
-   `~/.config/qory/runner.yaml`, `$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is
+   `~/.config/qory/forager.yaml`, `$XDG_CONFIG_HOME/qory/forager.yaml` when that variable is
    set: Qory Apiary's `url`, the key's `access_key_id`, and `apiary_public_key`, Qory
    Apiary's key, which the code named and Qory Apiary's signed answer confirmed. The
    address and Qory Apiary's key are the same for every machine connected to this Qory
@@ -185,8 +185,8 @@ Apiary keeps only its public half.
 The command is the approval: the key is active as soon as it arrives, and the machine can
 use it at once. On the **Access key** tab, the key's card says where its secret is.
 
-The runner file belongs to the machine and to no repository.
-[The runner file's `server` section](runner-file.md) has the rest of it.
+The Forager file belongs to the machine and to no repository.
+[The Forager file's `server` section](forager-file.md) has the rest of it.
 
 For a CI or a node pool, **Generate a key in the browser** on the same tab makes the key
 in your browser and shows its secret once, with the other values the CI sets; [Nodes and
@@ -208,7 +208,7 @@ The example is composed for the `claude` runtime, so that runtime's command has 
 installed on this machine and able to start a session. Arguments after `--` go to the
 runtime.
 
-Before the runtime starts, the runner fetches Qory Apiary's configuration, signed with the
+Before the runtime starts, the gateway fetches Qory Apiary's configuration, signed with the
 machine's access key, checks the answer under Qory Apiary's key it pinned, and sends a
 ping. If Qory Apiary does not answer, or refuses the key, there is no run, and the error
 names the URL and the status. At the end of the run qory prints where its record is,
@@ -227,7 +227,7 @@ names that repository, and choosing the repository there, or typing `repo:` and 
 in the filter, lists its runs alone.
 
 On the node's **Overview**, the machine is now its instance, with its run. On its **Access
-key** tab, the key's card shows when it was last used, its last heartbeat and the runner's
+key** tab, the key's card shows when it was last used, its last heartbeat and Forager's
 version.
 
 ## Next

@@ -160,7 +160,7 @@ defmodule Apiary.MixProject do
         "guides/hosting-checklist.md",
         "guides/nodes.md",
         "guides/security-policy.md",
-        "guides/runner-file.md",
+        "guides/forager-file.md",
         "guides/contract.md",
         "CHANGELOG.md"
       ],
@@ -176,7 +176,7 @@ defmodule Apiary.MixProject do
         "Using Qory Apiary": [
           "guides/nodes.md",
           "guides/security-policy.md",
-          "guides/runner-file.md"
+          "guides/forager-file.md"
         ],
         Reference: ["guides/contract.md", "CHANGELOG.md"]
       ],

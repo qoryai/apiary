@@ -66,7 +66,7 @@ page, the one the person came from (Two levels, below).
   named by whose it is where two scopes share a name (Workspace overview, Organisation
   settings › People, Instance settings › Configuration; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
   runs by id or title, places, what New offers and, for what is typed, the deletions the
-  reader may take. Every word of it comes from the server; a runner's words are written
+  reader may take. Every word of it comes from the server; words Forager reported are written
   as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page New node, New node pool, Add
@@ -219,8 +219,8 @@ replaces the navigation it is in.
   added from a release), a program's version and Applies to, where it applies; then,
   for whoever may change it, Add an integration, a card for each thing to add by name, its
   kind a small muted word and one line about it, in three groups, each an `<h3>`, a
-  sentence where it has one and a list its heading names: Agent (the runtimes of the
-  runner's catalogue), Outside APIs (the built-in APIs, the workspace's own
+  sentence where it has one and a list its heading names: Agent (the runtimes of
+  Forager's catalogue), Outside APIs (the built-in APIs, the workspace's own
   custom APIs, then Custom API…) and Programs (the named releases,
   `ApiaryWeb.IntegrationLive.Named`, then From a release…); a card's act opens its form with its
   item chosen, `?runtime=` or `?definition=` (a named release's opens Add from a release,
@@ -412,9 +412,9 @@ name or the latest change.
   page sets a repository's own value: the context keeps one
   (`Apiary.Variables.create_variable/3` with a target), and the demo makes a few. Locked
   means a repository's own value of the name is set aside, and nothing more. A name on
-  the runner's deny list other than `QORY_…`, which the context refuses, is saved with a
-  warning on New variable's page ("NAME is on the runner's deny list.", which describes
-  the name's field while it shows) and "On the runner's deny list" on its row.
+  Forager's deny list other than `QORY_…`, which the context refuses, is saved with a
+  warning on New variable's page ("NAME is on Forager's deny list.", which describes
+  the name's field while it shows) and "On Forager's deny list" on its row.
 - **New secret** asks for its name, then **Values**, native radios in a fieldset with that
   legend: "One value" (to start), its one Value, with no value ID; or "Several values,
   each with a value ID", a Value ID and a Value for each, two to start, each row a group
@@ -564,7 +564,7 @@ The policy pages confirm in place, never over the page:
 with Version n and Export and is the one way back, with no trail of the page's own; the
 title "Export for a node without a server" and what is exported (an h2 under a target's
 own title), the policy file with Download and Copy, the command for the
-node and the runner file's egress section, each with Copy, the notes, and Done back to the
+node and the Forager file's egress section, each with Copy, the notes, and Done back to the
 version. Only the version in force is exported; another version's path sends on to it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
@@ -814,7 +814,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
 - **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
   above): one line a node, its name the title with its public id beside it in `q-side`,
   its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), its
-  state, and from `md` the runner's version it last reported. Under a pool's line, its
+  state, and from `md` the Forager version it last reported. Under a pool's line, its
   running instances as indented lines (name, id in `q-side`, "Running since", its run),
   ten at most, then "and 12 more", which leads to the pool's page; an instance shows only
   while it runs, and a Node has none, its one instance being its line. The views are
@@ -841,10 +841,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   are patches of the one LiveView; Access key, between them, is a LiveView of its own
   (`/nodes/:node_id/access-key`, `ApiaryWeb.NodeLive.AccessKey`). **Overview**: a Node's
   instance (running since when,
-  its run and runner, or when it was last seen) or a pool's running instances on the
+  its run and Forager version, or when it was last seen) or a pool's running instances on the
   list pattern with "3 of 10 running", the starts refused at the instance limit, the
-  instances past the bound of 256 new ones a day, the sentence that an instance is what a
-  runner using the node's key reports itself as, and its recent runs (`runs.node_id`,
+  instances past the bound of 256 new ones a day, the sentence that an instance is what
+  Forager, run with the node's key, reports itself as, and its recent runs (`runs.node_id`,
   for a reader of the record) with the way to all of them on the runs list (`?node=`),
   each saying so while nothing has reported, then About (kind, id, instance limit, who
   made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`), its few
@@ -889,7 +889,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Key ID, `ak_…` with Copy, since the ID can always be seen again, Added ("Connected with
   a command by dana@example.com, …" or "Generated in a browser by …"), Secret (where the
   key's secret is), Last used ("Not yet" while unused), Fingerprint and Stored secrets,
-  and an active key's **Runner file**, for everyone who reads the node, and Revoke…,
+  and an active key's **Forager file**, for everyone who reads the node, and Revoke…,
   confirmed in place. A key whose record doesn't match its integrity code says so on its
   card: "… It can't be used." Under the keys, Add a key says how to move to a new key, add
   it either way and then revoke the old one, and offers the two ways as compact rows, in
@@ -900,9 +900,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   at the limit too, at most 46rem wide: "A machine connected with the command needs
   nothing more: qory saved all of this on it. Don't set these again there; qory refuses a
   key ID or a public key set twice." and "With a generated key, set these where the
-  machine runs qory.", then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the runner
+  machine runs qory.", then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the Forager
   file. It is required: without it, qory ignores the three variables below.",
-  `runner.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
+  `forager.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
   a plain setting. The same for every machine connected to this Qory Apiary.", the value
   with Copy), 3 "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID, a plain
   setting." and its ID with Copy; with two, "QORY_ACCESS_KEY_ID, a plain setting: the ID
@@ -959,7 +959,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   tab.", `QORY_ACCESS_KEY_ID`), 3 "Set Qory Apiary's public key." ("As a plain setting.
   The same for every machine connected to this Qory Apiary. It stays on the Access key
   tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point qory at Qory Apiary." ("In
-  the runner file. It is required: without it, qory ignores the three variables.", the
+  the Forager file. It is required: without it, qory ignores the three variables.", the
   two lines `server:` and `url: https://apiary.example.com` with Copy
   lines). The server's address and public key are the instance's own, the same for every
   organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
@@ -974,14 +974,14 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   "Not shown" line while the browser holds nothing for the key, never both. A page joined
   again after a dropped connection keeps the secret and its Copy. It is the page of an
   active key the reader made in a browser while they
-  may add keys; another key's address goes to its runner file, a revoked one's back to the
+  may add keys; another key's address goes to its Forager file, a revoked one's back to the
   tab.
-- **Runner file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/runner-file`, an
+- **Forager file for build-01** (`/nodes/:node_id/access-key/keys/:key_id/forager-file`, an
   active key's alone; a revoked one goes back to the tab with "build-01 is revoked.") is a
-  page, not a dialog, which an active key's card opens with **Runner file**: "The runner
+  page, not a dialog, which an active key's card opens with **Forager file**: "The Forager
   file's lines for this key. Nothing here is secret." (a generated key's: "What build-01 needs,
   besides the secret. Nothing here is secret.") What follows depends on how the key came. A
-  key connected with a command: the `runner.yaml` lines the command wrote (the `server`
+  key connected with a command: the `forager.yaml` lines the command wrote (the `server`
   section, each line marked: `url` `# Qory Apiary`, `access_key_id` `# this key`,
   `apiary_public_key` `# Qory Apiary's public key`, the pin in YAML's flow form), "Only
   the key ID is this key's. The address and the public key are Qory Apiary's, the same for
@@ -1149,8 +1149,8 @@ or of the Instance, or an entry of the navigation, of New or of the account menu
 events; a page whose behaviour differs is the edition's own at the same path.
 
 A component does not ask `Apiary.Features` what the instance serves: the page asks with
-its scope and passes the answer, as the connection row's `security` attribute does. What a
-runner reported is untrusted: a component interpolates it and never passes it to `raw/1`.
+its scope and passes the answer, as the connection row's `security` attribute does. What
+Forager reported is untrusted: a component interpolates it and never passes it to `raw/1`.
 
 ### Storybook
 

@@ -8,7 +8,7 @@ console you read. Open source, so you can check all of that.
 
 - **The record.** Every run in one place: the session as a timeline, the terminal output,
   and every connection with the decision and the rule behind it.
-- **The wall.** Behind the runner's wall a session's only way out is its proxy; each run's
+- **The wall.** Behind Forager's wall a session's only way out is the gateway; each run's
   record says whether it had a wall.
 - **The policy.** What runs may reach, versioned and edited in one place. A change reaches
   the runs in flight within about 30 seconds.

@@ -16,7 +16,7 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
 - **The record.** Every run of every machine of the workspace: the session as a timeline,
   the terminal as it was written, every connection with the decision and the rule behind
   it, and how the run ended.
-- **The wall and the policy.** The runner's proxy records each connection and decides it
+- **The wall and the policy.** The gateway records each connection and decides it
   by the policy in force: the machine's own until its workspace's first change, then the
   workspace's, narrowed by the machine's own; behind a wall it is the session's only way
   out. The policy observes or enforces, with rules per repository, locked rules and a history with a diff.

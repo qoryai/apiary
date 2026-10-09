@@ -17,8 +17,8 @@ Everywhere. Four kinds are the most useful:
   the run configuration for a workspace whose policy somebody has made. What the endpoints
   assume beyond the contract is written down in
   [docs/contract-assumptions.md](docs/contract-assumptions.md). The contract
-  itself lives in [qoryai/runner](https://github.com/qoryai/runner), under
-  `contracts/runner/v1/`; a change to the contract goes there, and this repository follows it.
+  itself lives in [qoryai/forager](https://github.com/qoryai/forager), under
+  `contracts/forager/v1/`; a change to the contract goes there, and this repository follows it.
 - **The security policy.** [SECURITY.md](SECURITY.md) says what counts as a vulnerability
   here. A tighter definition, or a case it misses, is a contribution.
 - **Docs.** [README.md](README.md) for running it, the guides under [guides/](guides/), which

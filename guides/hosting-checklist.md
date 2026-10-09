@@ -6,10 +6,10 @@ being one. Every variable named here is described in [Install and configure](ins
 
 ## Before anybody signs up
 
-- **An `https` address.** `PUBLIC_URL` is the address people and runners use, with its
+- **An `https` address.** `PUBLIC_URL` is the address people and machines use, with its
   scheme, for example `https://qory.example`. Terminate TLS at a reverse proxy in front of
   the release's port and have it send `X-Forwarded-Proto: https`; without the header every
-  request is redirected to the `https` address again. A runner refuses a `server.url` over
+  request is redirected to the `https` address again. Forager refuses a `server.url` over
   plain `http` unless it is an address of its own machine, and one with a path, so serve
   the instance at the root of its host name.
 - **Real mail.** Set `SMTP_RELAY` and the variables beside it, and make sure `MAIL_TO_LOG`
@@ -70,10 +70,10 @@ being one. Every variable named here is described in [Install and configure](ins
 - **Retention.** Decide it per workspace before the database decides it for you:
   [Retention](retention.md). Log output is most of what a run stores.
 - **The size of a request.** The receiver takes batches of up to 2 MiB; a proxy with a
-  smaller limit on request bodies turns them into errors the runner retries for ever.
+  smaller limit on request bodies turns them into errors the gateway retries for ever.
   Allow at least 2 MiB on `/v1/events`.
   <!-- feature: security -->
-  The runner sends every label of a run in the query of `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
+  The gateway sends every label of a run in the query of `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
   takes 16 KiB, and a proxy has to take as much.
   <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on

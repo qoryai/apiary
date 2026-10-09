@@ -15,7 +15,7 @@
 // the bytes are written and xterm.js reflows as a terminal does. The columns and rows are
 // the record's, never the box's: the screen is drawn at them inside the box's own dark
 // ground, which fills the page's width, and scrolls inside it when it is larger. A run
-// without a size, on pipes or recorded before the runner reported one, is fitted to the
+// without a size, on pipes or recorded before Forager reported one, is fitted to the
 // box, with the wrap toggle.
 //
 // The text size is the reader's (A−, A+, 11 to 18 px, or Fit, the largest at which a
