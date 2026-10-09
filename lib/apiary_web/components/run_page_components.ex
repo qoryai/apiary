@@ -46,10 +46,6 @@ defmodule ApiaryWeb.RunPageComponents do
 
   alias Phoenix.LiveView.JS
 
-  # The reasons whose exit the timeline ends as "Run ended", whatever the run's state: it was
-  # quiet, its run credential expired, or its starter ended it.
-  @ended_reasons ~w(quiet credential_expired run_ended_at_issuer)
-
   @background_tip gettext_noop(
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
                   )
@@ -497,6 +493,7 @@ defmodule ApiaryWeb.RunPageComponents do
       "q-lane-#{@item.lane.color}",
       @look.shape == :square && "q-n-sys",
       @look.tone == :fail && "q-n-fail",
+      @look.tone == :warn && "q-n-warn",
       @look.tone == :solid && "q-n-solid",
       @look.tone == :info && "q-n-run"
     ]}>
@@ -515,15 +512,19 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :policy_applied}),
     do: %{glyph: "hero-shield-check-micro", shape: :square, tone: nil}
 
-  # An end that is no failure, such as a quiet period, stops neutrally.
-  defp node_look(%{kind: :run_exited, reason: reason}) when reason in @ended_reasons,
+  # The run's end is marked as its state is: a check for Completed, a neutral stop for
+  # Cancelled, an amber signal-slash for Lost, a red x-mark for Failed.
+  defp node_look(%{kind: :run_exited, state: "completed"}),
+    do: %{glyph: "hero-check-micro", shape: :square, tone: nil}
+
+  defp node_look(%{kind: :run_exited, state: "cancelled"}),
     do: %{glyph: "hero-stop-micro", shape: :square, tone: nil}
 
-  defp node_look(%{kind: :run_exited} = item) do
-    if item.exit_code == 0 and is_nil(item.signal) and is_nil(item.reason),
-      do: %{glyph: "hero-check-micro", shape: :square, tone: nil},
-      else: %{glyph: "hero-x-mark-micro", shape: :square, tone: :fail}
-  end
+  defp node_look(%{kind: :run_exited, state: "lost"}),
+    do: %{glyph: "hero-signal-slash-micro", shape: :square, tone: :warn}
+
+  defp node_look(%{kind: kind}) when kind in [:run_exited, :run_refused],
+    do: %{glyph: "hero-x-mark-micro", shape: :square, tone: :fail}
 
   defp node_look(%{kind: :session_started}),
     do: %{glyph: "hero-command-line-micro", shape: :round, tone: nil}
@@ -867,23 +868,31 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # A run that was quiet, whose run credential expired or whose starter stopped it with no
-  # outcome ended: why, in words, then how long it ran.
-  defp item_body(%{item: %{kind: :run_exited, reason: reason}} = assigns)
-       when reason in @ended_reasons do
+  # Every end of a run: why it ended, in words, else the program's exit, then how long it ran.
+  defp item_body(%{item: %{kind: :run_exited}} = assigns) do
+    assigns = assign(assigns, :words, end_words(assigns.item))
+
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run ended")}>
-      {RunComponents.reason_words(@item)}
-      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+      {@words}
+      <span :if={@item.duration_ms}><span :if={@words}> · </span><.duration ms={@item.duration_ms} /></span>
     </.head>
     """
   end
 
-  defp item_body(%{item: %{kind: :run_exited}} = assigns) do
+  # A run refused at its start: the refusal's code as given, an earlier name read as the new
+  # one.
+  defp item_body(%{item: %{kind: :run_refused}} = assigns) do
+    assigns = assign(assigns, :code, RunComponents.refusal_code(assigns.item.code))
+
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run exited")}>
-      {exit_words(@item)}
-      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={gettext("Run did not start")}
+    >
+      <span :if={@code} class="font-mono">{@code}</span>
     </.head>
     """
   end
@@ -1219,11 +1228,13 @@ defmodule ApiaryWeb.RunPageComponents do
   @doc "The source of a policy in words, for the Details tab too."
   def policy_source_words(source), do: policy_source(source)
 
-  # How the run exited: why, in words (`RunComponents.reason_words/1`), else its signal or
-  # its exit code.
-  defp exit_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
+  # How the run ended: why, in words (`RunComponents.reason_words/1`), else the program's
+  # signal or exit code. `-1` with no signal is the gateway's placeholder for an exit it
+  # wrote, not the program's: nothing is said of it.
+  defp end_words(item), do: RunComponents.reason_words(item) || exit_code_words(item)
 
   defp exit_code_words(%{signal: signal}) when is_binary(signal), do: signal
+  defp exit_code_words(%{exit_code: -1}), do: nil
 
   defp exit_code_words(%{exit_code: code}) when is_integer(code),
     do: gettext("exit %{code}", code: code)

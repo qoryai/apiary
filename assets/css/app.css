@@ -6128,6 +6128,11 @@
     background-color: var(--q-error-soft);
     color: var(--color-error);
   }
+  .q-n-warn,
+  .q-n-warn.q-lane-main {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+  }
   .q-n-solid,
   .q-n-solid.q-lane-main {
     border-color: var(--color-base-content);

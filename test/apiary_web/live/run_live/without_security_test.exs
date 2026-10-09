@@ -90,7 +90,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#run-facts", "dev-laptop")
       assert has_element?(lv, "#run-facts", "claude")
       assert has_element?(lv, "#timeline", "Run started")
-      assert has_element?(lv, "#timeline", "Run exited")
+      assert has_element?(lv, "#timeline", "Run ended")
       refute has_element?(lv, "#e-2")
 
       # the connections inline: the decision and the tool, never the rule

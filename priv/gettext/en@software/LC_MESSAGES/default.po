@@ -9394,17 +9394,37 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Run cancelled: %{reason}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run completed after %{duration}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run completed."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Run configuration"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run ended"
+msgid "Run did not start"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run did not start."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run exited"
+msgid "Run ended"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -9439,6 +9459,11 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Run lost: %{reason}."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Run not found"
 msgstr ""
 
@@ -9466,21 +9491,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run started."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run succeeded after %{duration}."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run succeeded."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run timed out."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -12967,11 +12977,6 @@ msgstr ""
 msgid "gateway (no session)"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "gateway lost"
-msgstr ""
-
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "general name slug"
@@ -13052,16 +13057,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "is taken out of the paths in force for the host."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "issuer answer invalid"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "issuer unreachable"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -13301,6 +13296,11 @@ msgstr ""
 msgid "not found"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "not recorded"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "not seen"
@@ -13449,11 +13449,6 @@ msgstr ""
 msgid "run %{id}"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "run credential expired"
-msgstr ""
-
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "secret variable environment token value"
@@ -13462,11 +13457,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "session lost"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13544,11 +13534,6 @@ msgstr ""
 msgid "terminal"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "the issuer reported the run ended"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the lists are too long to compare here."
@@ -13622,11 +13607,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "time limit reached"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "timeout"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

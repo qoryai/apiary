@@ -545,6 +545,31 @@ defmodule Apiary.Runs.Record.TimelineTest do
   end
 
   describe "build/3" do
+    test "a run's end carries the state its exit means; a refusal is an item with its code" do
+      for {data, state} <- [
+            {%{"state" => "succeeded", "exit_code" => 0}, "completed"},
+            {%{"state" => "failed", "exit_code" => 1}, "failed"},
+            {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "cancelled"},
+            {%{"state" => "failed", "reason" => "credential_expired"}, "cancelled"},
+            {%{"state" => "failed", "reason" => "session_lost"}, "lost"},
+            {%{"reason" => "quiet", "quiet_seconds" => 1800}, "cancelled"},
+            {%{"state" => "other"}, "failed"}
+          ] do
+        assert [%{kind: :run_started}, %{kind: :run_exited, state: ^state}] =
+                 build([event(1, "run.started"), event(2, "run.exited", data)]),
+               inspect(data)
+      end
+
+      assert [
+               %{kind: :run_started},
+               %{kind: :run_refused, code: "image_unknown", lane: %{id: "main"}}
+             ] =
+               build([
+                 event(1, "run.started"),
+                 event(2, "run.refused", %{"code" => "image_unknown"})
+               ])
+    end
+
     test "a tool: the summary is copied from the input, the wells are its input and its response" do
       input = %{
         "command" => "npm test",
