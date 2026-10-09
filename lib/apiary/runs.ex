@@ -1245,15 +1245,17 @@ defmodule Apiary.Runs do
 
   @typedoc """
   One UTC day of the workspace's runs: how many (`runs`), and of them the alive, the ended
-  well and the ended badly (`alive`, `ended_well`, `ended_badly`), with the denials of
-  those runs and the cost they reported: `cost` is the sum of `cost_usd` over the day's
-  runs, nil when none reported one, and `costed` how many did.
+  well, the cancelled and the ended badly (`alive`, `ended_well`, `cancelled`,
+  `ended_badly`), with the denials of those runs and the cost they reported: `cost` is the
+  sum of `cost_usd` over the day's runs, nil when none reported one, and `costed` how many
+  did. A name an older release stored counts in its new state's family.
   """
   @type day_facts :: %{
           day: Date.t(),
           runs: non_neg_integer,
           alive: non_neg_integer,
           ended_well: non_neg_integer,
+          cancelled: non_neg_integer,
           ended_badly: non_neg_integer,
           denied: non_neg_integer,
           cost: Decimal.t() | nil,
@@ -1287,6 +1289,7 @@ defmodule Apiary.Runs do
           alive: filter(count(r.id), r.state in ^Run.alive_states()),
           ended_well:
             filter(count(r.id), r.state in ^Run.with_old_names(Run.ended_well_states())),
+          cancelled: filter(count(r.id), r.state in ^Run.with_old_names(Run.cancelled_states())),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
           denied: type(coalesce(sum(r.denied_count), 0), :integer),
           cost: sum(r.cost_usd),

@@ -1580,6 +1580,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       runs: 0,
       alive: 0,
       ended_well: 0,
+      cancelled: 0,
       ended_badly: 0,
       denied: 0,
       cost: nil,
@@ -1589,12 +1590,22 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp totals(days) do
     Enum.reduce(
       days,
-      %{runs: 0, alive: 0, ended_well: 0, ended_badly: 0, denied: 0, cost: nil, costed: 0},
+      %{
+        runs: 0,
+        alive: 0,
+        ended_well: 0,
+        cancelled: 0,
+        ended_badly: 0,
+        denied: 0,
+        cost: nil,
+        costed: 0
+      },
       fn day, acc ->
         %{
           runs: acc.runs + day.runs,
           alive: acc.alive + day.alive,
           ended_well: acc.ended_well + day.ended_well,
+          cancelled: acc.cancelled + day.cancelled,
           ended_badly: acc.ended_badly + day.ended_badly,
           denied: acc.denied + day.denied,
           cost: add_cost(acc.cost, day.cost),
@@ -1681,11 +1692,16 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         "This could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
       )
 
-  # What became of a run that ended while it was on the list.
-  defp ended("succeeded"), do: gettext("Succeeded.")
-  defp ended("failed"), do: gettext("Failed.")
-  defp ended("timed_out"), do: gettext("Timed out.")
-  defp ended(state), do: "#{ApiaryWeb.RunComponents.state_label(state)}."
+  # What became of a run that ended while it was on the list; a name an older release stored
+  # reads as its new state.
+  defp ended(state) do
+    case Run.current_state(state) do
+      "completed" -> gettext("Completed.")
+      "failed" -> gettext("Failed.")
+      "cancelled" -> gettext("Cancelled.")
+      state -> "#{ApiaryWeb.RunComponents.state_label(state)}."
+    end
+  end
 
   # In a test:
   # `config :apiary, ApiaryWeb.WorkspaceLive.Overview, coalesce: 0, quiet_tick: …`.

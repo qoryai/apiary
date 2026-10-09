@@ -558,7 +558,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_reason(%{item: %{kind: :lost}} = assigns) do
     ~H"""
-    {gettext("Lost, never posted its exit")}
+    {lost_words(@item.run)}
     """
   end
 
@@ -642,7 +642,7 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  defp reason_title(%{kind: :lost}, _can), do: lost_tip()
+  defp reason_title(%{kind: :lost, run: run}, _can), do: lost_tip(run)
 
   defp reason_title(%{kind: :behind}, _can),
     do: gettext("A run reloads the policy at its next heartbeat.")
@@ -962,11 +962,20 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
 
-  defp lost_tip,
+  # A run Apiary marked lost when nothing was heard, which a heartbeat still revives, or one
+  # whose exit said it was lost (`Apiary.Runs.Fold`): the session stopped responding, or the
+  # run's end was never recorded. Only the second has an exit time.
+  defp lost_words(%{exited_at: nil}), do: gettext("Lost, never posted its exit")
+  defp lost_words(%{reason: "session_lost"}), do: gettext("Lost, stopped responding")
+  defp lost_words(_run), do: gettext("Lost, end not recorded")
+
+  defp lost_tip(%{exited_at: nil}),
     do:
       gettext(
         "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
       )
+
+  defp lost_tip(_run), do: gettext("The run's end was not recorded; how it went is not known.")
 
   defp mode_tip,
     do:
@@ -1102,8 +1111,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   A run's state as a dot, with its word only when the run needs a look (running, ended
-  badly) or ended, grey; a run that succeeded is its dot, and a screen reader hears the
-  word. Then when it started.
+  badly) or was cancelled, grey; a run that completed is its dot, and a screen reader hears
+  the word. Then when it started.
   """
   attr :run, :map, required: true
   attr :quiet, :boolean, default: false
@@ -1112,7 +1121,7 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         tone: if(assigns.quiet, do: "quiet", else: assigns.run.state),
-        said?: assigns.run.state not in ["succeeded", "completed", "pending"]
+        said?: Apiary.Runs.Run.current_state(assigns.run.state) not in ["completed", "pending"]
       )
 
     ~H"""
@@ -1136,7 +1145,8 @@ defmodule ApiaryWeb.OverviewComponents do
   @doc """
   Two plots on one day axis: runs per day above, denied attempts per day below, fourteen
   columns each, today last and in ink. `days` holds fourteen maps `%{day:, runs:, alive:,
-  ended_well:, ended_badly:, denied:}`, oldest first, zeros filled in by the caller.
+  ended_well:, cancelled:, ended_badly:, denied:}`, oldest first, zeros filled in by the
+  caller.
   `width` is the drawing's width in pixels, as the `DaysChart` hook measured it, so its
   words are never scaled; `table?` shows the table twin instead of the drawing.
   """
@@ -1205,6 +1215,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 <th scope="col">{gettext("Day")}</th>
                 <th scope="col" class="q-num">{gettext("Runs")}</th>
                 <th scope="col" class="q-num">{gettext("Ended well")}</th>
+                <th scope="col" class="q-num">{gettext("Cancelled")}</th>
                 <th scope="col" class="q-num">{gettext("Denied attempts")}</th>
               </tr>
             </thead>
@@ -1213,6 +1224,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 <td class="q-hot">{day_label(day.day, @today)}</td>
                 <td class="q-num">{day.runs}</td>
                 <td class="q-num">{day.ended_well}</td>
+                <td class="q-num">{day.cancelled}</td>
                 <td class={["q-num", day.denied > 0 && "q-hot"]}>{day.denied}</td>
               </tr>
             </tbody>
@@ -1386,19 +1398,21 @@ defmodule ApiaryWeb.OverviewComponents do
   defp slot_label(day, today) do
     if Date.compare(day.day, today) == :eq do
       gettext(
-        "%{day}: %{runs} (%{well} ended well, %{other} alive or ended badly), %{denied}, open that day's runs",
+        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{other} alive or ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
         well: Format.number(day.ended_well),
+        cancelled: Format.number(day.cancelled),
         other: Format.number(day.alive + day.ended_badly),
         denied: denied_count(day.denied)
       )
     else
       gettext(
-        "%{day}: %{runs} (%{well} ended well, %{bad} ended badly), %{denied}, open that day's runs",
+        "%{day}: %{runs} (%{well} ended well, %{cancelled} cancelled, %{bad} ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
         well: Format.number(day.ended_well),
+        cancelled: Format.number(day.cancelled),
         bad: Format.number(day.ended_badly),
         denied: denied_count(day.denied)
       )

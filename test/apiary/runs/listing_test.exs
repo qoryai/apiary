@@ -712,8 +712,40 @@ defmodule Apiary.Runs.ListingTest do
 
       assert %{all: 6, alive: 0, ended_badly: 1} = Runs.view_counts(scope, parse(%{}), @now)
 
-      assert [%{runs: 6, ended_well: 2, ended_badly: 1}] =
+      assert [%{runs: 6, ended_well: 2, cancelled: 3, ended_badly: 1}] =
                Runs.day_facts(scope, DateTime.add(@now, -3600, :second))
+    end
+
+    test "every state counts in its family, each old name in its new state's", %{scope: scope} do
+      at = DateTime.add(@now, -60, :second)
+
+      for state <- ~w(pending running completed succeeded failed cancelled timed_out ended lost),
+          do: run_fixture(scope, %{state: state, started_at: at})
+
+      facets = Runs.run_facets(scope, parse(%{}), now: @now)
+
+      assert facets.state.options == [
+               {"pending", "pending", 1},
+               {"running", "running", 1},
+               {"completed", "completed", 2},
+               {"failed", "failed", 1},
+               {"cancelled", "cancelled", 3},
+               {"lost", "lost", 1}
+             ]
+
+      assert Runs.view_counts(scope, parse(%{}), @now) ==
+               %{all: 9, alive: 2, ended_badly: 2, with_denials: 0}
+
+      assert [day] = Runs.day_facts(scope, DateTime.add(@now, -3600, :second))
+      assert %{runs: 9, alive: 2, ended_well: 2, cancelled: 3, ended_badly: 2} = day
+      # The four families count every run once.
+      assert day.alive + day.ended_well + day.cancelled + day.ended_badly == day.runs
+
+      for family <- Filters.families() do
+        params = %{"state" => Enum.join(family.states, ",")}
+        count = Map.fetch!(day, String.to_existing_atom(family.key))
+        assert Runs.count_runs(scope, parse(params), @now) == count
+      end
     end
   end
 
