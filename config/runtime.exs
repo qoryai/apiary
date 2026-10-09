@@ -180,8 +180,8 @@ if config_env() == :prod do
       For example: postgres://USER:PASS@HOST/DATABASE
       """
 
-  # The password when DATABASE_URL carries none.
-  database_password = System.get_env("DATABASE_PASSWORD")
+  # The password when DATABASE_URL carries none, from the environment or the keys file.
+  database_password = key_env.("DATABASE_PASSWORD")
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 

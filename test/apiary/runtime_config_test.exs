@@ -402,6 +402,21 @@ defmodule Apiary.RuntimeConfigTest do
     end
 
     @tag :tmp_dir
+    test "its DATABASE_PASSWORD fills a URL without one, and the environment's wins",
+         %{tmp_dir: dir} do
+      write_keys_file(dir, Map.put(@file_keys, "DATABASE_PASSWORD", "from-file"))
+      System.put_env("DATABASE_URL", "postgres://apiary@db.example.com/apiary")
+      assert get_in(prod_config(), [:apiary, Apiary.Repo, :password]) == "from-file"
+
+      System.put_env("DATABASE_PASSWORD", "from-env")
+      assert get_in(prod_config(), [:apiary, Apiary.Repo, :password]) == "from-env"
+
+      # A URL that carries a password keeps it, whatever either says.
+      System.put_env("DATABASE_URL", "postgres://apiary:in-url@db.example.com/apiary")
+      refute Keyword.has_key?(get_in(prod_config(), [:apiary, Apiary.Repo]), :password)
+    end
+
+    @tag :tmp_dir
     test "is read only from APIARY_KEYS_DIR", %{tmp_dir: dir} do
       write_keys_file(dir, @file_keys)
       System.delete_env("APIARY_KEYS_DIR")
