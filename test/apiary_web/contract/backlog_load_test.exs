@@ -18,7 +18,9 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   production. What the test commits goes with its organisation and its user when it
   ends. The scale is `@runs` runs of `@events_per_run` events each.
 
-  It is tagged `:load` and left out of the suite (`test/test_helper.exs`). To run it:
+  It is tagged `:load` and left out of the suite (`test/test_helper.exs`). `--only load`
+  runs it whatever the features, and the run configuration is the security policy's, so
+  run it with QORY_FEATURES unset, or with the security feature on:
 
       mix test --only load test/apiary_web/contract/backlog_load_test.exs
   """
@@ -35,6 +37,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   import Ecto.Query
 
   alias Apiary.{Policy, Repo}
+  alias Apiary.AccessKeys.PublicKey
   alias Apiary.Runs
   alias Apiary.Runs.{Delivery, Event, Liveness, Projector, Run}
   alias Ecto.Adapters.SQL.Sandbox
@@ -95,16 +98,19 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   setup do
     %{scope: scope, user: user} = sign_up_fixture()
 
+    # A Node, which runs one instance at a time; its workspace serves a run configuration.
+    %{access_key: key, secret: secret, node: node} = contract_key_fixture(scope)
+
+    # The ledger of public keys outlives the organisation, so the key's row goes on its own.
     on_exit(fn ->
       Repo.delete_all(
         from o in Apiary.Organisations.Organisation, where: o.id == ^scope.organisation.id
       )
 
       Repo.delete_all(from u in Apiary.Accounts.User, where: u.id == ^user.id)
+      Repo.delete_all(from p in PublicKey, where: p.key_id == ^key.key_id)
     end)
 
-    # A Node, which runs one instance at a time; its workspace serves a run configuration.
-    %{access_key: key, secret: secret, node: node} = contract_key_fixture(scope)
     {:ok, _} = Policy.deny(scope, nil, %{host: "ads.example"})
 
     %{scope: scope, key: key, secret: secret, node: node}
@@ -118,7 +124,8 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
 
     runs = for i <- 1..@runs, do: open_before_the_outage(ctx, i, outage)
 
-    # The first check after the server came back finds every run lost.
+    # A check 120 s into the outage, three intervals after each run's last heartbeat,
+    # finds every run lost.
     lost = Liveness.check(lost_at) |> Enum.map(& &1.id) |> MapSet.new()
     assert MapSet.subset?(MapSet.new(runs, & &1.run.id), lost)
 
@@ -299,6 +306,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       i: i,
       run: run,
       skew: skew,
+      started: recorded.(opened),
       exit: rem(i, 2) == 0,
       live: Map.new(first ++ beats, &{&1.sequence, &1.event_id})
     }
@@ -390,24 +398,23 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
     )
   end
 
-  # The exit Forager adds to a record that has none when the gateway sends it again: one
-  # second after the run's last event.
-  defp exit_batch(%{run: run, backlog: backlog}) do
+  # The exit Forager adds to a session's record that has none when the gateway sends it
+  # again: numbered after the record's last event, dated by the clock of the machine that
+  # sends it again, now, and lasting from the run's start to the record's last event.
+  defp exit_batch(%{run: run, skew: skew, started: started, backlog: backlog}) do
     last = List.last(backlog)
-    time = recorded_at(last)
     sequence = String.to_integer(last["sequence"]) + 1
+    now = DateTime.add(DateTime.utc_now(), -skew, :millisecond)
 
     data = %{
       "state" => "failed",
       "exit_code" => -1,
       "reason" => "gateway_lost",
-      "duration_ms" => 1
+      "duration_ms" => DateTime.diff(recorded_at(last), started, :millisecond)
     }
 
-    event =
-      wire_event(run.run_id, sequence, "run.exited", data, time: stamp(DateTime.add(time, 1)))
-
-    %{first: time, body: Jason.encode!([event]), delivery: Ecto.UUID.generate()}
+    event = wire_event(run.run_id, sequence, "run.exited", data, time: stamp(now))
+    %{first: now, body: Jason.encode!([event]), delivery: Ecto.UUID.generate()}
   end
 
   defp recorded_at(event) do
@@ -500,7 +507,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
 
   # Once a third of the backlog is in, a new run starts on another instance of the node:
   # it fetches its configuration, then sends its ping. The ping spends the key's events
-  # bucket, which the flush keeps empty, so it may be refused 429 first; it is sent again
+  # bucket, which the flush spends as fast as it refills, so it may be refused 429 first; it is sent again
   # after Retry-After, as any batch is, to reach the instance limit's answer.
   defp probe(%{stats: stats} = flush, after_batches) do
     if :counters.get(stats.counters, index(:accepted)) < after_batches do
