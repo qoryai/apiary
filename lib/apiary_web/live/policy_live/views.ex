@@ -260,15 +260,17 @@ defmodule ApiaryWeb.PolicyLive.Views do
               run-configuration.json <span class="text-faint">· {@v.caption}</span>
             </:caption>
             <%!-- The Document view's bar, the code-block header pattern: Copy and Download as
-                 small icons with their hints. A version's own page keeps Copy document. --%>
+                 small icons with their hints, below them, as the well clips what is above.
+                 A version's own page keeps Copy document. --%>
             <:actions :if={@v[:path]}>
               <.copy_button
                 id="version-copy"
                 text={@v.configuration.document}
                 label={gettext("Copy")}
                 icon_only
+                placement="bottom"
               />
-              <.tooltip :if={@v[:download]} tip={gettext("Download")}>
+              <.tooltip :if={@v[:download]} tip={gettext("Download")} placement="bottom">
                 <a
                   id="version-download"
                   class="btn btn-ghost btn-xs btn-square"
