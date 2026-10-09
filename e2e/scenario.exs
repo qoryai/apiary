@@ -1,11 +1,11 @@
 # The end to end job's scenario. It runs inside the test instance, `mix run` with the
 # endpoint serving, so what it calls is what a page calls, in the same virtual machine
-# that answers the runner. run.sh starts it; see e2e/README.md.
+# that answers the gateway. run.sh starts it; see e2e/README.md.
 #
 # It makes a workspace with an owner, a node and the node's access key: a fresh Ed25519
 # key, generated here, whose public key is added to the node the way the node's Generate
 # a key adds one made in a browser, active as it is added. It puts the workspace in enforce with nothing
-# allowed, writes the node's runner file, with the server lines the key's page shows, and
+# allowed, writes the node's Forager file, with the server lines the key's page shows, and
 # the key's secret in access-key-secret beside it, starts the session on the node, waits
 # for the denied connection to arrive, allows its host the way the connection's row does,
 # and then watches the run's record for the second policy applied event and the allowed
@@ -37,8 +37,8 @@ defmodule E2E do
 
   def main do
     host = env!("E2E_UPSTREAM_HOST")
-    runner_file = env!("E2E_RUNNER_FILE")
-    runner_tail = File.read!(env!("E2E_RUNNER_TAIL"))
+    forager_file = env!("E2E_FORAGER_FILE")
+    forager_tail = File.read!(env!("E2E_FORAGER_TAIL"))
     prepare = env!("E2E_PREPARE_COMMAND")
     session = env!("E2E_SESSION_COMMAND")
     session_log = env!("E2E_SESSION_LOG")
@@ -68,18 +68,20 @@ defmodule E2E do
       })
 
     :active = AccessKey.status(access_key)
-    write_secret(Path.dirname(runner_file), secret)
+    write_secret(Path.dirname(forager_file), secret)
 
-    # The key's server lines: the server's address, the key's id and the server's pin.
+    # The key's server lines: the server's address, the key's id and the server's pin, each
+    # indented as it sits under `server:`, and `server:` itself moved under `gateway:`, where
+    # qory reads it.
     server = AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
 
-    server_section =
+    gateway_section =
       Enum.map_join(
         ["server:", server.url, AccessKeys.key_line(access_key) | server.public_key],
-        &(&1 <> "\n")
+        &("  " <> &1 <> "\n")
       )
 
-    File.write!(runner_file, server_section <> runner_tail)
+    File.write!(forager_file, "gateway:\n" <> gateway_section <> forager_tail)
 
     say(
       "workspace in enforce, nothing allowed; node #{node.name}, key #{access_key.key_id}, fingerprint #{AccessKey.fingerprint(access_key)}, active; server #{ApiaryWeb.Endpoint.url()}, pinned #{Apiary.SigningKey.fingerprint()}"
@@ -370,7 +372,7 @@ defmodule E2E do
 
   # A fresh Ed25519 key, as a browser's Generate a key makes one: the public key in
   # base64url without padding, as the node's page receives it, and the secret, `qak_`
-  # and the key's 32-byte seed in base64url without padding (the runner's accesskey
+  # and the key's 32-byte seed in base64url without padding (Forager's accesskey
   # package, which qory reads it with).
   defp new_key do
     {public_key, seed} = :crypto.generate_key(:eddsa, :ed25519)
@@ -379,7 +381,7 @@ defmodule E2E do
      "qak_" <> Base.url_encode64(seed, padding: false)}
   end
 
-  # access-key-secret beside the runner file, as qory reads it: one line, in a regular
+  # access-key-secret beside the Forager file, as qory reads it: one line, in a regular
   # file of mode 0600, in a directory of mode 0700. The file is made anew, and its mode
   # set before the secret is written into it.
   defp write_secret(dir, secret) do

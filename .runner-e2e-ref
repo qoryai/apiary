@@ -1,5 +1,0 @@
-# The commit of qoryai/runner the end to end job builds qory against (.qory-e2e-ref): a
-# commit of the runner's main, the one qory at .qory-e2e-ref names in its go.mod. The
-# contract the tests replay is pinned in .runner-contract-ref, a pin of its own, kept apart
-# so that the two can move separately.
-cce6962445b57661cab820e4552a799f99c66aa8
