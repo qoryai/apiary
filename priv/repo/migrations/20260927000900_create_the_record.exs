@@ -1,7 +1,7 @@
 defmodule Apiary.Repo.Migrations.CreateTheRecord do
   use Ecto.Migration
 
-  # The record of a run, as the runners deliver it (`Apiary.Runs.Ingest`):
+  # The record of a run, as the gateway delivers it (`Apiary.Runs.Ingest`):
   #
   # - `events`: each event a run reported, once, by its sequence in the run and by its id
   #   in the workspace. `projected_at` is set when the projector has folded it in; the
@@ -15,7 +15,7 @@ defmodule Apiary.Repo.Migrations.CreateTheRecord do
   #   so a batch sent again is recognised.
   #
   # The first three are held to their run's workspace by the composite key on
-  # `(run_id, workspace_id)`, and go with the run. A delivery names its run by the runner's
+  # `(run_id, workspace_id)`, and go with the run. A delivery names its run by Forager's
   # id, not a foreign key: a delivery for a closed run is recorded too, and the record
   # outlives the run. A key is revoked, never deleted, and what it delivered is not to
   # vanish with it: no action on its key, which still lets a workspace go with everything

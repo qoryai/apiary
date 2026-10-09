@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   ago; one run in thirty names no repository. `--seed` (1) makes the plan repeatable: the
   same seed gives the same runs, under new ids every time.
 
-  Each run is a record the runner could have sent: its start, with what it is about (an
+  Each run is a record Forager could have sent: its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. Most succeed; some fail, time out, go silent and are found
@@ -411,7 +411,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   # The instance a host runs as on a node: the same id for the same host and node, in
-  # every history, as a runner keeps its instance id.
+  # every history, as Forager keeps its instance id.
   defp instance_id(node_id, host) do
     digest = :crypto.hash(:sha256, [node_id, ?/, host])
     "i_" <> Base.url_encode64(binary_part(digest, 0, 16), padding: false)
@@ -822,7 +822,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       node_id: key.node_id,
       instance_id: instance_id(key.node_id, spec.host),
       state: "pending",
-      runner_version: runner_version(spec),
+      forager_version: forager_version(spec),
       contract_version: 1,
       event_count: length(events),
       last_event_at: last.received_at,
@@ -835,16 +835,16 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp instant(ms), do: DateTime.from_unix!(ms * 1000, :microsecond)
 
-  # A version 7 UUID of the run's start, as the runner makes one.
+  # A version 7 UUID of the run's start, as Forager makes one.
   defp uuid7(ms) do
     <<a::12, b::62, _::6>> = :crypto.strong_rand_bytes(10)
     {:ok, uuid} = Ecto.UUID.load(<<ms::48, 7::4, a::12, 2::2, b::62>>)
     uuid
   end
 
-  defp runner_version(%{machine: %{key: "legacy-ci"}}), do: "0.4.1"
+  defp forager_version(%{machine: %{key: "legacy-ci"}}), do: "0.4.1"
 
-  defp runner_version(%{days_ago: days_ago}) do
+  defp forager_version(%{days_ago: days_ago}) do
     cond do
       days_ago > 80 -> "0.8.4"
       days_ago > 30 -> "0.9.2"
@@ -889,7 +889,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp ping(spec) do
     %{
-      "runner_version" => runner_version(spec),
+      "forager_version" => forager_version(spec),
       "events" => ["*"],
       "contract_version" => 1,
       "interval_seconds" => 30
@@ -912,13 +912,14 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       |> Map.new()
 
     %{
+      "opened_by" => "session",
       "runtime" => runtime_name(spec),
       "runtime_version" => runtime_version(spec),
       "command" => command,
       "args" => args,
       "dir" => "/work/#{workdir(spec)}",
       "interactive" => spec.interactive,
-      "runner_version" => runner_version(spec),
+      "forager_version" => forager_version(spec),
       "host" => spec.host,
       "labels" => labels
     }
@@ -1798,13 +1799,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
             where: r.access_key_id == ^key.id,
             order_by: [desc: r.last_event_at],
             limit: 1,
-            select: {r.last_event_at, r.runner_version}
+            select: {r.last_event_at, r.forager_version}
         )
 
       with {at, version} <- last do
         AccessKeys.touch_delivery(key, %{
           last_used_at: at,
-          last_runner_version: version,
+          last_forager_version: version,
           last_contract_version: 1,
           last_heartbeat_at: at
         })
@@ -1847,8 +1848,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
                 fragment("(array_agg(? ORDER BY ? DESC))[1]", r.access_key_id, r.inserted_at),
                 Ecto.UUID
               ),
-            last_runner_version:
-              fragment("(array_agg(? ORDER BY ? DESC))[1]", r.runner_version, r.inserted_at)
+            last_forager_version:
+              fragment("(array_agg(? ORDER BY ? DESC))[1]", r.forager_version, r.inserted_at)
           }
       )
 
@@ -1866,7 +1867,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end
 
     Repo.insert_all(Instance, entries,
-      on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_runner_version]},
+      on_conflict: {:replace, [:last_seen_at, :access_key_id, :last_forager_version]},
       conflict_target: [:node_id, :instance_id]
     )
   end

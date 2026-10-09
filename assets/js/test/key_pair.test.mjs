@@ -1,5 +1,5 @@
 // The browser's access key (assets/js/hooks/key_pair.js), under Node's own WebCrypto:
-// `node --test assets/js/test/` (no npm). It proves the secret's form against the runner
+// `node --test assets/js/test/` (no npm). It proves the secret's form against Forager's
 // contract, and that what the browser sends Qory is the label and the public key, never
 // the secret.
 
@@ -24,8 +24,8 @@ import {
 const subtle = webcrypto.subtle
 const ED25519 = {name: "Ed25519"}
 
-// The contract's fixture access key, copied from the runner at 4176ff4,
-// contracts/runner/v1/fixtures/known-answers/keys.json, "access_key": its seed is the
+// The contract's fixture access key, copied from Forager at a08473d,
+// contracts/forager/v1/fixtures/known-answers/keys.json, "access_key": its seed is the
 // bytes 1 to 32. qory refuses this secret and the server refuses this key.
 const FIXTURE = {
   seed: Uint8Array.from({length: 32}, (_, i) => i + 1),
@@ -261,7 +261,7 @@ test("a browser whose key fails a check is unsupported, says no value, and pushe
   }
 })
 
-test("base64url is decoded strictly, as the runner does", () => {
+test("base64url is decoded strictly, as Forager does", () => {
   assert.deepEqual(decodeBase64url(FIXTURE.secret.slice(4)), FIXTURE.seed)
   assert.equal(encodeBase64url(FIXTURE.seed), FIXTURE.secret.slice(4))
   // Padding, the standard alphabet, and stray bits in the last character.

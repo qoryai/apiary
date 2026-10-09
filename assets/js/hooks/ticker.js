@@ -5,7 +5,7 @@
 //   data-tick="relative"  datetime=…    "2 minutes ago", "Yesterday, 16:40",
 //                                       "17 Sept, 09:30"
 //   data-tick="clock"     datetime=…    "Today, 14:02:11"
-//   data-tick="duration"  data-base=… data-since=…  "2 m 14 s": the runner's elapsed seconds
+//   data-tick="duration"  data-base=… data-since=…  "2 m 14 s": Forager's elapsed seconds
 //                                                   plus the server time since it said so
 //   data-tick="seconds"   data-since=…  the same format, for "Alive, 4 s ago"
 //
@@ -134,7 +134,7 @@ const render = el => {
   const kind = el.dataset.tick
   const at = new Date(kind === "relative" || kind === "clock" ? el.getAttribute("datetime") : el.dataset.since)
   if (Number.isNaN(at.getTime())) return
-  // A duration counts from what the runner said had elapsed (`data-base`) at the server
+  // A duration counts from what Forager said had elapsed (`data-base`) at the server
   // time it said so (`data-since`).
   const base = kind === "duration" ? Number(el.dataset.base) || 0 : 0
   const text =

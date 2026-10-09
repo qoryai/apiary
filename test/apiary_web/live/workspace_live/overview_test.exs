@@ -510,7 +510,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       node = node_fixture(scope, %{name: "build-01"})
       %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
-      {:ok, _} = AccessKeys.touch(key, %{last_runner_version: "v0.4.2", last_contract_version: 1})
+
+      {:ok, _} =
+        AccessKeys.touch(key, %{last_forager_version: "v0.4.2", last_contract_version: 1})
+
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='3']")
@@ -1075,7 +1078,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       idle = node_key(scope, "old-runner", node)
       long_ago(idle, 34)
       fresh = node_key(scope, "build-02", node)
-      {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
+      {:ok, _} = AccessKeys.touch(fresh, %{last_forager_version: "v0.4.1"})
       # A key a code brought is weighed too, from when it arrived.
       %{access_key: enrolled} =
         enrolled_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
@@ -1144,6 +1147,38 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       next = if security?, do: "att-policy-unmanaged-act", else: "activity-all"
       assert_push_event(view, "overview:focus", %{id: ^next})
+    end
+
+    test "a lost run a gateway opened offers Open, never Close, and a crafted close is refused",
+         %{conn: conn, scope: scope} do
+      lost = lost_run(scope, %{opened_by: "gateway"})
+      session = lost_run(scope, %{about_title: "weekly-sync", opened_by: "session"})
+      view = open(conn, scope)
+
+      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+
+      assert has_element?(
+               view,
+               "a#att-run-#{lost.run_id}-act[aria-label='Open nightly-mirror']" <>
+                 "[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
+               "Open"
+             )
+
+      refute has_element?(view, "button#att-run-#{lost.run_id}-act")
+
+      assert has_element?(
+               view,
+               "button#att-run-#{session.run_id}-act[aria-label='Close weekly-sync']",
+               "Close"
+             )
+
+      render_hook(view, "close_ask", %{"id" => "att-run-#{lost.run_id}"})
+      refute has_element?(view, "#close-run")
+      render_hook(view, "close_confirm", %{})
+
+      assert %Run{state: "lost", closed_at: nil} = Runs.get_run!(scope, lost.id)
+      assert text(view, "#att-run-#{lost.run_id}") =~ "Lost, never posted its exit"
+      refute has_element?(view, "#att-run-#{lost.run_id}.q-resolved")
     end
 
     test "a lost run's Close question isolates its title, so a bidi override flips nothing",

@@ -68,7 +68,7 @@ defmodule Apiary.RunEventsFixtures do
     [
       {1, "ping",
        %{
-         "runner_version" => "v0.4.0",
+         "forager_version" => "v0.4.0",
          "contract_version" => 1,
          "events" => [],
          "interval_seconds" => 30
@@ -113,17 +113,37 @@ defmodule Apiary.RunEventsFixtures do
   def started_data(extra \\ %{}) do
     Map.merge(
       %{
+        "opened_by" => "session",
         "runtime" => "claude",
         "runtime_version" => "2.1.0",
         "command" => "claude",
         "args" => ["-p", "fix the build"],
         "dir" => "/work",
         "interactive" => false,
-        "runner_version" => "v0.4.0",
+        "forager_version" => "v0.4.0",
         "host" => "dev-laptop",
         "labels" => %{
           "forge" => "git.example.com",
           "repository" => "acme/shop"
+        }
+      },
+      extra
+    )
+  end
+
+  @doc """
+  The data of a `run.started` a gateway sends for a run it opened, with no session: no
+  runtime, command, host or terminal, and its labels, `run_key` among them.
+  """
+  def gateway_started_data(extra \\ %{}) do
+    Map.merge(
+      %{
+        "opened_by" => "gateway",
+        "forager_version" => "v0.6.0",
+        "labels" => %{
+          "forge" => "git.example.com",
+          "repository" => "example-org/example-repo",
+          "run_key" => "rk-0001"
         }
       },
       extra

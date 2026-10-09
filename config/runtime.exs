@@ -20,9 +20,9 @@ if System.get_env("PHX_SERVER") do
   config :apiary, ApiaryWeb.Endpoint, server: true
 end
 
-# PUBLIC_URL is the address people and runners use to reach this instance: a scheme, a
+# PUBLIC_URL is the address people and machines use to reach this instance: a scheme, a
 # host and, when it has one, a port, for example https://qory.example, or
-# http://localhost:4100 for a trial on one machine. Nothing after the host: a runner
+# http://localhost:4100 for a trial on one machine. Nothing after the host: Forager
 # takes a server URL without a path, and over plain http only to its own machine. The
 # endpoint derives its `url` from it so `ApiaryWeb.Endpoint.url/0` returns exactly that
 # address in links, emails and the discovery document. Returns a keyword list for `url:`,
@@ -47,7 +47,7 @@ parse_public_url = fn value ->
         not is_nil(uri.userinfo) ->
       raise """
       environment variable PUBLIC_URL must be a scheme and a host, with a port when it has one,
-      and nothing after: no path, no query. Runners refuse a server URL that has more.
+      and nothing after: no path, no query. Forager refuses a server URL that has more.
       For example: https://qory.example
       """
 
@@ -215,13 +215,13 @@ if config_env() == :prod do
   config :apiary, Apiary.KeyDerivation, secret: encryption_secret
 
   # APIARY_SIGNING_SECRET is the seed of the instance's own Ed25519 signing key
-  # (Apiary.SigningKey): it signs every answer to a runner, and every machine pins its
+  # (Apiary.SigningKey): it signs every answer to a gateway, and every machine pins its
   # public key as apiary_public_key. It is a secret of its own, never derived from
   # APIARY_ENCRYPTION_SECRET, and has no fallback. Changing it means pinning every machine
   # again, so keep it with APIARY_ENCRYPTION_SECRET. Refused here: the same bytes as
   # APIARY_ENCRYPTION_SECRET, and the dev and test seeds config/dev.exs and
-  # config/test.exs publish; `Apiary.SigningKey.boot!/0` refuses the runner contract's
-  # fixture seeds. Every comparison is in constant time, and no message here carries a
+  # config/test.exs publish; `Apiary.SigningKey.boot!/0` refuses the fixture seeds of
+  # Forager's contract. Every comparison is in constant time, and no message here carries a
   # value.
   signing_seed =
     case System.get_env("APIARY_SIGNING_SECRET") do
@@ -296,7 +296,7 @@ if config_env() == :prod do
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
       port: String.to_integer(System.get_env("PORT") || "4100"),
-      # A runner sends every label of a run as the run configuration request's query; at
+      # The gateway sends every label of a run as the run configuration request's query; at
       # the contract's bounds that request line runs to about 13 KB, past Bandit's 10,000.
       http_1_options: [max_request_line_length: 16_384]
     ],

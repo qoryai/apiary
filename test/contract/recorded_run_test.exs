@@ -16,7 +16,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Connection, Event, Ingest, LogChunk, Projector, Run}
 
-  # What the runner's request says beside its body: the revision of the contract.
+  # What the gateway's request says beside its body: the revision of the contract.
   @meta %{contract_version: 1}
 
   @moduletag :contract
@@ -98,7 +98,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   for file <- @runs do
     @file_path file
 
-    test "the record of #{file |> Path.dirname() |> Path.basename()}, posted as the runner cuts it, is the stored run",
+    test "the record of #{file |> Path.dirname() |> Path.basename()}, posted as the gateway cuts it, is the stored run",
          %{scope: scope, key: key, secret: secret} do
       lines = lines(@file_path)
       subject = subject(@file_path)
@@ -127,8 +127,19 @@ defmodule Apiary.Contract.RecordedRunTest do
       exited = Enum.find(wire, &(&1["type"] == "dev.qory.run.exited"))
       started = Enum.find(wire, &(&1["type"] == "dev.qory.run.started"))
 
-      assert projected.state == "succeeded"
+      # A session's exit says its state and its exit code; a run a gateway opened has no
+      # session, says neither, and ends with a reason: quiet in the contract's record.
+      expected_state =
+        case exited["data"] do
+          %{"state" => state} -> state
+          %{"reason" => "quiet"} -> "ended"
+        end
+
+      assert projected.state == expected_state
+      assert projected.opened_by == started["data"]["opened_by"]
       assert projected.exit_code == exited["data"]["exit_code"]
+      assert projected.reason == exited["data"]["reason"]
+      assert projected.quiet_seconds == exited["data"]["quiet_seconds"]
       assert projected.host == started["data"]["host"]
       assert projected.projected_sequence == length(lines)
 

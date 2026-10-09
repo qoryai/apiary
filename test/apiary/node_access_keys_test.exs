@@ -511,7 +511,7 @@ defmodule Apiary.NodeAccessKeysTest do
       refute inspect(entry) =~ code
     end
 
-    test "a label hint is a name a runner would send", ctx do
+    test "a label hint is a name Forager would send", ctx do
       assert {:error, changeset} =
                AccessKeys.create_enrolment_code(ctx.scope, ctx.node, %{label_hint: "-bad name"})
 

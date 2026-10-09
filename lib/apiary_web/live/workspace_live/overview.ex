@@ -35,7 +35,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   had a policy: no policy lines, no policy read and no subscription to it, no item about
   the mode or the version in force, no denied destination offered for an allow (that act
   is a rule), nothing that links to the policy. The summary still counts the denied
-  attempts and their destinations: the runner reported them, they are the record's.
+  attempts and their destinations: Forager reported them, they are the record's.
 
   `thresholds/0` holds the design's choices in one place.
   """
@@ -918,8 +918,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("close_ask", %{"id" => id}, socket) do
     case find_item(socket, id) do
-      %{kind: :lost, run: run, resolved: nil} -> {:noreply, assign(socket, :confirm_close, run)}
-      _ -> {:noreply, socket}
+      %{kind: :lost, run: %Run{} = run, resolved: nil} ->
+        if Runs.closable?(run),
+          do: {:noreply, assign(socket, :confirm_close, run)},
+          else: {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 

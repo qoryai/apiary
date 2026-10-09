@@ -2,10 +2,11 @@
 // GenerateKey hook (generate_key.js), with no page in it, so that `node --test` runs it
 // under Node's own WebCrypto (assets/js/test/key_pair.test.mjs).
 //
-// The secret is the runner contract's (contracts/runner/v1, README "access key"): `qak_`
-// and the key's 32-byte Ed25519 seed in base64url without padding, 47 characters. That
-// seed, so encoded, is exactly the `d` of the private key's JWK (RFC 8037), and the public
-// key Qory stores is the JWK's `x`, the 32 raw bytes in base64url. Neither is re-encoded.
+// The secret has the form Forager's contract gives it (contracts/forager/v1, README
+// "access key"): `qak_` and the key's 32-byte Ed25519 seed in base64url without padding,
+// 47 characters. That seed, so encoded, is exactly the `d` of the private key's JWK
+// (RFC 8037), and the public key Qory stores is the JWK's `x`, the 32 raw bytes in
+// base64url. Neither is re-encoded.
 //
 // Only the public key ever leaves this file: `generate` pushes the one event
 // `generate_key` with `{key: {label, public_key}}`, and hands the secret
@@ -120,7 +121,7 @@ export function encodeBase64url(bytes) {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
 }
 
-// Strict, as the runner decodes (Go's RawURLEncoding.Strict()): the base64url alphabet,
+// Strict, as Forager decodes (Go's RawURLEncoding.Strict()): the base64url alphabet,
 // no padding, and no stray bits in the last character. Anything else is null.
 export function decodeBase64url(text) {
   if (typeof text !== "string" || !/^[A-Za-z0-9_-]*$/.test(text) || text.length % 4 === 1) {

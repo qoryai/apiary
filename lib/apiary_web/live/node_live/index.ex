@@ -4,7 +4,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   run, on the list pattern (`docs/ui.md`, Lists): one line a node, its name the title
   with its public id beside it, its kind in words only for a pool, its state
   (`ApiaryWeb.NodeComponents.node_state/1`: "Running", "3 of 10 running", "Last seen …"
-  or "Never seen") and the runner's version it last reported. Under a pool's line, its
+  or "Never seen") and Forager's version it last reported. Under a pool's line, its
   running instances as indented lines, ten at most, then "and 12 more", which leads to the
   pool's page; an instance shows only while it runs. A Node has none: its one instance
   is its line.
@@ -310,12 +310,12 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   defp node_path(scope, node), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}"
 
-  # The runner's version a node's line says: its running instance's, else the last seen's.
-  defp runner_version(%{running: [%{runner_version: version} | _]}) when is_binary(version),
+  # Forager's version a node's line says: its running instance's, else the last seen's.
+  defp forager_version(%{running: [%{forager_version: version} | _]}) when is_binary(version),
     do: version
 
-  defp runner_version(%{last: %{last_runner_version: version}}), do: version
-  defp runner_version(_activity), do: nil
+  defp forager_version(%{last: %{last_forager_version: version}}), do: version
+  defp forager_version(_activity), do: nil
 
   @impl true
   # A form is a page of the Nodes section, as Add integration is of Settings: the
@@ -618,12 +618,12 @@ defmodule ApiaryWeb.NodeLive.Index do
               <% _more -> %>
             <% end %>
           </:col>
-          <:col :let={row} label={gettext("Runner")} kind="faint" from="md">
+          <:col :let={row} label={gettext("Forager")} kind="faint" from="md">
             <%= case row do %>
               <% {:node, node} -> %>
-                {runner_version(@activity[node.id])}
+                {forager_version(@activity[node.id])}
               <% {:instance, _node, instance} -> %>
-                {instance.runner_version}
+                {instance.forager_version}
               <% _more -> %>
             <% end %>
           </:col>

@@ -1,11 +1,11 @@
 defmodule Apiary.Repo.Migrations.CreateAccessKeys do
   use Ecto.Migration
 
-  # An access key of a workspace: the key id a runner signs with, unique on the instance,
+  # An access key of a workspace: the key id the gateway signs with, unique on the instance,
   # and its secret, encrypted (`Apiary.Encrypted.Binary`), with the one it replaces kept
   # beside it while a rotation is under way. A key is revoked, never deleted; the label is
   # unique among the workspace's keys in use, by the partial unique index. The last contact
-  # (`last_used_at`, `last_heartbeat_at`) and the runner and contract versions it reported
+  # (`last_used_at`, `last_heartbeat_at`) and the Forager and contract versions it reported
   # are what the console shows of the machine. The maker is a plain reference, indexed.
   def change do
     create table(:access_keys, primary_key: false) do

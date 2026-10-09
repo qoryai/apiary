@@ -11,7 +11,7 @@ defmodule Apiary.Policy do
   rules of its own on top, and follows the workspace's mode unless it sets its own
   (`get_mode/2`, `set_mode/3`). The mode and the rules are apart: a locked rule of the
   workspace holds in a target's document whatever the target's mode, and a deny holds in
-  either mode: `egress.deny` is decided by the runner first, so under `observe` a host a
+  either mode: `egress.deny` is decided by the gateway first, so under `observe` a host a
   deny names is denied and everything else is let through and recorded, and the
   document's `allow` says what `enforce` would reach. A rule (`Apiary.Policy.Rule`)
   allows or denies a host. A deny is written to the document and takes the allow entries
@@ -129,7 +129,7 @@ defmodule Apiary.Policy do
   first rule or the first change of mode. Until then the workspace serves no run
   configuration at all (discovery names no `run` section, the endpoint answers `404`, the
   answers to batches name no digest of one), so its machines use the policy of their own
-  `runner.yaml`: an upgrade, or a workspace nobody has looked at, takes no machine's
+  `forager.yaml`: an upgrade, or a workspace nobody has looked at, takes no machine's
   enforcement away. From the first change on, every run of the workspace takes the
   workspace's policy. The first change anywhere counts, a target's rule or a target's mode
   included: it starts serving every target of the workspace, the others the baseline. For
@@ -452,7 +452,7 @@ defmodule Apiary.Policy do
   @doc """
   Denies a host in the holder, as `allow/3` allows one. A deny takes the
   whole host: `paths` is not read. A deny holds in either mode, and a deny of a host below
-  an allowed `*.` suffix stands beside the allow: the runner decides `deny` first.
+  an allowed `*.` suffix stands beside the allow: the gateway decides `deny` first.
   """
   @spec deny(Scope.t(), holder, map) :: {:ok, Rule.t()} | refusal
   def deny(%Scope{} = scope, holder, attrs),
@@ -564,7 +564,7 @@ defmodule Apiary.Policy do
   The destinations that were let through since `since` and that today's rules do not
   cover: what enforce would start denying. A destination is a host, and a path as well
   where the host is held to paths. Each connection is held to the effective policy of
-  its own run's target (the baseline for a run without one), matched as the runner
+  its own run's target (the baseline for a run without one), matched as the gateway
   matches. Each destination says its allowed `attempts`, how many `runs` made them, when
   it was last seen and in which `targets`, and `tool`, the tool whose host it is, whenever
   a request to it in the range named one, handed to the tool or refused by a path rule
@@ -663,7 +663,7 @@ defmodule Apiary.Policy do
   Per rule id, the attempts allowed and denied since `since`: `%{rule_id => %{allowed: n,
   denied: n}}`, a rule nothing reached being absent. For the baseline (`nil`) every
   connection of the workspace is read, for a target those of its runs; each is held to the
-  effective policy of its run's target and counted on the rule the runner would
+  effective policy of its run's target and counted on the rule the gateway would
   report: the first entry of `allow` that matches (names before `*.` suffixes), else the
   deny in force that covers the host. So a target's page may name rules of the workspace, and the workspace's page counts a
   workspace rule wherever it decided. Bounded as `uncovered/2` is.
@@ -730,7 +730,7 @@ defmodule Apiary.Policy do
   The declared hosts shown against the rules: `%{suggested: [suggestion], covered:
   [%{host:, by:, source:, rule_id:}]}`. `suggested` is `suggestions/3`. `covered` is the
   declared hosts a rule already allows, at most 20, by host: `by` is the entry of `allow`
-  that covers the host as a runner would report it (the host itself, or a `*.` suffix),
+  that covers the host as the gateway would report it (the host itself, or a `*.` suffix),
   `source` is `:workspace`, `:target` or `:organisation` (the level above), where that
   rule was written, and `rule_id` its id. A target that is not the workspace's has
   neither.
@@ -1109,13 +1109,13 @@ defmodule Apiary.Policy do
   ## Export
 
   @doc """
-  The effective policy as text for a node without a server: `runner_file`, the `egress`
-  section of `~/.config/qory/runner.yaml`, which holds the mode and the hosts; and
-  `policy_file`, a document in the contract's policy format for `qory run --policy`, when
-  the policy holds paths, which the runner file's section cannot say (nil otherwise). `notes` are sentences for the page.
+  The effective policy as text for a node without a server: `forager_file`, the `egress`
+  section under `gateway:` of `~/.config/qory/forager.yaml`, which holds the mode and the
+  hosts; and `policy_file`, a document in the contract's policy format for `qory run --policy`, when
+  the policy holds paths, which the Forager file's section cannot say (nil otherwise). `notes` are sentences for the page.
   """
   @spec export(Scope.t(), holder) ::
-          {:ok, %{runner_file: String.t(), policy_file: String.t() | nil, notes: [String.t()]}}
+          {:ok, %{forager_file: String.t(), policy_file: String.t() | nil, notes: [String.t()]}}
   def export(%Scope{} = scope, holder), do: {:ok, Export.text(effective(scope, holder))}
 
   ## Several changes at once
@@ -2084,7 +2084,7 @@ defmodule Apiary.Policy do
     end
   end
 
-  # The most a runner reads of a document (its `MaxDocument`): a larger one is no run.
+  # The most the gateway reads of a document (its `MaxDocument`): a larger one is no run.
   @document_max 1_048_576
   defp small(document) when byte_size(document) <= @document_max, do: :ok
 
@@ -2093,7 +2093,7 @@ defmodule Apiary.Policy do
      Error.new(
        :invalid_document,
        gettext(
-         "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+         "The change was not made: the run configuration it renders is over 1 MiB, more than the gateway reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
        )
      )}
   end
@@ -2113,7 +2113,7 @@ defmodule Apiary.Policy do
          Error.new(
            :invalid_document,
            gettext(
-             "The change was not made: the run configuration it renders is not one the runner's contract accepts."
+             "The change was not made: the run configuration it renders is not one Forager's contract accepts."
            )
          )}
     end

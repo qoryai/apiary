@@ -12,7 +12,7 @@ defmodule Apiary.Runs.Run do
   @typedoc "A run of a workspace."
   @type t :: %__MODULE__{}
 
-  @states ~w(pending running succeeded failed timed_out lost closed)
+  @states ~w(pending running succeeded ended failed timed_out lost closed)
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -31,16 +31,20 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
+    # What opened the run, `opened_by` of `run.started`: "session", a Forager session around
+    # a runtime, or "gateway", a gateway with no session, whose start says no runtime,
+    # command or host and whose exit no state or exit code. Nil until a start says it.
+    field :opened_by, :string
     field :runtime, :string
     field :runtime_version, :string
-    field :runner_version, :string
+    field :forager_version, :string
     field :contract_version, :integer
     field :command, :string
     field :args, {:array, :string}, default: []
     field :dir, :string
     field :interactive, :boolean
     # The pseudo-terminal's size as the record last said it: `terminal` of `run.started`,
-    # then each `run.resized`. Null on pipes, and when the runner reported no size.
+    # then each `run.resized`. Null on pipes, and when Forager reported no size.
     field :terminal_cols, :integer
     field :terminal_rows, :integer
     field :host, :string
@@ -53,6 +57,8 @@ defmodule Apiary.Runs.Run do
     field :exit_code, :integer
     field :signal, :string
     field :reason, :string
+    # The quiet period the gateway applied, of an exit with the reason "quiet"; nil otherwise.
+    field :quiet_seconds, :integer
     field :duration_ms, :integer
 
     field :last_event_at, :utc_datetime_usec
@@ -102,8 +108,13 @@ defmodule Apiary.Runs.Run do
   @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)
 
-  @doc "The one state of a run that ended well."
-  def ended_well_states, do: ~w(succeeded)
+  @doc """
+  The states of a run that ended well: succeeded, and ended. A run ends `ended` when its exit
+  says no state and a reason that is no failure (`Apiary.Runs.Fold.exit_state/2`): a run a
+  gateway opened that was quiet, whose run credential expired or whose issuer reported it
+  ended.
+  """
+  def ended_well_states, do: ~w(succeeded ended)
 
   @doc """
   The states of a run that ended badly: failed, timed out, lost and closed. A closed run
@@ -112,4 +123,9 @@ defmodule Apiary.Runs.Run do
   badly).
   """
   def ended_badly_states, do: ~w(failed timed_out lost closed)
+
+  @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
+  @spec no_session?(t() | map()) :: boolean()
+  def no_session?(%{opened_by: "gateway"}), do: true
+  def no_session?(_run), do: false
 end

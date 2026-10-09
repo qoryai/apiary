@@ -1,7 +1,7 @@
 defmodule Apiary.Contract.SignedMessage do
   @moduledoc ~S"""
   SignedMessage builds the messages the server contract signs with Ed25519
-  (`Apiary.Contract.Ed25519`): a request's, which a runner signs under its access key; an
+  (`Apiary.Contract.Ed25519`): a request's, which the gateway signs under its access key; an
   enrolment's proof, which a machine signs under the new key it enrols; and an answer's,
   to a signed request or to an enrolment, which the server signs under its own key. Each is lines joined by `\n`, with no newline
   after the last. Pure functions; nothing here touches the database, a connection or a
@@ -32,7 +32,7 @@ defmodule Apiary.Contract.SignedMessage do
   no caller can sign an enrolment answer under the other line by leaving one out.
 
   The contract's known answers for each are in `fixtures/known-answers/signatures.json`
-  of the runner's contract directory, and `test/contract/ed25519_known_answers_test.exs`
+  of Forager's contract directory, and `test/contract/ed25519_known_answers_test.exs`
   replays them.
   """
 

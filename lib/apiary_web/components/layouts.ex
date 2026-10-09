@@ -895,7 +895,7 @@ defmodule ApiaryWeb.Layouts do
       <ol class="q-trail">
         <li class={["q-trail-item", (@here || @crumb != []) && "q-trail-lead"]}>
           <.link navigate={~p"/users/settings"} class="q-trail-link">
-            {gettext("Your settings")}
+            <span class="truncate">{gettext("Your settings")}</span>
           </.link>
         </li>
         <li
@@ -908,10 +908,10 @@ defmodule ApiaryWeb.Layouts do
             navigate={Entry.path(@here, @organisation, @workspace)}
             class="q-trail-link"
           >
-            <.trail_back :if={up?(@crumb)} />{@here.label}
+            <.trail_back :if={up?(@crumb)} /><span class="truncate">{@here.label}</span>
           </.link>
           <span :if={@crumb == []} class="q-trail-link q-trail-page" aria-current="page">
-            {@here.label}
+            <span class="truncate">{@here.label}</span>
           </span>
         </li>
         <.crumbs crumb={@crumb} />
@@ -939,10 +939,10 @@ defmodule ApiaryWeb.Layouts do
             navigate={Entry.path(@first, @organisation, @workspace)}
             class="q-trail-link"
           >
-            {gettext("Instance settings")}
+            <span class="truncate">{gettext("Instance settings")}</span>
           </.link>
           <span :if={!@first} class="q-trail-link q-trail-page">
-            {gettext("Instance settings")}
+            <span class="truncate">{gettext("Instance settings")}</span>
           </span>
         </li>
         <li
@@ -955,10 +955,10 @@ defmodule ApiaryWeb.Layouts do
             navigate={Entry.path(@here, @organisation, @workspace)}
             class="q-trail-link"
           >
-            <.trail_back :if={up?(@crumb)} />{@here.label}
+            <.trail_back :if={up?(@crumb)} /><span class="truncate">{@here.label}</span>
           </.link>
           <span :if={@crumb == []} class="q-trail-link q-trail-page" aria-current="page">
-            {@here.label}
+            <span class="truncate">{@here.label}</span>
           </span>
         </li>
         <.crumbs crumb={@crumb} />
@@ -1071,7 +1071,7 @@ defmodule ApiaryWeb.Layouts do
         navigate={@trail.path}
         class="q-trail-link"
       >
-        <.trail_back :if={@last == :level && up?(@crumb)} />{@trail.label}
+        <.trail_back :if={@last == :level && up?(@crumb)} /><span class="truncate">{@trail.label}</span>
       </.link>
       <span
         :if={@last == :level && @crumb == []}
@@ -1079,7 +1079,7 @@ defmodule ApiaryWeb.Layouts do
         class="q-trail-link q-trail-page"
         aria-current="page"
       >
-        {@trail.label}
+        <span class="truncate">{@trail.label}</span>
       </span>
     </li>
     <li
@@ -1093,7 +1093,7 @@ defmodule ApiaryWeb.Layouts do
         navigate={@trail.section.path}
         class="q-trail-link"
       >
-        <.trail_back :if={up?(@crumb)} />{@trail.section.label}
+        <.trail_back :if={up?(@crumb)} /><span class="truncate">{@trail.section.label}</span>
       </.link>
       <span
         :if={@crumb == []}
@@ -1101,7 +1101,7 @@ defmodule ApiaryWeb.Layouts do
         class="q-trail-link q-trail-page"
         aria-current="page"
       >
-        {@trail.section.label}
+        <span class="truncate">{@trail.section.label}</span>
       </span>
     </li>
     """
@@ -1129,14 +1129,14 @@ defmodule ApiaryWeb.Layouts do
         patch={crumb[:patch]}
         class="q-trail-link"
       >
-        <.trail_back :if={i == length(@crumb) - 2} />{render_slot(crumb)}
+        <.trail_back :if={i == length(@crumb) - 2} /><span class="truncate">{render_slot(crumb)}</span>
       </.link>
       <span
         :if={!link?(crumb)}
         class="q-trail-link q-trail-page"
         aria-current={i == length(@crumb) - 1 && "page"}
       >
-        {render_slot(crumb)}
+        <span class="truncate">{render_slot(crumb)}</span>
       </span>
     </li>
     """

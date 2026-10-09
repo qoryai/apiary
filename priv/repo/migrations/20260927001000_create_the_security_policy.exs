@@ -13,8 +13,8 @@ defmodule Apiary.Repo.Migrations.CreateTheSecurityPolicy do
   # target: the unique index reads a baseline rule's missing target as the nil UUID.
   #
   # `run_configurations`: the run configurations as served, immutable rows, one per version,
-  # of the workspace's baseline or of a target. `document` is the exact bytes a runner was
-  # given and `digest` is `sha256=` and the hex of those bytes. The current one is the
+  # of the workspace's baseline or of a target. `document` is the exact bytes the gateway
+  # was given and `digest` is `sha256=` and the hex of those bytes. The current one is the
   # highest version, read from the unique index newest first. `audit_entry_id` names the
   # audit entry of the policy change that rendered it, without a foreign key: the trail is
   # pruned by age, and a version outlives the entry of the change that made it.

@@ -39,6 +39,8 @@ defmodule Apiary.Runs.OverviewTest do
       run(scope, 3600, "succeeded", %{denied_count: 2, cost_usd: Decimal.new("0.50")})
       run(scope, 2 * 86_400, "failed", %{denied_count: 1, cost_usd: Decimal.new("0.25")})
       run(scope, 2 * 86_400 + 60, "closed")
+      # A run a gateway opened that ended quiet ended well, never badly.
+      run(scope, 2 * 86_400 + 120, "ended")
       # Just before the window: not counted.
       run(scope, 14 * 86_400 + 1, "succeeded")
       run(other, 10, "running")
@@ -46,7 +48,7 @@ defmodule Apiary.Runs.OverviewTest do
       from = DateTime.add(@now, -14 * 86_400, :second)
       assert [older, today] = Runs.day_facts(scope, from)
 
-      assert %{runs: 2, alive: 0, ended_well: 0, ended_badly: 2, denied: 1, costed: 1} = older
+      assert %{runs: 3, alive: 0, ended_well: 1, ended_badly: 2, denied: 1, costed: 1} = older
       assert older.day == day(2)
       assert Decimal.equal?(older.cost, Decimal.new("0.25"))
 

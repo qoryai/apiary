@@ -1000,7 +1000,9 @@ defmodule ApiaryWeb.LayoutsTest do
       # the level.
       assert attribute(html, "#breadcrumb li", "class") =~ "q-trail-lead"
       assert trail(html) == ["Instance settings", "Accounts"]
-      assert html =~ ~r{id="breadcrumb".*Instance settings.*aria-current="page"[^>]*>\s*Accounts}s
+
+      assert html =~
+               ~r{id="breadcrumb".*Instance settings.*aria-current="page"[^>]*>\s*<span class="truncate">Accounts}s
 
       # One section opens no second column.
       html =
@@ -1089,7 +1091,7 @@ defmodule ApiaryWeb.LayoutsTest do
       assert attribute(html, "#settings-tab-runs", "aria-current") == "true"
       assert attribute(html, "#nav-settings", "aria-current") == "true"
       refute html =~ ~r{id="(settings-tab|nav)-[a-z_]+"[^>]*aria-current="page"}
-      assert html =~ ~r{aria-current="page"[^>]*>\s*Retention of events}
+      assert html =~ ~r{aria-current="page"[^>]*>\s*<span class="truncate">Retention of events}
 
       org = scope.organisation.slug
       ws = scope.workspace.slug
@@ -1171,7 +1173,9 @@ defmodule ApiaryWeb.LayoutsTest do
       assert attribute(html, "#breadcrumb a[href='/users/organisations']", "class") =~
                "q-trail-link"
 
-      assert html =~ ~r{id="breadcrumb".*aria-current="page"[^>]*>\s*New organisation}s
+      assert html =~
+               ~r{id="breadcrumb".*aria-current="page"[^>]*>\s*<span class="truncate">New organisation}s
+
       assert attribute(html, "#nav-user_organisations", "aria-current") == "true"
 
       # Without segments the section is the page.
@@ -1183,7 +1187,10 @@ defmodule ApiaryWeb.LayoutsTest do
         """)
 
       refute attribute(html, "#breadcrumb a[href='/users/organisations']", "href")
-      assert html =~ ~r{id="breadcrumb".*aria-current="page"[^>]*>\s*Organisations}s
+
+      assert html =~
+               ~r{id="breadcrumb".*aria-current="page"[^>]*>\s*<span class="truncate">Organisations}s
+
       assert attribute(html, "#nav-user_organisations", "aria-current") == "page"
     end
 

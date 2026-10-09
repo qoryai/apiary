@@ -2672,6 +2672,13 @@
     .q-trail-up + .q-trail-item > .q-trail-sep {
       display: inline;
     }
+    /* The parent keeps its name, up to 8rem; the page's own name is cut short first. */
+    .q-trail-up {
+      flex-shrink: 0;
+    }
+    .q-trail-up .q-trail-link {
+      max-width: 8rem;
+    }
   }
 }
 
@@ -5590,6 +5597,7 @@
   }
   .q-run-meta .q-sdot-succeeded,
   .q-run-meta .q-sdot-closed,
+  .q-run-meta .q-sdot-ended,
   .q-run-meta .q-sdot-pending {
     color: var(--color-base-content);
   }
@@ -6421,6 +6429,9 @@
   .q-term-find input::placeholder {
     color: var(--q-term-dim);
   }
+  .q-term-find:has(input:disabled) {
+    opacity: 0.4;
+  }
   .q-term-find [data-find-count] {
     font-family: var(--font-mono);
     font-size: 0.71875rem;
@@ -6620,6 +6631,17 @@
   }
   .q-term-msg[hidden] {
     display: none;
+  }
+  /* The note on an empty screen: a run with no session. */
+  .q-term-empty {
+    max-width: 52ch;
+    padding-inline: 24px;
+    line-height: 1.55;
+    text-align: center;
+  }
+  .q-term-empty b {
+    color: var(--q-term-fg);
+    font-weight: 600;
   }
   .q-term-foot {
     display: flex;

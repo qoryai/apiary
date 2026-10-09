@@ -2,10 +2,10 @@ defmodule Apiary.Kinds.Placeholders do
   @moduledoc """
   Placeholders answers whether a variable name may carry a connection's placeholder: the
   variable the enclosure gets set to the placeholder value, so that an agent's client has
-  something to send, which the runner's proxy, or a tool, replaces.
+  something to send, which the gateway, or a tool, replaces.
 
-  The contract refuses such a name, `placeholder_conflict`, when it is the runner's own
-  (`QORY_*`), on the built-in deny list, or a name the runner, a runtime or the harness
+  The contract refuses such a name, `placeholder_conflict`, when it is Forager's own
+  (`QORY_*`), on the built-in deny list, or a name Forager, a runtime or the harness
   sets, and the server refuses the same on save, for the names it knows then: a tool
   role's `placeholders` in an integration's description, and a service declaration's
   `name`. The names Apiary knows are `Apiary.Variables.Denied`'s list and pattern, matched

@@ -7,7 +7,7 @@ defmodule Apiary.Policy.Rule do
   on every path (`paths` nil) or on the paths listed (an empty list is no path at all), or
   denies it. `host` is the one kind of rule there is.
 
-  A deny is written to the document's `egress.deny`, which a runner decides first and in
+  A deny is written to the document's `egress.deny`, which the gateway decides first and in
   either mode, and takes the allow entries it covers out of what is rendered. Only a rule
   of the workspace can be `locked`, which holds it against every target.
   """

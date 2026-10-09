@@ -49,10 +49,17 @@ defmodule Apiary.Contract.DemoRunsTest do
       end
     end
 
-    test "#{@name} says in its start what the run is about, with a title" do
+    # A gateway's start says only the details its run credential maps, never a title.
+    test "#{@name} says in its start what the run is about, with a title from a session" do
       case Enum.filter(events(@file_path), &(&1["type"] == "dev.qory.run.started")) do
-        [] -> assert @name == "ping-only"
-        [started] -> assert %{"title" => "" <> _} = started["data"]["about"]
+        [] ->
+          assert @name == "ping-only"
+
+        [%{"data" => %{"opened_by" => "gateway"}} = started] ->
+          assert %{"details" => %{}} = started["data"]["about"]
+
+        [started] ->
+          assert %{"title" => "" <> _} = started["data"]["about"]
       end
     end
 

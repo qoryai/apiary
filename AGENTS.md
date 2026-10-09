@@ -78,7 +78,7 @@ repository; the rules for people are the same, and are written out in
   `:tesla`, and `:httpc`.
 - The server contract (signed GET, discovery document, what is assumed beyond the contract)
   is described in [docs/contract-assumptions.md](docs/contract-assumptions.md); the contract
-  itself lives in the qoryai/runner repository.
+  itself lives in the qoryai/forager repository.
 
 ### Phoenix v1.8 guidelines
 

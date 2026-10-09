@@ -77,13 +77,13 @@ edition's too. No file of the core names an edition's module
 (`test/apiary/edition_boundary_test.exs`).
 
 The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
-at the commit in `.runner-contract-ref`: `RUNNER_CONTRACT_DIR`, or else that commit's
-`contracts/runner/v1`, taken once with `git archive` from the checkout `../../runner/main`
+at the commit in `.forager-contract-ref`: `FORAGER_CONTRACT_DIR`, or else that commit's
+`contracts/forager/v1`, taken once with `git archive` from the checkout `../../forager/main`
 into `_build/` (that checkout is only read, whatever it has checked out). Without either
-they are excluded and a line says so; CI checks the runner out at that commit and sets
+they are excluded and a line says so; CI checks Forager out at that commit and sets
 `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is one on
-the runner's `next` branch, pinned by its id. The end to end job builds qory against
-the runner at `.runner-e2e-ref`, pinned apart.
+Forager's `main` branch, pinned by its id. The end to end job builds qory against
+Forager at `.forager-e2e-ref`, pinned apart.
 
 ## Doc comments
 
@@ -107,7 +107,7 @@ node's credential for the server contract, an Ed25519 key; **key id** is its id,
 and sixteen characters; **secret** is the part that signs, which stays on the machine;
 **run** is one execution of one session on a machine of the workspace; **event** is one
 thing a run reports, delivered to the events URL; **receiver** is what answers the events
-URL; **run configuration** is what the runner fetches before a run; **security policy** is
+URL; **run configuration** is what the gateway fetches before a run; **security policy** is
 `SECURITY.md`. An organisation is never a team, a tenant or an account; a
 workspace is never a team, a project or a hive; an access key is never an API key or a
 token; a secret is never a password. The product surface is the one place with other

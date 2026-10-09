@@ -655,7 +655,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} is on the runner's deny list."
+msgid "%{name} is on Forager's deny list."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -2035,7 +2035,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A coding agent the runner can start."
+msgid "A coding agent Forager can start."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -2103,6 +2103,11 @@ msgstr ""
 #: lib/apiary/policy/export.ex
 #, elixir-autogen, elixir-format
 msgid "A file outside the checkout, given with: %{command}"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -2275,12 +2280,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "A run reloads the policy at its next heartbeat."
-msgstr ""
-
-#: lib/apiary/policy/resolution.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "A runner holds a host to one list of paths and cannot tell which of the two applies."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -3033,7 +3032,7 @@ msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
-msgid "An instance is what a runner with this node's key reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
+msgid "An instance is what Forager, run with this node's key, reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3541,7 +3540,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Choose a coding agent of the runner's catalogue."
+msgid "Choose a coding agent of Forager's catalogue."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -4710,6 +4709,7 @@ msgstr ""
 msgid "End of the record."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ended"
@@ -5305,6 +5305,34 @@ msgstr ""
 msgid "For a laptop or a server you can open a terminal on: you run one command there, and the key's secret never leaves the machine."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Forager"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Forager %{version}"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Forager file"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Forager file for %{label}"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Forager has pinged. The run's first event has not arrived."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -5739,6 +5767,16 @@ msgstr ""
 msgid "In force since %{date}; %{following} of %{targets} follow it."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "In the Forager file. It is required: without it, qory ignores the three variables below."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "In the Forager file. It is required: without it, qory ignores the three variables."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "In the composer, save the rule once it reads back"
@@ -5759,16 +5797,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "In the last 14 days it denied %{attempts} to %{destinations}."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "In the runner file. It is required: without it, qory ignores the three variables below."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "In the runner file. It is required: without it, qory ignores the three variables."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -7238,7 +7266,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "No connection went through the runner's proxy. Only programs that honour the proxy variables are seen."
+msgid "No connection went through the gateway. Only programs that honour the proxy variables are seen."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -7576,6 +7604,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "No session timeline"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No session."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -8090,7 +8123,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "On the runner's deny list"
+msgid "On Forager's deny list"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8362,6 +8395,11 @@ msgstr ""
 msgid "Open version %{version}"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Opened by"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Optional. Log-in links keep working either way."
@@ -8530,7 +8568,7 @@ msgstr ""
 
 #: lib/apiary/policy/export.ex
 #, elixir-autogen, elixir-format
-msgid "Paths need a wall: without one the runner refuses to start the run."
+msgid "Paths need a wall: without one Forager refuses to start the run."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -8716,7 +8754,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
+msgid "Programs on Forager's machine that serve hosts. The gateway hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -9400,6 +9438,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "Run ended"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "Run exited"
 msgstr ""
 
@@ -9477,23 +9520,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run timed out."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/index.ex
-#: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Runner"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Runner file"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "Runner file for %{label}"
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -10458,7 +10484,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "That runtime is not in the runner's catalogue."
+msgid "That runtime is not in Forager's catalogue."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -10489,6 +10515,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The API's title, unless you give it another."
+msgstr ""
+
+#: lib/apiary/policy/export.ex
+#, elixir-autogen, elixir-format
+msgid "The Forager file's egress section says a mode and hosts only. The paths are in the policy file, given to a run with --policy; it narrows the Forager file's section."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The Forager file's lines for this key. Nothing here is secret."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -10528,17 +10564,17 @@ msgstr ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
-msgid "The change was not made: the run configuration it renders is not one the runner's contract accepts."
+msgid "The change was not made: the run configuration it renders is not one Forager's contract accepts."
 msgstr ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
-msgid "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+msgid "The change was not made: the run configuration it renders is over 1 MiB, more than the gateway reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine."
+msgid "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -10604,18 +10640,18 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
-msgid "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the egress section of its runner file."
+msgid "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the egress section of its Forager file."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
-msgid "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file a runner takes with %{flag}, and the egress section of its runner file."
+msgid "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file Forager takes with %{flag}, and the egress section of its Forager file."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
+msgid "The enclosure the agent runs in. Its only route out leads to the gateway."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
@@ -10641,6 +10677,28 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The first run has landed."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "The gateway applied a policy again."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "The gateway fetched a new run configuration after Qory Apiary's answer named a new digest."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "The gateway fetched its run configuration again; the digest is the one it had."
+msgstr ""
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "The gateway holds a host to one list of paths and cannot tell which of the two applies."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11039,37 +11097,6 @@ msgstr ""
 msgid "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "The runner applied a policy again."
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "The runner fetched a new run configuration after Qory Apiary's answer named a new digest."
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "The runner fetched its run configuration again; the digest is the one it had."
-msgstr ""
-
-#: lib/apiary/policy/export.ex
-#, elixir-autogen, elixir-format
-msgid "The runner file's egress section says a mode and hosts only. The paths are in the policy file, given to a run with --policy; it narrows the runner file's section."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "The runner file's lines for this key. Nothing here is secret."
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "The runner has pinged. The run's first event has not arrived."
-msgstr ""
-
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The runs could not be loaded. Reload the page; if it keeps happening, Qory Apiary's log has the reason."
@@ -11115,7 +11142,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
-msgid "The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy."
+msgid "The sha256 of the exact bytes the gateway is served. Two runs with the same digest had the same policy."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -11225,7 +11252,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace stops taking events for it: the runner is told the run is gone at its next delivery. A close is final."
+msgid "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -11535,7 +11562,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach the runner. It has a terminal and connections, and no session timeline."
+msgid "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -11830,7 +11857,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -12148,7 +12175,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "What the runs of this workspace may reach through the runner's proxy."
+msgid "What the runs of this workspace may reach through the gateway."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -12815,9 +12842,19 @@ msgstr ""
 msgid "by %{version} after %{time}"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "by a gateway with no session"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by rule"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "closed"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -12966,6 +13003,11 @@ msgstr ""
 msgid "follow the workspace"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/views.ex
+#, elixir-autogen, elixir-format
+msgid "forager.yaml · the egress section"
+msgstr ""
+
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "from %{date}"
@@ -12976,6 +13018,18 @@ msgstr ""
 msgid "from %{from} to %{to}"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "gateway (no session)"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "gateway lost"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "general name slug"
@@ -12983,7 +13037,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "given to the runner as a policy document"
+msgid "given to Forager as a policy document"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -13230,6 +13284,11 @@ msgstr ""
 msgid "no policy, every connection is observed"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "no session"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "no target"
@@ -13374,6 +13433,27 @@ msgstr ""
 msgid "qory printed a fingerprint on %{name} when it ran the command. If it isn't this one, revoke the key on the Access key tab."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "quiet for %{number} hour"
+msgid_plural "quiet for %{number} hours"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "quiet for %{number} minute"
+msgid_plural "quiet for %{number} minutes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "quiet for %{number} second"
+msgid_plural "quiet for %{number} seconds"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reads requests to %{hosts}"
@@ -13412,21 +13492,10 @@ msgstr ""
 msgid "run %{id}"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "runner %{version}"
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "runner lost"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "runner.yaml · the egress section"
+msgid "run credential expired"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -13437,6 +13506,13 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "session lost"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -13497,6 +13573,12 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "terminal"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "the issuer reported the run ended"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -13567,6 +13649,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "through #%{sequence}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "timed out"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

@@ -3,7 +3,7 @@ defmodule Apiary.SecretLogFilterTest do
 
   alias Apiary.SecretLogFilter
 
-  # The runner contract's fixture secret (keys.json), and one in capitals.
+  # The fixture secret of Forager's contract (keys.json), and one in capitals.
   @secret "qak_AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA"
 
   # An enrolment code as Apiary makes it, as the command carries it (the server key's

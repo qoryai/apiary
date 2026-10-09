@@ -1,7 +1,7 @@
 defmodule Apiary.Policy.Serving do
   @moduledoc """
-  The run configuration as the wire reads it: for a runner, which has an access key's
-  workspace and no user. Everything a runner names is untrusted: its labels are bounded
+  The run configuration as the wire reads it: for the gateway, which has an access key's
+  workspace and no user. Everything the gateway names is untrusted: its labels are bounded
   strings, read by the workspace's domain (`Apiary.Lingo.Domain`) and compared to stored
   ones, nothing more. The key comes with its workspace, domain included, read in the one
   query that verifies it (`Apiary.AccessKeys.fetch_for_verification/1`), so naming the
@@ -10,7 +10,7 @@ defmodule Apiary.Policy.Serving do
   A workspace serves a run configuration only once somebody has made its policy
   (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
   `digest_for/4` is nil, and nothing is rendered from here: the workspace's machines use
-  the policy of their own `runner.yaml`. The same holds on an instance, or for a
+  the policy of their own `forager.yaml`. The same holds on an instance, or for a
   workspace, without the `security` feature (`Apiary.Features`): nothing is served, the
   discovery document names no `run` section, and the policy is absent from the contract.
 
@@ -26,7 +26,7 @@ defmodule Apiary.Policy.Serving do
   once its start is projected, which is after the receiver answers; until then it is
   taken from the start event when the batch holds it, and a run that names none yet (its
   ping) is answered the digest it reported when that is one in force in the workspace, the
-  baseline's otherwise. A runner that is told a digest it does not hold fetches again, so
+  baseline's otherwise. A gateway that is told a digest it does not hold fetches again, so
   the answer errs towards the digest it holds only while the target is unknown, and the
   next batch says the truth.
   """
@@ -78,7 +78,7 @@ defmodule Apiary.Policy.Serving do
   @doc """
   The digest in force for a run of the key's managed workspace (the caller has asked
   `managed?/1`), or nil when it cannot be read: the answer then carries no such header,
-  which means nothing to a runner. `run` is the run's
+  which means nothing to the gateway. `run` is the run's
   row or nil (a closed run is looked up by the batch's subject).
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil

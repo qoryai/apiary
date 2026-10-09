@@ -5,7 +5,7 @@ name: End to end
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
   workflow_dispatch:
 
@@ -34,16 +34,16 @@ jobs:
       - uses: actions/checkout@v7
 
       # The node's command is built from source: qory at the ref in .qory-e2e-ref, against
-      # the runner at the ref in .runner-e2e-ref, the runner that qory is written for. The
+      # Forager at the ref in .forager-e2e-ref, the Forager that qory is written for. The
       # whole history is fetched, so a ref may be a tag, a branch or a short commit id. Both
       # live outside the workspace's tracked files, under tmp/.
-      - name: Fetch the runner's repository
+      - name: Fetch Forager's repository
         uses: actions/checkout@v7
         with:
-          repository: qoryai/runner
-          path: tmp/runner
+          repository: qoryai/forager
+          path: tmp/forager
           fetch-depth: 0
-          token: ${{ secrets.RUNNER_REPOSITORY_TOKEN || github.token }}
+          token: ${{ secrets.FORAGER_REPOSITORY_TOKEN || github.token }}
 
       - name: Fetch qory's repository
         uses: actions/checkout@v7
@@ -51,11 +51,11 @@ jobs:
           repository: qoryai/qory
           path: tmp/qory
           fetch-depth: 0
-          token: ${{ secrets.RUNNER_REPOSITORY_TOKEN || github.token }}
+          token: ${{ secrets.FORAGER_REPOSITORY_TOKEN || github.token }}
 
       - name: Check out the pinned refs
         run: |
-          git -C tmp/runner checkout --detach "$(grep -v '^#' .runner-e2e-ref | head -n 1 | tr -d '[:space:]')"
+          git -C tmp/forager checkout --detach "$(grep -v '^#' .forager-e2e-ref | head -n 1 | tr -d '[:space:]')"
           git -C tmp/qory checkout --detach "$(grep -v '^#' .qory-e2e-ref | head -n 1 | tr -d '[:space:]')"
 
       - name: Install the toolchain pinned in mise.toml
@@ -86,12 +86,12 @@ jobs:
       - name: Run the job
         env:
           QORY_SRC: ${{ github.workspace }}/tmp/qory
-          RUNNER_SRC: ${{ github.workspace }}/tmp/runner
+          FORAGER_SRC: ${{ github.workspace }}/tmp/forager
           E2E_DATABASE_URL: ecto://postgres:postgres@localhost:5432/apiary_e2e
         run: e2e/run.sh
 
       # What the job printed and what the session printed. The access key's secret, in
-      # access-key-secret beside the runner file, is removed by the job and is not among
+      # access-key-secret beside the Forager file, is removed by the job and is not among
       # them.
       - name: Keep the logs
         if: always()

@@ -1,12 +1,12 @@
 defmodule Apiary.Variables.Denied do
   @moduledoc """
-  The variable names a runner leaves out of what the server gives a run: the names and
-  patterns of the runner contract's deny list (`denied-variables.json`), matched against
+  The variable names Forager leaves out of what the server gives a run: the names and
+  patterns of the Forager contract's deny list (`denied-variables.json`), matched against
   a whole name without case, `*` standing for any run of characters, the empty one
   included.
 
-  Saving a name on the list is warned about, not refused, since the runner leaves it out
-  anyway, with one exception: a name matching `QORY_*` is the runner's own, and is
+  Saving a name on the list is warned about, not refused, since Forager leaves it out
+  anyway, with one exception: a name matching `QORY_*` is Forager's own, and is
   refused at every level (`refused?/1`).
 
   The list holds only `QORY_*` until the contract's file is vendored and read here.
@@ -35,7 +35,7 @@ defmodule Apiary.Variables.Denied do
 
   @doc """
   refused?/1 says whether `name` is refused on save at every level: a name beginning
-  `QORY_`, whatever its case, which is the runner's own.
+  `QORY_`, whatever its case, which is Forager's own.
   """
   @spec refused?(String.t()) :: boolean
   def refused?(name) when is_binary(name), do: Enum.any?(@refused, &matches?(&1, name))

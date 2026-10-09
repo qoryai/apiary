@@ -1,9 +1,9 @@
 defmodule Apiary.Repo.Migrations.CreateRuns do
   use Ecto.Migration
 
-  # A run, as its runner reported it and the projector folded it from its events
+  # A run, as Forager reported it and the projector folded it from its events
   # (`Apiary.Runs.Projector`): what ran, where, under which policy and run configuration,
-  # and how it ended. `run_id` is the runner's id, unique in the workspace.
+  # and how it ended. `run_id` is Forager's id, unique in the workspace.
   # `(id, workspace_id)` is unique: what the events, the log chunks and the connections of a
   # run reference, so the database holds each to its run's workspace.
   #

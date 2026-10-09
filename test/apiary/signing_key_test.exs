@@ -8,9 +8,9 @@ defmodule Apiary.SigningKeyTest do
   alias Apiary.Contract.Ed25519
   alias Apiary.SigningKey
 
-  # The runner contract's fixture signing keys, current and next, and their known answers
-  # (runner contracts/runner/v1/fixtures/known-answers/keys.json, at the commit
-  # .runner-contract-ref names): the seeds are the bytes 65 to 96 and 161 to 192.
+  # The Forager contract's fixture signing keys, current and next, and their known answers
+  # (Forager's contracts/forager/v1/fixtures/known-answers/keys.json, at the commit
+  # .forager-contract-ref names): the seeds are the bytes 65 to 96 and 161 to 192.
   @fixture_seed :binary.list_to_bin(Enum.to_list(65..96))
   @fixture_public_key "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"
   @fixture_fingerprint "uoES-kuj1vk0sq0qoGlmAg"
@@ -182,7 +182,7 @@ defmodule Apiary.SigningKeyTest do
               error = assert_raise ArgumentError, fun
 
               assert error.message ==
-                       "APIARY_SIGNING_SECRET is a value the runner contract publishes " <>
+                       "APIARY_SIGNING_SECRET is a value the Forager contract publishes " <>
                          "in its fixtures, so anyone could sign as this instance. " <>
                          "Generate one with: openssl rand -base64 32"
 

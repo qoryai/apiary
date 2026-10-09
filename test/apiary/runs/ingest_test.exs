@@ -7,7 +7,7 @@ defmodule Apiary.Runs.IngestTest do
 
   alias Apiary.Runs.{Batch, Delivery, Event, Ingest, Run}
 
-  # What the runner's request says beside its body: the revision of the contract.
+  # What the gateway's request says beside its body: the revision of the contract.
   @meta %{contract_version: 1}
 
   setup do

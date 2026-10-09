@@ -5,7 +5,7 @@ defmodule Apiary.Policy.Resolution do
   rendered.
 
   The contract's document says what is denied and what is allowed: `egress.deny` is
-  decided by the runner first and holds in either mode, `egress.allow` decides after it and
+  decided by the gateway first and holds in either mode, `egress.allow` decides after it and
   only under `enforce`. So a deny rule is written to the document, which is how a
   target disables a host of the workspace, how a locked deny of the workspace holds
   against a target, and how a host is denied while the mode is still `observe`.
@@ -25,7 +25,7 @@ defmodule Apiary.Policy.Resolution do
      target set, `mode_source: :organisation`.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
      `api.example` and `*.eu.example`), unless the allow has the higher precedence. The
-     runner would deny those hosts by the deny anyway, deny being decided first; they are
+     gateway would deny those hosts by the deny anyway, deny being decided first; they are
      taken out of `allow` all the same so the document lists what is reachable and nothing
      else, and the page's count of hosts allowed is the truth.
   3. **A deny below a `*.` allow** stands beside it when it does not lose to that allow by
@@ -40,17 +40,17 @@ defmodule Apiary.Policy.Resolution do
      are denied by having no allow, as before; under `observe` they are reached and
      recorded with no rule.
   4. **What the document cannot say is refused**: a `*.` suffix held to paths above another
-     allowed entry (the runner holds a host to the path list of whichever entry of `paths`
+     allowed entry (the gateway holds a host to the path list of whichever entry of `paths`
      it finds first). A `*.` allow of the level above held to paths overrides every lower
      allow it covers instead, whatever its rank: the level above is never refused for a
      rule below it.
-  5. A host held to paths is rendered in `allow` and in `paths`: the runner's proxy decides
+  5. A host held to paths is rendered in `allow` and in `paths`: the gateway decides
      the connection by `deny`, then by `allow`, and only then the request by `paths`
      (`docs/contract-assumptions.md`). A denied host is never reached, so its paths never
      apply.
 
   `allow` and `deny` are sorted with names before `*.` suffixes, each alphabetically, so
-  the rule a runner reports for a connection is the most exact one; `paths` is sorted by
+  the rule the gateway reports for a connection is the most exact one; `paths` is sorted by
   host. The same rules always give the same effective policy.
   """
 
@@ -245,7 +245,7 @@ defmodule Apiary.Policy.Resolution do
 
   # A deny below an allowed `*.` suffix is lost to the allow when the allow outranks it (a
   # locked allow of the workspace over a target's deny); otherwise the two stand, the deny
-  # decided first by the runner.
+  # decided first by the gateway.
   defp under_allow(entries) do
     allows =
       for {index, %{action: :allow} = entry} <- in_force(entries, :host),
@@ -326,7 +326,7 @@ defmodule Apiary.Policy.Resolution do
                ),
                pgettext(
                  "plain",
-                 "A runner holds a host to one list of paths and cannot tell which of the two applies."
+                 "The gateway holds a host to one list of paths and cannot tell which of the two applies."
                ),
                gettext("Put the paths on the hosts by name, or remove the rule for %{host}.",
                  host: below.host
@@ -505,7 +505,7 @@ defmodule Apiary.Policy.Resolution do
     denies = for {_index, %{action: :deny} = entry} <- in_force(entries, :host), do: entry
 
     # A deny with an allow in force below it (one that outranks the deny, or it would have
-    # been taken out) cannot be written: the runner would deny the winning host too.
+    # been taken out) cannot be written: the gateway would deny the winning host too.
     said =
       Enum.reject(denies, fn deny ->
         Enum.any?(hosts, &(&1.host != deny.host and Grammar.covers?(deny.host, &1.host)))

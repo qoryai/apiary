@@ -354,7 +354,7 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "names beginning QORY_ are the runner's own"
+msgid "names beginning QORY_ are Forager's own"
 msgstr ""
 
 #: lib/apiary/variables.ex

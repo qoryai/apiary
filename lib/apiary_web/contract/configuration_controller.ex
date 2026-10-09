@@ -12,7 +12,7 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   (`Apiary.Policy.managed?/1`); see `ApiaryWeb.Contract.Configuration`.
 
   The answer carries `X-Qory-Configuration`, the digest of the document as
-  sent, which a runner compares with the digest in later answers and fetches
+  sent, which the gateway compares with the digest in later answers and fetches
   the document again when it differs.
   """
   use ApiaryWeb, :controller

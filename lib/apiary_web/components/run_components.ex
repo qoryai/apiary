@@ -13,8 +13,8 @@ defmodule ApiaryWeb.RunComponents do
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.
 
   A connection is the record, and what the policy made of it is not: on an instance
-  without `security` the pages pass `security={false}`, and a connection says what the
-  runner reported, allowed or denied, the host, the tool and the outcome, with no rule, no
+  without `security` the pages pass `security={false}`, and a connection says what
+  Forager reported, allowed or denied, the host, the tool and the outcome, with no rule, no
   mode and no rule action. The components do not ask `Apiary.Features` themselves: the
   page asks with its scope and says so.
 
@@ -46,6 +46,7 @@ defmodule ApiaryWeb.RunComponents do
   alias ApiaryWeb.PolicyComponents
 
   alias Apiary.Runs
+  alias Apiary.Runs.Run
   alias Phoenix.LiveView.JS
 
   @outcome_tip gettext_noop(
@@ -62,7 +63,7 @@ defmodule ApiaryWeb.RunComponents do
   ## Run state
 
   @doc """
-  The badge of a run's state, one family for the seven states. `quiet_for` (seconds since
+  The badge of a run's state, one family for the eight states. `quiet_for` (seconds since
   the last heartbeat, set by the server once it is over one interval) turns a running badge
   amber and adds the note beside it.
   """
@@ -139,6 +140,52 @@ defmodule ApiaryWeb.RunComponents do
   def state_label("timed_out"), do: gettext("Timed out")
   def state_label("lost"), do: gettext("Lost")
   def state_label("closed"), do: gettext("Closed")
+  def state_label("ended"), do: gettext("Ended")
+
+  @doc """
+  Why the run ended, in words, from its exit's `reason` (and `quiet_seconds` for `quiet`):
+  "timed out", "quiet for 30 minutes", "the issuer reported the run ended". Nil for a run
+  whose exit gave no reason, or one these words do not know.
+  """
+  @spec reason_words(map()) :: String.t() | nil
+  def reason_words(%{reason: "timeout"}), do: gettext("timed out")
+  def reason_words(%{reason: "run_closed"}), do: gettext("closed")
+  def reason_words(%{reason: "gateway_lost"}), do: gettext("gateway lost")
+  def reason_words(%{reason: "session_lost"}), do: gettext("session lost")
+  def reason_words(%{reason: "credential_expired"}), do: gettext("run credential expired")
+
+  def reason_words(%{reason: "run_ended_at_issuer"}),
+    do: gettext("the issuer reported the run ended")
+
+  def reason_words(%{reason: "quiet", quiet_seconds: seconds})
+      when is_integer(seconds) and seconds > 0,
+      do: quiet_words(seconds)
+
+  def reason_words(_run), do: nil
+
+  # The quiet period as a duration reads: in hours or minutes when it is a whole number of
+  # them, else in seconds.
+  defp quiet_words(seconds) when rem(seconds, 3600) == 0 do
+    hours = div(seconds, 3600)
+
+    ngettext("quiet for %{number} hour", "quiet for %{number} hours", hours,
+      number: Format.number(hours)
+    )
+  end
+
+  defp quiet_words(seconds) when rem(seconds, 60) == 0 do
+    minutes = div(seconds, 60)
+
+    ngettext("quiet for %{number} minute", "quiet for %{number} minutes", minutes,
+      number: Format.number(minutes)
+    )
+  end
+
+  defp quiet_words(seconds) do
+    ngettext("quiet for %{number} second", "quiet for %{number} seconds", seconds,
+      number: Format.number(seconds)
+    )
+  end
 
   # A translated sentence with one element in it. `text` is the sentence, translated with the
   # element's binding set to `hole/0`; the slot is rendered where the binding stood.
@@ -240,10 +287,10 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: the runner's own
+  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: Forager's own
   `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
   before the first heartbeat, zero at the moment the workspace first heard of the run.
-  Never the runner's `started_at`: its clock may be anywhere.
+  Never Forager's `started_at`: its clock may be anywhere.
   """
   def elapsed(%{last_heartbeat_at: %DateTime{} = at, elapsed_seconds: seconds})
       when is_integer(seconds),
@@ -263,7 +310,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :ms, :integer, default: nil
   attr :elapsed_seconds, :integer, default: nil
   attr :elapsed_at, :any, default: nil, doc: "the server time at which elapsed_seconds was true"
-  attr :running_since, :any, default: nil, doc: "deprecated and ignored: the runner's clock"
+  attr :running_since, :any, default: nil, doc: "deprecated and ignored: Forager's clock"
   attr :at_least_seconds, :integer, default: nil
   attr :precise, :boolean, default: false, doc: "tenths of a second under a minute, for tools"
   attr :so_far, :boolean, default: false, doc: "the run header adds the words"
@@ -522,7 +569,7 @@ defmodule ApiaryWeb.RunComponents do
 
   def middle(value, _max), do: value
 
-  @doc "The first eight characters of a run id, as the runner prints it."
+  @doc "The first eight characters of a run id, as Forager prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
 
@@ -727,6 +774,8 @@ defmodule ApiaryWeb.RunComponents do
     do: gettext("Closed %{date}", date: Format.date(at))
 
   defp ended_sentence("closed", _run), do: gettext("Closed")
+
+  defp ended_sentence("ended", _run), do: gettext("Ended")
 
   ## Filter bar
 
@@ -1463,10 +1512,10 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A run's state as a row of a list says it: a dot, and its word where the state needs a
-  look (pending, running, failed, timed out, lost, closed); a run that succeeded is its
-  dot, its word for a screen reader only, unless `word` asks for it. `quiet_for` turns a
-  running run's dot amber and adds the note, as `run_state/1` does; `code` follows the
-  word (the exit, for the preview).
+  look (pending, running, failed, timed out, lost, closed) and for a run that ended, grey
+  as a closed one is; a run that succeeded is its dot, its word for a screen reader only,
+  unless `word` asks for it. `quiet_for` turns a running run's dot amber and adds the
+  note, as `run_state/1` does; `code` follows the word (the exit, for the preview).
   """
   attr :state, :string, required: true, values: Apiary.Runs.Run.states()
   attr :quiet_for, :integer, default: nil
@@ -1723,8 +1772,14 @@ defmodule ApiaryWeb.RunComponents do
         </span>
       </td>
       <td class="q-rl-c4 q-rl-faint" role="cell">
-        <span :if={@run.runtime}>{@run.runtime} {@run.runtime_version}</span>
-        <span :if={!@run.runtime}>{gettext("n/a")}</span>
+        <%= cond do %>
+          <% Run.no_session?(@run) -> %>
+            <span>{gettext("no session")}</span>
+          <% @run.runtime -> %>
+            <span>{@run.runtime} {@run.runtime_version}</span>
+          <% true -> %>
+            <span>{gettext("n/a")}</span>
+        <% end %>
       </td>
       <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">{@run.host || gettext("n/a")}</td>
       <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
@@ -1756,7 +1811,7 @@ defmodule ApiaryWeb.RunComponents do
   least" what it last reported; nothing for a run that has only pinged.
   """
   def run_length(%{run: %{state: state}} = assigns)
-      when state in ~w(succeeded failed timed_out) do
+      when state in ~w(succeeded ended failed timed_out) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """
@@ -2613,7 +2668,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :c, :map, required: true
 
   # A tool invocation is named by its tool: the request line follows, and the host, which
-  # may be a name that exists only on the runner's machine, comes last and faint. A
+  # may be a name that exists only on Forager's machine, comes last and faint. A
   # request refused before it reached the tool is named by its host, as any denial.
   defp destination(%{c: %{invocation: true}} = assigns) do
     assigns = assign(assigns, :line, request_line(assigns.c))
@@ -3028,7 +3083,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The DOM id of a destination across runs. Never an index, and not a short hash either: the
-  host and the path are a runner's strings, and two of them must not be made to share an
+  host and the path are Forager's strings, and two of them must not be made to share an
   id. See `dom_token/1`.
   """
   def destination_id(row), do: "dst-" <> dom_token(destination_key(row))

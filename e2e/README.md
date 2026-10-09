@@ -14,22 +14,22 @@ same budget: a deny holds in either mode.
 
 It leaves with status 0 only when every assertion held, and prints the timings:
 
-    allow -> second policy applied, seen stored here     4.09 s
-    allow -> allowed connection, seen stored here        6.06 s   (budget 35 s)
-    deny  -> third policy applied, seen stored here      4.17 s
-    deny  -> denied connection, seen stored here         5.64 s   (budget 35 s)
-    E2E PASS  allow_to_applied_ms=4090 allow_to_allowed_ms=6059 deny_to_applied_ms=4170 deny_to_denied_ms=5645
+    allow -> second policy applied, seen stored here     6.11 s
+    allow -> allowed connection, seen stored here        6.11 s   (budget 35 s)
+    deny  -> third policy applied, seen stored here      4.97 s
+    deny  -> denied connection, seen stored here         4.98 s   (budget 35 s)
+    E2E PASS  allow_to_applied_ms=6108 allow_to_allowed_ms=6109 deny_to_applied_ms=4975 deny_to_denied_ms=4976
 
 ## What runs where
 
 | Piece | What it is |
 |---|---|
-| The test instance | This application with production's settings (`MIX_ENV=prod`, migrations on boot, JSON logs), on a database of its own, `apiary_e2e`, and a port of its own, 4180. `run.sh` starts it with `mix run e2e/scenario.exs`, so the scenario runs in the virtual machine that answers the runner. The database is dropped before and after; a `DATABASE_URL` that does not end in `_e2e` is refused. |
+| The test instance | This application with production's settings (`MIX_ENV=prod`, migrations on boot, JSON logs), on a database of its own, `apiary_e2e`, and a port of its own, 4180. `run.sh` starts it with `mix run e2e/scenario.exs`, so the scenario runs in the virtual machine that answers the gateway. The database is dropped before and after; a `DATABASE_URL` that does not end in `_e2e` is refused. |
 | The node | `compose.yaml`'s `node`: a Linux machine with a container engine of its own (Docker in Docker). `qory run` runs here, built from the pinned source for Linux, and builds its wall with the node's engine: an internal network, the agent's container on it and on nothing else, the relay's container beside it. The node has its own `XDG_CONFIG_HOME`, a copy of what the job writes for it; nobody's `~/.config/qory` is read or written. qory keeps the run's record on the node, in its state directory, root's `~/.local/state/qory/runs/checkout-<hash>/<id>/`, outside the checkout, and names that folder in the session's output when the run ends; what the job checks is the record the test instance stored. |
 | The session | `checkout/bin/fake-runtime`, started by `qory run` as the runtime, in the wall's container (`curlimages/curl`). Not a model: a loop that asks for one page of the upstream every few seconds, and keeps asking after it got through, so the deny can refuse it. It first tries to go around the proxy and leaves with 3 if that works, so a pass also says there was a wall. |
 | The upstream | `compose.yaml`'s `upstream`: nginx with a certificate made for the run, on the node's network under the name `files.e2e.test`. No site outside the job is asked for anything. |
 
-The server contract lets a runner speak plain http to a loopback address only. So the node
+The server contract lets the gateway speak plain http to a loopback address only. So the node
 reaches the test instance as `http://127.0.0.1:4180`, which is also the instance's
 `PUBLIC_URL`: a forwarder in the node (`socat`) carries that port to the host, as a tunnel
 would. Everything after that is the contract as it is: every request signed with the
@@ -52,8 +52,8 @@ batches, the digests in the answers.
    browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added, without stored
    secrets. The key's `server` lines, the server's `url` and `apiary_public_key` pin
    (`Apiary.AccessKeys.server_lines/2`) and the key's `access_key_id`
-   (`Apiary.AccessKeys.key_line/1`), and the wall section become the node's
-   `runner.yaml`. The key's secret, `qak_` and its seed, goes into `access-key-secret`
+   (`Apiary.AccessKeys.key_line/1`), under `gateway:`, and the wall section become the
+   node's `forager.yaml`. The key's secret, `qak_` and its seed, goes into `access-key-secret`
    beside it, mode 0600, in a directory of mode 0700; nothing prints it. `node/prepare.sh` copies the three files into a
    directory of the node's own, root's, mode 0700, each file mode 0600, since qory
    reads the secret only from a file its user owns, and keeps its instance id and locks
@@ -81,7 +81,7 @@ batches, the digests in the answers.
    run's own allow to second policy applied time from the refusal, whichever is later. The
    first allowed connection after the refusal may have been on its way before it, and the
    second can come sooner than a change takes to come back as a policy applied event: the
-   session tries every three seconds by default, and one propagation took about four.
+   session tries every three seconds by default, and one propagation took about six.
 7. Puts the workspace in observe as the owner, denies the host from the same row, and
    polls for a third policy applied event with the deny's digest and a denied egress
    event to the host after it.
@@ -107,22 +107,23 @@ batches, the digests in the answers.
 ## What the number is, and is not
 
 The time is measured on one clock, the test instance's, from before the allow is written
-to the moment a poll finds the event stored. It therefore includes the runner's batching
+to the moment a poll finds the event stored. It therefore includes the gateway's batching
 (a batch is cut a second after its first event), the post, and up to 50 ms of polling: it
 is an upper bound on when the connection was let through. The same intervals by the
 node's clock are printed beside it for comparison; the two machines' clocks may differ.
 
-A runner learns of a change from the answer to any batch it posts, and a session that is
-being refused posts a batch with every refusal. So with the default retry of three seconds
-the reload is carried by the next refusal's own batch, not by a heartbeat: about four
-seconds to the second policy applied event, about six to the allowed connection.
+The gateway learns of a change from the answer to any batch it posts, and while a session
+is being refused the gateway posts a batch with every refusal. So with the default retry of
+three seconds the reload is carried by the next refusal's own batch, not by a heartbeat:
+about six seconds to the second policy applied event, and the allowed connection with it,
+since the gateway numbers a reload's connections after its policy applied event.
 
 A quiet session learns of it at its next heartbeat, thirty seconds at most, and reaches
 the host at its next try after that. The job can show that shape, and then it fails on the
 budget, rightly: with `E2E_RETRY_SECONDS=40` the reload came with the heartbeat, 27.6 s
 after the allow, and the allowed connection at the session's next try, 40.0 s after it;
 with `E2E_RETRY_SECONDS=20` the reload came with the second refusal at 21.2 s and the
-connection at 40.2 s. What the runner bounds is the reload, by the heartbeat's interval.
+connection at 40.2 s. What the gateway bounds is the reload, by the heartbeat's interval.
 When the host is reached is the session's: the budget holds for one that tries again
 within a few seconds, and nothing can make a session try.
 
@@ -138,13 +139,13 @@ top of `run.sh`; the ones that matter:
 | Variable | |
 |---|---|
 | `QORY_SRC` | the qory checkout to build, `../../qory/main` by default |
-| `RUNNER_SRC` | a runner checkout to build it against, for when the module version qory's `go.mod` names cannot be fetched; the module file is copied and the copy edited, the checkout is not touched |
+| `FORAGER_SRC` | a Forager checkout to build it against, for when the module version qory's `go.mod` names cannot be fetched; the module file is copied and the copy edited, the checkout is not touched |
 | `E2E_QORY` | a static Linux build of qory to use instead of building one |
 | `E2E_DATABASE_URL` | default `ecto://postgres:postgres@localhost:5432/apiary_e2e` |
 | `E2E_WORK` | where the job writes, `tmp/e2e` by default (ignored by git) |
 
 In CI it is the workflow `.github/workflows/e2e.yml`, on a Linux runner, with qory at the
-commit in `.qory-e2e-ref` and the runner at the one in `.runner-e2e-ref`.
+commit in `.qory-e2e-ref` and Forager at the one in `.forager-e2e-ref`.
 
 ## Not covered
 

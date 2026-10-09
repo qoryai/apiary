@@ -3,7 +3,7 @@
 // reader types is asked of the page's scope (the dialog's data-url, answered by
 // ApiaryWeb.JumpController) 150 ms after they stop, and the answer is listed as links in
 // groups: ↑ and ↓ move, Enter opens, Escape and the backdrop close, and focus goes back
-// to where it was. Every word comes from the server; what a runner reported (a path, a
+// to where it was. Every word comes from the server; what Forager reported (a path, a
 // title) is written as text, never as markup.
 import {singleKeys} from "./shortcuts"
 const DEBOUNCE = 150

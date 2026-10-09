@@ -1,6 +1,6 @@
 defmodule Apiary.Kinds.Pattern do
   @moduledoc """
-  Pattern compiles the regular expressions of the runner's and the integrations' contracts
+  Pattern compiles the regular expressions of Forager's and the integrations' contracts
   the way the contracts read them.
 
   Every pattern of the contracts is anchored, and `$` there is the end of the string, as
@@ -27,7 +27,7 @@ defmodule Apiary.Kinds.Pattern do
 
   @doc """
   whole_match?/2 says whether `pattern`, an RE2 pattern of a description, matches the
-  whole of `value`, as the runner matches an argument: false for a pattern that does not
+  whole of `value`, as Forager matches an argument: false for a pattern that does not
   compile.
   """
   @spec whole_match?(String.t(), String.t()) :: boolean

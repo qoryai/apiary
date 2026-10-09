@@ -8,7 +8,7 @@ defmodule Apiary.AccessRows do
       admin         an admin of the organisation
       owner         an owner of the organisation
       other_owner   an owner of another organisation
-      access_key    a runner, with an access key of the workspace
+      access_key    a gateway, with an access key of the workspace
       instance      the instance itself, in a job no person enqueued
       feature_off   whoever the action is for, an owner, an access key or the instance, on
                     an instance without the action's feature

@@ -76,7 +76,7 @@ defmodule Apiary.Runs.RebuildTest do
     end
   end
 
-  # Fields as a runner that does not follow the schema may send them: not strings at all,
+  # Fields as a sender that does not follow the schema may send them: not strings at all,
   # and strings longer than a column's cut, in characters of several bytes.
   defp field do
     one_of([

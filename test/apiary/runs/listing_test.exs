@@ -144,7 +144,9 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.family_states("ended") == nil
 
       assert Filters.families_of(~w(failed timed_out lost closed)) == ["ended_badly"]
-      assert Filters.families_of(~w(succeeded running pending)) == ~w(alive ended_well)
+      assert Filters.families_of(~w(succeeded ended running pending)) == ~w(alive ended_well)
+      assert Filters.family_states("ended_well") == ~w(succeeded ended)
+      assert Filters.families_of(~w(succeeded running pending)) == nil
       assert Filters.families_of(Apiary.Runs.Run.states()) == ~w(alive ended_well ended_badly)
       assert Filters.families_of(~w(failed lost)) == nil
       assert Filters.families_of(~w(running succeeded)) == nil
@@ -311,6 +313,12 @@ defmodule Apiary.Runs.ListingTest do
     test "a state may be a family, words are folded, and the URL says the states" do
       {f, []} = query("state:ended-badly")
       assert f.states == ~w(failed timed_out lost closed)
+
+      {f, []} = query("state:ended")
+      assert f.states == ["ended"]
+
+      {f, []} = query("state:ended-well")
+      assert f.states == ~w(succeeded ended)
 
       {f, []} = query("STATE:Timed-Out,alive")
       assert f.states == ~w(pending running timed_out)

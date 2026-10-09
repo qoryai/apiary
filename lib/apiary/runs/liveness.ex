@@ -5,7 +5,7 @@ defmodule Apiary.Runs.Liveness do
 
   A run announces how often it beats (`interval_seconds` of its heartbeats). It is lost
   when nothing has been heard for more than three of those intervals; a run that has not
-  announced one is held to 30 seconds, the runner's default, so to 90 seconds of silence.
+  announced one is held to 30 seconds, Forager's default, so to 90 seconds of silence.
 
     * a `running` run is measured from its last heartbeat, or, when it has not beaten yet,
       from the arrival of its `run.started`;
@@ -13,8 +13,8 @@ defmodule Apiary.Runs.Liveness do
       is measured from the moment the workspace first heard of it (`inserted_at`).
 
   Only this server's clock is compared with `now`: `last_heartbeat_at` is when the
-  heartbeat was received, not when the runner says it was sent, and the arrival of the
-  `run.started` is its `received_at`. A runner whose clock is wrong is not lost for it,
+  heartbeat was received, not when Forager says it was sent, and the arrival of the
+  `run.started` is its `received_at`. A machine whose clock is wrong is not lost for it,
   and a heartbeat dated in the future holds nothing alive.
 
   **The sweep.** The receiver projects a batch in a task after it has answered. If that

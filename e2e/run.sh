@@ -11,7 +11,7 @@
 # user's own qory configuration: the node has its own, under XDG_CONFIG_HOME.
 #
 #   QORY_SRC            the checkout of qoryai/qory to build          (default ../../qory/main)
-#   RUNNER_SRC          a checkout of qoryai/runner to build it with, when the module it
+#   FORAGER_SRC         a checkout of qoryai/forager to build it with, when the module it
 #                       names cannot be fetched                       (default none)
 #   E2E_QORY            a static Linux build of qory, instead of building one
 #   E2E_DATABASE_URL    (default ecto://postgres:postgres@localhost:5432/apiary_e2e)
@@ -58,13 +58,13 @@ if [ -z "${E2E_QORY:-}" ]; then
   say "building qory for linux/$arch from $(git -C "$qory_src" rev-parse --short HEAD)"
   if command -v go >/dev/null 2>&1; then go=(go); else go=(mise x -- go); fi
   modfile=()
-  if [ -n "${RUNNER_SRC:-}" ]; then
+  if [ -n "${FORAGER_SRC:-}" ]; then
     # The module file is copied and the copy edited: the checkout stays as it is.
     mkdir -p "$E2E_WORK/mod"
     cp "$qory_src/go.mod" "$qory_src/go.sum" "$E2E_WORK/mod/"
-    (cd "$qory_src" && GOWORK=off "${go[@]}" mod edit -modfile="$E2E_WORK/mod/go.mod" -replace "github.com/qoryai/runner=$(cd "$RUNNER_SRC" && pwd)")
+    (cd "$qory_src" && GOWORK=off "${go[@]}" mod edit -modfile="$E2E_WORK/mod/go.mod" -replace "github.com/qoryai/forager=$(cd "$FORAGER_SRC" && pwd)")
     modfile=(-modfile="$E2E_WORK/mod/go.mod")
-    echo "   with the runner at $(git -C "$RUNNER_SRC" rev-parse --short HEAD)"
+    echo "   with Forager at $(git -C "$FORAGER_SRC" rev-parse --short HEAD)"
   fi
   (cd "$qory_src" && GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH="$arch" "${go[@]}" build ${modfile[@]+"${modfile[@]}"} -o "$E2E_WORK/qory" .)
   export E2E_QORY="$E2E_WORK/qory"
@@ -79,7 +79,7 @@ export PHX_SERVER=true
 export MAIL_TO_LOG=true
 # Each secret is a fresh random value of its own, never derived from another. The signing
 # secret is the seed of the key the instance signs its answers with, the key the node pins
-# as apiary_public_key; the instance refuses at boot the runner contract's fixture seeds,
+# as apiary_public_key; the instance refuses at boot the Forager contract's fixture seeds,
 # whose keys qory refuses as a pin.
 SECRET_KEY_BASE="$(openssl rand -base64 48)"
 APIARY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
@@ -92,7 +92,7 @@ say "compiling the test instance"
 cleanup() {
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
   "${mix[@]}" ecto.drop --force --force-drop --quiet </dev/null >/dev/null 2>&1 || true
-  rm -rf "$E2E_WORK/config" "$E2E_WORK/tls" "$E2E_WORK/runner-tail.yaml"
+  rm -rf "$E2E_WORK/config" "$E2E_WORK/tls" "$E2E_WORK/forager-tail.yaml"
 }
 trap cleanup EXIT
 
@@ -105,10 +105,10 @@ one_run() {
   cleanup
 
   mkdir -p "$E2E_WORK/config/qory" "$E2E_WORK/tls"
-  # The node's qory configuration: how the runtime is started, and the part of the runner
-  # file that is not the server's. The scenario writes the file, server block first, and
-  # the access key's secret beside it, access-key-secret, in this directory, mode 0700;
-  # node/prepare.sh copies the three into the node.
+  # The node's qory configuration: how the runtime is started, and the part of the Forager
+  # file that is not the gateway's. The scenario writes the file, the gateway's server
+  # section first, and the access key's secret beside it, access-key-secret, in this
+  # directory, mode 0700; node/prepare.sh copies the three into the node.
   cat >"$E2E_WORK/config/qory/qory.yaml" <<YAML
 apiVersion: qory.dev/v1alpha1
 harness:
@@ -116,7 +116,7 @@ harness:
     claude:
       command: /work/checkout/bin/fake-runtime
 YAML
-  cat >"$E2E_WORK/runner-tail.yaml" <<YAML
+  cat >"$E2E_WORK/forager-tail.yaml" <<YAML
 wall:
   adapter: docker
   image: $wall_image
@@ -132,7 +132,7 @@ YAML
   "${compose[@]}" up --detach --build --quiet-pull
   "${compose[@]}" exec -T node sh -c 'until docker info >/dev/null 2>&1; do sleep 0.5; done'
   docker save "$wall_image" | "${compose[@]}" exec -T node docker load >/dev/null
-  # The server contract lets a runner speak plain http to a loopback address only, so
+  # The server contract lets the gateway speak plain http to a loopback address only, so
   # the node reaches the test instance as 127.0.0.1, the way a tunnel would bring it.
   # The host behind the tunnel: on Linux the host's own address on the node's network,
   # since host.docker.internal there is the default bridge, whose traffic the engine
@@ -143,8 +143,8 @@ YAML
   esac
   "${compose[@]}" exec --detach node socat "TCP-LISTEN:$E2E_PORT,bind=127.0.0.1,fork,reuseaddr" "TCP:$host_from_node:$E2E_PORT"
 
-  export E2E_RUNNER_FILE="$E2E_WORK/config/qory/runner.yaml"
-  export E2E_RUNNER_TAIL="$E2E_WORK/runner-tail.yaml"
+  export E2E_FORAGER_FILE="$E2E_WORK/config/qory/forager.yaml"
+  export E2E_FORAGER_TAIL="$E2E_WORK/forager-tail.yaml"
   export E2E_SESSION_LOG="$E2E_WORK/session-$n.log"
   export E2E_PREPARE_COMMAND="${compose[*]} exec -T -e E2E_PORT -e E2E_FORGE -e E2E_REPOSITORY node /e2e/prepare.sh"
   export E2E_SESSION_COMMAND="${compose[*]} exec -T -e E2E_UPSTREAM_URL=https://$E2E_UPSTREAM_HOST/ -e E2E_RETRY_SECONDS -e E2E_THEN_DENIED=1 node /e2e/session.sh"

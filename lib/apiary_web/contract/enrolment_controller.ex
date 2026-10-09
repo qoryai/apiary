@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Contract.EnrolmentController do
   @moduledoc """
   Enrolment, `POST /.well-known/qory-enrolment`: a machine enrols a new access key with an
-  enrolment code an owner or an admin made on a node (the runner contract's "Enrolment",
+  enrolment code an owner or an admin made on a node (the Forager contract's "Enrolment",
   `enrolment.schema.json`). The request carries no access key id and no request
   signature: the code and the proof authenticate it, so it goes through no
   `ApiaryWeb.Contract.SignedRequest`. Its body is read raw (`ApiaryWeb.Contract.RawBody`)

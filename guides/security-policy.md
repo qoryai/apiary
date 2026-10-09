@@ -1,7 +1,7 @@
 # The security policy
 
-The security policy says what the runs of a workspace may reach through the runner's
-proxy. It is edited in the console under **Policy**, `/:org/:workspace/policy`, rendered
+The security policy says what the runs of a workspace may reach through the gateway. It
+is edited in the console under **Policy**, `/:org/:workspace/policy`, rendered
 into a run configuration for every repository, and served to the workspace's machines,
 which apply it to the runs they start and to the runs already in flight. In the code it is
 `Apiary.Policy`.
@@ -11,7 +11,7 @@ which apply it to the runs they start and to the runs already in flight. In the 
 > Installing or upgrading the server changes no machine's policy. Until somebody makes the
 > workspace's policy, by the first rule or the first change of mode, the server offers the
 > workspace's machines no run configuration, and every machine keeps the `egress` section
-> of its own runner file, enforcement included. From the first change, every machine of
+> of its own Forager file, enforcement included. From the first change, every machine of
 > the workspace applies the workspace's policy narrowed by its own `egress` section: a run
 > enforces when either side enforces, a host is allowed only where both sides allow it,
 > and what either side denies is denied. Read [The first change](#the-first-change) before
@@ -29,12 +29,12 @@ A rule allows or denies one thing:
   may end in one `*`, such as `/v1/*`; there is no other wildcard and no query. A host held
   to paths is one the proxy reads requests to, which it can do only behind a wall.
 
-Paths need a wall. Without one the runner refuses to start a run whose policy has them.
+Paths need a wall. Without one Forager refuses to start a run whose policy has them.
 
 Credentials are not part of the policy: the run configuration this server renders selects
 none, and a run uses no credential of its machine's.
 
-The policy document the runner reads has a deny list and an allow list. The runner decides
+The policy document the gateway reads has a deny list and an allow list. The gateway decides
 the deny list first, in either mode: a host a deny rule names is denied under observe as
 under enforce, and the denial is recorded with the rule. A deny rule is written to that
 list and takes the allowed hosts it covers out of the allow list, which is how a repository
@@ -51,8 +51,8 @@ on the **Policy** tab of the repository's page,
 `/:org/:workspace/targets/:forge/:path/-/policy` (the old address,
 `/:org/:workspace/policy/targets/:id` and what followed it, sends on there); the list of
 repositories and their policy is `/:org/:workspace/policy/targets`. A repository appears
-there once a run names it, by the `forge` and `repository` labels the runner takes from the
-checkout's origin remote ([The runner file's `server` section](runner-file.md)).
+there once a run names it, by the `forge` and `repository` labels Forager takes from the
+checkout's origin remote ([The Forager file's `server` section](forager-file.md)).
 
 A repository without rules of its own is served the workspace baseline, and so is a run
 that names no repository.
@@ -98,7 +98,7 @@ workspace or of a repository is listed, struck, and not in force; denies still a
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
 `api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
 an allowed `*.` suffix stands beside it: `*.example` allowed and `tracker.example` denied
-reaches `api.example` and denies `tracker.example`, since the runner decides deny first.
+reaches `api.example` and denies `tracker.example`, since the gateway decides deny first.
 
 One shape has no form on the wire: a `*.` deny of the workspace with a repository's own
 allow below it, where the repository wins by precedence. The allow is rendered, the deny
@@ -108,7 +108,7 @@ other hosts below the suffix are denied by having no allow; under observe they a
 through in that repository, and the record says no rule matched.
 
 A host held to paths is rendered both in the document's `allow` and in its `paths`, because
-the runner's proxy decides the connection by `deny` and then `allow` first, and the request
+the gateway decides the connection by `deny` and then `allow` first, and the request
 by `paths` after. A denied host is never reached, so its paths never apply.
 
 ### What is refused
@@ -116,7 +116,7 @@ by `paths` after. A denied host is never reached, so its paths never apply.
 What the document cannot say is refused when it is written, with a sentence that says what
 to do instead. Nothing is ever rendered that allows more than the page shows.
 
-- **A `*.` suffix held to paths above another allowed entry.** The runner holds a host to
+- **A `*.` suffix held to paths above another allowed entry.** The gateway holds a host to
   the path list of whichever entry it finds first, and the order is not fixed. A name held
   to paths under a suffix that is free of paths is fine.
 - **A rule outside the grammar**: a URL, a port, capitals, a `*` anywhere but the lead. The
@@ -200,7 +200,7 @@ version, and says when an alive run is behind the version in force.
 ## Live reload
 
 Every answer of the server to a batch of events carries the digest of the run configuration
-in force for the run's repository. A runner that holds another digest fetches the run
+in force for the run's repository. A gateway that holds another digest fetches the run
 configuration again and applies it. A run sends a heartbeat every thirty seconds, so a change
 reaches the runs in flight within a heartbeat, about 30 s.
 
@@ -216,14 +216,14 @@ as it was.
 
 ## Tool invocations
 
-A runner can give a run **tools**: programs on the runner's machine that serve hosts. The
+Forager can give a run **tools**: programs on Forager's machine that serve hosts. The
 machine defines them; the run's policy selects among them by name. A run configuration
 could carry that selection, but this server never sends one: the workspace's policy has no
 tools. So a run has tools only when it runs under its
-machine's own policy, the one in its [runner file](runner-file.md), and only such runs
+machine's own policy, the one in its [Forager file](forager-file.md), and only such runs
 report tool invocations.
 
-The runner's proxy hands a request to a host a tool serves to that tool when the rules let
+The gateway hands a request to a host a tool serves to that tool when the rules let
 it through; the host may be a name that exists only on the machine, such as
 `files.tools.internal`. Each request to such a host is decided on its path, recorded like
 any connection, decided by the same rules and counted on the same pages, and the record
@@ -273,20 +273,21 @@ the policy page and on a version's page, `/:org/:workspace/policy/versions/:n/ex
 `/:org/:workspace/targets/:forge/:path/-/policy/versions/:n/export`, gives the effective
 policy of that version as text, with **Download**:
 
-- the `egress` section for the machine's runner file, which says a mode, the hosts
+- the `egress` section for the machine's Forager file, which says a mode, the hosts
   allowed, the hosts denied and nothing else;
 - when the policy has paths, a policy file in the contract's own format,
-  given to one run with `qory run --policy <file>`. It narrows the runner file's section and
+  given to one run with `qory run --policy <file>`. It narrows the Forager file's section and
   never widens it, so the two are exported together and agree.
 
 ```yaml
-# ~/.config/qory/runner.yaml
-egress:
-  mode: enforce
-  allow:
-    - "api.example"
-  deny:
-    - "tracker.example"
+# ~/.config/qory/forager.yaml
+gateway:
+  egress:
+    mode: enforce
+    allow:
+      - "api.example"
+    deny:
+      - "tracker.example"
 ```
 
 The export is a copy: it does not follow later changes. Keep a policy file outside the
@@ -300,7 +301,7 @@ With a server configured, `qory run` refuses `--policy` unless `--local` is give
 |---|---|
 | Rules in a list, the workspace's baseline or one repository's | 500 |
 | Paths in a rule | 100 |
-| A rendered run configuration | 1 MiB, the most a runner reads of a document |
+| A rendered run configuration | 1 MiB, the most the gateway reads of a document |
 
 A change that would pass a limit is refused, and nothing is changed.
 
@@ -310,7 +311,7 @@ Until somebody has made the workspace's policy:
 
 - the server's discovery document names no `run` section for the workspace's machines;
 - the run configuration endpoint answers `404` for the workspace's keys;
-- every machine runs under the `egress` section of its own runner file, in its own mode,
+- every machine runs under the `egress` section of its own Forager file, in its own mode,
   enforcement included;
 - the policy page says: "Runs use each machine's own policy until the first change here."
 
@@ -329,7 +330,7 @@ moment the workspace's policy applies:
 
 So before the first change:
 
-1. Collect what the machines' own lists say, the `egress.allow` of every runner file.
+1. Collect what the machines' own lists say, the `gateway.egress.allow` of every Forager file.
 2. Say all of it in the workspace. The first rule you add already applies, so add the
    rest straight after it; where both sides enforce, a run reaches only the hosts both
    allow.

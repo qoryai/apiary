@@ -4,7 +4,7 @@ defmodule Apiary.Lingo.Domain.Software do
   the one `qory run` follows when it takes the labels from the origin remote: the
   `forge` label is the system and the `repository` label the path. Both must be labels
   that can name a target (`Apiary.Runs.Target.label/1`), or the run names none. Any
-  other label, sent by a runner beside them, names nothing here.
+  other label, sent by Forager beside them, names nothing here.
   """
   @behaviour Apiary.Lingo.Domain
 

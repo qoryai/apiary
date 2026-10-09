@@ -161,9 +161,11 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(lv, "#add-part h2", "Add an integration")
       refute has_element?(lv, "#add-cards li h3")
 
-      # No line says the runner adds a token, or names a publisher.
+      # No line says the gateway adds a token, or Forager starts a program for one, or
+      # names a publisher.
       cards = lv |> element("#add-cards") |> render()
-      refute cards =~ "runner"
+      refute cards =~ "gateway"
+      refute cards =~ "Forager"
       refute cards =~ "publisher"
     end
 
@@ -519,7 +521,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#new-runtime-page",
-               "Choose a coding agent of the runner's catalogue."
+               "Choose a coding agent of Forager's catalogue."
              )
 
       assert has_element?(lv, "#breadcrumb-section", "Integrations")

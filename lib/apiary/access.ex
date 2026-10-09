@@ -249,22 +249,22 @@ defmodule Apiary.Access do
     Action.new(:"run.post_events", "post a run's events",
       feature: :observability,
       roles: [:access_key],
-      audited: {:not, "the events a runner posts are the record, not the audit trail"}
+      audited: {:not, "the events the gateway posts are the record, not the audit trail"}
     ),
     Action.new(:"run_configuration.fetch", "fetch the run configuration",
       feature: :security,
       roles: [:access_key],
-      audited: {:not, "a runner's fetch reads the policy and changes nothing"}
+      audited: {:not, "the gateway's fetch reads the policy and changes nothing"}
     )
   ]
 
-  # The core's roles, with who holds each: a membership's level, a runner's access key, or
+  # The core's roles, with who holds each: a membership's level, the gateway's access key, or
   # the instance itself. An edition adds its own (`c:Apiary.Edition.roles/0`).
   @roles [
     member: "a person at member, in the workspaces their level reaches",
     admin: "a person at admin, in every workspace; over members only",
     owner: "a person at owner, in every workspace",
-    access_key: "a runner, with a key of the workspace",
+    access_key: "a gateway, with a key of the workspace",
     instance: "the instance itself, in a job no person enqueued"
   ]
 
@@ -789,7 +789,7 @@ defmodule Apiary.Access do
   defp in_place?(_scope, _subject), do: false
 
   @doc """
-  role/1 is the role the scope acts in, as it carries it: `:access_key` for a runner's
+  role/1 is the role the scope acts in, as it carries it: `:access_key` for the gateway's
   key, `:instance` for the instance, the level of the person's membership there, else the
   role the edition gives them (`c:Apiary.Edition.role/1`); nil for anyone else.
   """

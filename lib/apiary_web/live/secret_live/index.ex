@@ -34,7 +34,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     value a lock sets aside, from their resolution
     (`Apiary.Variables.repository_overrides/1`). New variable, Change value, Lock and
     Unlock, Delete variable, and the targets of a variable. A name beginning
-    `QORY_` is refused by the context; any other name on the runner's deny list is
+    `QORY_` is refused by the context; any other name on Forager's deny list is
     saved, and the page warns (`Apiary.Variables.Denied`).
 
   Every member reads both views; owners and admins change them (`secret.write`,
@@ -651,7 +651,7 @@ defmodule ApiaryWeb.SecretLive.Index do
             id={"variable-#{variable.id}-denied"}
             hot
           >
-            {gettext("On the runner's deny list")}
+            {gettext("On Forager's deny list")}
           </.state_word>
         </span>
       </:col>
@@ -1601,13 +1601,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp token_words({:lock, :no}), do: gettext("Not locked")
   defp token_words({:targets, :own}), do: gettext("Set by a target too")
 
-  # A name on the runner's deny list, which the context saves: warned. No run receives a
+  # A name on Forager's deny list, which the context saves: warned. No run receives a
   # variable, so the words say where the name is, and nothing of a run.
   defp warned?(name) when is_binary(name), do: Denied.denied?(name) and not Denied.refused?(name)
   defp warned?(_name), do: false
 
   defp warning(name) do
-    if warned?(name), do: gettext("%{name} is on the runner's deny list.", name: name)
+    if warned?(name), do: gettext("%{name} is on Forager's deny list.", name: name)
   end
 
   # What describes New variable's name field: its hint, and the warning while it shows;

@@ -10,7 +10,7 @@ defmodule ApiaryWeb.RunLive.Show do
   that shows the same element in the column (`docs/ui.md`, The run page). The Terminal tab
   is wide (`q-run-wide`): at every width the rail folds away there and Details is a tab.
 
-  `:run_id` in the URL is the run's subject, the id the runner prints. A run that is not
+  `:run_id` in the URL is the run's subject, the id Forager prints. A run that is not
   in the caller's workspace renders the not-found state, whatever else it may be.
 
   The timeline is a stream over a window of the run's items (300 on mount, 200 more at
@@ -22,7 +22,7 @@ defmodule ApiaryWeb.RunLive.Show do
   `/:org/:workspace/runs/:run_id/log`, and the LiveView only says how far the log has
   advanced.
 
-  The run, its terminal, its timeline and its connections as the runner reported them are
+  The run, its terminal, its timeline and its connections as Forager reported them are
   the record (`observability`). What the policy made of it is `security`'s, and an
   instance without it shows none of it: no policy in the header or on Details, no drift,
   no version, no policy applied on the timeline, no reason by rule or mode, no Allow or
@@ -135,6 +135,7 @@ defmodule ApiaryWeb.RunLive.Show do
               <div class="q-run-meta-wrap">
                 <p id="run-meta" class="q-run-meta">
                   <.state_mark id="run-state" state={@run.state} word />
+                  <span :if={meta_reason(@run)} id="run-reason">{meta_reason(@run)}</span>
                   <.alive
                     :if={@run.state in ~w(pending running)}
                     state={@run.state}
@@ -144,7 +145,10 @@ defmodule ApiaryWeb.RunLive.Show do
                     quiet={@quiet_for != nil}
                     run={@run}
                   />
-                  <span :if={ended?(@run) && exit_value(@run) not in ["0", gettext("n/a")]}>
+                  <span :if={
+                    ended?(@run) && !Run.no_session?(@run) &&
+                      exit_value(@run) not in ["0", gettext("n/a"), reason_words(@run)]
+                  }>
                     {gettext("exit %{code}", code: exit_value(@run))}
                   </span>
                   <.link
@@ -613,16 +617,38 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :log, :map, required: true
 
   defp terminal_tab(assigns) do
+    assigns = assign(assigns, :no_session, Run.no_session?(assigns.run))
+
     ~H"""
     <div>
+      <%!-- A run with no session has no log: the terminal, empty, says why. --%>
+      <.terminal
+        :if={@no_session and @log.chunks == 0}
+        id="terminal"
+        src={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}/log"}
+        script={~p"/assets/js/terminal.js"}
+        stylesheet={~p"/assets/js/terminal.css"}
+        streams={@log.streams}
+        live={alive?(@run)}
+        bytes={@log.bytes}
+        chunks={@log.chunks}
+        through={@log.through}
+      >
+        <:note>
+          <b>{gettext("No session.")}</b>
+          {gettext(
+            "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
+          )}
+        </:note>
+      </.terminal>
       <.limits
-        :if={@log.chunks == 0 and is_nil(@run.log_pruned_at)}
+        :if={!@no_session and @log.chunks == 0 and is_nil(@run.log_pruned_at)}
         reason={:no_log}
         variant="empty"
         live={alive?(@run)}
       />
       <.limits
-        :if={@log.chunks == 0 and @run.log_pruned_at}
+        :if={!@no_session and @log.chunks == 0 and @run.log_pruned_at}
         reason={if @run.events_pruned_at, do: :pruned, else: :log_pruned}
         variant="empty"
         at={@run.log_pruned_at}
@@ -809,7 +835,10 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp details_rail(assigns) do
     assigns =
-      assign(assigns, :labels, ordered_labels(assigns.run.labels, assigns.scope.workspace))
+      assign(assigns,
+        labels: ordered_labels(assigns.run.labels, assigns.scope.workspace),
+        no_session: Run.no_session?(assigns.run)
+      )
 
     ~H"""
     <aside id="run-details" class="q-run-rail" aria-label={gettext("Details")}>
@@ -824,25 +853,32 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd>
             <.state_mark state={@run.state} word />
             <span :if={@run.state == "pending"} class="q-rail-sub">{gettext("Ping only")}</span>
-            <span :if={@run.reason} class="q-rail-sub">{@run.reason}</span>
+            <span :if={reason_words(@run)} id="rail-reason" class="q-rail-sub">
+              {reason_words(@run)}
+            </span>
           </dd>
-          <dt :if={ended?(@run)}>{gettext("Exit")}</dt>
-          <dd :if={ended?(@run)} class="font-mono">{exit_value(@run)}</dd>
+          <%!-- A run with no session: what opened it, and none of a session's facts (exit,
+               runtime, host, wall); the Forager that reported it is here, as there is no
+               Command section. --%>
+          <dt :if={@no_session}>{gettext("Opened by")}</dt>
+          <dd :if={@no_session} id="run-opened-by">{gettext("gateway (no session)")}</dd>
+          <dt :if={ended?(@run) && !@no_session}>{gettext("Exit")}</dt>
+          <dd :if={ended?(@run) && !@no_session} class="font-mono">{exit_value(@run)}</dd>
           <dt>{gettext("Started")}</dt>
           <dd><.clock at={@run.started_at} id="run-started-clock" /></dd>
           <dt>{gettext("Duration")}</dt>
           <dd><.run_duration id="rail-duration" run={@run} quiet={@quiet} /></dd>
-          <dt>{gettext("Runtime")}</dt>
-          <dd>
+          <dt :if={!@no_session}>{gettext("Runtime")}</dt>
+          <dd :if={!@no_session}>
             {@run.runtime || na()}
             <span :if={@run.runtime_version} class="font-mono">{@run.runtime_version}</span>
           </dd>
-          <dt>{gettext("Host")}</dt>
-          <dd class="font-mono">{@run.host || na()}</dd>
-          <dt>
+          <dt :if={!@no_session}>{gettext("Host")}</dt>
+          <dd :if={!@no_session} class="font-mono">{@run.host || na()}</dd>
+          <dt :if={!@no_session}>
             <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
           </dt>
-          <dd>
+          <dd :if={!@no_session}>
             <%= cond do %>
               <% @run.wall -> %>
                 {@run.wall}
@@ -869,6 +905,10 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt :if={@run.node_id}>{gettext("Node")}</dt>
           <dd :if={@run.node_id} id="run-node">
             <.node_name scope={@scope} node={Ecto.assoc_loaded?(@run.node) && @run.node} />
+          </dd>
+          <dt :if={@no_session}>{gettext("Forager")}</dt>
+          <dd :if={@no_session} id="run-forager" class="font-mono">
+            <.forager_version run={@run} />
           </dd>
           <dt :if={@run.instance_id}>{gettext("Instance")}</dt>
           <dd :if={@run.instance_id} id="run-instance">
@@ -914,7 +954,7 @@ defmodule ApiaryWeb.RunLive.Show do
         </dl>
       </section>
 
-      <section class="q-rail-sec" aria-labelledby="rail-command">
+      <section :if={!@no_session} class="q-rail-sec" aria-labelledby="rail-command">
         <h3 id="rail-command">{gettext("Command")}</h3>
         <dl class="q-rail-kv">
           <dt>{gettext("Command")}</dt>
@@ -935,13 +975,8 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.terminal_cols} class="font-mono">
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
-          <dt>{gettext("Runner")}</dt>
-          <dd class="font-mono">
-            {@run.runner_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
-              "contract %{version}",
-              version: @run.contract_version
-            )}</span>
-          </dd>
+          <dt>{gettext("Forager")}</dt>
+          <dd class="font-mono"><.forager_version run={@run} /></dd>
         </dl>
       </section>
 
@@ -989,7 +1024,9 @@ defmodule ApiaryWeb.RunLive.Show do
             <.rich phx-no-format text={rich_gettext("%{time} by a member", time: {:part, :time})}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.rich>
           </dd>
           <dt>{gettext("Session")}</dt>
-          <dd class="font-mono">{@session_id || gettext("n/a")}</dd>
+          <dd class="font-mono">
+            {@session_id || if(@no_session, do: gettext("none"), else: gettext("n/a"))}
+          </dd>
         </dl>
       </section>
       <section :if={@security} class="q-rail-sec" aria-labelledby="rail-policy">
@@ -1070,6 +1107,18 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
+  # The Forager that reported the run, and the contract it spoke.
+  attr :run, :map, required: true
+
+  defp forager_version(assigns) do
+    ~H"""
+    {@run.forager_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
+      "contract %{version}",
+      version: @run.contract_version
+    )}</span>
+    """
+  end
+
   ## Small pieces of the header
 
   attr :id, :string, default: "run-duration", doc: "the ticking clock's, one per place"
@@ -1082,7 +1131,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <% is_integer(@run.duration_ms) -> %>
         <.duration ms={@run.duration_ms} />
       <% @run.state == "running" and not @quiet -> %>
-        <%!-- The runner's own elapsed seconds plus this server's time since they were true. --%>
+        <%!-- Forager's own elapsed seconds plus this server's time since they were true. --%>
         <.duration
           id={@id}
           elapsed_seconds={elem(elapsed(@run), 0)}
@@ -1101,7 +1150,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # exact version, then its digest; the drift mark takes the digest's place while the run
   # is behind.
   attr :policy, :any, required: true
-  attr :digest, :string, default: nil, doc: "the runner's own digest of its policy document"
+  attr :digest, :string, default: nil, doc: "Forager's own digest of its policy document"
   attr :tips, :map, required: true
 
   attr :version, :any,
@@ -1175,10 +1224,7 @@ defmodule ApiaryWeb.RunLive.Show do
   # The tips of the page's terms, in the domain's words.
   defp tips do
     %{
-      wall:
-        gettext(
-          "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
-        ),
+      wall: gettext("The enclosure the agent runs in. Its only route out leads to the gateway."),
       no_wall: gettext("This run had no wall. A program that ignores the proxy is not seen."),
       mode:
         gettext(
@@ -1194,7 +1240,7 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       tools:
         gettext(
-          "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
+          "Programs on Forager's machine that serve hosts. The gateway hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
         ),
       lane:
         gettext(
@@ -1353,7 +1399,7 @@ defmodule ApiaryWeb.RunLive.Show do
     assign(socket,
       run: run,
       quiet_for: quiet_for(run),
-      closable: run.state in Runs.closable_states() and Access.can?(scope, :"run.close", run),
+      closable: Runs.closable?(run) and Access.can?(scope, :"run.close", run),
       page_title: run_title(run, socket.assigns.live_action)
     )
   end
@@ -1598,7 +1644,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The version each policy applied names, where this workspace rendered it. The run's own
   # are held already; any other digest costs one indexed read, and a build asks for at
-  # most #{@max_versions}, whatever a runner put in its events. Without security the index
+  # most #{@max_versions}, whatever Forager put in its events. Without security the index
   # holds no policy applied, and nothing is asked.
   defp with_versions(items, %{assigns: %{security: false}}), do: items
 
@@ -1755,7 +1801,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 
   defp limit_reason(%Run{} = run, index) do
-    # By this server's clock, from when it first heard of the run: never the runner's.
+    # By this server's clock, from when it first heard of the run: never Forager's.
     settled? = not alive?(run) or older_than?(run.inserted_at, 60)
 
     cond do
@@ -1847,8 +1893,8 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  def handle_event("close", _params, %{assigns: %{run: %Run{state: state}}} = socket) do
-    {:noreply, assign(socket, confirm_close: state in Runs.closable_states())}
+  def handle_event("close", _params, %{assigns: %{run: %Run{} = run}} = socket) do
+    {:noreply, assign(socket, confirm_close: Runs.closable?(run))}
   end
 
   # Cancel, or Escape while the question is out: the button comes back with the focus.
@@ -1876,6 +1922,11 @@ defmodule ApiaryWeb.RunLive.Show do
           socket
           |> refresh_run()
           |> put_flash(:error, gettext("This run has ended; its record keeps the end it posted."))
+
+        # The page offers no Close for a run a gateway opened: an event that asks for one
+        # anyway changes nothing.
+        {:error, :opened_by_gateway} ->
+          socket
 
         {:error, :forbidden} ->
           forbidden(socket)
@@ -2707,8 +2758,22 @@ defmodule ApiaryWeb.RunLive.Show do
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
   defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
 
+  # Why the run ended, in words, for the meta line: nothing where the words only repeat the
+  # state ("timed out" beside Timed out, "closed" beside Closed).
+  @repeats %{"timeout" => "timed_out", "run_closed" => "closed"}
+
+  defp meta_reason(%Run{reason: reason, state: state} = run) do
+    if @repeats[reason] != state, do: reason_words(run)
+  end
+
   defp exit_value(%Run{reason: "timeout"}), do: gettext("timeout")
-  defp exit_value(%Run{reason: "runner_lost"}), do: gettext("runner lost")
+  defp exit_value(%Run{reason: "gateway_lost"}), do: gettext("gateway lost")
+  defp exit_value(%Run{reason: "session_lost"}), do: gettext("session lost")
+  defp exit_value(%Run{reason: "credential_expired"}), do: gettext("run credential expired")
+
+  defp exit_value(%Run{reason: "run_ended_at_issuer"}),
+    do: gettext("the issuer reported the run ended")
+
   defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "", do: signal
   defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
   defp exit_value(_run), do: gettext("n/a")

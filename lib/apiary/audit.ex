@@ -4,7 +4,7 @@ defmodule Apiary.Audit do
   holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
   when, from where, and the fields it changed as they were and as they are. It is not the
   record: the record is what runs did (their events, their log), the trail is what was
-  done to the apiary. The events a runner posts are the record and leave no entry.
+  done to the apiary. The events the gateway posts are the record and leave no entry.
 
   ## Written with the change
 

@@ -5,7 +5,7 @@ defmodule Apiary.Policy.Grammar do
   rendered document is validated against the schema again, whole, before it is stored
   (`Apiary.Policy.Schema`).
 
-  `covers?/2` and `matches?/2` are the runner's `policy.Covers` and `policy.Match`.
+  `covers?/2` and `matches?/2` are Forager's `policy.Covers` and `policy.Match`.
   """
 
   # The schema's own patterns but for the anchors: `\A` and `\z`, since `$` would let a final
@@ -20,7 +20,7 @@ defmodule Apiary.Policy.Grammar do
   @blank ~r/[\p{Z}\p{C}]/u
 
   # A DNS name is at most 253 characters; a path and a list of paths are bounded so a
-  # document stays far under what a runner reads.
+  # document stays far under what the gateway reads.
   @host_max 255
   @path_max 1024
   @paths_max 100

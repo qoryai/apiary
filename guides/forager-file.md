@@ -1,44 +1,45 @@
-# The runner file's `server` section
+# The Forager file's `server` section
 
-The runner file says what `qory run` does on one machine. It is `runner.yaml` in the
-command's configuration directory: `~/.config/qory/runner.yaml`, or
-`$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is set. It lives there and nowhere
+The Forager file says what `qory run` does on one machine. It is `forager.yaml` in the
+command's configuration directory: `~/.config/qory/forager.yaml`, or
+`$XDG_CONFIG_HOME/qory/forager.yaml` when that variable is set. It lives there and nowhere
 else, so a repository cannot set the policy a run is under or where its events go.
 
-Its `server` section names the Qory Apiary every run on the machine reports to, and the
-access key the machine signs with. The section needs a `qory` command that has
+Its `server` section, under `gateway:`, names the Qory Apiary every run on the machine
+reports to, and the access key the machine signs with. The section needs a `qory` command that has
 `qory access-key`, the command that makes the machine's key.
 
 ## The section
 
 ```yaml
-server:
-  url: https://apiary.example
-  access_key_id: ak_0123456789abcdef
-  apiary_public_key:
-    - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
+gateway:
+  server:
+    url: https://apiary.example
+    access_key_id: ak_0123456789abcdef
+    apiary_public_key:
+      - {alg: ed25519, public_key: mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q}
 ```
 
 You rarely write it by hand. `qory access-key enrol <server> <code>`, the command a
 node's **Connect with a command** gives, writes it when it connects the machine. For a
-key connected that way, an active key's **Runner file** opens the page **Runner file for
+key connected that way, an active key's **Forager file** opens the page **Forager file for
 build-01**, which shows these lines with the values filled in, each marked as Qory
 Apiary's or this key's ([Nodes and their keys](nodes.md)). When the file exists already,
-add the `server` section to it. The file is read strictly: a key it does not know, or a
+add the `server` section to its `gateway` section. The file is read strictly: a key it does not know, or a
 key written twice, is refused with a message that names the file.
 
 | Key | Holds |
 |---|---|
-| `url` | Qory Apiary's scheme and host, with a port when it has one, and nothing after: no path, no query. It is Qory Apiary's `PUBLIC_URL`. `https`, or `http` to an address of this machine, `localhost` or a loopback address; `http` to any other host is refused. The runner finds every endpoint through the configuration document under this URL. |
+| `url` | Qory Apiary's scheme and host, with a port when it has one, and nothing after: no path, no query. It is Qory Apiary's `PUBLIC_URL`. `https`, or `http` to an address of this machine, `localhost` or a loopback address; `http` to any other host is refused. The gateway finds every endpoint through the configuration document under this URL. |
 | `access_key_id` | The id Qory Apiary gave the machine's access key: `ak_` and 16 characters. It names the key to Qory Apiary and travels in clear with every request. |
-| `apiary_public_key` | The pin: Qory Apiary's public keys, a list of `alg` and `public_key`. Every answer of Qory Apiary is signed, and the runner verifies it under these keys before it reads it. A runner with a server and no pin does not start, `apiary_public_key_missing`. |
+| `apiary_public_key` | The pin: Qory Apiary's public keys, a list of `alg` and `public_key`. Every answer of Qory Apiary is signed, and the gateway verifies it under these keys before it reads it. With a server and no pin, Forager does not start, `apiary_public_key_missing`. |
 
 Only `access_key_id` belongs to the machine's key. `url` and `apiary_public_key` are
 Qory Apiary's, and the instance's own: the same for every organisation, workspace, node and
 machine. The address is Qory Apiary's `PUBLIC_URL`, and its key is made from its
 `APIARY_SIGNING_SECRET`.
 
-Nothing in the section is secret. The access key's secret is never in `runner.yaml`:
+Nothing in the section is secret. The access key's secret is never in `forager.yaml`:
 `qory access-key` keeps it in the file `access-key-secret` beside it,
 `~/.config/qory/access-key-secret`, readable by its owner alone. Qory Apiary holds only the
 key's public half, so nothing Qory Apiary stores, shows or logs can sign for the machine.
@@ -55,7 +56,7 @@ QORY_ACCESS_KEY_ID=ak_0123456789abcdef
 QORY_APIARY_PUBLIC_KEY=[{"alg":"ed25519","public_key":"mptNqtgGKgLhLZxmOGfpBQkdeBNH7QN3Qs9ETNumy8Q"}]
 ```
 
-Those are the values **Runner file for spot-runners** shows for a generated key, as plain
+Those are the values **Forager file for spot-runners** shows for a generated key, as plain
 settings (the public key and the address are also under **Configure a machine** on the
 node's **Access key** tab), for a CI's variables or an env file, where a value is taken as
 written. In a shell the JSON has brackets and double quotes the shell would read, so put
@@ -70,12 +71,12 @@ The secret is then `QORY_ACCESS_KEY_SECRET`, the one of the three that belongs i
 secret store; `qory access-key enrol --print` prints it instead of keeping it on the
 machine, and **Generate a key in the browser** on the node's **Access key** tab shows it
 once, with the other two, on the page **Key for …**. With the three variables set, the
-CI's `runner.yaml` needs `server.url` alone.
+CI's `forager.yaml` needs `gateway.server.url` alone.
 
-The three stay the runner's. `qory` reads them when it starts and takes them out of its
+The three stay Forager's. `qory` reads them when it starts and takes them out of its
 environment before it starts anything, so no session inherits them, and naming one in
-`wall.env` or with `--env` is refused. `qory config` lists `runner.server.url`,
-`runner.server.access_key_id` and the pin by its fingerprint, and never the secret.
+`wall.env` or with `--env` is refused. `qory config` lists `gateway.server.url`,
+`gateway.server.access_key_id` and the pin by its fingerprint, and never the secret.
 
 ### A new key, and revoking one
 
@@ -85,7 +86,7 @@ uses it, **Revoke…** the old one there. A node holds two keys at a time for th
 revoked key stops verifying at once: a machine still using it fails its next request,
 `401`, and starts no new run.
 
-## What the runner does with it
+## What Forager does with it
 
 With a `server` section, every `qory run` on the machine:
 
@@ -101,8 +102,8 @@ With a `server` section, every `qory run` on the machine:
 4. starts the runtime, and posts the run's events in signed batches while it runs.
 
 Each request names the machine's instance, its id kept in the file `instance-id` beside
-`runner.yaml`, and is signed with the access key. Each answer is signed with Qory Apiary's
-key, and the runner verifies it under the pin before it reads anything of it.
+`forager.yaml`, and is signed with the access key. Each answer is signed with Qory Apiary's
+key, and the gateway verifies it under the pin before it reads anything of it.
 
 The run fails closed. A configuration fetch that fails or is refused, an answer that does
 not verify under the pin, or a ping Qory Apiary does not accept: no run, and the error
@@ -132,7 +133,7 @@ answers.
 ## There is no `webhook` section any more
 
 The `server` section replaced the `webhook` section in version 0.10.0 of the command. A
-runner file that still has a `webhook` section is refused with a message that says so, and
+Forager file that still has a `webhook` section is refused with a message that says so, and
 `QORY_WEBHOOK_SECRET` is not read any more. A receiver of your own that is not a Qory Apiary
 is configured with the same `server` section, and implements the same contract: the
 configuration document and the events endpoint are enough.
@@ -140,15 +141,16 @@ configuration document and the events endpoint are enough.
 <!-- feature: security -->
 ## The `egress` section and the workspace's policy
 
-The runner file's `egress` section is the machine's own policy: a mode, `observe` or
+The Forager file's `egress` section, under `gateway:`, is the machine's own policy: a mode, `observe` or
 `enforce`, the hosts allowed and the hosts denied. A host in `deny` is denied in either
 mode, before `allow` is consulted; under `observe` it is the only thing denied.
 
 ```yaml
-egress:
-  mode: enforce
-  allow: [api.example, "*.internal.example"]
-  deny: [tracker.internal.example]
+gateway:
+  egress:
+    mode: enforce
+    allow: [api.example, "*.internal.example"]
+    deny: [tracker.internal.example]
 ```
 
 It applies:
@@ -176,7 +178,7 @@ none of the machine's `credentials`, so a run under it uses none.
 
 Qory Apiary reads a run's repository from two of its labels, `forge` and `repository`.
 <!-- feature: security -->
-It keeps a policy per repository, and the runner asks for the run configuration with the
+It keeps a policy per repository, and the gateway asks for the run configuration with the
 run's labels.
 <!-- /feature -->
 Both come from the checkout's origin remote:
@@ -209,6 +211,6 @@ named. Every other label is shown with the run under Labels, as given; none of t
 or titles it.
 
 <!-- feature: security -->
-The runner sends every label of the run on the run configuration request. Qory Apiary
+The gateway sends every label of the run on the run configuration request. Qory Apiary
 reads the repository from `forge` and `repository`; any other label names no repository.
 <!-- /feature -->

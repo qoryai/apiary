@@ -25,11 +25,32 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   per organisation, which in the core is the one the organisation was made with, and
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
-- The record of every run, reported by the runner over the server contract (version 1,
+- The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, events, the run configuration and enrolment): the session as a
   timeline, the terminal, every connection with its decision and rule, and how the run
   ended.
-- Signed requests and signed answers. Every request a runner makes names a node's access
+- A run a gateway opened, with no session: no runtime, command or host, and no exit
+  status. When it was quiet, its run credential expired or its issuer reported it ended, it
+  is Ended, a grey dot and the word, or the dot alone, as Closed is, for the repositories
+  list's last run and in a repository's Last runs, counted with the runs that ended well;
+  the runs list's state filter offers it, and its Runtime column says "no session". Its
+  page says why it ended in words after the state; its Terminal tab is the terminal, empty,
+  with a note that the run has no session, and search, follow, wrap, the text size and the
+  download disabled; its timeline starts "by a gateway with no session"; and its Details
+  say what opened it and which Forager reported it, with no
+  Command section, and its Session "none". The one who starts a run ends it: such a run
+  offers no Close, on its page or as a lost run on the Overview, and the server refuses to
+  close it once its start is projected. A run through a separate gateway belongs to the
+  gateway's node and instance, and its Host is the agent's machine.
+- How a run ended, in words, under State in the run's rail, and after its state on the
+  run page where they say more than the state: timed out, closed, gateway lost, session
+  lost, quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
+  reported the run ended. A run's timeline ends "Run ended", why in words and how long it
+  ran, when it was quiet, its run credential expired or its issuer reported it ended,
+  whatever its state, and "Run exited" otherwise. A session run's Exit in the rail says a
+  lost gateway or session, an expired run credential and the issuer's end in those words,
+  never as `-1`, and the header after its state adds no exit for them.
+- Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
   clock for a GET; every answer to a verified request is signed with the server's own
@@ -38,7 +59,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   refusals come in the contract's order, coded: a header sent twice or an instance id
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.runner-contract-ref` pins.
+  the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
+  0d0f104.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
@@ -83,22 +105,22 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   served over HTTPS) and sends Qory Apiary its name and its public half alone; the page Key
   for the node then shows four numbered steps: store `QORY_ACCESS_KEY_SECRET` (`qak_`
   and the key's seed), shown once, from the browser's memory; set `QORY_ACCESS_KEY_ID`;
-  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the runner file's
-  `server.url`. Opened again, it says the secret is gone, and offers nothing of it to
+  set `QORY_APIARY_PUBLIC_KEY`; point qory at Qory Apiary, the Forager file's
+  `gateway.server.url`. Opened again, it says the secret is gone, and offers nothing of it to
   copy. A key's card shows its
   Key ID with Copy, how it was added ("Connected with a command by …", "Generated in a
-  browser by …") and where its secret is. An active key's card opens the page Runner
-  file for the key: for a key connected with a command, the runner file's `server`
-  lines (`url`, `access_key_id`, `apiary_public_key`), each marked as Qory Apiary's or
-  this key's; for a generated key, four numbered steps: where its secret belongs, then
-  `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `server.url`. The server's address
+  browser by …") and where its secret is. An active key's card opens the page Forager
+  file for the key: for a key connected with a command, the Forager file's `server`
+  lines under `gateway:` (`url`, `access_key_id`, `apiary_public_key`), each marked as
+  Qory Apiary's or this key's; for a generated key, four numbered steps: where its secret belongs, then
+  `QORY_ACCESS_KEY_ID`, `QORY_APIARY_PUBLIC_KEY` and `gateway.server.url`. The server's address
   and public key are the instance's own, the same for every organisation, workspace and
   node. A public key pasted into a node is no way to give it a key: the page that took
   one, Add a public key, was removed before the release.
   Owners and admins get and cancel commands and add and revoke keys, each in the audit
   trail; a node holds at most two keys at a time, and deleting a node revokes its keys
   and cancels its commands. Enrolment is limited per address, 1 a second and 10 at
-  once, and answers in the runner contract's order: before the code is looked at, `413`
+  once, and answers in the contract's order: before the code is looked at, `413`
   for a body over 8 KiB,
   `415` `unsupported_media_type` for a `Content-Type` absent or not `application/json`,
   `400` `bad_request` for a `Content-Type` or `X-Qory-Contract-Version` sent twice, `429`
@@ -109,9 +131,12 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   for a public key used before, `409` `key_limit` and `201`. Every public key received
   passes the contract's key checks, and a public key serves one access key, ever, on the
   instance. Each key's row carries an integrity code, checked before the key is trusted.
-- A node's instances: what a runner using the node's access key reports itself as, a
-  claim kept for display, the audit and the instance limit, never for authorisation. An
-  instance runs while it has a run the lost-run check holds alive. The Nodes list says
+- A node's instances: what Forager, run with the node's access key, reports itself as, a
+  claim kept for display, the audit and the instance limit, never for authorisation.
+  Forager names its version in `User-Agent: qory-forager/<version>`, and Qory Apiary
+  records it as a new run's `forager_version`, which the run's ping or `run.started`
+  then replaces, and as the last `forager_version` of the access key and of the instance
+  that sent it. An instance runs while it has a run the lost-run check holds alive. The Nodes list says
   each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"; a pool
   whose instances were pruned is last seen when its key was last used), with the
   views All, Running and Not running, Sort by name or last seen, and a pool's running
@@ -150,6 +175,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   its General page or Profile.
   Pages start at one left edge and use the width of the screen: lists up to 1680 px, a
   run's page all of it, forms 720 px.
+  Each name in the top bar's path is cut short with an ellipsis where it does not fit; on
+  a phone the page's own name is cut first and its parent keeps up to 8rem, so no name
+  runs over a separator or the buttons after it.
 - The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
   With denials) with their counts, one filter field that takes qualifiers (`repo:`,
   `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:`) and free text
@@ -188,7 +216,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   keyed from it.
 - `APIARY_SIGNING_SECRET`, required, 32 bytes of its own, never derived from
   `APIARY_ENCRYPTION_SECRET`: the seed of the Ed25519 key the server signs its answers
-  to runners with. The boot refuses it when it is missing, of another length, the same
+  to gateways with. The boot refuses it when it is missing, of another length, the same
   as `APIARY_ENCRYPTION_SECRET`, one of the contract's published fixture seeds, or the
   development or test seed this repository publishes. Every machine pins its public key, so changing
   or losing it means pinning every machine again.
@@ -235,6 +263,13 @@ ledger, and leaves the check `browser`, or `code` with its enrolment code.
 `about_subjects` and `about_details`, NULL for every existing row, `about_subjects` `[]`.
 `20261009090000_drop_the_task_of_a_run` drops `runs.task`; rolled back, it restores the
 column from each run's `task` label.
+`20261009141000_name_the_forager_version` renames `runs.runner_version`,
+`access_keys.last_runner_version` and `node_instances.last_runner_version` to
+`forager_version`, `last_forager_version` and `last_forager_version`; rolled back, it
+renames them back.
+`20261009160000_say_what_opened_a_run` adds `runs.opened_by` (`session` or `gateway`, with
+its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs.state` be
+`ended`; rolled back, a run that ended is failed.
 
 ### Upgrading
 

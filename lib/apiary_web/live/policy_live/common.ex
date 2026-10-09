@@ -1704,7 +1704,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       version: configuration.version,
       file_name: file_name,
       policy_file: export.policy_file && head <> export.policy_file,
-      runner_file: head <> export.runner_file,
+      forager_file: head <> export.forager_file,
       notes: export.notes,
       command: ~s(qory run --local --policy ~/#{file_name} -- -p "…")
     }
@@ -1713,7 +1713,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   The two comment lines over an exported text. The subject is a system and a path from a
   run's labels, or a workspace's name: whatever breaks a line in YAML is taken out of it,
-  so nothing a runner or a person named can become a key of the text an operator pastes.
+  so nothing Forager or a person named can become a key of the text an operator pastes.
   """
   def export_head(subject, version, digest) do
     "# " <>

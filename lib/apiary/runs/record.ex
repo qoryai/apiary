@@ -8,10 +8,10 @@ defmodule Apiary.Runs.Record do
   of another workspace is never reached: `fetch_run/2` does not find it, and a `%Run{}` of
   another workspace handed in reads nothing.
 
-  What an event carries is the runner's input, and an event may be megabytes. No function
+  What an event carries is Forager's input, and an event may be megabytes. No function
   here selects an event's `data` whole: every field is cut by the database before it
   crosses the wire (`left(...)` on text, a bounded number of elements of an array), so
-  what a read costs this server is bounded by the number of rows, never by what a runner
+  what a read costs this server is bounded by the number of rows, never by what Forager
   put in them. `Apiary.Runs.Record.Timeline` says what is made of the rows; nothing here
   renders them.
   """
@@ -84,7 +84,7 @@ defmodule Apiary.Runs.Record do
     quote do: fragment(unquote(sql), unquote(data), unquote(data), unquote(data))
   end
 
-  # The longest `argument` of a credential use or a tool the runner's contract allows: the
+  # The longest `argument` of a credential use or a tool Forager's contract allows: the
   # policy in force reads it whole.
   @argument_read 4096
 
@@ -147,7 +147,7 @@ defmodule Apiary.Runs.Record do
   ## The run
 
   @doc """
-  The run of the scope's workspace whose subject is `run_id`, the id the runner prints,
+  The run of the scope's workspace whose subject is `run_id`, the id Forager prints,
   with its access key and its node (a deleted node's too). `:error` for a subject the
   workspace has not seen and for anything that is not a UUID.
   """
@@ -385,8 +385,8 @@ defmodule Apiary.Runs.Record do
   @slim_sql """
   SELECT
     e.sequence, e.type, e.time,
-    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
-    #{Enum.map_join(~w(port exit_code duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
+    #{Enum.map_join(~w(tool agent_id agent_type opened_by runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
+    #{Enum.map_join(~w(port exit_code quiet_seconds duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
@@ -663,7 +663,7 @@ defmodule Apiary.Runs.Record do
   The size of the terminal the chunks right after `after_sequence` were written to:
   `{cols, rows}`, the last `dev.qory.run.resized` at or below it, else `terminal` of
   `dev.qory.run.started`; nil when the record says none, a run on pipes or one recorded
-  before the runner reported the size. A size is read like the fold reads it.
+  before Forager reported the size. A size is read like the fold reads it.
   """
   def terminal_size(%Scope{} = scope, %Run{} = run, after_sequence) do
     resized =

@@ -318,7 +318,7 @@ defmodule ApiaryWeb.OverviewComponents do
         cancel={JS.push("close_cancel")}
       >
         {gettext(
-          "The workspace stops taking events for it: the runner is told the run is gone at its next delivery. A close is final."
+          "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
         )}
         <:action>
           <.button
@@ -861,10 +861,20 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # A run a gateway opened is ended by the one who started it: its row offers Open, never
+  # Close.
   defp attention_act(%{item: %{kind: :lost}} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :close?,
+        Apiary.Runs.closable?(assigns.item.run) and
+          Apiary.Access.can?(assigns.scope, :"run.close", assigns.item.run)
+      )
+
     ~H"""
     <button
-      :if={Apiary.Access.can?(@scope, :"run.close", @item.run)}
+      :if={@close?}
       id={"#{@item.id}-act"}
       type="button"
       class="q-act"
@@ -874,7 +884,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Close")}
     </button>
     <.link
-      :if={!Apiary.Access.can?(@scope, :"run.close", @item.run)}
+      :if={!@close?}
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="q-act"
@@ -1161,8 +1171,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   A run's state as a dot, with its word only when the run needs a look (running, ended
-  badly); a run that ended well is its dot, and a screen reader hears the word. Then
-  when it started.
+  badly) or ended, grey; a run that succeeded is its dot, and a screen reader hears the
+  word. Then when it started.
   """
   attr :run, :map, required: true
   attr :quiet, :boolean, default: false

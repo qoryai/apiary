@@ -517,8 +517,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           <:col :let={instance} label={gettext("Run")} from="sm">
             <.run_link scope={@scope} run_id={instance.run_id} may_runs={@may_runs} />
           </:col>
-          <:col :let={instance} label={gettext("Runner")} kind="faint" from="md">
-            {instance.runner_version || gettext("n/a")}
+          <:col :let={instance} label={gettext("Forager")} kind="faint" from="md">
+            {instance.forager_version || gettext("n/a")}
           </:col>
           <:action :let={instance} :if={@may_clear}>
             <.row_menu
@@ -696,8 +696,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           </span>
           <.relative_time format="clock" at={@running.since} />
           <.run_link scope={@scope} run_id={@running.run_id} may_runs={@may_runs} />
-          <span :if={@running.runner_version} class="text-muted">
-            {gettext("runner %{version}", version: @running.runner_version)}
+          <span :if={@running.forager_version} class="text-muted">
+            {gettext("Forager %{version}", version: @running.forager_version)}
           </span>
         <% else %>
           <span id="node-instance-name" class="font-medium">
@@ -708,8 +708,8 @@ defmodule ApiaryWeb.NodeLive.Show do
             {gettext("Last seen")}
             <.relative_time id="node-instance-seen" at={@last.last_seen_at} />
           </span>
-          <span :if={@last.last_runner_version} class="text-muted">
-            {gettext("runner %{version}", version: @last.last_runner_version)}
+          <span :if={@last.last_forager_version} class="text-muted">
+            {gettext("Forager %{version}", version: @last.last_forager_version)}
           </span>
         <% end %>
       </p>

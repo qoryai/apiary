@@ -45,7 +45,7 @@ beside it:
   a node is one permanent machine, a pool a fleet of short-lived instances up to its
   instance limit or none; the kind is fixed when one is made, and a deleted one is gone
   from every read but keeps its row until its workspace is purged. Its instances
-  (`node_instances`) are claims a runner makes under the node's key, recorded by
+  (`node_instances`) are claims Forager makes under the node's key, recorded by
   `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
   run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
   the node's row lock (`check_instance_limit/3`, `admit/4`).
@@ -55,7 +55,7 @@ beside it:
   empty, but in a test that sets one (Secrets at rest and integrity codes, below).
 - `Apiary.Variables`: a workspace's variables and its repositories' own, with the
   workspace's locks, resolved per holder down the chain from the level above the
-  workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
+  workspace (`Apiary.Variables.Resolution`), and Forager's names it refuses or warns
   about (`Apiary.Variables.Denied`). An edition that writes the level above's variables
   checks the change against its workspaces with `check_above/2`, under its own locks.
 - `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
@@ -394,11 +394,11 @@ codes. Each derived key
 has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
 rotation of the secret can keep the previous one to read with and tell the two apart.
 
-The key that signs the instance's answers to runners, which every machine pins as
+The key that signs the instance's answers to gateways, which every machine pins as
 `apiary_public_key`, is not derived from it: its Ed25519 seed is a secret of its own,
 `APIARY_SIGNING_SECRET`, 32 random bytes with no fallback in production, so that the pin
 does not change with the encryption secret (`Apiary.SigningKey`). The instance refuses at
-boot the runner contract's published fixture seeds and, in production, a seed equal to the
+boot the fixture seeds Forager's contract publishes and, in production, a seed equal to the
 encryption secret and the development and test seeds `config/` publishes, and holds the key
 in a struct whose `inspect` shows its fingerprint alone.
 
@@ -415,7 +415,7 @@ row copied to another workspace, secret or value id does not decrypt there, and 
 renamed value id is encrypted again. A value is write-only: a listing never loads the
 ciphertext, the schemas redact it from `inspect` and leave it out of JSON, the audit
 trail names secrets and value ids, and `Apiary.Secrets.reveal_for_sealing/3` is the one
-function that returns a plaintext, for sealing to a runner. A value that does not decrypt
+function that returns a plaintext, for sealing to a gateway. A value that does not decrypt
 is `unavailable`, with a log line that names the secret, never wrong.
 
 **Integrity codes** (`Apiary.Integrity`) find a row changed outside the application by
@@ -428,7 +428,7 @@ links a stored secret to the runs, and the enrolment codes, and checks the code 
 trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
 does not match, before any signature is checked;
 the per-request columns stay outside it. Variables and policy rules carry no code: they
-route no stored value, and the runner bounds what a variable can do.
+route no stored value, and Forager bounds what a variable can do.
 
 ## Integrations, services and runtimes
 
@@ -442,9 +442,9 @@ that would give a repository the same runtime, the same integration, or a value 
 same host (one host pattern covering another) are refused on save. A connection holds no
 secret: the links to stored secrets are the linking piece's.
 
-**The kinds.** Runtimes come from the runner contract's `contracts/runner/v1/runtimes.json`,
+**The kinds.** Runtimes come from Forager's contract, `contracts/forager/v1/runtimes.json`,
 vendored byte for byte as `priv/contract/runtimes.json` at the commit in
-`.runner-contract-ref` (`Apiary.Kinds.Runtimes`). The runner generates it from its built-in
+`.forager-contract-ref` (`Apiary.Kinds.Runtimes`). Forager generates it from its built-in
 descriptors; it is read at compile time, and a list missing from a runtime fails the
 compile. Services come from a service definition, the one source of a service's hosts,
 paths, auth and declared secrets, whose `auth` is Apiary's own: its `scheme`, `header`
@@ -513,8 +513,8 @@ refuses all the workspace's connections when one fails. The targets carry no cod
 Every change a person, an access key or the instance makes to what an organisation holds
 leaves one entry in `audit_entries` (`Apiary.Audit`): who, which action, on what, when,
 from where, and the changed fields before and after. It is not the record: the record is
-what runs did and comes from the runner; the trail is what was done to the apiary. The
-events a runner posts are the record and leave no entry.
+what runs did and comes from Forager; the trail is what was done to the apiary. The
+events the gateway posts are the record and leave no entry.
 
 - **Written with the change.** The context function that asked `Access.authorize/3`
   writes the entry with `Audit.record/6`, a step of its `Ecto.Multi` or a write inside

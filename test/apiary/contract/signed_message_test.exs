@@ -5,7 +5,7 @@ defmodule Apiary.Contract.SignedMessageTest do
 
   doctest SignedMessage
 
-  # The contract's known answers are replayed against the runner's contract directory in
+  # The contract's known answers are replayed against Forager's contract directory in
   # test/contract/ed25519_known_answers_test.exs; these hold without it.
 
   describe "request/5" do

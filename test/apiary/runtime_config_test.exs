@@ -143,9 +143,12 @@ defmodule Apiary.RuntimeConfigTest do
     end
 
     test "the dev and test seeds this repository publishes stop the boot, never named by value" do
+      # The core's files, which hold the seeds, wherever the suite runs from: an edition runs
+      # these tests from its own checkout (its test_paths).
       for config_file <- ["config/dev.exs", "config/test.exs"] do
         seed =
           config_file
+          |> Path.expand(Path.expand("../..", __DIR__))
           |> Config.Reader.read!(env: :test, target: :host, imports: :disabled)
           |> get_in([:apiary, Apiary.SigningKey, :seed])
 
@@ -183,7 +186,7 @@ defmodule Apiary.RuntimeConfigTest do
       assert get_in(prod_config(), [:apiary, :mail_from]) == "qory@qory.example"
     end
 
-    test "a path, a query or a user is refused at boot: a runner would refuse the server" do
+    test "a path, a query or a user is refused at boot: the gateway would refuse the server" do
       for url <- [
             "https://qory.example/console",
             "https://qory.example/?a=1",

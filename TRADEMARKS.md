@@ -7,7 +7,7 @@ own. The Apache License, Version 2.0, grants no right to use it
 
 ## You may
 
-- Say that your runner, your receiver or your team reports to Qory Apiary, runs it or is
+- Say that your program, your receiver or your team reports to Qory Apiary, runs it or is
   built for it, when that is true.
 - Redistribute an unmodified release under the name Qory Apiary.
 - Use the word Qory to refer to this project, its code and its documentation.

@@ -38,7 +38,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       and the security policy, with versions, a lock and repositories of their own.
       `acme/shop` is on all three forges and `acme/billing` on two, so a path names more
       than one repository.
-    * The six recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
+    * The seven recordings of `priv/demo` are replayed into Main (`mix apiary.demo`), over
       the last day, under the key of the node **dana-laptop**.
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
       keys added by their public keys; build-01's first key was replaced and revoked. No
@@ -98,6 +98,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   # The recordings replayed into Main, by how long before now each ended.
   @replays [
     {"ping-only", 20},
+    {"no-session", 45},
     {"unassigned", 95},
     {"session-with-subagents", 170},
     {"failed-run", 400},

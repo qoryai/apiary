@@ -128,7 +128,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed&since=7d"))
       assert has_element?(view, "h2", "No runs ended badly in the last 7 days.")
 
-      view = open(conn, runs(scope, "?state=succeeded&from=2026-09-01&to=2026-09-02"))
+      view = open(conn, runs(scope, "?state=succeeded,ended&from=2026-09-01&to=2026-09-02"))
       assert has_element?(view, "h2", "No runs ended well from 1 Sept 2026 to 2 Sept 2026.")
 
       # A part of a family, or two families, is not one family's sentence.
@@ -223,6 +223,49 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, "#{row(run)} .q-st-succeeded .q-st-w.sr-only", "Succeeded")
       refute has_element?(view, "#{row(run)} .q-rl-denied")
+    end
+
+    test "a run a gateway opened that ended quiet: Ended, grey, no session for its runtime, counted with the runs that ended well",
+         %{conn: conn, scope: scope} do
+      ended =
+        started_run(
+          scope,
+          %{"forge" => "git.example.com", "repository" => "example-org/example-repo"},
+          opened_by: "gateway",
+          exit: %{"reason" => "quiet", "quiet_seconds" => 600, "duration_ms" => 635_000}
+        )
+
+      failed = started_run(scope, shop(), exit: %{"state" => "failed", "exit_code" => 1})
+
+      view = open(conn, scope)
+      cells = text(view, row(ended))
+
+      assert has_element?(view, "#{row(ended)} .q-st-ended .q-st-w:not(.sr-only)", "Ended")
+      refute has_element?(view, "#{row(ended)} .q-st-ended [data-tip]")
+      assert has_element?(view, "#{row(ended)} td.q-rl-c4.q-rl-faint", "no session")
+      assert has_element?(view, "#{row(ended)} td.q-rl-host", "n/a")
+      assert cells =~ "10 m 35 s"
+      refute text(view, row(failed)) =~ "no session"
+      assert text(view, row(failed)) =~ "claude 2.1.0"
+
+      assert text(view, "#runs-view-all") == "All 2"
+      assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
+
+      assert text(view, "#filter-state-form") =~
+               "Ended well Succeeded Ended 1 Ended badly Failed 1"
+
+      view = open(conn, runs(scope, "?state=ended"))
+      assert has_element?(view, row(ended))
+      refute has_element?(view, row(failed))
+      assert token(view, "state") == "state:ended"
+
+      view = open(conn, runs(scope, "?state=succeeded,ended"))
+      assert has_element?(view, row(ended))
+      assert token(view, "state") == "state:ended_well"
+
+      view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed"))
+      refute has_element?(view, row(ended))
+      assert has_element?(view, row(failed))
     end
 
     test "under its title, what a run is about: its kind and two subjects as text, then how many more",
@@ -364,8 +407,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#{row(live_run)} time[data-tick=duration]")
       refute has_element?(view, "#{row(live_run)} .q-quiet")
 
-      # What the runner said had elapsed (90 s) plus the server time since it said so
-      # (5 s): not the 100 s since the runner's own started_at.
+      # What Forager said had elapsed (90 s) plus the server time since it said so
+      # (5 s): not the 100 s since Forager's own started_at.
       assert text(view, "#{row(live_run)} time[data-tick=duration]") =~ ~r/^1 m 3[567] s$/
 
       assert has_element?(
@@ -645,7 +688,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # Every state shows under its family, counted when a run has it.
       assert text(view, form) =~
-               "Alive Pending Running 1 Ended well Succeeded Ended badly Failed 1 Timed out Lost Closed"
+               "Alive Pending Running 1 Ended well Succeeded Ended Ended badly Failed 1 Timed out Lost Closed"
 
       assert has_element?(
                view,

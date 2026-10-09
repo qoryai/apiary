@@ -4,7 +4,7 @@ defmodule Apiary.Contract.EnrolmentTest do
   alias Apiary.Contract.{Ed25519, Enrolment, SignedMessage}
 
   # The contract's fixtures are replayed in test/contract/enrolment_fixtures_test.exs;
-  # these hold without the runner's contract directory.
+  # these hold without Forager's contract directory.
 
   @fingerprint "uoES-kuj1vk0sq0qoGlmAg"
   @code "qec_F1XT0RE0000000000000000000." <> @fingerprint

@@ -35,7 +35,7 @@ defmodule Apiary.AccessTest do
         assert Access.level(ctx.scopes[level]) == level
       end
 
-      # A runner and the instance act in a role of their own, at no level.
+      # The gateway and the instance act in a role of their own, at no level.
       for actor <- [:access_key, :instance] do
         assert Access.reach(ctx.scopes[actor]) == nil
         assert Access.reader(ctx.scopes[actor]) == nil

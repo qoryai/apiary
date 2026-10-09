@@ -393,7 +393,7 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   end
 
   defp sentence(:runtime_unknown, _),
-    do: gettext("That runtime is not in the runner's catalogue.")
+    do: gettext("That runtime is not in Forager's catalogue.")
 
   defp sentence(:service_unknown, _),
     do: gettext("That API is neither built in nor a custom API of this workspace.")

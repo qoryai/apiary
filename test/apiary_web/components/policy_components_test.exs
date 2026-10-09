@@ -118,7 +118,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert render_component(&PolicyComponents.version_pill/1, []) |> text() == "No version yet"
     end
 
-    test "a digest from a runner is escaped and cut, whatever it holds" do
+    test "a digest from Forager is escaped and cut, whatever it holds" do
       html =
         render_component(&PolicyComponents.version_pill/1, version: 1, digest: ~s(<script>"x"))
 

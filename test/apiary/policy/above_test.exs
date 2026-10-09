@@ -103,8 +103,8 @@ defmodule Apiary.Policy.AboveTest do
              Enum.find(entries, &(&1.host == "paste.example" and &1.source == :workspace))
 
     # The export reads the same effective policy.
-    assert {:ok, %{runner_file: runner}} = Policy.export(scope, nil)
-    assert runner =~ "paste.example"
+    assert {:ok, %{forager_file: forager_file}} = Policy.export(scope, nil)
+    assert forager_file =~ "paste.example"
   end
 
   test "the switch off strikes the workspace's allows, and the document says only the level's",

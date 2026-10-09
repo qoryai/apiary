@@ -16,7 +16,7 @@ defmodule Apiary.Variables.Resolution do
 
   Names are compared without case: `NODE_ENV` and `node_env` are one name, and it keeps
   the spelling of the highest level that sets it. A level locks a name only against the
-  levels below it; a lock of the lowest level holds nothing. A name the runner keeps for
+  levels below it; a lock of the lowest level holds nothing. A name Forager keeps for
   itself (`Apiary.Variables.Denied.refused?/1`) or that breaks the name rule is left out,
   from whichever level it comes, so a level above that sets one does not pass it on.
 

@@ -9,7 +9,7 @@ defmodule Apiary.AccessKeys do
       single use and expires after `code_ttl_minutes/0`; it carries the settings the key
       it brings gets, and is returned once, kept only as its SHA-256; an outstanding one
       is cancelled with `cancel_code/2` (`access_key.cancel_code`);
-    * a machine **enrols** a key with a code (`enrol/2`, the runner contract's
+    * a machine **enrols** a key with a code (`enrol/2`, the Forager contract's
       enrolment): the code is the approval, so the key is active as it is made, while
       the code's maker is still an owner or an admin of its workspace; the code is the
       authority, and the key itself the actor of its entry, `access_key.add`;
@@ -163,9 +163,9 @@ defmodule Apiary.AccessKeys do
   def code_ttl_minutes, do: @code_ttl_minutes
 
   @doc """
-  key_variable/1 is the variable that names `key` to a runner that is given its key in
-  variables rather than in the runner file: `QORY_ACCESS_KEY_ID`, the key's id. It is the
-  key's part of what a runner is given, and nothing of it is secret. The key's secret,
+  key_variable/1 is the variable that names `key` to Forager when it is given its key in
+  variables rather than in the Forager file: `QORY_ACCESS_KEY_ID`, the key's id. It is the
+  key's part of what Forager is given, and nothing of it is secret. The key's secret,
   `QORY_ACCESS_KEY_SECRET`, is not Apiary's to give; the server's part is
   `server_variable/1`.
   """
@@ -174,7 +174,7 @@ defmodule Apiary.AccessKeys do
     do: {"QORY_ACCESS_KEY_ID", key_id}
 
   @doc """
-  server_variable/1 is the server's part of a runner's variables, the same for every key,
+  server_variable/1 is the server's part of Forager's variables, the same for every key,
   node, workspace and organisation of the instance: `QORY_APIARY_PUBLIC_KEY`, the pin as
   JSON. `pin` is the server's `apiary_public_key` list
   (`Apiary.SigningKey.apiary_public_key/0`), the instance's own signing key: no key is
@@ -191,7 +191,7 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  key_line/1 is `key`'s line of the runner file's `server` section, `access_key_id`,
+  key_line/1 is `key`'s line of the Forager file's `server` section, `access_key_id`,
   indented as it sits under `server:`. The key's secret is the machine's alone.
   """
   @spec key_line(AccessKey.t()) :: String.t()
@@ -199,7 +199,7 @@ defmodule Apiary.AccessKeys do
     do: "  access_key_id: #{key_id}"
 
   @doc """
-  server_lines/2 is the server's lines of the runner file's `server` section, the same for
+  server_lines/2 is the server's lines of the Forager file's `server` section, the same for
   every key of the instance, each indented as it sits under `server:`: `url`, the line of
   `base_url`, the address machines reach the server at; and `public_key`, the lines of
   `apiary_public_key`, the pin, in YAML's flow form, one line per key. `pin` is
@@ -476,7 +476,7 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  enrol/2 redeems an enrolment code for the key a machine enrols with it, the runner
+  enrol/2 redeems an enrolment code for the key a machine enrols with it, the Forager
   contract's enrolment (`Apiary.Contract.Enrolment`, `ApiaryWeb.Contract.EnrolmentController`):
   the code is the authority, so no person's scope is asked. It answers in the contract's
   order, each step only once every step before it passed.
@@ -1065,14 +1065,14 @@ defmodule Apiary.AccessKeys do
   defp attr(attrs, name) when is_map(attrs),
     do: Map.get(attrs, name, Map.get(attrs, Atom.to_string(name)))
 
-  @doc "Records a use: `last_used_at` now, plus `last_runner_version` and `last_contract_version` from `attrs`."
+  @doc "Records a use: `last_used_at` now, plus `last_forager_version` and `last_contract_version` from `attrs`."
   def touch(%AccessKey{} = access_key, attrs) do
     access_key |> AccessKey.touch_changeset(attrs) |> Repo.update()
   end
 
   @doc """
-  Records a delivery to the events endpoint: `last_used_at`, the runner and
-  contract versions when the request named them (a request that named none
+  Records a delivery to the events endpoint: `last_used_at`, Forager's and the
+  contract's versions when the request named them (a request that named none
   leaves what is recorded), and `last_heartbeat_at` when the delivery held a new
   heartbeat, never moving it backwards. One `UPDATE`, without reading the row.
   """
@@ -1080,7 +1080,7 @@ defmodule Apiary.AccessKeys do
     set =
       [
         last_used_at: attrs[:last_used_at] || DateTime.utc_now(),
-        last_runner_version: attrs[:last_runner_version],
+        last_forager_version: attrs[:last_forager_version],
         last_contract_version: attrs[:last_contract_version]
       ]
       |> Enum.reject(fn {_field, value} -> is_nil(value) end)

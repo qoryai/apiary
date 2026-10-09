@@ -86,7 +86,7 @@ defmodule ApiaryWeb.RichTextTest do
       assert html =~ "<time>09:00</time> by a member"
     end
 
-    test "a runner's words are isolated, and escaped" do
+    test "Forager's words are isolated, and escaped" do
       assert render_rich(["Close ", {:bdi, "a\u202E<b>"}, "?"]) ==
                "Close <bdi>a\u202E&lt;b&gt;</bdi>?"
 

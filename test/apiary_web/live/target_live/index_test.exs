@@ -75,6 +75,22 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#targets-pager", "1–3 of 3")
   end
 
+  test "a last run that ended is its grey dot, as a closed one is: the word is a screen reader's",
+       %{conn: conn, scope: scope} do
+    started_run(scope, repo("github.example", "acme/quiet"),
+      ago: 30,
+      opened_by: "gateway",
+      exit: %{"reason" => "quiet", "quiet_seconds" => 1800}
+    )
+
+    quiet = Targets.get(scope, "github.example", "acme/quiet")
+    view = open(conn, scope)
+    row = "#target-#{quiet.id}"
+
+    assert has_element?(view, "#{row} .q-sdot-ended .sr-only", "Ended")
+    refute has_element?(view, "#{row} .q-tgt-lw")
+  end
+
   test "the breadcrumb ends with the section, in the workspace's words, the page itself", %{
     conn: conn,
     scope: scope

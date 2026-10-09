@@ -51,10 +51,10 @@ defmodule Apiary.AccessKeysTest do
       %{access_key: key} = access_key_fixture(scope)
 
       assert {:ok, key} =
-               AccessKeys.touch(key, %{last_runner_version: "0.9.1", last_contract_version: 1})
+               AccessKeys.touch(key, %{last_forager_version: "0.9.1", last_contract_version: 1})
 
       assert key.last_used_at
-      assert key.last_runner_version == "0.9.1"
+      assert key.last_forager_version == "0.9.1"
       assert key.last_contract_version == 1
       refute AccessKey.never_used?(key)
     end

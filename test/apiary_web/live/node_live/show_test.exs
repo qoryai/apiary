@@ -318,7 +318,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert has_element?(
                lv,
                "#node-instance-claim",
-               "An instance is what a runner with this node's key reports itself as"
+               "An instance is what Forager, run with this node's key, reports itself as"
              )
 
       refute render(lv) =~ "Once runners use"

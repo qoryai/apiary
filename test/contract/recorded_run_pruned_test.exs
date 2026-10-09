@@ -11,7 +11,7 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
   alias Apiary.Retention
   alias Apiary.Runs.{Batch, Connection, Event, Ingest, LogChunk, Projector, Run}
 
-  # What the runner's request says beside its body: the revision of the contract.
+  # What the gateway's request says beside its body: the revision of the contract.
   @meta %{contract_version: 1}
 
   @moduletag :contract

@@ -1,6 +1,6 @@
 defmodule Apiary.Integrations.Source do
   @moduledoc """
-  Source is where an integration's releases are, in the runner contract's two forms, and
+  Source is where an integration's releases are, in the Forager contract's two forms, and
   where each file of a release is downloaded from, by the integrations contract.
 
     * **A forge path**, `<host>/<path>` with no scheme, such as

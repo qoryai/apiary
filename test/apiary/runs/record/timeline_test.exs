@@ -485,7 +485,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
-  describe "linear in what a runner sends" do
+  describe "linear in what Forager sends" do
     # The work is counted in reductions, which the machine's load does not change, where
     # a wall-clock budget failed whenever the suite was busy. Four times the events is
     # four times the work for an index that is linear and sixteen times for one that is
@@ -671,7 +671,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
              ] = build(events)
     end
 
-    test "the runner's own items and the session's simple ones" do
+    test "Forager's own items and the session's simple ones" do
       items =
         build([
           event(1, "run.started", %{

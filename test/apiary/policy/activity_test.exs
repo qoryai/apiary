@@ -261,7 +261,7 @@ defmodule Apiary.Policy.ActivityTest do
   end
 
   describe "rule_activity/3" do
-    test "counts each connection on the rule the runner would report", ctx do
+    test "counts each connection on the rule the gateway would report", ctx do
       assert {:ok, counts} = Policy.rule_activity(ctx.scope, nil, since())
 
       assert counts[ctx.api.id] == %{allowed: 2, denied: 0}

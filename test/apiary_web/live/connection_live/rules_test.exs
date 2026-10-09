@@ -657,7 +657,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       {:ok, _} = Policy.lock(scope, rule)
       {:ok, rule} = Policy.allow(scope, nil, %{host: "github.example"})
       {:ok, _} = Policy.lock(scope, rule)
-      # A deny below the allowed suffix: decided first by the runner, in either mode.
+      # A deny below the allowed suffix: decided first by the gateway, in either mode.
       {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.internal.example"})
       %{effective: Policy.effective(scope, nil)}
     end
@@ -725,7 +725,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
                Rules.rule_option(row("registry.example", "denied", nil), effective)
     end
 
-    test "a host no rule can name has no action, whatever a runner sent", %{effective: effective} do
+    test "a host no rule can name has no action, whatever Forager sent", %{effective: effective} do
       for host <- [
             "*.example",
             "UPPER case.example",

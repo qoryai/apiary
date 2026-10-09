@@ -84,7 +84,7 @@ defmodule Apiary.Accounts.Scope do
   def for_user(nil), do: nil
 
   @doc """
-  The scope of a runner at the server contract: the access key it signed with, verified,
+  The scope of the gateway at the server contract: the access key it signed with, verified,
   and the key's workspace. The key must carry its workspace loaded, as a verified key does
   (`Apiary.AccessKeys.fetch_for_verification/1`); a caller holding one without it preloads
   it first (`Apiary.Runs.Ingest.ingest/3` and `Apiary.Policy.Serving.managed?/1` do).

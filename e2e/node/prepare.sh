@@ -30,7 +30,7 @@ rm -rf /node-config
 (
   umask 077
   mkdir -p /node-config/qory
-  cp /config/qory/qory.yaml /config/qory/runner.yaml /config/qory/access-key-secret /node-config/qory/
+  cp /config/qory/qory.yaml /config/qory/forager.yaml /config/qory/access-key-secret /node-config/qory/
 )
 
 rm -rf /work

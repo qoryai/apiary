@@ -1312,7 +1312,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp loaded_total(_loaded, _filters, _listing), do: nil
 
-  # A run's id as the URL may carry it, the id the runner prints.
+  # A run's id as the URL may carry it, the id Forager prints.
   defp run_id(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
       {:ok, id} -> id
