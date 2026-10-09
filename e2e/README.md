@@ -14,11 +14,11 @@ same budget: a deny holds in either mode.
 
 It leaves with status 0 only when every assertion held, and prints the timings:
 
-    allow -> second policy applied, seen stored here     4.09 s
-    allow -> allowed connection, seen stored here        6.06 s   (budget 35 s)
-    deny  -> third policy applied, seen stored here      4.17 s
-    deny  -> denied connection, seen stored here         5.64 s   (budget 35 s)
-    E2E PASS  allow_to_applied_ms=4090 allow_to_allowed_ms=6059 deny_to_applied_ms=4170 deny_to_denied_ms=5645
+    allow -> second policy applied, seen stored here     6.11 s
+    allow -> allowed connection, seen stored here        6.11 s   (budget 35 s)
+    deny  -> third policy applied, seen stored here      4.97 s
+    deny  -> denied connection, seen stored here         4.98 s   (budget 35 s)
+    E2E PASS  allow_to_applied_ms=6108 allow_to_allowed_ms=6109 deny_to_applied_ms=4975 deny_to_denied_ms=4976
 
 ## What runs where
 
@@ -81,7 +81,7 @@ batches, the digests in the answers.
    run's own allow to second policy applied time from the refusal, whichever is later. The
    first allowed connection after the refusal may have been on its way before it, and the
    second can come sooner than a change takes to come back as a policy applied event: the
-   session tries every three seconds by default, and one propagation took about four.
+   session tries every three seconds by default, and one propagation took about six.
 7. Puts the workspace in observe as the owner, denies the host from the same row, and
    polls for a third policy applied event with the deny's digest and a denied egress
    event to the host after it.
@@ -112,10 +112,11 @@ to the moment a poll finds the event stored. It therefore includes the gateway's
 is an upper bound on when the connection was let through. The same intervals by the
 node's clock are printed beside it for comparison; the two machines' clocks may differ.
 
-The gateway learns of a change from the answer to any batch it posts, and a session that is
-being refused posts a batch with every refusal. So with the default retry of three seconds
-the reload is carried by the next refusal's own batch, not by a heartbeat: about four
-seconds to the second policy applied event, about six to the allowed connection.
+The gateway learns of a change from the answer to any batch it posts, and while a session
+is being refused the gateway posts a batch with every refusal. So with the default retry of
+three seconds the reload is carried by the next refusal's own batch, not by a heartbeat:
+about six seconds to the second policy applied event, and the allowed connection with it,
+since the gateway numbers a reload's connections after its policy applied event.
 
 A quiet session learns of it at its next heartbeat, thirty seconds at most, and reaches
 the host at its next try after that. The job can show that shape, and then it fails on the
