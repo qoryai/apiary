@@ -374,8 +374,9 @@ defmodule ApiaryWeb.Layouts do
   them, then the Qory Apiary menu, which leads first to Instance settings for whoever may
   open a section of the Instance level, and the control that folds the sidebar to icons,
   from 768 px; below that it is a drawer behind the bar's menu button, whose head opens
-  the organisation menu and the workspace menu, as a phone's bar names the page alone. A
-  page without a person has no sidebar, and the Qory Apiary menu opens from the bar.
+  the organisation menu and the workspace menu where there are any, as a phone's bar
+  names the page alone. A page without a person has no sidebar, and the Qory Apiary menu
+  opens from the bar.
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
@@ -1794,11 +1795,11 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The breadcrumb's places in the drawer's head, below 768 px, where the bar names the
-  # page alone: the organisation, then the workspace on a workspace's page, each a button
-  # that opens its menu where it has one (`menus/5`), else its name. The menus are the
-  # bar's: a button closes the drawer (the `NavDrawer` hook) and opens its menu as the
-  # sheet under the bar (the `Switcher` hook), and closing the menu gives the focus to the
-  # bar's menu button.
+  # page alone, shown where either has a menu: the organisation, then the workspace on a
+  # workspace's page, each a button that opens its menu where it has one (`menus/5`), else
+  # its name. The menus are the bar's: a button closes the drawer (the `NavDrawer` hook)
+  # and opens its menu as the sheet under the bar (the `Switcher` hook), and Escape closes
+  # the menu and gives the focus to the bar's menu button.
   attr :organisation, :any, required: true
   attr :menus, :map, required: true
 
@@ -1884,7 +1885,7 @@ defmodule ApiaryWeb.Layouts do
   # scope's settings, Workspace settings or Organisation settings, the current entry on
   # every page of them, then the Qory Apiary menu and the control that folds the sidebar to
   # icons. Its head, in the drawer below 768 px, holds the breadcrumb's menus' places
-  # (`drawer_place/1`) and the close button.
+  # where there are any menus (`drawer_place/1`), and the close button.
   attr :place, :atom, required: true
   attr :nav, :atom, required: true
   attr :groups, :list, required: true

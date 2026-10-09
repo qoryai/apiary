@@ -836,8 +836,8 @@ defmodule ApiaryWeb.LayoutsTest do
         refute has_element?(view, "#sidebar #{hidden} #drawer-place")
       end
 
-      # Each opens the bar's menu as the sheet under the bar, the focus given back to the
-      # bar's menu button, the drawer then closed.
+      # Each closes the drawer and opens the bar's menu as the sheet under the bar; Escape
+      # closes the menu and gives the focus to the bar's menu button.
       assert has_element?(
                view,
                "#drawer-place button#drawer-organisation-menu-button[data-switcher-open][data-switcher-back='nav-drawer-open'][aria-controls='organisation-menu'][aria-expanded='false'][aria-label='Switch organisation, current: #{scope.organisation.name}']",

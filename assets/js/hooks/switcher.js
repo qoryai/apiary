@@ -21,7 +21,7 @@
 //
 // Below 768 px the bar names the page alone, and the drawer's head holds a chevron for each
 // menu too: the drawer closes (the NavDrawer hook), the menu opens as the sheet under the
-// bar, and closing it gives the focus to the control its chevron names
+// bar, and Escape closes it and gives the focus to the control its chevron names
 // (`data-switcher-back`, the bar's menu button), the chevron being gone with the drawer.
 //
 // On a workspace's page every link of the menus carries the page, the path after its
