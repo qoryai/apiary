@@ -1,5 +1,5 @@
 # The commit of qoryai/integrations whose contracts/integration/v1/description.schema.json
 # is vendored under priv/contract/integration/, and whose fixtures are under
-# test/fixtures/integration-contract/: a commit on the integrations' next branch, pinned by
+# test/fixtures/integration-contract/: a commit on the integrations' main branch, pinned by
 # its id.
-5ece0ef39cd762466c2a874f9220014457617610
+e39423b387cf80ac3128afb7b13ec1c05ab34754
