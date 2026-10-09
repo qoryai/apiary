@@ -158,10 +158,11 @@ postgres://USER:PASS@HOST:5432/DATABASE?sslmode=verify-full
 | `verify-full` | Encrypted; the server's certificate and host name are checked, against the system's CAs, or against the file `sslrootcert=/path/to/ca.pem` names. `sslrootcert=system` is the system's CAs. |
 | `require` | Encrypted; the server's certificate is not checked, with or without `sslrootcert`. Said once at boot, as a warning. |
 
-Two differences from libpq: an `sslrootcert` without an `sslmode`, `sslrootcert=system`
-included, which libpq takes as `verify-full`, is not read here, and the connection is not
-encrypted; and `require` with an `sslrootcert` checks nothing here, where libpq checks the
-certificate against that file. Write `sslmode=verify-full` for a checked connection.
+Two differences from libpq. An `sslrootcert` without an `sslmode` is not read here, and
+the connection is as with no `sslmode` (the first row above), where libpq takes
+`sslrootcert=system` alone as `verify-full`. And `require` with an `sslrootcert` checks
+nothing here, where libpq checks the certificate against that file. Write
+`sslmode=verify-full` for a checked connection.
 
 A CA your provider does not publish to the system's store is a file you mount into the
 container, with a `compose.override.yaml` beside `compose.yaml`, and name with

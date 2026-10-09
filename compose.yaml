@@ -1,5 +1,5 @@
-# Qory Apiary and its Postgres, from the published image. Put .env beside this file (from
-# .env.example), then: docker compose up -d
+# Qory Apiary and its Postgres, from the image a release publishes. Put .env beside this
+# file (from .env.example), then: docker compose up -d
 # To upgrade: set APIARY_VERSION in .env, then: docker compose pull && docker compose up -d
 name: qory
 

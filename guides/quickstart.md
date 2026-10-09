@@ -26,8 +26,8 @@ docker build -t apiary:dev .
 cp .env.example .env && echo MAIL_TO_LOG=true >> .env
 ```
 
-The build takes a few minutes. The image is `apiary:dev`, never the name of the published
-image. `.env` needs nothing else for a trial: `PUBLIC_URL` is `http://localhost:4100`
+The build takes a few minutes. The image is `apiary:dev`, never the name of the image a
+release publishes. `.env` needs nothing else for a trial: `PUBLIC_URL` is `http://localhost:4100`
 already, `SMTP_RELAY` stays empty, and `MAIL_TO_LOG=true` writes every email to the log.
 It holds no secret: the keys are generated at first start.
 
@@ -43,8 +43,8 @@ It holds no secret: the keys are generated at first start.
 APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
 ```
 
-`APIARY_IMAGE` and `APIARY_VERSION` name the image you built, in place of the published
-`ghcr.io/qoryai/apiary`; the shell's values win over `.env`'s. Every later `docker compose`
+`APIARY_IMAGE` and `APIARY_VERSION` name the image you built, in place of
+`ghcr.io/qoryai/apiary`, which a release publishes; the shell's values win over `.env`'s. Every later `docker compose`
 command reads them too, `docker compose logs` included, so set them in the shell for those
 first:
 

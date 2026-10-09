@@ -28,7 +28,7 @@ curl http://localhost:4100/health
 ```
 
 `APIARY_IMAGE` and `APIARY_VERSION` name the image built here, `apiary:dev`, in place of
-the published `ghcr.io/qoryai/apiary`. Every later `docker compose` command reads them too,
+`ghcr.io/qoryai/apiary`, which a release publishes. Every later `docker compose` command reads them too,
 `docker compose logs` included, so set them in the shell for those first:
 `export APIARY_IMAGE=apiary APIARY_VERSION=dev`. `/health` answers once the migrations have
 run, a few seconds after the start.
