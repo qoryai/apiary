@@ -37,6 +37,8 @@ defmodule Apiary.Application do
     Apiary.Revision.boot!()
     # Then the edition's own settings, once the core's are known to be right.
     :ok = Apiary.Edition.boot!()
+    # A database connection encrypted without its certificate checked is said once.
+    Apiary.DatabaseUrl.boot()
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()

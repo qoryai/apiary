@@ -195,6 +195,7 @@ defmodule Apiary.MixProject do
           ~r/^Apiary\.Release\./,
           Apiary.Mailer,
           Apiary.Repo,
+          Apiary.DatabaseUrl,
           ~r/^Apiary\.Job(\.|$)/,
           Apiary.LogMetadata
         ],

@@ -10,11 +10,12 @@ defmodule Apiary.RuntimeConfigTest do
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
+  @unset ["DATABASE_PASSWORD" | @mail]
 
   setup do
-    names = Map.keys(@base) ++ @mail
+    names = Map.keys(@base) ++ @unset
     previous = Map.new(names, &{&1, System.get_env(&1)})
-    Enum.each(@mail, &System.delete_env/1)
+    Enum.each(@unset, &System.delete_env/1)
     System.put_env(@base)
 
     on_exit(fn ->
@@ -59,6 +60,51 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   defp prod_config, do: Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
+
+  describe "DATABASE_URL" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    defp prod_repo, do: get_in(prod_config(), [:apiary, Apiary.Repo])
+
+    test "missing, it stops the boot with an example" do
+      System.delete_env("DATABASE_URL")
+      error = assert_raise RuntimeError, fn -> prod_config() end
+      assert error.message =~ "For example: postgres://USER:PASS@HOST/DATABASE"
+    end
+
+    test "its sslmode is the repository's ssl option, and leaves the URL" do
+      System.put_env(
+        "DATABASE_URL",
+        "postgres://apiary:apiary@db.example.com/apiary?sslmode=verify-full"
+      )
+
+      repo = prod_repo()
+      assert repo[:url] == "postgres://apiary:apiary@db.example.com/apiary"
+      assert repo[:ssl] == true
+      assert repo[:pool_size] == 10
+    end
+
+    test "a refused sslmode stops the boot" do
+      System.put_env(
+        "DATABASE_URL",
+        "postgres://apiary:apiary@db.example.com/apiary?sslmode=prefer"
+      )
+
+      assert_raise RuntimeError, ~r/asks sslmode=prefer, which Qory does not take/, fn ->
+        prod_config()
+      end
+    end
+
+    test "DATABASE_PASSWORD is the password when the URL carries none, and only then" do
+      System.put_env("DATABASE_PASSWORD", "from-env")
+      refute Keyword.has_key?(prod_repo(), :password)
+
+      System.put_env("DATABASE_URL", "postgres://apiary@db.example.com/apiary")
+      assert prod_repo()[:password] == "from-env"
+    end
+  end
 
   describe "APIARY_ENCRYPTION_SECRET" do
     setup do
