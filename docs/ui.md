@@ -569,11 +569,13 @@ version. Only the version in force is exported; another version's path sends on 
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
-  other is. A view's own filter is not repeated as a token. The number that matches is a
-  line over the list, only when the list is narrowed ("87 runs match"), in the list's
-  status region (`role="status"`, `.q-status`), which is always rendered, empty and taking
-  no place otherwise, so a screen reader hears what a view, a filter or a search left; an
-  empty list says its empty state's title there too.
+  other is. An Ended run counts with the runs that ended well, never under Ended badly,
+  and the Filter menu's State section lists Ended with them. A view's own filter is not
+  repeated as a token. The number that matches is a line over the list, only when the
+  list is narrowed ("87 runs match"), in the list's status region (`role="status"`,
+  `.q-status`), which is always rendered, empty and taking no place otherwise, so a
+  screen reader hears what a view, a filter or a search left; an empty list says its
+  empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
   (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
@@ -596,7 +598,9 @@ version. Only the version in force is exported; another version's path sends on 
 - **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. What the run says it is about is a muted line under them, only when
+  when there are any. Ended shows its word, a grey dot as Closed's. A run with no session
+  says "no session" in the Runtime column, muted as the column is, and "n/a" as its Host.
+  What the run says it is about is a muted line under them, only when
   it names a kind or a subject: the kind, then up to two subjects, each its type and ref
   as given ("pull request #412"), then "+N more", as text and never a link, since the
   title's link covers the row. Below 640 px it names one subject, so the count stays in
@@ -1294,8 +1298,9 @@ page has no breadcrumb of its own.
   line of what it is about: the kind, then at most three subjects, each its type and ref
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
-  the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
-  alive the run is while it runs, the target (its page), the runtime, the host, when it
+  the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each
+  after a faint middle dot, the end reason in words when the run ended with one (Ended ·
+  quiet for 30 minutes), how alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
   run id, Raw log, Download log). Close run asks in place: the button becomes its
@@ -1332,6 +1337,35 @@ page has no breadcrumb of its own.
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
+- **The end reason** is in words, the same in the meta line and under State in the rail:
+  timed out, closed, gateway lost, session lost, quiet for N minutes (N from the
+  reported quiet period), run credential expired, and the issuer reported the run ended
+  ([contract-assumptions.md](contract-assumptions.md), How a run ends). A run with no
+  exit code shows none.
+- **A run with no session**, one a gateway opened for a program that reports none
+  (`opened_by` `gateway`), has the same page with what the record lacks left out. Its
+  header says its state, Ended for a run that went quiet, whose run credential expired or
+  whose issuer reported it ended, and the reason's words after it, with no runtime and no
+  host. The tabs are as on any run: Timeline, Terminal, Network access and Details.
+  - **Terminal** is the terminal itself, as on a session's run, its bar, its dark screen
+    and its foot (Ended · 0 B), empty, with a note in the middle of the screen in the
+    terminal's own message style: "**No session.** A gateway opened this run for a
+    program that reports none, so there is no terminal output. Its connections are on
+    the Network access tab." Its controls (search, jump to the end, wrap, the text size
+    and download) are disabled while the log is empty, and the caption under the
+    terminal is left out.
+  - **Timeline** has no notice of its own; the lane key, Main session, and Connections
+    inline are as on any run. Run started reads "by a gateway with no session". The last
+    item of a run that ended quiet, with its run credential expired or by its issuer
+    reads "Run ended", the reason's words and the duration, with a neutral stop mark;
+    every other reason keeps "Run exited".
+  - **The Details rail**'s Run section: State with the reason's words under it; Opened
+    by, "gateway (no session)", second; Key, Node and Instance; and Forager, its version
+    and the contract's (`0.10.0 · contract 1`), the gateway's. There is no Exit, Runtime,
+    Host or Wall row, and no Command section. Record's Session reads "none".
+
+  A session's run through a separate gateway looks as any run: its Node is the gateway's,
+  and its Host the agent's machine.
 
 ## The terminal
 

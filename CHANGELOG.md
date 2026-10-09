@@ -38,7 +38,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   refusals come in the contract's order, coded: a header sent twice or an instance id
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins.
+  the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
+  505a86d.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
@@ -156,6 +157,22 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   over a run's id, title and target, one Filter menu, sorting, the repositories beside the
   list with their runs from 1280 px, pages of 25 to 100 with a jump to a date, and from
   1920 px a preview of the run chosen with the end of its log.
+- Runs with no session: a gateway opens a run for a program that reports none
+  (`opened_by` `gateway` in its `run.started`), and the run has no runtime, command, host
+  or exit code. Its page says what it has: the Terminal tab is the terminal, empty, with
+  the note "No session." and its controls disabled; Run started reads "by a gateway with
+  no session"; the Details rail's Run section says Opened by "gateway (no session)" and
+  the Forager version, the rail has no Command section, and Record's Session reads
+  "none". The runs list says "no session" in its Runtime column. A run through a separate
+  gateway belongs to the gateway's node and instance, and its Host is the agent's
+  machine.
+- How a run ended, in words, after its state on the run page and under State in its
+  rail: timed out, closed, gateway lost, session lost, quiet for N minutes, run
+  credential expired, and the issuer reported the run ended. A run with no exit code
+  shows none.
+- The state Ended, a grey dot and the word, for a run with no session that went quiet,
+  whose run credential expired or whose issuer reported it ended. It counts with the
+  runs that ended well, never under Ended badly, and the state filter has it.
 - A run can say what it is about, in `about` of its `run.started`: a kind, a title,
   subjects (each a type and a ref, with a url and a title when given) and details. A
   run's title is its `about` title; without one, the run page and its tab say "Run" and
