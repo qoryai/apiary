@@ -21,10 +21,15 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   Each run is a record Forager could have sent: its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
-  heartbeats, and its exit. Most succeed; some fail, time out, or go silent and are
-  found lost; a few are still running when the task ends and are found
-  lost a minute and a half later, as any run that stops talking is; one in two hundred
-  writes tens of thousands of lines. The events are written with the times they happened
+  heartbeats, and its exit. A run on a shared machine has a starter, which gave it its
+  run credential; a run on a laptop has none. Most runs complete and some fail, by the
+  runtime's exit or with the reason their starter gave at the exit, `all_checks_passed`
+  or `checks_failed`; a few are cancelled, at their time limit (`timeout`) or by their
+  starter (`no_longer_needed`); a few are lost: they go silent and are found lost, or
+  their exit says the session stopped talking to its gateway (`session_lost`) or the end
+  was never recorded (`gateway_lost`). A few are still running when the task ends and
+  are found lost a minute and a half later, as any run that stops talking is; one in two
+  hundred writes tens of thousands of lines. The events are written with the times they happened
   and received a moment later, as the receiver would have stored them, and every run is
   projected by `Apiary.Runs.Projector`, as the receiver's runs are.
 
@@ -625,7 +630,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     machine = machine(kind, repository, days_ago)
     {task, prompt, attempt, issues} = task(kind, repository, issues)
     runtime = runtime(kind, machine)
-    {outcome, duration} = outcome(kind, runtime, at, now_ms)
+    {outcome, reason, duration} = outcome(kind, runtime, machine, at, now_ms)
 
     {%{
        index: index,
@@ -639,6 +644,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
        runtime: runtime,
        interactive: machine.laptop and runtime == "claude" and chance(0.5),
        outcome: outcome,
+       reason: reason,
        duration: duration,
        long: outcome not in [:alive, :ping] and chance(0.005),
        days_ago: days_ago
@@ -715,33 +721,60 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp runtime(_kind, _machine),
     do: weighted([{"claude", 58}, {"codex", 24}, {:program, 18}])
 
-  defp outcome(:alive, _runtime, at, now_ms), do: {:alive, now_ms - at}
+  # How the run ends, as the state it is stored in and the reason its exit gives, nil for
+  # none: completed or failed by the runtime's exit, some with the reason the starter gave at
+  # the exit; cancelled by its time limit, or by its starter, which no longer needed it; lost,
+  # silent with no exit, or by the exit that says the gateway stopped hearing from the
+  # session or that Forager died before the end was recorded. Only a run with a starter
+  # (`starter?/1`) has a starter's reason. A ping is a machine that pinged and ran nothing.
+  defp outcome(:alive, _runtime, _machine, at, now_ms), do: {:alive, nil, now_ms - at}
 
-  defp outcome(_kind, runtime, _at, _now_ms) do
-    outcome =
+  defp outcome(_kind, runtime, machine, _at, _now_ms) do
+    starter = starter?(machine)
+
+    {outcome, reason} =
       if runtime == :program do
-        weighted([{:succeeded, 78}, {:failed, 20}, {:timed_out, 2}])
+        weighted(
+          [{{:completed, nil}, 78}, {{:failed, nil}, 20}, {{:cancelled, "timeout"}, 2}] ++
+            if(starter, do: [{{:cancelled, "no_longer_needed"}, 1}], else: [])
+        )
       else
-        weighted([
-          {:succeeded, 72},
-          {:failed, 16},
-          {:timed_out, 3},
-          {:lost, 3},
-          {:ping, 0.5}
-        ])
+        weighted(
+          [
+            {{:completed, nil}, 72},
+            {{:failed, nil}, 16},
+            {{:cancelled, "timeout"}, 3},
+            {{:lost, nil}, 2},
+            {{:lost, "session_lost"}, 1},
+            {{:lost, "gateway_lost"}, 0.5},
+            {{:ping, nil}, 0.5}
+          ] ++ if(starter, do: [{{:cancelled, "no_longer_needed"}, 2}], else: [])
+        )
+      end
+
+    reason =
+      case outcome do
+        :completed -> if starter and chance(0.5), do: "all_checks_passed"
+        :failed -> if starter and chance(0.4), do: "checks_failed"
+        _ -> reason
       end
 
     duration =
-      case {outcome, runtime} do
-        {:timed_out, _} -> 3_600_000
-        {:ping, _} -> 0
-        {_, :program} -> clamp(lognormal(90_000, 0.7), 5_000, 1_200_000)
-        {:failed, _} -> clamp(lognormal(240_000, 0.8), 20_000, 3_000_000)
-        {_, _} -> clamp(lognormal(420_000, 0.8), 25_000, 3_300_000)
+      case {reason, outcome, runtime} do
+        {"timeout", _, _} -> 3_600_000
+        {_, :ping, _} -> 0
+        {_, _, :program} -> clamp(lognormal(90_000, 0.7), 5_000, 1_200_000)
+        {_, :failed, _} -> clamp(lognormal(240_000, 0.8), 20_000, 3_000_000)
+        {_, _, _} -> clamp(lognormal(420_000, 0.8), 25_000, 3_300_000)
       end
 
-    {outcome, duration}
+    {outcome, reason, duration}
   end
+
+  # A run on a shared machine was started by a system that gave it its run credential, its
+  # starter, behind the machine's gateway; a run on a laptop is on the gateway's local link,
+  # with no run credential and no starter.
+  defp starter?(machine), do: not machine.laptop
 
   ## Writing
 
@@ -880,11 +913,15 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp put(acc, at, type, data),
     do: %{acc | items: [{at, acc.n, type, data} | acc.items], n: acc.n + 1}
 
-  # Where the record stops: at its exit, or, for a run that went silent, part of the way.
-  defp ends(%{outcome: :lost, duration: duration}),
-    do: round(duration * (0.3 + :rand.uniform() * 0.5))
+  # Where the record stops: at its exit, or, for a run that went silent or that its starter
+  # ended, part of the way.
+  defp ends(%{duration: duration} = spec) do
+    if cut_short?(spec), do: round(duration * (0.3 + :rand.uniform() * 0.5)), else: duration
+  end
 
-  defp ends(%{duration: duration}), do: duration
+  defp cut_short?(%{outcome: :lost}), do: true
+  defp cut_short?(%{reason: "no_longer_needed"}), do: true
+  defp cut_short?(_spec), do: false
 
   defp ping(spec) do
     %{
@@ -912,7 +949,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     %{
       "opened_by" => "session",
-      "credential" => "none",
+      "credential" => if(starter?(spec.machine), do: "starter", else: "none"),
       "runtime" => runtime_name(spec),
       "runtime_version" => runtime_version(spec),
       "command" => command,
@@ -1123,7 +1160,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     |> steps(spec, mode, ends, :codex)
     |> long_output(ends - 2_000, spec)
     |> then(
-      &if(spec.outcome == :succeeded,
+      &if(spec.outcome == :completed,
         do:
           log(
             &1,
@@ -1166,11 +1203,11 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   defp session_end(acc, %{outcome: outcome}, _session, _ends)
-       when outcome in [:lost, :alive, :timed_out],
+       when outcome in [:lost, :alive, :cancelled],
        do: acc
 
   defp session_end(acc, spec, session, ends) do
-    ok = spec.outcome == :succeeded
+    ok = spec.outcome == :completed
 
     summary =
       if ok,
@@ -1216,9 +1253,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       end)
 
     final = max(round(ends * 0.9), 2_500)
-    pass = spec.outcome not in [:failed, :timed_out]
+    pass = spec.outcome == :completed
 
-    if spec.outcome in [:lost, :alive],
+    if spec.outcome == :alive or cut_short?(spec),
       do: acc,
       else:
         tool(
@@ -1599,26 +1636,80 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     end)
   end
 
-  defp finish(acc, %{outcome: outcome}, _ends) when outcome in [:lost, :alive], do: acc
+  # The exit, in the contract's words: its `state` is `succeeded`, `failed` or `cancelled`, and
+  # its `reason` Forager's own code or the starter's. A run that went silent, or is still
+  # running, has none.
+  defp finish(acc, %{outcome: outcome, reason: nil}, _ends) when outcome in [:lost, :alive],
+    do: acc
 
-  defp finish(acc, %{outcome: :timed_out} = spec, ends) do
+  # The session stopped the runtime at the run's time limit.
+  defp finish(acc, %{reason: "timeout"} = spec, ends) do
     acc
     |> log(ends - 5, spec, dim("qory: run timed out after 1 h"))
     |> put(ends, "run.exited", %{
-      "state" => "failed",
+      "state" => "cancelled",
       "exit_code" => -1,
+      "signal" => "SIGTERM",
       "reason" => "timeout",
       "duration_ms" => ends
     })
   end
 
+  # The starter answered that the run is no longer needed, and the gateway ended it; the
+  # gateway holds no exit status of the runtime's.
+  defp finish(acc, %{reason: "no_longer_needed"}, ends) do
+    put(acc, ends, "run.exited", %{
+      "state" => "cancelled",
+      "exit_code" => -1,
+      "reason" => "no_longer_needed",
+      "duration_ms" => ends
+    })
+  end
+
+  # The gateway heard nothing from the session for three heartbeat intervals.
+  defp finish(acc, %{reason: "session_lost"}, ends) do
+    put(acc, ends + 90_000, "run.exited", %{
+      "state" => "failed",
+      "exit_code" => -1,
+      "reason" => "session_lost",
+      "duration_ms" => ends + 90_000
+    })
+  end
+
+  # Forager died before the exit was recorded: the resend of the record, minutes later,
+  # writes the exit, its duration to the last event recorded.
+  defp finish(acc, %{reason: "gateway_lost"}, ends) do
+    put(acc, ends + between(2, 15) * @minute, "run.exited", %{
+      "state" => "failed",
+      "exit_code" => -1,
+      "reason" => "gateway_lost",
+      "duration_ms" => ends
+    })
+  end
+
+  # The runtime exited by itself: succeeded on 0 and failed on any other code, or the
+  # outcome its starter gave at the exit, beside the runtime's own code: an agent that
+  # exits 0 can fail the starter's checks.
   defp finish(acc, spec, ends) do
-    code = if spec.outcome == :succeeded, do: 0, else: pick([1, 1, 2])
-    state = if code == 0, do: "succeeded", else: "failed"
+    code =
+      if spec.outcome == :completed or (spec.reason && spec.runtime != :program),
+        do: 0,
+        else: pick([1, 1, 2])
+
+    state = if spec.outcome == :completed, do: "succeeded", else: "failed"
 
     acc
     |> log(ends - 5, spec, dim("qory: run exited #{code} after #{human(ends)}"))
-    |> put(ends, "run.exited", %{"state" => state, "exit_code" => code, "duration_ms" => ends})
+    |> put(
+      ends,
+      "run.exited",
+      put_if(
+        %{"state" => state, "exit_code" => code, "duration_ms" => ends},
+        spec.reason,
+        "reason",
+        spec.reason
+      )
+    )
   end
 
   defp human(ms) when ms < 60_000, do: "#{div(ms, 1000)}s"
