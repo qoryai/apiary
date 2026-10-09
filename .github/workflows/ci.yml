@@ -89,9 +89,38 @@ jobs:
         run: cfn-lint deploy/aws/apiary.yaml
 
       # Every resource stack-policy.json names is the template's, the database and the four
-      # key secrets are all guarded, and the ProtectCommand output sets the same policy.
+      # key secrets are all guarded, and the policy the stack sets on itself at creation is
+      # the same.
       - name: Check the stack policy against the template
         run: python scripts/aws-template-check.py policy
+
+      # The person installs from the console alone: no output is a command.
+      - name: Check no output of the template is a command
+        run: python scripts/aws-template-check.py outputs
+
+      # The five secrets are kept when the stack is deleted or replaces them; the download
+      # key's secret is deleted with the stack and guarded by no stack policy.
+      - name: Check which secrets the stack keeps
+        run: python scripts/aws-template-check.py kept
+
+      # The Release mapping's keys, which Apiary Pro's release writes too, and every
+      # Fn::FindInMap against the mappings: cfn-lint does not check one inside a Fn::If.
+      - name: Check the template's mappings
+        run: python scripts/aws-template-check.py mappings
+
+      # A release writes its versions into a copy of the template, as release.yml does for
+      # Apiary Community (the Apiary Pro version empty) and as a release naming both does,
+      # with Apiary Pro first; the script fails unless it writes every place exactly once.
+      # cfn-lint then reads each copy.
+      - name: Write a release's template, and lint it
+        run: |
+          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-community.yaml"
+          python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-community.yaml" \
+            --edition-default "Apiary Community" --community-version 0.0.0 --pro-version ""
+          cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-pro.yaml"
+          python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-pro.yaml" \
+            --edition-default "Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
+          cfn-lint "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
 
       # update-stack resets every parameter it is not given to its default, DatabaseSnapshot
       # included, which replaces a restored database with an empty one. The guides name

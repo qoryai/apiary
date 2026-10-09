@@ -284,6 +284,27 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `.env.example` holds no secret, and no `POSTGRES_PASSWORD`. CI runs it as a person
   does: the install, a restart, the upgrade from the base commit's image, the path from a
   checkout, and an external Postgres over TLS.
+- The AWS template, `deploy/aws/apiary.yaml`: Qory Apiary on ECS Fargate behind an
+  Application Load Balancer, with RDS for PostgreSQL 18 and its keys in Secrets Manager,
+  installed from the AWS console's form and upgraded with its Update, with no command. A
+  release attaches it as `apiary.yaml` with the release's version written in
+  (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
+  template, `VersionOverride` left empty. The form asks for the edition, Apiary Community
+  or Apiary Pro; Apiary Pro's download key, which the stack keeps as a secret of its own,
+  deleted with the stack, for the image's pull alone; the first administrator's email
+  address and organisation's name, which the task gets as `FIRST_ADMIN_EMAIL` and
+  `FIRST_ORGANISATION_NAME`; the domain, with a Route 53 hosted zone, or without one, the
+  stack then making the certificate and waiting for its validation record; and the mail
+  relay. Rules refuse Apiary Pro without its download key, on ARM64, or with no version to
+  install. Under Recovery, `AcceptSigningKey` is passed as
+  `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and `DatabaseDeletionProtection` turns the
+  database's deletion protection off before a delete. The stack sets its own stack policy
+  at creation, refusing any update that would replace or delete the database or a key's
+  secret; the five secrets are kept when the stack is deleted, and the database leaves a
+  final snapshot. The outputs are the address and links into the console: the logs, the
+  service, the key secrets and the database's snapshots. CI lints the template and a
+  release's copy of it with cfn-lint, and checks the stack policy, that no output is a
+  command, and which secrets the stack keeps.
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps
