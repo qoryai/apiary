@@ -322,7 +322,7 @@ every machine pins.
 
 ```text
 APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is <new>, the pinned one is <recorded>.
-Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=<new> and start Qory again.
+Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=<new> and start Qory Apiary again.
 ```
 
 To change the signing key on purpose, which means pinning every machine again, set
@@ -547,7 +547,9 @@ The first person who signs up on a new instance creates its organisation, with i
 workspace **Main**, and is its owner. The instance has that one organisation and that one
 workspace. The organisation is the instance's own, and its owners are the instance's
 **instance admins** ([The instance admins](#the-instance-admins)); to everyone in it, it
-is an organisation like any other. The first sign-up is always offered.
+is an organisation like any other. The first sign-up is always offered, until someone has
+signed up; with `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` set, the first start
+makes it before the instance serves a page ([The instance admins](#the-instance-admins)).
 
 After the first, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
@@ -610,7 +612,9 @@ the organisation's only owner: make another member an owner first.
 The instance admins are the owners of the instance's organisation, the one the instance's
 first user signed up with. Inside the organisation they act at their level, as any owner
 does. Two commands, for whoever has a shell on the release, make an account one and take
-it away, for an install that is scripted and for recovery when no admin is left:
+it away, for an install that is scripted and for recovery when no admin is left; for the
+first admin of a new instance, `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, below,
+are simpler, as they need no shell:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com")'
@@ -630,12 +634,15 @@ On an instance nobody has signed up to, the first start claims it before it serv
 page, so no sign-up on the web can come first: it is the instance's first sign-up, as the
 command below makes it, and emails you your log-in link. Should the email not go out, the
 instance is claimed all the same, and the log says to ask for a link at `/users/log-in`
-once the mail settings work; it never writes the address or the link. On an instance that
-has its organisation, a restored one included, the two are not read: changing them later
-changes nothing, and later admins are invited in Qory. Of two starts at once, one claims
-and the other starts as on any instance. Both empty, the first sign-up is the web's. One
-set and the other empty, or a value the sign-up page would refuse, stops the boot with a
-message that names the variable and not the value:
+once the mail settings work. The boot's own lines never carry the address or the link;
+with `MAIL_TO_LOG=true`, though, the email itself, its log-in link included, is written to
+the log, as every email is. On an instance that has its organisation, a restored one
+included, the boot ignores the two: it checks neither, creates and grants nothing, sends no
+email and writes no line, so changing them later changes nothing, and later admins are
+invited in Qory. Of two starts at once, one claims and the other starts as on any
+instance. Both empty, the first sign-up is the web's. On an instance nobody has signed up
+to, one set and the other empty, or a value the sign-up page would refuse, stops the boot
+with a message that names the variable and not the value:
 
 ```text
 environment variable FIRST_ORGANISATION_NAME is empty, and FIRST_ADMIN_EMAIL is set. Set both to claim this instance at its first start, or neither.

@@ -262,10 +262,14 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   `ApiaryWeb.Endpoint`, runs the command's claim (`Apiary.FirstAdmin.claim/3`, the same
   `sign_up_user/3` with `first_only: true` and `actor: :instance`, so the edition's part
   of a first sign-up applies) when `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` are
-  set and the instance has no organisation; its entry's worker is `Apiary.FirstAdmin`. On
-  any other boot it reads nothing. Of two boots at once, the second's sign-up answers
-  `{:error, :instance_claimed}` and the boot goes on, granting nothing. One set and the
-  other empty, or a value the sign-up refuses, stops the boot.
+  set and the instance has no organisation; its entry's worker is `Apiary.FirstAdmin`.
+  Both empty, it makes no query. On an instance that has its organisation it stops after
+  that one read: it checks neither value, creates and grants nothing, sends no mail and
+  writes no line. Of two boots at once, the second's claim answers
+  `{:error, :instance_claimed}`, the sign-up's own answer or, when the first's account
+  already made the address taken, `claim/3`'s after it reads the organisation again, and
+  the boot goes on, granting nothing. On an instance nobody has signed up to, one set and
+  the other empty, or a value the sign-up refuses, stops the boot.
 
 ## Suspending a member
 

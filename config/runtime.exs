@@ -93,7 +93,8 @@ end
 # at its first start, before the endpoint serves: the instance's first sign-up, with that
 # address and that organisation's name, which mails the account its log-in link. Both
 # optional; both empty leaves the first sign-up to the web. Used once: on an instance that
-# has its organisation they are not read. `Apiary.FirstAdmin` checks them at boot and stops
+# has its organisation the boot ignores them, checking neither and changing nothing.
+# `Apiary.FirstAdmin` checks them at boot on an instance nobody has signed up to, and stops
 # a boot with one set and the other empty, or with a value the sign-up refuses. Not read
 # under test, as INVITATIONS_PER_DAY is not.
 if config_env() != :test do

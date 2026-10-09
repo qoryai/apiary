@@ -74,7 +74,7 @@ defmodule Apiary.KeyCheckTest do
     "APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's " <>
       "fingerprint is #{new}, the pinned one is #{recorded}.\n" <>
       "Put back the value kept with your backups. To change it on purpose, and pin every " <>
-      "machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=#{new} and start Qory again."
+      "machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=#{new} and start Qory Apiary again."
   end
 
   defp accept(value), do: Application.put_env(:apiary, :accept_signing_fingerprint_setting, value)
@@ -203,7 +203,7 @@ defmodule Apiary.KeyCheckTest do
   describe "APIARY_ACCEPT_SIGNING_FINGERPRINT" do
     test "the signing message names it, with the new key's fingerprint, and no command" do
       message = KeyCheck.signing_message("NEW", "PINNED")
-      assert message =~ "set APIARY_ACCEPT_SIGNING_FINGERPRINT=NEW and start Qory again."
+      assert message =~ "set APIARY_ACCEPT_SIGNING_FINGERPRINT=NEW and start Qory Apiary again."
       refute message =~ "bin/apiary"
       refute message =~ "accept_signing_key"
     end
@@ -265,6 +265,11 @@ defmodule Apiary.KeyCheckTest do
         assert KeyCheck.check() == {:error, [signing_message(new, pinned)]}, inspect(value)
         assert {:key_check_failed, log} = boot()
         refute log =~ "is now the instance's"
+
+        # The seed, pasted in by mistake, is never written out.
+        for secret <- [Base.encode64(seed), Base.encode16(seed, case: :lower)],
+            do: refute(log =~ secret)
+
         assert recorded() == first
       end
     end

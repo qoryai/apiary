@@ -27,6 +27,14 @@ defmodule Apiary.FirstAdminTest do
       do: {:error, {:relay_said, "rejected #{inspect(email.to)}: #{email.text_body}"}}
   end
 
+  # A relay whose client exits instead of answering.
+  defmodule ExitingMailAdapter do
+    use Swoosh.Adapter
+
+    @impl true
+    def deliver(_email, _config), do: exit(:relay_gone)
+  end
+
   setup do
     on_exit(fn ->
       Application.delete_env(:apiary, :first_admin_email_setting)
@@ -41,9 +49,9 @@ defmodule Apiary.FirstAdminTest do
 
   # The boot's child, as the application's supervisor starts it: `:ignore`, or the exit
   # that takes the boot down, with the log it wrote.
-  defp boot do
+  defp boot(opts \\ []) do
     log =
-      capture_log(fn ->
+      capture_log(opts, fn ->
         result =
           try do
             FirstAdmin.start_link()
@@ -109,9 +117,15 @@ defmodule Apiary.FirstAdminTest do
 
     test "claims it, as the release command does, before the step returns" do
       settings("first@example.com", "Acme")
+      # The suite logs warnings and up; this test reads the claim's info line too.
+      level = Logger.level()
+      Logger.configure(level: :info)
+      on_exit(fn -> Logger.configure(level: level) end)
 
-      assert {:ignore, log} = boot()
+      assert {:ignore, log} = boot(level: :info)
+      Logger.configure(level: level)
       refute log =~ "first@example.com"
+      refute log =~ ~r{/users/log-in/[A-Za-z0-9_-]+}
 
       organisation = instance_organisation()
       assert %Organisation{name: "Acme"} = organisation
@@ -134,6 +148,31 @@ defmodule Apiary.FirstAdminTest do
       assert {entry.actor_kind, entry.actor_id} == {:instance, nil}
       assert entry.worker == "Apiary.FirstAdmin"
       assert entry.details["user_id"] == user.id
+
+      # The one info line is the claim's, as the release command prints it.
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ "[info]"))
+
+      assert line |> String.split("[info] ", parts: 2) |> List.last() ==
+               FirstAdmin.message(user, :sent)
+    end
+
+    test "an address an account has already stops the boot, naming the variable" do
+      # An account in no organisation, as one left after its own was deleted.
+      existing = Apiary.AccountsFixtures.user_fixture()
+      flush_mail()
+      users = users()
+      settings(existing.email, "Acme")
+
+      assert {:first_admin_refused, log} = boot()
+
+      assert log =~
+               "environment variable FIRST_ADMIN_EMAIL is not valid: has already been taken."
+
+      refute log =~ "FIRST_ORGANISATION_NAME"
+      refute log =~ existing.email
+      assert instance_organisation() == nil
+      assert users() == users
+      refute_received {:email, _}
     end
 
     test "trims the values, as the other settings are" do
@@ -165,6 +204,20 @@ defmodule Apiary.FirstAdminTest do
       refute log =~ "first-bounce"
       refute log =~ "relay_said"
       refute log =~ ~r{/users/log-in/[A-Za-z0-9_-]+}
+    end
+
+    test "claims it when the mail adapter exits, and the boot goes on" do
+      previous = Application.fetch_env!(:apiary, Apiary.Mailer)
+      Application.put_env(:apiary, Apiary.Mailer, adapter: __MODULE__.ExitingMailAdapter)
+      on_exit(fn -> Application.put_env(:apiary, Apiary.Mailer, previous) end)
+      settings("first-gone@example.com", "Acme")
+
+      assert {:ignore, log} = boot()
+
+      assert %Organisation{name: "Acme"} = instance_organisation()
+      assert Apiary.Accounts.get_user_by_email("first-gone@example.com")
+      assert log =~ "could not be sent"
+      refute log =~ "relay_gone"
     end
 
     test "both empty: claims nothing, and the first sign-up stays the web's" do
@@ -228,6 +281,75 @@ defmodule Apiary.FirstAdminTest do
 
       assert instance_organisation() == nil
       refute Apiary.Accounts.get_user_by_email("first@example.com")
+    end
+  end
+
+  describe "claim/3" do
+    test "an address taken by a claim a moment before answers :instance_claimed" do
+      # As the second of two boots finds it: the first's account exists, which refuses
+      # the address before the second's sign-up reads the instance's organisation.
+      %{user: first} = sign_up_fixture()
+
+      assert FirstAdmin.claim(first.email, "Acme", %{worker: "Apiary.FirstAdmin"}) ==
+               {:error, :instance_claimed}
+    end
+
+    test "on an instance nobody has signed up to, the same address is refused" do
+      Apiary.EditionKit.hide_instance_organisation()
+      existing = Apiary.AccountsFixtures.user_fixture()
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               FirstAdmin.claim(existing.email, "Acme", %{worker: "Apiary.FirstAdmin"})
+
+      assert FirstAdmin.error_messages(changeset) == [email: "has already been taken"]
+    end
+  end
+
+  describe "refusal/1" do
+    defp form_errors(errors) do
+      types = %{email: :string, organisation_name: :string, plan: :string}
+
+      Enum.reduce(errors, Ecto.Changeset.change({%{}, types}), fn {field, message, opts}, form ->
+        Ecto.Changeset.add_error(form, field, message, opts)
+      end)
+    end
+
+    test "names the variable each error comes from, the slug taken a moment before included" do
+      changeset =
+        form_errors([
+          {:organisation_name, "should be at most %{count} character(s)", count: 120},
+          {:email, "could not be signed up just now; please try again", []},
+          {:email, "has already been taken", validation: :unsafe_unique, fields: [:email]}
+        ])
+
+      lines = changeset |> FirstAdmin.refusal() |> String.split("\n")
+
+      assert "environment variable FIRST_ADMIN_EMAIL is not valid: has already been taken." in lines
+
+      assert Enum.any?(lines, fn line ->
+               line =~ "environment variable FIRST_ORGANISATION_NAME is not valid: " and
+                 line =~ "should be at most 120 character(s)" and
+                 line =~ "could not be signed up just now; please try again"
+             end)
+    end
+
+    test "an edition's field names both variables" do
+      changeset = form_errors([{:plan, "is not offered here", []}])
+
+      assert FirstAdmin.refusal(changeset) ==
+               "environment variables FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME " <>
+                 "were refused: plan is not offered here."
+    end
+
+    test "fills in only the placeholders a message names, and never crashes on an option" do
+      changeset =
+        form_errors([
+          {:email, "is %{kind} and %{missing}", kind: :odd, fields: [:email], tuple: {1, 2}},
+          {:email, "names %{fields}", fields: [:email]}
+        ])
+
+      assert FirstAdmin.error_messages(changeset) |> Enum.sort() ==
+               Enum.sort(email: "is odd and %{missing}", email: "names [:email]")
     end
   end
 

@@ -219,7 +219,7 @@ defmodule Apiary.KeyCheck do
   def signing_message(fingerprint, recorded) do
     """
     APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is #{fingerprint}, the pinned one is #{recorded}.
-    Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=#{fingerprint} and start Qory again.\
+    Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=#{fingerprint} and start Qory Apiary again.\
     """
   end
 

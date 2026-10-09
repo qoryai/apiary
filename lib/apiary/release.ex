@@ -266,14 +266,13 @@ defmodule Apiary.Release do
   end
 
   # A changeset's errors by field, with the messages and no value: the address stays off
-  # the terminal's scrollback.
+  # the terminal's scrollback. Each message is filled in by
+  # `Apiary.FirstAdmin.error_messages/1`, which never turns an option such as a list of
+  # fields into text.
   defp changeset_errors(changeset) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
+    |> Apiary.FirstAdmin.error_messages()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Enum.map_join("; ", fn {field, messages} -> "#{field} #{Enum.join(messages, ", ")}" end)
   end
 

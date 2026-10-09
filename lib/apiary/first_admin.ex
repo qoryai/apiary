@@ -11,13 +11,15 @@ defmodule Apiary.FirstAdmin do
 
   **At boot.** `start_link/0` is the child of the application's supervisor after
   `Apiary.KeyCheck` and the edition's processes, and just before `ApiaryWeb.Endpoint`, so
-  the instance serves nothing before the claim. On an instance that has its organisation
-  (`c:Apiary.Edition.instance_organisation_id/0`), a restored one included, it does
-  nothing, whatever the settings say: the claim is the first start's alone. On an
-  instance nobody has signed up to, with both set, it claims the instance (`claim/3`);
-  with one set and the other empty, or a value the sign-up refuses, it stops the boot with
-  a message in the log that names the variable and never the value. Of two boots at once,
-  one claims, and the other's sign-up answers `{:error, :instance_claimed}`; it moves on.
+  the instance serves nothing before the claim. Both empty, it stops there, without a
+  query. Otherwise it asks whether the instance has its organisation
+  (`c:Apiary.Edition.instance_organisation_id/0`); when it has, a restored one included,
+  the step ends there: it checks neither value, creates and grants nothing, sends no mail
+  and writes no line, so the claim is the first start's alone. On an instance nobody has
+  signed up to, with both set, it claims the instance (`claim/3`); with one set and the
+  other empty, or a value the sign-up refuses, it stops the boot with a message in the log
+  that names the variable and never the value. Of two boots at once, one claims, and the
+  other's claim answers `{:error, :instance_claimed}`; it moves on.
 
   **The claim.** `claim/3` is the instance's first sign-up,
   `Apiary.Organisations.sign_up_user/3` with `first_only: true` and `actor: :instance`, so
@@ -34,6 +36,10 @@ defmodule Apiary.FirstAdmin do
   alias Apiary.Organisations
 
   @origin %{worker: "Apiary.FirstAdmin"}
+
+  # The sign-up's refusal when every slug picked for the organisation was taken a moment
+  # before (`Apiary.Organisations.sign_up_user/3`), on its form's `email`.
+  @slug_taken "could not be signed up just now; please try again"
 
   @doc "Starts once, as a worker the supervisor does not restart."
   @spec child_spec(term) :: Supervisor.child_spec()
@@ -106,7 +112,10 @@ defmodule Apiary.FirstAdmin do
   log-in link, sent as the sign-up page sends it. `{:ok, user, :sent}`, or
   `{:ok, user, :not_sent}` when the mail did not go out; `{:error, :instance_claimed}`
   once the instance has its organisation, a sign-up that came first included; or
-  `{:error, changeset}`, the sign-up form's, for an address or a name it refuses.
+  `{:error, changeset}`, the sign-up form's, for an address or a name it refuses. A
+  refusal with the instance claimed by then is `{:error, :instance_claimed}` too: the
+  account a sign-up a moment before created makes the address taken before this sign-up's
+  transaction starts, which would otherwise answer it.
   """
   @spec claim(String.t(), String.t(), map) ::
           {:ok, %User{}, :sent | :not_sent}
@@ -117,10 +126,40 @@ defmodule Apiary.FirstAdmin do
            actor: :instance,
            origin: origin
          ) do
-      {:ok, %{user: user}} -> {:ok, user, send_log_in_link(user)}
-      {:error, _reason} = error -> error
+      {:ok, %{user: user}} ->
+        {:ok, user, send_log_in_link(user)}
+
+      {:error, %Ecto.Changeset{}} = error ->
+        if Apiary.Edition.instance_organisation_id(), do: {:error, :instance_claimed}, else: error
+
+      {:error, :instance_claimed} = error ->
+        error
     end
   end
+
+  @doc """
+  error_messages/1 is each error of `changeset` as `{field, text}`, in its order, the
+  text with the placeholders its message names filled in from the error's options: a
+  string as it is, a number or an atom as text, anything else inspected. An option the
+  message does not name is left out, so a list or a tuple among them is never a crash.
+  """
+  @spec error_messages(Ecto.Changeset.t()) :: [{atom, String.t()}]
+  def error_messages(%Ecto.Changeset{errors: errors}) do
+    for {field, {message, opts}} <- errors, do: {field, error_text(message, opts)}
+  end
+
+  defp error_text(message, opts) do
+    Regex.replace(~r/%{(\w+)}/, message, fn placeholder, key ->
+      case Enum.find(opts, fn {name, _value} -> Atom.to_string(name) == key end) do
+        {_name, value} -> option_text(value)
+        nil -> placeholder
+      end
+    end)
+  end
+
+  defp option_text(value) when is_binary(value), do: value
+  defp option_text(value) when is_number(value) or is_atom(value), do: to_string(value)
+  defp option_text(value), do: inspect(value)
 
   @doc """
   message/2 is what a claim says once it is made: the account's id, never its address or
@@ -168,6 +207,8 @@ defmodule Apiary.FirstAdmin do
     end
   rescue
     _exception -> :not_sent
+  catch
+    _kind, _reason -> :not_sent
   end
 
   # A setting as config/runtime.exs left it, trimmed; nil when unset or empty.
@@ -191,21 +232,39 @@ defmodule Apiary.FirstAdmin do
     """
   end
 
-  # A line for each variable whose value the sign-up refused, with the sign-up's own
-  # messages and never the value: the address stays out of the log.
-  defp refusal(changeset) do
+  @doc """
+  refusal/1 is what the log says when the sign-up refuses the settings: a line for each
+  variable whose value it refused, with the sign-up's own messages and never the value, so
+  the address stays out of the log. An error on a field of an edition's, which neither
+  variable holds, names both.
+  """
+  @spec refusal(Ecto.Changeset.t()) :: String.t()
+  def refusal(changeset) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
-    |> Enum.sort_by(fn {field, _messages} -> field != :email end)
-    |> Enum.map_join("\n", fn {field, messages} ->
-      "environment variable #{variable(field)} is not valid: #{Enum.join(messages, "; ")}."
+    |> error_messages()
+    |> Enum.map(fn {field, text} -> {variable(field, text), text} end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.sort_by(fn {variable, _texts} -> variable_order(variable) end)
+    |> Enum.map_join("\n", fn
+      {{:other, field}, texts} ->
+        "environment variables FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME were refused: " <>
+          "#{field} #{Enum.join(texts, "; ")}."
+
+      {variable, texts} ->
+        "environment variable #{variable} is not valid: #{Enum.join(texts, "; ")}."
     end)
   end
 
-  defp variable(:organisation_name), do: "FIRST_ORGANISATION_NAME"
-  defp variable(_email), do: "FIRST_ADMIN_EMAIL"
+  # The variable an error of the sign-up form comes from. The form puts an error of the
+  # organisation's name or slug on `organisation_name`, and the refusal of a slug taken
+  # by a sign-up at the same moment on `email`, where the sign-up page shows it; that one
+  # is the organisation's name's too.
+  defp variable(:organisation_name, _text), do: "FIRST_ORGANISATION_NAME"
+  defp variable(:email, @slug_taken), do: "FIRST_ORGANISATION_NAME"
+  defp variable(:email, _text), do: "FIRST_ADMIN_EMAIL"
+  defp variable(field, _text), do: {:other, field}
+
+  defp variable_order("FIRST_ADMIN_EMAIL"), do: 0
+  defp variable_order("FIRST_ORGANISATION_NAME"), do: 1
+  defp variable_order({:other, field}), do: {2, field}
 end
