@@ -499,7 +499,9 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   defp backoff(attempt), do: min(1000 * Integer.pow(2, attempt), @backoff_max)
 
   # Once a third of the backlog is in, a new run starts on another instance of the node:
-  # it fetches its configuration, then sends its ping, taking a 429 as any batch does.
+  # it fetches its configuration, then sends its ping. The ping spends the key's events
+  # bucket, which the flush keeps empty, so it may be refused 429 first; it is sent again
+  # after Retry-After, as any batch is, to reach the instance limit's answer.
   defp probe(%{stats: stats} = flush, after_batches) do
     if :counters.get(stats.counters, index(:accepted)) < after_batches do
       Process.sleep(10)
