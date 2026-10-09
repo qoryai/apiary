@@ -506,7 +506,7 @@ nothing is boxed inside a row.
   secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
   (revoked, suspended) is `row-off`, its title muted.
 - **A state is said only when it is not the usual one.** An active key, a member in use,
-  a run that succeeded say nothing (a screen reader hears the word); a suspended
+  a run that completed say nothing (a screen reader hears the word); a suspended
   member, a revoked key say so in words (`<.state_word>`), with a dot and the
   text colour when the state needs someone. A pill is for a state of at most two words
   that needs someone, and never on every row.
@@ -599,10 +599,15 @@ version. Only the version in force is exported; another version's path sends on 
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
-  other is. An Ended run counts with the runs that ended well, never under Ended badly,
-  and the Filter menu's State section lists Ended with them. A view's own filter is not
-  repeated as a token. The number that matches is a line over the list, only when the
-  list is narrowed ("87 runs match"), in the list's status region (`role="status"`,
+  other is. Ended badly counts the runs that failed or were lost. The Filter menu's State
+  section lists the six states under their four families, each heading a checkbox for the
+  whole family: Alive (Pending, Running), Ended well (Completed), Cancelled (Cancelled) and
+  Ended badly (Failed, Lost). A cancelled run counts neither as ended well nor as ended
+  badly. A filter of whole families says their words ("ended badly"), and an empty list
+  of one family says so ("No runs cancelled."). A run stored under a state's older name
+  counts and lists as its new state. A view's own filter is not repeated as a token. The
+  number that matches is a line over the list, only when the list is narrowed ("87 runs
+  match"), in the list's status region (`role="status"`,
   `.q-status`), which is always rendered, empty and taking no place otherwise, so a
   screen reader hears what a view, a filter or a search left; an empty list says its
   empty state's title there too.
@@ -610,7 +615,8 @@ version. Only the version in force is exported; another version's path sends on 
   (`repo:`, `state:`, `runtime:`, `host:`, `node:`, `started:>2026-09-01`, `denied:yes`;
   `decision:`, `tools:`, `seen:` on Network access) become the URL's parameters and show
   as tokens, and the other words are the free text, `q`, matched as text without regard to
-  case (a run's id, title or target; a destination's host or path). A word it cannot read is said in a notice, never dropped in silence. On Network
+  case (a run's id, title or target; a destination's host or path). `state:` takes a
+  state or a family (`state:completed`, `state:ended_badly`). A word it cannot read is said in a notice, never dropped in silence. On Network
   access the field suggests the hosts in the list as one types (a combobox, at most 8,
   from the host filter's query, narrowed as the list is); choosing one adds `host:`.
 - **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
@@ -628,7 +634,8 @@ version. Only the version in force is exported; another version's path sends on 
 - **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. Ended shows its word and a grey dot. A run with no session
+  when there are any. Completed is its green dot alone, the word for a screen reader;
+  Cancelled shows its word, muted, and a grey dot. A run with no session
   says "no session" in the Runtime column, muted as the column is, and "n/a" as its Host.
   What the run says it is about is a muted line under them, only when it names a kind or a
   subject: the kind, then up to two subjects, each its type and ref
@@ -712,7 +719,8 @@ words say so. The workspace's window is **fourteen days**:
   having allowed it since, and its "and n more" says so.
 - **The Policy page's** fact on the mode card and the enforce preview read fourteen days,
   so "See them" lands on the same numbers; a rule's use is its last fourteen days.
-- **The targets index** counts runs, the share that ended well and denied attempts over
+- **The targets index** counts runs, the share that ended well of those that ended well or
+  badly (a cancelled run is in neither), and denied attempts over
   the same fourteen days, each column saying so; a **target's page** counts its denied
   destinations as Network access does (host, port and path), so its card and its Network
   access tab agree.
@@ -725,8 +733,8 @@ run is listed for seven days, a key is idle after thirty.
 The workspace overview (`ApiaryWeb.WorkspaceLive.Overview`, `OverviewComponents`) answers
 what needs the reader, then what their agents did, and never grows with the data:
 
-- **The summary**: alive now, runs, runs that ended badly and denied attempts over
-  fourteen days, each a link to the list it counts over the same days.
+- **The summary**: alive now, runs, runs that ended badly (failed or lost) and denied
+  attempts over fourteen days, each a link to the list it counts over the same days.
 - **To review**: one line an item, on columns the list holds (each row a subgrid,
   so they line up whatever an act says), its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
@@ -738,14 +746,24 @@ what needs the reader, then what their agents did, and never grows with the data
   page to one who may change it there, and a lock with the reason to the rest. A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
-  what is read. A lost run offers Open, its page: Qory Apiary records what a run reports
-  and never ends a run it did not start; it starts none today. The row leaves when the
-  run's start or exit arrives, or a heartbeat that counts within three intervals of its
-  arrival (a backlog's old heartbeats do not), or when its seven days pass.
+  what is read. A lost run says how it was lost: "Lost, never posted its exit" when the
+  lost-run check marked it, with the tip "Nothing was heard for three heartbeat intervals.
+  The run may still be going; the record is not.", and "Lost, stopped responding" or
+  "Lost, end not recorded" when its exit said so, with the tip "The run's end was not
+  recorded; how it went is not known." It offers Open, its page: Qory Apiary records what
+  a run reports and never ends a run it did not start; it starts none today. A run the
+  check marked leaves when its start arrives, an exit that does not say it was lost, or a
+  heartbeat that counts within three intervals of its arrival (a backlog's old heartbeats
+  do not), and then says what became of it ("Completed.", "Failed.", "Cancelled.",
+  "Heartbeats resumed."); a run whose exit said it was lost stays. Either leaves when its
+  seven days pass.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
-  `DaysChart` hook measured, with its table twin a text action away.
+  `DaysChart` hook measured, with its table twin a text action away: Day, Runs, Ended
+  well, Cancelled and Denied attempts. Each day is said as its runs, of them how many
+  ended well, were cancelled and ended badly (today: alive or ended badly), and its denied
+  attempts.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
-  word only when it is running or ended badly), a sparkline of its days and its denials.
+  word unless it completed or is pending), a sparkline of its days and its denials.
 - **Guard**: a few lines of key and value, each with a muted detail and one link that
   says what it does: the policy's mode and version, the targets with rules of their own
   (Review), retention (Change, to Workspace settings › Runs).
@@ -778,7 +796,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 - **The notation.** A target is its path in mono (`<.target_name>`); its system goes
   before it, faint, only where the same path is in another system of the workspace
   (`Apiary.Runs.shared_paths/2`), and always on its own header and crumb. A run's state
-  is a dot and, when the run needs a look, its word (`<.state_mark>`), never a pill.
+  is a dot and its word (`<.state_mark>`), the dot alone for a run that completed, never a
+  pill.
 - **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
   is (Lists, above): views with the workspace's counts (All, Active this week, Never ran),
   one search, one Filter menu (System, Activity, Policy, Pinned) and Sort (Last run, Name,
@@ -787,9 +806,10 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   `activity:`, `is:pinned`; `ApiaryWeb.TargetLive.Query`): the menu writes it, and one
   the reader types becomes a token on Enter, never half typed. All of it is the URL; a
   value the page does not know is left out. A row is one line on the row spec: the
-  reader's ★, the path the title, the last run as a dot and a time (its word when it is
-  running or went badly), a 14-day sparkline of runs with their number, the share that
-  ended well (lifted to the text colour below 80 %; red is for denials only), the denied
+  reader's ★, the path the title, the last run as a dot and a time (its word unless it
+  completed), a 14-day sparkline of runs with their number, the share that ended well of
+  those that ended well or badly (lifted to the text colour below 80 %; red is for denials
+  only), the denied
   attempts of the same fourteen days in red when there are any, and the policy mode only where the target sets its own. Pages of 50.
   Below 600 px of table the last run is a line under the path. It reads in one query
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
@@ -1331,16 +1351,17 @@ page has no breadcrumb of its own.
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
   the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each
-  after a faint middle dot, why it ended in words where they say more than the state
-  (Ended · quiet for 30 minutes, but not "timed out" beside Timed out), how alive the run
-  is while it runs, the target (its page), the runtime, the host, when it
+  after a faint middle dot, why it ended in words (Cancelled · time limit reached,
+  Completed · all checks passed), the runtime's exit for a session's run that failed with
+  no words ("exit 1", "SIGKILL"), how alive the run is while it runs, the target (its
+  page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: the ⋯ menu (Copy run id, Raw log, Download log), and no
   Close: Qory Apiary records what a run reports and never ends a run it did not start; it
   starts none today. The seven
-  cells of v1 are the rail's. A run that ended badly says how under the meta line, in one
-  cut line whole on hover: the last result of its timeline that was no success, else its
-  last failed turn or tool, with "Jump to it", the timeline at that item.
+  cells of v1 are the rail's. A run that ended badly (Failed or Lost) says how under the
+  meta line, in one cut line whole on hover: the last result of its timeline that was no
+  success, else its last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal, Network access and Details (from 1440 px only on
   Terminal and on Details itself, where there is no rail), stick under the top bar; each is a live action of the one LiveView, so a tab is a patch.
 - **The Details rail** is key and value lines under small headings (About, Run, Labels,
@@ -1369,19 +1390,41 @@ page has no breadcrumb of its own.
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
-- **The end reason** is in words (`RunComponents.reason_words/1`), the same in the meta
-  line and under State in the rail: timed out, gateway lost, session lost, issuer
-  unreachable, issuer answer invalid, quiet for a period, run credential expired, and
-  the issuer reported the run ended
-  ([contract-assumptions.md](contract-assumptions.md), How a run ends). The quiet period
-  reads in whole hours, else whole minutes, else seconds: 1800 seconds is "quiet for 30
-  minutes". The meta line leaves out the exit where it reads as the words ("gateway
-  lost").
+- **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
+  the meta line, under State in the rail, in the timeline's last item and in the runs
+  list's preview ([contract-assumptions.md](contract-assumptions.md), How a run ends):
+  "time limit reached", "no activity for 30 minutes", "permission to run expired",
+  "stopped, no outcome given", "stopped responding", "end not recorded", "events
+  refused", "couldn't check whether the run may go on: no answer", "couldn't check
+  whether the run may go on: unreadable answer", and for a run that did not start "did
+  not start" with the refusal's code ("did not start: image_unknown"). None names who or
+  what ended the run. Any other code is the run's starter's, shown as given with spaces
+  for underscores: "no longer needed". The quiet period reads in whole hours, else whole
+  minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
+- **The rail's State and Exit.** State is the state's dot and word, "Ping only" under
+  Pending, and the end reason's words under it. Exit, on a session's run whose exit was
+  recorded, whatever its state, is the runtime's exit as recorded, in mono: the signal
+  ("SIGTERM"), else the code ("0", "1"), and "not recorded" for `-1` without a signal,
+  the placeholder of an exit that holds no exit status of the runtime's.
+- **The timeline's last item** is one kind for every end: "Run ended", then the end
+  reason's words, else the runtime's exit ("exit 1", "SIGKILL"; nothing for `-1`), then
+  how long the run ran. Its mark is the state's: a check for Completed, a grey stop for
+  Cancelled, an amber signal-slash for Lost and a red x-mark for Failed. A run that did
+  not start ends on "Run did not start" and the refusal's code in mono, with the red
+  x-mark.
+- **The announcer** (`#run-announcer`) says a change of state at once: "Run started.";
+  "Run completed after 12 m 4 s.", or "Run completed."; "Run failed with exit 1.", "Run
+  failed with SIGKILL.", or "Run failed." where the header says no exit; "Run did not
+  start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason;
+  "Run lost: stopped responding." for a run whose exit said it was lost, and "Run lost.
+  No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
+  when a quiet run is heard again. A state stored under an older name is said as its new
+  state.
 - **A run with no session**, one a gateway opened for a program that reports none
   (`opened_by` `gateway`, `Apiary.Runs.Run.no_session?/1`), has the same page with what
-  the record lacks left out. Its header says its state, Ended for a run that went quiet,
-  whose run credential expired or whose issuer reported it ended, and the reason's words
-  after it, with no runtime, no host and no exit. The tabs are as on any run: Timeline,
+  the record lacks left out. Its header says its state and the end reason's words after
+  it, as any run's does (Cancelled · no activity for 30 minutes), with no runtime, no
+  host and no exit. The tabs are as on any run: Timeline,
   Terminal, Network access and Details.
   - **Terminal** is the terminal itself, as on a session's run, its bar, its dark screen
     and its foot (Ended · 0 B), empty, with a note in the middle of the screen in the
@@ -1392,9 +1435,8 @@ page has no breadcrumb of its own.
     terminal, below).
   - **Timeline** has no notice of its own; the lane key, Main session, and Connections
     inline are as on any run. Run started reads "by a gateway with no session". The last
-    item of a run that ended quiet, with its run credential expired or by its issuer
-    reads "Run ended", the reason's words and the duration, with a neutral stop mark;
-    every other reason keeps "Run exited".
+    item is "Run ended", the end reason's words and the duration, with its state's mark,
+    as on any run.
   - **The Details rail**'s Run section: State with the reason's words under it; Opened
     by, "gateway (no session)", second; Key and Node; then Forager, its version and the
     contract's (`0.10.0 · contract 1`), the gateway's; and Instance. There is no Exit,

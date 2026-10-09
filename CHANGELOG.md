@@ -30,12 +30,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   timeline, the terminal, every connection with its decision and rule, and how the run
   ended.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
-  status. When it was quiet, its run credential expired or its issuer reported it ended, it
-  is Ended, a grey dot and the word, or the grey dot without the word, as a run that
-  succeeded has its dot alone, for the repositories list's last run and in a repository's
-  Last runs, counted with the runs that ended well;
-  the runs list's state filter offers it, and its Runtime column says "no session". Its
-  page says why it ended in words after the state; its Terminal tab is the terminal, empty,
+  status. The runs list's Runtime column says "no session". Its page says how it ended in
+  words after its state, as every run's does; its Terminal tab is the terminal, empty,
   with a note that the run has no session, and search, follow, wrap, the text size and the
   download disabled; its timeline starts "by a gateway with no session"; and its Details
   say what opened it and which Forager reported it, with no
@@ -43,21 +39,35 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   gateway's node and instance, and its Host is the agent's machine.
 - Qory Apiary records what a run reports and never ends a run it did not start; it starts
   none today. No run offers Close, on its page or as a lost run on the Overview, and a run
-  has no Closed state: it is alive, ended well (Succeeded, Ended) or ended badly (Failed,
-  Timed out, Lost). The events endpoint answers `410` only to a run whose events retention
-  has pruned.
-- How a run ended, in words, under State in the run's rail, and after its state on the
-  run page where they say more than the state: timed out, gateway lost, session lost,
-  quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
-  reported the run ended. A run's timeline ends "Run ended", why in words and how long it
-  ran, when it was quiet, its run credential expired or its issuer reported it ended,
-  whatever its state, and "Run exited" otherwise. A session run's Exit in the rail says a
-  lost gateway or session, an expired run credential and the issuer's end in those words,
-  never as `-1`, and the header after its state adds no exit for them.
-- A run the gateway ended because it could not reach the issuer, or the issuer gave it no
-  valid answer, is Failed, on a session's run and on one a gateway opened, and says so in
-  words: issuer unreachable, or issuer answer invalid, after its state, under State in the
-  rail, as a session run's Exit and in the timeline's "Run exited", never as `-1`.
+  has no Closed state. The events endpoint answers `410` only to a run whose events
+  retention has pruned.
+- Six states of a run, in four families: alive (Pending, Running), ended well (Completed),
+  cancelled (Cancelled) and ended badly (Failed, Lost). A cancelled run was stopped
+  before it said how it went, and counts neither as ended well nor as ended badly: the
+  runs list's Ended badly view and the Overview's Ended badly count Failed and Lost, the
+  share that ended well leaves cancelled runs out, the Filter menu's State section has a
+  Cancelled heading, and the Overview's chart table a Cancelled column. Completed is a
+  green check, Cancelled a grey stop, Failed a red x-mark and Lost an amber
+  signal-slash.
+- How a run ended, by one rule for a session's run and a run a gateway opened alike, from
+  its exit's `state` (`succeeded`, `failed` or `cancelled`) and its open `reason`:
+  `succeeded` is Completed, `cancelled` Cancelled and `failed` Failed, but a failed exit
+  with `session_lost` or `gateway_lost` is Lost, for good, and a failed exit an older
+  Forager wrote when it stopped a run itself (`timeout`, `quiet`, `credential_expired`,
+  `run_ended_at_issuer`) is Cancelled. An exit without a `state` is read by its reason.
+  A run that did not start, `dev.qory.run.refused`, is Failed, "did not start" with the
+  refusal's code, and never turns Lost.
+- How a run ended, in words, after its state in the run page's header, under State in its
+  rail, in its timeline's last item, "Run ended", and in the runs list's preview: "time
+  limit reached", "no activity for 30 minutes" (or hours, or seconds), "permission to run
+  expired", "stopped, no outcome given", "stopped responding", "end not recorded",
+  "couldn't check whether the run may go on: no answer" (or "unreadable answer"), and any
+  other code as the run's starter gave it, with spaces for underscores ("no longer
+  needed"). An exit stored under one of Forager's earlier names reads in the words of the
+  new one. A session run's Exit in the rail is the runtime's exit as recorded, "not
+  recorded" for `-1`; the page announces a cancelled or lost end in the same words ("Run
+  cancelled: time limit reached."); and a run whose exit said it was lost lists on the
+  Overview as "Lost, stopped responding" or "Lost, end not recorded".
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
@@ -335,6 +345,11 @@ its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs
 `20261009230000_record_the_instances_keys` adds `instance_settings.encryption_secret_check`
 (32 bytes) and `instance_settings.signing_key_fingerprint` (22 characters), NULL until the
 first boot after it records them.
+`20261009233000_allow_the_six_states_of_a_run` lets `runs.state` be `completed` and
+`cancelled`, beside the names it held, and rewrites no row: a run stored `succeeded` reads
+and counts as Completed, and one stored `timed_out` or `ended` as Cancelled. Rolled back, a
+completed run is `succeeded`, and a cancelled one `timed_out` when it reached its time limit,
+else `ended`.
 
 ### Upgrading
 
