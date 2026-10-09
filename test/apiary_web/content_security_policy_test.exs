@@ -24,6 +24,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   # The storybook warns of its stylesheet, which a test checkout has not built.
   @moduletag :capture_log
+  # The documentation is served from an empty directory of the test's own, built or not.
+  @moduletag :tmp_dir
 
   import Phoenix.LiveViewTest
 
@@ -47,14 +49,16 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
 
   # Routes that answer 404 to anyone here, each with the reason.
   @not_found %{
-    "/docs" => "the documentation is not built in a test checkout",
+    "/docs" => "the documentation's directory is the test's own, and empty",
     "/docs/*path" => "a path under /docs that has no file"
   }
 
   # The query a route's page needs to draw.
   @query %{"/dev/storybook/visual_tests" => "?start=a&end=z"}
 
-  setup do
+  setup %{tmp_dir: tmp_dir} do
+    Application.put_env(:apiary, :docs_root, tmp_dir)
+    on_exit(fn -> Application.delete_env(:apiary, :docs_root) end)
     Apiary.EditionKit.hide_instance_organisation()
     :ok
   end
