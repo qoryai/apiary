@@ -31,8 +31,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   ended.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. When it was quiet, its run credential expired or its issuer reported it ended, it
-  is Ended, a grey dot and the word, or the dot alone, as Succeeded is, for the repositories
-  list's last run and in a repository's Last runs, counted with the runs that ended well;
+  is Ended, a grey dot and the word, or the grey dot without the word, as a run that
+  succeeded has its dot alone, for the repositories list's last run and in a repository's
+  Last runs, counted with the runs that ended well;
   the runs list's state filter offers it, and its Runtime column says "no session". Its
   page says why it ended in words after the state; its Terminal tab is the terminal, empty,
   with a note that the run has no session, and search, follow, wrap, the text size and the
