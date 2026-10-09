@@ -265,13 +265,23 @@ defmodule ApiaryWeb.LayoutsTest do
                "#sidebar .q-sidebar-foot #brand-menu.dropdown-top[phx-hook='Menu'] button#brand-menu-button[aria-haspopup='menu']"
              )
 
+      # The button names the edition and nothing else; the version is the Changelog
+      # line's, faint at its right.
+      product = ApiaryWeb.Edition.product_name()
+      assert text(html, "#brand-menu-button") == product
+      assert has_element?(view, "#brand-menu-button[aria-label='#{product} menu']")
+      assert has_element?(view, "#brand-menu ul[role='menu'][aria-label='#{product}']")
+      refute has_element?(view, "#brand-menu-button #brand-version")
+
       version = :apiary |> Application.spec(:vsn) |> List.to_string()
-      assert has_element?(view, "#brand-menu-button #brand-version", version)
 
       assert has_element?(
                view,
-               "#brand-menu-button[aria-label='Qory Apiary menu, version #{version}']"
+               "#brand-menu-changelog #brand-version.q-brand-version[title='Version #{version}']",
+               version
              )
+
+      assert text(html, "#brand-menu-changelog") == "Changelog #{version}"
 
       assert has_element?(view, "#brand-menu a#brand-menu-docs[role='menuitem'][href='/docs']")
       # Instance settings is only for whoever may open a section of the Instance level.
@@ -1388,6 +1398,37 @@ defmodule ApiaryWeb.LayoutsTest do
       refute html =~ "dropdown-top"
       assert html =~ ~s(id="brand-menu-docs")
       assert html =~ "hero-chevron-down-micro"
+
+      # The same button and Changelog line as the sidebar's.
+      product = ApiaryWeb.Edition.product_name()
+      assert text(html, "#brand-menu-button") == product
+      assert attribute(html, "#brand-menu-button", "aria-label") == "#{product} menu"
+      assert text(html, "#brand-menu-changelog") =~ ~r/^Changelog \S+$/
+      assert count(html, "#brand-menu-button #brand-version") == 0
+    end
+
+    test "the Qory Apiary menu's Changelog line reads Changelog alone without a version" do
+      html =
+        render_component(&ApiaryWeb.Layouts.brand_menu/1, version: nil, direction: "up")
+
+      assert text(html, "#brand-menu-changelog") == "Changelog"
+      assert count(html, "#brand-version") == 0
+      assert text(html, "#brand-menu-button") == ApiaryWeb.Edition.product_name()
+
+      html =
+        render_component(&ApiaryWeb.Layouts.brand_menu/1, version: "0.1.0", direction: "up")
+
+      assert text(html, "#brand-menu-changelog") == "Changelog 0.1.0"
+      assert attribute(html, "#brand-menu-changelog #brand-version", "title") == "Version 0.1.0"
+    end
+
+    test "folded, the sidebar's foot shows the mark alone, and the open menu its version" do
+      css = File.read!(Path.expand("../../../assets/css/app.css", __DIR__))
+
+      assert css =~
+               ~r/\[data-sidebar="collapsed"\] :is\(\.q-brand-name, \.q-brand-chev\) \{\s*display: none;/
+
+      refute css =~ ~r/\[data-sidebar="collapsed"\][^{]*\.q-brand-version/
     end
   end
 

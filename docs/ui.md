@@ -103,14 +103,15 @@ page, the one the person came from (Two levels, below).
   bare Settings, and so its tooltip while folded; the current entry on every page of them
   (General, or an entry of the section `:settings`, such as People), marked as their
   parent (The current entry, above),
-  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
-  version, opening upward to what is about the product rather than the person: first, only
+  then, under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark and the edition's
+  name (`c:ApiaryWeb.Edition.product_name/0`, Qory Apiary in the core's), no version,
+  opening upward to what is about the product rather than the person: first, only
   for whoever may open a section of the Instance level
   (`ApiaryWeb.Layouts.instance_sections/1`, read with the navigation's counts), **Instance
   settings** (`#brand-menu-instance`), leading to the first, under it a rule; then Docs,
-  Changelog (on an instance with every feature), a rule and Source on GitHub; and at the
-  right of it the fold. Folded, and from the bar on a page without a sidebar, it is the
-  same menu.
+  Changelog with the running version faint at its right (`#brand-version`), a rule and
+  Source on GitHub; and at the right of it the fold. Folded, and from the bar on a page
+  without a sidebar, it is the same menu.
 - **Two levels.** The sidebar is the level's, a workspace's or an organisation's, on every
   page of the level, its settings included. A page of a level's settings, of Your settings
   or of the Instance opens the level's sections as a **second column** beside the sidebar

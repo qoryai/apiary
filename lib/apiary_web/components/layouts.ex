@@ -1870,18 +1870,23 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
+  @doc """
+  The product's menu, on the brand: the mark and the edition's name
+  (`c:ApiaryWeb.Edition.product_name/0`), opening upward from the sidebar's foot and
+  downward from the bar when there is no sidebar. It holds what is about the product
+  itself, not about the person: first, for whoever may open a section of the Instance
+  level (`instance_path`, its first), the instance's own settings, Instance settings, and
+  a rule; then the docs this instance serves, its changelog with the running version
+  (`version`, none when nil) faint at the right, and the source. Folded, the sidebar shows
+  the mark alone, still the menu's button.
+  """
   attr :version, :any, required: true
   attr :direction, :string, required: true, values: ~w(up down)
   attr :instance_path, :string, default: nil
 
-  # The product's menu, on the brand: the mark and "Qory Apiary" with the version at the
-  # right, opening upward from the sidebar's foot and downward from the bar when there is
-  # no sidebar. It holds what is about Qory Apiary itself, not about the person: first, for
-  # whoever may open a section of the Instance level (`instance_path`, its first), the
-  # instance's own settings, Instance settings, and a rule; then the docs this instance
-  # serves, its changelog and the source. Folded, the sidebar shows the mark alone, still
-  # the menu's button.
-  defp brand_menu(assigns) do
+  def brand_menu(assigns) do
+    assigns = assign(assigns, :product, ApiaryWeb.Edition.product_name())
+
     ~H"""
     <div
       id="brand-menu"
@@ -1895,23 +1900,11 @@ defmodule ApiaryWeb.Layouts do
         class="q-brand-btn"
         aria-haspopup="menu"
         aria-expanded="false"
-        aria-label={
-          if @version,
-            do: gettext("Qory Apiary menu, version %{version}", version: @version),
-            else: gettext("Qory Apiary menu")
-        }
+        aria-label={gettext("%{product} menu", product: @product)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.logo_mark class="size-[18px]" />
-        <span class="q-brand-name">Qory Apiary</span>
-        <span
-          :if={@version}
-          id="brand-version"
-          class="q-brand-version"
-          title={gettext("Version %{version}", version: @version)}
-        >
-          {@version}
-        </span>
+        <span class="q-brand-name">{@product}</span>
         <.icon
           name={if @direction == "up", do: "hero-chevron-up-micro", else: "hero-chevron-down-micro"}
           class="q-brand-chev size-4"
@@ -1923,7 +1916,7 @@ defmodule ApiaryWeb.Layouts do
           if(@direction == "up", do: "left-0 bottom-full mb-1.5", else: "left-0 top-full mt-1.5")
         ]}
         role="menu"
-        aria-label="Qory Apiary"
+        aria-label={@product}
       >
         <li :if={@instance_path} role="none">
           <.link href={@instance_path} role="menuitem" tabindex="-1" id="brand-menu-instance">
@@ -1945,6 +1938,14 @@ defmodule ApiaryWeb.Layouts do
             id="brand-menu-changelog"
           >
             <.icon name="hero-list-bullet" class="size-4" /> {gettext("Changelog")}
+            <span
+              :if={@version}
+              id="brand-version"
+              class="q-brand-version"
+              title={gettext("Version %{version}", version: @version)}
+            >
+              {@version}
+            </span>
           </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
@@ -1991,7 +1992,7 @@ defmodule ApiaryWeb.Layouts do
   defp pins(_counts, _organisation, _workspace), do: []
 
   # The running version, from the application's spec. Nil before the spec exists
-  # (a clean compile), and then the brand menu shows none.
+  # (a clean compile), and then the brand menu's Changelog line shows none.
   defp version do
     case Application.spec(:apiary, :vsn) do
       nil -> nil
