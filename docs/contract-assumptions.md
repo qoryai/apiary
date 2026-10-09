@@ -423,7 +423,7 @@ arrival of its `run.started`, and a `pending` run from when the workspace first 
 it. A heartbeat counts by its own `time`, corrected by the run's clock offset (the
 smallest arrival less `time` over the run's heartbeats, and for a run with no session its
 ping's), plus 300 seconds, and never after its arrival, as the contract's liveness for the
-server says; a run's first heartbeat counts at its arrival. Only the server's clock is
+server says; a run's first heartbeat with no offset before it counts at its arrival. Only the server's clock is
 compared.
 
 Every event of a run reaches the server from one gateway, the node toward the server: a

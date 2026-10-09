@@ -177,7 +177,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - A heartbeat counts by its own time, corrected by its run's clock offset, within 300
   seconds and never after its arrival, so a gateway's record sent after an outage revives
   no lost run and holds no instance slot: the run stays lost until its exit arrives, and
-  the access key's Last heartbeat says when its heartbeats were recorded.
+  the access key's Last heartbeat says when its heartbeats were recorded. Two limits stay,
+  both brief: after an outage shorter than about 6½ minutes, a run can still look alive
+  for a moment; and a session's run whose heartbeats all arrive late, because the outage
+  began before its first one, still comes back for a few minutes.
 - The console's shell: a top bar that says where a page is, the organisation first, and
   switches to any organisation or workspace with a search, Search or jump to (⌘K) for
   pages, repositories, runs and places, New, which offers a workspace's page a new

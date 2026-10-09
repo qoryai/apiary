@@ -17,12 +17,13 @@ defmodule Apiary.Runs.Liveness do
   (`heard_at/3`); the fold keeps that as the run's `last_heartbeat_at`. The offset,
   `clock_offset_ms`, is the smallest arrival less own time over the run's heartbeats,
   and for a run with no session, which the gateway beats for, its ping's
-  (`Apiary.Runs.Fold`). So a backlog of old heartbeats delivered late holds no run alive,
-  a machine whose clock is off by a constant is not lost for it, and a heartbeat dated in
-  the future holds nothing alive. A run's first heartbeat with no offset before it counts
-  at its arrival. A clock set back by more than the tolerance makes the heartbeats after
-  it count as old. The arrival of the `run.started` is its `received_at`. Only this
-  server's clock is compared with `now`.
+  (`Apiary.Runs.Fold`). So a backlog of heartbeats delivered late holds no run alive,
+  unless they were recorded within the tolerance and three intervals of their arrival, or
+  the run had no offset before them, when its first heartbeat counts at its arrival; a
+  machine whose clock is off by a constant is not lost for it, and a heartbeat dated in
+  the future holds nothing alive. A clock set back by more than the tolerance makes the
+  heartbeats after it count as old. The arrival of the `run.started` is its
+  `received_at`. Only this server's clock is compared with `now`.
 
   **The sweep.** The receiver projects a batch in a task after it has answered. If that
   task dies, or the node stops between the commit and the task, the events stay
