@@ -268,7 +268,9 @@ defmodule ApiaryWeb.UserAuth do
   # they do not reach, answers as a path that does not exist; the pipeline's
   # `fetch_path_scope/2` has already answered so for the first render, and this answers
   # for a live navigation. An organisation's page carries the workspace the session
-  # remembers, while the user reaches it, or the first they reach. Their ids go into the
+  # remembers, while the user reaches it, else the one they last used there, else the first
+  # they reach; a workspace's page is recorded as the one they last used in its
+  # organisation (`Apiary.Organisations.remember_workspace/1`). Their ids go into the
   # Logger metadata of the LiveView's process (`Apiary.LogMetadata`). An organisation
   # where the user's membership is suspended sends them to their organisations, and says
   # why, rather than that it does not exist.
@@ -281,6 +283,11 @@ defmodule ApiaryWeb.UserAuth do
          ) do
       {:ok, scope} ->
         LogMetadata.put(scope)
+
+        # A live navigation to a workspace's page is a use of it too; the first render's
+        # was recorded by `fetch_path_scope/2`.
+        if Phoenix.LiveView.connected?(socket) and is_binary(params["workspace"]),
+          do: Organisations.remember_workspace(scope)
 
         {:cont,
          socket
@@ -753,8 +760,10 @@ defmodule ApiaryWeb.UserAuth do
   Plug for the pages under `/:org/…` and `/:org/:workspace/…`: loads the organisation
   and the workspace their path names into the scope
   (`Apiary.Organisations.resolve_scope/4`), an organisation's page the workspace the
-  session remembers while the user reaches it, puts their ids into the request's Logger
-  metadata (`Apiary.LogMetadata`) and remembers the workspace for `signed_in_path/1`. A
+  session remembers while the user reaches it, else the one they last used there, puts
+  their ids into the request's Logger metadata (`Apiary.LogMetadata`) and remembers the
+  workspace for `signed_in_path/1`. A workspace's page is recorded as the one the user
+  last used in its organisation (`Apiary.Organisations.remember_workspace/1`). A
   slug the user holds no membership in, or a workspace they do not reach, is answered as
   a path that does not exist, as the router answers one, but an organisation where their
   membership is suspended: that sends them to `/users/organisations`, which says why.
@@ -769,6 +778,9 @@ defmodule ApiaryWeb.UserAuth do
          ) do
       {:ok, scope} ->
         LogMetadata.put(scope)
+
+        if is_binary(params["workspace"]) and page?(conn),
+          do: Organisations.remember_workspace(scope)
 
         conn
         |> assign(:current_scope, scope)
@@ -790,6 +802,10 @@ defmodule ApiaryWeb.UserAuth do
         end
     end
   end
+
+  # Whether the request is for a page, a LiveView's first render, rather than the palette,
+  # a run's log or a redirect.
+  defp page?(conn), do: Map.has_key?(conn.private, :phoenix_live_view)
 
   # Written only when it changes, so that a page and the log reads of its terminal do not
   # each send the session cookie again.
