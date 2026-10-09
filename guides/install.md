@@ -197,6 +197,7 @@ value set in the environment always wins. A variable left blank counts as not se
 | `SECRET_KEY_BASE` | required; with `compose.yaml`, generated at first start | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
 | `APIARY_ENCRYPTION_SECRET` | required; with `compose.yaml`, generated at first start | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
 | `APIARY_SIGNING_SECRET` | required; with `compose.yaml`, generated at first start | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `APIARY_ACCEPT_SIGNING_FINGERPRINT` | none | Empty, except to change the signing key on purpose: the fingerprint the key check names as the new key's, which the next boot records as the instance's ([The keys generated at first start](#the-keys-generated-at-first-start)). Any other value changes nothing. A fingerprint is public, not a secret. |
 <!-- feature: secrets -->
 
 `APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
@@ -321,23 +322,30 @@ every machine pins.
 
 ```text
 APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's fingerprint is <new>, the pinned one is <recorded>.
-Put back the value kept with your backups. To change it on purpose, and pin every machine again, run in a one-off container of this release: bin/apiary eval 'Apiary.Release.accept_signing_key()'
+Put back the value kept with your backups. To change it on purpose, and pin every machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=<new> and start Qory again.
 ```
 
-To change the signing key on purpose, which means pinning every machine again, record the
-new key's fingerprint as the instance's. A refused boot leaves no running container to run
-a command in, so with `compose.yaml` it runs in a one-off container of the same release:
+To change the signing key on purpose, which means pinning every machine again, set
+`APIARY_ACCEPT_SIGNING_FINGERPRINT` to the new key's fingerprint, the `<new>` the message
+names. With `compose.yaml`, put it in `.env`, then:
 
 ```sh
-docker compose run --rm apiary bin/apiary eval 'Apiary.Release.accept_signing_key()'
+docker compose up -d
 ```
+
+The boot records the new key's fingerprint as the instance's, says so in the log, and
+starts:
 
 ```text
 The signing key with fingerprint <new> is now the instance's. Pin it on every machine again.
 ```
 
-The next boot starts. `APIARY_ENCRYPTION_SECRET` has no such command: it never changes
-once an access key exists.
+Any other value changes nothing, and the boot stops as before. The variable names one key,
+so it needs no reset: left set, it matches the key it named, and should the key change
+again, the boot stops again with the next fingerprint. Taking the line out of `.env` later
+is tidy, not required. The boot reads it only once `APIARY_ENCRYPTION_SECRET` is the one
+the instance first started with. `APIARY_ENCRYPTION_SECRET` has no such variable: it never
+changes once an access key exists.
 
 ### Public address and port
 

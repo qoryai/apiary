@@ -2,8 +2,9 @@ defmodule Apiary.KeyCheckTest do
   @moduledoc """
   The key check at boot (`Apiary.KeyCheck`): what the first boot records in
   `instance_settings`, the boot with the same keys, a boot with another encryption or
-  signing secret, the command that accepts a new signing key
-  (`Apiary.Release.accept_signing_key/0`), and the messages, which carry no secret.
+  signing secret, `APIARY_ACCEPT_SIGNING_FINGERPRINT` and the command that accept a new
+  signing key (`Apiary.Release.accept_signing_key/0`), and the messages, which carry no
+  secret.
   """
   # Not async: the keys are the application's configuration, set for a test and put back
   # after it.
@@ -27,6 +28,7 @@ defmodule Apiary.KeyCheckTest do
     on_exit(fn ->
       Application.put_env(:apiary, KeyDerivation, derivation)
       Application.put_env(:apiary, SigningKey, signing)
+      Application.delete_env(:apiary, :accept_signing_fingerprint_setting)
     end)
   end
 
@@ -72,8 +74,19 @@ defmodule Apiary.KeyCheckTest do
     "APIARY_SIGNING_SECRET is not the one this instance's machines pinned: its key's " <>
       "fingerprint is #{new}, the pinned one is #{recorded}.\n" <>
       "Put back the value kept with your backups. To change it on purpose, and pin every " <>
-      "machine again, run in a one-off container of this release: " <>
-      "bin/apiary eval 'Apiary.Release.accept_signing_key()'"
+      "machine again, set APIARY_ACCEPT_SIGNING_FINGERPRINT=#{new} and start Qory again."
+  end
+
+  defp accept(value), do: Application.put_env(:apiary, :accept_signing_fingerprint_setting, value)
+
+  defp accepted_line(fingerprint),
+    do:
+      "The signing key with fingerprint #{fingerprint} is now the instance's. " <>
+        "Pin it on every machine again."
+
+  defp updated_at do
+    %{rows: [[updated_at]]} = Repo.query!("SELECT updated_at FROM instance_settings")
+    updated_at
   end
 
   test "the check value is HMAC-SHA256 of its label under the key derived for :check" do
@@ -185,6 +198,137 @@ defmodule Apiary.KeyCheckTest do
     # The next boot records the check value beside it.
     assert KeyCheck.check() == :ok
     assert recorded() == current()
+  end
+
+  describe "APIARY_ACCEPT_SIGNING_FINGERPRINT" do
+    test "the signing message names it, with the new key's fingerprint, and no command" do
+      message = KeyCheck.signing_message("NEW", "PINNED")
+      assert message =~ "set APIARY_ACCEPT_SIGNING_FINGERPRINT=NEW and start Qory again."
+      refute message =~ "bin/apiary"
+      refute message =~ "accept_signing_key"
+    end
+
+    test "the current key's fingerprint is recorded, and the boot starts" do
+      assert KeyCheck.check() == :ok
+      {check, pinned} = recorded()
+
+      signing_seed(:crypto.strong_rand_bytes(32))
+      new = SigningKey.fingerprint()
+      refute new == pinned
+      accept(new)
+
+      assert {:ignore, log} = boot()
+      assert log =~ accepted_line(new)
+      refute log =~ "APIARY_SIGNING_SECRET is not"
+      # The encryption secret's check value is left as it was.
+      assert recorded() == {check, new}
+
+      # Left set, it accepts nothing more, writes nothing and says nothing.
+      Repo.query!("UPDATE instance_settings SET updated_at = '2026-01-01'")
+      assert boot() == {:ignore, ""}
+      assert updated_at() == ~N[2026-01-01 00:00:00.000000]
+    end
+
+    test "is read trimmed, as .env may leave it" do
+      assert KeyCheck.check() == :ok
+      signing_seed(:crypto.strong_rand_bytes(32))
+      new = SigningKey.fingerprint()
+      accept("  #{new}\n")
+
+      assert capture_log(fn -> assert KeyCheck.check() == :ok end) =~ accepted_line(new)
+      assert {_check, ^new} = recorded()
+    end
+
+    test "any other value changes nothing, and the boot stops as without it" do
+      assert KeyCheck.check() == :ok
+      pinned = SigningKey.fingerprint()
+      first = recorded()
+
+      seed = :crypto.strong_rand_bytes(32)
+      signing_seed(seed)
+      new = SigningKey.fingerprint()
+
+      for value <- [
+            nil,
+            "",
+            "   ",
+            pinned,
+            String.upcase(new),
+            String.slice(new, 0, 21),
+            new <> "x",
+            "#{new} #{pinned}",
+            Base.encode64(seed),
+            Base.encode16(seed, case: :lower),
+            SigningKey.fingerprint(SigningKey.new(:crypto.strong_rand_bytes(32)))
+          ] do
+        accept(value)
+        assert KeyCheck.check() == {:error, [signing_message(new, pinned)]}, inspect(value)
+        assert {:key_check_failed, log} = boot()
+        refute log =~ "is now the instance's"
+        assert recorded() == first
+      end
+    end
+
+    test "a stale one, accepted for an earlier key, refuses a newer key" do
+      assert KeyCheck.check() == :ok
+
+      signing_seed(:crypto.strong_rand_bytes(32))
+      accepted = SigningKey.fingerprint()
+      accept(accepted)
+      assert capture_log(fn -> assert KeyCheck.check() == :ok end) =~ accepted_line(accepted)
+      assert {_check, ^accepted} = recorded()
+      first = recorded()
+
+      # The key changes again; the variable still names the one accepted before.
+      signing_seed(:crypto.strong_rand_bytes(32))
+      newer = SigningKey.fingerprint()
+
+      assert KeyCheck.check() == {:error, [signing_message(newer, accepted)]}
+      assert {:key_check_failed, log} = boot()
+      refute log =~ "is now the instance's"
+      assert recorded() == first
+    end
+
+    test "never accepts another encryption secret" do
+      assert KeyCheck.check() == :ok
+      first = recorded()
+
+      # The signing key unchanged: the variable names it, and the encryption secret is
+      # still refused.
+      encryption_secret(:crypto.strong_rand_bytes(32))
+      accept(SigningKey.fingerprint())
+
+      assert KeyCheck.check() == {:error, [@encryption_message]}
+      assert {:key_check_failed, log} = boot()
+      assert log =~ @encryption_message
+      assert recorded() == first
+
+      # Both changed: neither is accepted while the encryption secret is refused, so the
+      # pinned fingerprint stays for when the right secret is put back.
+      pinned = SigningKey.fingerprint()
+      signing_seed(:crypto.strong_rand_bytes(32))
+      new = SigningKey.fingerprint()
+      accept(new)
+
+      assert KeyCheck.check() == {:error, [@encryption_message, signing_message(new, pinned)]}
+      assert recorded() == first
+    end
+
+    test "on a database with data and no recorded values, a wrong encryption secret still stops" do
+      %{scope: scope} = sign_up_fixture()
+      access_key_fixture(scope)
+      encryption_secret(:crypto.strong_rand_bytes(32))
+      accept(SigningKey.fingerprint())
+
+      assert KeyCheck.check() == {:error, [@encryption_message]}
+      assert recorded() == nil
+    end
+
+    test "on the first boot records both values as without it" do
+      accept(SigningKey.fingerprint())
+      assert boot() == {:ignore, ""}
+      assert recorded() == current()
+    end
   end
 
   # A secret's key id for `purpose`, as `Apiary.KeyDerivation` names the key.
@@ -470,6 +614,9 @@ defmodule Apiary.KeyCheckTest do
     encryption_secret(other_encryption)
     signing_seed(other_seed)
     {_id, other_check_key} = KeyDerivation.key(:check)
+
+    # The variable holding a secret by mistake: it is never written out.
+    accept(Base.encode64(other_seed))
 
     assert {:error, messages} = KeyCheck.check()
     assert length(messages) == 2

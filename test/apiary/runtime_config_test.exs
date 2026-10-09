@@ -534,4 +534,31 @@ defmodule Apiary.RuntimeConfigTest do
       refute Keyword.has_key?(config[:apiary] || [], :first_organisation_name_setting)
     end
   end
+
+  describe "APIARY_ACCEPT_SIGNING_FINGERPRINT" do
+    setup do
+      previous = System.get_env("APIARY_ACCEPT_SIGNING_FINGERPRINT")
+      System.put_env("MAIL_TO_LOG", "true")
+
+      on_exit(fn ->
+        if previous,
+          do: System.put_env("APIARY_ACCEPT_SIGNING_FINGERPRINT", previous),
+          else: System.delete_env("APIARY_ACCEPT_SIGNING_FINGERPRINT")
+      end)
+    end
+
+    test "is read as it is set, for the key check, and not under test" do
+      System.put_env("APIARY_ACCEPT_SIGNING_FINGERPRINT", "AAAAAAAAAAAAAAAAAAAAAA")
+
+      for env <- [:prod, :dev] do
+        config = Config.Reader.read!("config/runtime.exs", env: env, target: :host)
+
+        assert get_in(config, [:apiary, :accept_signing_fingerprint_setting]) ==
+                 "AAAAAAAAAAAAAAAAAAAAAA"
+      end
+
+      config = Config.Reader.read!("config/runtime.exs", env: :test, target: :host)
+      refute Keyword.has_key?(config[:apiary] || [], :accept_signing_fingerprint_setting)
+    end
+  end
 end

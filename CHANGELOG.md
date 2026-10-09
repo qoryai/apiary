@@ -275,8 +275,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `APIARY_ENCRYPTION_SECRET`, which tells nothing of it, and its signing key's
   fingerprint, and a later boot with another of either stops with a message that says
   which, where it served before with no access key verifying or every machine refusing its
-  answers. `Apiary.Release.accept_signing_key/0`, run in a one-off container, makes a new
-  signing key the instance's on purpose.
+  answers. `APIARY_ACCEPT_SIGNING_FINGERPRINT`, set to the fingerprint the refusal names,
+  makes a new signing key the instance's on purpose at the next boot; any other value
+  changes nothing, and it never accepts another `APIARY_ENCRYPTION_SECRET`.
+  `Apiary.Release.accept_signing_key/0` does the same in a one-off container.
 - The image, `ghcr.io/qoryai/apiary`, from the `Dockerfile`: CI builds it on every pull
   request and push, for `linux/amd64` and `linux/arm64`, and publishes nothing; only a
   release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the

@@ -101,6 +101,17 @@ if config_env() != :test do
   config :apiary, :first_organisation_name_setting, System.get_env("FIRST_ORGANISATION_NAME")
 end
 
+# APIARY_ACCEPT_SIGNING_FINGERPRINT makes a new signing key the instance's on purpose: the
+# fingerprint the boot's key check names as the key's when APIARY_SIGNING_SECRET is not the
+# one the machines pinned. `Apiary.KeyCheck` records it at boot when it equals the current
+# key's, and any other value changes nothing. It names one key, so it needs no reset. Not
+# read under test, where the tests set it.
+if config_env() != :test do
+  config :apiary,
+         :accept_signing_fingerprint_setting,
+         System.get_env("APIARY_ACCEPT_SIGNING_FINGERPRINT")
+end
+
 # TRUSTED_PROXIES names the reverse proxies whose X-Forwarded-For the audit trail believes
 # for a request's address: addresses or CIDR ranges separated by commas, none when unset.
 # `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.
