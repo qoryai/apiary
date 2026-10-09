@@ -1641,6 +1641,18 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#{bar} .tooltip[data-tip=Copy] #version-copy")
       assert has_element?(view, "#{bar} [aria-live=polite]")
 
+      # The hints open under the icons, flush with their right edge, so the well never
+      # cuts them; Copy's reads Copied while the copy is confirmed.
+      assert has_element?(
+               view,
+               "#{bar} .tooltip.tooltip-bottom.q-tip-end[data-tip=Copy][data-tip-done=Copied] button#version-copy[phx-hook=CopyToClipboard][data-copied-words=Copied]"
+             )
+
+      assert has_element?(
+               view,
+               "#{bar} .tooltip.tooltip-bottom.q-tip-end[data-tip=Download] #version-download"
+             )
+
       assert has_element?(
                view,
                "#{bar} a#version-download.btn-square[aria-label=Download][download$='-policy.yaml'][href^='data:text/yaml']"
@@ -1697,6 +1709,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
          %{conn: conn, scope: scope} do
       view = open(conn, scope, "/policy/document")
       assert has_element?(view, "#version-doc .q-docwell-bar #version-copy[aria-label=Copy]")
+      assert has_element?(view, "#version-doc .q-docwell-bar .tooltip.q-tip-end #version-copy")
       refute has_element?(view, "#version-download")
     end
 

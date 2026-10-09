@@ -571,15 +571,18 @@ The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is 
 in force under the card and the tabs: its version's number, In force and the version's
 views, which stay on the tab. The document's bar is the tab's one place to take it away,
 the code-block header's pattern: two small icon buttons on its right, Copy (the document
-as served, "Copied" said politely) and Download (the export page's policy file, where
-the version has one: a rule with paths), each named by its hint. The tab has no Export;
+as served; its hint reads Copied while the copy is confirmed, which is said politely
+too) and Download (the export page's policy file, which exists only where the policy in
+force narrows a host to paths: an allow rule in force with paths), each named by its
+hint, which opens under it, flush with its right edge. The tab has no Export;
 the export page opens from the header's Export on the other tabs and from a version's
 own page. In the list of versions, on the tab and on each
 version's page, the version in force leads to the Document tab and an older one to its
 own page. A change that makes a new version, Enforce or
 Observe among them, shows the new version, its number and its mode there in place. A
-target served the workspace's policy shows the workspace's version, its links the
-workspace's.
+target served the workspace's policy shows the workspace's version: in its list the
+version in force leads to the target's own Document view and the older ones to the
+workspace's version pages, and Download gives the workspace's policy file.
 
 The policy pages confirm in place, never over the page:
 

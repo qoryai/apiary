@@ -260,17 +260,37 @@ defmodule ApiaryWeb.PolicyLive.Views do
               run-configuration.json <span class="text-faint">· {@v.caption}</span>
             </:caption>
             <%!-- The Document view's bar, the code-block header pattern: Copy and Download as
-                 small icons with their hints, below them, as the well clips what is above.
+                 small icons with their hints. The well clips what overflows it, so a hint
+                 opens under its icon, flush with the icon's right edge (`q-tip-end`).
+                 Copy's hint reads Copied while the copy is confirmed (`data-tip-done`),
+                 here alone: the button is copy_button's icon one, its hook and its words.
                  A version's own page keeps Copy document. --%>
             <:actions :if={@v[:path]}>
-              <.copy_button
-                id="version-copy"
-                text={@v.configuration.document}
-                label={gettext("Copy")}
-                icon_only
+              <span
+                class="tooltip tooltip-bottom q-tip-end inline-flex"
+                data-tip={gettext("Copy")}
+                data-tip-done={gettext("Copied")}
+              >
+                <button
+                  id="version-copy"
+                  type="button"
+                  phx-hook="CopyToClipboard"
+                  data-copied-words={gettext("Copied")}
+                  data-copy={@v.configuration.document}
+                  class="copy-btn btn btn-ghost btn-xs btn-square"
+                  aria-label={gettext("Copy")}
+                >
+                  <span class="copy-idle"><.icon name="hero-clipboard-document" class="size-4" /></span>
+                  <span class="copy-done"><.icon name="hero-check-micro" class="size-4" /></span>
+                  <span class="sr-only" aria-live="polite"></span>
+                </button>
+              </span>
+              <.tooltip
+                :if={@v[:download]}
+                tip={gettext("Download")}
                 placement="bottom"
-              />
-              <.tooltip :if={@v[:download]} tip={gettext("Download")} placement="bottom">
+                class="q-tip-end"
+              >
                 <a
                   id="version-download"
                   class="btn btn-ghost btn-xs btn-square"

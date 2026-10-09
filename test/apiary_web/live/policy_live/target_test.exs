@@ -1038,4 +1038,31 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view = open(conn, path <> "/versions/1")
     assert text(view, "#policy-page") =~ "This repository has no versions of its own"
   end
+
+  test "a target served the baseline downloads the workspace's policy file, paths and all",
+       %{conn: conn, path: path, scope: scope} do
+    {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
+    view = open(conn, path <> "/document")
+    assert has_element?(view, "h2#policy-version-h", "Version 5")
+
+    # The file the workspace's export page downloads, under the target's card.
+    export = open(conn, workspace_path(scope, "/policy/versions/5/export"))
+
+    for attribute <- ~w(href download) do
+      assert attribute(view, "#version-doc .q-docwell-bar #version-download", attribute) ==
+               attribute(export, "#export-download", attribute)
+    end
+
+    assert attribute(view, "#version-download", "download") =~ ~r/-policy\.yaml$/
+    assert URI.decode(attribute(view, "#version-download", "href")) =~ "/acme/*"
+  end
+
+  defp attribute(view, selector, name) do
+    view
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.attribute(name)
+    |> hd()
+  end
 end
