@@ -14,9 +14,16 @@ concurrency:
 
 # Two jobs side by side: Checks, the checks that do not depend on the features, run once;
 # and the tests, under each set of features.
+#
+# A pull request whose head is next, of this repository, skips both: the push to next runs
+# them on the same commit, the pull request's head. A skipped job takes a name of its own,
+# "… · checked by the push run", so a required check is answered only by the push run's
+# job on that commit. A fork's branch named next is not this repository's, and its pull
+# request runs them.
 jobs:
   checks:
-    name: Checks
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Checks · checked by the push run' || 'Checks' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -68,7 +75,8 @@ jobs:
         run: mix assets.deploy
 
   test:
-    name: Elixir tests (${{ matrix.name }})
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Elixir tests · checked by the push run' || format('Elixir tests ({0})', matrix.name) }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
     runs-on: ubuntu-latest
     # The suite runs under each instance a launch may make: every feature, the opt-in
     # ones included (QORY_FEATURES unset or empty, which the tests take for every
