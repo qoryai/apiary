@@ -1088,9 +1088,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.export_page
           :if={@live_action == :export && @v && @export}
           export={@export}
-          done={
-            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
-          }
+          done={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/document"}
         />
         <.empty_state
           :if={@missing}

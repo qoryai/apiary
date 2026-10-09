@@ -870,7 +870,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def heading_focus(socket, from, :export) when from in [:version, :document],
     do: focus(socket, "policy-export-h")
 
-  def heading_focus(socket, :export, :version), do: focus(socket, "policy-version-h")
+  def heading_focus(socket, :export, to) when to in [:version, :document],
+    do: focus(socket, "policy-version-h")
+
   def heading_focus(socket, _from, _to), do: socket
 
   @doc """

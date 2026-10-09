@@ -249,7 +249,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "#policy-export nav")
 
     assert text(view, "#export-lead") =~ "The effective policy of github.example/acme/shop as of"
-    assert has_element?(view, "#export-done[href='#{base}/versions/2']")
+    assert has_element?(view, "#export-done[href='#{base}/document']")
   end
 
   test "the old paths of a target's policy send on to the Policy tab", %{
@@ -642,7 +642,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
       assert has_element?(view, "h2#policy-version-h", "Version 1")
       assert text(view, "#version-strip") =~ "Mode enforce"
-      assert has_element?(view, "#ver-1[href='#{path}/versions/1'][aria-current=page]")
+      assert has_element?(view, "#ver-1[href='#{path}/document'][aria-current=page]")
       assert has_element?(view, "#version-export[href='#{path}/versions/1/export']")
       assert page_title(view) =~ "Version 1 · acme/shop · Policy"
 
@@ -651,6 +651,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       _ = render(view)
       assert has_element?(view, "h2#policy-version-h", "Version 2")
       assert text(view, "#version-strip") =~ "Mode enforce"
+      assert has_element?(view, "#ver-2[href='#{path}/document'][aria-current=page]")
+      assert has_element?(view, "#ver-1[href='#{path}/versions/1']")
+      refute has_element?(view, "#ver-1[aria-current]")
 
       # A version opened from the history states its own mode: no card, an older one or
       # the one in force.
@@ -949,14 +952,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view = open(conn, path <> "/document")
     assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
     assert has_element?(view, "h2#policy-version-h", "Version 1")
-    assert has_element?(view, "#ver-1[href='#{path}/versions/1']")
+    assert has_element?(view, "#ver-1[href='#{path}/document'][aria-current=page]")
 
     view = open(conn, path <> "/versions/1")
+    assert has_element?(view, "#ver-1[href='#{path}/document'][aria-current=true]")
     assert has_element?(view, "h2", "Version 1")
     assert has_element?(view, "#policy-tabs a[href='#{path}']", "Effective policy")
 
     # The export is a page of the tab, under the target's own title: an h2 and Done to the
-    # version. The way back is the top bar's breadcrumb, never a trail of the page's own.
+    # Document view. The way back is the top bar's breadcrumb, never a trail of the page's own.
     view = open(conn, path <> "/versions/1/export")
     # The page names the target as it is addressed; the file's head names it in full.
     assert text(view, "#export-lead") =~ "The effective policy of acme/shop as of version 1"
@@ -969,12 +973,13 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "dialog#policy-export")
     refute has_element?(view, "#export-crumbs")
     assert Enum.take(crumbs(view), -2) == [{"Version 1", path <> "/versions/1"}, {"Export", nil}]
-    assert has_element?(view, "#export-done[href='#{path}/versions/1']", "Done")
+    assert has_element?(view, "#export-done[href='#{path}/document']", "Done")
     refute has_element?(view, "#policy-tabs")
 
     # Done and Export are patches: the heading of what is shown takes the focus.
     view |> element("#export-done") |> render_click()
-    assert_patch(view, path <> "/versions/1")
+    assert_patch(view, path <> "/document")
+    assert has_element?(view, "#policy-mode")
     assert has_element?(view, "h2#policy-version-h[tabindex='-1']", "Version 1")
     assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
@@ -1001,7 +1006,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#policy-mode-source") == "Follows #{scope.workspace.name}"
     assert has_element?(view, "#policy-tabs a[href='#{path}/document'][aria-current=page]")
     assert has_element?(view, "h2#policy-version-h", "Version 4")
-    assert has_element?(view, "#ver-4[href='#{workspace_path(scope, "/policy/versions/4")}']")
+    assert has_element?(view, "#ver-4[href='#{path}/document'][aria-current=page]")
+    assert has_element?(view, "#ver-3[href='#{workspace_path(scope, "/policy/versions/3")}']")
 
     assert has_element?(
              view,

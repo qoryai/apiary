@@ -569,7 +569,9 @@ does and who follows it, and on the workspace's the record of the last 14 days w
 link. A member sees the card with no Change mode and the line that says who may.
 The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
 in force under the card and the tabs: its version's number, In force, Export and the
-version's views, which stay on the tab. A change that makes a new version, Enforce or
+version's views, which stay on the tab. In the list of versions, on the tab and on each
+version's page, the version in force leads to the Document tab and an older one to its
+own page. A change that makes a new version, Enforce or
 Observe among them, shows the new version, its number and its mode there in place. A
 target served the workspace's policy shows the workspace's version, its links the
 workspace's.
@@ -602,7 +604,8 @@ with Version n and Export and is the one way back, with no trail of the page's o
 title "Export for a node without a server" and what is exported (an h2 under a target's
 own title), the policy file with Download and Copy, the command for the
 node and the Forager file's egress section, each with Copy, the notes, and Done back to the
-version. Only the version in force is exported; another version's path sends on to it.
+Document tab (a target's Document view), the version in force under the card. Only the
+version in force is exported; another version's path sends on to it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no

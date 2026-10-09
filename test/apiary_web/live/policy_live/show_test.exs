@@ -1436,13 +1436,41 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       render_async(view, 5_000)
       assert has_element?(view, "h2#policy-version-h", "Version 2")
-      assert has_element?(view, "#ver-2[aria-current=page]")
       assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
 
-      # Its Export opens the export, and Done goes back to the version's page.
+      # Its Export opens the export, and Done comes back to the tab.
       view |> element("#version-export") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/2/export"))
       assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
+
+      view |> element("#export-done") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy/document"))
+      assert has_element?(view, "#policy-mode")
+      assert has_element?(view, "h2#policy-version-h", "Version 2")
+      assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
+    end
+
+    test "the versions list leads to the Document tab for the version in force, to its page for an older one",
+         %{conn: conn, scope: scope} do
+      document = workspace_path(scope, "/policy/document")
+      older = workspace_path(scope, "/policy/versions/1")
+
+      # On the tab, the version in force is the page itself.
+      view = open(conn, scope, "/policy/document")
+      assert has_element?(view, "#ver-2[href='#{document}'][aria-current=page]")
+      assert has_element?(view, "#ver-1[href='#{older}']")
+      refute has_element?(view, "#ver-1[aria-current]")
+
+      # On the version in force's own page, its entry is the version shown, not the page.
+      view = open(conn, scope, "/policy/versions/2")
+      assert has_element?(view, "#ver-2[href='#{document}'][aria-current=true]")
+      assert has_element?(view, "#ver-1[href='#{older}']")
+
+      # On an older version's page, its entry is the page.
+      view = open(conn, scope, "/policy/versions/1")
+      assert has_element?(view, "#ver-1[href='#{older}'][aria-current=page]")
+      assert has_element?(view, "#ver-2[href='#{document}']")
+      refute has_element?(view, "#ver-2[aria-current]")
     end
 
     test "changes from the one before, the document, and the bytes as served",
@@ -1467,7 +1495,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
       assert text(view, "#version-lines .q-add") =~ ~s(Added: "files.cdn.example")
       assert has_element?(view, "#version-copy[data-copy='#{configuration.document}']")
-      assert has_element?(view, "#ver-2[aria-current=page]")
+      assert has_element?(view, "#ver-2[aria-current=true]")
 
       view |> element("#version-view button", "As served") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/2?view=served"))
@@ -1563,12 +1591,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")
       refute_push_event(view, "policy:focus", %{id: "policy-export-h"})
 
+      # Done goes back to the Document tab, the version in force under the card.
       view |> element("#policy-export a", "Done") |> render_click()
-      assert_patch(view, workspace_path(scope, "/policy/versions/3"))
-      assert has_element?(view, "h1#policy-version-h.outline-none[tabindex='-1']", "Version 3")
+      assert_patch(view, workspace_path(scope, "/policy/document"))
+      assert has_element?(view, "h2#policy-version-h.outline-none[tabindex='-1']", "Version 3")
       assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
-      # From the version, its Export opens the page again, named in the browser's title.
+      # From the tab, its Export opens the page again, named in the browser's title.
       view |> element("#version-export") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/versions/3/export"))
       assert page_title(view) =~ "Export · Version 3 · Policy"

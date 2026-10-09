@@ -313,8 +313,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <.link
               :for={item <- @v.versions}
               id={"ver-#{item.version}"}
-              navigate={"#{@base}/versions/#{item.version}"}
-              aria-current={item.version == @v.configuration.version && "page"}
+              navigate={entry_path(@base, @v, item)}
+              aria-current={entry_current(@v, item)}
             >
               <span class="q-vlist-v">v{item.version}</span>
               <span class="min-w-0 truncate">
@@ -355,6 +355,18 @@ defmodule ApiaryWeb.PolicyLive.Views do
     """
   end
 
+  # The version in force is listed as the Document view, an older one as its own page.
+  defp entry_path(base, %{latest: n} = v, %{version: n}), do: v[:path] || "#{base}/document"
+  defp entry_path(base, _v, item), do: "#{base}/versions/#{item.version}"
+
+  # The entry of the version shown is the page itself, unless it leads elsewhere: the
+  # version in force on its own page leads to the Document view.
+  defp entry_current(%{configuration: %{version: n}, latest: n} = v, %{version: n}),
+    do: if(v[:path], do: "page", else: "true")
+
+  defp entry_current(%{configuration: %{version: n}}, %{version: n}), do: "page"
+  defp entry_current(_v, _item), do: nil
+
   @doc """
   The path of a version page with its `view` and `compare`, defaults left out; of the
   Document view (`v.path`) where the version is shown there.
@@ -376,13 +388,13 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   @doc """
   The export of the version in force as a page of its own, at `…/versions/:n/export`: the
-  title and what is exported, the texts to copy, and Done back to the version. The way
+  title and what is exported, the texts to copy, and Done back to the Document view. The way
   back to the policy and the version is the frame's breadcrumb, never a trail of its own. Nothing here is a form. `heading` is h2 under a
   page's own title, as a target's Policy tab has. The heading takes the focus a page sends
   it (`policy-export-h`) when the page is reached by a patch, as Export is.
   """
   attr :export, :map, required: true
-  attr :done, :string, required: true, doc: "the version's path, where Done goes back"
+  attr :done, :string, required: true, doc: "the Document view's path, where Done goes back"
   attr :heading, :string, default: "h1", values: ~w(h1 h2)
 
   def export_page(assigns) do
