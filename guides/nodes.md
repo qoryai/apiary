@@ -108,7 +108,7 @@ where the machine runs qory." Then four numbered steps:
    the only time it is shown: only a hash of the code is kept.
 3. On the machine, the command makes the key, keeps its secret and prints its fingerprint.
    The code carries the fingerprint of Qory Apiary's key, so `qory` checks Qory Apiary's
-   signed answer against it and pins that key, and it writes the `server` section of
+   signed answer against it and pins that key, and it writes the `gateway.server` section of
    `~/.config/qory/forager.yaml` itself: `url`, `access_key_id` and `apiary_public_key`.
 4. The page reads "Waiting for build-01 to run it." until the key arrives, then "build-01
    is connected. Its key arrived at 14:20 and is active.", with the key and its
@@ -152,7 +152,7 @@ description below). What it shows depends on how the key came:
   the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set Qory Apiary's public
   key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: the same for every machine
   connected to this Qory Apiary. **Point qory at Qory Apiary**: the lines the Forager
-  file needs, `server.url`.
+  file needs, `gateway.server.url`.
 
 ### For a CI
 
@@ -165,7 +165,7 @@ the settings, one `NAME=value` line each.
   `QORY_ACCESS_KEY_SECRET` and `QORY_APIARY_PUBLIC_KEY`. The key is active at once.
 
 Only `QORY_ACCESS_KEY_SECRET` belongs in the CI's secret store; the id and the pin are
-plain settings, and the CI's `forager.yaml` then needs `server.url` alone.
+plain settings, and the CI's `forager.yaml` then needs `gateway.server.url` alone.
 `QORY_APIARY_PUBLIC_KEY` is JSON: in a shell, put its value in single quotes
 ([The Forager file's `server` section](forager-file.md#the-id-and-the-pin-in-the-environment)).
 A fleet of short-lived CI runners is a node pool with one key.
@@ -196,8 +196,9 @@ A fleet of short-lived CI runners is a node pool with one key.
       `qory` ignores the three variables. With **Copy lines**:
 
       ```yaml
-      server:
-        url: https://apiary.example.com
+      gateway:
+        server:
+          url: https://apiary.example.com
       ```
 
    Only the secret is shown once: it was made in your browser, Qory Apiary never received

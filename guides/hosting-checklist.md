@@ -9,7 +9,7 @@ being one. Every variable named here is described in [Install and configure](ins
 - **An `https` address.** `PUBLIC_URL` is the address people and machines use, with its
   scheme, for example `https://qory.example`. Terminate TLS at a reverse proxy in front of
   the release's port and have it send `X-Forwarded-Proto: https`; without the header every
-  request is redirected to the `https` address again. Forager refuses a `server.url` over
+  request is redirected to the `https` address again. Forager refuses a `gateway.server.url` over
   plain `http` unless it is an address of its own machine, and one with a path, so serve
   the instance at the root of its host name.
 - **Real mail.** Set `SMTP_RELAY` and the variables beside it, and make sure `MAIL_TO_LOG`

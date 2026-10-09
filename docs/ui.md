@@ -964,7 +964,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   The same for every machine connected to this Qory Apiary. It stays on the Access key
   tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point qory at Qory Apiary." ("In
   the Forager file. It is required: without it, qory ignores the three variables.", the
-  two lines `server:` and `url: https://apiary.example.com` with Copy
+  three lines `gateway:`, `server:` and `url: https://apiary.example.com` with Copy
   lines). The server's address and public key are the instance's own, the same for every
   organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
   back to the tab ("Once you leave this page, the secret is not shown again."). The secret
@@ -997,7 +997,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   revoke this one."), 2 "Set the key's ID." ("As a plain setting.",
   `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key." ("As a
   plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every
-  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`server:` / `url:` with Copy lines). Done goes back to the
+  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`gateway:` / `server:` / `url:` with Copy lines). Done goes back to the
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at

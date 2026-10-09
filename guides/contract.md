@@ -180,7 +180,7 @@ signing key, for information: the gateway verifies under the key it pinned. The 
 its digest, differ by node.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
-([Install and configure](install.md)). A Forager file's `server.url` is that address, and the
+([Install and configure](install.md)). A Forager file's `gateway.server.url` is that address, and the
 gateway finds the other endpoints through this document alone.
 
 <!-- feature: security -->

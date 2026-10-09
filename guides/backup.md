@@ -178,7 +178,7 @@ are taken, restore the newest dump on another machine:
    <!-- /feature -->
 6. Prove the access keys verify. On the same machine, with the `qory` command and the
    secret of an access key that existed when the dump was taken, point a Forager file's
-   `server` section at `http://localhost:4100`, keeping the key's `access_key_id` and the
+   `gateway.server` section at `http://localhost:4100`, keeping the key's `access_key_id` and the
    pin, and start a run. A run that starts and appears under **Runs** proves the dump,
    `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` belong together. A run that
    does not start because the server refuses its requests (`401`), or because its answers
