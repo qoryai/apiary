@@ -262,7 +262,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   release publishes it, tagged `X.Y.Z`, `X.Y` and `latest`, without the `v`. It carries the
   commit it was built from as the label `org.opencontainers.image.revision`, and
   `GET /health` reports it as `revision`, `null` in an image built without one, beside
-  `version`, which its `503` has too.
+  `version`, which its `503` has too. It writes no `erl_crash.dump`
+  (`ERL_CRASH_DUMP_BYTES=0`), so a boot that stops leaves no copy of the release's memory,
+  secrets included, on the container's disk.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
   in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
   `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.
