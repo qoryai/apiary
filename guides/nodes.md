@@ -248,7 +248,11 @@ A run through the gateway belongs to the gateway's node and instance, and its ke
 gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
 for a program that reports no session has no host and no runtime; its page says it has no
 session. The one who starts a run ends it: such a run ends by the end the gateway reports,
-and neither its page nor the Overview offers **Close** for it.
+and neither its page nor the Overview offers **Close** for it. A session's run through the
+gateway has its run credential from an issuer, and is not closed from Qory Apiary either: it
+ends with its agent, or at the gateway. A run `qory run` starts on one machine, with no
+separate gateway, has no run credential, and its page offers **Close** while it has not
+ended.
 <!-- feature: secrets -->
 
 Leave **Stored secrets** at **Not allowed** when you add a separate gateway's key. Qory

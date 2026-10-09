@@ -82,7 +82,7 @@ at the commit in `.forager-contract-ref`: `FORAGER_CONTRACT_DIR`, or else that c
 into `_build/` (that checkout is only read, whatever it has checked out). Without either
 they are excluded and a line says so; CI checks Forager out at that commit and sets
 `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is one on
-Forager's `main` branch, pinned by its id. The end to end job builds qory against
+Forager's `next` branch, pinned by its id. The end to end job builds qory against
 Forager at `.forager-e2e-ref`, pinned apart.
 
 ## Doc comments

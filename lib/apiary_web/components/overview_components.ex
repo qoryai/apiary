@@ -861,8 +861,8 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  # A run a gateway opened is ended by the one who started it: its row offers Open, never
-  # Close.
+  # A run a gateway opened, or one whose credential came from an issuer, is ended by the one
+  # who started it: its row offers Open, never Close (`Apiary.Runs.closable?/1`).
   defp attention_act(%{item: %{kind: :lost}} = assigns) do
     assigns =
       assign(

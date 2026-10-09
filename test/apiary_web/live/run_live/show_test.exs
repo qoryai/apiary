@@ -1714,17 +1714,48 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
-    test "a lost run a session opened still offers Close", %{conn: conn, scope: scope} do
-      run = projected(scope, [{1, "run.started", started_data()}])
-      Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
+    test "a session's run whose credential came from an issuer offers no Close, and a crafted close changes nothing",
+         %{conn: conn, scope: scope} do
+      for state <- ~w(running lost) do
+        run = projected(scope, [{1, "run.started", started_data(%{"credential" => "issuer"})}])
+        assert {run.opened_by, run.credential_from} == {"session", "issuer"}
 
-      {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+        if state == "lost", do: Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
 
-      lv |> element("#close-run-button") |> render_click()
-      lv |> element("#close-run-confirm", "Yes, close") |> render_click()
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
-      assert Runs.get_run!(scope, run.id).state == "closed"
+        refute has_element?(lv, "#close-run-button")
+
+        render_hook(lv, "close", %{})
+        refute has_element?(lv, "#close-run")
+
+        # The page lives on, and the run keeps its state.
+        assert render_hook(lv, "close_confirm", %{}) =~ "run-title"
+        assert Process.alive?(lv.pid)
+
+        after_close = Runs.get_run!(scope, run.id)
+        assert after_close.state == state
+        assert after_close.closed_at == nil
+        refute has_element?(lv, "#run-announcer", "Run closed.")
+      end
+    end
+
+    test "a lost run a session opened still offers Close, its credential from no issuer or not said",
+         %{conn: conn, scope: scope} do
+      for data <- [started_data(), Map.delete(started_data(), "credential")] do
+        run = projected(scope, [{1, "run.started", data}])
+        assert run.credential_from == data["credential"]
+        Apiary.Repo.update!(Ecto.Changeset.change(run, state: "lost"))
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+        lv |> element("#close-run-button") |> render_click()
+        lv |> element("#close-run-confirm", "Yes, close") |> render_click()
+
+        assert Runs.get_run!(scope, run.id).state == "closed"
+      end
     end
 
     test "close and close_confirm on a page without a run do nothing", %{conn: conn, scope: scope} do

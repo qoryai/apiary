@@ -8,6 +8,7 @@ defmodule Apiary.Runs.FoldTest do
     forager_version: nil,
     contract_version: nil,
     opened_by: nil,
+    credential_from: nil,
     runtime: nil,
     runtime_version: nil,
     command: nil,
@@ -66,6 +67,7 @@ defmodule Apiary.Runs.FoldTest do
       Map.merge(
         %{
           "opened_by" => "session",
+          "credential" => "none",
           "runtime" => "claude",
           "runtime_version" => "2.1.0",
           "command" => "claude",
@@ -170,6 +172,7 @@ defmodule Apiary.Runs.FoldTest do
       assert run.state == "running"
       assert run.started_at == at(2)
       assert run.opened_by == "session"
+      assert run.credential_from == "none"
       assert run.runtime == "claude"
       assert run.runtime_version == "2.1.0"
       assert run.command == "claude"
@@ -189,6 +192,7 @@ defmodule Apiary.Runs.FoldTest do
       start =
         event(2, "run.started", %{
           "opened_by" => "gateway",
+          "credential" => "issuer",
           "forager_version" => "0.6.0",
           "labels" => %{
             "forge" => "git.example.com",
@@ -201,6 +205,7 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(@run, [start])
 
       assert run.opened_by == "gateway"
+      assert run.credential_from == "issuer"
       assert Apiary.Runs.Run.no_session?(run)
       assert run.state == "running"
       assert run.forager_version == "0.6.0"
@@ -217,6 +222,19 @@ defmodule Apiary.Runs.FoldTest do
         assert run.opened_by == nil
         refute Apiary.Runs.Run.no_session?(run)
       end
+    end
+
+    test "where the credential came from is kept, and a source the contract does not name is not" do
+      %{run: run} = Fold.fold(@run, [started(2, %{"credential" => "issuer"})])
+      assert run.credential_from == "issuer"
+
+      for source <- ["robot", "", "Issuer", 1, nil] do
+        %{run: run} = Fold.fold(@run, [started(2, %{"credential" => source})])
+        assert run.credential_from == nil
+      end
+
+      %{run: run} = Fold.fold(@run, [started(2, %{"credential" => "issuer"}), started(3)])
+      assert run.credential_from == "none"
     end
 
     test "the workspace's domain names the target, by its own labels" do

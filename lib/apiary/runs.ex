@@ -1553,7 +1553,8 @@ defmodule Apiary.Runs do
   @doc """
   The runs the workspace found lost since `since`, the most recently lost first, at most
   `limit` (default 6): the ones a member may still want to close, or open when a gateway
-  opened them. Older losses are facts on the runs list, not tasks.
+  opened them or their credential came from an issuer. Older losses are facts on the runs
+  list, not tasks.
   """
   @spec lost_since(Scope.t(), DateTime.t(), pos_integer) :: [Run.t()]
   def lost_since(%Scope{} = scope, %DateTime{} = since, limit \\ 6) do
@@ -1706,12 +1707,17 @@ defmodule Apiary.Runs do
   def closable_states, do: @closable_states
 
   @doc """
-  Whether the run may be closed: it has not ended, and no gateway opened it with no session.
-  The one who starts a run ends it, so a run a gateway opened ends by its own exit, never by
-  a close.
+  Whether the run may be closed: it has not ended, no gateway opened it with no session, and
+  its credential did not come from an issuer. The one who starts a run ends it, so a run a
+  gateway opened ends by its own exit, and a session's run whose credential came from an
+  issuer ends by its runtime's exit or at the gateway, never by a close.
   """
   @spec closable?(Run.t()) :: boolean()
-  def closable?(%Run{} = run), do: run.state in @closable_states and not Run.no_session?(run)
+  def closable?(%Run{} = run),
+    do: run.state in @closable_states and not ended_by_its_starter?(run)
+
+  defp ended_by_its_starter?(%Run{credential_from: "issuer"}), do: true
+  defp ended_by_its_starter?(run), do: Run.no_session?(run)
 
   @doc """
   Closes the run: the workspace takes no more events for it and the receiver answers
@@ -1719,13 +1725,14 @@ defmodule Apiary.Runs do
   not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
   ended, failed or timed out keeps the end its events gave it. A close is final: no event reopens
   the run, and closing a closed run changes nothing. A run a gateway opened, with no session,
-  is never closed once its projected start says so: the one who starts a run ends it
-  (`closable?/1`). Until its start is projected, a run does not say who opened it, and may
-  still be closed.
+  and a run whose credential came from an issuer are never closed once their projected start
+  says so: the one who starts a run ends it (`closable?/1`). Until its start is projected, a
+  run says neither who opened it nor where its credential came from, and may still be closed.
 
   `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`
-  when the run is not one of the scope's workspace, `{:error, :opened_by_gateway}` when a
-  gateway opened it, `{:error, :not_closable}` when it has ended.
+  when the run is not one of the scope's workspace, `{:error, :ended_by_its_starter}` when a
+  gateway opened it or its credential came from an issuer, `{:error, :not_closable}` when it
+  has ended.
   """
   def close_run(%Scope{user: user, workspace: workspace} = scope, %Run{id: id}) do
     Repo.transact(fn ->
@@ -1734,11 +1741,13 @@ defmodule Apiary.Runs do
 
         # The state it had, for the audit entry, read under the row's lock; the update
         # keeps the state in its WHERE all the same, so an exit that lands between a read
-        # and this write is not overwritten. A run a gateway opened is never in it.
+        # and this write is not overwritten. A run a gateway opened, or one whose credential
+        # came from an issuer, is never in it.
         closable =
           from r in in_scope(scope),
             where: r.id == ^id and r.state in ^@closable_states,
-            where: is_nil(r.opened_by) or r.opened_by != "gateway"
+            where: is_nil(r.opened_by) or r.opened_by != "gateway",
+            where: is_nil(r.credential_from) or r.credential_from != "issuer"
 
         before = Repo.one(from r in closable, select: r.state, lock: "FOR UPDATE")
 
@@ -1756,7 +1765,8 @@ defmodule Apiary.Runs do
           {0, _} ->
             case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
               %Run{state: "closed"} = run -> {:ok, run}
-              %Run{opened_by: "gateway"} -> {:error, :opened_by_gateway}
+              %Run{opened_by: "gateway"} -> {:error, :ended_by_its_starter}
+              %Run{credential_from: "issuer"} -> {:error, :ended_by_its_starter}
               %Run{} -> {:error, :not_closable}
               nil -> {:error, :not_found}
             end

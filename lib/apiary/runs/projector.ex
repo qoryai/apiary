@@ -40,8 +40,8 @@ defmodule Apiary.Runs.Projector do
 
   # What the fold may change on the run's row.
   @folded_fields ~w(
-    state forager_version contract_version opened_by runtime runtime_version command args
-    dir interactive terminal_cols terminal_rows host wall image labels
+    state forager_version contract_version opened_by credential_from runtime runtime_version
+    command args dir interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
     target_system target_path started_at exited_at exit_code
     signal reason quiet_seconds duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds

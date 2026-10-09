@@ -913,6 +913,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     %{
       "opened_by" => "session",
+      "credential" => "none",
       "runtime" => runtime_name(spec),
       "runtime_version" => runtime_version(spec),
       "command" => command,

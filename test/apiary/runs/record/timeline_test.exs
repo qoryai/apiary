@@ -749,6 +749,19 @@ defmodule Apiary.Runs.Record.TimelineTest do
                  })
                ])
     end
+
+    test "a start's credential source is no connection's credential: only an egress names one" do
+      [started, connection] =
+        build([
+          event(1, "run.started", %{"opened_by" => "session", "credential" => "issuer"}),
+          egress(2, %{"credential" => "model-key"})
+        ])
+
+      assert started.kind == :run_started
+      refute Map.has_key?(started, :credential)
+      refute started |> Map.values() |> Enum.member?("issuer")
+      assert %{kind: :connection, connection: %{credential: "model-key"}} = connection
+    end
   end
 
   describe "a policy applied again" do

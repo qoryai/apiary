@@ -35,6 +35,10 @@ defmodule Apiary.Runs.Run do
     # a runtime, or "gateway", a gateway with no session, whose start says no runtime,
     # command or host and whose exit no state or exit code. Nil until a start says it.
     field :opened_by, :string
+    # Where the run's credential came from, `credential` of `run.started`: "issuer", an
+    # issuer gave the run its run credential, or "none", the run has none. Nil until a start
+    # says it.
+    field :credential_from, :string
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
