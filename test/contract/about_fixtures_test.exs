@@ -1,7 +1,7 @@
 defmodule Apiary.Contract.AboutFixturesTest do
   @moduledoc """
   Folds every `fixtures/run/about-*.json` of the server contract, from the runner's
-  contract directory at the commit in `.runner-contract-ref`, as the `about` of a
+  contract directory at the commit in `.forager-contract-ref`, as the `about` of a
   `dev.qory.run.started` (`Apiary.Runs.Fold`):
 
     * an accepted one keeps every member as given;
@@ -36,7 +36,7 @@ defmodule Apiary.Contract.AboutFixturesTest do
       "args" => [],
       "dir" => "/work",
       "interactive" => false,
-      "runner_version" => "0.4.0",
+      "forager_version" => "0.4.0",
       "host" => "dev-laptop",
       "about" => about
     }

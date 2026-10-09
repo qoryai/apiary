@@ -330,11 +330,11 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
-  @doc "The runner version of `User-Agent: qory-runner/<version>`, as the columns hold it, or nil."
+  @doc "The runner version of `User-Agent: qory-forager/<version>`, as the columns hold it, or nil."
   def forager_version(conn) do
     with [user_agent] <- get_req_header(conn, "user-agent"),
          true <- String.valid?(user_agent),
-         [_, version] <- Regex.run(~r{^qory-runner/(\S+)}, user_agent),
+         [_, version] <- Regex.run(~r{^qory-forager/(\S+)}, user_agent),
          true <- Regex.match?(@printable, version) do
       String.slice(version, 0, @forager_version_max)
     else

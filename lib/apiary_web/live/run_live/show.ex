@@ -2708,7 +2708,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
 
   defp exit_value(%Run{reason: "timeout"}), do: gettext("timeout")
-  defp exit_value(%Run{reason: "runner_lost"}), do: gettext("runner lost")
+  defp exit_value(%Run{reason: "gateway_lost"}), do: gettext("gateway lost")
   defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "", do: signal
   defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
   defp exit_value(_run), do: gettext("n/a")

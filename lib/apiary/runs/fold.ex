@@ -61,7 +61,7 @@ defmodule Apiary.Runs.Fold do
   @exited "dev.qory.run.exited"
   @result "dev.qory.session.result"
 
-  @forager_version "runner_version"
+  @forager_version "forager_version"
   @terminal_rank "terminal"
 
   # The most a result may say a session cost, in dollars, before the value is read as
@@ -351,7 +351,7 @@ defmodule Apiary.Runs.Fold do
     if sequence > Map.get(acc.latest, @forager_version, 0) do
       %{
         acc
-        | run: %{acc.run | forager_version: string(data, "runner_version", 255)},
+        | run: %{acc.run | forager_version: string(data, "forager_version", 255)},
           latest: Map.put(acc.latest, @forager_version, sequence)
       }
     else

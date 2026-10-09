@@ -3,7 +3,7 @@ defmodule Apiary.Policy.Schema do
   The contract's `run-configuration.schema.json` and the `policy.schema.json` it refers
   to, vendored under `priv/contract/`, and the validation every rendered document passes
   before it is stored. A test compares the vendored files with the runner's contract
-  directory at the commit in `.runner-contract-ref`.
+  directory at the commit in `.forager-contract-ref`.
 
   The schema's patterns are anchored with `^` and `$`, and `$` also matches before a final
   newline: `"api.example\n"` passes them. This validation is the check of the document's
@@ -18,7 +18,7 @@ defmodule Apiary.Policy.Schema do
 
   @behaviour JSV.Resolver
 
-  @base "https://qory.dev/contracts/runner/v1/"
+  @base "https://qory.dev/contracts/forager/v1/"
   @files ~w(policy.schema.json run-configuration.schema.json)
 
   @doc "The vendored schema files, by name."

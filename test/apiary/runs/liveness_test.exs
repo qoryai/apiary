@@ -254,11 +254,11 @@ defmodule Apiary.Runs.LivenessTest do
     event_fixture(run, 9, "run.exited", %{
       "state" => "failed",
       "exit_code" => -1,
-      "reason" => "runner_lost",
+      "reason" => "gateway_lost",
       "duration_ms" => 1
     })
 
-    assert {:ok, %Run{state: "failed", reason: "runner_lost", lost_at: nil}} =
+    assert {:ok, %Run{state: "failed", reason: "gateway_lost", lost_at: nil}} =
              Projector.project(run)
 
     assert Liveness.check(DateTime.add(@now, 3600, :second)) == []

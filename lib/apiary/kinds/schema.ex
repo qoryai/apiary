@@ -16,7 +16,7 @@ defmodule Apiary.Kinds.Schema do
 
   alias Apiary.Kinds.Pattern
 
-  @runner "https://qory.dev/contracts/runner/v1/"
+  @forager_contract "https://qory.dev/contracts/forager/v1/"
   @vendored ~w(auth.schema.json)
 
   @doc """
@@ -70,7 +70,7 @@ defmodule Apiary.Kinds.Schema do
   # A file of ours that refers to the runner's contract gets the vendored copy, whose
   # patterns are read as the contract reads them, like the file's own.
   @impl JSV.Resolver
-  def resolve(@runner <> file, _opts) when file in @vendored do
+  def resolve(@forager_contract <> file, _opts) when file in @vendored do
     with {:ok, body} <- File.read(Application.app_dir(:apiary, ["priv", "contract", file])),
          {:ok, schema} <- Jason.decode(body),
          do: {:ok, Pattern.end_only(schema)}

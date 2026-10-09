@@ -7,7 +7,7 @@ defmodule Apiary.ContractSchema do
 
   @behaviour JSV.Resolver
 
-  @base "https://qory.dev/contracts/runner/v1/"
+  @base "https://qory.dev/contracts/forager/v1/"
 
   @doc "The validator of one event, `event.schema.json` with the data schema of each type."
   def event!(contract_dir) do

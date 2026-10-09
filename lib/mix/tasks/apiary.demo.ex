@@ -279,7 +279,7 @@ defmodule Mix.Tasks.Apiary.Demo do
     ping = data(events, @ping)
 
     %{
-      forager_version: ping["runner_version"],
+      forager_version: ping["forager_version"],
       contract_version: 1,
       run_configuration: data(events, @policy_applied)["run_configuration"]
     }

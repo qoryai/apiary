@@ -3,7 +3,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
   Replays the contract's enrolment fixtures (`fixtures/enrolment/*.json`, the enrolment
   files of `fixtures/invalid/`, and the enrolment proofs and answers of
   `known-answers/signatures.json`), from the runner's contract directory at the commit in
-  `.runner-contract-ref`:
+  `.forager-contract-ref`:
 
     * each request reads (`Apiary.Contract.Enrolment.decode/1`), validates against
       `enrolment.schema.json`, and its proof verifies over the five lines

@@ -889,7 +889,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   defp ping(spec) do
     %{
-      "runner_version" => forager_version(spec),
+      "forager_version" => forager_version(spec),
       "events" => ["*"],
       "contract_version" => 1,
       "interval_seconds" => 30
@@ -918,7 +918,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "args" => args,
       "dir" => "/work/#{workdir(spec)}",
       "interactive" => spec.interactive,
-      "runner_version" => forager_version(spec),
+      "forager_version" => forager_version(spec),
       "host" => spec.host,
       "labels" => labels
     }

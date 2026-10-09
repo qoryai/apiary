@@ -69,7 +69,7 @@ defmodule Apiary.Runs.FoldTest do
           "args" => ["-p", "fix the build"],
           "dir" => "/work",
           "interactive" => false,
-          "runner_version" => "v0.4.0",
+          "forager_version" => "v0.4.0",
           "host" => "dev-laptop",
           "wall" => "docker",
           "image" => "example/agent:1",
@@ -124,7 +124,7 @@ defmodule Apiary.Runs.FoldTest do
 
   describe "dev.qory.ping" do
     test "records the versions and leaves the run pending" do
-      data = %{"runner_version" => "v0.4.0", "contract_version" => 1, "events" => []}
+      data = %{"forager_version" => "v0.4.0", "contract_version" => 1, "events" => []}
       %{run: run} = Fold.fold(@run, [event(1, "ping", data)])
 
       assert run.forager_version == "v0.4.0"
@@ -133,13 +133,13 @@ defmodule Apiary.Runs.FoldTest do
     end
 
     test "fields of the wrong type are read as absent" do
-      data = %{"runner_version" => 4, "contract_version" => "1"}
+      data = %{"forager_version" => 4, "contract_version" => "1"}
       assert %{run: @run} = Fold.fold(@run, [event(1, "ping", data)])
     end
 
     test "the later of ping and run.started says the runner's version, in any order" do
-      ping = event(1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1})
-      start = started(2, %{"runner_version" => "v0.4.1"})
+      ping = event(1, "ping", %{"forager_version" => "v0.4.0", "contract_version" => 1})
+      start = started(2, %{"forager_version" => "v0.4.1"})
 
       assert Fold.fold(@run, [ping, start]).run.forager_version == "v0.4.1"
 
@@ -150,8 +150,8 @@ defmodule Apiary.Runs.FoldTest do
     end
 
     test "the ping with the highest sequence decides" do
-      first = event(1, "ping", %{"runner_version" => "v1", "contract_version" => 1})
-      second = event(9, "ping", %{"runner_version" => "v2", "contract_version" => 1})
+      first = event(1, "ping", %{"forager_version" => "v1", "contract_version" => 1})
+      second = event(9, "ping", %{"forager_version" => "v2", "contract_version" => 1})
 
       %{run: run, latest: latest} = Fold.fold(@run, [second])
       %{run: run} = Fold.fold(run, [first], latest)
@@ -925,7 +925,7 @@ defmodule Apiary.Runs.FoldTest do
             {%{"state" => "succeeded"}, "succeeded"},
             {%{"state" => "failed", "exit_code" => 2}, "failed"},
             {%{"state" => "failed", "reason" => "timeout"}, "timed_out"},
-            {%{"state" => "failed", "reason" => "runner_lost", "exit_code" => -1}, "failed"},
+            {%{"state" => "failed", "reason" => "gateway_lost", "exit_code" => -1}, "failed"},
             {%{"state" => "evaporated", "reason" => "unheard of"}, "failed"}
           ] do
         %{run: run} = Fold.fold(%{@run | state: "running"}, [exited(18, data)])
@@ -950,7 +950,7 @@ defmodule Apiary.Runs.FoldTest do
         assert {run.state, run.exit_code, run.duration_ms} == {"failed", nil, nil}
       end
 
-      ping = event(1, "ping", %{"contract_version" => huge, "runner_version" => "v"})
+      ping = event(1, "ping", %{"contract_version" => huge, "forager_version" => "v"})
       assert Fold.fold(@run, [ping]).run.contract_version == nil
 
       assert Fold.fold(@run, [heartbeat(5, huge)]).run.elapsed_seconds == nil
@@ -1025,7 +1025,7 @@ defmodule Apiary.Runs.FoldTest do
 
   test "any order and any split into passes gives the same run" do
     events = [
-      event(1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1}),
+      event(1, "ping", %{"forager_version" => "v0.4.0", "contract_version" => 1}),
       started(2),
       event(3, "run.policy_applied", %{"digest" => "first"}),
       # Every heartbeat at the same instant on both clocks: only the sequence can decide.
@@ -1033,7 +1033,7 @@ defmodule Apiary.Runs.FoldTest do
       event(5, "run.policy_applied", %{"digest" => "second"}),
       heartbeat(6, 60, 15, 30),
       heartbeat(7, 90, 45, 30),
-      event(8, "ping", %{"runner_version" => "v0.4.2", "contract_version" => 1}),
+      event(8, "ping", %{"forager_version" => "v0.4.2", "contract_version" => 1}),
       exited(9, %{"state" => "failed", "reason" => "timeout"})
     ]
 

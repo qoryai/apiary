@@ -12976,6 +12976,12 @@ msgstr ""
 msgid "from %{from} to %{to}"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "gateway lost"
+msgstr ""
+
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "general name slug"
@@ -13416,12 +13422,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "runner %{version}"
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "runner lost"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

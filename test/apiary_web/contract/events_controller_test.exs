@@ -71,7 +71,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "the ping alone is answered 202 and the versions are recorded on the key",
          %{conn: conn, scope: scope, key: key, secret: secret} do
       {subject, [ping, _]} = first_events()
-      conn = signed_post(conn, key.key_id, secret, [ping], user_agent: "qory-runner/0.4.1")
+      conn = signed_post(conn, key.key_id, secret, [ping], user_agent: "qory-forager/0.4.1")
       assert response(conn, 202)
 
       key = Repo.get!(AccessKey, key.id)
@@ -140,7 +140,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert build_conn()
              |> signed_post(key.key_id, secret, batch,
                delivery: delivery,
-               user_agent: "qory-runner/9.9.9"
+               user_agent: "qory-forager/9.9.9"
              )
              |> response(202)
 

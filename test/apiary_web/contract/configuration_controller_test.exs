@@ -29,7 +29,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
       key_id,
       secret,
       path,
-      Keyword.put_new(opts, :user_agent, "qory-runner/0.9.1")
+      Keyword.put_new(opts, :user_agent, "qory-forager/0.9.1")
     )
   end
 
@@ -148,7 +148,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
   test "success touches the key", %{conn: conn, key: key, secret: secret} do
     assert key!(key).last_used_at == nil
-    signed_get(conn, key.key_id, secret, contract_version: 1, user_agent: "qory-runner/1.2.3")
+    signed_get(conn, key.key_id, secret, contract_version: 1, user_agent: "qory-forager/1.2.3")
 
     touched = key!(key)
     assert touched.last_used_at
@@ -192,7 +192,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     key: key,
     secret: secret
   } do
-    long = "qory-runner/" <> String.duplicate("9", 5_000)
+    long = "qory-forager/" <> String.duplicate("9", 5_000)
 
     assert %{"version" => 1} =
              conn |> signed_get(key.key_id, secret, user_agent: long) |> json_response(200)
@@ -208,9 +208,9 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     secret: secret
   } do
     for user_agent <- [
-          "qory-runner/" <> <<0xFF, 0xFE>>,
-          "qory-runner/1.0\e[31m",
-          "qory-runner/1\0"
+          "qory-forager/" <> <<0xFF, 0xFE>>,
+          "qory-forager/1.0\e[31m",
+          "qory-forager/1\0"
         ] do
       conn = signed_get(conn, key.key_id, secret, user_agent: user_agent)
       assert %{"version" => 1} = json_response(conn, 200)

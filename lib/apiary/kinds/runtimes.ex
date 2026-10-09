@@ -1,8 +1,8 @@
 defmodule Apiary.Kinds.Runtimes do
   @moduledoc """
   Runtimes is the catalogue of the runtimes a workspace can set up: the runner contract's
-  `contracts/runner/v1/runtimes.json`, vendored byte for byte as
-  `priv/contract/runtimes.json` at the commit in `.runner-contract-ref`. The runner
+  `contracts/forager/v1/runtimes.json`, vendored byte for byte as
+  `priv/contract/runtimes.json` at the commit in `.forager-contract-ref`. The runner
   generates it from its built-in descriptors, in name order; per runtime it has its
   `name`, such as `claude`, a `title`, its `reserves`, its `denies`, its
   `credential_files`, its `declares` (each with its `id`, `title`, the variable `name` it
