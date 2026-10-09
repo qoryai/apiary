@@ -2010,4 +2010,275 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#run-why")
     end
   end
+
+  # The terms of the rail's Run section, in order.
+  defp run_terms(lv) do
+    lv
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#run-facts > dt")
+    |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+  end
+
+  defp gateway_run(scope, exit) do
+    projected(scope, [
+      {1, "run.started", gateway_started_data()},
+      {2, "run.egress", egress_data()},
+      {3, "run.exited", exit}
+    ])
+  end
+
+  describe "a run with no session" do
+    setup %{scope: scope} do
+      %{run: demo(scope, "no-session")}
+    end
+
+    test "the header: Ended and why, no runtime and no host", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-ended", "Ended")
+      assert has_element?(lv, "#run-meta #run-state + #run-reason", "quiet for 10 minutes")
+      refute has_element?(lv, "#run-runtime")
+      refute has_element?(lv, "#run-host")
+      refute has_element?(lv, "#run-meta", "exit")
+      assert has_element?(lv, "#run-duration-line", "10 m 35 s")
+      assert has_element?(lv, "#run-denied", "1 denied")
+
+      # the tabs are a session run's
+      for tab <- ~w(timeline terminal connections details),
+          do: assert(has_element?(lv, "#run-tab-#{tab}"))
+    end
+
+    test "the timeline: started by a gateway, ended quiet on a neutral stop, and no notice", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2", "Run started")
+      assert has_element?(lv, "#e-2", "by a gateway with no session")
+      refute html =~ "without a wall"
+
+      assert has_element?(lv, "#e-10", "Run ended")
+      assert has_element?(lv, "#e-10", "quiet for 10 minutes")
+      assert has_element?(lv, "#e-10", "10 m 35 s")
+      assert has_element?(lv, "#e-10 .hero-stop-micro")
+      refute has_element?(lv, "#e-10 .hero-x-mark-micro")
+      refute html =~ "Run exited"
+
+      # the lane key and the switch stay; nothing says the run had no session here
+      assert has_element?(lv, ".q-tl-bar", "Main session")
+      assert has_element?(lv, "#toggle-connections", "Connections inline")
+      refute html =~ "No session."
+      refute has_element?(lv, "#run-timeline .q-limits")
+    end
+
+    test "the Terminal tab: the terminal, empty, with the note, its controls disabled", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert has_element?(lv, "#terminal[phx-hook='Terminal'][data-empty='true']")
+      assert has_element?(lv, "#terminal-note.q-term-msg b", "No session.")
+
+      assert has_element?(
+               lv,
+               "#terminal-note",
+               "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
+             )
+
+      refute html =~ "This run wrote no output"
+
+      for control <- [
+            "input[data-find]",
+            "[data-follow]",
+            "[data-wrap]",
+            ~s([data-size-step="-1"]),
+            ~s([data-size-step="1"]),
+            "[data-download]"
+          ] do
+        assert has_element?(lv, "#terminal-bar #{control}[disabled]")
+      end
+
+      # nothing to download: no link to the log in the box
+      refute has_element?(lv, "#terminal a[download]")
+      # Focus stays
+      assert has_element?(lv, "#terminal-bar [data-focus]:not([disabled])", "Focus")
+      assert has_element?(lv, "#terminal .q-term-foot", "Ended")
+      assert has_element?(lv, "#terminal .q-term-foot", "0 B")
+      # no caption under the box
+      refute has_element?(lv, ".q-term-note")
+    end
+
+    test "the Network access tab lists its connections", %{conn: conn, run: run, scope: scope} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+
+      assert has_element?(lv, "#run-connections", "api.example")
+      assert has_element?(lv, "#run-connections", "metrics.example")
+    end
+
+    test "the Details: opened by a gateway, the Forager that reported it, no session's facts", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#run-facts .q-sdot-ended", "Ended")
+      assert has_element?(lv, "#run-facts #rail-reason", "quiet for 10 minutes")
+      assert has_element?(lv, "#run-opened-by", "gateway (no session)")
+      assert has_element?(lv, "#run-forager", "0.10.0 · contract 1")
+
+      terms = run_terms(lv)
+      assert Enum.take(terms, 2) == ["State", "Opened by"]
+      for term <- ["Started", "Duration", "Key", "Forager"], do: assert(term in terms)
+      for term <- ["Exit", "Runtime", "Host", "Wall"], do: refute(term in terms)
+
+      # the Forager row sits after Node and before Instance, where they are
+      forager = Enum.find_index(terms, &(&1 == "Forager"))
+      key = Enum.find_index(terms, &(&1 == "Key"))
+      assert forager > key
+
+      if node = Enum.find_index(terms, &(&1 == "Node")), do: assert(forager == node + 1)
+
+      if instance = Enum.find_index(terms, &(&1 == "Instance")),
+        do: assert(instance == forager + 1)
+
+      # the Command section is gone, and the Session is none
+      refute has_element?(lv, "#rail-command")
+      refute html =~ "Arguments"
+      assert html =~ ~r{<dt>Session</dt>\s*<dd class="font-mono">\s*none\s*</dd>}
+    end
+
+    test "every reason in words: the header leaves out those that repeat the state", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {exit, state, header, rail} <- [
+            {%{"reason" => "credential_expired"}, "ended", "run credential expired",
+             "run credential expired"},
+            {%{"reason" => "run_ended_at_issuer"}, "ended", "the issuer reported the run ended",
+             "the issuer reported the run ended"},
+            {%{"reason" => "gateway_lost"}, "failed", "gateway lost", "gateway lost"},
+            {%{"reason" => "session_lost"}, "failed", "session lost", "session lost"},
+            {%{"reason" => "timeout"}, "timed_out", nil, "timed out"},
+            {%{"reason" => "run_closed"}, "closed", nil, "closed"}
+          ] do
+        run = gateway_run(scope, exit)
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state.q-sdot-#{state}")
+
+        if header,
+          do: assert(has_element?(lv, "#run-reason", header)),
+          else: refute(has_element?(lv, "#run-reason"))
+
+        assert has_element?(lv, "#rail-reason", rail)
+        # a run with no session has no exit to show
+        refute has_element?(lv, "#run-meta", "exit")
+        refute "Exit" in run_terms(lv)
+      end
+    end
+
+    test "the timeline's last item: Run ended for an end that is no failure, Run exited else", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {reason, kind, words, glyph} <- [
+            {"credential_expired", "Run ended", "run credential expired", "hero-stop-micro"},
+            {"run_ended_at_issuer", "Run ended", "the issuer reported the run ended",
+             "hero-stop-micro"},
+            {"gateway_lost", "Run exited", "gateway lost", "hero-x-mark-micro"},
+            {"timeout", "Run exited", "timeout", "hero-x-mark-micro"}
+          ] do
+        run = gateway_run(scope, %{"reason" => reason, "duration_ms" => 95_000})
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#e-3", kind)
+        assert has_element?(lv, "#e-3", words)
+        assert has_element?(lv, "#e-3", "1 m 35 s")
+        assert has_element?(lv, "#e-3 .#{glyph}")
+      end
+    end
+  end
+
+  describe "a run with a session, beside one with none" do
+    test "its page is as it was; the reason's words stand under the state", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "timed-out")
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      # timed out: the words repeat the state on the meta line, and stand under it in the rail
+      assert has_element?(lv, "#run-meta #run-state.q-sdot-timed_out", "Timed out")
+      refute has_element?(lv, "#run-reason")
+      assert has_element?(lv, "#run-facts #rail-reason", "timed out")
+      assert has_element?(lv, "#run-runtime")
+      assert html =~ "Run exited"
+      refute html =~ "by a gateway with no session"
+
+      terms = run_terms(lv)
+      for term <- ["Exit", "Runtime", "Host", "Wall"], do: assert(term in terms)
+      refute "Opened by" in terms
+      refute "Forager" in terms
+      refute has_element?(lv, "#run-opened-by")
+      assert has_element?(lv, "#rail-command")
+      assert has_element?(lv, "#rail-command + dl", "Forager")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert has_element?(lv, "#terminal[data-empty='false']")
+      refute has_element?(lv, "#terminal-note")
+      refute has_element?(lv, "#terminal-bar [disabled]:not([data-size-step])")
+      assert has_element?(lv, "#terminal a[download]")
+      assert has_element?(lv, ".q-term-note")
+    end
+
+    test "a session's lost gateway is said once on the meta line, and its exit is in the rail",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "failed", "exit_code" => -1, "reason" => "gateway_lost"}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state", "Failed")
+      assert has_element?(lv, "#run-reason", "gateway lost")
+      refute has_element?(lv, "#run-meta", "exit gateway lost")
+      assert has_element?(lv, "#rail-reason", "gateway lost")
+      assert "Exit" in run_terms(lv)
+      refute has_element?(lv, "#run-opened-by")
+      assert has_element?(lv, ".q-run-rail", "n/a")
+
+      # with no output, it says so, as before
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert html =~ "This run wrote no output"
+      refute html =~ "No session."
+    end
+  end
 end

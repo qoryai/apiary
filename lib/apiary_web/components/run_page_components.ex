@@ -46,6 +46,8 @@ defmodule ApiaryWeb.RunPageComponents do
 
   alias Phoenix.LiveView.JS
 
+  @ended_reasons Apiary.Runs.Fold.ended_reasons()
+
   @background_tip gettext_noop(
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
                   )
@@ -511,6 +513,10 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :policy_applied}),
     do: %{glyph: "hero-shield-check-micro", shape: :square, tone: nil}
 
+  # An end that is no failure, such as a quiet period, stops neutrally.
+  defp node_look(%{kind: :run_exited, reason: reason}) when reason in @ended_reasons,
+    do: %{glyph: "hero-stop-micro", shape: :square, tone: nil}
+
   defp node_look(%{kind: :run_exited} = item) do
     if item.exit_code == 0 and is_nil(item.signal) and is_nil(item.reason),
       do: %{glyph: "hero-check-micro", shape: :square, tone: nil},
@@ -859,6 +865,18 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # A run that was quiet, whose run credential expired or whose issuer reported it ended,
+  # ended: why, in words, then how long it ran.
+  defp item_body(%{item: %{kind: :run_exited, reason: reason}} = assigns)
+       when reason in @ended_reasons do
+    ~H"""
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run ended")}>
+      {RunComponents.reason_words(@item)}
+      <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
+    </.head>
+    """
+  end
+
   defp item_body(%{item: %{kind: :run_exited}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run exited")}>
@@ -944,6 +962,8 @@ defmodule ApiaryWeb.RunPageComponents do
     </details>
     """
   end
+
+  defp run_started_words(%{opened_by: "gateway"}), do: gettext("by a gateway with no session")
 
   defp run_started_words(item) do
     bindings = [
@@ -1330,6 +1350,11 @@ defmodule ApiaryWeb.RunPageComponents do
   recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
   download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
   (the browser's, where it has one).
+
+  With a `note`, the log is empty and the box says why: the note sits in the middle of the
+  screen, in the terminal's own message style; search, follow, wrap, the text size and the
+  download are disabled; the hook reads no log and keeps only Focus and Full screen; and
+  the caption under the box is left out.
   """
   attr :id, :string, required: true
   attr :src, :string, required: true
@@ -1342,9 +1367,14 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :through, :integer, required: true
   attr :cols, :integer, default: nil
   attr :rows, :integer, default: nil
+  slot :note, doc: "why the log is empty, said on the empty screen"
 
   def terminal(assigns) do
-    assigns = assign(assigns, :sized, is_integer(assigns.cols) and is_integer(assigns.rows))
+    assigns =
+      assign(assigns,
+        sized: is_integer(assigns.cols) and is_integer(assigns.rows),
+        empty: assigns.note != []
+      )
 
     ~H"""
     <div
@@ -1362,10 +1392,16 @@ defmodule ApiaryWeb.RunPageComponents do
       data-sized={to_string(@sized)}
       data-cols={@sized && @cols}
       data-rows={@sized && @rows}
+      data-empty={to_string(@empty)}
       data-words={Jason.encode!(terminal_words())}
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
-        <a class="sr-only focus:not-sr-only q-tbtn" href={@src <> "?download=1"} download>
+        <a
+          :if={!@empty}
+          class="sr-only focus:not-sr-only q-tbtn"
+          href={@src <> "?download=1"}
+          download
+        >
           {gettext("Read the log as text")}
         </a>
         <div class="q-tseg" role="group" aria-label={gettext("Stream")}>
@@ -1384,6 +1420,7 @@ defmodule ApiaryWeb.RunPageComponents do
           <input
             type="text"
             data-find
+            disabled={@empty}
             spellcheck="false"
             autocomplete="off"
             placeholder={gettext("Search the log")}
@@ -1402,6 +1439,7 @@ defmodule ApiaryWeb.RunPageComponents do
           aria-pressed={to_string(@live)}
           title={gettext("Follow the end of the log (End)")}
           data-follow
+          disabled={@empty}
         >
           <.icon name="hero-arrow-down-micro" class="size-4" />
           <span class="q-tbtn-lbl" data-follow-label>{if @live,
@@ -1415,6 +1453,7 @@ defmodule ApiaryWeb.RunPageComponents do
           title={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
+          disabled={@empty}
         >
           <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
           <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
@@ -1427,6 +1466,7 @@ defmodule ApiaryWeb.RunPageComponents do
             title={gettext("Smaller text")}
             aria-label={gettext("Smaller text")}
             data-size-step="-1"
+            disabled={@empty}
           >
             {gettext("A−")}
           </button>
@@ -1437,6 +1477,7 @@ defmodule ApiaryWeb.RunPageComponents do
             title={gettext("Larger text")}
             aria-label={gettext("Larger text")}
             data-size-step="1"
+            disabled={@empty}
           >
             {gettext("A+")}
           </button>
@@ -1447,12 +1488,14 @@ defmodule ApiaryWeb.RunPageComponents do
             title={gettext("Fit the recorded columns to the width")}
             aria-pressed="false"
             data-size-fit
+            disabled={@empty}
           >
             {gettext("Fit")}
           </button>
         </div>
         <span class="q-term-sep" aria-hidden="true"></span>
         <a
+          :if={!@empty}
           class="q-tbtn"
           title={gettext("Download the raw bytes")}
           aria-label={gettext("Download the raw bytes")}
@@ -1462,6 +1505,19 @@ defmodule ApiaryWeb.RunPageComponents do
           <.icon name="hero-arrow-down-tray-micro" class="size-4" />
           <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
         </a>
+        <%!-- An empty log has nothing to download: the same control, disabled. --%>
+        <button
+          :if={@empty}
+          type="button"
+          class="q-tbtn"
+          title={gettext("Download the raw bytes")}
+          aria-label={gettext("Download the raw bytes")}
+          data-download
+          disabled
+        >
+          <.icon name="hero-arrow-down-tray-micro" class="size-4" />
+          <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
+        </button>
         <button
           type="button"
           class="q-tbtn"
@@ -1496,6 +1552,9 @@ defmodule ApiaryWeb.RunPageComponents do
           <p data-message-text></p>
           <button type="button" class="q-tbtn" data-retry hidden>{gettext("Try again")}</button>
         </div>
+        <div :if={@empty} id={"#{@id}-note"} class="q-term-msg">
+          <p class="q-term-empty">{render_slot(@note)}</p>
+        </div>
       </div>
       <div class="q-term-foot">
         <span :if={@live} class="q-term-live"><i></i>{gettext("Live")}</span>
@@ -1515,7 +1574,7 @@ defmodule ApiaryWeb.RunPageComponents do
         </span>
       </div>
     </div>
-    <p class="q-term-note">
+    <p :if={!@empty} class="q-term-note">
       {if @sized,
         do:
           gettext(

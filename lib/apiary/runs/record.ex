@@ -385,8 +385,8 @@ defmodule Apiary.Runs.Record do
   @slim_sql """
   SELECT
     e.sequence, e.type, e.time,
-    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
-    #{Enum.map_join(~w(port exit_code duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
+    #{Enum.map_join(~w(tool agent_id agent_type opened_by runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
+    #{Enum.map_join(~w(port exit_code quiet_seconds duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,

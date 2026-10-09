@@ -360,6 +360,14 @@ defmodule Apiary.Runs.Fold do
   def exit_state(nil, "run_closed"), do: "closed"
   def exit_state(_state, _reason), do: "failed"
 
+  @doc """
+  The reasons of an exit that end a run neither well nor by a failure of its own:
+  `quiet`, `credential_expired` and `run_ended_at_issuer`. Without a state, such an exit
+  ends the run `ended` (`exit_state/2`).
+  """
+  @spec ended_reasons() :: [String.t()]
+  def ended_reasons, do: @ended_reasons
+
   defp exited_state("closed", _state, _reason), do: "closed"
   defp exited_state(_current, state, reason), do: exit_state(state, reason)
 

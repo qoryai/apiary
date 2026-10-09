@@ -693,7 +693,7 @@ defmodule Apiary.Runs.Record.Timeline do
   def needed(light), do: light |> Enum.flat_map(& &1.seqs) |> Enum.uniq()
 
   defp body(%{kind: :run_started}, event, _events, _limit),
-    do: Map.take(event, [:runtime, :runtime_version, :host, :wall])
+    do: Map.take(event, [:opened_by, :runtime, :runtime_version, :host, :wall])
 
   defp body(%{kind: :policy_applied} = item, event, events, _limit) do
     previous = item[:previous_seq] && events[item.previous_seq]
@@ -806,7 +806,7 @@ defmodule Apiary.Runs.Record.Timeline do
   defp body(%{kind: :session_ended}, event, _events, _limit), do: %{reason: event.reason}
 
   defp body(%{kind: :run_exited}, event, _events, _limit),
-    do: Map.take(event, [:exit_code, :signal, :reason, :duration_ms])
+    do: Map.take(event, [:exit_code, :signal, :reason, :quiet_seconds, :duration_ms])
 
   defp body(%{kind: :connection}, event, _events, _limit), do: %{connection: connection(event)}
 
@@ -990,9 +990,9 @@ defmodule Apiary.Runs.Record.Timeline do
 
   ## Slim events
 
-  @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall mode source
-    model cwd kind outcome reason signal method request_method path decision rule path_rule credential
-    request_id port exit_code duration_ms turns status cost_usd interrupted in_background allow
+  @slim_keys ~w(sequence type time tool agent_id agent_type opened_by runtime runtime_version host wall
+    mode source model cwd kind outcome reason signal method request_method path decision rule path_rule
+    credential request_id port exit_code quiet_seconds duration_ms turns status cost_usd interrupted in_background allow
     allow_count deny deny_count run_configuration terminated terminated_count tools summary text
     text_bytes error error_bytes error_lines details details_bytes details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
@@ -1043,15 +1043,15 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(%{sequence: event.sequence, type: event.type, time: event.time})
     |> Map.merge(
       for key <-
-            ~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind
-            outcome reason signal method request_method path decision rule path_rule credential
-            request_id),
+            ~w(tool agent_id agent_type opened_by runtime runtime_version host wall mode source model
+            cwd kind outcome reason signal method request_method path decision rule path_rule
+            credential request_id),
           into: %{} do
         {String.to_existing_atom(key), string(data, key)}
       end
     )
     |> Map.merge(
-      for key <- ~w(port exit_code duration_ms turns status)a,
+      for key <- ~w(port exit_code quiet_seconds duration_ms turns status)a,
           into: %{},
           do: {key, integer(data, Atom.to_string(key))}
     )

@@ -1296,8 +1296,9 @@ page has no breadcrumb of its own.
   line of what it is about: the kind, then at most three subjects, each its type and ref
   as given and a link out (`<.external_link>`) with its title as the tooltip, then "+N
   more" (all of them are in the rail's About); then one muted meta line that starts with
-  the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
-  alive the run is while it runs, the target (its page), the runtime, the host, when it
+  the state as a dot and its word (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, why
+  it ended in words where they say more than the state ("quiet for 30 minutes", not
+  "timed out" beside Timed out), how alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
   run id, Raw log, Download log). Close run asks in place: the button becomes its
@@ -1330,6 +1331,14 @@ page has no breadcrumb of its own.
   and from it when Terminal took the rail's room, the Details tab shows this same element
   in the column, its sections as cards
   (`q-run-on-details`), so the two never disagree and no id is drawn twice.
+- **A run with no session**, one a gateway opened (`Apiary.Runs.Run.no_session?/1`), has
+  no runtime or host on its meta line. Its timeline starts "by a gateway with no session",
+  and one that was quiet, whose run credential expired or whose issuer reported it ended,
+  ends "Run ended" with why, on a neutral stop mark; any other exit is "Run exited". Its
+  rail's Run section says Opened by "gateway (no session)" second and Forager (the version
+  and contract that reported it) after Node, and has no Exit, Runtime, Host or Wall; it
+  has no Command section, and Record's Session says "none". Its Terminal tab is the
+  terminal, empty, with the note (The terminal, below).
 - **The timeline's open items are flat**: a rule in the item's state's colour under the
   chevron, the content indented beside it, code with a faint label and no border, a
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
@@ -1357,6 +1366,12 @@ other page. The screen is `role="log"` with `aria-live="off"`.
   rail away so the box takes the window; and **Full screen**, the browser's, on the box,
   shown only where the browser has it. A narrow box names its buttons on hover only
   (a container query), so the bar never wraps.
+- **An empty box with a note.** A run with no session has no log: its Terminal tab is the
+  box all the same, bar, screen and foot, with a note in the middle of the screen in the
+  terminal's own message style ("No session." and why). While the log is empty, search,
+  follow, wrap, the text size and the download are disabled, and the hook reads no log;
+  Focus and Full screen stay. The caption under the box is left out. A run with a session
+  and no output says so in the column instead, as an empty state.
 
 ## Words
 
