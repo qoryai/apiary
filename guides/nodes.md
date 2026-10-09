@@ -236,6 +236,23 @@ Every run records its node and its instance. A run's page names both, beside its
 key; the node's **Overview** lists its recent runs; and on **Runs**, `node:build-01` in the
 filter, or **Node** in the Filter menu, keeps a node's runs alone.
 
+## A separate gateway
+
+A gateway on a machine of its own, which the agents on other machines connect through, is
+a node of its own, like any other: add it as a node, `gw-01` say, and connect it either
+way. It holds the node's key and is the one that talks to Qory Apiary. The machines behind
+it hold no access key and need no node: their runs reach Qory Apiary through the gateway.
+
+A run through the gateway belongs to the gateway's node and instance, and its key is the
+gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
+for a program that reports no session has no host and no runtime; its page says it has no
+session.
+<!-- feature: secrets -->
+
+Keep **Stored secrets** **Not allowed** on a separate gateway's key: a gateway that serves
+other machines is not allowed stored secrets.
+<!-- /feature -->
+
 ## Revoking a key
 
 **Revoke…** on an active key's card revokes it at once: the machine's next request is

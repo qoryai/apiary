@@ -334,6 +334,78 @@ A run without a size is a run on pipes: the endpoint sends no size header and th
 the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
 `terminal`, and a single stream of a pipes run, or a download, is never sized.
 
+## What opened a run
+
+`dev.qory.run.started` says what opened the run, in `opened_by`, which the contract
+requires:
+
+- `session`: a Forager session around a runtime. The event carries the runtime, the
+  command, its arguments, the directory and whether it is interactive, with the host, the
+  terminal's size, the wall and the image where they apply, and the run's
+  `dev.qory.run.exited` carries `state` and `exit_code`.
+- `gateway`: a gateway opened the run for a program that reports no session. The run has
+  no process, so the event carries none of `runtime`, `runtime_version`, `command`,
+  `args`, `dir`, `interactive`, `terminal`, `host`, `wall` and `image`, and the run's
+  `dev.qory.run.exited` carries neither `state` nor `exit_code`. It still carries
+  `forager_version`, the gateway's own, its labels, `run_key` among them, and
+  `about.details`, as the gateway gives them.
+
+The run keeps `opened_by`, and a run a gateway opened is shown as a run with no session:
+no runtime, no host, no command and no exit code, since the record holds none
+([ui.md](ui.md), The run page).
+
+A run through a separate gateway belongs to the gateway's node, instance and key, since
+the gateway is the node toward the server: it sends the ping and delivers every event of
+the run under its own access key. The machines behind it hold no access key. For a
+session's run through it, `host` is the agent's machine, the one the runtime runs on, so
+the run's Node is the gateway's and its Host the agent's machine.
+
+## How a run ends
+
+`dev.qory.run.exited` carries `reason` when the run ended other than by the runtime's own
+exit, one of seven:
+
+| `reason` | What Qory saw | Words | State without `state` |
+|---|---|---|---|
+| `timeout` | the run reached its time limit | timed out | Timed out (`timed_out`) |
+| `run_closed` | the server closed the run | closed | Closed (`closed`) |
+| `gateway_lost` | the gateway was lost before the run's end was recorded | gateway lost | Failed (`failed`) |
+| `session_lost` | the gateway lost the session: it heard nothing from it for three of its heartbeat intervals, or refused its events | session lost | Failed (`failed`) |
+| `quiet` | a run with no session had no connection for the gateway's quiet period | quiet for N minutes | Ended (`ended`) |
+| `credential_expired` | the run credential expired | run credential expired | Ended (`ended`) |
+| `run_ended_at_issuer` | the issuer reported the run ended | the issuer reported the run ended | Ended (`ended`) |
+
+`quiet_seconds`, an integer of at least 1, comes with `quiet` and with no other reason:
+the quiet period the gateway applied, which the words say as a duration reads: 1800
+seconds is "quiet for 30 minutes". The words stand under State in the run page's Details
+rail, and follow the state in its meta line where they say more than the state.
+
+`state` and `exit_code` are optional. A session's run carries both, `failed` and `-1`
+with `gateway_lost` and `session_lost`; a run a gateway opened carries neither, whatever
+its reason. When `state` is there it decides as it always has: `succeeded` is Succeeded,
+`failed` with `timeout` is Timed out, and any other `failed` is Failed. When it is not,
+the reason decides, by the last column above; the contract fixes no state per reason and
+leaves each receiver its own. Ended is a state of its own: the run ended, and nothing
+checked an outcome. It counts with the runs that ended well, never with those that ended
+badly. A run the workspace closed stays Closed whatever its `dev.qory.run.exited` says.
+
+## Liveness
+
+A run is alive from its first event until its `dev.qory.run.exited`, until the workspace
+closes it, or until it goes silent. Qory Apiary's own lost-run check
+(`Apiary.Runs.Liveness`) marks a run `lost` when nothing has been heard of it for more than
+three of the heartbeat intervals it announced (`interval_seconds` of its heartbeats), 90
+seconds when it announced none: a `running` run from its last heartbeat, else from the
+arrival of its `run.started`, and a `pending` run from when the workspace first heard of
+it. Only the server's clock is compared.
+
+Every event of a run reaches the server from one gateway, the node toward the server: a
+session's heartbeats through it, and a run with no session the gateway's own. So `lost`
+means the gateway stopped sending for the run. A session that falls silent is the
+gateway's to notice, and it ends the run with `session_lost`, which the server sees as an
+exit. `lost` is not final: a later heartbeat or the run's `dev.qory.run.exited`, such as
+a `gateway_lost` sent later with the run's record, corrects the state.
+
 ## Failure
 
 Every failure of authentication is `401` with the body `{"error":"unauthorized"}` and
@@ -447,19 +519,11 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   lists the short id, and the Overview its command line, else its short id. Nothing of
   `about` is part of the run configuration request, which carries the labels alone, so it
   never decides a run's policy.
-- What opened a run is `opened_by` of `dev.qory.run.started`: `session`, a Forager session
-  around a runtime, or `gateway`, a gateway with no session, whose start carries no runtime,
-  command, arguments, directory, terminal, host, wall or image (`Apiary.Runs.Fold`). A value
-  the contract does not name is read as absent. Its `forager_version` is the gateway's.
-- A run's end is read from its `dev.qory.run.exited`. With a `state`, a session's exit,
-  `succeeded` is succeeded, and `failed` is timed out with the reason `timeout` and failed
-  otherwise, whatever the reason. Without one, as a run a gateway opened ends, the reason
-  decides: `quiet`, `credential_expired` and `run_ended_at_issuer` are ended, a state of its
-  own that counts with the runs that ended well; `timeout` is timed out; `run_closed` is
-  closed; `gateway_lost`, `session_lost`, another reason or none are failed. `exit_code` is
-  read when present. A quiet exit's `quiet_seconds` is kept with the run. A run a gateway
-  opened is held to its heartbeats like any other: three intervals without one and it is
-  lost, which for such a run means the gateway stopped sending for it.
+- An `opened_by` the contract does not name is read as absent, and the run is shown as one
+  with a session (`Apiary.Runs.Fold`, `Apiary.Runs.Run.no_session?/1`).
+- Without a `state`, the reason decides the run's state, as How a run ends sets out: the
+  contract fixes none. A reason it does not name, or none, is failed
+  (`Apiary.Runs.Fold.exit_state/2`).
 - When the run configuration cannot be read the endpoint answers `503
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.

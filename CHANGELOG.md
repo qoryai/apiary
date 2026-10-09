@@ -36,7 +36,13 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   why it ended in words after the state; its Terminal tab is the terminal, empty, with a
   note that the run has no session and its controls disabled; its timeline starts "by a
   gateway with no session" and ends "Run ended"; and its Details say what opened it and
-  which Forager reported it, with no Command section.
+  which Forager reported it, with no Command section, and its Session "none". A run
+  through a separate gateway belongs to the gateway's node and instance, and its Host is
+  the agent's machine.
+- How a run ended, in words, under State in the run's rail, and after its state on the
+  run page where they say more than the state: timed out, closed, gateway lost, session
+  lost, quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
+  reported the run ended.
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
@@ -46,7 +52,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   refusals come in the contract's order, coded: a header sent twice or an instance id
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins.
+  the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
+  505a86d.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
