@@ -529,7 +529,7 @@ events the gateway posts are the record and leave no entry.
   `member.activate`); granting and revoking an instance admin, by a release command;
   an access key's arrival on a node and its revocation, and making
   and cancelling an enrolment code;
-  closing a run; the retention settings; every write of the security policy, whose
+  the retention settings; every write of the security policy, whose
   history is the trail's entries of the policy's actions; and the trail's own retention.
   What the application removes of its own accord is recorded as the action that removes
   it: an expired invitation deleted when a new one goes to its address, one whose email

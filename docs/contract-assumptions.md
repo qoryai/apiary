@@ -147,7 +147,7 @@ first refusal that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, or holds a ping whose `interval_seconds` is absent or not an integer from 1 to 300 | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
-| `410` | the workspace has closed the run, or retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
+| `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `409` | the ping of a new run, from an instance beyond its node's instance limit (`Apiary.Nodes.admit/4`): nothing is stored | `{"error":"instance_limit"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
@@ -184,14 +184,12 @@ What is stored, in one transaction, before the answer:
   is first admitted by the node's instance limit, under the node's row lock
   (`Apiary.Nodes.admit/4`): a node runs one instance at a time, a pool up to its limit,
   and an instance counts while one of its runs is alive. The same subject under another workspace is another run. Two first
-  batches at once make one run. The run's row is locked while its batch is stored, so a
-  close and a batch never cross: a close that commits first is answered `410`, and a
-  closed run never gains an event;
+  batches at once make one run. The run's row is locked while its batch is stored;
 - nothing, for a run retention has pruned. Deduplication is against the events the
   workspace holds, and a pruned run holds none, so a batch delivered again after the prune
   could not be told from a new one and would be folded a second time. The workspace
-  therefore wants nothing more of a run whose events it pruned, and says so the way it
-  does for a closed run: `410`, the delivery recorded, no event stored. A run that lost
+  therefore wants nothing more of a run whose events it pruned, and says so: `410`, the
+  delivery recorded, no event stored. A run that lost
   only its log output (the log's days are shorter than the events') still takes events,
   deduplicated against the ones it keeps, but no `dev.qory.run.log` event: its log events
   are gone, so a replayed one could not be recognised, and one that is new would be older
@@ -362,9 +360,9 @@ which the contract requires and the gateway decides:
 - `none`: the run has no run credential, for a run on a gateway's local link, as `qory run`
   starts one on one machine.
 
-The run keeps it as `credential_from`, a name apart from the `credential` of
-`dev.qory.run.egress`, the name of the credential the proxy set on a request. No page
-shows it; it decides whether the workspace may close the run (How a run ends).
+Qory Apiary stores it with the event and reads nothing of it: no page shows it, and it is a
+name apart from the `credential` of `dev.qory.run.egress`, the name of the credential the
+proxy set on a request.
 
 A run through a separate gateway belongs to the gateway's node, instance and key, since
 the gateway is the node toward the server: it sends the ping and delivers every event of
@@ -382,12 +380,16 @@ session's own record, which never reaches Qory Apiary:
 | `reason` | What Qory saw | Words | State without `state` |
 |---|---|---|---|
 | `timeout` | the run reached its time limit | timed out | Timed out (`timed_out`) |
-| `run_closed` | the server closed the run | closed | Closed (`closed`) |
+| `run_closed` | the server closed the run | none | Failed (`failed`) |
 | `gateway_lost` | the gateway was lost before the run's end was recorded | gateway lost | Failed (`failed`) |
 | `session_lost` | the gateway lost the session: it heard nothing from it for three of its heartbeat intervals, or refused its events | session lost | Failed (`failed`) |
 | `quiet` | a run with no session had no connection for the gateway's quiet period | quiet for N minutes | Ended (`ended`) |
 | `credential_expired` | the run credential expired | run credential expired | Ended (`ended`) |
 | `run_ended_at_issuer` | the issuer reported the run ended | the issuer reported the run ended | Ended (`ended`) |
+
+`run_closed` has no state of its own and no words: Qory Apiary closes no run, so a live
+gateway never sends it to Qory Apiary, and one that arrived would read by its `state`, else
+as Failed.
 
 `quiet_seconds`, an integer of at least 1, comes with `quiet` and with no other reason:
 the quiet period the gateway applied, which the words say as a duration reads: 1800
@@ -402,21 +404,15 @@ run it ends with `session_lost`, `credential_expired` or `run_ended_at_issuer`. 
 `timeout` is Timed out, and any other `failed` is Failed. When it is not, the reason
 decides, by the last column above; the contract fixes no state per reason and leaves each
 receiver its own. Ended is a state of its own: the run ended, and nothing checked an
-outcome. It counts with the runs that ended well, never with those that ended badly. A run
-the workspace closed stays Closed whatever its `dev.qory.run.exited` says. The one who
-starts a run ends it: the workspace closes a run a session opened, never one whose
-projected `dev.qory.run.started` says a gateway opened it or says `credential` `issuer`. A
-run a gateway opened ends by its own `dev.qory.run.exited`; a session's run whose
-credential came from an issuer ends by its runtime's exit or at the gateway
-(`Apiary.Runs.close_run/2` refuses both, `{:error, :ended_by_its_starter}`). A session's
-run with `credential` `none`, as `qory run` starts one on one machine, may be closed.
-Until its start is projected, a run says neither who opened it nor where its credential
-came from, and a close is taken.
+outcome. It counts with the runs that ended well, never with those that ended badly.
+Qory Apiary records what a run reports and never ends a run it did not start; it starts
+none today. A run a gateway opened ends by its own `dev.qory.run.exited`, and a session's
+run by its runtime's exit or at the gateway.
 
 ## Liveness
 
-A run is alive from its first event until its `dev.qory.run.exited`, until the workspace
-closes it, or until it goes silent. Qory Apiary's own lost-run check
+A run is alive from its first event until its `dev.qory.run.exited`, or until it goes
+silent. Qory Apiary's own lost-run check
 (`Apiary.Runs.Liveness`) marks a run `lost` when nothing has been heard of it for more than
 three of the heartbeat intervals it announced (`interval_seconds` of its heartbeats), 90
 seconds when it announced none: a `running` run from its last heartbeat, else from the
@@ -545,8 +541,6 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   never decides a run's policy.
 - An `opened_by` the contract does not name is read as absent, and the run is shown as one
   with a session (`Apiary.Runs.Fold`, `Apiary.Runs.Run.no_session?/1`).
-- A `credential` the contract does not name is read as absent, and the run may be closed
-  as one whose start says none (`Apiary.Runs.Fold`, `Apiary.Runs.closable?/1`).
 - Without a `state`, the reason decides the run's state, as How a run ends sets out: the
   contract fixes none. A reason it does not name, or none, is failed
   (`Apiary.Runs.Fold.exit_state/2`).

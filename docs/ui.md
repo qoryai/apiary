@@ -600,7 +600,7 @@ version. Only the version in force is exported; another version's path sends on 
 - **A run is one line** (`<.runs_table>`): its title, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
-  when there are any. Ended shows its word, a grey dot as Closed's. A run with no session
+  when there are any. Ended shows its word and a grey dot. A run with no session
   says "no session" in the Runtime column, muted as the column is, and "n/a" as its Host.
   What the run says it is about is a muted line under them, only when it names a kind or a
   subject: the kind, then up to two subjects, each its type and ref
@@ -710,11 +710,9 @@ what needs the reader, then what their agents did, and never grows with the data
   page to one who may change it there, and a lock with the reason to the rest. A resolved
   item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
-  what is read. A lost run's Close asks on its own line: the row becomes its
-  `inline_confirm/1` ("Close nightly-mirror?", what a close does, Yes, close and Cancel),
-  never a dialog; Cancel or Escape gives the row back with the focus on its Close. A lost
-  run a gateway opened, or one whose credential came from an issuer, offers Open instead:
-  the one who starts a run ends it.
+  what is read. A lost run offers Open, its page: Qory Apiary records what a run reports
+  and never ends a run it did not start; it starts none today. The row leaves when the
+  run's exit or heartbeats arrive, or when its seven days pass.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
@@ -1307,12 +1305,9 @@ page has no breadcrumb of its own.
   (Ended · quiet for 30 minutes, but not "timed out" beside Timed out), how alive the run
   is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
-  connections. At the right: Close run while the run may be closed, never on a run a
-  gateway opened or one whose credential came from an issuer (the one who starts a run
-  ends it), and a ⋯ menu (Copy run id, Raw log,
-  Download log). Close run asks in place: the button becomes its
-  `inline_confirm/1`, "Close this run?", that a close is final, Yes, close and Cancel,
-  never a dialog; Cancel or Escape brings the button back with the focus. The seven
+  connections. At the right: the ⋯ menu (Copy run id, Raw log, Download log), and no
+  Close: Qory Apiary records what a run reports and never ends a run it did not start; it
+  starts none today. The seven
   cells of v1 are the rail's. A run that ended badly says how under the meta line, in one
   cut line whole on hover: the last result of its timeline that was no success, else its
   last failed turn or tool, with "Jump to it", the timeline at that item.
@@ -1334,7 +1329,7 @@ page has no breadcrumb of its own.
   the host alone.
 - **A run's title and kind** are each isolated in a `<bdi>` wherever they show as markup
   (the run page's `<h1>` and About, the runs list's row and preview, a target's runs, the
-  Overview's rows and its Close question, Network access's hits and ⌘K's results), in a
+  Overview's rows, Network access's hits and ⌘K's results), in a
   sentence too (`{:bdi, title}` of `ApiaryWeb.RichText`); a tooltip, the page's `<title>`,
   an `aria-label` and an announcement hold them as plain text. Below 1440 px,
   and from it when Terminal took the rail's room, the Details tab shows this same element
@@ -1345,7 +1340,7 @@ page has no breadcrumb of its own.
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
 - **The end reason** is in words (`RunComponents.reason_words/1`), the same in the meta
-  line and under State in the rail: timed out, closed, gateway lost, session lost, quiet
+  line and under State in the rail: timed out, gateway lost, session lost, quiet
   for a period, run credential expired, and the issuer reported the run ended
   ([contract-assumptions.md](contract-assumptions.md), How a run ends). The quiet period
   reads in whole hours, else whole minutes, else seconds: 1800 seconds is "quiet for 30

@@ -206,7 +206,7 @@ this order, and the first refusal that applies is the answer:
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit, or holds a ping whose `interval_seconds` is absent or not from 1 to 300 | `{"error":"invalid_request"}` |
-| `410` | the workspace has closed the run: the delivery is recorded, no event is stored | empty |
+| `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `409` | the ping of a new run, from an instance beyond its node's instance limit: nothing is stored | `{"error":"instance_limit"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |

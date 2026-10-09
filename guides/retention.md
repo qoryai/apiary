@@ -30,8 +30,8 @@ pruned until an owner or an admin asks for it.
 
 Retention works on whole runs, so a timeline is never half there.
 
-A run is due when it is not alive (it succeeded, ended, failed, timed out, was lost or was
-closed) and the server last received an event of it before the cut-off. Only the server's
+A run is due when it is not alive (it succeeded, ended, failed, timed out or was lost) and
+the server last received an event of it before the cut-off. Only the server's
 clock is compared, never the time Forager wrote into an event. A run that is still running
 is never pruned, however long it has run.
 
@@ -51,8 +51,8 @@ So are the counts on the policy pages.
 <!-- /feature -->
 
 A pruned run takes nothing more. A gateway that delivers a batch of it again, from a spool
-that outlived the retention, is answered `410` once the events are pruned, as for a run
-the workspace closed, and nothing is stored. A run that lost only its log output still
+that outlived the retention, is answered `410` once the events are pruned, and nothing is
+stored. A run that lost only its log output still
 takes its other events, without storing one twice, and no log event.
 
 A run whose events are pruned cannot be projected again, because a projection is rebuilt

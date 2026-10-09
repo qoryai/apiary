@@ -31,25 +31,23 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   ended.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. When it was quiet, its run credential expired or its issuer reported it ended, it
-  is Ended, a grey dot and the word, or the dot alone, as Closed is, for the repositories
+  is Ended, a grey dot and the word, or the dot alone, as Succeeded is, for the repositories
   list's last run and in a repository's Last runs, counted with the runs that ended well;
   the runs list's state filter offers it, and its Runtime column says "no session". Its
   page says why it ended in words after the state; its Terminal tab is the terminal, empty,
   with a note that the run has no session, and search, follow, wrap, the text size and the
   download disabled; its timeline starts "by a gateway with no session"; and its Details
   say what opened it and which Forager reported it, with no
-  Command section, and its Session "none". The one who starts a run ends it: such a run
-  offers no Close, on its page or as a lost run on the Overview, and the server refuses to
-  close it once its start is projected. A run through a separate gateway belongs to the
+  Command section, and its Session "none". A run through a separate gateway belongs to the
   gateway's node and instance, and its Host is the agent's machine.
-- A session's run whose credential came from an issuer, as for a run through a separate
-  gateway, offers no Close either, on its page or as a lost run on the Overview, and the
-  server refuses to close it once its start says so: it ends by its runtime's exit or at
-  the gateway. A run `qory run` starts on one machine has no run credential and keeps
-  Close, as does a run whose start is not yet projected.
+- Qory Apiary records what a run reports and never ends a run it did not start; it starts
+  none today. No run offers Close, on its page or as a lost run on the Overview, and a run
+  has no Closed state: it is alive, ended well (Succeeded, Ended) or ended badly (Failed,
+  Timed out, Lost). The events endpoint answers `410` only to a run whose events retention
+  has pruned.
 - How a run ended, in words, under State in the run's rail, and after its state on the
-  run page where they say more than the state: timed out, closed, gateway lost, session
-  lost, quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
+  run page where they say more than the state: timed out, gateway lost, session lost,
+  quiet for N minutes (or hours, or seconds), run credential expired, and the issuer
   reported the run ended. A run's timeline ends "Run ended", why in words and how long it
   ran, when it was quiet, its run credential expired or its issuer reported it ended,
   whatever its state, and "Run exited" otherwise. A session run's Exit in the rail says a
@@ -275,9 +273,6 @@ renames them back.
 `20261009160000_say_what_opened_a_run` adds `runs.opened_by` (`session` or `gateway`, with
 its check) and `runs.quiet_seconds`, NULL for every existing row, and lets `runs.state` be
 `ended`; rolled back, a run that ended is failed.
-`20261009180000_say_where_a_run_credential_came_from` adds `runs.credential_from`
-(`issuer` or `none`, with its check), NULL for every existing row; rolled back, it drops
-the column.
 
 ### Upgrading
 
