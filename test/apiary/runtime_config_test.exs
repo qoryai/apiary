@@ -10,11 +10,12 @@ defmodule Apiary.RuntimeConfigTest do
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
+  @unset ["APIARY_KEYS_DIR" | @mail]
 
   setup do
-    names = Map.keys(@base) ++ @mail
+    names = Map.keys(@base) ++ @unset
     previous = Map.new(names, &{&1, System.get_env(&1)})
-    Enum.each(@mail, &System.delete_env/1)
+    Enum.each(@unset, &System.delete_env/1)
     System.put_env(@base)
 
     on_exit(fn ->
@@ -171,6 +172,89 @@ defmodule Apiary.RuntimeConfigTest do
       seed = :crypto.strong_rand_bytes(32)
       System.put_env("APIARY_SIGNING_SECRET", Base.encode64(seed))
       assert get_in(prod_config(), [:apiary, Apiary.SigningKey, :seed]) == seed
+    end
+  end
+
+  describe "the keys file" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    @file_keys %{
+      "SECRET_KEY_BASE" => String.duplicate("f", 64),
+      "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("e", 32)),
+      "APIARY_SIGNING_SECRET" => Base.encode64(String.duplicate("i", 32))
+    }
+
+    defp write_keys_file(dir, keys) do
+      File.write!(
+        Path.join(dir, "apiary.env"),
+        Enum.map_join(keys, fn {name, value} -> "#{name}=#{value}\n" end)
+      )
+
+      System.put_env("APIARY_KEYS_DIR", dir)
+    end
+
+    defp configured_secrets do
+      config = prod_config()
+
+      {get_in(config, [:apiary, ApiaryWeb.Endpoint, :secret_key_base]),
+       get_in(config, [:apiary, Apiary.KeyDerivation, :secret]),
+       get_in(config, [:apiary, Apiary.SigningKey, :seed])}
+    end
+
+    @tag :tmp_dir
+    test "gives each key the environment does not set", %{tmp_dir: dir} do
+      write_keys_file(dir, @file_keys)
+      Enum.each(Map.keys(@file_keys), &System.delete_env/1)
+
+      assert configured_secrets() ==
+               {String.duplicate("f", 64), String.duplicate("e", 32), String.duplicate("i", 32)}
+
+      # A blank line in .env is an unset value, so the file's is used.
+      Enum.each(Map.keys(@file_keys), &System.put_env(&1, ""))
+
+      assert configured_secrets() ==
+               {String.duplicate("f", 64), String.duplicate("e", 32), String.duplicate("i", 32)}
+    end
+
+    @tag :tmp_dir
+    test "the environment always wins", %{tmp_dir: dir} do
+      write_keys_file(dir, @file_keys)
+
+      assert configured_secrets() ==
+               {String.duplicate("s", 64), String.duplicate("k", 32), String.duplicate("g", 32)}
+
+      # One name from each: the environment's where it sets it, the file's where not.
+      System.delete_env("APIARY_SIGNING_SECRET")
+
+      assert configured_secrets() ==
+               {String.duplicate("s", 64), String.duplicate("k", 32), String.duplicate("i", 32)}
+    end
+
+    @tag :tmp_dir
+    test "a key neither sets stops the boot, saying where compose.yaml keeps it",
+         %{tmp_dir: dir} do
+      for name <- Map.keys(@file_keys) do
+        System.put_env(@base)
+        write_keys_file(dir, Map.delete(@file_keys, name))
+        System.delete_env(name)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+        assert error.message =~ "#{name} is missing."
+
+        assert error.message =~
+                 "With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env."
+      end
+    end
+
+    @tag :tmp_dir
+    test "is read only from APIARY_KEYS_DIR", %{tmp_dir: dir} do
+      write_keys_file(dir, @file_keys)
+      System.delete_env("APIARY_KEYS_DIR")
+      System.delete_env("APIARY_SIGNING_SECRET")
+
+      assert_raise RuntimeError, ~r/APIARY_SIGNING_SECRET is missing/, fn -> prod_config() end
     end
   end
 

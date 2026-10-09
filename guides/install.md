@@ -148,11 +148,13 @@ value, for good.
 ```text
 environment variable SECRET_KEY_BASE is missing.
 You can generate one by calling: mix phx.gen.secret
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
 environment variable APIARY_ENCRYPTION_SECRET is missing.
 It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
@@ -164,6 +166,7 @@ Generate one with: openssl rand -base64 32
 environment variable APIARY_SIGNING_SECRET is missing.
 It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
 Generate one with: openssl rand -base64 32
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text

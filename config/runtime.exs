@@ -151,6 +151,13 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
+  # The keys bin/keys generates at first start, in $APIARY_KEYS_DIR/apiary.env
+  # (Apiary.KeysFile): SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and
+  # DATABASE_PASSWORD. key_env gives each from the environment, or from the file where the
+  # environment does not set it: the environment always wins.
+  keys_file = Apiary.KeysFile.read(System.get_env("APIARY_KEYS_DIR"))
+  key_env = &Apiary.KeysFile.get(keys_file, &1)
+
   # ## Database
 
   database_url =
@@ -182,21 +189,23 @@ if config_env() == :prod do
   # to check this value into version control, so we use an environment
   # variable instead.
   secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
+    key_env.("SECRET_KEY_BASE") ||
       raise """
       environment variable SECRET_KEY_BASE is missing.
       You can generate one by calling: mix phx.gen.secret
+      With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
       """
 
   # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
   # (Apiary.KeyDerivation): the stored values' and the integrity codes'. Changing it makes every stored secret unreadable, so keep
   # it with the database backups.
   encryption_secret =
-    case System.get_env("APIARY_ENCRYPTION_SECRET") do
+    case key_env.("APIARY_ENCRYPTION_SECRET") do
       nil ->
         raise """
         environment variable APIARY_ENCRYPTION_SECRET is missing.
         It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
+        With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
         """
 
       value ->
@@ -224,12 +233,13 @@ if config_env() == :prod do
   # Forager's contract. Every comparison is in constant time, and no message here carries a
   # value.
   signing_seed =
-    case System.get_env("APIARY_SIGNING_SECRET") do
-      blank when blank in [nil, ""] ->
+    case key_env.("APIARY_SIGNING_SECRET") do
+      nil ->
         raise """
         environment variable APIARY_SIGNING_SECRET is missing.
         It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
         Generate one with: openssl rand -base64 32
+        With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
         """
 
       value ->
