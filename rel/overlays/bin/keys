@@ -109,6 +109,12 @@ elif [ -n "$kept" ]; then
   printf 'The keys in %s are kept; none was generated.\n' "$file"
 fi
 
+# postgres-password is mode 0644, not 0600: the postgres container reads it as its own user,
+# uid 999, not the user nobody who writes it. It holds only the database password, which
+# that container holds already. On the host the volume is reachable only by root, under
+# /var/lib/docker. A group shared with postgres would tie this script to the postgres
+# image's gid. When DATABASE_PASSWORD is set in the environment, that value is the one
+# written here, since it is the password Qory connects with.
 if [ ! -f "$password_file" ] || [ "$(cat "$password_file")" != "$database_password" ]; then
   write "$password_file" 644 "$database_password$newline"
 fi
