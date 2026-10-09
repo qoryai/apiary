@@ -176,7 +176,7 @@ jobs:
             features: observability
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -320,7 +320,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:18
+        image: public.ecr.aws/docker/library/postgres:18
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -385,7 +385,7 @@ jobs:
           docker run -d --name "$TLS_CONTAINER" -e POSTGRES_PASSWORD="$password" \
             -p 127.0.0.1::5432 \
             -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
-            postgres:18 bash -c '
+            public.ecr.aws/docker/library/postgres:18 bash -c '
               install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
               install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
               exec docker-entrypoint.sh postgres -c ssl=on \
@@ -664,7 +664,7 @@ jobs:
             --network-alias database.example.test \
             -e POSTGRES_USER=apiary -e POSTGRES_DB=apiary -e POSTGRES_PASSWORD="$password" \
             -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
-            postgres:18 bash -c '
+            public.ecr.aws/docker/library/postgres:18 bash -c '
               install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
               install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
               exec docker-entrypoint.sh postgres -c ssl=on \
