@@ -17,8 +17,8 @@ defmodule ApiaryWeb.RunComponentsTest do
 
   # Forager's own end reasons, reserved in the contract's run.exited, and the three names
   # three of them had before; and the codes of its run.refused.
-  @reserved ~w(timeout quiet credential_expired stopped session_lost gateway_lost batch_refused
-               credential_check_unreachable credential_check_invalid run_closed)
+  @reserved ~w(timeout quiet credential_expired stopped interrupted session_lost gateway_lost
+               batch_refused credential_check_unreachable credential_check_invalid run_closed)
   @earlier ~w(run_ended_at_issuer issuer_unreachable issuer_answer_invalid)
   @refusals ~w(bad_request unsupported_contract_version invalid_request rate_limited unavailable
                key_invalid key_limit instance_limit secrets_not_allowed run_closed session_lost
@@ -132,11 +132,14 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
-    test "reason_words says Forager's own reasons in words of their own" do
+    test "reason_words says Forager's own reasons in words of their own, each in the catalogue" do
+      pot = File.read!(Path.expand("../../../priv/gettext/default.pot", __DIR__))
+
       for {reason, words} <- [
             {"timeout", "time limit reached"},
             {"credential_expired", "permission to run expired"},
             {"stopped", "stopped, no outcome given"},
+            {"interrupted", "interrupted"},
             {"session_lost", "stopped responding"},
             {"gateway_lost", "end not recorded"},
             {"batch_refused", "events refused"},
@@ -146,6 +149,8 @@ defmodule ApiaryWeb.RunComponentsTest do
              "couldn't check whether the run may go on: unreadable answer"}
           ] do
         assert RunComponents.reason_words(%{reason: reason, quiet_seconds: nil}) == words
+        # Forager's words are a message to translate, not a starter's code shown as given.
+        assert pot =~ ~s(\nmsgid "#{words}"\n), reason
       end
 
       assert RunComponents.reason_words(%{reason: "run_closed", quiet_seconds: nil}) == nil
@@ -156,6 +161,13 @@ defmodule ApiaryWeb.RunComponentsTest do
       for state <- [nil, "failed", :failed, "lost"] do
         assert RunComponents.reason_words(%{reason: "batch_refused", state: state}) ==
                  "events refused"
+      end
+    end
+
+    test "a run stopped where it was started reads interrupted, whatever the state" do
+      for state <- [nil, "cancelled", :cancelled, "failed", "completed", "succeeded"] do
+        assert RunComponents.reason_words(%{reason: "interrupted", state: state}) ==
+                 "interrupted"
       end
     end
 
@@ -368,6 +380,15 @@ defmodule ApiaryWeb.RunComponentsTest do
                "time limit reached"
 
       assert RunComponents.exit_note(%{run | state: "cancelled", exit_code: 143}) == nil
+
+      # Stopped where it was started: the words, whatever the program's exit; never its
+      # exit, and never an exit 0 that reads as success.
+      for {code, signal} <- [{0, nil}, {130, nil}, {130, "SIGINT"}, {-1, "SIGTERM"}] do
+        interrupted = %{run | state: "cancelled", reason: "interrupted"}
+
+        assert RunComponents.exit_note(%{interrupted | exit_code: code, signal: signal}) ==
+                 "interrupted"
+      end
     end
 
     test "a quiet running run turns amber, stops rippling and says for how long" do

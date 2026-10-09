@@ -1423,10 +1423,10 @@ page has no breadcrumb of its own.
   the meta line, under State in the rail, in the timeline's last item and in the runs
   list's preview ([contract-assumptions.md](contract-assumptions.md), How a run ends):
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
-  "stopped, no outcome given", "stopped responding", "end not recorded", "events
-  refused", "couldn't check whether the run may go on: no answer", "couldn't check
-  whether the run may go on: unreadable answer", and for a run that did not start "did
-  not start" with the refusal's code in mono ("did not start: image_unknown"), in the
+  "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
+  "events refused", "couldn't check whether the run may go on: no answer", "couldn't
+  check whether the run may go on: unreadable answer", and for a run that did not start
+  "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
   meta line and the rail as in the timeline's item. None names who or
   what ended the run. Any other code is the run's starter's, shown as given with spaces
   for underscores: "no longer needed". The quiet period reads in whole hours, else whole
