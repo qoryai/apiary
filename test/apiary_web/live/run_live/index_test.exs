@@ -503,6 +503,47 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#{row(silent)} .q-rl-dur") =~ ~r/^at least 41 m 30 s/
     end
 
+    test "a run that did not start has an empty Duration cell and no Duration in its preview; a silent Lost run and a running one keep theirs",
+         %{conn: conn, scope: scope} do
+      refused = started_run(scope, shop(), about: %{"title" => "refused"})
+      event_fixture(refused, 50, "run.refused", %{"code" => "image_unknown"})
+      {:ok, refused} = Projector.project(refused)
+
+      silent =
+        started_run(scope, %{},
+          about: %{"title" => "silent"},
+          ago: 4000,
+          heartbeat: {3000, 2490, 30}
+        )
+
+      Liveness.check()
+
+      running =
+        started_run(scope, shop("gitlab.example"), ago: 100, heartbeat: {5, 90, 30})
+
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(refused)} .q-st-failed")
+      assert has_element?(view, "#{row(refused)} td.q-rl-dur")
+      assert text(view, "#{row(refused)} .q-rl-dur") == ""
+      assert text(view, "#{row(silent)} .q-rl-dur") =~ ~r/^at least 41 m 30 s/
+      assert text(view, "#{row(running)} .q-rl-dur") =~ ~r/^1 m 3\d s$/
+
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      render_hook(view, "select", %{"id" => refused.run_id})
+      render_async(view)
+      assert has_element?(view, "#runs-preview h2", "refused")
+      refute has_element?(view, "#runs-preview dt", "Duration")
+
+      render_hook(view, "select", %{"id" => silent.run_id})
+      render_async(view)
+      assert has_element?(view, "#runs-preview h2", "silent")
+      assert has_element?(view, "#runs-preview dt", "Duration")
+      assert text(view, "#runs-preview .q-pv-kv") =~ "at least 41 m 30 s"
+    end
+
     test "another workspace's runs are not listed", %{conn: conn, scope: scope} do
       mine = started_run(scope, shop())
       theirs = started_run(scope_fixture(), shop())

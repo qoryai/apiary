@@ -1879,7 +1879,7 @@ defmodule ApiaryWeb.RunComponents do
         <.relative_time at={@run.started_at || @run.inserted_at} />
       </td>
       <td class="q-rl-c2 q-rl-dur q-num" role="cell">
-        <.run_length run={@run} quiet={@quiet} />
+        <.run_length :if={!Run.refused?(@run)} run={@run} quiet={@quiet} />
       </td>
       <td class="q-rl-den q-num" role="cell">
         <span :if={@run.denied_count > 0} class="q-rl-denied">
@@ -1898,7 +1898,9 @@ defmodule ApiaryWeb.RunComponents do
   How long a run ran, as its row and its preview say it: the duration its exit gave, as the
   run page says it, also for a run its exit said was lost; for a running run the time since
   it started, ticking; for a quiet one, or one Apiary marked lost, "at least" what it last
-  reported; nothing for a run that has only pinged.
+  reported; nothing for a run that has only pinged. A run that did not start
+  (`Apiary.Runs.Run.refused?/1`) never ran: the row leaves its cell empty and the preview
+  leaves out its Duration.
   """
   def run_length(%{run: %{state: state}} = assigns)
       when state in ~w(succeeded completed ended failed timed_out cancelled) do
@@ -1998,8 +2000,10 @@ defmodule ApiaryWeb.RunComponents do
               at={@preview.run.started_at || @preview.run.inserted_at}
             />
           </dd>
-          <dt>{gettext("Duration")}</dt>
-          <dd class="tabular-nums"><.run_length run={@preview.run} quiet={@preview.quiet} /></dd>
+          <dt :if={!Run.refused?(@preview.run)}>{gettext("Duration")}</dt>
+          <dd :if={!Run.refused?(@preview.run)} class="tabular-nums">
+            <.run_length run={@preview.run} quiet={@preview.quiet} />
+          </dd>
           <dt :if={@preview.run.denied_count > 0}>{gettext("Denied")}</dt>
           <dd :if={@preview.run.denied_count > 0} id={"#{@id}-denials"}>
             <span class="q-rl-denied">

@@ -724,6 +724,34 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         refute has_element?(lv, ".q-limits")
         refute has_element?(lv, "#run-meta #run-duration-line")
         refute has_element?(lv, "#run-meta", "n/a")
+        refute "Duration" in run_terms(lv)
+      end
+    end
+
+    test "the rail's Duration stays for a running run and for one Apiary marked lost", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+      started = DateTime.add(now, -4000, :second)
+      heard = DateTime.add(now, -3000, :second)
+
+      silent =
+        projected(scope, [
+          {1, "run.started", started_data(), time: started},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 1000, "interval_seconds" => 30},
+           time: heard, received_at: heard}
+        ])
+
+      Apiary.Runs.Liveness.check()
+      running = projected(scope, [{1, "run.started", started_data(), time: now}])
+
+      for {run, state} <- [{silent, "Lost"}, {running, "Running"}] do
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+        assert has_element?(lv, "#run-meta #run-state", state)
+        assert "Duration" in run_terms(lv)
       end
     end
 

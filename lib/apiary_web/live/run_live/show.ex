@@ -827,8 +827,11 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={exited?(@run) && !@no_session} class="font-mono">{exit_value(@run)}</dd>
           <dt>{gettext("Started")}</dt>
           <dd><.clock at={@run.started_at} id="run-started-clock" /></dd>
-          <dt>{gettext("Duration")}</dt>
-          <dd><.run_duration id="rail-duration" run={@run} quiet={@quiet} /></dd>
+          <%!-- A run that was refused never ran: it has no Duration row. --%>
+          <dt :if={!Run.refused?(@run)}>{gettext("Duration")}</dt>
+          <dd :if={!Run.refused?(@run)}>
+            <.run_duration id="rail-duration" run={@run} quiet={@quiet} />
+          </dd>
           <dt :if={!@no_session}>{gettext("Runtime")}</dt>
           <dd :if={!@no_session}>
             {@run.runtime || na()}
