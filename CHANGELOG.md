@@ -40,7 +40,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   say what opened it and which Forager reported it, with no
   Command section, and its Session "none". The one who starts a run ends it: such a run
   offers no Close, on its page or as a lost run on the Overview, and the server refuses to
-  close it. A run through a separate gateway belongs to the
+  close it once its start is projected. A run through a separate gateway belongs to the
   gateway's node and instance, and its Host is the agent's machine.
 - How a run ended, in words, under State in the run's rail, and after its state on the
   run page where they say more than the state: timed out, closed, gateway lost, session
