@@ -168,6 +168,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an
   organisation, marked first and purged after a grace period.
+- Retention prunes nothing of a lost run until 7 days after it was lost, however short the
+  workspace's settings, so a gateway's record sent after a shorter outage is stored.
 - The console's shell: a top bar that says where a page is, the organisation first, and
   switches to any organisation or workspace with a search, Search or jump to (⌘K) for
   pages, repositories, runs and places, New, which offers a workspace's page a new

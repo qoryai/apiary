@@ -120,6 +120,13 @@ defmodule Apiary.Runs.Run do
   """
   def ended_badly_states, do: ~w(failed timed_out lost)
 
+  @doc """
+  The days a lost run counts as lost recently, from its `lost_at`: the Overview lists it
+  that long, and retention prunes nothing of it before (`Apiary.Retention`), so the record
+  a gateway kept through a shorter outage still finds the run.
+  """
+  def lost_days, do: 7
+
   @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
   @spec no_session?(t() | map()) :: boolean()
   def no_session?(%{opened_by: "gateway"}), do: true

@@ -195,7 +195,9 @@ What is stored, in one transaction, before the answer:
   are gone, so a replayed one could not be recognised, and one that is new would be older
   than the workspace keeps log output. Such events are answered like duplicates, within a
   `202`. Neither case arises for a run that is alive: retention only prunes a run that has
-  ended or gone silent for days;
+  ended, and a run marked lost no sooner than 7 days after it was lost
+  (`Apiary.Runs.Run.lost_days/0`), so a gateway's record sent after a shorter outage is
+  stored;
 - each event, as received: `id`, `sequence` as an integer, `type`, `time`, `data`, and when it
   was received. An event already held (the same `id`) is skipped: delivery is at least once.
   An event whose `id` is held by another run of the workspace, or whose `sequence` in its

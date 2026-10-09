@@ -65,7 +65,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   @thresholds %{
     idle_key_days: 30,
-    lost_days: 7,
+    lost_days: Run.lost_days(),
     denied_days: 14,
     chart_days: 14,
     behind_intervals: 2
