@@ -8,8 +8,11 @@
 
 policy: every resource stack-policy.json names exists in the template; the database and the
 four key secrets are each denied Update:Replace and Update:Delete; and the policy the stack
-sets on itself at creation, the StackPolicyBody of its one Custom::StackPolicy resource, is
-the same as the file's. A renamed resource would otherwise lose its guard without a word.
+sets on itself at creation is the same as the file's. That policy is the STACK_POLICY of the
+function behind the template's one Custom::StackPolicy, whose STACK_ID is the stack's own
+id; the function reads neither from the request, which passes it nothing but its
+ServiceToken and ServiceTimeout. A renamed resource would otherwise lose its guard without
+a word.
 
 outputs: no output's value is a command (none starts with "aws "), in any branch of its
 Fn::If: the person installs from the console alone.
@@ -87,19 +90,43 @@ def named(policy):
 
 
 def stack_policy_body(template):
-    """The policy the stack sets on itself: its one Custom::StackPolicy's StackPolicyBody."""
-    resources = [
-        (logical_id, resource)
-        for logical_id, resource in template.get("Resources", {}).items()
-        if resource.get("Type") == "Custom::StackPolicy"
-    ]
-    if len(resources) != 1:
-        return None, f"apiary.yaml has {len(resources)} Custom::StackPolicy resources, not one"
-    logical_id, resource = resources[0]
-    body = resource.get("Properties", {}).get("StackPolicyBody")
-    if not isinstance(body, dict):
-        return None, f"{logical_id} has no StackPolicyBody for the stack to set"
-    return body, None
+    """The policy the stack sets on itself, and what is wrong with where it is kept: the
+    function behind the one Custom::StackPolicy holds the stack and the policy itself, in
+    STACK_ID and STACK_POLICY, and reads neither from the request."""
+    resources = template.get("Resources", {})
+    custom = [(name, resource) for name, resource in resources.items() if resource.get("Type") == "Custom::StackPolicy"]
+    if len(custom) != 1:
+        return None, [f"apiary.yaml has {len(custom)} Custom::StackPolicy resources, not one"]
+    name, resource = custom[0]
+    properties = resource.get("Properties", {})
+    failures = []
+
+    extra = sorted(set(properties) - {"ServiceToken", "ServiceTimeout"})
+    if extra:
+        failures.append(f"{name} passes {', '.join(extra)}: the function takes nothing from the request")
+
+    token = properties.get("ServiceToken")
+    function_name = token.get("Fn::GetAtt", [None])[0] if isinstance(token, dict) else None
+    function = resources.get(function_name, {}) if isinstance(function_name, str) else {}
+    if function.get("Type") != "AWS::Lambda::Function":
+        return None, failures + [f"{name}'s ServiceToken is not a function of the template"]
+
+    function_properties = function.get("Properties", {})
+    variables = function_properties.get("Environment", {}).get("Variables", {})
+    code = function_properties.get("Code", {}).get("ZipFile", "")
+    if variables.get("STACK_ID") != {"Ref": "AWS::StackId"}:
+        failures.append(f"{function_name}'s STACK_ID is not the stack's own id")
+    if "ResourceProperties" in code:
+        failures.append(f"{function_name} reads the request's ResourceProperties")
+    for needed in ('os.environ["STACK_ID"]', 'os.environ["STACK_POLICY"]'):
+        if needed not in code:
+            failures.append(f"{function_name}'s code does not read {needed}")
+
+    try:
+        body = json.loads(variables.get("STACK_POLICY", ""))
+    except (TypeError, json.JSONDecodeError):
+        return None, failures + [f"{function_name} has no STACK_POLICY in JSON for the stack to set"]
+    return body, failures
 
 
 def check_policy():
@@ -116,10 +143,9 @@ def check_policy():
         if missing:
             failures.append(f"stack-policy.json does not deny {', '.join(sorted(missing))} on {logical_id}")
 
-    body, failure = stack_policy_body(template)
-    if failure:
-        failures.append(failure)
-    elif body != policy:
+    body, where = stack_policy_body(template)
+    failures.extend(where)
+    if body is not None and body != policy:
         failures.append("the stack sets another policy on itself than stack-policy.json")
 
     return failures
@@ -182,7 +208,7 @@ def check_kept():
                     "the download key's secret is not kept"
                 )
 
-    body, _failure = stack_policy_body(template)
+    body, _where = stack_policy_body(template)
     policies = (("stack-policy.json", json.loads(POLICY.read_text())), ("the stack's own policy", body or {}))
     for where, policy in policies:
         if DOWNLOAD_KEY in named(policy)[0]:

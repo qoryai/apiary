@@ -10,8 +10,8 @@ only with a version typed under Version, and a Rule says so.
 
 Written in: the Release mapping's CommunityVersion and ProVersion, and the same versions in
 the Rules that refuse an edition with no version; Edition's default and help; Version's
-(VersionOverride's) label and help, which name EDITION and its version; and the Version
-output's description. Each is found by its place in the template, its keys from the top,
+(VersionOverride's) label and help, the help naming EDITION and its version, and the label
+too when --pro-version is given; and the Version output's description. Each is found by its place in the template, its keys from the top,
 and must be there exactly once and be written exactly once, or nothing is written.
 
 The template is read as text: the standard library has no YAML reader, and the lines
@@ -26,7 +26,7 @@ from pathlib import Path
 
 COMMUNITY = "Apiary Community"
 PRO = "Apiary Pro"
-VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$")
+VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?")
 
 EDITION_HELP = "Apiary Community is free and open source. Apiary Pro needs the download key we sent you."
 PRO_TEMPLATE_HELP = "For Apiary Pro, use the Apiary Pro template we sent you."
@@ -38,6 +38,9 @@ def texts(edition_default, community_version, pro_version):
     version = pro_version if edition_default == PRO else community_version
     named = f"{edition_default} {version}"
     edition_help = [EDITION_HELP] + ([] if pro_version else [PRO_TEMPLATE_HELP]) + [WAY_BACK_HELP]
+    # The approved labels: of a copy that names no Apiary Pro version, as release.yml writes
+    # it, and of a copy that names both.
+    label = f"Version (leave empty for {named})" if pro_version else "Version (leave empty for this template's)"
 
     return [
         # The Release mapping, which the image's tag reads; a repository's template has both empty.
@@ -67,7 +70,7 @@ def texts(edition_default, community_version, pro_version):
         (
             ("Metadata", "AWS::CloudFormation::Interface", "ParameterLabels", "VersionOverride"),
             None,
-            f"{{ default: {quote(f'Version (leave empty for {named})')} }}",
+            f"{{ default: {quote(label)} }}",
         ),
         (
             ("Outputs", "Version", "Description"),
@@ -157,9 +160,9 @@ def main(argv):
     parser.add_argument("--pro-version", required=True, help="may be empty")
     args = parser.parse_args(argv[1:])
 
-    if not VERSION.match(args.community_version):
+    if not VERSION.fullmatch(args.community_version):
         parser.error(f"--community-version {args.community_version!r} is not a version such as 0.2.0")
-    if args.pro_version and not VERSION.match(args.pro_version):
+    if args.pro_version and not VERSION.fullmatch(args.pro_version):
         parser.error(f"--pro-version {args.pro_version!r} is not a version such as 0.2.0, or empty")
     if args.edition_default == PRO and not args.pro_version:
         parser.error("--edition-default 'Apiary Pro' needs --pro-version")

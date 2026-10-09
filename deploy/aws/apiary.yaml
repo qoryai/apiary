@@ -135,7 +135,7 @@ Parameters:
     Type: String
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
-    Description: "To delete the stack, Update with No first, then Delete. The database's final snapshot is taken either way."
+    Description: "To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
 
 # The versions a release names, which scripts/aws-template-release.py writes in. Empty
 # here, in the repository. The images are each edition's.
@@ -494,8 +494,8 @@ Resources:
   # unchanged: CloudFormation replaces a restored instance whose DBSnapshotIdentifier
   # changes or goes. A restored instance keeps the snapshot's user, database, password and
   # encryption. The password is read once, by each task at its start: no rotation.
-  # Deletion protection follows DatabaseDeletionProtection, changed in place; deleting the
-  # stack takes a final snapshot either way.
+  # Deletion protection follows DatabaseDeletionProtection, changed in place. With it on,
+  # deleting the stack fails at the database; with it off, the delete keeps a final snapshot.
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Snapshot
@@ -731,8 +731,9 @@ Resources:
   # The stack policy, set once at creation by a function of the stack's own, so nobody has
   # to set it. On Update and Delete the function answers without acting: a policy changed
   # in a later release reaches new stacks only. It answers CloudFormation even when its call
-  # fails, so the stack never waits on it, and a failed call fails the create. Its role may
-  # set the policy of this stack and nothing else, and write its own log group.
+  # fails, so the stack never waits on it, and a failed call fails the create; a request
+  # that names another stack fails and changes nothing. Its role may set the policy of this
+  # stack and nothing else, and write its own log group.
   # The runtime is pinned, and kept current with each release.
   StackPolicyLogGroup:
     Type: AWS::Logs::LogGroup
@@ -773,9 +774,36 @@ Resources:
       Timeout: 60
       LoggingConfig:
         LogGroup: !Ref StackPolicyLogGroup
+      # The stack and the policy are the function's own, never the event's: the policy of
+      # deploy/aws/stack-policy.json, which CI keeps the same
+      # (scripts/aws-template-check.py policy).
+      Environment:
+        Variables:
+          STACK_ID: !Ref AWS::StackId
+          STACK_POLICY: |
+            {
+              "Statement": [
+                {"Effect": "Allow", "Action": "Update:*", "Principal": "*", "Resource": "*"},
+                {
+                  "Effect": "Deny",
+                  "Action": ["Update:Replace", "Update:Delete"],
+                  "Principal": "*",
+                  "Resource": [
+                    "LogicalResourceId/Database",
+                    "LogicalResourceId/SecretKeyBase",
+                    "LogicalResourceId/EncryptionSecret",
+                    "LogicalResourceId/SigningSecret",
+                    "LogicalResourceId/DatabasePassword"
+                  ]
+                }
+              ]
+            }
+      # At worst about 52 seconds, under the 60 of its timeout: two calls of at most
+      # 5 + 15 seconds with a back-off of at most 2 between them, then 10 for the answer.
       Code:
         ZipFile: |
           import json
+          import os
           import urllib.request
 
           import boto3
@@ -785,6 +813,8 @@ Resources:
           def handler(event, context):
               status, reason = "SUCCESS", ""
               try:
+                  if event["StackId"] != os.environ["STACK_ID"]:
+                      raise ValueError(f"the request names another stack, {event['StackId']}")
                   if event["RequestType"] == "Create":
                       config = Config(
                           connect_timeout=5,
@@ -792,14 +822,14 @@ Resources:
                           retries={"total_max_attempts": 2, "mode": "standard"},
                       )
                       boto3.client("cloudformation", config=config).set_stack_policy(
-                          StackName=event["StackId"],
-                          StackPolicyBody=json.dumps(event["ResourceProperties"]["StackPolicyBody"]),
+                          StackName=os.environ["STACK_ID"],
+                          StackPolicyBody=os.environ["STACK_POLICY"],
                       )
               except Exception as error:
                   status, reason = "FAILED", f"The stack policy was not set: {error}"[:1000]
                   print(reason)
 
-              # Always answered, so the stack never waits for an hour on a function that failed.
+              # Always answered, so the stack never waits on a function that failed.
               body = json.dumps(
                   {
                       "Status": status,
@@ -813,29 +843,15 @@ Resources:
               request = urllib.request.Request(
                   event["ResponseURL"], data=body, method="PUT", headers={"Content-Type": ""}
               )
-              urllib.request.urlopen(request, timeout=20)
+              urllib.request.urlopen(request, timeout=10)
 
+  # No property but the function: what the function sets is its own. CloudFormation waits
+  # at most ServiceTimeout seconds for its answer.
   StackPolicy:
     Type: Custom::StackPolicy
     Properties:
       ServiceToken: !GetAtt StackPolicyFunction.Arn
-      # The policy of deploy/aws/stack-policy.json, which CI keeps the same
-      # (scripts/aws-template-check.py policy).
-      StackPolicyBody:
-        Statement:
-          - Effect: Allow
-            Action: "Update:*"
-            Principal: "*"
-            Resource: "*"
-          - Effect: Deny
-            Action: ["Update:Replace", "Update:Delete"]
-            Principal: "*"
-            Resource:
-              - LogicalResourceId/Database
-              - LogicalResourceId/SecretKeyBase
-              - LogicalResourceId/EncryptionSecret
-              - LogicalResourceId/SigningSecret
-              - LogicalResourceId/DatabasePassword
+      ServiceTimeout: "300"
 
 # Links into the AWS console, and the values a person reads; no output is a command (CI
 # checks it: scripts/aws-template-check.py outputs).
@@ -871,10 +887,10 @@ Outputs:
       - !Join [",", [!Ref SecretKeyBase, !Ref EncryptionSecret, !Ref SigningSecret, !Ref DatabasePassword]]
       - !Sub ${KeysFromStack}/secret-key-base,${KeysFromStack}/encryption-secret,${KeysFromStack}/signing-secret,${KeysFromStack}/database-password
   KeysSecretsLink:
-    Description: The key secrets in Secrets Manager.
+    Description: "Secrets Manager, searched for the key secrets' name prefix: the key secrets are among what it lists."
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/secretsmanager/listsecrets?region=${AWS::Region}&search=all%3D${Prefix}%2F
       - Prefix: !If [CreateSecrets, !Ref AWS::StackName, !Ref KeysFromStack]
   DatabaseSnapshots:
-    Description: "The database's backups and snapshots in RDS; when the stack is deleted, its final snapshot."
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/rds/home?region=${AWS::Region}#database:id=${Database};is-cluster=false;tab=maintenance-and-backups
+    Description: "The RDS console's database snapshots in this region. A deleted stack's final database snapshot is listed there."
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/rds/home?region=${AWS::Region}#snapshots-list:"
