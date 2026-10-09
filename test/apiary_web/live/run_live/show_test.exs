@@ -644,7 +644,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "the limits (P5)" do
-    test "another runtime: the sentence stands above the runner's items", %{
+    test "another runtime: the sentence stands above Forager's items", %{
       conn: conn,
       scope: scope
     } do
@@ -1212,7 +1212,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       assert html =~ "No connections recorded"
-      assert html =~ "No connection went through the runner&#39;s proxy."
+      assert html =~ "No connection went through the gateway."
       refute html =~ "<table"
     end
   end
@@ -1509,13 +1509,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   describe "clocks" do
-    test "so far counts from the runner's elapsed seconds and this server's clock, never from started_at",
+    test "so far counts from Forager's elapsed seconds and this server's clock, never from started_at",
          %{conn: conn, scope: scope} do
       received = DateTime.add(DateTime.utc_now(), -5, :second)
 
       run =
         projected(scope, [
-          # The runner's clock is a day behind.
+          # Forager's clock is a day behind.
           {1, "run.started", started_data(),
            time: DateTime.add(received, -86_400, :second), received_at: received},
           {2, "run.heartbeat", %{"elapsed_seconds" => 600, "interval_seconds" => 60},
@@ -1558,7 +1558,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              |> Enum.count() == 13
 
       assert has_element?(lv, "#more-lanes", "and 18 more")
-      # ids are the lanes' numbers, not the runner's strings
+      # ids are the lanes' numbers, not Forager's strings
       assert has_element?(lv, "button#lane-0", "Main session")
       assert has_element?(lv, "button#lane-12", "agent-12")
 

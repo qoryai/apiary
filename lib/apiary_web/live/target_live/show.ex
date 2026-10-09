@@ -144,7 +144,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   # `form` `:current` for the address the page writes and `:old` for one it sends on;
   # `{:choose, targets, path}` for a path alone that two targets or more share;
   # `{:ambiguous, targets, path}` for an address that reads as two targets; `:error`. A
-  # system and a path are a runner's labels, so an address can read both ways: a path
+  # system and a path are Forager's labels, so an address can read both ways: a path
   # alone, and a system with its path. Where both readings name a target, the address
   # does not say which, and the page names each.
   defp resolve(_scope, []), do: :error
@@ -183,7 +183,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     end
   end
 
-  # A target by its system and path, labels as a runner may send them: anything else, such
+  # A target by its system and path, labels as Forager may send them: anything else, such
   # as bytes that are not UTF-8, names none.
   defp get(scope, system, path) do
     if Target.label(system) && Target.label(path), do: Targets.get(scope, system, path)

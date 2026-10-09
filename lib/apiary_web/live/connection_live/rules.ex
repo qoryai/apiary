@@ -11,7 +11,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   was denied stays denied, and a rule that answers it is said on a line of its own
   (`after_line/3`).
 
-  Everything a row carries is a runner's input. A host is put through the policy's own
+  Everything a row carries is Forager's input. A host is put through the policy's own
   grammar before it is compared with a rule, and nothing here becomes an atom.
 
   All of it is `security`'s: a page of an instance without it asks nothing here, and its
@@ -476,7 +476,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def held_paths(_effective, _host), do: nil
 
-  # As the runner decides: `deny` first, in either mode, then `allow`, then the paths.
+  # As the gateway decides: `deny` first, in either mode, then `allow`, then the paths.
   defp allowed_now?(%Effective{allow: allow, deny: deny} = effective, host, path) do
     not Grammar.matches?(deny, host) and Grammar.matches?(allow, host) and
       case held_paths(effective, host) do

@@ -207,13 +207,13 @@ defmodule Apiary.VariablesTest do
         assert {:error, changeset} =
                  Variables.create_variable(scope, holder, %{name: name, value: "v"})
 
-        assert error(changeset, :name) == "names beginning QORY_ are the runner's own"
+        assert error(changeset, :name) == "names beginning QORY_ are Forager's own"
       end
 
       variable = set!(scope, :workspace, "QORYX", "fine")
 
       assert {:error, changeset} = Variables.update_variable(scope, variable, %{name: "QORY_X"})
-      assert error(changeset, :name) == "names beginning QORY_ are the runner's own"
+      assert error(changeset, :name) == "names beginning QORY_ are Forager's own"
     end
   end
 

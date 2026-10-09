@@ -10,7 +10,7 @@ defmodule ApiaryWeb.Contract.Configuration do
   policy somebody has made (`Apiary.Policy.managed?/1`), where the run configuration is
   fetched from in its `run` section (`ApiaryWeb.Contract.RunConfigurationController`). A
   workspace nobody has given a policy is served no `run` section: its machines keep the
-  policy of their own `runner.yaml`, and a run under a fetched policy never finds an
+  policy of their own `forager.yaml`, and a run under a fetched policy never finds an
   empty one in its place. So the document, and its digest, differ by node and by whether
   the workspace's policy is managed. The first change of a workspace's policy changes
   the digest its answers carry, and a run in flight fetches the document again, finds

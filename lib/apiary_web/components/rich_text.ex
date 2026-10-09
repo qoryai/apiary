@@ -20,7 +20,7 @@ defmodule ApiaryWeb.RichText do
     * `{:m, text}`, `{:m, text, class}`: monospace, a host or a target
     * `{:code, text}`, `{:code, text, class}`: a chip of code, a rule or a path
     * `{:bad, rich}`: in the denied hue
-    * `{:bdi, rich}`: isolated (`<bdi>`), for words a runner gave, such as a run's
+    * `{:bdi, rich}`: isolated (`<bdi>`), for words Forager gave, such as a run's
       title, so a bidirectional character in them reorders nothing of the sentence
     * `{:link, path, rich}`, `{:link, path, rich, class}`: a link that navigates
     * `{:href, url, rich}`, `{:href, url, rich, class}`: a link that loads a page

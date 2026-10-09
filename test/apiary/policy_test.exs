@@ -241,7 +241,7 @@ defmodule Apiary.PolicyTest do
       for mode <- ["observe", "enforce"] do
         {:ok, _} = Policy.set_mode(scope, target, mode)
 
-        # The locked deny is in the document's deny list under either mode: the runner
+        # The locked deny is in the document's deny list under either mode: the gateway
         # decides it first, so the target is denied mcp.example while it observes too.
         assert policy(current!(scope, target))["egress"] == %{
                  "mode" => mode,
@@ -278,9 +278,9 @@ defmodule Apiary.PolicyTest do
 
     test "the export says the mode in force for the target", ctx do
       {:ok, _} = Policy.set_mode(ctx.scope, ctx.target, "enforce")
-      assert {:ok, %{runner_file: runner_file}} = Policy.export(ctx.scope, ctx.target)
-      assert runner_file =~ "mode: enforce"
-      assert {:ok, %{runner_file: workspace_file}} = Policy.export(ctx.scope, nil)
+      assert {:ok, %{forager_file: forager_file}} = Policy.export(ctx.scope, ctx.target)
+      assert forager_file =~ "mode: enforce"
+      assert {:ok, %{forager_file: workspace_file}} = Policy.export(ctx.scope, nil)
       assert workspace_file =~ "mode: observe"
     end
   end
@@ -589,7 +589,9 @@ defmodule Apiary.PolicyTest do
       assert message =~ "at most 100"
     end
 
-    test "a document over 1 MiB, more than a runner reads, is a refused change", %{scope: scope} do
+    test "a document over 1 MiB, more than the gateway reads, is a refused change", %{
+      scope: scope
+    } do
       paths = fn n -> for m <- 1..100, do: "/" <> String.duplicate("a", 1000) <> "/#{n}/#{m}" end
 
       for n <- 1..10,
@@ -1257,16 +1259,16 @@ defmodule Apiary.PolicyTest do
   end
 
   describe "export" do
-    test "hosts alone are the runner file's egress section", %{scope: scope} do
+    test "hosts alone are the Forager file's egress section", %{scope: scope} do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.example"})
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
 
-      assert {:ok, %{runner_file: runner_file, policy_file: nil, notes: []}} =
+      assert {:ok, %{forager_file: forager_file, policy_file: nil, notes: []}} =
                Policy.export(scope, nil)
 
-      assert runner_file == """
-             # ~/.config/qory/runner.yaml
+      assert forager_file == """
+             # ~/.config/qory/forager.yaml
              egress:
                mode: enforce
                allow:
@@ -1281,11 +1283,11 @@ defmodule Apiary.PolicyTest do
       {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example"})
       {:ok, _} = Policy.deny(scope, nil, %{host: "*.ads.example"})
 
-      assert {:ok, %{runner_file: runner_file, policy_file: nil, notes: [note]}} =
+      assert {:ok, %{forager_file: forager_file, policy_file: nil, notes: [note]}} =
                Policy.export(scope, nil)
 
-      assert runner_file == """
-             # ~/.config/qory/runner.yaml
+      assert forager_file == """
+             # ~/.config/qory/forager.yaml
              egress:
                mode: observe
                allow:
@@ -1338,10 +1340,10 @@ defmodule Apiary.PolicyTest do
     test "paths go to a policy file", %{scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/shop.git/*"]})
 
-      assert {:ok, %{runner_file: runner_file, policy_file: policy_file, notes: [_ | _]}} =
+      assert {:ok, %{forager_file: forager_file, policy_file: policy_file, notes: [_ | _]}} =
                Policy.export(scope, nil)
 
-      refute runner_file =~ "paths"
+      refute forager_file =~ "paths"
 
       assert policy_file == """
              # A file outside the checkout, given with: qory run --policy <file>

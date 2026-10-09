@@ -411,7 +411,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
       [" ", gettext("It is denied in either mode, observe too.")] ++ under_suffix(host, context)
   end
 
-  # A deny below an allowed `*.` suffix stands beside it: the runner decides deny first.
+  # A deny below an allowed `*.` suffix stands beside it: the gateway decides deny first.
   defp under_suffix(host, context) do
     case allowed_suffix_above(host, context) do
       nil ->

@@ -12,7 +12,7 @@ defmodule Apiary.SecretLogFilter do
   page refuses an event holding a secret, or the arguments and the last message that a
   crash report prints when a process fails on them. Phoenix filters parameters by their
   names (`:filter_parameters`), not by their values, so this filter takes the value: the
-  runner contract's secret format, `qak_` and the 32-byte seed in base64url, the same rule
+  Forager contract's secret format, `qak_` and the 32-byte seed in base64url, the same rule
   the page refuses by.
 
   An enrolment code (`qec_` and 26 characters of Crockford base32, which a person may type

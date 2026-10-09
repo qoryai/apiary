@@ -112,7 +112,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-header-title", "Policy")
 
       assert text(view, "#policy-header-description") ==
-               "What the runs of this workspace may reach through the runner's proxy."
+               "What the runs of this workspace may reach through the gateway."
 
       assert has_element?(view, "#policy-header-actions #policy-export-button")
       assert has_element?(view, "#policy-tabs-rules[aria-current=page]", "Rules")
@@ -1493,7 +1493,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#export-lead") =~ "as of version 3"
       assert text(view, "#export-policy-text") =~ "# #{configuration.digest}"
       assert text(view, "#export-policy-text") =~ "/acme/shop.git/*"
-      assert text(view, "#export-runner-text") =~ "~/.config/qory/runner.yaml egress"
+      assert text(view, "#export-forager-text") =~ "~/.config/qory/forager.yaml egress"
 
       assert has_element?(
                view,

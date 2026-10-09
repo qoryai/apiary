@@ -22,7 +22,7 @@ defmodule ApiaryWeb.ReservedSlugs do
   answers as the router answers a path it does not know when a segment in the place of a
   slug can never be one: reserved, or not of a slug's characters and length
   (`Apiary.Organisations.Slug.valid?/1`). `/v1/no-such-endpoint` is not an
-  organisation's page, and neither are `/apple-touch-icon.png` or `/.env`: a runner, a
+  organisation's page, and neither are `/apple-touch-icon.png` or `/.env`: a gateway, a
   browser or a scanner asking for one is told so, not sent to log in, and a visitor's
   stored return-to, the page a shared link named, is not overwritten on the way.
   """

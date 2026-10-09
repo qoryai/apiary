@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.Contract.SignedAnswer do
   @moduledoc ~S"""
-  Signs the server's answers to the runner contract's requests (the contract's "Signed
+  Signs the server's answers to the Forager contract's requests (the contract's "Signed
   answers"): every answer to a request that verified, whatever its status, except a
   `401`, which always goes out unsigned.
 

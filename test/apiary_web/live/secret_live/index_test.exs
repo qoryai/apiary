@@ -1011,7 +1011,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
         |> form("#variable-form", variable: %{name: "qory_token", value: "x"})
         |> render_submit()
 
-      assert html =~ "names beginning QORY_ are the runner&#39;s own"
+      assert html =~ "names beginning QORY_ are Forager&#39;s own"
 
       # The error describes the field in place of its hint, and the hint goes.
       assert has_element?(lv, "#variable_name[aria-describedby=variable_name-error]")

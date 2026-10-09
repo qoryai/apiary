@@ -9,7 +9,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       version and where it applies (Applies to), every target or the chosen ones,
       leading to its page (`ApiaryWeb.IntegrationLive.Show`);
     * **Add an integration** (`add_cards/1`): a card for each thing it can add, by name,
-      in three groups, each a heading, a sentence where it has one, and its own list: Agent, the runtimes of the runner's catalogue (`Apiary.Kinds.Runtimes`);
+      in three groups, each a heading, a sentence where it has one, and its own list: Agent, the runtimes of Forager's catalogue (`Apiary.Kinds.Runtimes`);
       Outside APIs, the built-in APIs (`Apiary.Kinds.Services`), the
       workspace's own custom APIs (`ApiaryWeb.IntegrationLive.Definition`) and Custom
       API…; Programs, the named releases (`ApiaryWeb.IntegrationLive.Named`) and From a
@@ -149,7 +149,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   The cards are in three groups, each an `<h3>`, a sentence where it has one, and a list of
   its own, labelled by its heading:
 
-    * **Agent** (`#add-group-agent`): the runtimes of the runner's catalogue
+    * **Agent** (`#add-group-agent`): the runtimes of Forager's catalogue
       (`Apiary.Kinds.Runtimes`);
     * **Outside APIs** (`#add-group-apis`): the built-in APIs
       (`Apiary.Kinds.Services`), the workspace's own custom APIs, each its name leading to
@@ -323,7 +323,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
     do:
       gettext("Anthropic's coding agent, with an Anthropic API key or a Claude OAuth credential.")
 
-  defp runtime_line(_runtime), do: gettext("A coding agent the runner can start.")
+  defp runtime_line(_runtime), do: gettext("A coding agent Forager can start.")
 
   # The line under a built-in API's name: what the API is, said by the console; one it
   # doesn't know, its definition's description, which its page keeps as its About.
@@ -577,7 +577,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       )
 
   defp form_sentence(:new_runtime),
-    do: gettext("Choose a coding agent of the runner's catalogue.")
+    do: gettext("Choose a coding agent of Forager's catalogue.")
 
   defp form_sentence(:new_service),
     do: gettext("Choose an outside API: a built-in one, or a custom API of this workspace.")

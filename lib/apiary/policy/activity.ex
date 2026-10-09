@@ -16,12 +16,12 @@ defmodule Apiary.Policy.Activity do
 
   A connection is held to the effective policy of its own run's target, its mode
   included (the baseline
-  for a run that names none), resolved once per target, and matched as the runner's
-  proxy matches: the host against `deny` first and then against `allow`, each in the
+  for a run that names none), resolved once per target, and matched as the gateway
+  matches: the host against `deny` first and then against `allow`, each in the
   rendered order, first match; then, on a host held to paths, the path against that
   host's list. A host a deny covers is denied in either mode, so it is not what enforce
   would start denying, though it is still a denied destination the rules do not allow.
-  Hosts and paths are a runner's words: compared, never made atoms of, and what is not a
+  Hosts and paths are Forager's words: compared, never made atoms of, and what is not a
   host is no rule's.
 
   A destination, of what enforce would start denying and of the denied ones alike, carries
@@ -318,7 +318,7 @@ defmodule Apiary.Policy.Activity do
       follows_workspace: effective.mode_source == :workspace,
       allow: effective.allow,
       paths: effective.paths,
-      # The document's own list, names before suffixes as `allow` is: what the runner
+      # The document's own list, names before suffixes as `allow` is: what the gateway
       # decides first, and the most exact entry is the one it names.
       denies: effective.deny,
       by_host: by_host
@@ -362,7 +362,7 @@ defmodule Apiary.Policy.Activity do
     end
   end
 
-  # The rule the runner reports: the first of `deny`, then the first of `allow`.
+  # The rule the gateway reports: the first of `deny`, then the first of `allow`.
   defp host_rule(policy, host) do
     cond do
       entry = first_match(policy.denies, host) -> policy.by_host[{:deny, entry}]

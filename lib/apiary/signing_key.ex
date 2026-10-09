@@ -1,7 +1,7 @@
 defmodule Apiary.SigningKey do
   @moduledoc """
-  The instance's own Ed25519 signing key: the key it signs its answers to runners with,
-  and the key every machine pins as `apiary_public_key` (the runner contract's "Signed
+  The instance's own Ed25519 signing key: the key it signs its answers to the gateway with,
+  and the key every machine pins as `apiary_public_key` (the Forager contract's "Signed
   answers" and "The pin").
 
   **Where it comes from.** The key's seed is `APIARY_SIGNING_SECRET`, 32 random bytes in
@@ -15,7 +15,7 @@ defmodule Apiary.SigningKey do
   The seed is read from `config :apiary, Apiary.SigningKey, seed: <32 bytes>`, and the key
   is made from it on each call (`current/0`), which costs one Ed25519 key generation.
 
-  **What is refused.** A seed that is not 32 bytes, and a seed the runner contract
+  **What is refused.** A seed that is not 32 bytes, and a seed the Forager contract
   publishes, names or has published: in `fixtures/known-answers/keys.json`, the bytes 1
   to 32, 65 to 96 and 161 to 192; in its README, the second fixture access key's, 193 to
   224, whose secret is published elsewhere; and 33 to 64, the ephemeral key of a sealed
@@ -63,7 +63,7 @@ defmodule Apiary.SigningKey do
 
   @variable "APIARY_SIGNING_SECRET"
 
-  # The 32-byte values the runner contract publishes, or has published, in its fixtures,
+  # The 32-byte values the Forager contract publishes, or has published, in its fixtures,
   # each refused as a seed: the fixture access key's (bytes 1 to 32), the ephemeral key of
   # the sealed fixture of earlier commits (33 to 64), the fixture signing keys', current
   # and next (65 to 96, 161 to 192), and the second fixture access key the contract
@@ -107,7 +107,7 @@ defmodule Apiary.SigningKey do
   @doc """
   check_seed/1 says whether `seed` may be the instance's key: `:ok`, or
   `{:error, :length}` when it is not 32 bytes, or `{:error, :fixture}` when it is one of
-  the runner contract's published fixture values. The comparison is in constant time.
+  the Forager contract's published fixture values. The comparison is in constant time.
   """
   @spec check_seed(term) :: :ok | {:error, :length | :fixture}
   def check_seed(<<_::binary-size(32)>> = seed) do

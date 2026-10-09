@@ -113,7 +113,7 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's workspace by its subject, the id the runner prints and the run's
+  One run of the scope's workspace by its subject, the id Forager prints and the run's
   URL carries; raises `Ecto.NoResultsError` when the workspace has none such, which a run
   of another workspace and a malformed id both are.
   """
@@ -1644,7 +1644,7 @@ defmodule Apiary.Runs do
 
   @doc """
   search_runs/3 is the workspace's runs that `text` names: by the start of their id, as
-  the runner prints it (four hexadecimal characters at least, a whole id or the address
+  Forager prints it (four hexadecimal characters at least, a whole id or the address
   of a run's page too), or by their title, which holds it anywhere; newest first, at most
   `limit`. What the palette finds (`ApiaryWeb.JumpController`).
   """

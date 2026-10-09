@@ -5,13 +5,13 @@ defmodule ApiaryWeb.RunPageComponents do
   the background-task strip, the live end, the limits notice and the terminal box.
 
   An item is what `Apiary.Runs.Record.Timeline.build/3` made of a run's events. Everything
-  in it came from a runner and is untrusted: it is interpolated, so it is escaped, and it
+  in it came from Forager and is untrusted: it is interpolated, so it is escaped, and it
   is never `raw/1`. A link is built by the caller from a verified route and a sequence
   number, never from a string of the record. The terminal's bytes are not rendered here
   at all: the `Terminal` hook feeds them to xterm.js.
 
   `security={false}` is an instance without `security`: the timeline's connections say
-  what the runner reported and nothing of a rule. The run page leaves the policy's items
+  what Forager reported and nothing of a rule. The run page leaves the policy's items
   out of the index it hands over, so none reaches a component here.
   """
   use Phoenix.Component
@@ -61,7 +61,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :patch, :string, required: true
 
   # A button that patches, so that it answers Space as well as Enter and the URL changes. The
-  # DOM id is the lane's number in the run: an agent id is the runner's string.
+  # DOM id is the lane's number in the run: an agent id is Forager's string.
   def lane(assigns) do
     ~H"""
     <button
@@ -251,7 +251,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(%{reason: :not_started} = assigns) do
     ~H"""
-    {gettext("The runner has pinged. The run's first event has not arrived.")}
+    {gettext("Forager has pinged. The run's first event has not arrived.")}
     """
   end
 
@@ -272,7 +272,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <.rich text={
       rich_gettext(
-        "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach the runner. It has a terminal and connections, and no session timeline.",
+        "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach Forager. It has a terminal and connections, and no session timeline.",
         wall: {:part, :wall}
       )
     }>
@@ -280,9 +280,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <.term
           word={gettext("wall")}
           standard={
-            gettext(
-              "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
-            )
+            gettext("The enclosure the agent runs in. Its only route out leads to the gateway.")
           }
           class="q-tip-wide"
         />
@@ -302,7 +300,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :no_egress} = assigns) do
     ~H"""
     {gettext(
-      "No connection went through the runner's proxy. Only programs that honour the proxy variables are seen."
+      "No connection went through the gateway. Only programs that honour the proxy variables are seen."
     )}
     """
   end
@@ -574,7 +572,7 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   # A reload. What it changed is taken from the allow and deny lists of the two events,
-  # which are the record's; the policy tables are not asked. Every host is a runner's
+  # which are the record's; the policy tables are not asked. Every host is Forager's
   # string. A deny chip carries the deny mark: a host that came into `deny` is denied from
   # this item on, in either mode.
   defp item_body(%{item: %{kind: :policy_applied, again: true}} = assigns) do
@@ -1024,14 +1022,14 @@ defmodule ApiaryWeb.RunPageComponents do
   defp reload_sentence(%{source: "fetched", digest: digest, previous_digest: previous})
        when is_binary(digest) and digest != previous do
     gettext(
-      "The runner fetched a new run configuration after Qory Apiary's answer named a new digest."
+      "The gateway fetched a new run configuration after Qory Apiary's answer named a new digest."
     )
   end
 
   defp reload_sentence(%{source: "fetched"}),
-    do: gettext("The runner fetched its run configuration again; the digest is the one it had.")
+    do: gettext("The gateway fetched its run configuration again; the digest is the one it had.")
 
-  defp reload_sentence(_item), do: pgettext("plain", "The runner applied a policy again.")
+  defp reload_sentence(_item), do: pgettext("plain", "The gateway applied a policy again.")
 
   defp delta_more(delta) do
     delta.added_count - length(delta.added) + (delta.removed_count - length(delta.removed)) +
@@ -1192,7 +1190,7 @@ defmodule ApiaryWeb.RunPageComponents do
   ## Words
 
   defp policy_source("fetched"), do: gettext("fetched from the run configuration")
-  defp policy_source("config"), do: gettext("given to the runner as a policy document")
+  defp policy_source("config"), do: gettext("given to Forager as a policy document")
   defp policy_source("none"), do: gettext("no policy, every connection is observed")
   defp policy_source(_other), do: gettext("source n/a")
 

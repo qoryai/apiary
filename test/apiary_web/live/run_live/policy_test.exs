@@ -379,7 +379,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
              )
 
       assert text(view, "#e-30-reload") =~
-               "The runner fetched a new run configuration after Qory Apiary's answer named a new digest."
+               "The gateway fetched a new run configuration after Qory Apiary's answer named a new digest."
 
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 
@@ -401,7 +401,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute sentence =~ "new"
 
       assert sentence =~
-               "The runner fetched its run configuration again; the digest is the one it had."
+               "The gateway fetched its run configuration again; the digest is the one it had."
     end
 
     test "a reload's deny list: the count on the item, chips with the deny mark, the Details",

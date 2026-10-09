@@ -13,8 +13,8 @@ defmodule ApiaryWeb.RunComponents do
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.
 
   A connection is the record, and what the policy made of it is not: on an instance
-  without `security` the pages pass `security={false}`, and a connection says what the
-  runner reported, allowed or denied, the host, the tool and the outcome, with no rule, no
+  without `security` the pages pass `security={false}`, and a connection says what
+  Forager reported, allowed or denied, the host, the tool and the outcome, with no rule, no
   mode and no rule action. The components do not ask `Apiary.Features` themselves: the
   page asks with its scope and says so.
 
@@ -240,10 +240,10 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: the runner's own
+  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: Forager's own
   `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
   before the first heartbeat, zero at the moment the workspace first heard of the run.
-  Never the runner's `started_at`: its clock may be anywhere.
+  Never Forager's `started_at`: its clock may be anywhere.
   """
   def elapsed(%{last_heartbeat_at: %DateTime{} = at, elapsed_seconds: seconds})
       when is_integer(seconds),
@@ -263,7 +263,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :ms, :integer, default: nil
   attr :elapsed_seconds, :integer, default: nil
   attr :elapsed_at, :any, default: nil, doc: "the server time at which elapsed_seconds was true"
-  attr :running_since, :any, default: nil, doc: "deprecated and ignored: the runner's clock"
+  attr :running_since, :any, default: nil, doc: "deprecated and ignored: Forager's clock"
   attr :at_least_seconds, :integer, default: nil
   attr :precise, :boolean, default: false, doc: "tenths of a second under a minute, for tools"
   attr :so_far, :boolean, default: false, doc: "the run header adds the words"
@@ -522,7 +522,7 @@ defmodule ApiaryWeb.RunComponents do
 
   def middle(value, _max), do: value
 
-  @doc "The first eight characters of a run id, as the runner prints it."
+  @doc "The first eight characters of a run id, as Forager prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
 
@@ -2613,7 +2613,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :c, :map, required: true
 
   # A tool invocation is named by its tool: the request line follows, and the host, which
-  # may be a name that exists only on the runner's machine, comes last and faint. A
+  # may be a name that exists only on Forager's machine, comes last and faint. A
   # request refused before it reached the tool is named by its host, as any denial.
   defp destination(%{c: %{invocation: true}} = assigns) do
     assigns = assign(assigns, :line, request_line(assigns.c))
@@ -3028,7 +3028,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The DOM id of a destination across runs. Never an index, and not a short hash either: the
-  host and the path are a runner's strings, and two of them must not be made to share an
+  host and the path are Forager's strings, and two of them must not be made to share an
   id. See `dom_token/1`.
   """
   def destination_id(row), do: "dst-" <> dom_token(destination_key(row))

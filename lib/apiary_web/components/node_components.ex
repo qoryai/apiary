@@ -80,7 +80,7 @@ defmodule ApiaryWeb.NodeComponents do
   def instance_sentence,
     do:
       gettext(
-        "An instance is what a runner with this node's key reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
+        "An instance is what Forager, run with this node's key, reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
       )
 
   @doc """

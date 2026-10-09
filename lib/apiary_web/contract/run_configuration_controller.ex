@@ -5,7 +5,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   `ApiaryWeb.Contract.SignedRequest`, as discovery is, which verifies the request, refuses
   what the contract refuses before the configuration (the key's rate limit, a contract
   revision not served, a stale timestamp) and signs the
-  answer. Every query parameter is one of the run's labels, and the runner sends every
+  answer. Every query parameter is one of the run's labels, and the gateway sends every
   label of the run. The workspace's domain (`Apiary.Lingo.Domain`) says which of them name
   the target.
 
@@ -18,13 +18,13 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
 
   A workspace nobody has given a policy (`Apiary.Policy.managed?/1`) serves none: `404`
   `{"error":"not_found"}`, and nothing is rendered. Discovery names no `run` section for
-  such a workspace, so a runner does not ask.
+  such a workspace, so the gateway does not ask.
 
-  Never a `304`: to a runner anything but `200` is no run, so `If-None-Match` is not
+  Never a `304`: to the gateway anything but `200` is no run, so `If-None-Match` is not
   read. A parameter sent as anything but a string, or longer than a label may be, names
   no target and gets the baseline (of one sent twice the last is read); nothing of the query is logged or
   repeated. When the configuration cannot be read the answer is `503`, which is no run:
-  the runner fails closed, as the contract has it.
+  the gateway fails closed, as the contract has it.
   """
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :security

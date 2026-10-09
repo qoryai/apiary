@@ -461,7 +461,7 @@ defmodule ApiaryWeb.Routes do
               live "/nodes/:node_id/settings/delete", NodeLive.Show, :delete
               # A node's Access key tab: its keys and its outstanding enrolment codes;
               # generating a key in the browser and making a code, each a page of its own; and each act on a key or a code confirmed in place,
-              # at a path of its own; an active key's runner file, and the variables of a
+              # at a path of its own; an active key's Forager file, and the variables of a
               # key just made in the browser, each a page of its own. A key is named by its
               # key id (`ak_…`), a code by its row's id: never by the code, nor a secret.
               live "/nodes/:node_id/access-key", NodeLive.AccessKey, :index
@@ -469,9 +469,9 @@ defmodule ApiaryWeb.Routes do
               live "/nodes/:node_id/access-key/new-code", NodeLive.AccessKey, :new_code
               live "/nodes/:node_id/access-key/keys/:key_id/revoke", NodeLive.AccessKey, :revoke
 
-              live "/nodes/:node_id/access-key/keys/:key_id/runner-file",
+              live "/nodes/:node_id/access-key/keys/:key_id/forager-file",
                    NodeLive.AccessKey,
-                   :runner_file
+                   :forager_file
 
               live "/nodes/:node_id/access-key/keys/:key_id/generated",
                    NodeLive.AccessKey,
@@ -482,7 +482,7 @@ defmodule ApiaryWeb.Routes do
                    :revoke_code
 
               # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
-              # run's subject, the id the runner prints, not the row's id.
+              # run's subject, the id Forager prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
               live "/runs/:run_id/network", RunLive.Show, :connections

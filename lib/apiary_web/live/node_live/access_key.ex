@@ -35,7 +35,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     store the secret, its slot `phx-update="ignore"`, empty from the server, carrying the
     public key the server stored (`data-public-key`), its ids the key's, so that a patch to
     another key's page replaces it; set the key's ID; set Qory Apiary's public key; point
-    qory at Qory Apiary, the runner file's address. The hook writes the secret into the
+    qory at Qory Apiary, the Forager file's address. The hook writes the secret into the
     slot only beside its own public key, empties a slot that shows a secret for another
     public key, and empties it as the page goes. The server never has the secret: not in
     assigns, a render, a log line or the record. What the page says of the secret follows
@@ -45,7 +45,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     (`data-secret-shown`), and the hook shows them while the slot shows the secret; while
     it holds nothing for the key, it shows the slot's "Not shown" line instead. A
     reconnect never empties the slot. It is the page of an active key the reader made in a
-    browser, while they may add keys; any other key's address goes to its runner file, or
+    browser, while they may add keys; any other key's address goes to its Forager file, or
     back to the tab.
 
   **The tab.** While the node holds no active key, owners and admins read "How do you want
@@ -70,13 +70,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     same order, for moving to a new key; at the limit, only the line that says to revoke
     one first, and a command still waiting, which can still be cancelled.
   - **Configure a machine**, once the node holds an active key, for everyone, at the limit
-    too: four numbered steps, point qory at Qory Apiary (the runner file's address), set
+    too: four numbered steps, point qory at Qory Apiary (the Forager file's address), set
     Qory Apiary's public key, set the key's ID (its value while one key is active, else a
     pointer to the key's card), keep the key's secret in a secret store (never shown).
-  - **Runner file for a key** (`…/access-key/keys/:key_id/runner-file`), a page of its own
+  - **Forager file for a key** (`…/access-key/keys/:key_id/forager-file`), a page of its own
     for an active key, linked from its card for everyone who reads the node, since nothing
     on it is secret. What it says follows how the key came: a key connected with a command
-    has the runner file's `server` lines the command wrote, each marked as Qory Apiary's or
+    has the Forager file's `server` lines the command wrote, each marked as Qory Apiary's or
     this key's; a generated key has four numbered steps: keep the secret in a secret
     store, set its id, set Qory Apiary's public key, point qory at Qory Apiary. Either way
     it says truly where the key's secret is.
@@ -274,8 +274,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp opener(%{shown: :revoke_code, code: %EnrolmentCode{id: id}}), do: {:code, id}
 
-  defp opener(%{shown: :runner_file, key: %AccessKey{key_id: key_id}}),
-    do: {:key, key_id, :runner_file}
+  defp opener(%{shown: :forager_file, key: %AccessKey{key_id: key_id}}),
+    do: {:key, key_id, :forager_file}
 
   defp opener(%{shown: :generated, key: %AccessKey{key_id: key_id}}),
     do: {:key, key_id, :generated}
@@ -309,7 +309,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
       key ->
         if act in key_acts(key, assigns.may) or
-             (act == :runner_file and state(key) == :active),
+             (act == :forager_file and state(key) == :active),
            do: "key-#{key_id}-#{String.replace(to_string(act), "_", "-")}",
            else: "key-#{key_id}-title"
     end
@@ -345,7 +345,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # The key made in this browser: the page Generate a key patches to, and what a reload
   # of it shows. Only for an active key of this node the reader made so, while they may
-  # add keys; any other active key's address leads to its runner file, which shows the
+  # add keys; any other active key's address leads to its Forager file, which shows the
   # same id to everyone who reads the node.
   defp apply_action(socket, :generated, %{"key_id" => key_id}) do
     %{current_scope: scope, may: may} = socket.assigns
@@ -363,7 +363,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             assign(socket, :key, key)
 
           true ->
-            push_patch(socket, to: key_path(socket.assigns.paths, key, "runner-file"))
+            push_patch(socket, to: key_path(socket.assigns.paths, key, "forager-file"))
         end
     end
   end
@@ -402,8 +402,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     end
   end
 
-  # A key's runner file, for anyone who reads the node: nothing on it is secret.
-  defp apply_action(socket, :runner_file, %{"key_id" => key_id}) do
+  # A key's Forager file, for anyone who reads the node: nothing on it is secret.
+  defp apply_action(socket, :forager_file, %{"key_id" => key_id}) do
     case Enum.find(socket.assigns.keys, &(&1.key_id == key_id)) do
       nil ->
         to_tab(socket, :error, gettext("This node has no such key."))
@@ -643,7 +643,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   # The event's parameters as the hook sends them, and nothing else: one key, `key`, a map
   # of exactly `label` and `public_key`, each a string. The label holds no `qak_` in any
-  # case (the runner's rule for a value that holds a secret). The public key is not read
+  # case (Forager's rule for a value that holds a secret). The public key is not read
   # for it: a random one holds `qak_` now and then, and its decoding
   # (`Apiary.Contract.Ed25519.decode_public_key/1`, in the key checks) takes 43 characters
   # of base64url alone, which a secret, `qak_` and 43 more, never is. No stored-secrets
@@ -817,8 +817,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         %{live_action: :generated, key: %AccessKey{}} ->
           values_title(node)
 
-        %{live_action: :runner_file, key: %AccessKey{} = key} ->
-          runner_file_title(key) <> " · " <> node.name
+        %{live_action: :forager_file, key: %AccessKey{} = key} ->
+          forager_file_title(key) <> " · " <> node.name
 
         _tab ->
           gettext("Access key") <> " · " <> node.name
@@ -843,7 +843,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp values_title(node), do: gettext("Key for %{name}", name: node.name)
 
-  defp runner_file_title(key), do: gettext("Runner file for %{label}", label: key.label)
+  defp forager_file_title(key), do: gettext("Forager file for %{label}", label: key.label)
 
   defp revoked_words(key), do: gettext("%{label} is revoked.", label: key.label)
 
@@ -919,7 +919,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp same_note, do: gettext("The same for every machine connected to this Qory Apiary.")
 
-  # A command key's runner file: which of its lines are the key's, which the server's.
+  # A command key's Forager file: which of its lines are the key's, which the server's.
   defp parts_note do
     gettext(
       "Only the key ID is this key's. The address and the public key are Qory Apiary's, the same for every machine connected to it."
@@ -930,11 +930,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   defp server_lines, do: AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
 
-  # The runner file's two lines a machine needs beside its key's own variables: the
+  # The Forager file's two lines a machine needs beside its key's own variables: the
   # address alone.
   defp address_file, do: "server:\n" <> server_lines().url <> "\n"
 
-  # A key connected with a command: the runner file's `server` section as the command
+  # A key connected with a command: the Forager file's `server` section as the command
   # wrote it, each line marked as the server's or the key's.
   defp command_file(key) do
     %{url: url, public_key: [pin_head | pins]} = server_lines()
@@ -1070,7 +1070,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <.page_header id="code-issued-header" title={command_title(@node)}>
           <:description>
             {gettext(
-              "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the runner file. The secret never leaves the machine.",
+              "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine.",
               name: @node.name
             )}
           </:description>
@@ -1402,12 +1402,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             <:step title={gettext("Point qory at Qory Apiary.")}>
               <p class="text-muted">
                 {gettext(
-                  "In the runner file. It is required: without it, qory ignores the three variables."
+                  "In the Forager file. It is required: without it, qory ignores the three variables."
                 )}
               </p>
               <.code_block
                 id="key-generated-yaml"
-                label="runner.yaml"
+                label="forager.yaml"
                 code={address_file()}
                 copy_label={gettext("Copy lines")}
               />
@@ -1431,9 +1431,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     """
   end
 
-  # A key's runner file: what the machine holding it is given, nothing of it secret, as
+  # A key's Forager file: what the machine holding it is given, nothing of it secret, as
   # the key came.
-  def render(%{live_action: :runner_file, key: %AccessKey{}} = assigns) do
+  def render(%{live_action: :forager_file, key: %AccessKey{}} = assigns) do
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -1450,15 +1450,15 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <:crumb>{@key.label}</:crumb>
 
       <section
-        id="key-runner-file"
+        id="key-forager-file"
         class="q-form-page"
-        aria-labelledby="key-runner-file-header-title"
-        phx-mounted={JS.focus(to: "#key-runner-file-header-title")}
+        aria-labelledby="key-forager-file-header-title"
+        phx-mounted={JS.focus(to: "#key-forager-file-header-title")}
       >
-        <.page_header id="key-runner-file-header" title={runner_file_title(@key)}>
+        <.page_header id="key-forager-file-header" title={forager_file_title(@key)}>
           <:description>
             {if @key.arrived_by == :code,
-              do: gettext("The runner file's lines for this key. Nothing here is secret."),
+              do: gettext("The Forager file's lines for this key. Nothing here is secret."),
               else:
                 gettext("What %{name} needs, besides the secret. Nothing here is secret.",
                   name: @node.name
@@ -1473,20 +1473,20 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 <.rich text={
                   rich_gettext(
                     "The command wrote these lines to %{file} on %{name} when it connected. They are here to check, or to write the file again:",
-                    file: {:m, "~/.config/qory/runner.yaml"},
+                    file: {:m, "~/.config/qory/forager.yaml"},
                     name: @node.name
                   )
                 } />
               </p>
               <.code_block
-                id="key-runner-file-yaml"
-                label="runner.yaml"
+                id="key-forager-file-yaml"
+                label="forager.yaml"
                 code={command_file(@key)}
                 copy_label={gettext("Copy lines")}
               />
             </div>
-            <p id="key-runner-file-parts" class="text-muted">{parts_note()}</p>
-            <p id="key-runner-file-secret" class="text-muted">
+            <p id="key-forager-file-parts" class="text-muted">{parts_note()}</p>
+            <p id="key-forager-file-secret" class="text-muted">
               <.rich text={
                 rich_gettext(
                   "The key's secret is on %{name}, in %{file}, where the command saved it. It has never been on a screen.",
@@ -1496,9 +1496,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               } />
             </p>
           <% else %>
-            <.how_to id="key-runner-file-steps">
+            <.how_to id="key-forager-file-steps">
               <:step title={gettext("Keep the secret in a secret store.")}>
-                <p id="key-runner-file-secret" class="text-muted">
+                <p id="key-forager-file-secret" class="text-muted">
                   <.rich text={
                     rich_pgettext(
                       "plain",
@@ -1511,7 +1511,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               <:step title={gettext("Set the key's ID.")}>
                 <p class="text-muted">{gettext("As a plain setting.")}</p>
                 <.code_block
-                  id="key-runner-file-key-env"
+                  id="key-forager-file-key-env"
                   code={variable_line(AccessKeys.key_variable(@key))}
                   copy_label={gettext("Copy variable")}
                   wrap
@@ -1520,17 +1520,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               <:step title={gettext("Set Qory Apiary's public key.")}>
                 <p class="text-muted">{gettext("As a plain setting.")}</p>
                 <.code_block
-                  id="key-runner-file-server-env"
+                  id="key-forager-file-server-env"
                   code={variable_line(server_variable())}
                   copy_label={gettext("Copy variable")}
                   wrap
                 />
-                <p id="key-runner-file-belongs" class="text-muted">{same_note()}</p>
+                <p id="key-forager-file-belongs" class="text-muted">{same_note()}</p>
               </:step>
               <:step title={gettext("Point qory at Qory Apiary.")}>
                 <.code_block
-                  id="key-runner-file-url"
-                  label="runner.yaml"
+                  id="key-forager-file-url"
+                  label="forager.yaml"
                   code={address_file()}
                   copy_label={gettext("Copy lines")}
                 />
@@ -1538,8 +1538,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             </.how_to>
           <% end %>
 
-          <SettingsComponents.save id="key-runner-file-done">
-            <.button id="key-runner-file-done-button" variant="primary" patch={@paths.access_key}>
+          <SettingsComponents.save id="key-forager-file-done">
+            <.button id="key-forager-file-done-button" variant="primary" patch={@paths.access_key}>
               {gettext("Done")}
             </.button>
           </SettingsComponents.save>
@@ -2044,12 +2044,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <:step title={gettext("Point qory at Qory Apiary.")}>
             <p class="text-muted">
               {gettext(
-                "In the runner file. It is required: without it, qory ignores the three variables below."
+                "In the Forager file. It is required: without it, qory ignores the three variables below."
               )}
             </p>
             <.code_block
               id={"#{@id}-yaml"}
-              label="runner.yaml"
+              label="forager.yaml"
               code={address_file()}
               copy_label={gettext("Copy lines")}
             />
@@ -2190,7 +2190,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
             <span :if={@key.last_runner_version} class="text-muted">
-              {gettext("runner %{version}", version: @key.last_runner_version)}
+              {gettext("Forager %{version}", version: @key.last_runner_version)}
             </span>
           <% else %>
             {gettext("Not yet")}
@@ -2256,14 +2256,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <% _none -> %>
           <p :if={@state == :active} class="flex flex-wrap gap-3">
             <.button
-              id={"#{@dom}-runner-file"}
+              id={"#{@dom}-forager-file"}
               variant="link"
-              patch={key_path(@paths, @key, "runner-file")}
+              patch={key_path(@paths, @key, "forager-file")}
               phx-hook="FocusOn"
             >
-              <span aria-hidden="true">{gettext("Runner file")}</span>
+              <span aria-hidden="true">{gettext("Forager file")}</span>
               <span class="sr-only">
-                {gettext("Runner file for %{label}", label: @key.label)}
+                {gettext("Forager file for %{label}", label: @key.label)}
               </span>
             </.button>
             <.button

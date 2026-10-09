@@ -258,7 +258,7 @@ defmodule Apiary.Access do
     )
   ]
 
-  # The core's roles, with who holds each: a membership's level, a runner's access key, or
+  # The core's roles, with who holds each: a membership's level, the gateway's access key, or
   # the instance itself. An edition adds its own (`c:Apiary.Edition.roles/0`).
   @roles [
     member: "a person at member, in the workspaces their level reaches",
@@ -789,7 +789,7 @@ defmodule Apiary.Access do
   defp in_place?(_scope, _subject), do: false
 
   @doc """
-  role/1 is the role the scope acts in, as it carries it: `:access_key` for a runner's
+  role/1 is the role the scope acts in, as it carries it: `:access_key` for the gateway's
   key, `:instance` for the instance, the level of the person's membership there, else the
   role the edition gives them (`c:Apiary.Edition.role/1`); nil for anyone else.
   """

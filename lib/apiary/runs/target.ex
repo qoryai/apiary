@@ -18,7 +18,7 @@ defmodule Apiary.Runs.Target do
   @doc """
   A label as one that can name a target's system or path, or nil: a string of valid
   UTF-8, not empty, at most #{@label_max} bytes, with no control character (C0, DEL, C1
-  with U+0085, U+2028, U+2029). A label is a runner's word. One that fails this is
+  with U+0085, U+2028, U+2029). A label is Forager's word. One that fails this is
   neither cleaned nor cut, since either would file the run under a target it did not
   name: the run is kept, with its labels as sent, and belongs to no target. Every domain's
   labelling rule asks here, and the projector and the wire (`Apiary.Policy.Serving`)

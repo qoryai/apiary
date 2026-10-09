@@ -7,7 +7,7 @@ defmodule Apiary.Kinds.ServiceDefinition do
 
   A definition is valid when it passes `priv/schemas/service-definition.schema.json`,
   whose `auth` is Apiary's own: its `scheme`, `header` and `username` are the members of
-  the runner contract's `auth.schema.json` (vendored under `priv/contract/`), with a
+  the Forager contract's `auth.schema.json` (vendored under `priv/contract/`), with a
   username of at most 128 characters, and `secret` and `username_secret` are ids of
   secrets Qory Apiary stores for the definition, `secret` required; and whose hosts,
   paths, declared ids and names take the grammar the contract gives a runtime's

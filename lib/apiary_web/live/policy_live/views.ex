@@ -162,7 +162,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   defp digest_tip,
     do:
       gettext(
-        "The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy."
+        "The sha256 of the exact bytes the gateway is served. Two runs with the same digest had the same policy."
       )
 
   defp page_path(base, page) when page <= 1, do: base <> "/history"
@@ -426,12 +426,12 @@ defmodule ApiaryWeb.PolicyLive.Views do
         <pre tabindex="0" phx-no-format>{@export.command}</pre>
       </.doc_well>
 
-      <.doc_well id="export-runner">
-        <:caption>{gettext("runner.yaml · the egress section")}</:caption>
+      <.doc_well id="export-forager">
+        <:caption>{gettext("forager.yaml · the egress section")}</:caption>
         <:actions>
-          <.copy_button id="export-runner-copy" text={@export.runner_file} label={gettext("Copy")} />
+          <.copy_button id="export-forager-copy" text={@export.forager_file} label={gettext("Copy")} />
         </:actions>
-        <.code_lines id="export-runner-text" text={@export.runner_file} />
+        <.code_lines id="export-forager-text" text={@export.forager_file} />
       </.doc_well>
 
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-muted">
@@ -561,14 +561,14 @@ defmodule ApiaryWeb.PolicyLive.Views do
     if export.policy_file,
       do:
         rich_gettext(
-          "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file a runner takes with %{flag}, and the egress section of its runner file.",
+          "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file Forager takes with %{flag}, and the egress section of its Forager file.",
           subject: subject,
           version: version,
           flag: {:m, "--policy", "font-mono text-[12.5px]"}
         ),
       else:
         rich_gettext(
-          "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the egress section of its runner file.",
+          "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the egress section of its Forager file.",
           subject: subject,
           version: version
         )

@@ -318,7 +318,7 @@ defmodule ApiaryWeb.OverviewComponents do
         cancel={JS.push("close_cancel")}
       >
         {gettext(
-          "The workspace stops taking events for it: the runner is told the run is gone at its next delivery. A close is final."
+          "The workspace stops taking events for it: the gateway is told the run is gone at its next delivery. A close is final."
         )}
         <:action>
           <.button
