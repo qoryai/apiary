@@ -452,7 +452,7 @@ defmodule Apiary.Runs.RecordTest do
       items = Record.items(scope, run, index.items)
       assert items == Timeline.build(index.items, whole)
 
-      # The timeline cuts an argument at 256 code points, "…" after; the Details tab does not.
+      # The timeline cuts an argument at 256 code points, "…" after; the run's Details does not.
       arguments =
         for %{kind: :policy_applied, seq: 8, tools: tools} <- items,
             tool <- tools,

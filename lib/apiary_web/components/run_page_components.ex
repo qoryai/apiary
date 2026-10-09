@@ -1225,7 +1225,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp policy_source("none"), do: gettext("no policy, every connection is observed")
   defp policy_source(_other), do: gettext("source n/a")
 
-  @doc "The source of a policy in words, for the Details tab too."
+  @doc "The source of a policy in words, for Details too."
   def policy_source_words(source), do: policy_source(source)
 
   # How the run ended: why, in words (`RunComponents.reason_words/1`), else the program's

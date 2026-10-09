@@ -104,7 +104,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
         "title" => "login.example.org"
       }
 
-      {lv, _html} = page(conn, scope, started(scope, %{"subjects" => [subject]}), "/details")
+      {lv, _html} = page(conn, scope, started(scope, %{"subjects" => [subject]}), "/terminal")
 
       link = ~s(a[href="https://tracker.example.com/browse/ENG-17"])
       tip = "login.example.org · tracker.example.com"
@@ -129,7 +129,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
       kind = "Implemen\u202Etation"
 
       {lv, _html} =
-        page(conn, scope, started(scope, %{"title" => title, "kind" => kind}), "/details")
+        page(conn, scope, started(scope, %{"title" => title, "kind" => kind}), "/terminal")
 
       assert has_element?(lv, "h1#run-title > bdi", title)
       assert has_element?(lv, "#run-about-kind > bdi", kind)
@@ -268,7 +268,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
           }
         })
 
-      for tab <- ["", "/details"] do
+      for tab <- ["", "/terminal"] do
         {lv, _html} = page(conn, scope, run, tab)
 
         assert has_element?(
@@ -387,7 +387,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
           }
         })
 
-      {lv, html} = page(conn, scope, run, "/details")
+      {lv, html} = page(conn, scope, run, "/terminal")
 
       for raw <- ["<b>ENG-3", "<i>t</i>", "<em>k", "<script>alert", "<u>x", "<s>y"],
           do: refute(html =~ raw, raw)

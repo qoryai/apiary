@@ -325,7 +325,7 @@ per change, at the sequence where the new size took effect, so the chunks before
 written to the old size and the chunks after it to the new. The projection keeps the size
 the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later of the start
 and the resizes by sequence; a resize whose data is not a size (an integer in 1 to 65535 each)
-changes nothing. The Details tab shows it. A resize is not an item of the timeline: the
+changes nothing. The run page's Details shows it. A resize is not an item of the timeline: the
 terminal is where it matters.
 
 The terminal tab replays at the recorded size. The bytes never cross the LiveView socket,
@@ -712,12 +712,12 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   request is shown. The `tools` of `dev.qory.run.policy_applied` are read like its
   `credentials`: twenty at most, each with ten hosts at most. A credential use and a tool
   may contain `argument`, the argument the policy passed to it (up to 4096 code points in
-  the contract). The policy in force on a run's Details tab reads it whole, cut only past
+  the contract). The policy in force in a run's Details reads it whole, cut only past
   4096 code points; the timeline's policy applied item reads a tool's cut at 256
   (`Apiary.Runs.Record.Timeline.max_argument/0`), and its one-line summary shows the first 64 of them, with the 256 in the argument's title. A
   cut argument ends in `…`. Lengths are code points, as the schemas' `maxLength` and the
   database's `left` count them, in the query and in `Timeline.slim/1` alike. The event
-  lists each use of a credential, all with the same name and argument; the Details tab
+  lists each use of a credential, all with the same name and argument; Details
   shows them as one entry with the hosts of every use. It reads the first twenty uses and
   the first twenty tools, and counts the different names and arguments among all of them,
   so "and N more" is the number of entries, grouped, that it does not show. The vendored
