@@ -156,9 +156,11 @@ page, the one the person came from (Two levels, below).
   and lists its sections. The bar names the last segment of the breadcrumb only, and before
   it, on a page under a parent, the parent as a link back, a chevron before its name
   (`‹ Runs / Run 0191f2a4`, `‹ Secrets and variables / New secret`): the item of the one
-  breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail. A
-  section's own page shows its name alone. On a core Instance page, which has one section
-  and so no disclosure, it keeps both, `Instance settings / Configuration`.
+  breadcrumb the wider bar shows too (`q-trail-up`), so a screen reader hears one trail.
+  Where the two do not fit, the page's name is cut short first, with an ellipsis, and the
+  parent keeps up to 8rem of its own. A section's own page shows its name alone. On a core
+  Instance page, which has one section and so no disclosure, it keeps both,
+  `Instance settings / Configuration`.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its header
   (`PageComponents.page_header/1`, or `<.header>`), which also holds a one-line
