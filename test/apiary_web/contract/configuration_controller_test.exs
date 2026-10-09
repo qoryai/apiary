@@ -152,12 +152,12 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
     touched = key!(key)
     assert touched.last_used_at
-    assert touched.last_runner_version == "1.2.3"
+    assert touched.last_forager_version == "1.2.3"
     assert touched.last_contract_version == 1
 
     signed_get(build_conn(), key.key_id, secret, user_agent: "curl/8.0")
     touched = key!(key)
-    assert touched.last_runner_version == nil
+    assert touched.last_forager_version == nil
     assert touched.last_contract_version == 1
   end
 
@@ -199,7 +199,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
 
     touched = key!(key)
     assert touched.last_used_at
-    assert touched.last_runner_version == String.duplicate("9", 80)
+    assert touched.last_forager_version == String.duplicate("9", 80)
   end
 
   test "a User-Agent that is not printable text succeeds and records no version", %{
@@ -214,7 +214,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
         ] do
       conn = signed_get(conn, key.key_id, secret, user_agent: user_agent)
       assert %{"version" => 1} = json_response(conn, 200)
-      assert key!(key).last_runner_version == nil
+      assert key!(key).last_forager_version == nil
     end
   end
 

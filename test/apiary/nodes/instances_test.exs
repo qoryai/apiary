@@ -115,7 +115,7 @@ defmodule Apiary.Nodes.InstancesTest do
                    instance_id: "i_1",
                    name: "build-01.example.com",
                    access_key_id: key.id,
-                   runner_version: "0.7.0",
+                   forager_version: "0.7.0",
                    contract_version: 1
                  },
                  t
@@ -129,7 +129,7 @@ defmodule Apiary.Nodes.InstancesTest do
                  name: "build-01.example.com",
                  first_seen_at: ^t,
                  last_seen_at: ^t,
-                 last_runner_version: "0.7.0",
+                 last_forager_version: "0.7.0",
                  last_contract_version: 1
                } = instance
              ] = instances(node)
@@ -139,15 +139,15 @@ defmodule Apiary.Nodes.InstancesTest do
       # Within the window nothing is written; after it, the row moves on and a name that
       # is no name leaves the one it had.
       later = DateTime.add(t, 5, :second)
-      assert :ok = Nodes.seen(node, %{instance_id: "i_1", runner_version: "0.7.1"}, later)
-      assert [%Instance{last_seen_at: ^t, last_runner_version: "0.7.0"}] = instances(node)
+      assert :ok = Nodes.seen(node, %{instance_id: "i_1", forager_version: "0.7.1"}, later)
+      assert [%Instance{last_seen_at: ^t, last_forager_version: "0.7.0"}] = instances(node)
 
       later = DateTime.add(t, 20, :second)
 
       assert :ok =
                Nodes.seen(
                  node,
-                 %{instance_id: "i_1", name: "no spaces", runner_version: "0.7.1"},
+                 %{instance_id: "i_1", name: "no spaces", forager_version: "0.7.1"},
                  later
                )
 
@@ -156,7 +156,7 @@ defmodule Apiary.Nodes.InstancesTest do
                  first_seen_at: ^t,
                  last_seen_at: ^later,
                  name: "build-01.example.com",
-                 last_runner_version: "0.7.1"
+                 last_forager_version: "0.7.1"
                }
              ] = instances(node)
     end
@@ -488,7 +488,7 @@ defmodule Apiary.Nodes.InstancesTest do
           state: "running",
           started_at: ago(20, now),
           last_heartbeat_at: ago(5, now),
-          runner_version: "0.7.1"
+          forager_version: "0.7.1"
         })
 
       node_run_fixture(pool, "i_2", %{inserted_at: ago(10, now)})
@@ -498,7 +498,7 @@ defmodule Apiary.Nodes.InstancesTest do
 
       assert %{running: [one, two], last: %Instance{instance_id: "i_2"}} = activity[pool.id]
 
-      assert %{instance_id: "i_1", name: "spot-1", runner_version: "0.7.1"} = one
+      assert %{instance_id: "i_1", name: "spot-1", forager_version: "0.7.1"} = one
       assert one.since == first.inserted_at
       assert one.run_id == newest.run_id
       assert %{instance_id: "i_2", name: nil} = two

@@ -30,7 +30,7 @@ defmodule Apiary.Nodes.Instance do
     field :name, :string
     field :first_seen_at, :utc_datetime_usec
     field :last_seen_at, :utc_datetime_usec
-    field :last_runner_version, :string
+    field :last_forager_version, :string
     field :last_contract_version, :integer
     field :cleared_at, :utc_datetime_usec
 

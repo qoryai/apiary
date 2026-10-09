@@ -90,7 +90,7 @@ defmodule Apiary.Runs.ProjectorTest do
       assert {:ok, %Run{} = projected} = Projector.project(run)
 
       assert projected.state == "succeeded"
-      assert projected.runner_version == "v0.4.0"
+      assert projected.forager_version == "v0.4.0"
       assert projected.contract_version == 1
       assert projected.runtime == "claude"
       assert projected.args == ["-p", "fix the build"]
@@ -440,7 +440,7 @@ defmodule Apiary.Runs.ProjectorTest do
           {:ok, _} = Projector.project(run)
         end
 
-        assert Repo.get!(Run, run.id).runner_version == "v0.4.1"
+        assert Repo.get!(Run, run.id).forager_version == "v0.4.1"
       end
     end
 

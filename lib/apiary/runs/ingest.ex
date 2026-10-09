@@ -50,7 +50,7 @@ defmodule Apiary.Runs.Ingest do
   What the request said beside its body: `contract_version`, the revision of
   `X-Qory-Contract-Version`, which the runner sends on every request and the events
   endpoint has checked; `delivery_id` (`X-Qory-Delivery`; one is made up when it is
-  absent or not a UUID), `runner_version`, `run_configuration`
+  absent or not a UUID), `forager_version`, `run_configuration`
   (`X-Qory-Run-Configuration`) and `instance_id` (`X-Qory-Instance-Id`, as the request
   verified it), each nil when not sent.
   """
@@ -58,7 +58,7 @@ defmodule Apiary.Runs.Ingest do
           required(:contract_version) => pos_integer,
           optional(:delivery_id) => String.t() | nil,
           optional(:instance_id) => String.t() | nil,
-          optional(:runner_version) => String.t() | nil,
+          optional(:forager_version) => String.t() | nil,
           optional(:run_configuration) => String.t() | nil
         }
 
@@ -240,7 +240,7 @@ defmodule Apiary.Runs.Ingest do
             run_id: batch.subject,
             access_key_id: access_key.id,
             state: "pending",
-            runner_version: meta[:runner_version],
+            forager_version: meta[:forager_version],
             contract_version: meta.contract_version,
             inserted_at: now,
             updated_at: now
@@ -403,7 +403,7 @@ defmodule Apiary.Runs.Ingest do
   defp touch(access_key, result, meta, now) do
     AccessKeys.touch_delivery(access_key, %{
       last_used_at: now,
-      last_runner_version: meta[:runner_version],
+      last_forager_version: meta[:forager_version],
       last_contract_version: meta.contract_version,
       last_heartbeat_at: if(result.heartbeat, do: now)
     })

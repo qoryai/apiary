@@ -83,7 +83,7 @@ defmodule ApiaryWeb.Contract.EventsController do
     %{
       delivery_id: single(conn, "x-qory-delivery"),
       run_configuration: single(conn, "x-qory-run-configuration"),
-      runner_version: SignedRequest.runner_version(conn),
+      forager_version: SignedRequest.forager_version(conn),
       contract_version: conn.assigns.contract_version,
       instance_id: conn.assigns.instance_id
     }

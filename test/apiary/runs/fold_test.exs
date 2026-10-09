@@ -5,7 +5,7 @@ defmodule Apiary.Runs.FoldTest do
 
   @run %{
     state: "pending",
-    runner_version: nil,
+    forager_version: nil,
     contract_version: nil,
     runtime: nil,
     runtime_version: nil,
@@ -127,7 +127,7 @@ defmodule Apiary.Runs.FoldTest do
       data = %{"runner_version" => "v0.4.0", "contract_version" => 1, "events" => []}
       %{run: run} = Fold.fold(@run, [event(1, "ping", data)])
 
-      assert run.runner_version == "v0.4.0"
+      assert run.forager_version == "v0.4.0"
       assert run.contract_version == 1
       assert run.state == "pending"
     end
@@ -141,11 +141,11 @@ defmodule Apiary.Runs.FoldTest do
       ping = event(1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1})
       start = started(2, %{"runner_version" => "v0.4.1"})
 
-      assert Fold.fold(@run, [ping, start]).run.runner_version == "v0.4.1"
+      assert Fold.fold(@run, [ping, start]).run.forager_version == "v0.4.1"
 
       %{run: run, latest: latest} = Fold.fold(@run, [start])
       %{run: run} = Fold.fold(run, [ping], latest)
-      assert run.runner_version == "v0.4.1"
+      assert run.forager_version == "v0.4.1"
       assert run.contract_version == 1
     end
 
@@ -156,7 +156,7 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run, latest: latest} = Fold.fold(@run, [second])
       %{run: run} = Fold.fold(run, [first], latest)
 
-      assert {run.runner_version, run.contract_version} == {"v2", 1}
+      assert {run.forager_version, run.contract_version} == {"v2", 1}
     end
   end
 
@@ -172,7 +172,7 @@ defmodule Apiary.Runs.FoldTest do
       assert run.args == ["-p", "fix the build"]
       assert run.dir == "/work"
       assert run.interactive == false
-      assert run.runner_version == "v0.4.0"
+      assert run.forager_version == "v0.4.0"
       assert run.host == "dev-laptop"
       assert run.wall == "docker"
       assert run.image == "example/agent:1"

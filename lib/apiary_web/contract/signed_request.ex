@@ -80,7 +80,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   @instance_id_format ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @timestamp_format ~r/\A[0-9]{1,19}\z/
   @content_type "application/cloudevents-batch+json"
-  @runner_version_max 80
+  @forager_version_max 80
   # String.printable?/1 lets escape sequences through; a version has no control characters.
   @printable ~r/\A[^[:cntrl:]]+\z/u
   # The headers the signature depends on, each refused when sent more than once.
@@ -251,7 +251,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
       instance_id: instance_id,
       name: header(conn, "x-qory-instance-name"),
       access_key_id: access_key.id,
-      runner_version: runner_version(conn),
+      forager_version: forager_version(conn),
       contract_version:
         case ContractVersion.fetch(conn) do
           {:ok, version} -> version
@@ -304,7 +304,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   defp touch(conn, access_key) do
     attrs = %{
-      last_runner_version: runner_version(conn),
+      last_forager_version: forager_version(conn),
       last_contract_version: conn.assigns.contract_version
     }
 
@@ -331,12 +331,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   end
 
   @doc "The runner version of `User-Agent: qory-runner/<version>`, as the columns hold it, or nil."
-  def runner_version(conn) do
+  def forager_version(conn) do
     with [user_agent] <- get_req_header(conn, "user-agent"),
          true <- String.valid?(user_agent),
          [_, version] <- Regex.run(~r{^qory-runner/(\S+)}, user_agent),
          true <- Regex.match?(@printable, version) do
-      String.slice(version, 0, @runner_version_max)
+      String.slice(version, 0, @forager_version_max)
     else
       _ -> nil
     end

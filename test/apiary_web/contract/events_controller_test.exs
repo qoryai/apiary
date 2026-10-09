@@ -76,7 +76,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       key = Repo.get!(AccessKey, key.id)
       assert key.last_used_at
-      assert key.last_runner_version == "0.4.1"
+      assert key.last_forager_version == "0.4.1"
       assert key.last_contract_version == 1
       assert key.last_heartbeat_at == nil
 
@@ -123,7 +123,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
              |> response(202)
 
       key = Repo.get!(AccessKey, key.id)
-      assert key.last_runner_version == "0.4.0"
+      assert key.last_forager_version == "0.4.0"
       assert key.last_contract_version == 1
     end
 
@@ -146,7 +146,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       key = Repo.get!(AccessKey, key.id)
       assert key.last_used_at == used
-      assert key.last_runner_version == "0.4.0"
+      assert key.last_forager_version == "0.4.0"
     end
 
     test "sent again, byte for byte, is answered 202 and stores nothing twice",

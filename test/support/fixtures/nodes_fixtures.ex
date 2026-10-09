@@ -39,7 +39,7 @@ defmodule Apiary.NodesFixtures do
       name: Map.get(attrs, :name),
       first_seen_at: Map.get(attrs, :first_seen_at, seen),
       last_seen_at: Map.get(attrs, :last_seen_at, seen),
-      last_runner_version: Map.get(attrs, :last_runner_version, "0.7.0")
+      last_forager_version: Map.get(attrs, :last_forager_version, "0.7.0")
     })
   end
 

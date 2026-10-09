@@ -33,7 +33,7 @@ defmodule Apiary.Runs.Run do
     field :about_details, :map
     field :runtime, :string
     field :runtime_version, :string
-    field :runner_version, :string
+    field :forager_version, :string
     field :contract_version, :integer
     field :command, :string
     field :args, {:array, :string}, default: []

@@ -2189,8 +2189,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         <dd id={"#{@dom}-used"}>
           <%= if @key.last_used_at do %>
             {Format.datetime(@key.last_used_at)}
-            <span :if={@key.last_runner_version} class="text-muted">
-              {gettext("runner %{version}", version: @key.last_runner_version)}
+            <span :if={@key.last_forager_version} class="text-muted">
+              {gettext("runner %{version}", version: @key.last_forager_version)}
             </span>
           <% else %>
             {gettext("Not yet")}

@@ -937,7 +937,7 @@ defmodule ApiaryWeb.RunLive.Show do
           </dd>
           <dt>{gettext("Runner")}</dt>
           <dd class="font-mono">
-            {@run.runner_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
+            {@run.forager_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
               "contract %{version}",
               version: @run.contract_version
             )}</span>

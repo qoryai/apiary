@@ -27,7 +27,7 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :label, :string
     field :revoked_at, :utc_datetime_usec
     field :last_used_at, :utc_datetime_usec
-    field :last_runner_version, :string
+    field :last_forager_version, :string
     field :last_contract_version, :integer
     field :last_heartbeat_at, :utc_datetime_usec
     field :public_key, :binary
@@ -101,8 +101,8 @@ defmodule Apiary.AccessKeys.AccessKey do
 
   def touch_changeset(access_key, attrs) do
     access_key
-    |> cast(attrs, [:last_runner_version, :last_contract_version])
-    |> validate_length(:last_runner_version, max: 80)
+    |> cast(attrs, [:last_forager_version, :last_contract_version])
+    |> validate_length(:last_forager_version, max: 80)
     |> put_change(:last_used_at, DateTime.utc_now())
   end
 

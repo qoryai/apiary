@@ -1065,7 +1065,7 @@ defmodule Apiary.AccessKeys do
   defp attr(attrs, name) when is_map(attrs),
     do: Map.get(attrs, name, Map.get(attrs, Atom.to_string(name)))
 
-  @doc "Records a use: `last_used_at` now, plus `last_runner_version` and `last_contract_version` from `attrs`."
+  @doc "Records a use: `last_used_at` now, plus `last_forager_version` and `last_contract_version` from `attrs`."
   def touch(%AccessKey{} = access_key, attrs) do
     access_key |> AccessKey.touch_changeset(attrs) |> Repo.update()
   end
@@ -1080,7 +1080,7 @@ defmodule Apiary.AccessKeys do
     set =
       [
         last_used_at: attrs[:last_used_at] || DateTime.utc_now(),
-        last_runner_version: attrs[:last_runner_version],
+        last_forager_version: attrs[:last_forager_version],
         last_contract_version: attrs[:last_contract_version]
       ]
       |> Enum.reject(fn {_field, value} -> is_nil(value) end)

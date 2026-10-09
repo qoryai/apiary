@@ -510,7 +510,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       node = node_fixture(scope, %{name: "build-01"})
       %{access_key: key} = node_key_fixture(scope, node, %{label: "build-01"})
-      {:ok, _} = AccessKeys.touch(key, %{last_runner_version: "v0.4.2", last_contract_version: 1})
+
+      {:ok, _} =
+        AccessKeys.touch(key, %{last_forager_version: "v0.4.2", last_contract_version: 1})
+
       view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='3']")
@@ -1075,7 +1078,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       idle = node_key(scope, "old-runner", node)
       long_ago(idle, 34)
       fresh = node_key(scope, "build-02", node)
-      {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
+      {:ok, _} = AccessKeys.touch(fresh, %{last_forager_version: "v0.4.1"})
       # A key a code brought is weighed too, from when it arrived.
       %{access_key: enrolled} =
         enrolled_key_fixture(scope, Apiary.NodesFixtures.node_fixture(scope))
