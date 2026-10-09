@@ -712,7 +712,7 @@ what needs the reader, then what their agents did, and never grows with the data
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read. A lost run offers Open, its page: Qory Apiary records what a run reports
   and never ends a run it did not start; it starts none today. The row leaves when the
-  run's exit or heartbeats arrive, or when its seven days pass.
+  run's start, heartbeats or exit arrive, or when its seven days pass.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a

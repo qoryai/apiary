@@ -121,10 +121,10 @@ defmodule ApiaryWeb.RunLive.Show do
       >
         <div class="q-run-col">
           <header class="q-run-head">
-            <h1 :if={given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
+            <h1 :if={given_title(@run)} id="run-title" tabindex="-1">
               <bdi>{given_title(@run)}</bdi>
             </h1>
-            <h1 :if={!given_title(@run)} id="run-title" tabindex="-1" phx-hook="FocusOn">
+            <h1 :if={!given_title(@run)} id="run-title" tabindex="-1">
               <.rich text={
                 rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
               } />

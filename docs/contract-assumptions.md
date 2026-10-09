@@ -204,8 +204,8 @@ What is stored, in one transaction, before the answer:
   by arrival;
 - the delivery: the key, the instance id, `X-Qory-Delivery`, the subject, how many events it held, how many were
   new, the status answered, and the batch's `X-Qory-Run-Configuration` when it had the shape
-  of a digest. A delivery id the key has delivered before is answered `202` again and nothing
-  is stored;
+  of a digest. A delivery id the key has delivered before is answered `202` again, or `410`
+  for a run retention has pruned, and nothing is stored;
 - on the run: the count of events, when the last one was received, and the last
   `X-Qory-Run-Configuration` that had the shape `sha256=` and 64 lowercase hex digits.
 

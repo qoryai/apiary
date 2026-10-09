@@ -223,7 +223,8 @@ beyond the limit or an unsupported version does not.
   stored like any other, so a newer Forager's events are kept until a release reads them.
   A ping's `interval_seconds` is read too, the heartbeat interval the run uses.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
-  id the key has delivered before is answered `202` again and nothing is stored.
+  id the key has delivered before is answered `202` again, or `410` for a run retention has
+  pruned, and nothing is stored.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
   The run is created on the first event of a subject the key's workspace has not seen, on
   the key's node and the instance the request claimed. A node runs one instance at a time,

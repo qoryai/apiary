@@ -13,10 +13,11 @@ defmodule ApiaryWeb.Contract.EventsController do
   revision served is `400`. Here, in order: a body the contract refuses (not a batch, or a ping whose `interval_seconds` is
   absent or outside 1 to 300, `Apiary.Runs.Batch`) is `400` `invalid_request`; a key
   `Apiary.Access` does not let post (`run.post_events`) is `404`, as a path that does not
-  exist; then `Apiary.Runs.Ingest`: a delivery already recorded is `202` again, a run whose
-  events retention has pruned is `410`, and the ping of a new run from an instance beyond its
-  node's limit is `409` `instance_limit` (`Apiary.Nodes.admit/4`), with nothing stored;
-  anything else is stored and answered `202`, with nothing projected yet.
+  exist; then `Apiary.Runs.Ingest`: the ping of a new run from an instance beyond its node's
+  limit is `409` `instance_limit` (`Apiary.Nodes.admit/4`), with nothing stored; a run whose
+  events retention has pruned is `410`, even for a delivery already recorded; any other
+  delivery already recorded is `202` again; anything else is stored and answered `202`, with
+  nothing projected yet.
 
   Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202` and `410`
   carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery

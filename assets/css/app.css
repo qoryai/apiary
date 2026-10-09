@@ -3362,11 +3362,7 @@
   }
   /* The State menu's families: a heading row over its states, which are indented by the
      heading's checkbox and the gap after it. daisyUI draws the dash of a mixed heading
-     (`:indeterminate`). The grouped menu has a fixed shape and never scrolls. */
-  .q-filter-menu:has(.q-filter-group) {
-    max-height: none;
-    overflow: visible;
-  }
+     (`:indeterminate`). */
   .q-filter-group + .q-filter-group {
     margin-top: 3px;
   }

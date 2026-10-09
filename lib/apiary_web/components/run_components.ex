@@ -816,10 +816,6 @@ defmodule ApiaryWeb.RunComponents do
     `options`, which therefore holds one for every value of every group
     """
 
-  attr :tips, :map,
-    default: %{},
-    doc: "value => a sentence shown on hover and focus of the option's word (grouped only)"
-
   def filter(assigns) do
     values = assigns.value |> List.wrap() |> Enum.map(&to_string/1)
     id = assigns.id || "filter-#{assigns.name}"
@@ -891,7 +887,6 @@ defmodule ApiaryWeb.RunComponents do
           narrow={@narrow}
           search_label={@search_label}
           groups={@groups}
-          tips={@tips}
         />
       </div>
     </div>
@@ -919,7 +914,6 @@ defmodule ApiaryWeb.RunComponents do
   attr :narrow, :string, default: "narrow"
   attr :more, :string, default: nil, doc: "the event that asks for more options"
   attr :groups, :list, default: []
-  attr :tips, :map, default: %{}
 
   attr :search_label, :string,
     default: nil,
@@ -1025,25 +1019,12 @@ defmodule ApiaryWeb.RunComponents do
                   checked={to_string(value) in @values}
                   class="checkbox checkbox-xs"
                   data-family={group.key}
-                  aria-describedby={@tips[to_string(value)] && "#{@id}-tip-#{value}"}
                 />
-                <span :if={!@tips[to_string(value)]} class="min-w-0 flex-1 truncate" title={label}>
-                  {label}
-                </span>
-                <span :if={@tips[to_string(value)]} class="min-w-0 flex-1 truncate">
-                  <span
-                    class="tooltip q-tip-wide"
-                    tabindex="0"
-                    data-tip={@tips[to_string(value)]}
-                  >{label}</span>
-                </span>
+                <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
                 <span :if={count} class="flex-none font-mono text-[11.5px] text-faint tabular-nums">
                   {count_label(count)}
                 </span>
               </label>
-              <span :if={@tips[to_string(value)]} id={"#{@id}-tip-#{value}"} class="sr-only">
-                {@tips[to_string(value)]}
-              </span>
             </li>
           </ul>
         </li>
