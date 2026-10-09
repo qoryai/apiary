@@ -175,6 +175,114 @@ defmodule Apiary.RuntimeConfigTest do
     end
   end
 
+  describe "the two 32-byte keys in hex" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    defp configured_keys do
+      config = prod_config()
+
+      {get_in(config, [:apiary, Apiary.KeyDerivation, :secret]),
+       get_in(config, [:apiary, Apiary.SigningKey, :seed])}
+    end
+
+    test "64 characters in lower, upper or mixed case are the same 32 bytes as base64" do
+      encryption = :crypto.strong_rand_bytes(32)
+      signing = :crypto.strong_rand_bytes(32)
+
+      mixed = fn bytes ->
+        bytes
+        |> Base.encode16(case: :lower)
+        |> String.graphemes()
+        |> Enum.with_index()
+        |> Enum.map_join(fn {char, i} ->
+          if rem(i, 2) == 0, do: String.upcase(char), else: char
+        end)
+      end
+
+      for encode <- [
+            &Base.encode64/1,
+            &Base.encode16(&1, case: :lower),
+            &Base.encode16(&1, case: :upper),
+            mixed
+          ] do
+        System.put_env("APIARY_ENCRYPTION_SECRET", encode.(encryption))
+        System.put_env("APIARY_SIGNING_SECRET", encode.(signing))
+
+        assert configured_keys() == {encryption, signing},
+               "a form of the two keys was not decoded to their bytes"
+      end
+
+      # The mixed form above holds both cases, whatever the bytes.
+      assert mixed.(<<0xAB, 0xCD>>) == "AbCd"
+    end
+
+    test "64 characters that are not hex are refused, naming the variable and never the value" do
+      for variable <- ["APIARY_ENCRYPTION_SECRET", "APIARY_SIGNING_SECRET"],
+          # Not hex; the first is base64 of 48 bytes, the second hex of 32 with one wrong
+          # character.
+          value <- [
+            String.duplicate("g", 64),
+            String.duplicate("a", 63) <> "x",
+            String.duplicate("a", 62) <> " a"
+          ] do
+        System.put_env(@base)
+        System.put_env(variable, value)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "#{variable} is not 32 bytes in base64 (44 characters) or in hex (64 characters)."
+
+        refute error.message =~ value
+      end
+    end
+
+    test "the same key in hex and in base64 is the same value: the bytes are compared" do
+      key = String.duplicate("k", 32)
+
+      for {encryption, signing} <- [
+            {Base.encode64(key), Base.encode16(key)},
+            {Base.encode16(key, case: :lower), Base.encode64(key)},
+            {Base.encode16(key, case: :lower), Base.encode16(key, case: :upper)}
+          ] do
+        System.put_env("APIARY_ENCRYPTION_SECRET", encryption)
+        System.put_env("APIARY_SIGNING_SECRET", signing)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET"
+
+        refute error.message =~ encryption
+        refute error.message =~ signing
+      end
+    end
+
+    test "a published seed given in hex is refused" do
+      for config_file <- ["config/dev.exs", "config/test.exs"],
+          case <- [:lower, :upper] do
+        seed =
+          config_file
+          |> Path.expand(Path.expand("../..", __DIR__))
+          |> Config.Reader.read!(env: :test, target: :host, imports: :disabled)
+          |> get_in([:apiary, Apiary.SigningKey, :seed])
+
+        value = Base.encode16(seed, case: case)
+        System.put_env("APIARY_SIGNING_SECRET", value)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "APIARY_SIGNING_SECRET is the development or test seed this repository publishes"
+
+        refute error.message =~ value
+        refute error.message =~ seed
+      end
+    end
+  end
+
   describe "the keys file" do
     setup do
       System.put_env("MAIL_TO_LOG", "true")
@@ -183,7 +291,7 @@ defmodule Apiary.RuntimeConfigTest do
     @file_keys %{
       "SECRET_KEY_BASE" => String.duplicate("f", 64),
       "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("e", 32)),
-      "APIARY_SIGNING_SECRET" => Base.encode64(String.duplicate("i", 32))
+      "APIARY_SIGNING_SECRET" => Base.encode16(String.duplicate("i", 32))
     }
 
     defp write_keys_file(dir, keys) do

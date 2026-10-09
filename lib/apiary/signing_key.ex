@@ -5,8 +5,8 @@ defmodule Apiary.SigningKey do
   answers" and "The pin").
 
   **Where it comes from.** The key's seed is `APIARY_SIGNING_SECRET`, 32 random bytes in
-  base64, read by `config/runtime.exs` in production, where it is required and has no
-  fallback. `config/dev.exs` and `config/test.exs` set a fixed seed of their own. It is
+  base64 or in hex, read by `config/runtime.exs` in production, where it is required and
+  has no fallback. `config/dev.exs` and `config/test.exs` set a fixed seed of their own. It is
   never derived from `APIARY_ENCRYPTION_SECRET` (`Apiary.KeyDerivation`): every machine
   pins this key, so it does not change when the encryption secret does, and the two are
   kept, lost and rotated apart. Losing it, or changing it, means every machine has to be

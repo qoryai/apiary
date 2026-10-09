@@ -158,6 +158,19 @@ if config_env() == :prod do
   keys_file = Apiary.KeysFile.read(System.get_env("APIARY_KEYS_DIR"))
   key_env = &Apiary.KeysFile.get(keys_file, &1)
 
+  # APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET are 32 bytes, in base64 (44
+  # characters, as openssl rand -base64 32 prints them) or in hex (64 characters, either
+  # case). Both forms are decoded to the bytes, and only the bytes are used and compared.
+  # nil for anything else.
+  decode_key = fn value ->
+    decoded =
+      if byte_size(value) == 64,
+        do: Base.decode16(value, case: :mixed),
+        else: Base.decode64(value)
+
+    with {:ok, <<_::binary-size(32)>> = key} <- decoded, do: key, else: (_ -> nil)
+  end
+
   # ## Database
 
   database_url =
@@ -209,16 +222,11 @@ if config_env() == :prod do
         """
 
       value ->
-        case Base.decode64(value) do
-          {:ok, key} when byte_size(key) == 32 ->
-            key
-
-          _ ->
-            raise """
-            environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
-            Generate one with: openssl rand -base64 32
-            """
-        end
+        decode_key.(value) ||
+          raise """
+          environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
+          Generate one with: openssl rand -base64 32
+          """
     end
 
   config :apiary, Apiary.KeyDerivation, secret: encryption_secret
@@ -243,16 +251,11 @@ if config_env() == :prod do
         """
 
       value ->
-        case Base.decode64(value) do
-          {:ok, seed} when byte_size(seed) == 32 ->
-            seed
-
-          _ ->
-            raise """
-            environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
-            Generate one with: openssl rand -base64 32
-            """
-        end
+        decode_key.(value) ||
+          raise """
+          environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
+          Generate one with: openssl rand -base64 32
+          """
     end
 
   if :crypto.hash_equals(signing_seed, encryption_secret) do
