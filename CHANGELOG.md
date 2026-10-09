@@ -64,7 +64,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
   the contract's own fixtures at the commit `.forager-contract-ref` pins, Forager's
-  04545d3.
+  6cd1448.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint and the run configuration each spend a bucket of their own, 50
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
