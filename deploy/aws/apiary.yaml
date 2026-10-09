@@ -7,8 +7,9 @@
 # Upgrade with the console's Update, or with `aws cloudformation deploy`, which keep the
 # parameters they are not given. KeysFromStack and DatabaseSnapshot keep their values for
 # the life of the stack: an update that drops DatabaseSnapshot replaces the restored
-# database with an empty one. stack-policy.json, beside this file, refuses any update that
-# would replace or delete the database or a key's secret; the ProtectCommand output sets it.
+# database with an empty one. The stack policy, deploy/aws/stack-policy.json in the
+# repository, refuses any update that would replace or delete the database or a key's
+# secret; the ProtectCommand output carries the same policy and sets it.
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Qory Apiary on ECS Fargate, with RDS for PostgreSQL, an Application Load Balancer and Secrets Manager.
 
@@ -72,7 +73,6 @@ Parameters:
     Type: String
     Default: ""
     Description: Empty means qory@ and the domain name.
-  # The template a release publishes has that release as the default; here there is none.
   ApiaryVersion:
     Type: String
     MinLength: 1
