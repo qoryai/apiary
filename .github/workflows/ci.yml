@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, next]
+    branches: [main, next, ci-proof-169]
   pull_request:
 
 # A newer push to a pull request cancels its run in progress. A push to next or main is a
@@ -22,8 +22,8 @@ concurrency:
 # request runs them.
 jobs:
   checks:
-    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Checks · checked by the push run' || 'Checks' }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci-proof-169') && 'Checks · checked by the push run' || 'Checks' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci-proof-169') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,8 +75,8 @@ jobs:
         run: mix assets.deploy
 
   test:
-    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Elixir tests · checked by the push run' || format('Elixir tests ({0})', matrix.name) }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci-proof-169') && 'Elixir tests · checked by the push run' || format('Elixir tests ({0})', matrix.name) }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci-proof-169') }}
     runs-on: ubuntu-latest
     # The suite runs under each instance a launch may make: every feature, the opt-in
     # ones included (QORY_FEATURES unset or empty, which the tests take for every

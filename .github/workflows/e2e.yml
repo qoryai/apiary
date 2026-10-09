@@ -5,7 +5,7 @@ name: End to end
 
 on:
   push:
-    branches: [main, next]
+    branches: [main, next, ci-proof-169]
   pull_request:
   workflow_dispatch:
 
@@ -19,8 +19,8 @@ jobs:
     # next runs it on the same commit. The skipped job takes a name of its own, "… · checked
     # by the push run", so a required check is answered only by the push run's job on that
     # commit. A fork's branch named next is not this repository's.
-    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') && 'Live reload behind a wall · checked by the push run' || 'Live reload behind a wall' }}"
-    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'next') }}
+    name: "${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci-proof-169') && 'Live reload behind a wall · checked by the push run' || 'Live reload behind a wall' }}"
+    if: ${{ !(github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci-proof-169') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
