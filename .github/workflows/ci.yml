@@ -74,7 +74,8 @@ jobs:
     # ones included (QORY_FEATURES unset or empty, which the tests take for every
     # feature); the default features, as `all` gives them to an instance; and the record
     # alone. A test that exercises a feature is tagged `needs:` and left out where the
-    # feature is off.
+    # feature is off. A test tagged `with_features:` runs under the features it names,
+    # whatever the leg's, so it runs once, in the "every feature" leg (test/test_helper.exs).
     strategy:
       fail-fast: false
       matrix:

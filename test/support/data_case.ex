@@ -45,7 +45,8 @@ defmodule Apiary.DataCase do
   Switches the instance's features for one test: `@tag with_features: [:observability]`
   runs it as an instance launched with `QORY_FEATURES=observability`, and puts back what
   the suite runs under afterwards. The features are the whole node's, so the test must not
-  be async.
+  be async. Its features being its own, `test/test_helper.exs` runs it only where the suite
+  has every feature.
 
   The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
   feature; `test/test_helper.exs` leaves it out when the suite runs without that feature.

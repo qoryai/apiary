@@ -34,9 +34,15 @@ end
 
 # A test tagged `needs: feature` exercises that feature; the suite runs in CI under more
 # than one QORY_FEATURES, and a run without the feature leaves such tests out.
+#
+# A test tagged `with_features:` runs under the features it names, whatever the suite's
+# (`Apiary.DataCase.setup_features/1`), and so passes or fails alike under each: it runs
+# where the suite has every feature, and a run with fewer leaves it out.
+off = Apiary.Features.all() -- Apiary.Features.enabled()
+
 exclude =
   exclude ++
-    for(feature <- Apiary.Features.all() -- Apiary.Features.enabled(), do: {:needs, feature})
+    for(feature <- off, do: {:needs, feature}) ++ if(off == [], do: [], else: [:with_features])
 
 ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
 
