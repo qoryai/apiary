@@ -13,6 +13,38 @@ defmodule Apiary.DatabaseUrlTest do
 
   defp options(url, password \\ nil), do: DatabaseUrl.repo_options(url, password)
 
+  # A :logger handler that keeps the events of one process, the test's, and sends them to
+  # it. capture_log/1 takes every process's log, and this module runs beside others, so a
+  # test that asserts nothing is logged reads its own process's events only.
+  defmodule OwnLog do
+    @moduledoc false
+    def log(%{meta: %{pid: pid}} = event, %{config: %{pid: pid}}),
+      do: send(pid, {__MODULE__, event})
+
+    def log(_event, _config), do: :ok
+  end
+
+  # The messages this process logs while `fun` runs.
+  defp own_log(fun) do
+    :ok = :logger.add_handler(__MODULE__, OwnLog, %{config: %{pid: self()}})
+
+    try do
+      fun.()
+    after
+      :logger.remove_handler(__MODULE__)
+    end
+
+    collect_own_log([])
+  end
+
+  defp collect_own_log(messages) do
+    receive do
+      {OwnLog, %{msg: msg}} -> collect_own_log([msg | messages])
+    after
+      0 -> Enum.reverse(messages)
+    end
+  end
+
   # What Ecto makes of the options, as Ecto.Repo.Supervisor merges them.
   defp ecto(options) do
     {url, config} = Keyword.pop(options, :url)
@@ -196,7 +228,7 @@ defmodule Apiary.DatabaseUrlTest do
     test "is not logged for the other modes" do
       for query <- ["", "?sslmode=disable", "?sslmode=verify-full", "?ssl=true"] do
         options = options("postgres://apiary:pw@db.example.com/apiary" <> query)
-        assert capture_log(fn -> DatabaseUrl.warn_unchecked(options) end) == ""
+        assert own_log(fn -> DatabaseUrl.warn_unchecked(options) end) == []
       end
     end
   end

@@ -151,6 +151,26 @@ if config_env() == :dev do
 end
 
 if config_env() == :prod do
+  # The keys bin/keys generates at first start, in $APIARY_KEYS_DIR/apiary.env
+  # (Apiary.KeysFile): SECRET_KEY_BASE, APIARY_ENCRYPTION_SECRET, APIARY_SIGNING_SECRET and
+  # DATABASE_PASSWORD. key_env gives each from the environment, or from the file where the
+  # environment does not set it: the environment always wins.
+  keys_file = Apiary.KeysFile.read(System.get_env("APIARY_KEYS_DIR"))
+  key_env = &Apiary.KeysFile.get(keys_file, &1)
+
+  # APIARY_ENCRYPTION_SECRET and APIARY_SIGNING_SECRET are 32 bytes, in base64 (44
+  # characters, as openssl rand -base64 32 prints them) or in hex (64 characters, either
+  # case). Both forms are decoded to the bytes, and only the bytes are used and compared.
+  # nil for anything else.
+  decode_key = fn value ->
+    decoded =
+      if byte_size(value) == 64,
+        do: Base.decode16(value, case: :mixed),
+        else: Base.decode64(value)
+
+    with {:ok, <<_::binary-size(32)>> = key} <- decoded, do: key, else: (_ -> nil)
+  end
+
   # ## Database
 
   database_url =
@@ -160,8 +180,8 @@ if config_env() == :prod do
       For example: postgres://USER:PASS@HOST/DATABASE
       """
 
-  # The password when DATABASE_URL carries none.
-  database_password = System.get_env("DATABASE_PASSWORD")
+  # The password when DATABASE_URL carries none, from the environment or the keys file.
+  database_password = key_env.("DATABASE_PASSWORD")
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
@@ -188,34 +208,31 @@ if config_env() == :prod do
   # to check this value into version control, so we use an environment
   # variable instead.
   secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
+    key_env.("SECRET_KEY_BASE") ||
       raise """
       environment variable SECRET_KEY_BASE is missing.
       You can generate one by calling: mix phx.gen.secret
+      With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
       """
 
   # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
   # (Apiary.KeyDerivation): the stored values' and the integrity codes'. Changing it makes every stored secret unreadable, so keep
   # it with the database backups.
   encryption_secret =
-    case System.get_env("APIARY_ENCRYPTION_SECRET") do
+    case key_env.("APIARY_ENCRYPTION_SECRET") do
       nil ->
         raise """
         environment variable APIARY_ENCRYPTION_SECRET is missing.
         It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
+        With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
         """
 
       value ->
-        case Base.decode64(value) do
-          {:ok, key} when byte_size(key) == 32 ->
-            key
-
-          _ ->
-            raise """
-            environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
-            Generate one with: openssl rand -base64 32
-            """
-        end
+        decode_key.(value) ||
+          raise """
+          environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
+          Generate one with: openssl rand -base64 32
+          """
     end
 
   config :apiary, Apiary.KeyDerivation, secret: encryption_secret
@@ -230,25 +247,21 @@ if config_env() == :prod do
   # Forager's contract. Every comparison is in constant time, and no message here carries a
   # value.
   signing_seed =
-    case System.get_env("APIARY_SIGNING_SECRET") do
-      blank when blank in [nil, ""] ->
+    case key_env.("APIARY_SIGNING_SECRET") do
+      nil ->
         raise """
         environment variable APIARY_SIGNING_SECRET is missing.
         It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
         Generate one with: openssl rand -base64 32
+        With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
         """
 
       value ->
-        case Base.decode64(value) do
-          {:ok, seed} when byte_size(seed) == 32 ->
-            seed
-
-          _ ->
-            raise """
-            environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
-            Generate one with: openssl rand -base64 32
-            """
-        end
+        decode_key.(value) ||
+          raise """
+          environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
+          Generate one with: openssl rand -base64 32
+          """
     end
 
   if :crypto.hash_equals(signing_seed, encryption_secret) do

@@ -10,7 +10,7 @@ defmodule Apiary.RuntimeConfigTest do
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
-  @unset ["DATABASE_PASSWORD" | @mail]
+  @unset ["APIARY_KEYS_DIR", "DATABASE_PASSWORD" | @mail]
 
   setup do
     names = Map.keys(@base) ++ @unset
@@ -217,6 +217,212 @@ defmodule Apiary.RuntimeConfigTest do
       seed = :crypto.strong_rand_bytes(32)
       System.put_env("APIARY_SIGNING_SECRET", Base.encode64(seed))
       assert get_in(prod_config(), [:apiary, Apiary.SigningKey, :seed]) == seed
+    end
+  end
+
+  describe "the two 32-byte keys in hex" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    defp configured_keys do
+      config = prod_config()
+
+      {get_in(config, [:apiary, Apiary.KeyDerivation, :secret]),
+       get_in(config, [:apiary, Apiary.SigningKey, :seed])}
+    end
+
+    test "64 characters in lower, upper or mixed case are the same 32 bytes as base64" do
+      encryption = :crypto.strong_rand_bytes(32)
+      signing = :crypto.strong_rand_bytes(32)
+
+      mixed = fn bytes ->
+        bytes
+        |> Base.encode16(case: :lower)
+        |> String.graphemes()
+        |> Enum.with_index()
+        |> Enum.map_join(fn {char, i} ->
+          if rem(i, 2) == 0, do: String.upcase(char), else: char
+        end)
+      end
+
+      for encode <- [
+            &Base.encode64/1,
+            &Base.encode16(&1, case: :lower),
+            &Base.encode16(&1, case: :upper),
+            mixed
+          ] do
+        System.put_env("APIARY_ENCRYPTION_SECRET", encode.(encryption))
+        System.put_env("APIARY_SIGNING_SECRET", encode.(signing))
+
+        assert configured_keys() == {encryption, signing},
+               "a form of the two keys was not decoded to their bytes"
+      end
+
+      # The mixed form above holds both cases, whatever the bytes.
+      assert mixed.(<<0xAB, 0xCD>>) == "AbCd"
+    end
+
+    test "64 characters that are not hex are refused, naming the variable and never the value" do
+      for variable <- ["APIARY_ENCRYPTION_SECRET", "APIARY_SIGNING_SECRET"],
+          # Not hex; the first is base64 of 48 bytes, the second hex of 32 with one wrong
+          # character.
+          value <- [
+            String.duplicate("g", 64),
+            String.duplicate("a", 63) <> "x",
+            String.duplicate("a", 62) <> " a"
+          ] do
+        System.put_env(@base)
+        System.put_env(variable, value)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "#{variable} is not 32 bytes in base64 (44 characters) or in hex (64 characters)."
+
+        refute error.message =~ value
+      end
+    end
+
+    test "the same key in hex and in base64 is the same value: the bytes are compared" do
+      key = String.duplicate("k", 32)
+
+      for {encryption, signing} <- [
+            {Base.encode64(key), Base.encode16(key)},
+            {Base.encode16(key, case: :lower), Base.encode64(key)},
+            {Base.encode16(key, case: :lower), Base.encode16(key, case: :upper)}
+          ] do
+        System.put_env("APIARY_ENCRYPTION_SECRET", encryption)
+        System.put_env("APIARY_SIGNING_SECRET", signing)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET"
+
+        refute error.message =~ encryption
+        refute error.message =~ signing
+      end
+    end
+
+    test "a published seed given in hex is refused" do
+      for config_file <- ["config/dev.exs", "config/test.exs"],
+          case <- [:lower, :upper] do
+        seed =
+          config_file
+          |> Path.expand(Path.expand("../..", __DIR__))
+          |> Config.Reader.read!(env: :test, target: :host, imports: :disabled)
+          |> get_in([:apiary, Apiary.SigningKey, :seed])
+
+        value = Base.encode16(seed, case: case)
+        System.put_env("APIARY_SIGNING_SECRET", value)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+
+        assert error.message =~
+                 "APIARY_SIGNING_SECRET is the development or test seed this repository publishes"
+
+        refute error.message =~ value
+        refute error.message =~ seed
+      end
+    end
+  end
+
+  describe "the keys file" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    @file_keys %{
+      "SECRET_KEY_BASE" => String.duplicate("f", 64),
+      "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("e", 32)),
+      "APIARY_SIGNING_SECRET" => Base.encode16(String.duplicate("i", 32))
+    }
+
+    defp write_keys_file(dir, keys) do
+      File.write!(
+        Path.join(dir, "apiary.env"),
+        Enum.map_join(keys, fn {name, value} -> "#{name}=#{value}\n" end)
+      )
+
+      System.put_env("APIARY_KEYS_DIR", dir)
+    end
+
+    defp configured_secrets do
+      config = prod_config()
+
+      {get_in(config, [:apiary, ApiaryWeb.Endpoint, :secret_key_base]),
+       get_in(config, [:apiary, Apiary.KeyDerivation, :secret]),
+       get_in(config, [:apiary, Apiary.SigningKey, :seed])}
+    end
+
+    @tag :tmp_dir
+    test "gives each key the environment does not set", %{tmp_dir: dir} do
+      write_keys_file(dir, @file_keys)
+      Enum.each(Map.keys(@file_keys), &System.delete_env/1)
+
+      assert configured_secrets() ==
+               {String.duplicate("f", 64), String.duplicate("e", 32), String.duplicate("i", 32)}
+
+      # A blank line in .env is an unset value, so the file's is used.
+      Enum.each(Map.keys(@file_keys), &System.put_env(&1, ""))
+
+      assert configured_secrets() ==
+               {String.duplicate("f", 64), String.duplicate("e", 32), String.duplicate("i", 32)}
+    end
+
+    @tag :tmp_dir
+    test "the environment always wins", %{tmp_dir: dir} do
+      write_keys_file(dir, @file_keys)
+
+      assert configured_secrets() ==
+               {String.duplicate("s", 64), String.duplicate("k", 32), String.duplicate("g", 32)}
+
+      # One name from each: the environment's where it sets it, the file's where not.
+      System.delete_env("APIARY_SIGNING_SECRET")
+
+      assert configured_secrets() ==
+               {String.duplicate("s", 64), String.duplicate("k", 32), String.duplicate("i", 32)}
+    end
+
+    @tag :tmp_dir
+    test "a key neither sets stops the boot, saying where compose.yaml keeps it",
+         %{tmp_dir: dir} do
+      for name <- Map.keys(@file_keys) do
+        System.put_env(@base)
+        write_keys_file(dir, Map.delete(@file_keys, name))
+        System.delete_env(name)
+
+        error = assert_raise RuntimeError, fn -> prod_config() end
+        assert error.message =~ "#{name} is missing."
+
+        assert error.message =~
+                 "With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env."
+      end
+    end
+
+    @tag :tmp_dir
+    test "its DATABASE_PASSWORD fills a URL without one, and the environment's wins",
+         %{tmp_dir: dir} do
+      write_keys_file(dir, Map.put(@file_keys, "DATABASE_PASSWORD", "from-file"))
+      System.put_env("DATABASE_URL", "postgres://apiary@db.example.com/apiary")
+      assert get_in(prod_config(), [:apiary, Apiary.Repo, :password]) == "from-file"
+
+      System.put_env("DATABASE_PASSWORD", "from-env")
+      assert get_in(prod_config(), [:apiary, Apiary.Repo, :password]) == "from-env"
+
+      # A URL that carries a password keeps it, whatever either says.
+      System.put_env("DATABASE_URL", "postgres://apiary:in-url@db.example.com/apiary")
+      refute Keyword.has_key?(get_in(prod_config(), [:apiary, Apiary.Repo]), :password)
+    end
+
+    @tag :tmp_dir
+    test "is read only from APIARY_KEYS_DIR", %{tmp_dir: dir} do
+      write_keys_file(dir, @file_keys)
+      System.delete_env("APIARY_KEYS_DIR")
+      System.delete_env("APIARY_SIGNING_SECRET")
+
+      assert_raise RuntimeError, ~r/APIARY_SIGNING_SECRET is missing/, fn -> prod_config() end
     end
   end
 

@@ -136,8 +136,8 @@ For example: postgres://USER:PASS@HOST/DATABASE
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
-| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `APIARY_ENCRYPTION_SECRET` | required | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
 <!-- feature: secrets -->
 
 `APIARY_ENCRYPTION_SECRET` also encrypts the workspaces' stored secret values, under keys
@@ -148,15 +148,17 @@ value, for good.
 ```text
 environment variable SECRET_KEY_BASE is missing.
 You can generate one by calling: mix phx.gen.secret
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
 environment variable APIARY_ENCRYPTION_SECRET is missing.
 It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
-environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
+environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
 Generate one with: openssl rand -base64 32
 ```
 
@@ -164,10 +166,11 @@ Generate one with: openssl rand -base64 32
 environment variable APIARY_SIGNING_SECRET is missing.
 It is 32 random bytes in base64, generated apart from APIARY_ENCRYPTION_SECRET.
 Generate one with: openssl rand -base64 32
+With compose.yaml, the service keys generates it at first start, in /var/lib/apiary/keys/apiary.env.
 ```
 
 ```text
-environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters).
+environment variable APIARY_SIGNING_SECRET is not 32 bytes in base64 (44 characters) or in hex (64 characters).
 Generate one with: openssl rand -base64 32
 ```
 
