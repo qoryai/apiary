@@ -13508,6 +13508,8 @@ msgid "secret · shown once"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "session lost"
 msgstr ""

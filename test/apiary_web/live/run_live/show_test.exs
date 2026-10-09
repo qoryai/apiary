@@ -2280,5 +2280,27 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "This run wrote no output"
       refute html =~ "No session."
     end
+
+    test "a lost session is said once on the meta line, and as its exit in the rail and timeline",
+         %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "failed", "exit_code" => -1, "reason" => "session_lost"}}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-meta #run-state", "Failed")
+      assert has_element?(lv, "#run-reason", "session lost")
+      refute has_element?(lv, "#run-meta", "exit")
+      assert has_element?(lv, "#rail-reason", "session lost")
+      assert "Exit" in run_terms(lv)
+      assert html =~ ~r{<dt>Exit</dt>\s*<dd class="font-mono">\s*session lost\s*</dd>}
+      assert has_element?(lv, "#e-2", "Run exited")
+      assert has_element?(lv, "#e-2", "session lost")
+      refute html =~ "exit -1"
+    end
   end
 end
