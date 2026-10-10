@@ -1,12 +1,12 @@
 # Editions
 
-Qory Apiary comes as Apiary Community, which is this repository, and as Apiary Pro, which
-8wonders GmbH, the company behind Qory, licenses. Apiary Pro is the same Qory Apiary:
-Apiary Community's code, with more added to it, in one image.
+Qory Apiary comes as Qory Apiary Community, which is this repository, and as Qory Apiary
+Pro, which 8wonders GmbH, the company behind Qory, licenses. Qory Apiary Pro is the same
+Qory Apiary: Qory Apiary Community's code, with more added to it, in one image.
 
-**Nothing in Apiary Community will ever move to Apiary Pro.**
+**Nothing in Qory Apiary Community will ever move to Qory Apiary Pro.**
 
-## Apiary Community
+## Qory Apiary Community
 
 Apache License 2.0, this repository, self-hosted. It is complete for one team:
 
@@ -37,9 +37,9 @@ Apache License 2.0, this repository, self-hosted. It is complete for one team:
 - **The docs.** The guides and the release notes, served by every instance at `/docs`, and
   the module reference, served by an instance with every feature.
 
-## Apiary Pro
+## Qory Apiary Pro
 
-Apiary Pro adds, for a company that runs Qory Apiary for more than one team:
+Qory Apiary Pro adds, for a company that runs Qory Apiary for more than one team:
 
 - more organisations and more workspaces;
 - per-member workspace access: a member reaches the workspaces they are added to;

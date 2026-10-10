@@ -1,6 +1,6 @@
 Qory Apiary is the control plane for coding agent runs: a Phoenix 1.8 / LiveView
-application on Postgres. This repository is Apiary Community, the core that every edition
-builds on ([EDITIONS.md](EDITIONS.md)). This file is for an agent working in the
+application on Postgres. This repository is Qory Apiary Community, the core that every
+edition builds on ([EDITIONS.md](EDITIONS.md)). This file is for an agent working in the
 repository; the rules for people are the same, and are written out in
 [CONTRIBUTING.md](CONTRIBUTING.md) and the developer documentation under [docs/](docs/).
 
@@ -59,7 +59,7 @@ repository; the rules for people are the same, and are written out in
   it asks `Apiary.Edition` and `ApiaryWeb.Edition`, which the configuration points at
   one, at the places an edition may add to the core or narrow it
   ([docs/architecture.md](docs/architecture.md)). `EDITIONS.md` is the one file that names
-  what Apiary Pro adds, and only as the product does.
+  what Qory Apiary Pro adds, and only as the product does.
 - **Developer documentation** lives under `docs/`: `architecture.md` (layout, organisation
   keys, the edition seams),
   `conventions.md` (migrations, tests, doc comments, vocabulary), `access.md`, `lingo.md`,

@@ -1,8 +1,8 @@
-# The server contract as the apiary implements it
+# The server contract as Qory Apiary implements it
 
 What discovery, the events endpoint, the run configuration and enrolment expect and
 return. The contract is `contracts/forager/v1` of the `qoryai/forager` repository, revision
-1; this page is the apiary's reading of it, and where the two disagree the contract wins.
+1; this page is Qory Apiary's reading of it, and where the two disagree the contract wins.
 Anything the contract has not fixed is listed under "Assumed" at the end.
 
 ## Signed requests
@@ -313,7 +313,7 @@ unsigned answer lists no key. A refusal changes nothing: the code stays outstand
 `dev.qory.run.log` is stored like any event and its bytes, decoded, are the run's
 `log_chunks`, one row a chunk, keyed by the event's sequence; `output.log` is their
 concatenation in sequence order, which is what the log endpoint of the console streams. How
-the session cuts the chunks is its own affair and the apiary reads nothing into a boundary:
+the session cuts the chunks is its own affair and Qory Apiary reads nothing into a boundary:
 on pipes a chunk is one line or 4096 bytes and may end inside a multibyte character, on a
 pseudo-terminal it is one redraw, 4096 bytes or a quiet gap of 50 ms after the runtime's
 last write, never inside a character. The terminal of the run page hands the bytes to
@@ -694,7 +694,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
 - The `cost_usd` of `dev.qory.session.result` is the runtime's own total for the session:
   what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
   the subagents the session ran as well as its own. `dev.qory.session.subagent_finished`
-  carries no cost. So the apiary folds a run's cost as the sum of `cost_usd` over the run's
+  carries no cost. So Qory Apiary folds a run's cost as the sum of `cost_usd` over the run's
   result events, once each (`runs.cost_usd`), and never adds anything for a subagent: a
   result whose cost already includes its subagents is counted once, and a second result in
   the same run (a second session) is a second total. A result without a cost adds nothing;
@@ -728,10 +728,10 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   the first twenty tools, and counts the different names and arguments among all of them,
   so "and N more" is the number of entries, grouped, that it does not show. The vendored
   policy schema at the pinned ref also lets a policy select `tools` and an `image`, which
-  the apiary does not render; the tests of tool invocations and of arguments use fixtures
+  Qory Apiary does not render; the tests of tool invocations and of arguments use fixtures
   of their own beside the contract's.
 - What the gateway does with the policy document, read from `gateway/internal/proxy`,
-  `policy` and `session` of Forager at the pinned ref, and what the apiary
+  `policy` and `session` of Forager at the pinned ref, and what Qory Apiary
   renders for it:
   - A connection is decided by `egress.deny` first (`Proxy.decide`), in either mode and
     with the first matching deny entry as the rule, then by `egress.allow` and the mode,
@@ -743,7 +743,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     (`terminator.rules`), and `paths` is a Go map, whose order is not fixed: with `*.example`
     and `git.example` both in `paths`, which list holds `git.example` changes from run to
     run. A `*.` key of `paths` also holds every allowed host below it, whatever that host's
-    own rule says. The apiary therefore refuses, at write time and with a sentence, a `*.`
+    own rule says. Qory Apiary therefore refuses, at write time and with a sentence, a `*.`
     suffix held to paths above any other allowed entry; a name held to paths under a `*.`
     suffix that is free of paths is fine and rendered.
   - `deny` beats `allow` whatever the shapes, so a deny of a host below an allowed `*.`
@@ -761,7 +761,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     allowed.
   - A policy with `paths` or `credentials` needs a wall: without one Forager refuses to
     start the run, in either mode, and on a reload it takes the hosts held to paths out of
-    `allow` and refuses a configuration that selects credentials. The apiary renders what
+    `allow` and refuses a configuration that selects credentials. Qory Apiary renders what
     the rules say and selects no credential; the page and the export say that paths need
     a wall.
 - Enrolment: the same code posted again with the same public key, a proof that verifies and

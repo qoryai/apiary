@@ -118,7 +118,7 @@ they are.
 | `metadata` | of an explicit list and nothing else: `request_id`, `organisation_id`, `workspace_id`, `user_id`, `duration_us`, `application`, `domain`, `mfa`, `module`, `function`, `file`, `line`, `pid`, `crash_reason`, `initial_call`, `registered_name` |
 | `request` | on the one line written per request: `connection` with `protocol`, `method`, `path` and `status`, and `client` with `user_agent` and `ip` |
 
-A line written while the apiary works for an organisation carries its id as
+A line written while Qory Apiary works for an organisation carries its id as
 `metadata.organisation_id`, and `metadata.workspace_id` when the work is in a workspace: a
 page under `/:org/…` and its reads, a gateway's request, the projection of a run's events,
 a background job, and the line that says a job failed, was cancelled or was discarded. A

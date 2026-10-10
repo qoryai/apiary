@@ -1,10 +1,10 @@
 defmodule Apiary.Audit do
   @moduledoc """
-  The audit trail: what people, access keys and the instance did to what the apiary
-  holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
+  The audit trail: what people, access keys and the instance did to what Qory
+  Apiary holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
   when, from where, and the fields it changed as they were and as they are. It is not the
   record: the record is what runs did (their events, their log), the trail is what was
-  done to the apiary. The events the gateway posts are the record and leave no entry.
+  done to Qory Apiary. The events the gateway posts are the record and leave no entry.
 
   ## Written with the change
 
@@ -66,8 +66,8 @@ defmodule Apiary.Audit do
   in: each membership's end is a `member.remove` there, by the person, `details.reason`
   `account_deleted`; the account itself belongs to no organisation and has no entry. A workspace's deletion, its cancelling and its purge are
   entries of the organisation, with no workspace, so they outlive it; an organisation's
-  purge deletes its trail with it. The record's own retention is not a change to the
-  apiary and writes its own record (`Apiary.Retention.RetentionRun`); a run marked lost is
+  purge deletes its trail with it. The record's own retention is not a change to Qory
+  Apiary and writes its own record (`Apiary.Retention.RetentionRun`); a run marked lost is
   the record's too.
 
   ## Append-only

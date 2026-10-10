@@ -3,7 +3,7 @@ defmodule Apiary.Job do
   What every job runs inside: an `Oban.Worker` that knows the organisation and the
   workspace it works for.
 
-  Work the apiary does outside a request runs as a job in Oban's durable queue on Postgres:
+  Work Qory Apiary does outside a request runs as a job in Oban's durable queue on Postgres:
   a row that survives a restart, retried with backoff. A job module says `use Apiary.Job`
   with the options of `Oban.Worker` and one of its own, `:scope`, and implements
   `c:perform/2`:
