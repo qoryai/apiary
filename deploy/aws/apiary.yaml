@@ -827,14 +827,15 @@ Resources:
   # service is healthy: DatabaseProtection is made after the service, whose create waits
   # until its task answers /health. A create that fails before then leaves the database
   # unprotected, so the rollback deletes it with the rest. On Create, and on each Update,
-  # DatabaseDeletionProtection changed or an update rolled back, the function sets the
-  # protection to the value the request gives it, in place. On Delete it changes nothing,
-  # so deleting the stack with the protection on still fails at the database; only while
-  # the stack's create rolls back does it turn the protection off, so that rollback can
-  # delete the database too. It answers CloudFormation even when its call fails, and a
-  # request that names another stack fails and changes nothing. Its role may read and
-  # modify this database alone, read this stack, and write its own log group, which is
-  # kept as the task's is. The runtime is pinned, and kept current with each release.
+  # DatabaseDeletionProtection changed, the database replaced or an update rolled back, the
+  # function sets the protection to the value the request gives it, in place, on the
+  # database its environment names; a request that names another database fails. On Delete
+  # it changes nothing, so deleting the stack with the protection on still fails at the
+  # database; only while the stack's create rolls back does it turn the protection off, so
+  # that rollback can delete the database too. It answers CloudFormation even when its call
+  # fails, and a request that names another stack fails and changes nothing. Its role may
+  # read and modify this database alone, read this stack, and write its own log group, which
+  # is kept as the task's is. The runtime is pinned, and kept current with each release.
   DatabaseProtectionLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
@@ -883,8 +884,9 @@ Resources:
       Timeout: 600
       LoggingConfig:
         LogGroup: !Ref DatabaseProtectionLogGroup
-      # The stack and the database are the function's own, never the request's; the
-      # request gives only whether to protect.
+      # The stack and the database are the function's own, never the request's. The request
+      # gives whether to protect, and names the database only so that a replaced database
+      # sends an Update: the function acts only when that name is its own.
       Environment:
         Variables:
           STACK_ID: !Ref AWS::StackId
@@ -932,6 +934,9 @@ Resources:
                   rds = boto3.client("rds", config=CONFIG)
                   database = os.environ["DATABASE"]
                   if event["RequestType"] in ("Create", "Update"):
+                      named = event["ResourceProperties"]["Database"]
+                      if named != database:
+                          raise ValueError(f"the request names the database {named}, not {database}")
                       wanted = event["ResourceProperties"]["DeletionProtection"] == "true"
                       protect(rds, database, wanted, context)
                   else:
@@ -964,15 +969,19 @@ Resources:
               )
               urllib.request.urlopen(request, timeout=10)
 
-  # Made after the service, so once its task is healthy. Its one setting is
-  # DatabaseDeletionProtection's; CloudFormation waits at most ServiceTimeout seconds for
-  # the function's answer.
+  # Made after the service, so once its task is healthy. Its setting is
+  # DatabaseDeletionProtection's. It names the database too, so that a replaced database
+  # sends it an Update, after the function's role and environment have moved to the new
+  # one (each refers to Database, and DatabaseProtection to the function), and the new
+  # database is protected as the old one was. CloudFormation waits at most ServiceTimeout
+  # seconds for the function's answer.
   DatabaseProtection:
     Type: Custom::DatabaseProtection
     DependsOn: Service
     Properties:
       ServiceToken: !GetAtt DatabaseProtectionFunction.Arn
       ServiceTimeout: "660"
+      Database: !Ref Database
       DeletionProtection: !If [ProtectDatabase, "true", "false"]
 
 # Links into the AWS console, and the values a person reads; no output is a command (CI
