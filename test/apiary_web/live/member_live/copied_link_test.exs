@@ -23,6 +23,27 @@ defmodule ApiaryWeb.MemberLive.CopiedLinkTest do
 
   defp text(html), do: html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.trim()
 
+  # The invite form as the browser drives it: each keystroke a change, then the submit.
+  # A change shows the error the submit gives, and neither invites anyone.
+  defp validates_as_typed(lv, scope) do
+    form = fn email -> form(lv, "#invitation-form", invitation: %{email: email}) end
+
+    html = render_change(form.("dana at example.com"))
+    assert html =~ "must have the @ sign and no spaces"
+    assert has_element?(lv, "#invitation-form")
+
+    html = render_change(form.("dana@example.com"))
+    refute html =~ "must have the @ sign and no spaces"
+
+    html = render_change(form.(""))
+    assert html =~ "can&#39;t be blank"
+
+    html = render_submit(form.("dana at example.com"))
+    assert html =~ "must have the @ sign and no spaces"
+    assert has_element?(lv, "#invitation-form")
+    assert Organisations.list_invitations(scope) == []
+  end
+
   describe "without mail" do
     setup :register_and_log_in_user
 
@@ -96,6 +117,12 @@ defmodule ApiaryWeb.MemberLive.CopiedLinkTest do
       {:ok, lv, html} = live(conn, invite)
       refute html =~ token
       assert has_element?(lv, "#invitation-form")
+    end
+
+    test "the invite form checks the address as it is typed", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
+      validates_as_typed(lv, scope)
+      refute has_element?(lv, "#invitation-link")
     end
 
     test "an unconfirmed owner makes a link: nothing is mailed for them", %{
@@ -209,6 +236,13 @@ defmodule ApiaryWeb.MemberLive.CopiedLinkTest do
 
   describe "with mail" do
     setup :register_and_log_in_user
+
+    test "the invite form checks the address as it is typed", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
+      assert has_element?(lv, "#invitation-save button[type=submit]", "Send invitation")
+      validates_as_typed(lv, scope)
+      refute_patched(lv)
+    end
 
     test "the invite page emails, and the rows make no new link", %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")

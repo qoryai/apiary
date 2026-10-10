@@ -53,7 +53,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   use ApiaryWeb, :live_view
 
   alias Apiary.{Access, Accounts, Mail, Organisations}
-  alias Apiary.Organisations.Membership
+  alias Apiary.Organisations.{Invitation, Membership}
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   @impl true
@@ -681,7 +681,11 @@ defmodule ApiaryWeb.MemberLive.Index do
   end
 
   def handle_event("validate_invite", %{"invitation" => params}, socket) do
-    changeset = params |> Organisations.change_invitation() |> Map.put(:action, :validate)
+    changeset =
+      %Invitation{}
+      |> Organisations.change_invitation(params)
+      |> Map.put(:action, :validate)
+
     {:noreply, assign(socket, :form, to_form(changeset))}
   end
 
