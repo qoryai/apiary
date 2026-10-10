@@ -106,8 +106,8 @@ mix phx.server                     # http://localhost:4100
 
 The tests tagged `:contract` replay Forager's contract fixtures at the commit in
 `.forager-contract-ref`. They take them from `FORAGER_CONTRACT_DIR`, set to
-`contracts/forager/v1` of a qoryai/forager checkout, or from a checkout of qoryai/forager
-beside this one. Without either they are left out, and a line says so.
+`contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
+left out, and a line says so.
 
 CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the checks that
 do not depend on the features, runs once: the formatting check, the compile with warnings
