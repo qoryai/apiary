@@ -103,8 +103,8 @@ fragment: a reload appends `/` and the run's id. `apiary_public_key` lists the
 server's signing key, for information: the gateway verifies answers under the key it pinned.
 The members are in the contract's order (`ApiaryWeb.Contract.Configuration`).
 
-The `run` section is always there, so the document differs by node and by nothing else,
-and so does its digest, here and in every answer to a batch. Whether a workspace has a
+The `run` section is always there, so the document differs by node, never by the
+workspace's policy, and so does its digest, here and in every answer to a batch. Whether a workspace has a
 policy shows in the answer to a run's registration instead (The run endpoint, below). A
 workspace nobody has given a policy answers every registration `{"version":1}`, no policy,
 and its machines run under the policy of their own `forager.yaml`, as the contract has it
@@ -263,24 +263,25 @@ the body, the `time`), the first of these that applies is the answer:
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
 row lock, so a request both refuse is refused by the limit. A node runs one instance at a
-time, a pool up to its limit, and an instance counts while one of its runs is alive. A
-registration that claims no instance id is held to no limit. Two registrations of one run
+time, a pool up to its limit, and an instance counts while one of its runs is alive. Two
+registrations of one run
 at once store it once: the other is a repeat when its bytes and key are the first's, and
 `run_id_used` otherwise. A repeat whose run configuration is no longer stored, because its
-repository was deleted, is given the configuration in force now for its labels. A
-failure that is the server's is logged as "a registration could not be stored:
-<Module>", and nothing of the request.
+repository was deleted, is given the configuration in force now for its labels. An
+exception while the registration is read or stored is logged as "a registration could not
+be stored: <Module>", the exception's module and nothing of the request; a `503` because
+the run configuration could not be read logs nothing.
 
 What is stored, in one transaction, before the answer: the run, in the key's workspace, in
 state `pending`, under the key, on its node and the instance the request claimed
-(`Apiary.Nodes.placement/2`), with `registered_at`, the registration's labels, `about` and
-`interval_seconds` (`registration_labels`, `registration_about`,
-`registration_interval_seconds`), the SHA-256 of its bytes (`registration_digest`), by
-which a repeat is told from another registration, and the digest of the run configuration
-it was given (`registration_answer_digest`). Its `forager_version` is the one `User-Agent`
-names, else the body's, and its `contract_version` the header's. The projector never
-writes these fields, so a rebuild keeps them, and `registration_time`, the body's `time`,
-on the gateway's clock. The run's projection starts at sequence 1: the registration stands
+(`Apiary.Nodes.placement/2`), with `registered_at`, when this server took it, the
+registration's labels, `about`, `interval_seconds` and `time`, on the gateway's clock
+(`registration_labels`, `registration_about`, `registration_interval_seconds`,
+`registration_time`), the SHA-256 of its bytes (`registration_digest`), by which a repeat
+is told from another registration, and the digest of the run configuration it was given
+(`registration_answer_digest`). Its `forager_version` is the one `User-Agent` names, else
+the body's, and its `contract_version` the header's. The projector never writes these
+fields, so a rebuild keeps them. The run's projection starts at sequence 1: the registration stands
 for the record's sequence 1, `dev.qory.run.registered`, which is never posted
 (`Apiary.Runs.Run.projected_from/1`), so its events count from sequence 2; a run its
 batches created starts at 0. Until an event is projected, whichever start the run has,
@@ -578,9 +579,9 @@ heartbeats', else 30 seconds, so 90 seconds in all. A `running` run is measured 
 last heartbeat, else from the arrival of its `run.started`, and a `pending` run from when
 the workspace first heard of it, its registration for a run that registered. A heartbeat
 counts by its own `time`, corrected by the run's clock offset (the smallest arrival less
-`time` over the run's heartbeats, and for a run a gateway opened its registration's,
-`registered_at` less the registration's `time`, both on the gateway's clock, as its
-heartbeats are), plus 300 seconds, and never after its arrival, as the
+`time` over the run's heartbeats, and for a run a gateway opened its registration's:
+`registered_at`, when this server took it, less the registration's `time`, which is on the
+gateway's clock, as its heartbeats are), plus 300 seconds, and never after its arrival, as the
 contract's liveness for the server says; a run's first heartbeat with no offset before it
 counts at its arrival. Only the server's clock is compared.
 

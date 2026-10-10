@@ -185,7 +185,8 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 `node_id` is the key's node or node pool, and `apiary_public_key` lists the server's
 signing key, for information: the gateway verifies under the key it pinned. `run.url` is
 the run endpoint, with no trailing slash: a run registers there, and a reload adds `/` and
-the run's id. The document, and its digest, differ by node and by nothing else.
+the run's id. The document, and its digest, differ by node, never by the workspace's
+policy.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A Forager file's `gateway.server.url` is that address, and the
