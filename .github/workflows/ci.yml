@@ -98,8 +98,9 @@ jobs:
       - name: Check no output of the template is a command
         run: python scripts/aws-template-check.py outputs
 
-      # The four secrets are kept when the stack is deleted or replaces them; the download
-      # key's secret is deleted with the stack and guarded by no stack policy.
+      # The four secrets are kept when the stack is deleted or replaces them, each under a
+      # name unique to the stack; the download key's secret is deleted with the stack and
+      # guarded by no stack policy.
       - name: Check which secrets the stack keeps
         run: python scripts/aws-template-check.py kept
 

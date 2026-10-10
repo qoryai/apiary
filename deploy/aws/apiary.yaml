@@ -88,7 +88,7 @@ Parameters:
   KeysFromStack:
     Type: String
     Default: ""
-    Description: The name of a deleted stack whose kept key secrets this stack uses instead of generating new ones. Keep it as it was on every later update.
+    Description: "The name a deleted stack's kept key secrets start with, the part before /secret-key-base, such as qory-0a1b2c3d4e5f: this stack uses those secrets instead of generating new ones. Keep it as it was on every later update."
   DatabaseSnapshot:
     Type: String
     Default: ""
@@ -380,6 +380,10 @@ Resources:
   # from one release to the next (CI compares them with the previous release's template):
   # a replaced secret would be generated anew.
   #
+  # Each is named after the stack and the last 12 characters of its stack ID, such as
+  # qory-0a1b2c3d4e5f/secret-key-base, so the secrets a deleted stack kept never block a new
+  # stack of the same name. KeysFromStack names them by that prefix.
+  #
   # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory reads: every other
   # character excluded, and no character type required, so each character is drawn from
   # the same 16.
@@ -389,7 +393,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/secret-key-base
+      Name: !Sub
+        - ${AWS::StackName}-${StackIdTail}/secret-key-base
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
       GenerateSecretString:
         PasswordLength: 86
         ExcludePunctuation: true
@@ -401,7 +407,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/encryption-secret
+      Name: !Sub
+        - ${AWS::StackName}-${StackIdTail}/encryption-secret
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
       GenerateSecretString:
         PasswordLength: 64
         ExcludeCharacters: ghijklmnopqrstuvwxyz
@@ -416,7 +424,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/signing-secret
+      Name: !Sub
+        - ${AWS::StackName}-${StackIdTail}/signing-secret
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
       GenerateSecretString:
         PasswordLength: 64
         ExcludeCharacters: ghijklmnopqrstuvwxyz
@@ -431,7 +441,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/database-password
+      Name: !Sub
+        - ${AWS::StackName}-${StackIdTail}/database-password
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
       GenerateSecretString:
         PasswordLength: 40
         ExcludePunctuation: true
@@ -845,7 +857,12 @@ Outputs:
     Description: The keys needed to restore this instance's data, in AWS Secrets Manager.
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/secretsmanager/listsecrets?region=${AWS::Region}&search=all%3D${Prefix}%2F
-      - Prefix: !If [CreateSecrets, !Ref AWS::StackName, !Ref KeysFromStack]
+      - Prefix: !If
+          - CreateSecrets
+          - !Sub
+            - ${AWS::StackName}-${StackIdTail}
+            - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+          - !Ref KeysFromStack
   DatabaseSnapshots:
     Description: "The RDS console's database snapshots in this region. A deleted stack's final database snapshot is listed there."
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/rds/home?region=${AWS::Region}#snapshots-list:"

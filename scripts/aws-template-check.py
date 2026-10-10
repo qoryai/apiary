@@ -18,8 +18,10 @@ outputs: no output's value is a command (none starts with "aws "), in any branch
 Fn::If: the person installs from the console alone.
 
 kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replacement
-(Retain), while the download key's secret, RegistryCredentials, is kept by neither, named in
-no stack policy and not among the KeysSecrets output's: it is deleted with the stack.
+(Retain), each under a name that carries the stack's ID, not its name alone, so the secrets
+a deleted stack kept never block a new stack of the same name; while the download key's
+secret, RegistryCredentials, is kept by neither, named in no stack policy and not among the
+KeysSecrets output's: it is deleted with the stack.
 
 mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
 scripts/aws-template-release.py writes and Apiary Pro's release relies on, and the Images
@@ -183,6 +185,12 @@ def check_outputs():
     return failures
 
 
+def unique_to_stack(name):
+    """Whether a resource's name carries the stack's ID, which no other stack shares, even
+    one of the same name made after this one is deleted."""
+    return '{"Ref": "AWS::StackId"}' in json.dumps(name)
+
+
 def check_kept():
     template = load(TEMPLATE)
     resources = template.get("Resources", {})
@@ -196,6 +204,11 @@ def check_kept():
         for attribute, kept in (("DeletionPolicy", "RetainExceptOnCreate"), ("UpdateReplacePolicy", "Retain")):
             if resource.get(attribute) != kept:
                 failures.append(f"{logical_id} has {attribute} {resource.get(attribute)}, not {kept}")
+        if not unique_to_stack(resource.get("Properties", {}).get("Name")):
+            failures.append(
+                f"{logical_id}'s name does not carry the stack's ID: "
+                "a deleted stack's kept secret would block a new stack of the same name"
+            )
 
     download_key = resources.get(DOWNLOAD_KEY)
     if download_key is None:
