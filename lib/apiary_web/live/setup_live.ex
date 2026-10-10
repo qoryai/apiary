@@ -12,7 +12,7 @@ defmodule ApiaryWeb.SetupLive do
   Once the instance is set up, any code gets "already set up" and the way to log in.
   Before, a code that is not the stored one is a path that does not exist
   (`ApiaryWeb.NotFound`). Each load counts against the limit on the pages a link opens,
-  before the code is looked up.
+  before the code is looked up (`ApiaryWeb.AttemptLimits.link_page_mount/1`).
 
   The code is held in the page's process for the set-up alone, in a struct that inspects
   without it, so a crash report does not print it; it is never drawn on the page.
@@ -28,11 +28,6 @@ defmodule ApiaryWeb.SetupLive do
     @enforce_keys [:value]
     defstruct [:value]
   end
-
-  # TODO(fg49/mail-p4): once ApiaryWeb.AttemptLimits is merged, call
-  # `ApiaryWeb.AttemptLimits.link_page_mount/1` directly in `count_attempt/1`, and drop
-  # this line and the check of the module there.
-  @compile {:no_warn_undefined, ApiaryWeb.AttemptLimits}
 
   @impl true
   def render(assigns) do
@@ -65,8 +60,11 @@ defmodule ApiaryWeb.SetupLive do
       <div :if={@state == :form} class="grid gap-4">
         <Layouts.auth_heading>
           {gettext("Set up Qory Apiary")}
-          <:subtitle>{@line} {gettext("You become this instance's admin.")}</:subtitle>
+          <:subtitle>{@line}</:subtitle>
         </Layouts.auth_heading>
+        <p id="setup-admin" class="text-sm/5 text-muted">
+          {gettext("You become this instance's admin.")}
+        </p>
 
         <.form
           for={@form}
@@ -117,7 +115,9 @@ defmodule ApiaryWeb.SetupLive do
 
   @impl true
   def mount(%{"code" => code}, _session, socket) do
-    case count_attempt(socket) do
+    # Each load counts against the limit on the pages a link opens, before the code is
+    # looked up.
+    case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
       {:ok, socket} -> {:ok, open(socket, code), temporary_assigns: [form: nil]}
       {:limited, socket} -> {:ok, socket}
     end
@@ -203,12 +203,4 @@ defmodule ApiaryWeb.SetupLive do
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset),
     do: assign(socket, :form, to_form(changeset, as: "user"))
-
-  # Each load counts against the limit on the pages a link opens, before the code is
-  # looked up (`ApiaryWeb.AttemptLimits.link_page_mount/1`, once it is merged).
-  defp count_attempt(socket) do
-    if Code.ensure_loaded?(ApiaryWeb.AttemptLimits),
-      do: ApiaryWeb.AttemptLimits.link_page_mount(socket),
-      else: {:ok, socket}
-  end
 end

@@ -8,7 +8,8 @@ defmodule ApiaryWeb.AttemptLimits do
       and 20 per client address, then 1 every 3 seconds.
     * **A log-in link asked for** (`link_request/1`): 3 per address, then 1 every 5
       minutes.
-    * **A page a link opens** (`link_page/1`), an invitation's: 20 per client address,
+    * **A page a link opens** (`link_page/1`), an invitation's or the set-up page
+      (`ApiaryWeb.SetupLive`): 20 per client address,
       then 1 every 3 seconds, the pages together. Each load of the page counts, and so does
       its live connection.
 

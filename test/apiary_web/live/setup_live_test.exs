@@ -45,8 +45,17 @@ defmodule ApiaryWeb.SetupLiveTest do
 
       assert html =~ "Set up Qory Apiary"
 
-      assert html =~
-               "Your organisation and its first workspace. You become this instance&#39;s admin."
+      # The edition's line, exactly as it gives it, and the admin sentence on its own line.
+      assert lv
+             |> element("main h1 + p")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.trim() ==
+               Apiary.Edition.first_sign_up_line()
+
+      assert html =~ "Your organisation and its first workspace."
+      assert has_element?(lv, "#setup-admin", "You become this instance's admin.")
 
       assert fields(lv) == [
                "user[email]",

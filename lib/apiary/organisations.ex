@@ -914,7 +914,7 @@ defmodule Apiary.Organisations do
     offered? =
       invited? or Keyword.get(opts, :first_only, false) or sign_up_offer(opts) != :closed
 
-    # The instance's own sign-up (a release command's) takes a password
+    # The instance's own sign-up (a release command's, the set-up's) takes a password
     # when it is given one. A person's needs one while the instance sends no email, and
     # takes none once it does: its address is confirmed by a link first, so a password
     # sent all the same is dropped. `password:` says otherwise, as the set-up page does.
