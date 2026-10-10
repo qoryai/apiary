@@ -388,9 +388,9 @@ run a gateway opened alike: `succeeded`, it ended well; `failed`, it ended badly
 `cancelled`, it was stopped before it said how it went. It may carry `reason`, why: an open
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's own codes are reserved:
-`timeout`, `quiet`, `credential_expired`, `stopped`, `session_lost`, `gateway_lost`,
-`batch_refused`, `credential_check_unreachable`, `credential_check_invalid` and
-`run_closed`, and so are three old names Forager no longer writes, `run_ended_at_issuer`,
+`timeout`, `quiet`, `credential_expired`, `stopped`, `interrupted`, `session_lost`,
+`gateway_lost`, `batch_refused`, `credential_check_unreachable`, `credential_check_invalid`
+and `run_closed`, and so are three old names Forager no longer writes, `run_ended_at_issuer`,
 `issuer_unreachable` and `issuer_answer_invalid`. Any other code is the one the run's
 starter gave, carried as given. Events are read as untrusted, so a `state` other than the
 three, or a `reason` that breaks the pattern, is read as absent (`Apiary.Runs.Fold`).
@@ -436,6 +436,7 @@ Forager's own codes, and the words Qory Apiary says for each
 | `quiet` | a run with no session had no connection for the gateway's quiet period, `quiet_seconds` | Cancelled | no activity for 30 minutes |
 | `credential_expired` | the run credential expired with no fresh one for the same run key | Cancelled | permission to run expired |
 | `stopped` | the run's starter ended the run, answering that its run credential is no longer active, and gave no outcome | Cancelled | stopped, no outcome given |
+| `interrupted` | a session's run was stopped from where it was started (a Ctrl-C, or a signal to `qory run`) before its program ended by itself, and neither the run's starter, the gateway nor the time limit had ended it first; a run with no session never carries it | Cancelled | interrupted |
 | `session_lost` | the gateway heard nothing from the session for three of its heartbeat intervals, or refused a batch of the session's | Lost | stopped responding |
 | `gateway_lost` | the gateway was lost before the run's exit was recorded; the exit is written when the record is sent again | Lost | end not recorded |
 | `credential_check_unreachable` | the run credential could not be checked: the introspection endpoint could not be reached | Failed | couldn't check whether the run may go on: no answer |
@@ -447,7 +448,12 @@ Forager's own codes, and the words Qory Apiary says for each
 quiet period the gateway applied, which the words say in whole hours, else whole minutes,
 else seconds: 1800 seconds is "no activity for 30 minutes". A `quiet` without it has no
 words. `stopped` beside Completed or Failed, which Forager does not write, reads
-"stopped".
+"stopped". `interrupted` comes only with `cancelled`, in the session's own exit: a local
+link's record holds it, and a gateway's holds the same exit, which it accepted from the
+session and never writes itself. The exit's code and signal are as the session observed
+them: exit 0 when the program shut down cleanly on the signal, 130 from its own SIGINT, or
+a signal such as SIGTERM when the session stopped it. The run is Cancelled whatever they
+are, and the session run's Exit shows them as recorded.
 
 An exit stored under an old name reads in the words of its new one: `run_ended_at_issuer` as
 `stopped`, "stopped, no outcome given" whatever its state; `issuer_unreachable` as

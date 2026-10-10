@@ -68,10 +68,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - How a run ended, in words, after its state in the run page's header, under State in its
   rail, in its timeline's last item, "Run ended", and in the runs list's preview: "time
   limit reached", "no activity for 30 minutes" (or hours, or seconds), "permission to run
-  expired", "stopped, no outcome given", "stopped responding", "end not recorded",
-  "couldn't check whether the run may go on: no answer" (or "unreadable answer"), and any
-  other code as the run's starter gave it, with spaces for underscores ("no longer
-  needed"). An exit stored under one of Forager's earlier names reads in the words of the
+  expired", "stopped, no outcome given", "interrupted" (a session's run stopped from where
+  it was started, a Ctrl-C or a signal to `qory run`, which is Cancelled whatever its
+  exit), "stopped responding", "end not recorded", "couldn't check whether the run may go
+  on: no answer" (or "unreadable answer"), and any other code as the run's starter gave
+  it, with spaces for underscores ("no longer needed"). An exit stored under one of Forager's earlier names reads in the words of the
   new one. A session run's Exit in the rail is the runtime's exit as recorded, "not
   recorded" for `-1` without a signal; the page announces a cancelled or lost end in the
   same words ("Run cancelled: time limit reached."); and a run whose exit said it was lost

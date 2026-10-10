@@ -1649,6 +1649,36 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert_redirect(view, "#{workspace_path(scope)}/runs/#{older.run_id}")
     end
 
+    test "a run stopped where it was started is Cancelled in its row, and interrupted in the preview, whatever its exit",
+         %{conn: conn, scope: scope} do
+      for exit <- [
+            %{"exit_code" => 0},
+            %{"exit_code" => 130},
+            %{"exit_code" => 130, "signal" => "SIGINT"},
+            %{"exit_code" => -1, "signal" => "SIGTERM"}
+          ] do
+        data =
+          Map.merge(
+            %{"state" => "cancelled", "reason" => "interrupted", "duration_ms" => 12_000},
+            exit
+          )
+
+        run = started_run(scope, shop(), about: %{"title" => "stopped here"}, exit: data)
+        view = open(conn, runs(scope, "?run=#{run.run_id}"))
+        render_hook(view, "viewport", %{"wide" => true})
+        render_async(view)
+        case_ = inspect(exit)
+
+        assert text(view, "#{row(run)} .q-rl-st") == "Cancelled", case_
+        assert has_element?(view, "#{row(run)} .q-st-cancelled"), case_
+        refute has_element?(view, "#{row(run)} .q-st-code"), case_
+
+        assert has_element?(view, "#runs-preview .q-st-cancelled", "Cancelled"), case_
+        assert text(view, "#runs-preview .q-st-code") == "interrupted", case_
+        refute text(view, "#runs-preview .q-pv-h") =~ ~r/exit|SIG|Completed/, case_
+      end
+    end
+
     test "a link with a run shows it; a run of another workspace or no run at all is not shown",
          %{conn: conn, older: older, scope: scope} do
       view = open(conn, runs(scope, "?run=#{older.run_id}"))
