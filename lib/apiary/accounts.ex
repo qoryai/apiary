@@ -618,7 +618,8 @@ defmodule Apiary.Accounts do
   A password that is refused is `{:error, changeset}`, and the link still works. A link
   that does not work is `{:error, :invalid}`; of two uses at once, one sets the password
   and the other gets that. Nothing is done for an account the edition refuses
-  (`sign_in_refusal/1`), `{:error, reason}`.
+  (`sign_in_refusal/1`), asked before the password is hashed and again under the
+  account's lock: `{:error, reason}`, and the link still works.
   """
   @spec set_password_by_link(String.t(), map) ::
           {:ok, {%User{}, [%UserToken{}]}} | {:error, :invalid | atom | Ecto.Changeset.t()}
@@ -641,12 +642,18 @@ defmodule Apiary.Accounts do
 
   defp set_password(changeset, user_token) do
     Repo.transact(fn ->
-      # The link is used up first: a use at the same moment waits, then finds it gone.
-      with {1, _} <- Repo.delete_all(from t in UserToken, where: t.id == ^user_token.id),
-           {:ok, user} <- lock_account(user_token.user_id),
+      # The account first, as `build_password_link/3` holds it before it ends the
+      # account's links, so the two take their locks in one order. A use at the same
+      # moment waits on the account, then finds the link gone. The edition is asked again
+      # under the lock, of the account as it is now; then the link is used up.
+      with {:ok, user} <- lock_account(user_token.user_id),
+           :ok <- not_refused(user),
+           {1, _} <- Repo.delete_all(from t in UserToken, where: t.id == ^user_token.id),
            true <- user.email == user_token.sent_to do
         update_user_and_delete_all_tokens(%{changeset | data: user})
       else
+        {:error, :not_found} -> {:error, :invalid}
+        {:error, refusal} when is_atom(refusal) -> {:error, refusal}
         _gone -> {:error, :invalid}
       end
     end)

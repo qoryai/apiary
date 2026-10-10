@@ -46,7 +46,8 @@ defmodule Apiary.Audit do
   the application removes of its own accord is audited too, by the action that removes
   it: an expired invitation deleted when a new one goes to its address, and one whose
   email could not be delivered, are each an `invitation.revoke` by the person who sent
-  the new invitation, `details.reason` `expired` or `undelivered`, and an invitation
+  the new invitation, `details.reason` `expired` or `undelivered` (the latter naming the
+  entry that counted the sending it undoes, `details.entry_id`), and an invitation
   expired for 30 days, which the daily sweep deletes, an `invitation.revoke` by the
   instance with the reason `expired`. A release command run on the instance's machine that
   makes an account an owner of the instance's organisation, or an owner of it a member, is

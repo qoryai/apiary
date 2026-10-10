@@ -140,4 +140,28 @@ defmodule ApiaryWeb.MemberLive.PasswordLinkTest do
     refute has_element?(lv, "#password-link")
     assert tokens(member) == []
   end
+
+  test "an instance admin on another organisation's People page is offered none, and is refused one",
+       %{conn: conn} do
+    # The admin owns an organisation of their own too, whose member is no member of the
+    # instance's organisation.
+    %{scope: scope} = sign_up_fixture()
+    {:ok, _} = Organisations.grant_instance_admin(scope.user)
+    %{membership: membership, user: member} = member_fixture(scope)
+    Apiary.Mail.put_test_source(:none)
+
+    {:ok, lv, _html} =
+      live(log_in_user(conn, scope.user), ~p"/#{scope.organisation}/settings/people")
+
+    refute has_element?(lv, "#member-#{membership.id}-password-link")
+
+    render_click(lv, "password_link", %{"membership_id" => membership.id})
+
+    assert render(lv) =~
+             "Only an admin of this Qory Apiary makes password links, while it sends no email."
+
+    refute has_element?(lv, "#password-link")
+    assert tokens(member) == []
+    assert Repo.all(from e in Entry, where: e.action == "account.password_link") == []
+  end
 end

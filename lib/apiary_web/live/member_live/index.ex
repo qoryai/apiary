@@ -198,7 +198,7 @@ defmodule ApiaryWeb.MemberLive.Index do
         <.one_time_link
           :if={@password_link}
           id="password-link"
-          url={@password_link.url}
+          url={@password_link.url.()}
           expires_at={@password_link.expires_at}
           for={@password_link.email}
           kind={:password}
@@ -865,20 +865,23 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   # A password link for a member's account, made by an instance admin while no mail is set,
   # shown once above the list: the context asks who may (`Accounts.build_password_link/3`).
+  # Only where the page offers them (`password_links?/1`): the context makes one for any
+  # account, so an event sent anywhere else is refused here, as the context would refuse
+  # it on the instance's organisation's page.
   def handle_event("password_link", %{"membership_id" => id}, socket) do
-    scope = socket.assigns.current_scope
-
     case Enum.find(socket.assigns.members, &(&1.id == id)) do
       nil ->
         {:noreply, socket |> load() |> gone()}
 
       member ->
-        case Accounts.build_password_link(scope, member.user, &url(~p"/users/password/#{&1}")) do
+        case password_link(socket, member) do
+          # The link in a function, as an invitation's, so no inspection of the process's
+          # state prints it.
           {:ok, url, expires_at} ->
             {:noreply,
              assign(socket, :password_link, %{
                email: member.user.email,
-               url: url,
+               url: fn -> url end,
                expires_at: expires_at
              })}
 
@@ -1064,6 +1067,17 @@ defmodule ApiaryWeb.MemberLive.Index do
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
   end
+
+  defp password_link(%{assigns: %{password_links?: true}} = socket, member) do
+    Accounts.build_password_link(
+      socket.assigns.current_scope,
+      member.user,
+      &url(~p"/users/password/#{&1}")
+    )
+  end
+
+  defp password_link(_socket, _member),
+    do: {:error, if(Mail.configured?(), do: :mail_set, else: :forbidden)}
 
   # Whether the page offers password links: on the instance's organisation, to an instance
   # admin, while no mail is set. The context asks again when one is made.

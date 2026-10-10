@@ -55,6 +55,8 @@ defmodule Apiary.AuditTest do
              } = withdrawn
 
       assert withdrawn.subject_id == invited.subject_id
+      # It names the entry it undoes, which counted the sending.
+      assert withdrawn.details["entry_id"] == invited.id
       assert {withdrawn.actor_kind, withdrawn.actor_id} == {:person, ctx.scope.user.id}
       assert Repo.all(Apiary.Organisations.Invitation) == []
     end

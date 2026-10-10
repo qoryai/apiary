@@ -81,9 +81,10 @@ defmodule ApiaryWeb.UserLive.Password do
   @impl true
   def mount(%{"token" => token}, _session, socket) do
     # Counted before the token is looked up (`ApiaryWeb.AttemptLimits`): past the limit
-    # nothing of the link is looked up.
+    # nothing of the link is looked up. The token is kept in a function, so no inspection
+    # of the process's state prints it.
     case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
-      {:ok, socket} -> {:ok, socket |> assign(:token, token) |> open(token)}
+      {:ok, socket} -> {:ok, socket |> assign(:token, fn -> token end) |> open(token)}
       {:limited, socket} -> {:ok, socket}
     end
   end
@@ -123,7 +124,7 @@ defmodule ApiaryWeb.UserLive.Password do
   end
 
   def handle_event("save", %{"user" => params}, %{assigns: %{user: %{}}} = socket) do
-    case Accounts.set_password_by_link(socket.assigns.token, params) do
+    case Accounts.set_password_by_link(socket.assigns.token.(), params) do
       {:ok, {_user, tokens}} ->
         UserAuth.disconnect_sessions(tokens)
 
