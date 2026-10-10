@@ -3,6 +3,7 @@ defmodule ApiaryWeb.UserLive.Login do
 
   alias Apiary.Accounts
   alias Apiary.Accounts.User
+  alias ApiaryWeb.AttemptLimits
 
   # Shown for an address that cannot be one, before anything is looked up: it says
   # nothing about whether an account exists.
@@ -206,15 +207,22 @@ defmodule ApiaryWeb.UserLive.Login do
       %{errors: []} ->
         email = params["email"]
 
-        if user = Accounts.get_user_by_email(email) do
-          Accounts.deliver_login_instructions(
-            user,
-            &url(~p"/users/log-in/#{&1}")
-          )
-        end
+        # Counted before the address is looked up (`ApiaryWeb.AttemptLimits`): the same
+        # answer whether or not the address has an account, within the limit and past it.
+        case AttemptLimits.link_request(email) do
+          :ok ->
+            if user = Accounts.get_user_by_email(email) do
+              Accounts.deliver_login_instructions(
+                user,
+                &url(~p"/users/log-in/#{&1}")
+              )
+            end
 
-        # The same answer whether or not the address has an account.
-        {:noreply, assign(socket, :sent_to, email)}
+            {:noreply, assign(socket, :sent_to, email)}
+
+          :limited ->
+            {:noreply, put_flash(socket, :error, AttemptLimits.message())}
+        end
 
       form ->
         {:noreply, assign(socket, :form, form)}

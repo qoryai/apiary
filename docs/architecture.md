@@ -238,8 +238,8 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   theirs to choose. An organisation's name carries no web address (`://`, `www.`), no
   double quotation mark or lookalike, and no Unicode format character but the join
   controls, and the email takes such characters out of it all the same
-  (`Apiary.Organisations.Organisation`); a mail client may still link a bare domain. The
-  inviter's account is confirmed, and an organisation sends at most
+  (`Apiary.Organisations.Organisation`); a mail client may still link a bare domain. A mailed
+  invitation needs a confirmed inviter, and an organisation makes at most
   `Apiary.Instance.invitations_per_day/0` in a rolling 24 hours, counted from the audit
   entries of its invitations, which outlive the invitations the sweep and an acceptance
   delete, leaving out one withdrawn as undelivered, under the organisation's row lock

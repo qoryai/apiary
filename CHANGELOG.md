@@ -28,17 +28,25 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   already set up, and a wrong one before is a page that does not exist. On an instance
   that is set up, a restored one included, a start logs no such line.
   `grant_instance_admin/2` on a new instance uses the code too.
-- Mail is optional. With `SMTP_RELAY` set, Qory Apiary sends its email through that relay;
-  without it, it starts all the same, sends no email, and says so in one line of its log
-  at each start. `Apiary.Mail` says whether mail is set and where from.
+- Mail is no longer needed to start. With `SMTP_RELAY` set, Qory Apiary sends its email
+  through that relay; without it, it starts all the same, sends no email, and says so in one
+  line of its log at each start. `Apiary.Mail` says whether mail is set and where from.
+- Without mail, an invitation is a link to copy. The invite page shows the link once, for
+  the person who made it to send themselves, with when it stops working; their account
+  need not be confirmed, since no email goes out in their name. A pending invitation's
+  **Make a new link** replaces a lost one: the same invitation, seven days again, and the
+  old link stops working at once. A link copied, and a new one made, count against
+  `INVITATIONS_PER_DAY` as an emailed invitation does. `Apiary.Organisations.invite_member/3`
+  and `send_invitation/4` hand the link back, `{:ok, invitation, {:link, url}}`, and
+  `renew_invitation/3` (`invitation.renew`) makes a new one.
 - Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
   person in as soon as the account is made; an invited person keeps the invitation's
   address. `Apiary.Organisations.sign_up_user/3` takes `password` and
   `password_confirmation`: a person's sign-up needs them without mail, and drops them
   with mail, whose address a link confirms first; the instance's own sign-up
-  (`actor: :instance`) needs none and keeps one given. `ApiaryWeb.CoreComponents.new_password_fields/1` draws the
-  two fields and never writes a password back to the page. Account settings do not change
-  the email address without mail.
+  (`actor: :instance`) needs none and keeps one given.
+  `ApiaryWeb.CoreComponents.new_password_fields/1` draws the two fields and never writes a
+  password back to the page. Account settings do not change the email address without mail.
 - An account whose password was set before its address was confirmed loses that password
   at its first log-in link, which confirms the address and ends every other session; the
   page says so. A sign-up whose confirmation email cannot be sent keeps the account made,
@@ -84,10 +92,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - How a run ended, in words, after its state in the run page's header, under State in its
   rail, in its timeline's last item, "Run ended", and in the runs list's preview: "time
   limit reached", "no activity for 30 minutes" (or hours, or seconds), "permission to run
-  expired", "stopped, no outcome given", "stopped responding", "end not recorded",
-  "couldn't check whether the run may go on: no answer" (or "unreadable answer"), and any
-  other code as the run's starter gave it, with spaces for underscores ("no longer
-  needed"). An exit stored under one of Forager's earlier names reads in the words of the
+  expired", "stopped, no outcome given", "interrupted" (a session's run stopped from where
+  it was started, a Ctrl-C or a signal to `qory run`, which is Cancelled whatever its
+  exit), "stopped responding", "end not recorded", "couldn't check whether the run may go
+  on: no answer" (or "unreadable answer"), and any other code as the run's starter gave
+  it, with spaces for underscores ("no longer needed"). An exit stored under one of Forager's earlier names reads in the words of the
   new one. A session run's Exit in the rail is the runtime's exit as recorded, "not
   recorded" for `-1` without a signal; the page announces a cancelled or lost end in the
   same words ("Run cancelled: time limit reached."); and a run whose exit said it was lost
@@ -107,6 +116,13 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   it: the events endpoint and the run configuration each spend a bucket of their own, 50
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
   new run's configuration. Discovery is not limited.
+- Limits on signing in, on each node: a log-in with a password, 5 per email address and
+  then 1 a minute, and 20 per client address and then 1 every 3 seconds; a log-in link
+  asked for, 3 per email address and then 1 every 5 minutes; an invitation's pages, 20
+  per client address and then 1 every 3 seconds. Every attempt counts before the address
+  is looked up, so past a limit an address with an account and one without get the same
+  answer, "Too many attempts. Try again in a few minutes." The client address is the one
+  the audit trail records, behind the proxies `TRUSTED_PROXIES` names.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
@@ -307,6 +323,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `public.ecr.aws/docker/library`, Amazon's public copy of Docker's official images, from
   which CI also pulls the Postgres, nginx and Docker images it runs; the jobs that still pull
   from Docker Hub log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
+- Pre-release images: `.github/workflows/prerelease.yml`, run by hand only, never on a
+  push or a schedule, builds a branch, tag or commit as a release's image is built and
+  publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as
+  `sha-<7>` and, for `next`, as `next`; the AWS template's Test image field, under For
+  testing only, runs such an image in place of the Edition's.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
   in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
   `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.

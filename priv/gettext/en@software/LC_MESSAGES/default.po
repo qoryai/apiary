@@ -854,6 +854,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -3856,7 +3857,6 @@ msgstr ""
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copied"
@@ -3925,6 +3925,11 @@ msgstr ""
 msgid "Copy the run id"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy this link and send it to %{email} yourself."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "Copy variable"
@@ -3984,6 +3989,11 @@ msgstr ""
 msgid "Create custom API"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create invitation link"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Create your account"
@@ -4018,6 +4028,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Creating"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Creating…"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -4587,6 +4602,7 @@ msgid "Domains"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -5893,6 +5909,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Invitation renewed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Invitation revoked"
 msgstr ""
 
@@ -6932,6 +6953,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Made a new link for an invitation"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Made a person an owner, by a command run on Qory Apiary"
 msgstr ""
 
@@ -6948,6 +6974,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Main session"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a new link"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a new link for %{email}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex
@@ -7427,6 +7463,16 @@ msgstr ""
 #: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "No member's email has %{text}."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No new link for %{email}: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No new link for %{email}: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -11725,6 +11771,11 @@ msgstr ""
 msgid "Today, %{time}"
 msgstr ""
 
+#: lib/apiary_web/attempt_limits.ex
+#, elixir-autogen, elixir-format
+msgid "Too many attempts. Try again in a few minutes."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Tool"
@@ -12269,6 +12320,11 @@ msgstr ""
 msgid "Withdrew an invitation that could not be delivered"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Works once, until %{time} (%{validity}). It is shown only now."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -12559,6 +12615,11 @@ msgstr "You choose the repositories on its page, once it is added."
 #, elixir-autogen, elixir-format
 msgid "You choose the targets on its page, once it is set up."
 msgstr "You choose the repositories on its page, once it is set up."
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You get a link to send them yourself. It works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards."
+msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
@@ -13142,6 +13203,11 @@ msgstr ""
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "input"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "interrupted"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
