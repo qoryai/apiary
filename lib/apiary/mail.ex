@@ -239,17 +239,18 @@ defmodule Apiary.Mail do
   def smtp_config(%Settings{smtp_port: port, smtp_username: username} = settings, password) do
     implicit_tls = port == 465
 
+    # The username and password only with a username: the adapter refuses either as nil.
+    credentials = if username, do: [username: username, password: password || ""], else: []
+
     [
       adapter: smtp_adapter(),
       relay: settings.smtp_relay,
       port: port,
-      username: username,
-      password: password,
       auth: if(username, do: :always, else: :never),
       ssl: implicit_tls,
       tls: if(implicit_tls, do: :never, else: tls(settings.smtp_tls)),
       retries: 2
-    ] ++ TLS.smtp_options(settings.smtp_relay, implicit_tls)
+    ] ++ credentials ++ TLS.smtp_options(settings.smtp_relay, implicit_tls)
   end
 
   defp tls("always"), do: :always
