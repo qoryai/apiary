@@ -6,7 +6,8 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
   has it and under a delivery id of its own.
 
   It asserts that no event is lost and none is stored twice; that no run lost in the
-  outage is brought back by its backlog, and that each stays lost until its exit arrives;
+  outage is brought back by its backlog, and that each stays lost, its late `gateway_lost`
+  exit leaving it lost for good;
   that the only refusals are `429` and `503` and that each clears on retry, after the
   `Retry-After` of a `429` and with Forager's backoff after a `503`; that a new run's
   configuration is served during the flush on the same key; and that the ping of a new run
@@ -224,7 +225,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
 
     for %{run: run, exit: exit?} <- runs do
       states = Map.get(seen, run.id, MapSet.new())
-      allowed = if exit?, do: ["lost", "succeeded"], else: ["lost"]
+      allowed = if exit?, do: ["lost", "completed"], else: ["lost"]
       assert MapSet.subset?(states, MapSet.new(allowed))
     end
 
@@ -234,7 +235,7 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
       stored_run = Repo.get!(Run, run.id)
 
       if exit? do
-        assert %Run{state: "succeeded", lost_at: nil} = stored_run
+        assert %Run{state: "completed", lost_at: nil} = stored_run
       else
         assert %Run{state: "lost"} = stored_run
         assert stored_run.lost_at == lost_at
@@ -261,18 +262,25 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
     assert Liveness.check(DateTime.utc_now()) |> Enum.filter(&MapSet.member?(ids, &1.id)) == []
     assert Runs.count_alive(ctx.scope) == if(opened?, do: 1, else: 0)
 
-    # The exits the gateway records once it is back end the runs that had none.
-    exits = for flushed <- runs, not flushed.exit, do: exit_batch(flushed)
+    # The exits the gateway records once it is back end the runs that had none. Each says
+    # `gateway_lost`, so each run is lost for good, from its exit's time, and listed lost.
+    exits = for flushed <- runs, not flushed.exit, do: {flushed.run, exit_batch(flushed)}
     stats = new_stats()
-    work(%{flush | batches: List.to_tuple(exits), stats: stats})
+    work(%{flush | batches: exits |> Enum.map(&elem(&1, 1)) |> List.to_tuple(), stats: stats})
     drain()
     assert :ets.lookup(stats.table, :unexpected) == []
 
-    for %{run: run, exit: false} <- runs do
-      assert %Run{state: "failed", reason: "gateway_lost", lost_at: nil} = Repo.get!(Run, run.id)
+    for {run, exit} <- exits do
+      assert %Run{state: "lost", reason: "gateway_lost", lost_at: %DateTime{} = exited} =
+               Repo.get!(Run, run.id)
+
+      assert DateTime.compare(exited, DateTime.truncate(exit.first, :millisecond)) == :eq
     end
 
-    assert Runs.lost_since(ctx.scope, DateTime.add(now, -7 * 86_400, :second)) == []
+    # One more than expected, so a run lost that should not be shows.
+    week = DateTime.add(now, -7 * 86_400, :second)
+    listed = Runs.lost_since(ctx.scope, week, length(exits) + 1)
+    assert MapSet.new(listed, & &1.id) == MapSet.new(exits, fn {run, _} -> run.id end)
   end
 
   ## Before the outage
