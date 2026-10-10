@@ -102,7 +102,7 @@ jobs:
       # name unique to the stack; the download key's secret is deleted with the stack and
       # guarded by no stack policy. The log groups are kept too, under names unique to the
       # stack, with their retention.
-      - name: Check which secrets the stack keeps
+      - name: Check which secrets and log groups the stack keeps
         run: python scripts/aws-template-check.py kept
 
       # The Release mapping's keys, which Apiary Pro's release writes too, and every
