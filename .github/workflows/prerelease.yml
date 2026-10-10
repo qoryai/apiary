@@ -1,8 +1,12 @@
 name: Pre-release image
 
-# Run by hand only, from the Actions tab: never on a push, a pull request or a schedule.
-# Each run costs Actions minutes and package storage.
+# Run by hand only: from the Actions tab, once this file is on the default branch, or by
+# pushing a commit to the branch prerelease, which nothing else pushes to. Never on a push
+# to any other branch, a pull request or a schedule. Each run costs Actions minutes and
+# package storage.
 on:
+  push:
+    branches: [prerelease]
   workflow_dispatch:
     inputs:
       ref:
