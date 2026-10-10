@@ -9,6 +9,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.Policy
   alias ApiaryWeb.PolicyComponents
@@ -560,6 +561,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
          %{conn: conn, scope: scope, target: target, path: path} do
+      # The card says "today" of the mode it sets: in a day of the reader's, clear of
+      # midnight (`Apiary.Midnight`).
+      reader_at_noon(scope.user)
+
       started_run(scope, shop(),
         egress: [
           %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""},
@@ -669,6 +674,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     test "to observe names the locked denies that still hold, and the card keeps saying so",
          %{conn: conn, scope: scope, target: target, path: path} do
+      reader_at_noon(scope.user)
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
 

@@ -1738,6 +1738,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       conn: conn,
       scope: scope
     } do
+      # Taken before the runs: their day is this one or, past midnight, the next.
+      at = DateTime.utc_now()
       for _ <- 1..51, do: run_fixture(scope)
       view = open(conn, scope)
 
@@ -1755,9 +1757,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert text(view, "#runs-footer") == "1–25 of 51"
 
-      # Every run was pinged today: a day before it is past the last of them.
+      # Every run was pinged on the day of `at` or after: a day before it is past the last of
+      # them, whenever the clock turns midnight.
       view
-      |> form("#runs-jump-form", %{"date" => Date.to_iso8601(Date.add(Date.utc_today(), -1))})
+      |> form("#runs-jump-form", %{"date" => Date.to_iso8601(Date.add(DateTime.to_date(at), -1))})
       |> render_submit()
 
       assert_patch(view, runs(scope, "?page=3&per=25"))

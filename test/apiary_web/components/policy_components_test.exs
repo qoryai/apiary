@@ -622,6 +622,9 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     end
 
     test "a member sees the card with no Change mode, and the line that says who may" do
+      # The card reads "today" from the clock: in a day of the reader's, clear of midnight
+      # (`Apiary.Midnight`).
+      ApiaryWeb.Format.put_time_zone(Apiary.Midnight.noon_zone())
       assigns = %{scope: @scope}
 
       html =

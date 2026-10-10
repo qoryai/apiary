@@ -8,6 +8,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -610,7 +611,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       # The page's today is the clock's, on which a run a minute back is yesterday's for the
       # first minute after midnight UTC: the three start now, the quiet one after the
-      # running one, which makes it the target's last run.
+      # running one, which makes it the target's last run. They start and the page is read
+      # clear of midnight, so the day does not turn between them.
+      day = clear_of_midnight()
       running = started_run(scope, shop(), host: "build-01", ago: 0)
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30}, ago: 0)
 
@@ -652,7 +655,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         html |> LazyHTML.from_document() |> LazyHTML.query("#days a[data-day]") |> Enum.to_list()
 
       assert length(slots) == 14
-      today = Date.to_iso8601(Date.utc_today())
+      today = Date.to_iso8601(day)
 
       assert has_element?(
                view,
@@ -687,6 +690,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     test "the tiles, the table and the spoken days count every state in its family, Cancelled apart",
          %{conn: conn, scope: scope} do
+      # Today's runs start now, and the page is read clear of midnight, as above.
+      clear_of_midnight()
       now = DateTime.utc_now()
       today = DateTime.to_date(now)
       yesterday = Date.add(today, -1)
