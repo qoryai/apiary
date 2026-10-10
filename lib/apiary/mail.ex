@@ -35,8 +35,9 @@ defmodule Apiary.Mail do
   (`Apiary.Accounts.sudo_mode?/2`), sets the state back to `:pending` and sends a test link
   to the admin who saved, through the settings saved. **The test link** (`turn_on/2`)
   works once, for 60 minutes (`test_link_minutes/0`), and only for that admin, signed in,
-  recently too: it turns mail on and confirms their address. It signs no one in and
-  changes no password. From anyone else it does nothing. It is stored as
+  recently too: it turns mail on and confirms their address, and ends every password link
+  an instance admin made while no mail was set (`end_password_links/0`), as a start with
+  mail set by the environment does (`boot/0`). It signs no one in and changes no password. From anyone else it does nothing. It is stored as
   the SHA-256 hash of its 32 random bytes, in `users_tokens` under the context
   `"instance_mail"`, so a reader of the database cannot follow it; a later save, a change
   of the admin's address or password, and its use each end it. Each save is an
@@ -160,13 +161,32 @@ defmodule Apiary.Mail do
   end
 
   @doc """
-  Says once, at `info`, that no mail is set, when none is. The node's `Apiary.Mail.Cache`
-  calls it once it has read the saved settings, before anything serves.
+  Says once, at `info`, that no mail is set, when none is; where mail is set, ends every
+  password link an instance admin made (`end_password_links/0`), as turning mail on does:
+  set by the environment, mail is read only as the node starts, so a start with
+  `SMTP_RELAY` is where it turns on. The node's `Apiary.Mail.Cache` calls it once it has
+  read the saved settings, before anything serves.
   """
   @spec boot() :: :ok
   def boot do
-    if source() == :none, do: Logger.info(@no_mail)
+    case source() do
+      :none -> Logger.info(@no_mail)
+      _set -> end_password_links()
+    end
+
     :ok
+  end
+
+  @doc """
+  end_password_links/0 ends every password link an instance admin made while no mail was
+  set (`Apiary.Accounts.build_password_link/3`, the context `"password"`): with mail, the
+  person asks for a log-in link instead. A release command's link (`"password:release"`)
+  is made mail or not, on purpose, for an hour, and is kept. Returns how many it ended.
+  """
+  @spec end_password_links() :: non_neg_integer
+  def end_password_links do
+    {ended, _} = Repo.delete_all(from t in UserToken, where: t.context == "password")
+    ended
   end
 
   @doc false
@@ -506,7 +526,8 @@ defmodule Apiary.Mail do
   turn_on/2 follows the test link whose token is `token` for the person of `scope`: where
   they are an instance admin, saved the settings that are waiting, and the link is the one
   sent to them, to their current address, within #{@test_link_minutes} minutes, it turns
-  mail on, confirms their address where it was not yet, ends the link, and is an
+  mail on, confirms their address where it was not yet, ends the link and every password
+  link an instance admin made while no mail was set (`end_password_links/0`), and is an
   `instance.mail_on` entry in the trail of the instance's organisation, by the admin, in
   one transaction, then broadcasts the change to every node's cache. It signs no one in
   and changes no password. `{:ok, settings}`; `{:error, :sudo}` for an instance admin who
@@ -550,6 +571,7 @@ defmodule Apiary.Mail do
            {:ok, organisation} <- instance_organisation() do
         Repo.delete!(user_token)
         if is_nil(user.confirmed_at), do: user |> User.confirm_changeset() |> Repo.update!()
+        password_links = end_password_links()
         now = DateTime.utc_now()
 
         settings =
@@ -563,7 +585,13 @@ defmodule Apiary.Mail do
                  Scope.in_organisation(scope, organisation),
                  :"instance.mail_on",
                  organisation,
-                 %{details: %{relay: settings.smtp_relay, port: settings.smtp_port}}
+                 %{
+                   details: %{
+                     relay: settings.smtp_relay,
+                     port: settings.smtp_port,
+                     password_links_ended: password_links
+                   }
+                 }
                ),
              do: {:ok, settings}
       else

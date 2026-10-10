@@ -84,8 +84,9 @@ defmodule Apiary.MailTest do
 end
 
 defmodule Apiary.MailBootTest do
-  # Not async: raises the log level for every process.
-  use ExUnit.Case, async: false
+  # Not async: raises the log level for every process. With mail set, the boot ends the
+  # password links, in the database.
+  use Apiary.DataCase, async: false
 
   import ExUnit.CaptureLog
 

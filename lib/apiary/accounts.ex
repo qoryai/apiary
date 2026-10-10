@@ -465,7 +465,8 @@ defmodule Apiary.Accounts do
   **Who makes one.** `by` is the scope of whoever asks:
 
   - an instance admin (`Apiary.Access.instance_admin?/1`), while no mail is set
-    (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`.
+    (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`,
+    or until mail is set, which ends it (`Apiary.Mail.end_password_links/0`).
     `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
     when the person asks for a log-in link instead. Never for their own account,
     `{:error, :own_account}`: they change their own password in Account settings, behind

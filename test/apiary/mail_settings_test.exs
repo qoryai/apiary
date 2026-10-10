@@ -635,11 +635,35 @@ defmodule Apiary.MailSettingsTest do
       assert [entry] = entries("instance.mail_on")
       assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
       assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
-      assert entry.details == %{"relay" => "smtp.example.com", "port" => 587}
+
+      assert entry.details == %{
+               "relay" => "smtp.example.com",
+               "port" => 587,
+               "password_links_ended" => 0
+             }
 
       # Once: the link used, nothing more.
       assert Mail.turn_on(scope, token) == :error
       assert [_one] = entries("instance.mail_on")
+    end
+
+    test "ends every password link an admin made without mail, and no other token",
+         %{scope: scope, token: token} do
+      %{admin: admin, release: release, login: login, session: session, other: other} =
+        password_links(scope)
+
+      assert {:ok, _settings} = Mail.turn_on(scope, token)
+
+      refute Apiary.Accounts.get_user_by_password_link(admin)
+      assert [entry] = entries("instance.mail_on")
+      assert entry.details["password_links_ended"] == 1
+
+      # A release command's link is made mail or not, on purpose, and kept; a log-in link
+      # and a session are not password links.
+      assert %User{id: id} = Apiary.Accounts.get_user_by_password_link(release)
+      assert id == other.id
+      assert {%User{}, _inserted_at} = Apiary.Accounts.get_user_by_session_token(session)
+      assert Repo.get_by(UserToken, token: login.token, context: "login")
     end
 
     test "works for 60 minutes", %{scope: scope, token: token} do
@@ -667,6 +691,67 @@ defmodule Apiary.MailSettingsTest do
 
       assert Mail.turn_on(scope, token) == :error
     end
+  end
+
+  describe "boot/0, as a node starts" do
+    test "with mail set, by the environment or the settings, ends every password link an admin made, and no other token",
+         %{scope: scope} do
+      for source <- [:env, :settings] do
+        %{admin: admin, release: release, login: login, session: session} =
+          password_links(scope)
+
+        Mail.put_test_source(source)
+        assert Mail.boot() == :ok
+        Mail.put_test_source(:none)
+
+        refute Apiary.Accounts.get_user_by_password_link(admin)
+        assert Apiary.Accounts.get_user_by_password_link(release)
+        assert Apiary.Accounts.get_user_by_session_token(session)
+        assert Repo.get_by(UserToken, token: login.token, context: "login")
+      end
+    end
+
+    test "without mail, keeps them", %{scope: scope} do
+      %{admin: admin} = password_links(scope)
+      assert Mail.boot() == :ok
+      assert Apiary.Accounts.get_user_by_password_link(admin)
+    end
+  end
+
+  # While no mail is set: a password link an instance admin made for an account, with its
+  # log-in link and session, and one a release command printed for another account (an
+  # account has one password link at a time), each a token.
+  defp password_links(scope) do
+    Mail.put_test_source(:env)
+
+    {user, other} =
+      with_env_mail(fn ->
+        {Apiary.AccountsFixtures.user_fixture(), Apiary.AccountsFixtures.user_fixture()}
+      end)
+
+    Mail.put_test_source(:none)
+    url = &"https://qory.example.com/users/password/#{&1}"
+
+    {:ok, admin, _expires_at} = Apiary.Accounts.build_password_link(scope, user, url)
+
+    release_scope =
+      nil
+      |> Apiary.Accounts.Scope.for_instance()
+      |> Apiary.Accounts.Scope.put_origin(%{worker: "Apiary.Release.password_link/1"})
+
+    {:ok, release, _expires_at} = Apiary.Accounts.build_password_link(release_scope, other, url)
+    {_login, login} = UserToken.build_email_token(user, "login")
+    login = Repo.insert!(login)
+    session = Apiary.Accounts.generate_user_session_token(user)
+    token = &(Regex.run(~r{/users/password/(.+)$}, &1) |> List.last())
+
+    %{
+      admin: token.(admin),
+      release: token.(release),
+      login: login,
+      session: session,
+      other: other
+    }
   end
 
   describe "where mail comes from once it is on" do

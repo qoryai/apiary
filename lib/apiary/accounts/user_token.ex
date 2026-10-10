@@ -99,7 +99,8 @@ defmodule Apiary.Accounts.UserToken do
   Builds a password link's token and its hash, as `build_email_token/2` builds a log-in
   link's: the encoded token goes into the link, and only its hash is stored, with the
   account's address, so a change of address ends the link. `context` is `"password"`, the
-  link an instance admin makes, which works for a day, or `"password:release"`, the one a
+  link an instance admin makes, which works for a day, or until mail is set
+  (`Apiary.Mail.end_password_links/0`), or `"password:release"`, the one a
   release command prints, which works for an hour (`password_link_validity_in_minutes/1`).
   """
   def build_password_link_token(user, context) when context in @password_link_contexts do

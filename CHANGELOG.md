@@ -60,7 +60,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   instance's organisation, never for themselves, from the ⋯ menu of their row on
   **People**, while no mail is set: a one-time link, shown once to copy, that sets the account's password at
   `/users/password/:token` and ends every session of the account. It works for 24 hours,
-  and a new one ends the one before; only its hash is stored. Each is an
+  and a new one ends the one before; only its hash is stored. Mail turned on, by the test
+  link of Instance settings › Mail or a start with `SMTP_RELAY`, ends every such link
+  (`Apiary.Mail.end_password_links/0`). Each is an
   `account.password_link` entry in the organisation's activity. The release command
   `Apiary.Release.password_link/1` prints one for an hour, mail or not, and
   `grant_instance_admin/2`'s set-up of a new instance prints one in place of the log-in
