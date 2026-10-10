@@ -30,8 +30,9 @@ page is the reference for an installation that stays.
   ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
   tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
-- **An SMTP relay.** People sign in with a link sent by email and are invited by email, so
-  the release does not boot without a way to deliver mail.
+- **An SMTP relay.** People sign in with a link sent by email and are invited by email.
+  Without `SMTP_RELAY` the release starts all the same, sends no email, and says so in
+  its log.
 
 With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
 three services, and `docker compose logs apiary` shows the boot.
@@ -118,9 +119,6 @@ body is ever logged, and neither is anything a gateway signed or sent. Four rout
 secret in their path, an invitation, its continuation, a log-in link and an email change;
 their secret segment is logged as `:token`, so a reader of the log cannot sign in or join
 an organisation with what it finds there.
-
-The exception is `MAIL_TO_LOG=true`, which writes whole emails to the log, links included.
-It is for a trial on one machine only.
 
 ## Environment variables
 
@@ -381,19 +379,12 @@ For example: https://qory.example
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `SMTP_RELAY` | required, unless `MAIL_TO_LOG=true` | The host of the SMTP relay. Empty counts as not set. |
-| `MAIL_TO_LOG` | off | Read only when `SMTP_RELAY` is not set. Exactly `true` writes every email to the log in full, at level `info`, instead of sending it. For a trial on one machine only: log-in links and invitation links are credentials, and with this setting they reach everyone and everything that reads the log. |
+| `SMTP_RELAY` | none | The host of the SMTP relay. Empty counts as not set. Not set, the release sends no email, and says so in one line of its log at each start, at level `info`. |
 | `SMTP_PORT` | `587` | The relay's port. An integer. `465` means implicit TLS on connect; any other port uses STARTTLS as `SMTP_TLS` says. |
 | `SMTP_USERNAME` | none | The relay's user. Not set, or left empty as `.env.example` has it, means no authentication; set means the release always authenticates. |
 | `SMTP_PASSWORD` | none | The relay's password. |
 | `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. |
 | `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
-
-```text
-no mail delivery is configured.
-Set SMTP_RELAY to the host of an SMTP relay, or, for a trial on one machine only,
-set MAIL_TO_LOG=true to write every email (log-in links included) to the log.
-```
 
 ```text
 environment variable SMTP_TLS must be always, if_available or never
@@ -634,9 +625,8 @@ On an instance nobody has signed up to, the first start claims it before it serv
 page, so no sign-up on the web can come first: it is the instance's first sign-up, as the
 command below makes it, and emails you your log-in link. Should the email not go out, the
 instance is claimed all the same, and the log says to ask for a link at `/users/log-in`
-once the mail settings work. The boot's own lines never carry the address or the link;
-with `MAIL_TO_LOG=true`, though, the email itself, its log-in link included, is written to
-the log, as every email is. On an instance that has its organisation, a restored one
+once the mail settings work. The boot's own lines never carry the address or the link.
+On an instance that has its organisation, a restored one
 included, the boot ignores the two: it checks neither, creates and grants nothing, sends no
 email and writes no line, so changing them later changes nothing, and later admins are
 invited in Qory. Of two starts at once, one claims and the other starts as on any
@@ -664,8 +654,7 @@ organisation, its workspace Main and the account as its owner, and emails the ac
 log-in link, as the sign-up page would. Without the name it is refused and says so. Should
 the email not go out, the instance is claimed all the same, and the command says to ask
 for a link at `/users/log-in` once the mail settings work; it never prints the address or
-the link. With `MAIL_TO_LOG=true` the email, its log-in link included, is written to the
-command's output, as it is to the log. Should someone sign up on the web a moment before,
+the link. Should someone sign up on the web a moment before,
 theirs is the first sign-up, and the command does what it does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,

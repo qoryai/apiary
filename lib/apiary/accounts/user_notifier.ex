@@ -5,6 +5,9 @@ defmodule Apiary.Accounts.UserNotifier do
   about a workspace, so it reads the default domain's words. An invitation goes to an
   address that may have no account yet, so it is written in the calling process's locale:
   a request or a LiveView has already set the inviter's (`ApiaryWeb.Lingo`).
+
+  With no mail set (`Apiary.Mail.configured?/0`), every function here sends nothing and
+  returns `{:error, :no_mail}`.
   """
   use Gettext, backend: ApiaryWeb.Gettext
   import Swoosh.Email
@@ -13,9 +16,19 @@ defmodule Apiary.Accounts.UserNotifier do
   alias Apiary.Accounts.User
   alias Apiary.Organisations.Organisation
 
-  # Delivers the email using the application mailer. The body's paragraphs are whole,
-  # translated sentences, set between the rules the tests and mail clients expect.
+  # Delivers the email using the application mailer, with the configuration
+  # `Apiary.Mail.mailer_config/0` gives; with no mail set it sends nothing and answers
+  # `{:error, :no_mail}`, the answer of an email that did not go out. The body's
+  # paragraphs are whole, translated sentences, set between the rules the tests and mail
+  # clients expect.
   defp deliver(recipient, subject, paragraphs) do
+    case Apiary.Mail.mailer_config() do
+      nil -> {:error, :no_mail}
+      config -> deliver(recipient, subject, paragraphs, config)
+    end
+  end
+
+  defp deliver(recipient, subject, paragraphs, config) do
     body = """
 
     ==============================
@@ -32,7 +45,7 @@ defmodule Apiary.Accounts.UserNotifier do
       |> subject(subject)
       |> text_body(body)
 
-    with {:ok, _metadata} <- Mailer.deliver(email) do
+    with {:ok, _metadata} <- Mailer.deliver(email, config) do
       {:ok, email}
     end
   end

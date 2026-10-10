@@ -205,11 +205,12 @@ are taken, restore the newest dump on another machine:
    `qory-keys.env`.
 2. Write a `.env` there with the installation's `APIARY_VERSION`, and its `APIARY_IMAGE`
    when it sets one, `COMPOSE_PROFILES=postgres`, `PUBLIC_URL=http://localhost:4100` and
-   `MAIL_TO_LOG=true`. The drill sends no mail, and nobody else signs in to it.
+   its mail settings, `SMTP_RELAY` and the variables beside it. Nobody else signs in to
+   it.
 3. Restore as under "The compose installation" above, the keys first.
 4. `curl http://localhost:4100/health` answers `200`.
-5. Ask for a log-in link at `http://localhost:4100/users/log-in` with your own address, take
-   it from `docker compose logs apiary`, and sign in. The runs are there.
+5. Ask for a log-in link at `http://localhost:4100/users/log-in` with your own address,
+   and sign in with the link the email brings. The runs are there.
    <!-- feature: security -->
    So are the policy and its history.
    <!-- /feature -->

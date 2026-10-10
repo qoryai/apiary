@@ -577,14 +577,14 @@ jobs:
           }
           SH
 
-      # .env as a release's env.example makes it, naming the image built here, with mail to
-      # the log for a trial.
+      # .env as a release's env.example makes it, naming the image built here, with no
+      # mail.
       - name: Install on fresh volumes
         run: |
           . "$RUNNER_TEMP/compose-checks.sh"
           cp .env.example .env
           sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' .env
-          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
+          printf '%s\n' APIARY_IMAGE=apiary >> .env
           docker compose up -d
           mask_keys
           healthy "$GITHUB_SHA"
@@ -614,7 +614,7 @@ jobs:
         run: |
           . "$RUNNER_TEMP/compose-checks.sh"
           docker build -t apiary:dev .
-          cp .env.example .env && echo MAIL_TO_LOG=true >> .env
+          cp .env.example .env
           APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
           export APIARY_IMAGE=apiary APIARY_VERSION=dev
           mask_keys
@@ -630,6 +630,8 @@ jobs:
           . "$RUNNER_TEMP/compose-checks.sh"
           cp .env.example .env
           sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=base/' .env
+          # An image from before mail was optional does not start without MAIL_TO_LOG=true
+          # or a relay; the image built here ignores it.
           printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true >> .env
           docker compose up -d
           mask_keys
@@ -652,6 +654,8 @@ jobs:
           fi
           cp .env.example .env
           sed -i 's/^APIARY_VERSION=$/APIARY_VERSION=latest/' .env
+          # As from the base commit: MAIL_TO_LOG=true for an image from before mail was
+          # optional.
           echo MAIL_TO_LOG=true >> .env
           docker compose up -d
           mask_keys
@@ -720,7 +724,7 @@ jobs:
 
           cp .env.example .env
           sed -i -e 's/^APIARY_VERSION=$/APIARY_VERSION=ci/' -e 's/^COMPOSE_PROFILES=postgres$/COMPOSE_PROFILES=/' .env
-          printf '%s\n' APIARY_IMAGE=apiary MAIL_TO_LOG=true \
+          printf '%s\n' APIARY_IMAGE=apiary \
             "DATABASE_URL=postgres://apiary:$password@database.example.test:5432/apiary?sslmode=verify-full&sslrootcert=/run/database-ca.pem" >> .env
           docker compose up -d
           mask_keys
