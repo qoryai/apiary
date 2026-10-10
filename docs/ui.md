@@ -279,7 +279,10 @@ replaces the navigation it is in.
   confirmed in place, the member's row turned into the question, what happens, Yes,
   remove (Yes, leave, Yes, suspend) and Cancel (`inline_confirm/1`), at their paths
   `/settings/people/:id/remove` and `…/suspend`, whose Cancel or Escape goes back to
-  People), Workspaces
+  People; on the instance's organisation, while no mail is set, an instance admin's ⋯
+  menu of each other member has Make a password link, which shows the link once above the
+  list, to copy and send, until Done, and the link's page, `/users/password/:token`, sets
+  the account's password), Workspaces
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
@@ -1151,7 +1154,7 @@ needs becomes a component, or an attribute of one, not a copy.
   organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
   field's own (its hint, its errors), never replaced by it.
 - **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
-  asks for them without mail. The server never writes a password back: each input is the
+  asks for them without mail, and a password link's page. The server never writes a password back: each input is the
   browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under
   the input, outside it, and mark it (`aria-invalid`, `aria-describedby`) as they come and
   go.

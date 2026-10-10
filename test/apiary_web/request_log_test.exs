@@ -16,6 +16,8 @@ defmodule ApiaryWeb.RequestLogTest do
 
       assert RequestLog.redact_path("/users/settings/confirm-email/#{@token}") ==
                "/users/settings/confirm-email/:token"
+
+      assert RequestLog.redact_path("/users/password/#{@token}") == "/users/password/:token"
     end
 
     test "a trailing or doubled slash does not get a token through" do
@@ -23,6 +25,7 @@ defmodule ApiaryWeb.RequestLogTest do
             "/invitations/#{@token}/",
             "//invitations//#{@token}",
             "/users/log-in/#{@token}/",
+            "//users/password//#{@token}/",
             "/invitations/#{@token}/continue/"
           ] do
         refute RequestLog.redact_path(path) =~ @token

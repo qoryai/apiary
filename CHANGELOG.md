@@ -50,6 +50,15 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   (`actor: :instance`) needs none and keeps one given.
   `ApiaryWeb.CoreComponents.new_password_fields/1` draws the two fields and never writes a
   password back to the page. Account settings do not change the email address without mail.
+- Password links, without mail. An instance admin makes one for another member of the
+  instance's organisation, never for themselves, from the ⋯ menu of their row on
+  **People**, while no mail is set: a one-time link, shown once to copy, that sets the account's password at
+  `/users/password/:token` and ends every session of the account. It works for 24 hours,
+  and a new one ends the one before; only its hash is stored. Each is an
+  `account.password_link` entry in the organisation's activity. The release command
+  `Apiary.Release.password_link/1` prints one for an hour, mail or not, and
+  `grant_instance_admin/2`'s claim of a new instance prints one in place of the log-in
+  link when no mail is set. `Apiary.Accounts.build_password_link/3` makes them.
 - An account whose password was set before its address was confirmed loses that password
   at its first log-in link, which confirms the address and ends every other session; the
   page says so. A sign-up whose confirmation email cannot be sent keeps the account made,

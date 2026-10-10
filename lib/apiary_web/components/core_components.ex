@@ -476,7 +476,8 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   one_time_link/1 shows a link that works once, the one time it is shown: an invitation's,
   made without mail (`Apiary.Organisations.invite_member/3`,
-  `Apiary.Organisations.renew_invitation/3`), for the person who made it to copy and send
+  `Apiary.Organisations.renew_invitation/3`), or a password link
+  (`Apiary.Accounts.build_password_link/3`), for the person who made it to copy and send
   to `for` themselves. It says so, shows the whole link with an icon Copy whose tooltip
   reads Copied once it is copied (`copy_button/1`, `done_tip`), and says until when the
   link works and that it is shown only now; then the `actions`, Done.
@@ -496,8 +497,9 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :kind, :atom,
     default: :invitation,
-    values: [:invitation],
-    doc: "what the link is: an invitation's, which works for its days"
+    values: [:invitation, :password],
+    doc:
+      "what the link is: an invitation's, which works for its days, or a password link an instance admin made, which works for 24 hours"
 
   attr :class, :any, default: nil
   slot :actions, doc: "what follows the link: Done"
@@ -531,9 +533,17 @@ defmodule ApiaryWeb.CoreComponents do
   defp one_time_sentence(:invitation, email),
     do: gettext("Copy this link and send it to %{email} yourself.", email: email)
 
+  defp one_time_sentence(:password, email),
+    do: gettext("Copy this password link and send it to %{email} yourself.", email: email)
+
   defp one_time_validity(:invitation) do
     days = Apiary.Organisations.Invitation.validity_days()
     ngettext("%{number} day", "%{number} days", days, number: Format.number(days))
+  end
+
+  defp one_time_validity(:password) do
+    hours = div(Apiary.Accounts.UserToken.password_link_validity_in_minutes("password"), 60)
+    ngettext("%{number} hour", "%{number} hours", hours, number: Format.number(hours))
   end
 
   # A date and a time, its year left out in the current one: "17 Oct, 14:05".

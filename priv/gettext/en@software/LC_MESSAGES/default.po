@@ -1010,6 +1010,13 @@ msgid_plural "%{number} hosts match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} hour"
+msgid_plural "%{number} hours"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} invitation pending"
@@ -3436,6 +3443,11 @@ msgstr ""
 msgid "Change version"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change your own password in Account settings."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -3773,6 +3785,7 @@ msgstr ""
 msgid "Confirm my account"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Confirm new password"
@@ -3928,6 +3941,11 @@ msgstr ""
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Copy this link and send it to %{email} yourself."
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy this password link and send it to %{email} yourself."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6810,6 +6828,7 @@ msgstr ""
 #: lib/apiary_web/live/invitation_live/accept.ex
 #: lib/apiary_web/live/user_live/confirmation.ex
 #: lib/apiary_web/live/user_live/login.ex
+#: lib/apiary_web/live/user_live/password.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Log in"
@@ -6955,6 +6974,16 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Made a password link for a person"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Made a password link, by a command run on Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Made a person an owner, by a command run on Qory Apiary"
 msgstr ""
 
@@ -6981,6 +7010,16 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Make a new link for %{email}"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a password link"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Make a password link for %{email}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex
@@ -7246,6 +7285,7 @@ msgstr ""
 msgid "New node pool"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "New password"
@@ -8252,6 +8292,11 @@ msgstr ""
 msgid "Only a rule of the workspace can be locked: a lock is what holds it against the targets."
 msgstr "Only a rule of the workspace can be locked: a lock is what holds it against the repositories."
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only an admin of this Qory Apiary makes password links, while it sends no email."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
@@ -8624,6 +8669,16 @@ msgstr ""
 msgid "Password"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Password link made"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Password links work once and for a short time. Ask an admin of this Qory Apiary for a new one."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Path"
@@ -8923,6 +8978,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -9930,6 +9990,11 @@ msgstr "Set by a repository too"
 msgid "Set in the application's configuration"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Set password"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Set the default to enforce"
@@ -10005,7 +10070,13 @@ msgstr ""
 msgid "Set when the workspace was created. It decides the words its pages use."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Set your password"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Setting"
 msgstr ""
@@ -10482,6 +10553,11 @@ msgstr ""
 msgid "That API is neither built in nor a custom API of this workspace."
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That account cannot log in at the moment, so it gets no password link."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "That command no longer works: it was run, cancelled or expired."
@@ -10526,6 +10602,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "That member is no longer in the organisation."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "That password link has expired"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -11391,6 +11472,7 @@ msgid "They leave %{organisation} and lose access to its workspaces and their ru
 msgstr ""
 
 #: lib/apiary_web/controllers/user_session_controller.ex
+#: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "This account cannot log in at the moment. Ask the admins of this Qory Apiary."
 msgstr ""
@@ -11488,6 +11570,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "This link works once. Setting the password logs this account out everywhere."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -12711,6 +12798,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Your organisations"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/password.ex
+#, elixir-autogen, elixir-format
+msgid "Your password is set. Log in with it."
 msgstr ""
 
 #: lib/apiary_web/controllers/user_session_controller.ex

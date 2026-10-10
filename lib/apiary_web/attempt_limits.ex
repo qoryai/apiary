@@ -8,9 +8,9 @@ defmodule ApiaryWeb.AttemptLimits do
       and 20 per client address, then 1 every 3 seconds.
     * **A log-in link asked for** (`link_request/1`): 3 per address, then 1 every 5
       minutes.
-    * **A page a link opens** (`link_page/1`), an invitation's: 20 per client address,
-      then 1 every 3 seconds, the pages together. Each load of the page counts, and so does
-      its live connection.
+    * **A page a link opens** (`link_page/1`), an invitation's or a password link's: 20 per
+      client address, then 1 every 3 seconds, the pages together. Each load of the page
+      counts, and so does its live connection.
 
   An address is keyed by the SHA-256 hash of a form at least as coarse as the accounts
   table's comparison (lowercased, NFKD, without combining marks), never by the address

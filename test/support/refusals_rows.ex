@@ -108,6 +108,14 @@ defmodule ApiaryWeb.RefusalsRows do
       # opened is made an owner meanwhile, and the event reaches the server's check.
       {:"member.suspend", :owner, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        meanwhile: {:level, :other_member, :owner}},
+      # A password link is an instance admin's, while no mail is set: none of the world's
+      # people is one, and the page offers it to none of them.
+      {:"account.password_link", :owner, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      {:"account.password_link", :admin, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
+      {:"account.password_link", :member, "/:org/settings/people", "password_link",
+       %{"membership_id" => :other_member}},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
