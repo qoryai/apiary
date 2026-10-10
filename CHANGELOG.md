@@ -364,9 +364,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   which CI also pulls the Postgres, nginx and Docker images it runs, and the end to end
   job's SMTP sink, Mailpit, comes from `ghcr.io`; the jobs that still pull from Docker Hub
   log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
-- Pre-release images: `.github/workflows/prerelease.yml`, run by hand only, never on a
-  push or a schedule, builds a branch, tag or commit as a release's image is built and
-  publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as
+- Pre-release images: `.github/workflows/prerelease.yml`, run by hand only, from the
+  Actions tab or by pushing a commit to the branch `prerelease`, never on a push to any
+  other branch or a schedule, builds a branch, tag or commit as a release's image is
+  built and publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as
   `sha-<7>` and, for `next`, as `next`; the AWS template's Test image field, under For
   testing only, runs such an image in place of the Edition's.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it

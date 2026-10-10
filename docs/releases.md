@@ -23,8 +23,10 @@ grep 'version: "X.Y.Z"' mix.exs
 ```
 
 Before a release, `.github/workflows/prerelease.yml` publishes pre-release images. It runs
-only by hand, from the Actions tab, for the branch it is run on or the ref it is given,
-never on a push or a schedule. It builds the image as `release.yml` does and pushes it to
+only by hand: from the Actions tab, for the branch it is run on or the ref it is given,
+once the workflow is on the default branch; or by pushing a commit to the branch
+`prerelease`, which it then builds. It never runs on a push to any other branch or on a
+schedule. It builds the image as `release.yml` does and pushes it to
 `ghcr.io/qoryai/apiary-prerelease` alone, as `sha-` and the commit's first seven characters,
 and as `next` when the ref is `next`. That package stays private: GHCR sets visibility per
 package, so pre-release tags never sit beside a release's. Its old `sha-` tags are deleted
