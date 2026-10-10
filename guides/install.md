@@ -61,16 +61,18 @@ machine, and the URLs in the discovery document are all built from `PUBLIC_URL`,
 from the request's `Host` header. A `PUBLIC_URL` that is not the address machines and
 people use gives them links that do not work.
 
-The audit trail records the address each change came from. Behind a proxy that is the
-proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
-front of the release, separated by commas. For a request from one of them the release
-reads `X-Forwarded-For` from its right-most hop leftwards, passes over the hops the
-trusted proxies added, and takes the first address that is not one of them. What the
-client wrote to the left of that is never read, so a client cannot choose the address
-recorded. Name only the proxies that set the header themselves, and leave it unset when
-nothing is in front of the release: a proxy the release trusts is believed about every
-address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
+The audit trail records the address each change came from, and the limits on signing in
+count attempts by it. Behind a proxy that is the proxy's, unless `TRUSTED_PROXIES` names
+it: addresses or CIDR ranges of the proxies in front of the release, separated by commas.
+For a request from one of them the release reads `X-Forwarded-For` from its right-most
+hop leftwards, passes over the hops the trusted proxies added, and takes the first address
+that is not one of them. What the client wrote to the left of that is never read, so a
+client cannot choose the address recorded. Name only the proxies that set the header
+themselves, and leave it unset when nothing is in front of the release: a proxy the
+release trusts is believed about every address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
 since it would believe any client about its own address. A hop's port is left out.
+Behind a proxy the release does not trust, every client counts as the proxy, and they
+share its limits on signing in.
 
 ```sh
 TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
@@ -458,7 +460,7 @@ whole database schema whatever its features, so nothing is migrated.
 |---|---|---|
 | `AUDIT_RETENTION_DAYS` | `90` | How many days the audit trail keeps an entry: a whole number from `30` to `90`. Not set, or empty, is `90`. |
 | `AUDIT_ADDRESS_RETENTION_DAYS` | `90` | How many days an entry keeps the address and the client (the browser's user agent) it came from, after which they are cleared and the rest of the entry stays: a whole number from `1` to the value of `AUDIT_RETENTION_DAYS`. Not set, or empty, is `90`, or the value of `AUDIT_RETENTION_DAYS` when that is shorter. |
-| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
+| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from, and the address the limits on signing in count by: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
 its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access

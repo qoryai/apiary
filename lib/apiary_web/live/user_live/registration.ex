@@ -127,7 +127,18 @@ defmodule ApiaryWeb.UserLive.Registration do
     {:ok, redirect(socket, to: ApiaryWeb.UserAuth.signed_in_path(socket))}
   end
 
-  def mount(params, _session, socket) do
+  # An invitation's token counts against the limit of the pages a link opens
+  # (`ApiaryWeb.AttemptLimits`) before it is looked up.
+  def mount(%{"invitation" => _} = params, session, socket) do
+    case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
+      {:ok, socket} -> mount_page(params, session, socket)
+      {:limited, socket} -> {:ok, socket}
+    end
+  end
+
+  def mount(params, session, socket), do: mount_page(params, session, socket)
+
+  defp mount_page(params, _session, socket) do
     token = params["invitation"]
     invitation = token && Organisations.get_invitation_by_token(token)
     email = if invitation, do: invitation.email, else: nil

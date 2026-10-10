@@ -95,6 +95,13 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   it: the events endpoint and the run configuration each spend a bucket of their own, 50
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
   new run's configuration. Discovery is not limited.
+- Limits on signing in, on each node: a log-in with a password, 5 per email address and
+  then 1 a minute, and 20 per client address and then 1 every 3 seconds; a log-in link
+  asked for, 3 per email address and then 1 every 5 minutes; an invitation's pages, 20
+  per client address and then 1 every 3 seconds. Every attempt counts before the address
+  is looked up, so past a limit an address with an account and one without get the same
+  answer, "Too many attempts. Try again in a few minutes." The client address is the one
+  the audit trail records, behind the proxies `TRUSTED_PROXIES` names.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run
