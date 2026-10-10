@@ -521,9 +521,9 @@ defmodule Apiary.Runs.Fold do
   defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
     heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
     run = Map.put(acc.run, :last_heartbeat_at, heard_at)
-    # The heartbeats' interval, else the registration's: the rule of the lost-run check.
+    # The registration's interval, else the heartbeats': the rule of the lost-run check.
     interval =
-      Map.get(run, :heartbeat_interval_seconds) || Map.get(run, :registration_interval_seconds)
+      Map.get(run, :registration_interval_seconds) || Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
       do: %{acc | run: revive(run)},

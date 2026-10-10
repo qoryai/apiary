@@ -108,8 +108,8 @@ defmodule Apiary.Runs.Run do
     belongs_to :target, Apiary.Runs.Target
 
     # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered;
-    # its labels, `about` and heartbeat interval as the body sent them (the interval holds
-    # the run until its heartbeats say their own, `Apiary.Runs.Liveness`); the SHA-256 of
+    # its labels, `about` and heartbeat interval as the body sent them (the interval the run
+    # is held to, before its heartbeats', `Apiary.Runs.Liveness`); the SHA-256 of
     # the body's bytes, by which a repeat of the same registration is told from another;
     # and the digest of the run configuration it was given, which a repeat is given again.
     # All nil for a run that did not register. Not folded: a rebuild keeps them.

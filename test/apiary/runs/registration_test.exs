@@ -356,6 +356,34 @@ defmodule Apiary.Runs.RegistrationTest do
       assert register(key, Map.put(body, "labels", %{}), "i_one") == {:error, :run_id_used}
     end
 
+    test "on a full node, a pruned run is gone before the instance limit, which counts nothing",
+         %{key: key} do
+      body = body()
+      assert {:ok, %{run: run}} = register(key, body, "i_one")
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [state: "completed", events_pruned_at: DateTime.utc_now()]
+      )
+
+      fill(key)
+
+      assert register(key, Map.put(body, "labels", %{}), "i_one") == {:error, :gone}
+      assert node_of(key).instance_limit_refused == 0
+    end
+
+    @tag needs: :security
+    test "a used run id is refused as used before a configuration that cannot be read",
+         %{scope: scope, key: key} do
+      # Readable for the target, unreadable for labels that name none.
+      unreadable(scope)
+      body = body()
+      assert {:ok, %{managed: true}} = register(key, body)
+
+      unreadable_labels = Map.put(body, "labels", %{"issue" => "77"})
+      assert register(key, unreadable_labels) == {:error, :run_id_used}
+      assert length(runs()) == 1
+    end
+
     @tag needs: :security
     test "a managed workspace's run is given its stored configuration, by its labels",
          %{scope: scope, key: key} do
@@ -502,6 +530,28 @@ defmodule Apiary.Runs.RegistrationTest do
       Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [state: "pending"])
       assert Liveness.check(at.(120)) == []
       assert [%Run{state: "lost"}] = Liveness.check(at.(301))
+    end
+
+    test "a registered run's interval wins over its heartbeats'", %{key: key} do
+      assert {:ok, %{run: run}} =
+               register(key, body(Ecto.UUID.generate(), %{"interval_seconds" => 100}))
+
+      beat = run.registered_at
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [
+          state: "running",
+          started_at: beat,
+          last_heartbeat_at: beat,
+          heartbeat_interval_seconds: 30
+        ]
+      )
+
+      assert alive?(run, DateTime.add(beat, 120, :second))
+      assert alive?(run, DateTime.add(beat, 299, :second))
+      refute alive?(run, DateTime.add(beat, 301, :second))
+      refute slot_free?(key, DateTime.add(beat, 120, :second))
+      assert slot_free?(key, DateTime.add(beat, 301, :second))
     end
 
     test "a run that did not register keeps 90 seconds", %{key: key} do

@@ -446,6 +446,22 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       assert RunComponents.beat(%{heartbeat_interval_seconds: 0}) == 1
       assert RunComponents.beat(%{heartbeat_interval_seconds: 999_999}) == 3600
+
+      # A run that registered is held to the interval its registration stated, before its
+      # heartbeats'.
+      assert RunComponents.beat(%{heartbeat_interval_seconds: nil}) == 30
+
+      assert RunComponents.beat(%{
+               heartbeat_interval_seconds: nil,
+               registration_interval_seconds: 100
+             }) ==
+               100
+
+      assert RunComponents.beat(%{
+               heartbeat_interval_seconds: 30,
+               registration_interval_seconds: 100
+             }) ==
+               100
     end
 
     test "a running run that has not beaten yet is quiet past one interval since it was first heard" do

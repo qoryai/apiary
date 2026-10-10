@@ -26,14 +26,16 @@ defmodule Apiary.Runs.Registration do
 
   The labels never name anything but the run's target, by the workspace's domain
   (`Apiary.Lingo.Domain`); `about` never selects a policy. `interval_seconds` is kept on
-  the run, which is held to it until its heartbeats say their own (`Apiary.Runs.Liveness`).
+  the run, which is held to it, its heartbeats' interval notwithstanding
+  (`Apiary.Runs.Liveness`).
 
   `register/3` stores the run. A key `Apiary.Access` does not let post (`run.post_events`)
   is `{:error, :not_found}`. Then, when several answers apply, the first of these is given:
 
     1. a repeat: a run of this id that registered with the same bytes under the same access
        key is given the answer it was given (`registration_answer_digest`), nothing stored
-       or admitted again;
+       or admitted again. Once that configuration is no longer stored (its target was
+       deleted), the repeat is given the configuration in force now for its labels;
     2. a run of this id whose events retention has pruned is `{:error, :gone}`;
     3. an instance beyond its node's limit (`Apiary.Nodes.admit/4`) is
        `{:error, :instance_limit}`, the refusal counted on the node;
@@ -46,7 +48,7 @@ defmodule Apiary.Runs.Registration do
        request claimed (`Apiary.Nodes.placement/2`), with its registration, in the
        transaction of the instance limit.
 
-  Nothing is stored on any refusal. Once the run is stored, the key's use is recorded and
+  No run is stored on any refusal. Once the run is stored, the key's use is recorded and
   the run is broadcast as changed. A later event of the run is stored on the same row
   (`Apiary.Runs.Ingest`), and its `run.started` moves it to `running`; the projector never
   writes the registration's fields.
@@ -323,7 +325,8 @@ defmodule Apiary.Runs.Registration do
   defp repeat?(%Run{} = run, access_key, digest),
     do: run.registration_digest == digest and run.access_key_id == access_key.id
 
-  # A repeat is given the answer the registration was given, nothing stored or admitted.
+  # A repeat is given the answer the registration was given, as `answered/2` reads it,
+  # nothing stored or admitted.
   defp repeat(access_key, run) do
     with {:ok, settings} <- answered(access_key, run),
          do: {:ok, Map.merge(settings, %{run: run, repeated: true})}
@@ -380,8 +383,8 @@ defmodule Apiary.Runs.Registration do
   # The refusals left, in the contract's order: the instance limit, then a run id that is
   # used, then the server's own (the configuration could not be read). The configuration is
   # read before the transaction, outside the node's lock; the limit is checked inside it,
-  # first, so a request every one of them refuses is refused by the limit. Nothing is
-  # stored on any refusal.
+  # first, so a request every one of them refuses is refused by the limit. No run is stored
+  # on any refusal.
   defp admit(held, access_key, registration, meta, digest, now) do
     settings = if held, do: :used, else: settings(access_key, registration.labels)
 

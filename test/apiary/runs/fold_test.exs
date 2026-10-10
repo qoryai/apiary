@@ -736,6 +736,31 @@ defmodule Apiary.Runs.FoldTest do
       assert run.lost_at == nil
     end
 
+    test "a beat revives by the registration's interval, before its own" do
+      # The run's beats arrive 100 s after their time; this one 550 s after, so it counts as
+      # heard at 407 s (its time, the offset and the tolerance), 150 s before its arrival:
+      # within three intervals of 100 s, not of 30 or 10.
+      lost =
+        %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
+        |> Map.put(:clock_offset_ms, 100_000)
+
+      late = fn interval -> %{heartbeat(7, 120, interval) | received_at: at(557)} end
+      latest = %{"dev.qory.run.heartbeat" => 4}
+      registered = Map.put(lost, :registration_interval_seconds, 100)
+
+      assert %{state: "lost", last_heartbeat_at: heard} = Fold.fold(lost, [late.(0)], latest).run
+      assert heard == at(407)
+      assert Fold.fold(registered, [late.(0)], latest).run.state == "running"
+      assert Fold.fold(registered, [late.(30)], latest).run.state == "running"
+
+      # The registration's interval wins when it is the shorter too.
+      short = Map.put(lost, :registration_interval_seconds, 10)
+      assert Fold.fold(short, [late.(100)], latest).run.state == "lost"
+
+      # Without a registration, the beat's own interval decides.
+      assert Fold.fold(lost, [late.(100)], latest).run.state == "running"
+    end
+
     test "an earlier beat arriving late does not revive a lost run" do
       lost = %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
       %{run: run} = Fold.fold(lost, [heartbeat(3, 5)], %{"dev.qory.run.heartbeat" => 4})
