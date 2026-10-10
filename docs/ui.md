@@ -270,7 +270,12 @@ replaces the navigation it is in.
   found by their email with Find a person, `?q=`; invitations, suspensions; Invite
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
   page, below), its one field the email address, and a sent invitation goes back to
-  People with a flash; removing, leaving and suspending, each from a member's ⋯ menu, are
+  People with a flash; without mail its button is Create invitation link, and the link
+  shows once in place of the form (`one_time_link/1`: "Copy this link and send it to
+  dana@example.com yourself.", the link with an icon Copy, "Works once, until 17 Oct,
+  14:05 (7 days). It is shown only now.", Done back to People), and a pending
+  invitation's ⋯ menu has Make a new link, whose link its row shows in place of its
+  cells, once, with Done; removing, leaving and suspending, each from a member's ⋯ menu, are
   confirmed in place, the member's row turned into the question, what happens, Yes,
   remove (Yes, leave, Yes, suspend) and Cancel (`inline_confirm/1`), at their paths
   `/settings/people/:id/remove` and `…/suspend`, whose Cancel or Escape goes back to

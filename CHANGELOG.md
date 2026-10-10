@@ -30,6 +30,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - Mail is no longer needed to start. With `SMTP_RELAY` set, Qory Apiary sends its email
   through that relay; without it, it starts all the same, sends no email, and says so in one
   line of its log at each start. `Apiary.Mail` says whether mail is set and where from.
+- Without mail, an invitation is a link to copy. The invite page shows the link once, for
+  the person who made it to send themselves, with when it stops working; their account
+  need not be confirmed, since no email goes out in their name. A pending invitation's
+  **Make a new link** replaces a lost one: the same invitation, seven days again, and the
+  old link stops working at once. A link copied, and a new one made, count against
+  `INVITATIONS_PER_DAY` as an emailed invitation does. `Apiary.Organisations.invite_member/3`
+  and `send_invitation/4` hand the link back, `{:ok, invitation, {:link, url}}`, and
+  `renew_invitation/3` (`invitation.renew`) makes a new one.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces

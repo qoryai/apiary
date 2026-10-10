@@ -85,18 +85,22 @@ defmodule Apiary.OrganisationsFixtures do
     organisation
   end
 
-  @doc "A pending invitation into the scope's workspace, with the URL token the email carried."
+  @doc "A pending invitation into the scope's workspace, with the URL token its link carries."
   def invitation_fixture(%Scope{} = scope, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{"email" => AccountsFixtures.unique_user_email()})
 
     parent = self()
     ref = make_ref()
 
-    {:ok, invitation} =
-      Organisations.invite_member(scope, attrs, fn token ->
-        send(parent, {ref, token})
-        "http://localhost/invitations/#{token}"
-      end)
+    # Emailed with mail, its link handed back without (`Apiary.Mail.configured?/0`).
+    invitation =
+      case Organisations.invite_member(scope, attrs, fn token ->
+             send(parent, {ref, token})
+             "http://localhost/invitations/#{token}"
+           end) do
+        {:ok, invitation} -> invitation
+        {:ok, invitation, {:link, _url}} -> invitation
+      end
 
     token =
       receive do

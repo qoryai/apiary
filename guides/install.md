@@ -32,7 +32,7 @@ page is the reference for an installation that stays.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay.** People sign in with a link sent by email and are invited by email.
   Without `SMTP_RELAY` the release starts all the same, sends no email, and says so in
-  its log.
+  its log; an invitation is then a link that whoever invites copies and sends themselves.
 
 With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
 three services, and `docker compose logs apiary` shows the boot.
@@ -532,7 +532,7 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation sends in 24 hours: a whole number from `1`. Not set, or empty, is `20`. |
+| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation makes in 24 hours, emailed or copied: a whole number from `1`. Not set, or empty, is `20`. |
 | `FIRST_ADMIN_EMAIL` | none | Optional. The first admin's address, used once, at the instance's first start, with `FIRST_ORGANISATION_NAME` ([The instance admins](#the-instance-admins)). Not set, or empty, with `FIRST_ORGANISATION_NAME` empty too, leaves the first sign-up to the web. |
 | `FIRST_ORGANISATION_NAME` | none | Optional. The name of the instance's organisation, created with the first admin at the first start; the same rules as an organisation's name on the sign-up page. |
 
@@ -557,11 +557,18 @@ not name the person who sent it; only someone whose account is confirmed can sen
 organisation's name cannot hold a web address (`://` or `www.`), quotation marks other
 than an apostrophe, straight or curly, control characters or invisible Unicode characters;
 a name like `Acme.io` or `Dana’s` is fine, though a mail client may turn a bare domain into
-a link. Once the organisation has sent `INVITATIONS_PER_DAY` invitations in the last 24
-hours, whoever sends the next is told so, and it sends no more until the oldest of them is
+a link. Once the organisation has made `INVITATIONS_PER_DAY` invitations in the last 24
+hours, whoever makes the next is told so, and it makes no more until the oldest of them is
 a day old; an invitation that was accepted, revoked or deleted since still counts, and one
 whose email could not be delivered does not. Every invitation tried, delivered or not, counts against three times
 `INVITATIONS_PER_DAY`, so the organisation cannot keep sending to addresses that bounce.
+
+Without mail, nothing is sent: the invite page shows the invitation's link once, for
+whoever invites to copy and send themselves, and their account need not be confirmed.
+Only the link's hash is kept, so it cannot be shown again; **Make a new link** on the
+pending invitation makes another, which works for seven days again, and the old one stops
+working at once. A link copied, and each new link made, count against
+`INVITATIONS_PER_DAY` as an emailed invitation does.
 
 A value it does not accept stops the boot:
 
