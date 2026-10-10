@@ -90,6 +90,12 @@ defmodule Apiary.Access do
       "make an owner of the instance's organisation a member of it: a release command, which no role takes",
       asked_of: :organisation
     ),
+    # An account's password, without mail.
+    Action.new(
+      :"account.password_link",
+      "make a one-time link that sets an account's password: an instance admin while the instance sends no mail, or a release command, which no role takes (Apiary.Accounts.build_password_link/3)",
+      asked_of: :organisation
+    ),
     # The audit trail.
     Action.new(:"audit.read", "read the organisation's audit trail, its Activity page",
       roles: @admins,
@@ -421,7 +427,10 @@ defmodule Apiary.Access do
   run the instance: `instance_admin?/1` says whether a scope's person is one, and is the
   one place that says so. A release command makes an account one or ends it
   (`instance_admin.grant`, `instance_admin.revoke`), which no role takes. Inside the
-  organisation they act at their level as anyone there.
+  organisation they act at their level as anyone there. Beyond it, while the instance sends
+  no mail, an instance admin makes a one-time link that sets an account's password
+  (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
+  either: the context function asks `instance_admin?/1`.
 
   ## Features
 

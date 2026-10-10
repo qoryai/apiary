@@ -28,10 +28,18 @@ defmodule ApiaryWeb.MemberLive.Index do
   until it is activated. Owners suspend and activate admins and members, admins members only
   (`Apiary.Organisations.suspend_member/2`, `activate_member/2`); suspending is confirmed
   on the member's row, `/:org/settings/people/:id/suspend`.
+
+  **Password links.** On the People page of the instance's organisation, while no mail is
+  set (`Apiary.Mail.configured?/0`), an instance admin's ⋯ menu of each other member has
+  Make a password link (`Apiary.Accounts.build_password_link/3`): a link that sets that
+  account's password, for a person who forgot theirs. It works once, for 24 hours, and a
+  new one ends the one before. The page shows it once, above the list, to copy and send
+  to the person, until Done (`one_time_link/1`); it keeps the link in its own process
+  alone, never in a path, a flash or a title.
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.{Access, Organisations}
+  alias Apiary.{Access, Accounts, Organisations}
   alias Apiary.Organisations.Membership
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
@@ -138,6 +146,22 @@ defmodule ApiaryWeb.MemberLive.Index do
           </.button>
         </:actions>
 
+        <.one_time_link
+          :if={@password_link}
+          id="password-link"
+          url={@password_link.url}
+          expires_at={@password_link.expires_at}
+          for={@password_link.email}
+          kind={:password}
+          class="mb-2"
+        >
+          <:actions>
+            <.button id="password-link-done" size="sm" phx-click="password_link_done">
+              {gettext("Done")}
+            </.button>
+          </:actions>
+        </.one_time_link>
+
         <.list_search
           id="people-search"
           name="q"
@@ -212,6 +236,15 @@ defmodule ApiaryWeb.MemberLive.Index do
                 <.menu_divider />
               <% end %>
               <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
+              <.menu_item
+                :if={@password_links? and m.user_id != @current_scope.user.id}
+                id={"member-#{m.id}-password-link"}
+                phx-click="password_link"
+                phx-value-membership_id={m.id}
+                aria-label={gettext("Make a password link for %{email}", email: m.user.email)}
+              >
+                {gettext("Make a password link")}
+              </.menu_item>
               <.menu_item
                 :if={is_nil(m.suspended_at) and Access.can?(@current_scope, :"member.suspend", m)}
                 id={"member-#{m.id}-suspend"}
@@ -448,7 +481,8 @@ defmodule ApiaryWeb.MemberLive.Index do
        page_title: title(socket.assigns.current_scope, gettext("People")),
        page: nil,
        form: nil,
-       member: nil
+       member: nil,
+       password_link: nil
      )
      |> load()}
   end
@@ -724,6 +758,68 @@ defmodule ApiaryWeb.MemberLive.Index do
     end
   end
 
+  # A password link for a member's account, made by an instance admin while no mail is set,
+  # shown once above the list: the context asks who may (`Accounts.build_password_link/3`).
+  def handle_event("password_link", %{"membership_id" => id}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Enum.find(socket.assigns.members, &(&1.id == id)) do
+      nil ->
+        {:noreply, socket |> load() |> gone()}
+
+      member ->
+        case Accounts.build_password_link(scope, member.user, &url(~p"/users/password/#{&1}")) do
+          {:ok, url, expires_at} ->
+            {:noreply,
+             assign(socket, :password_link, %{
+               email: member.user.email,
+               url: url,
+               expires_at: expires_at
+             })}
+
+          {:error, :mail_set} ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(
+               :error,
+               gettext(
+                 "Qory Apiary sends email now: they get a log-in link from the log-in page instead."
+               )
+             )
+             |> load()}
+
+          {:error, :not_found} ->
+            {:noreply, socket |> assign(:password_link, nil) |> load() |> gone()}
+
+          {:error, reason} when reason in [:forbidden, :no_instance_organisation] ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(
+               :error,
+               gettext(
+                 "Only an admin of this Qory Apiary makes password links, while it sends no email."
+               )
+             )
+             |> load()}
+
+          # An account the edition refuses gets no link.
+          {:error, _refusal} ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(
+               :error,
+               gettext("That account cannot log in at the moment, so it gets no password link.")
+             )}
+        end
+    end
+  end
+
+  def handle_event("password_link_done", _params, socket),
+    do: {:noreply, assign(socket, :password_link, nil)}
+
   def handle_event("revoke_invitation", %{"id" => id}, socket) do
     case Organisations.revoke_invitation(socket.assigns.current_scope, id) do
       {:ok, invitation} ->
@@ -793,10 +889,66 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     socket
     |> assign(members: members, invitations: invitations)
+    |> assign(:password_links?, password_links?(scope))
     |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
   end
+
+  # Whether the page offers password links: on the instance's organisation, to an instance
+  # admin, while no mail is set. The context asks again when one is made.
+  defp password_links?(scope) do
+    scope.organisation.id == Apiary.Edition.instance_organisation_id() and
+      not Apiary.Mail.configured?() and Access.instance_admin?(scope)
+  end
+
+  # PIECE-5-SEAM. Piece 5 (fg52/mail-p5) adds `ApiaryWeb.CoreComponents.one_time_link/1`,
+  # with `kind: :invitation` only; it is not on this branch's base. This is the same
+  # component, for a password link. At the merge this function and the two below go, and
+  # CoreComponents' gains `kind: :password`, with this sentence and this validity.
+  attr :id, :string, required: true
+  attr :url, :string, required: true
+  attr :expires_at, DateTime, required: true
+  attr :for, :string, required: true
+  attr :kind, :atom, default: :password, values: [:password]
+  attr :class, :any, default: nil
+  slot :actions
+
+  defp one_time_link(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={["grid gap-3 outline-none", @class]}
+      role="group"
+      aria-labelledby={"#{@id}-sentence"}
+      tabindex="-1"
+      phx-mounted={JS.focus()}
+    >
+      <p id={"#{@id}-sentence"} class="text-[13px]/5">{one_time_sentence(@kind, @for)}</p>
+      <div class="flex min-w-0 items-start gap-2 rounded-box border border-line bg-base-200 py-1.5 pr-1.5 pl-3">
+        <code id={"#{@id}-url"} class="q-mono min-w-0 flex-1 py-0.5 text-[12.5px]/5 break-all">{@url}</code>
+        <.copy_button id={"#{@id}-copy"} text={@url} icon_only />
+      </div>
+      <p id={"#{@id}-works"} class="text-[12.5px]/[18px] text-muted">
+        {gettext("Works once, until %{time} (%{validity}). It is shown only now.",
+          time: until(@expires_at),
+          validity: one_time_validity(@kind)
+        )}
+      </p>
+      <div :if={@actions != []} class="flex items-center gap-2">{render_slot(@actions)}</div>
+    </div>
+    """
+  end
+
+  defp one_time_sentence(:password, email),
+    do: gettext("Copy this password link and send it to %{email} yourself.", email: email)
+
+  defp one_time_validity(:password),
+    do: ngettext("%{number} hour", "%{number} hours", 24, number: Format.number(24))
+
+  # A date and a time, its year left out in the current one: "17 Oct, 14:05".
+  defp until(at),
+    do: Format.datetime(at, year: Format.local(at).year != Format.local(DateTime.utc_now()).year)
 
   # The current user's own level may have changed; reload the scope the path names, so
   # the page and the layout follow, and the members with it. A membership that is gone

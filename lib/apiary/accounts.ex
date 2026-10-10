@@ -409,6 +409,196 @@ defmodule Apiary.Accounts do
     end
   end
 
+  ## Password links
+
+  @doc """
+  build_password_link/3 makes a one-time link that sets the password of `user`'s account,
+  for a person who forgot theirs while the instance sends no mail, or for a release
+  command: `url_fun` turns the token into the link (`/users/password/:token`,
+  `set_password_by_link/2`). `{:ok, url, expires_at}`.
+
+  **Who makes one.** `by` is the scope of whoever asks:
+
+  - an instance admin (`Apiary.Access.instance_admin?/1`), while no mail is set
+    (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`.
+    `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
+    when the person asks for a log-in link instead;
+  - the instance (`Apiary.Accounts.Scope.for_instance/2`), a release command run on the
+    instance's machine, which controls it already, mail or not: a link that works for an
+    hour, context `"password:release"`.
+
+  **The token** is 32 random bytes; only its SHA-256 hash is stored, in `users_tokens`,
+  with the account's address (`Apiary.Accounts.UserToken`). It works once. The account
+  has one password link at a time: a new one ends the one before. Nothing else changes
+  until the link is used: the password the account has, if any, and its sessions stay.
+
+  **The trail.** Each link is an `account.password_link` entry in the instance's
+  organisation's trail (`c:Apiary.Edition.instance_organisation_id/0`), by the person or
+  the instance, from the scope's origin: about the account's membership there when it has
+  one, else about the organisation, naming the account by user id in `details`, never the
+  link. `{:error, :no_instance_organisation}` before the instance's first sign-up.
+
+  `{:error, :not_found}` for an account deleted, and the edition's refusal for one it
+  refuses (`sign_in_refusal/1`), which gets no link.
+  """
+  @spec build_password_link(Scope.t(), %User{}, (String.t() -> String.t())) ::
+          {:ok, String.t(), DateTime.t()}
+          | {:error, :forbidden | :mail_set | :not_found | :no_instance_organisation | atom}
+  def build_password_link(%Scope{} = by, %User{id: user_id}, url_fun)
+      when is_function(url_fun, 1) do
+    context = if by.instance and is_nil(by.user), do: "password:release", else: "password"
+
+    Repo.transact(fn ->
+      with :ok <- may_make_password_link(by),
+           {:ok, organisation} <- instance_organisation(),
+           {:ok, user} <- lock_account(user_id),
+           :ok <- not_refused(user) do
+        Repo.delete_all(
+          from t in UserToken,
+            where: t.user_id == ^user.id and t.context in ^UserToken.password_link_contexts()
+        )
+
+        {encoded_token, user_token} = UserToken.build_password_link_token(user, context)
+        user_token = Repo.insert!(user_token)
+
+        expires_at =
+          DateTime.add(
+            user_token.inserted_at,
+            UserToken.password_link_validity_in_minutes(context) * 60
+          )
+
+        with {:ok, _entry} <-
+               Apiary.Audit.record(
+                 Repo,
+                 audit_scope(by, organisation),
+                 :"account.password_link",
+                 password_link_subject(organisation, user),
+                 %{details: %{user_id: user.id, expires_at: expires_at}}
+               ),
+             do: {:ok, {url_fun.(encoded_token), expires_at}}
+      end
+    end)
+    |> case do
+      {:ok, {url, expires_at}} -> {:ok, url, expires_at}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  # The instance, in a release command, may make one, mail or not; a person only as an
+  # instance admin, and only while no mail is set.
+  defp may_make_password_link(%Scope{instance: true, user: nil, access_key: nil}), do: :ok
+
+  defp may_make_password_link(%Scope{user: %User{}} = scope) do
+    cond do
+      not Apiary.Access.instance_admin?(scope) -> {:error, :forbidden}
+      Apiary.Mail.configured?() -> {:error, :mail_set}
+      true -> :ok
+    end
+  end
+
+  defp may_make_password_link(_scope), do: {:error, :forbidden}
+
+  defp instance_organisation do
+    with id when is_binary(id) <- Apiary.Edition.instance_organisation_id(),
+         %Apiary.Organisations.Organisation{} = organisation <-
+           Repo.get(Apiary.Organisations.Organisation, id) do
+      {:ok, organisation}
+    else
+      _none -> {:error, :no_instance_organisation}
+    end
+  end
+
+  # The account, while it is not deleted, held for the transaction: its deletion waits, or
+  # is seen.
+  defp lock_account(user_id) do
+    case Repo.one(
+           from u in User,
+             where: u.id == ^user_id and is_nil(u.deleted_at),
+             lock: "FOR NO KEY UPDATE"
+         ) do
+      %User{} = user -> {:ok, user}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp not_refused(user) do
+    case sign_in_refusal(user) do
+      nil -> :ok
+      reason -> {:error, reason}
+    end
+  end
+
+  defp audit_scope(%Scope{instance: true, user: nil} = by, organisation),
+    do: organisation |> Scope.for_instance() |> Scope.put_origin(by.origin)
+
+  defp audit_scope(by, organisation), do: Scope.in_organisation(by, organisation)
+
+  defp password_link_subject(organisation, user) do
+    Repo.get_by(Apiary.Organisations.Membership,
+      organisation_id: organisation.id,
+      user_id: user.id
+    ) || organisation
+  end
+
+  @doc """
+  get_user_by_password_link/1 is the account a password link sets the password of, while
+  the link works (`build_password_link/3`); nil for a token that is none, used, ended by a
+  newer one or expired, and for an account deleted or whose address changed since.
+  """
+  @spec get_user_by_password_link(String.t()) :: %User{} | nil
+  def get_user_by_password_link(token) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_password_link_token_query(token),
+         {user, _token} <- Repo.one(query) do
+      user
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  set_password_by_link/2 sets the password of the account a password link is for
+  (`build_password_link/3`), from `attrs`' `password` and `password_confirmation`, checked
+  as `User.password_changeset/3` checks them, and uses the link up. As a change of
+  password in Account settings does, it ends every token of the account, its sessions
+  included, which the caller disconnects: `{:ok, {user, tokens}}`.
+
+  A password that is refused is `{:error, changeset}`, and the link still works. A link
+  that does not work is `{:error, :invalid}`; of two uses at once, one sets the password
+  and the other gets that. Nothing is done for an account the edition refuses
+  (`sign_in_refusal/1`), `{:error, reason}`.
+  """
+  @spec set_password_by_link(String.t(), map) ::
+          {:ok, {%User{}, [%UserToken{}]}} | {:error, :invalid | atom | Ecto.Changeset.t()}
+  def set_password_by_link(token, attrs) when is_binary(token) do
+    with {:ok, query} <- UserToken.verify_password_link_token_query(token),
+         {user, user_token} <- Repo.one(query),
+         :ok <- not_refused(user) do
+      # Hashed before the transaction, which holds the account's row meanwhile.
+      user
+      |> User.password_changeset(attrs)
+      |> set_password(user_token)
+    else
+      {:error, reason} when is_atom(reason) -> {:error, reason}
+      _invalid -> {:error, :invalid}
+    end
+  end
+
+  defp set_password(%Ecto.Changeset{valid?: false} = changeset, _user_token),
+    do: {:error, %{changeset | action: :update}}
+
+  defp set_password(changeset, user_token) do
+    Repo.transact(fn ->
+      # The link is used up first: a use at the same moment waits, then finds it gone.
+      with {1, _} <- Repo.delete_all(from t in UserToken, where: t.id == ^user_token.id),
+           {:ok, user} <- lock_account(user_token.user_id),
+           true <- user.email == user_token.sent_to do
+        update_user_and_delete_all_tokens(%{changeset | data: user})
+      else
+        _gone -> {:error, :invalid}
+      end
+    end)
+  end
+
   @doc ~S"""
   Delivers the update email instructions to the given user.
 

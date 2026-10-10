@@ -51,7 +51,10 @@ defmodule Apiary.Audit do
   instance with the reason `expired`. A release command run on the instance's machine that
   makes an account an owner of the instance's organisation, or an owner of it a member, is
   an `instance_admin.grant` or an `instance_admin.revoke` in that organisation's trail, by
-  the instance. A new organisation's trail begins with the entry of its creation,
+  the instance. A password link, which an instance admin or a release command makes for an
+  account (`Apiary.Accounts.build_password_link/3`), is an `account.password_link` in that
+  organisation's trail too, by the person or the instance, naming the account by user id
+  and never holding the link. A new organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
   the same way, and what the edition changes in the core's transactions is an entry of

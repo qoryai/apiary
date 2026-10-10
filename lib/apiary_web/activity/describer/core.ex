@@ -42,6 +42,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
   def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
+  def label(:"account.password_link"), do: gettext("Password link made")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -137,6 +138,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"instance_admin.revoke", _details, _actor),
     do: gettext("Made an owner a member, by a command run on Qory Apiary")
+
+  defp said(:"account.password_link", _details, :instance),
+    do: gettext("Made a password link, by a command run on Qory Apiary")
+
+  defp said(:"account.password_link", _details, _actor),
+    do: gettext("Made a password link for a person")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")

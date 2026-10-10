@@ -48,6 +48,7 @@ defmodule Apiary.AuditChanges do
       :"member.activate",
       :"instance_admin.grant",
       :"instance_admin.revoke",
+      :"account.password_link",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -152,6 +153,29 @@ defmodule Apiary.AuditChanges do
     {:ok, %{membership: membership}} = Organisations.grant_instance_admin(user)
     instance = Scope.for_instance(instance_organisation())
     %{scope: instance, actor: :instance, subject: {"membership", membership.id}, before: before}
+  end
+
+  # An instance admin's, while no mail is set, in the trail of the instance's organisation:
+  # for an account with no membership there, about the organisation. The link is the
+  # secret the entry must not keep.
+  def make(:"account.password_link", _ctx) do
+    admin = password_link_admin()
+    user = Apiary.AccountsFixtures.user_fixture()
+    Apiary.Mail.put_test_source(:none)
+    before = entries()
+
+    {:ok, url, _expires_at} =
+      Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")
+
+    [_, token] = Regex.run(~r{/users/password/(.+)$}, url)
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: token
+    }
   end
 
   # What an edition records beside the revocation, in actions of its own, is not the one
@@ -379,6 +403,14 @@ defmodule Apiary.AuditChanges do
     {before, Organisations.grant_instance_admin(user)}
   end
 
+  # An instance admin, once mail is set: the person asks for a log-in link instead.
+  def refuse(:"account.password_link", _ctx) do
+    admin = password_link_admin()
+    user = Apiary.AccountsFixtures.user_fixture()
+    before = entries()
+    {before, Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")}
+  end
+
   # The instance's last admin, the suite's first user, stays one.
   def refuse(:"instance_admin.revoke", _ctx) do
     [admin] =
@@ -569,6 +601,13 @@ defmodule Apiary.AuditChanges do
   # The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`).
   defp instance_organisation,
     do: Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
+
+  # A fresh instance admin, by a release command: their scope.
+  defp password_link_admin do
+    %{user: admin} = sign_up_fixture()
+    {:ok, _} = Organisations.grant_instance_admin(admin)
+    Scope.for_user(admin)
+  end
 
   # The entries of `entries` of the edition's own actions (`Apiary.Edition.actions/0`).
   defp of_the_edition(entries) do
