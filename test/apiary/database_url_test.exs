@@ -13,36 +13,30 @@ defmodule Apiary.DatabaseUrlTest do
 
   defp options(url, password \\ nil), do: DatabaseUrl.repo_options(url, password)
 
-  # A :logger handler that keeps the events of one process, the test's, and sends them to
-  # it. capture_log/1 takes every process's log, and this module runs beside others, so a
-  # test that asserts nothing is logged reads its own process's events only.
+  # A formatter for capture_log/2 that writes the messages of one process, the test's, and
+  # nothing of any other. capture_log/2 takes every process's log, and this module runs
+  # beside others, so a test that asserts nothing is logged reads its own process's
+  # messages only.
+  #
+  # Not a :logger handler of its own: OTP's logger_server writes back the list of handlers
+  # it read when a removal arrived, so removing one while another test's capture_log/2
+  # removes ExUnit's puts ExUnit's back in the list, and every capture after that, in every
+  # test, sees each line twice.
   defmodule OwnLog do
     @moduledoc false
-    def log(%{meta: %{pid: pid}} = event, %{config: %{pid: pid}}),
-      do: send(pid, {__MODULE__, event})
+    def format(%{meta: %{pid: pid}} = event, {pid, {formatter, config}}),
+      do: formatter.format(event, config)
 
-    def log(_event, _config), do: :ok
+    def format(_event, _config), do: []
   end
 
   # The messages this process logs while `fun` runs.
   defp own_log(fun) do
-    :ok = :logger.add_handler(__MODULE__, OwnLog, %{config: %{pid: self()}})
+    formatter = Logger.Formatter.new(format: "$message\n", colors: [enabled: false])
 
-    try do
-      fun.()
-    after
-      :logger.remove_handler(__MODULE__)
-    end
-
-    collect_own_log([])
-  end
-
-  defp collect_own_log(messages) do
-    receive do
-      {OwnLog, %{msg: msg}} -> collect_own_log([msg | messages])
-    after
-      0 -> Enum.reverse(messages)
-    end
+    [formatter: {OwnLog, {self(), formatter}}]
+    |> capture_log(fun)
+    |> String.split("\n", trim: true)
   end
 
   # What Ecto makes of the options, as Ecto.Repo.Supervisor merges them.

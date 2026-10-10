@@ -132,8 +132,8 @@ defmodule Apiary.SetupTest do
       assert code =~ ~r/\A[A-Za-z0-9_-]{43}\z/
       assert byte_size(Base.url_decode64!(code, padding: false)) == 32
 
-      # The same line, once, whatever the capture saw it twice.
-      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code)) |> Enum.uniq()
+      # One line, and one only, carries the code.
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code))
       assert line =~ "[info]"
 
       assert line |> String.split("[info] ", parts: 2) |> List.last() ==
@@ -418,8 +418,8 @@ defmodule Apiary.SetupTest do
       Logger.configure(level: level)
       assert_received {:code, code}
 
-      # The same line, once, whatever the capture saw it twice.
-      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code)) |> Enum.uniq()
+      # One line, and one only, carries the code.
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code))
       assert line =~ Setup.log_line(code)
     end
   end
