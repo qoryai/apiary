@@ -829,9 +829,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
         switch={@version != nil}
       />
       <.version_view :if={@action == :version && @v} v={@v} base={@base} now={@now} />
-      <div :if={@action == :document && @v} class="q-filters">
-        <.history_switch base={@base} current={:document} />
-      </div>
       <Show.version_head
         :if={@action == :document && @v}
         v={@v}

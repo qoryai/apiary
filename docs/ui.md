@@ -577,11 +577,13 @@ workspace, by its name, or Its own; Required by the level), one sentence of what
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
 The Document view (`…/policy/document`, a target's `…/-/policy/document`) is the document
-in force under the card and the tabs, a view of History, not a tab of its own: while
-there is a document, History's top has two segments (`PolicyLive.Views.history_switch/1`),
-Changes (`…/history`, the list of changes) and Document; a switch gives the focus to the
-segment now pressed. History is the current tab on both and on a version's page; the
-export page has no tabs. The view shows its version's number, In
+in force under the card and the tabs, a view of History, not a tab of its own. While
+there is a document, History's list of changes (`…/history`) has two segments at its top
+(`PolicyLive.Views.history_switch/1`), Changes, pressed, and Document, which opens the
+Document view and gives the focus to its version's heading. The Document view has no such
+switch, only its version's own views; History is its current tab, and leads back to the
+list. History is the current tab on a version's page too; the export page has no tabs.
+The view shows its version's number, In
 force and the version's views, which stay on the view. The document's bar is the view's
 one place to take it away,
 the code-block header's pattern: two small icon buttons on its right, Copy (the document

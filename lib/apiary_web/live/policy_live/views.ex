@@ -37,31 +37,18 @@ defmodule ApiaryWeb.PolicyLive.Views do
   ## History
 
   @doc """
-  The two views of a policy's History, at its top: its changes (`…/history`) and the
-  document in force (`…/document`), each a patch. Shown only while there is a document.
-  The two are in different places on the page, so after a switch the page sends the
-  focus to the segment now pressed (`Common.heading_focus/3`).
+  The two views of a policy's History, at the top of its list of changes: Changes, the
+  list itself, pressed, and Document, which patches to the document in force
+  (`…/document`). Shown only while there is a document, and only on the list: the
+  document has its own views, and the History tab leads back.
   """
   attr :base, :string, required: true
-  attr :current, :atom, required: true, values: [:changes, :document]
 
   def history_switch(assigns) do
     ~H"""
     <.segments id="history-view" label={gettext("History")}>
-      <:segment
-        id="history-view-changes"
-        patch={"#{@base}/history"}
-        pressed={@current == :changes}
-      >
-        {gettext("Changes")}
-      </:segment>
-      <:segment
-        id="history-view-document"
-        patch={"#{@base}/document"}
-        pressed={@current == :document}
-      >
-        {gettext("Document")}
-      </:segment>
+      <:segment patch={"#{@base}/history"} pressed>{gettext("Changes")}</:segment>
+      <:segment patch={"#{@base}/document"}>{gettext("Document")}</:segment>
     </.segments>
     """
   end
@@ -82,7 +69,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
     ~H"""
     <div id="policy-history" class="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div class="q-filters">
-        <.history_switch :if={@switch} base={@base} current={:changes} />
+        <.history_switch :if={@switch} base={@base} />
         <span class="q-filters-grow"></span>
         <span id="history-summary" class="q-summary">
           <span>

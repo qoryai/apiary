@@ -330,8 +330,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   workspace's read there and changed on the workspace's page, which their menu leads to;
   what is not in force struck through, saying why. Its mode is one line: Follow the
   workspace, Observe or Enforce, and whose the mode is.
-- The Policy pages show the document as a view of History, not a tab of its own: Changes
-  and Document at the top of History switch between the list of changes and the document.
+- The Policy pages show the document as a view of History, not a tab of its own: Document,
+  beside Changes at the top of History's list of changes, opens it, and the History tab
+  leads back to the list.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's own bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.

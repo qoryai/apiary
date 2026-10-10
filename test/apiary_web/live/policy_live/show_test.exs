@@ -211,7 +211,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       end
     end
 
-    test "Changes and Document at History's top, the view shown pressed, each a patch", %{
+    test "Changes and Document on History's list; the Document view has no switch", %{
       conn: conn,
       scope: scope
     } do
@@ -226,20 +226,22 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#history-view button[aria-pressed=false]", "Document")
       assert has_element?(view, "#history-list")
 
-      # The switch moves between places on the page: the focus goes to the segment now
-      # pressed, never to the page's body.
+      # Document opens the Document view: the focus goes to its version's heading, never
+      # to the page's body, and the view has only its version's own views.
       view |> element("#history-view button", "Document") |> render_click()
       assert_patch(view, document)
-      assert has_element?(view, "#history-view button[aria-pressed=false]", "Changes")
-      assert has_element?(view, "#history-view-document[aria-pressed=true]", "Document")
-      assert_push_event(view, "policy:focus", %{id: "history-view-document"})
-      assert has_element?(view, "h2#policy-version-h", "Version 1")
+      assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
+      assert has_element?(view, "h2#policy-version-h[tabindex='-1']", "Version 1")
+      refute has_element?(view, "#history-view")
+      assert has_element?(view, "#version-view")
       refute has_element?(view, "#policy-history")
 
-      view |> element("#history-view button", "Changes") |> render_click()
+      # The History tab, current there, leads back to the list, a tab's patch like any other.
+      assert has_element?(view, "#policy-tabs-history[aria-current=page]")
+      view |> element("#policy-tabs-history") |> render_click()
       assert_patch(view, history)
-      assert has_element?(view, "#history-view-changes[aria-pressed=true]", "Changes")
-      assert_push_event(view, "policy:focus", %{id: "history-view-changes"})
+      refute_push_event(view, "policy:focus", %{})
+      assert has_element?(view, "#history-view button[aria-pressed=true]", "Changes")
       assert has_element?(view, "#history-list")
 
       # A version and its export keep their own layout.
@@ -1029,13 +1031,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view |> element("#history-view button", "Document") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/document"))
 
-      # The page's own header, the card, the tabs and History's views, then the version in force.
-      [header, card, tabs, views, version] =
-        order(view, ~w(policy-header policy-mode policy-tabs history-view policy-version-h))
+      # The page's own header, the card and the tabs, then the version in force.
+      [header, card, tabs, version] =
+        order(view, ~w(policy-header policy-mode policy-tabs policy-version-h))
 
-      assert header < card and card < tabs and tabs < views and views < version
+      assert header < card and card < tabs and tabs < version
       assert has_element?(view, "#policy-tabs-history[aria-current=page]")
-      assert has_element?(view, "#history-view button[aria-pressed=true]", "Document")
+      refute has_element?(view, "#history-view")
       assert has_element?(view, "h1", "Policy")
       assert has_element?(view, "h2#policy-version-h", "Version 1")
       assert text(view, "#policy-page") =~ "In force"
