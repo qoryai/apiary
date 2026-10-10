@@ -30,7 +30,10 @@ defmodule Apiary.Accounts do
 
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.one(from u in User, where: u.email == ^email and is_nil(u.deleted_at))
+    # Text Postgres refuses, a NUL or bytes that are not UTF-8, is no account's address.
+    if String.valid?(email) and not String.contains?(email, <<0>>) do
+      Repo.one(from u in User, where: u.email == ^email and is_nil(u.deleted_at))
+    end
   end
 
   @doc """

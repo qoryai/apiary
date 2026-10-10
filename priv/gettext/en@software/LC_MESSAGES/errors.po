@@ -340,6 +340,7 @@ msgstr ""
 msgid "must have the @ sign and no spaces"
 msgstr ""
 
+#: lib/apiary/accounts/user.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain a NUL byte"
@@ -351,6 +352,7 @@ msgid "must not contain a web address; a name like acme.io is fine"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
+#: lib/apiary/accounts/user.ex
 #: lib/apiary/connections.ex
 #: lib/apiary/nodes/node.ex
 #: lib/apiary/organisations/organisation.ex

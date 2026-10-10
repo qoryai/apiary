@@ -35,6 +35,17 @@ defmodule Apiary.AccountsTest do
     end
   end
 
+  describe "get_user_by_email/1 and get_user_by_email_and_password/2 for text Postgres refuses" do
+    test "find nobody for an address holding a NUL, without asking the database" do
+      user = user_fixture() |> set_password()
+
+      refute Accounts.get_user_by_email(user.email <> <<0>>)
+      refute Accounts.get_user_by_email(<<0>> <> user.email)
+      refute Accounts.get_user_by_email(<<0xFF>> <> user.email)
+      refute Accounts.get_user_by_email_and_password(user.email <> <<0>>, valid_user_password())
+    end
+  end
+
   describe "get_user_by_email_and_password/2 for an unconfirmed account" do
     test "returns it: an account made without mail signs in with its password" do
       %{id: id} = user = unconfirmed_user_fixture() |> set_password()
@@ -85,6 +96,13 @@ defmodule Apiary.AccountsTest do
       # Now try with the uppercased email too, to check that email case is ignored.
       {:error, changeset} = Accounts.register_user(%{email: String.upcase(email)})
       assert "has already been taken" in errors_on(changeset).email
+    end
+
+    test "refuses an address holding a NUL or another control character" do
+      for email <- ["a\0b@example.com", "ab@example.com\0", "a\x7Fb@example.com"] do
+        {:error, changeset} = Accounts.register_user(%{email: email})
+        assert "must not contain control characters" in errors_on(changeset).email
+      end
     end
 
     test "registers users without password" do
@@ -265,6 +283,13 @@ defmodule Apiary.AccountsTest do
         })
 
       refute Repo.get_by(UserToken, user_id: user.id)
+    end
+
+    test "refuses a NUL in the password, where bcrypt would stop reading", %{user: user} do
+      {:error, changeset} =
+        Accounts.update_user_password(user, %{password: "first part\0second part"})
+
+      assert "must not contain a NUL byte" in errors_on(changeset).password
     end
   end
 
