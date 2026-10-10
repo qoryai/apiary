@@ -593,7 +593,7 @@ like any other. Until the link is used nobody signs up: the sign-up and log-in p
 
 After it, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
-from an owner or an admin of the organisation, sent from its **Members** page. Someone with
+from an owner or an admin of the organisation, sent from its **People** page. Someone with
 an invitation signs up without being asked for an organisation's name, and joins the
 organisation.
 
@@ -711,7 +711,7 @@ refuses the last instance admin: grant another first. Each is an entry in the
 organisation's activity, by Qory Apiary rather than by a person.
 
 **Suspending** a member pauses and removes nothing, and **Activate** undoes it; each is an
-entry in the activity. On the organisation's **Members** page an owner suspends an admin or
+entry in the activity. On the organisation's **People** page an owner suspends an admin or
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
 open pages follow. **The access keys they added keep working**: an access key belongs to

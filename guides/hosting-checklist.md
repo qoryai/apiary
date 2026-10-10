@@ -75,11 +75,11 @@ being one. Every variable named here is described in [Install and configure](ins
   are rewritten before they are logged. The set-up link is written whole, by each start
   until the instance is set up: that line is how you get it.
 - **Sign-up.** Once the instance is set up, nobody signs up without an invitation: people
-  join by invitation from an owner or an admin on the organisation's **Members** page, as
+  join by invitation from an owner or an admin on the organisation's **People** page, as
   members. `INVITATIONS_PER_DAY` bounds how many invitations the organisation makes a day.
   [Install and configure](install.md#sign-up-and-invitations) has the details.
 - **Stopping someone.** An owner suspends an admin or a member on the organisation's
-  **Members** page, and an admin a member, and activates them again; nothing is removed.
+  **People** page, and an admin a member, and activates them again; nothing is removed.
   A suspended person acts in the organisation no more, but the access keys they added
   keep working, since they belong to their nodes: revoke those too if they should stop.
   [Install and configure](install.md#the-instance-admins) says more.
