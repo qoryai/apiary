@@ -277,19 +277,18 @@ defmodule ApiaryWeb.Layouts do
   @doc """
   instance_sections/1 is the Instance level's sections the scope's person may open, as
   `ApiaryWeb.Nav.Entry` values with `place: :instance`: the edition's
-  (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Mail, with the
-  `instance_mail` feature, and Configuration, for an instance admin
-  (`Apiary.Access.instance_admin?/1`). It reads the database, so it is read
-  once with the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`, as `:instance`),
-  not on every render: the Qory Apiary menu's Instance settings leads to the first, and
-  with two or more the Instance's pages list them as the second column.
+  (`c:ApiaryWeb.Edition.instance_sections/1`), then the core's Mail and Configuration,
+  for an instance admin (`Apiary.Access.instance_admin?/1`). It reads the database, so
+  it is read once with the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`, as
+  `:instance`), not on every render: the Qory Apiary menu's Instance settings leads to
+  the first, and with two or more the Instance's pages list them as the second column.
   """
   @spec instance_sections(Apiary.Accounts.Scope.t() | nil) :: [Entry.t()]
   def instance_sections(%{user: %{}} = scope) do
     admin? = Access.instance_admin?(scope)
 
     mail =
-      admin? and Apiary.Features.on?(:instance_mail) and
+      admin? &&
         %Entry{
           section: :instance,
           key: :mail,

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.InstanceMailController do
   @moduledoc """
   The test link a save of Instance settings › Mail sends to the instance admin who saved
-  (`Apiary.Mail.save_settings/3`), with the `instance_mail` feature. Not a page: a redirect.
+  (`Apiary.Mail.save_settings/3`). Not a page: a redirect.
 
       GET /instance/mail/confirm/:token
 
@@ -17,7 +17,6 @@ defmodule ApiaryWeb.InstanceMailController do
   without it.
   """
   use ApiaryWeb, :controller
-  use ApiaryWeb.Features, :instance_mail
 
   alias Apiary.{Access, Mail}
 

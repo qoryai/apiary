@@ -11144,11 +11144,6 @@ msgstr ""
 msgid "The mail server's host name, such as smtp.example.com."
 msgstr ""
 
-#: lib/apiary_web/live/instance_live/configuration.ex
-#, elixir-autogen, elixir-format
-msgid "The mail server, set in Instance settings › Mail."
-msgstr ""
-
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The member is now a member."

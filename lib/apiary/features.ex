@@ -7,7 +7,6 @@ defmodule Apiary.Features do
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
-  | `instance_mail` | Instance settings › Mail, the mail settings an instance admin saves (`Apiary.Mail`); opt-in | nothing |
 
   An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, and whether it is opt-in. The list is
@@ -19,6 +18,8 @@ defmodule Apiary.Features do
   separated by commas (`observability,security`). Unset or blank is `all`. A list keeps
   off every feature it does not name, one an upgrade adds included; `all` and `all-…`
   take that one on with the upgrade. A feature of another edition is unknown here.
+  `instance_mail`, a name the list once took, is accepted and ignored: Instance settings ›
+  Mail, which it switched on, is on every instance.
   `config/runtime.exs` keeps the value as it is (a release reads that file before the
   application's modules can be relied on), and `boot!/0` checks it with `parse/1` when
   the application starts: an unknown name or a feature without the features it needs
@@ -61,9 +62,12 @@ defmodule Apiary.Features do
   @core [
     observability: [needs: [], built: true],
     security: [needs: [:observability], built: true],
-    secrets: [needs: [:security], built: true, default: false],
-    instance_mail: [needs: [], built: true, default: false]
+    secrets: [needs: [:security], built: true, default: false]
   ]
+
+  # Names `QORY_FEATURES` once took, of a feature since built into every instance: a value
+  # that still names one is read as if it did not, so the instance boots as before.
+  @retired ["instance_mail"]
 
   # What `registry/1` says an entry is, when it refuses one.
   @entry_shape "a feature is {name, needs: [feature], built: boolean}, " <>
@@ -184,8 +188,9 @@ defmodule Apiary.Features do
     * `observability,security`: those features and no other; an opt-in feature is on only
       where a list names it.
 
-  `all` may not be one of the features of a list. Every feature but `observability` and
-  `instance_mail` needs `observability`, whichever form names them.
+  `all` may not be one of the features of a list. Every feature but `observability` needs
+  `observability`, whichever form names them. `instance_mail`, a name the list once took,
+  is accepted in either list and ignored.
   """
   @spec parse(String.t() | nil) :: {:ok, [feature]} | {:error, String.t()}
   def parse(nil), do: {:ok, all() -- opt_in()}
@@ -234,6 +239,7 @@ defmodule Apiary.Features do
 
   defp known(names) do
     known = Map.new(all(), &{Atom.to_string(&1), &1})
+    names = Enum.reject(names, &(&1 in @retired and not Map.has_key?(known, &1)))
 
     case Enum.reject(names, &Map.has_key?(known, &1)) do
       [] ->

@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.Mail do
   @moduledoc """
   Instance settings › Mail, `/instance/mail`: the mail server Qory Apiary sends its email
-  through (`Apiary.Mail`), for the instance's admins (`Apiary.Access.instance_admin?/1`),
-  with the `instance_mail` feature; anyone else is answered as a path that does not exist
+  through (`Apiary.Mail`), for the instance's admins (`Apiary.Access.instance_admin?/1`);
+  anyone else is answered as a path that does not exist
   (`ApiaryWeb.NotFound`). It comes after an edition's sections and before Configuration
   (`ApiaryWeb.Layouts.instance_sections/1`).
 
@@ -21,7 +21,6 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   sign-in has grown old leads to the log-in page the same way.
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :instance_mail
 
   on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
 

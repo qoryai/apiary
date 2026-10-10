@@ -9,7 +9,7 @@ defmodule Apiary.Mail do
   | Source | Meaning |
   |---|---|
   | `:env` | The application's environment sets the mailer's adapter. In production that is `SMTP_RELAY` and the variables beside it, read by `config/runtime.exs`; in development the Swoosh local adapter, and in the tests the Swoosh test adapter. |
-  | `:settings` | The settings an instance admin saved in Instance settings › Mail, with the `instance_mail` feature (`Apiary.Features`), once that admin followed the test link the save sent, and while their password can be read. |
+  | `:settings` | The settings an instance admin saved in Instance settings › Mail, once that admin followed the test link the save sent, and while their password can be read. |
   | `:none` | No mail is set. |
 
   The environment wins whole: with `SMTP_RELAY` set, the saved settings are not used, and
@@ -56,7 +56,7 @@ defmodule Apiary.Mail do
 
   require Logger
 
-  alias Apiary.{Access, Accounts, Audit, Features, Repo}
+  alias Apiary.{Access, Accounts, Audit, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier, UserToken}
   alias Apiary.Organisations.Organisation
   alias Apiary.Mail.{Cache, Password, Settings, TLS}
@@ -95,13 +95,12 @@ defmodule Apiary.Mail do
   @doc """
   resolve/2 is the source, given the environment's (`env_source/1`) and the saved
   settings (`stored/0`): the environment wins whole; then the saved settings, while they
-  are on and the instance has the `instance_mail` feature; else `:none`.
+  are on; else `:none`.
   """
   @spec resolve(:env | :none, stored) :: source
   def resolve(:env, _stored), do: :env
 
-  def resolve(:none, {:on, %Settings{}}),
-    do: if(Features.on?(:instance_mail), do: :settings, else: :none)
+  def resolve(:none, {:on, %Settings{}}), do: :settings
 
   def resolve(:none, _stored), do: :none
 
@@ -297,8 +296,7 @@ defmodule Apiary.Mail do
   (`Apiary.Mail.Settings.without_password/1`); `{:error, :env}` while the environment
   sets mail, which wins whole; `{:error, :sudo}` for an instance admin who did not sign in
   recently (`Apiary.Accounts.sudo_mode?/2`), who signs in again first; or
-  `{:error, :forbidden}` for anyone but an instance admin, and on an instance without the
-  `instance_mail` feature.
+  `{:error, :forbidden}` for anyone but an instance admin.
   """
   @spec save_settings(Scope.t(), map, (String.t() -> String.t())) ::
           {:ok, Settings.t(), :sent | :not_sent}
@@ -306,7 +304,7 @@ defmodule Apiary.Mail do
   def save_settings(%Scope{user: %User{} = user} = scope, attrs, url_fun)
       when is_map(attrs) and is_function(url_fun, 1) do
     cond do
-      not (Features.on?(:instance_mail) and Access.instance_admin?(scope)) -> {:error, :forbidden}
+      not Access.instance_admin?(scope) -> {:error, :forbidden}
       not Accounts.sudo_mode?(user) -> {:error, :sudo}
       source() == :env -> {:error, :env}
       true -> save(scope, attrs, url_fun)
@@ -513,13 +511,11 @@ defmodule Apiary.Mail do
   and changes no password. `{:ok, settings}`; `{:error, :sudo}` for an instance admin who
   did not sign in recently (`Apiary.Accounts.sudo_mode?/2`), which changes nothing, so the
   link still works once they sign in again; or `:error` for any other link or person,
-  which changes nothing: the link still works for the admin it was sent to; `:error` too
-  on an instance without the `instance_mail` feature.
+  which changes nothing: the link still works for the admin it was sent to.
   """
   @spec turn_on(Scope.t() | nil, String.t()) :: {:ok, Settings.t()} | {:error, :sudo} | :error
   def turn_on(%Scope{user: %User{} = user} = scope, token) when is_binary(token) do
-    with true <- Features.on?(:instance_mail),
-         {:ok, decoded} <- Base.url_decode64(token, padding: false),
+    with {:ok, decoded} <- Base.url_decode64(token, padding: false),
          true <- Access.instance_admin?(scope),
          true <- Accounts.sudo_mode?(user) || {:error, :sudo},
          {:ok, settings} <- turn_on_now(scope, :crypto.hash(:sha256, decoded)) do

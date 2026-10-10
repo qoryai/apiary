@@ -127,11 +127,9 @@ sign in, set a password or join an organisation with what it finds there. The se
 link's code is logged as `:code` in a request's line; the log holds the code only in the
 line each start writes until the instance is set up
 ([Set up a new instance](#set-up-a-new-instance)).
-<!-- feature: instance_mail -->
 
 The test link of **Instance settings › Mail** is logged the same way, its token as
 `:token`.
-<!-- /feature -->
 
 ## Environment variables
 
@@ -398,17 +396,14 @@ For example: https://qory.example
 | `SMTP_PASSWORD` | none | The relay's password. |
 | `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. `if_available` sends in plain text when the relay offers no STARTTLS, which anyone on the way can hide, and `never` always does, `SMTP_PASSWORD` included: with a username, use `always` or port 465. |
 | `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
-<!-- feature: instance_mail -->
 
-With the opt-in feature `instance_mail` ([Features](#features)), an instance admin can set
-mail in **Instance settings › Mail** instead: the relay, its port, TLS, username and
-password, and the sender, kept in the database with the password encrypted under a key
-derived from `APIARY_ENCRYPTION_SECRET`. With a username, TLS is **Always**, but on port
-465. The page asks for a recent sign-in, as **Account** settings do. Saving sends a test
-link to that admin, and mail from those settings is on once they follow it, signed in as
-themselves. With `SMTP_RELAY` set, these variables win whole, and that page shows them
-read only.
-<!-- /feature -->
+An instance admin can set mail in **Instance settings › Mail** instead: the relay, its
+port, TLS, username and password, and the sender, kept in the database with the password
+encrypted under a key derived from `APIARY_ENCRYPTION_SECRET`. With a username, TLS is
+**Always**, but on port 465. The page asks for a recent sign-in, as **Account** settings
+do. Saving sends a test link to that admin, and mail from those settings is on once they
+follow it, signed in as themselves. With `SMTP_RELAY` set, these variables win whole, and
+that page shows them read only.
 
 **Logging in.** Without mail, the log-in page asks for the email address and the
 password, and says to ask an admin of the instance for a password link when the password

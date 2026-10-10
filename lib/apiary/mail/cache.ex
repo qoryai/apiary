@@ -89,8 +89,7 @@ defmodule Apiary.Mail.Cache do
   defp load do
     {state, _settings} = stored = Mail.load()
 
-    if state == :unreadable and Apiary.Features.on?(:instance_mail),
-      do: Logger.warning(@unreadable)
+    if state == :unreadable, do: Logger.warning(@unreadable)
 
     if :persistent_term.get(@key, nil) != stored, do: :persistent_term.put(@key, stored)
     :ok

@@ -9,12 +9,10 @@ defmodule Apiary.MailSettingsTest do
   # the mailer's environment, the features and the keys are the whole node's.
   use Apiary.DataCase, async: false
 
-  @moduletag needs: :instance_mail
-
   import ExUnit.CaptureLog
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Features, KeyDerivation, Mail}
+  alias Apiary.{KeyDerivation, Mail}
   alias Apiary.Accounts.{User, UserToken}
   alias Apiary.Mail.{Cache, Password, Settings}
 
@@ -535,11 +533,6 @@ defmodule Apiary.MailSettingsTest do
       assert Mail.save_settings(scope, @attrs, &url/1) == {:error, :env}
       assert no_mail_saved?()
     end
-
-    @tag with_features: [:observability, :security]
-    test "is refused on an instance without the instance_mail feature", %{scope: scope} do
-      assert Mail.save_settings(scope, @attrs, &url/1) == {:error, :forbidden}
-    end
   end
 
   describe "turn_on/2, the test link" do
@@ -673,14 +666,6 @@ defmodule Apiary.MailSettingsTest do
 
       assert Mail.turn_on(scope, token) == :error
     end
-
-    test "does nothing on an instance without the instance_mail feature",
-         %{scope: scope, token: token} do
-      put_env(:features, Features.enabled() -- [:instance_mail])
-
-      assert Mail.turn_on(scope, token) == :error
-      assert Mail.state(row()) == :pending
-    end
   end
 
   describe "where mail comes from once it is on" do
@@ -725,13 +710,6 @@ defmodule Apiary.MailSettingsTest do
       assert Mail.sender() == Mail.default_sender()
     end
 
-    test "not without the instance_mail feature" do
-      put_env(:features, Features.enabled() -- [:instance_mail])
-
-      assert Mail.source() == :none
-      assert Mail.mailer_config() == nil
-    end
-
     test "the Backup guide says the saved password cannot be read, not that a secret turns mail off" do
       # Another APIARY_ENCRYPTION_SECRET stops the boot (`Apiary.KeyCheck`): it never
       # leaves an instance running with mail off.
@@ -745,23 +723,19 @@ defmodule Apiary.MailSettingsTest do
       assert guide =~ "Where that saved password cannot be read, mail from those settings is off"
     end
 
-    test "the Install guide's Mail says the settings saved send mail, only where the instance has them" do
+    test "the Install guide's Mail says the settings saved send mail, on every instance" do
       relay_row =
         ~r/\| `SMTP_RELAY` \|[^\n]*Not set, and with no other mail settings, the release sends no email/
 
-      paragraph = "an instance admin can set mail in **Instance settings › Mail** instead"
+      paragraph = "An instance admin can set mail in **Instance settings › Mail** instead"
 
       for features <- [[:observability], [:observability, :security]] do
         guide = install_guide(features)
         assert guide =~ relay_row
-        refute flat(guide) =~ paragraph
+        assert flat(guide) =~ paragraph
+        assert flat(guide) =~ "With `SMTP_RELAY` set, these variables win whole"
         refute guide =~ "instance_mail"
       end
-
-      guide = install_guide([:observability, :instance_mail])
-      assert guide =~ relay_row
-      assert flat(guide) =~ paragraph
-      assert flat(guide) =~ "With `SMTP_RELAY` set, these variables win whole"
     end
 
     test "off when the password cannot be read" do
