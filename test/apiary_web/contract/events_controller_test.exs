@@ -423,7 +423,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     test "another content type is 415, whatever the body", %{key: key, secret: secret} do
       {_subject, batch} = first_events()
 
-      for content_type <- ["application/json", "text/plain", "application/x-www-form-urlencoded"] do
+      for content_type <- [
+            "application/json",
+            "text/plain",
+            "application/x-www-form-urlencoded",
+            "application/cloudevents-batch+jsonx"
+          ] do
         conn = signed_post(build_conn(), key.key_id, secret, batch, content_type: content_type)
         assert json_response(conn, 415) == %{"error" => "unsupported_media_type"}
         assert unsigned_answer?(conn)

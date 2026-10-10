@@ -17,7 +17,7 @@ defmodule ApiaryWeb.Features.Routes do
 
   One request passes on to its route with the feature off: a request of the server
   contract that carries a request signature (`X-Qory-Signature-Ed25519`), on a route that
-  pipes through `:contract`, `:contract_events` or `:contract_run_configuration`. The
+  pipes through `:contract`, `:contract_events` or `:contract_registration`. The
   contract signs every answer to a verified request, `404` included, so that `404` comes
   once the request is verified, from the controller's gate; a request that does not verify
   is told `401`, as on any route of the contract.
@@ -27,7 +27,7 @@ defmodule ApiaryWeb.Features.Routes do
   alias Apiary.Features
 
   # The pipelines of `ApiaryWeb.Routes` that verify a signed request of the server contract.
-  @signed_pipelines [:contract, :contract_events, :contract_run_configuration]
+  @signed_pipelines [:contract, :contract_events, :contract_registration]
 
   @impl Plug
   def init(router) when is_atom(router), do: router

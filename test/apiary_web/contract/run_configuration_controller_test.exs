@@ -94,7 +94,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     # nothing here depends on how fast requests are made.
     bucket = Apiary.Runs.RateLimit
     later = System.monotonic_time(:millisecond) + :timer.hours(1)
-    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 0, later, later})
+    :ets.insert(bucket, {{:registration, ctx.key.id}, 0, later, later})
 
     conn = fetch(ctx, "")
     assert json_response(conn, 429) == %{"error" => "rate_limited"}
@@ -106,9 +106,9 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     # One token back serves one request, which spends it. Spending dates the bucket at the
     # present, from where it refills, so the bucket is read rather than a second request
     # timed. The events endpoint's bucket is untouched.
-    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 1000, later, later})
+    :ets.insert(bucket, {{:registration, ctx.key.id}, 1000, later, later})
     assert fetch(ctx, "").status == 200
-    assert [{_, 0, _, _}] = :ets.lookup(bucket, {:run_configuration, ctx.key.id})
+    assert [{_, 0, _, _}] = :ets.lookup(bucket, {:registration, ctx.key.id})
     assert :ets.lookup(bucket, ctx.key.id) == []
   end
 
@@ -393,19 +393,19 @@ defmodule ApiaryWeb.Contract.RunConfigurationRateLimitTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Policy
-  alias ApiaryWeb.Contract.RunConfigurationController
+  alias ApiaryWeb.Contract.RegistrationController
 
   @path "/v1/run-configuration"
 
   setup do
     events = Application.get_env(:apiary, Apiary.Runs.RateLimit)
-    run_configuration = Application.get_env(:apiary, RunConfigurationController)
+    run_configuration = Application.get_env(:apiary, RegistrationController)
     Application.put_env(:apiary, Apiary.Runs.RateLimit, rate: 0, burst: 2)
-    Application.put_env(:apiary, RunConfigurationController, rate: 0, burst: 2)
+    Application.put_env(:apiary, RegistrationController, rate: 0, burst: 2)
 
     on_exit(fn ->
       Application.put_env(:apiary, Apiary.Runs.RateLimit, events)
-      Application.put_env(:apiary, RunConfigurationController, run_configuration)
+      Application.put_env(:apiary, RegistrationController, run_configuration)
     end)
 
     %{scope: scope} = sign_up_fixture()
