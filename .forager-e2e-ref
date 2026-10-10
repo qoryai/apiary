@@ -2,4 +2,4 @@
 # commit of Forager's main branch, the one qory at .qory-e2e-ref names in its go.mod. The
 # contract the tests replay is pinned in .forager-contract-ref, a pin of its own, kept
 # apart so that the two can move separately.
-bd88ca7ffa64de0b0a4f3db8100c78aebbd4bdf6
+85f95d55c99b47f61f7e104369e5cf8eb620acb5

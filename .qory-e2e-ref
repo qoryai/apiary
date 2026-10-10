@@ -2,4 +2,4 @@
 # qory's main branch, built against Forager at the ref in .forager-e2e-ref. It signs every
 # request with the node's Ed25519 access key, verifies every answer under the pin, and
 # keeps each run's record in its state directory on the node, outside the checkout.
-87aced986c885e50fd6fb63bbf9d0922ecba3b05
+e4f877bd32e2002be4a0679777aa39aec847cbfc
