@@ -7,8 +7,9 @@ defmodule Apiary.Runs.Run do
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
-  `registration_digest`) are the registration's own: written once, when the run
-  registers, and kept by a rebuild.
+  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
+  are the registration's own: written once, when the run registers, and kept by a
+  rebuild.
   """
   use Ecto.Schema
 
@@ -106,14 +107,18 @@ defmodule Apiary.Runs.Run do
     field :instance_id, :string
     belongs_to :target, Apiary.Runs.Target
 
-    # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered,
-    # its labels and `about` as the body sent them, and the SHA-256 of the body's bytes, by
-    # which a repeat of the same registration is told from another. All nil for a run that
-    # did not register. Not folded: a rebuild keeps them.
+    # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered;
+    # its labels, `about` and heartbeat interval as the body sent them (the interval holds
+    # the run until its heartbeats say their own, `Apiary.Runs.Liveness`); the SHA-256 of
+    # the body's bytes, by which a repeat of the same registration is told from another;
+    # and the digest of the run configuration it was given, which a repeat is given again.
+    # All nil for a run that did not register. Not folded: a rebuild keeps them.
     field :registered_at, :utc_datetime_usec
     field :registration_labels, :map
     field :registration_about, :map
     field :registration_digest, :binary
+    field :registration_interval_seconds, :integer
+    field :registration_answer_digest, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk

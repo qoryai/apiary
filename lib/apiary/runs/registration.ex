@@ -3,54 +3,62 @@ defmodule Apiary.Runs.Registration do
   A run's registration: how a run starts on the server, and the run configuration it is
   given then and on a reload.
 
-  `parse/1` reads the registration's body, decoded: `version`, `run_id`, `labels`,
-  `about`, `time`, and the four members the run announces, `forager_version`,
-  `contract_version`, `interval_seconds` and `events`. Every name of the body is read here
-  and nowhere else. A body that breaks a rule is `{:error, :invalid_request, detail}`,
-  where `detail` names the member and never repeats a value:
+  `parse/1` reads the registration's body, decoded: `version`, `run_id`, `time`, the four
+  members the run announces, `forager_version`, `contract_version`, `interval_seconds` and
+  `events`, all required, and `labels` and `about`, which may be left out. Every name of
+  the body is read here and nowhere else. A body that breaks a rule is
+  `{:error, :invalid_request, detail}`, where `detail` names the member and never repeats
+  a value; a member the contract does not name is refused as `"body"`:
 
     * `version` is 1;
     * `run_id` is a UUID as the contract writes one (`Apiary.Runs.Batch.uuid?/1`);
-    * `labels` is an object of at most 16 labels, each key 1 to 64 of `a-z`, `0-9`, `_`,
-      `.` and `-`, each value a string of at most 256 bytes;
+    * `labels`, when sent, is an object of at most 16 labels, each key 1 to 64 of `a-z`,
+      `0-9`, `_`, `.` and `-`, each value a string of at most 256 bytes of UTF-8 with no
+      NUL, which nothing could store; left out, the run has none;
     * `about`, when sent, keeps every rule of `about` (`Apiary.Runs.About.validate/1`);
-    * `time` is an RFC 3339 timestamp (`Apiary.Runs.Batch.time/1`); whether it is within
+      left out, it says nothing;
+    * `time` is a date and time in UTC to the whole second, `2026-10-10T12:00:00Z`, which
+      is a real one (`Apiary.Runs.Batch.time/1`); whether it is within
       `max_skew_seconds/0` of the server's clock is the caller's to ask (`fresh?/2`);
-    * `forager_version` is a string that is not empty, `contract_version` an integer from
-      1, `interval_seconds` an integer from 1 to 300, and `events` a list of strings that
-      are not empty.
+    * `forager_version` is a string that is not empty and holds no NUL, `contract_version`
+      an integer from 1, `interval_seconds` an integer from 1 to 300, and `events` a list
+      of strings that are not empty.
 
-  A member the body does not name is ignored. The labels never name anything but the
-  run's target, by the workspace's domain (`Apiary.Lingo.Domain`); `about` never selects
-  a policy.
+  The labels never name anything but the run's target, by the workspace's domain
+  (`Apiary.Lingo.Domain`); `about` never selects a policy. `interval_seconds` is kept on
+  the run, which is held to it until its heartbeats say their own (`Apiary.Runs.Liveness`).
 
-  `register/3` stores the run, in this order, each step answering or passing to the next:
+  `register/3` stores the run. A key `Apiary.Access` does not let post (`run.post_events`)
+  is `{:error, :not_found}`. Then, when several answers apply, the first of these is given:
 
-    1. a key `Apiary.Access` does not let post (`run.post_events`) is `{:error, :not_found}`;
+    1. a repeat: a run of this id that registered with the same bytes under the same access
+       key is given the answer it was given (`registration_answer_digest`), nothing stored
+       or admitted again;
     2. a run of this id whose events retention has pruned is `{:error, :gone}`;
-    3. a run of this id already stored is a repeat when it registered with the same bytes
-       from the same node: nothing is stored or admitted again, and the answer is given
-       again. Any other run of this id, another body, another node, or a run its events
-       created without a registration, is `{:error, :run_id_used}`;
-    4. the run configuration is read (`Apiary.Policy.Serving.fetch/2`): a managed workspace
-       whose configuration cannot be read is `{:error, :unavailable}`, with nothing stored,
-       never a run without its policy;
-    5. the run is created, `pending`, on the key's node and the instance the request
-       claimed (`Apiary.Nodes.placement/2`), with its registration, in the transaction of
-       the instance limit (`Apiary.Nodes.admit/4`): an instance beyond the limit is
-       `{:error, :instance_limit}`, nothing stored and the refusal counted on the node.
+    3. an instance beyond its node's limit (`Apiary.Nodes.admit/4`) is
+       `{:error, :instance_limit}`, the refusal counted on the node;
+    4. any other run of this id, registered with other bytes or under another access key,
+       or created by its events without a registration, is `{:error, :run_id_used}`;
+    5. a managed workspace whose run configuration cannot be read
+       (`Apiary.Policy.Serving.fetch/2`) is `{:error, :unavailable}`: never a run without
+       its policy;
+    6. else the run is created, `pending`, under the key, on its node and the instance the
+       request claimed (`Apiary.Nodes.placement/2`), with its registration, in the
+       transaction of the instance limit.
 
-  Once committed, the key's use is recorded and the run is broadcast as changed. A later
-  event of the run is stored on the same row (`Apiary.Runs.Ingest`), and its `run.started`
-  moves it to `running`; the projector never writes the registration's fields.
+  Nothing is stored on any refusal. Once the run is stored, the key's use is recorded and
+  the run is broadcast as changed. A later event of the run is stored on the same row
+  (`Apiary.Runs.Ingest`), and its `run.started` moves it to `running`; the projector never
+  writes the registration's fields.
 
   The answer is the run configuration in force for the target the labels name: for a
   managed workspace the stored bytes and their digest, exactly what
   `Apiary.Policy.Serving.fetch/2` reads; for a workspace that serves none, the document of
-  no policy (`Apiary.Policy.Render.no_policy_document/0`) and its digest.
+  no policy (`Apiary.Policy.Render.no_policy_document/0`) and its digest. The digest is
+  kept on the run, so a repeat is given the same answer.
 
-  `fetch/2` is the reload: the run configuration in force for a registered run, read by
-  its registration's labels, for the node that registered it alone.
+  `fetch/2` is the reload: the run configuration in force for a run, read by its
+  registration's labels, for the access key the run is under alone.
   """
 
   import Ecto.Query, warn: false
@@ -73,6 +81,17 @@ defmodule Apiary.Runs.Registration do
   @contract_version "contract_version"
   @interval_seconds "interval_seconds"
   @events "events"
+  @members [
+    @version,
+    @run_id,
+    @labels,
+    @about,
+    @time,
+    @forager_version,
+    @contract_version,
+    @interval_seconds,
+    @events
+  ]
 
   @document_version 1
   @max_labels 16
@@ -80,6 +99,7 @@ defmodule Apiary.Runs.Registration do
   @label_value 256
   @int4 2_147_483_647
   @max_skew_seconds 300
+  @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   @typedoc "A registration's body, as `parse/1` read it."
   @type t :: %__MODULE__{
@@ -121,10 +141,11 @@ defmodule Apiary.Runs.Registration do
 
   @typedoc """
   The run configuration a run is given: `settings`, the document's bytes; `digest`, theirs
-  (`Apiary.Policy.Render.digest/1`); `managed`, whether the workspace serves a run
-  configuration of its own.
+  (`Apiary.Policy.Render.digest/1`), for `X-Qory-Run-Configuration`; `etag`, the same
+  string quoted, for `ETag`; `managed`, whether the workspace serves a run configuration of
+  its own.
   """
-  @type settings :: %{settings: binary, digest: String.t(), managed: boolean}
+  @type settings :: %{settings: binary, digest: String.t(), etag: String.t(), managed: boolean}
 
   @doc "The most seconds a registration's `time` may be from the server's clock."
   def max_skew_seconds, do: @max_skew_seconds
@@ -132,9 +153,10 @@ defmodule Apiary.Runs.Registration do
   @doc "Reads a registration's decoded body: see the moduledoc for the rules."
   @spec parse(term) :: {:ok, t} | {:error, :invalid_request, String.t()}
   def parse(%{} = body) do
-    with :ok <- check(body[@version] == @document_version, @version),
+    with :ok <- check(Enum.all?(Map.keys(body), &(&1 in @members)), "body"),
+         :ok <- check(body[@version] == @document_version, @version),
          {:ok, run_id} <- run_id(body[@run_id]),
-         {:ok, labels} <- labels(body[@labels]),
+         {:ok, labels} <- labels(body),
          {:ok, about} <- about(body),
          {:ok, time} <- time(body[@time]),
          {:ok, forager_version} <- forager_version(body[@forager_version]),
@@ -172,17 +194,21 @@ defmodule Apiary.Runs.Registration do
   defp run_id(value),
     do: if(Batch.uuid?(value), do: {:ok, value}, else: invalid(@run_id))
 
-  defp labels(%{} = labels) when map_size(labels) <= @max_labels do
+  defp labels(%{@labels => %{} = labels}) when map_size(labels) <= @max_labels do
     valid? =
       Enum.all?(labels, fn {key, value} ->
         Regex.match?(@label_key, key) and is_binary(value) and
-          byte_size(value) <= @label_value and String.valid?(value)
+          byte_size(value) <= @label_value and storable?(value)
       end)
 
     if valid?, do: {:ok, labels}, else: invalid(@labels)
   end
 
-  defp labels(_labels), do: invalid(@labels)
+  defp labels(%{@labels => _labels}), do: invalid(@labels)
+  defp labels(_body), do: {:ok, %{}}
+
+  # Valid UTF-8 with no NUL: Postgres holds none in text or in jsonb.
+  defp storable?(value), do: String.valid?(value) and not String.contains?(value, <<0>>)
 
   # Absent, it says nothing, as an empty `about` does.
   defp about(%{@about => about}) do
@@ -195,13 +221,18 @@ defmodule Apiary.Runs.Registration do
   defp about(_body), do: {:ok, %{}}
 
   defp time(value) do
-    case Batch.time(value) do
-      {:ok, time} -> {:ok, time}
-      :error -> invalid(@time)
+    with true <- is_binary(value) and Regex.match?(@whole_seconds, value),
+         {:ok, time} <- Batch.time(value) do
+      {:ok, time}
+    else
+      _ -> invalid(@time)
     end
   end
 
-  defp forager_version(value) when is_binary(value) and value != "", do: {:ok, value}
+  defp forager_version(value) when is_binary(value) and value != "" do
+    if storable?(value), do: {:ok, value}, else: invalid(@forager_version)
+  end
+
   defp forager_version(_value), do: invalid(@forager_version)
 
   defp contract_version(value) when is_integer(value) and value in 1..@int4, do: {:ok, value}
@@ -226,14 +257,14 @@ defmodule Apiary.Runs.Registration do
   @doc """
   Registers the run of `registration` for the key (an access key, or its scope), in the
   order the moduledoc gives. `{:ok, answer}` with `run`, the run's row, `repeated`, whether
-  it had registered with the same bytes before, and the run configuration it is given
-  (`t:settings/0`). `{:error, reason}` with `:not_found`, `:gone`, `:run_id_used`,
-  `:unavailable` or `:instance_limit`.
+  it had registered with the same bytes under the same key before, and the run
+  configuration it is given (`t:settings/0`). `{:error, reason}` with `:not_found`,
+  `:gone`, `:instance_limit`, `:run_id_used` or `:unavailable`.
   """
   @spec register(AccessKey.t() | Scope.t(), t, meta) ::
           {:ok,
            %{required(:run) => Run.t(), required(:repeated) => boolean, optional(atom) => term}}
-          | {:error, :not_found | :gone | :run_id_used | :unavailable | :instance_limit}
+          | {:error, :not_found | :gone | :instance_limit | :run_id_used | :unavailable}
   def register(%Scope{access_key: %AccessKey{} = access_key}, registration, meta),
     do: register(access_key, registration, meta)
 
@@ -249,12 +280,11 @@ defmodule Apiary.Runs.Registration do
     access_key = Repo.preload(access_key, [:workspace, :node])
 
     with :ok <- may_post(Scope.for_access_key(access_key)),
-         {:ok, held} <- held(access_key, registration, digest),
-         {:ok, settings} <- settings(access_key, registration.labels),
-         {:ok, {run, repeated}} <-
-           store(held, access_key, registration, meta, digest, now) do
-      if not repeated, do: registered(access_key, run, meta, now)
-      {:ok, Map.merge(settings, %{run: run, repeated: repeated})}
+         {:ok, held} <- held(access_key, registration, digest) do
+      case held do
+        {:repeat, run} -> repeat(access_key, run)
+        held -> admit(held, access_key, registration, meta, digest, now)
+      end
     end
   end
 
@@ -266,7 +296,8 @@ defmodule Apiary.Runs.Registration do
     end
   end
 
-  # The run of this id the workspace holds already, if any, as it decides the answer.
+  # The run of this id the workspace holds already, as it decides the answer: none, a
+  # repeat, or a run whose id is used.
   defp held(access_key, registration, digest) do
     run =
       Repo.one(
@@ -275,30 +306,39 @@ defmodule Apiary.Runs.Registration do
       )
 
     case run do
-      nil -> {:ok, nil}
-      %Run{events_pruned_at: %DateTime{}} -> {:error, :gone}
-      %Run{} = run -> if repeat?(run, access_key, digest), do: {:ok, run}, else: used()
+      nil ->
+        {:ok, nil}
+
+      %Run{} = run ->
+        if repeat?(run, access_key, digest), do: {:ok, {:repeat, run}}, else: held(run)
     end
   rescue
     exception -> unavailable(exception)
   end
 
-  # The same bytes from the same node: Forager's retry of the registration it sent.
-  defp repeat?(%Run{} = run, access_key, digest),
-    do: run.registration_digest == digest and run.node_id == access_key.node_id
+  defp held(%Run{events_pruned_at: %DateTime{}}), do: {:error, :gone}
+  defp held(%Run{} = run), do: {:ok, {:used, run}}
 
-  defp used, do: {:error, :run_id_used}
+  # The same bytes under the same access key: Forager's retry of the registration it sent.
+  defp repeat?(%Run{} = run, access_key, digest),
+    do: run.registration_digest == digest and run.access_key_id == access_key.id
+
+  # A repeat is given the answer the registration was given, nothing stored or admitted.
+  defp repeat(access_key, run) do
+    with {:ok, settings} <- answered(access_key, run),
+         do: {:ok, Map.merge(settings, %{run: run, repeated: true})}
+  end
 
   # The run configuration the run is given. A managed workspace whose configuration cannot
   # be read is unavailable, never no policy: the run would start without its policy.
   defp settings(access_key, labels) do
     case Serving.fetch(access_key, labels) do
       {:ok, %RunConfiguration{document: document, digest: digest}} ->
-        {:ok, %{settings: document, digest: digest, managed: true}}
+        {:ok, settings(document, digest, true)}
 
       {:error, :unmanaged} ->
         document = Render.no_policy_document()
-        {:ok, %{settings: document, digest: Render.digest(document), managed: false}}
+        {:ok, settings(document, Render.digest(document), false)}
 
       {:error, _reason} ->
         {:error, :unavailable}
@@ -307,21 +347,74 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  defp store(%Run{} = run, _access_key, _registration, _meta, _digest, _now),
-    do: {:ok, {run, true}}
+  # The headers the answer carries come from here: `X-Qory-Run-Configuration` is the
+  # digest, and the `ETag` the same string, quoted.
+  defp settings(document, digest, managed),
+    do: %{settings: document, digest: digest, etag: ~s("#{digest}"), managed: managed}
 
-  # Whatever the database refuses or cannot do is `{:error, :unavailable}`, never an
-  # exception into the request. The log line names the exception's module and nothing else.
-  defp store(nil, access_key, registration, meta, digest, now) do
-    insert = fn -> insert(access_key, registration, meta, digest, now) end
+  # The answer the run's registration was given, by its digest: the document of no policy,
+  # or the stored configuration of the workspace with that digest. One no longer stored is
+  # read again, as the registration's labels name it.
+  defp answered(access_key, %Run{registration_answer_digest: digest} = run) do
+    no_policy = Render.no_policy_document()
 
-    if held_to_limit?(access_key, meta),
-      do: Nodes.admit(access_key.node, meta.instance_id, insert, now),
-      else: Repo.transact(insert)
+    stored =
+      if digest == Render.digest(no_policy),
+        do: no_policy,
+        else:
+          Repo.one(
+            from c in RunConfiguration,
+              where: c.workspace_id == ^run.workspace_id and c.digest == ^digest,
+              limit: 1,
+              select: c.document
+          )
+
+    case stored do
+      nil -> settings(access_key, run.registration_labels)
+      document -> {:ok, settings(document, digest, document != no_policy)}
+    end
   rescue
     exception -> unavailable(exception)
   end
 
+  # The refusals left, in the contract's order: the instance limit, then a run id that is
+  # used, then the server's own (the configuration could not be read). The configuration is
+  # read before the transaction, outside the node's lock; the limit is checked inside it,
+  # first, so a request every one of them refuses is refused by the limit. Nothing is
+  # stored on any refusal.
+  defp admit(held, access_key, registration, meta, digest, now) do
+    settings = if held, do: :used, else: settings(access_key, registration.labels)
+
+    store = fn ->
+      case settings do
+        :used -> {:error, :run_id_used}
+        {:error, :unavailable} -> {:error, :unavailable}
+        {:ok, settings} -> insert(access_key, registration, meta, digest, settings, now)
+      end
+    end
+
+    result =
+      if held_to_limit?(access_key, meta),
+        do: Nodes.admit(access_key.node, meta.instance_id, store, now),
+        else: Repo.transact(store)
+
+    case result do
+      {:ok, {:repeat, run}} ->
+        repeat(access_key, run)
+
+      {:ok, %{run: run}} = stored ->
+        registered(access_key, run, meta, now)
+        stored
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  rescue
+    exception -> unavailable(exception)
+  end
+
+  # Whatever the database refuses or cannot do is `{:error, :unavailable}`, never an
+  # exception into the request. The log line names the exception's module and nothing else.
   defp unavailable(exception) do
     Logger.error("a registration could not be stored: #{inspect(exception.__struct__)}")
     {:error, :unavailable}
@@ -333,9 +426,9 @@ defmodule Apiary.Runs.Registration do
 
   # Two registrations of one run may arrive at once: the insert that loses waits for the
   # one that wins and inserts nothing, and the read after it sees the row, locked for the
-  # rest of the transaction. The loser is a repeat when its bytes and node are the
+  # rest of the transaction. The loser is a repeat when its bytes and key are the
   # winner's, and the run id is used otherwise, which rolls back.
-  defp insert(access_key, registration, meta, digest, now) do
+  defp insert(access_key, registration, meta, digest, settings, now) do
     {inserted, _rows} =
       Repo.insert_all(
         Run,
@@ -354,6 +447,8 @@ defmodule Apiary.Runs.Registration do
               registration_labels: registration.labels,
               registration_about: registration.about,
               registration_digest: digest,
+              registration_interval_seconds: registration.interval_seconds,
+              registration_answer_digest: settings.digest,
               inserted_at: now,
               updated_at: now
             },
@@ -372,9 +467,14 @@ defmodule Apiary.Runs.Registration do
       )
 
     cond do
-      inserted == 1 -> {:ok, {run, false}}
-      is_nil(run.events_pruned_at) and repeat?(run, access_key, digest) -> {:ok, {run, true}}
-      true -> used()
+      inserted == 1 ->
+        {:ok, Map.merge(settings, %{run: run, repeated: false})}
+
+      repeat?(run, access_key, digest) ->
+        {:ok, {:repeat, run}}
+
+      true ->
+        {:error, :run_id_used}
     end
   end
 
@@ -403,17 +503,17 @@ defmodule Apiary.Runs.Registration do
   end
 
   @doc """
-  The reload: the run configuration in force for the registered run `run_id`, for the key
-  (an access key, or its scope). `{:ok, settings}` (`t:settings/0`), read by the labels
-  the run registered with, else the labels its events gave it.
+  The reload: the run configuration in force for the run `run_id`, for the key (an access
+  key, or its scope). `{:ok, settings}` (`t:settings/0`), read by the labels the run
+  registered with, else the labels its events gave it.
 
-  `{:error, :not_found}` for a run id the key's workspace does not hold, a run the key's
-  node did not register, and a workspace that serves no run configuration: nobody has made
-  its policy, the `security` feature is off, or `Apiary.Access` refuses
-  `run_configuration.fetch`. That last is never the document of no policy, which would
-  take the policy in force off a run that started under it: a policy removed mid-run never
-  loosens a run already started. `{:error, :unavailable}` when the configuration cannot be
-  read.
+  `{:error, :not_found}` for a run id the key's workspace does not hold, a run under
+  another access key than this one (registered under it, or created by its first batch),
+  and a workspace that serves no run configuration: nobody has made its policy, the
+  `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`. That
+  last is never the document of no policy, which would take the policy in force off a run
+  that started under it: a policy removed mid-run never loosens a run already started.
+  `{:error, :unavailable}` when the configuration cannot be read.
   """
   @spec fetch(AccessKey.t() | Scope.t(), term) ::
           {:ok, settings} | {:error, :not_found | :unavailable}
@@ -431,7 +531,7 @@ defmodule Apiary.Runs.Registration do
          true <- reload_allowed?(access_key, run) do
       case Serving.fetch(access_key, run.registration_labels || run.labels) do
         {:ok, %RunConfiguration{document: document, digest: digest}} ->
-          {:ok, %{settings: document, digest: digest, managed: true}}
+          {:ok, settings(document, digest, true)}
 
         {:error, :unmanaged} ->
           without_run_configuration()
@@ -446,11 +546,11 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  # Who may reload a run: the node of the key that registered it (the node the run runs
-  # on), and no other. A run on no node is reloaded by none.
-  defp reload_allowed?(%AccessKey{node_id: node_id}, %Run{node_id: node_id})
-       when is_binary(node_id),
-       do: true
+  # Who may reload a run: the access key the run is under (`runs.access_key_id`, the key
+  # that registered it or that sent its first batch), and no other. A run whose key is gone
+  # is reloaded by none.
+  defp reload_allowed?(%AccessKey{id: id}, %Run{access_key_id: id}) when is_binary(id),
+    do: true
 
   defp reload_allowed?(_access_key, _run), do: false
 

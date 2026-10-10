@@ -75,7 +75,7 @@ defmodule Apiary.NodesRacesTest do
         "version" => 1,
         "run_id" => run_id,
         "labels" => %{},
-        "time" => DateTime.to_iso8601(DateTime.utc_now()),
+        "time" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
         "forager_version" => "0.8.0",
         "contract_version" => 1,
         "interval_seconds" => 30,

@@ -3,9 +3,11 @@ defmodule Apiary.Runs.Liveness do
   Finds the runs that stopped talking and marks them `lost`, after projecting whatever a
   dead task or a stopped node left unprojected.
 
-  A run announces how often it beats (`interval_seconds` of its heartbeats). It is lost
-  when nothing has been heard for more than three of those intervals; a run that has not
-  announced one is held to 30 seconds, Forager's default, so to 90 seconds of silence.
+  A run announces how often it beats (`interval_seconds` of its heartbeats, and of its
+  registration, `Apiary.Runs.Registration`). It is lost when nothing has been heard for
+  more than three of those intervals: its heartbeats' once they say one, else its
+  registration's; a run that has announced none is held to 30 seconds, Forager's default,
+  so to 90 seconds of silence.
 
     * a `running` run is measured from its last heartbeat, or, when it has not beaten yet,
       from the arrival of its `run.started`;
@@ -153,12 +155,14 @@ defmodule Apiary.Runs.Liveness do
   end
 
   # The interval is bounded here as well as in the fold, so the arithmetic cannot
-  # overflow whatever the column holds.
-  defmacrop silence(interval) do
+  # overflow whatever the column holds: the heartbeats', else the registration's, else the
+  # default.
+  defmacrop silence(heartbeat, registration) do
     quote do
       fragment(
-        "LEAST(GREATEST(COALESCE(?, ?), 1), ?) * ? * interval '1 second'",
-        unquote(interval),
+        "LEAST(GREATEST(COALESCE(?, ?, ?), 1), ?) * ? * interval '1 second'",
+        unquote(heartbeat),
+        unquote(registration),
         @default_beat,
         @max_beat,
         @missed
@@ -207,7 +211,7 @@ defmodule Apiary.Runs.Liveness do
         r.last_heartbeat_at,
         subquery(started),
         r.inserted_at,
-        silence(r.heartbeat_interval_seconds),
+        silence(r.heartbeat_interval_seconds, r.registration_interval_seconds),
         ^now
       )
     )
@@ -216,7 +220,12 @@ defmodule Apiary.Runs.Liveness do
   defp silent(:pending, now) do
     dynamic(
       [run: r],
-      fragment("? + ? < ?", r.inserted_at, silence(r.heartbeat_interval_seconds), ^now)
+      fragment(
+        "? + ? < ?",
+        r.inserted_at,
+        silence(r.heartbeat_interval_seconds, r.registration_interval_seconds),
+        ^now
+      )
     )
   end
 

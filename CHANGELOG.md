@@ -488,8 +488,9 @@ else `ended`.
 `mail_verified_at`, all NULL, with checks on the port, the TLS mode and the password's key
 id.
 `20261010143819_register_a_run` adds `runs.registered_at`, `registration_labels`,
-`registration_about` and `registration_digest` (32 bytes), NULL for every existing row,
-with a check that a run holds all four or none.
+`registration_about`, `registration_digest` (32 bytes), `registration_interval_seconds` and
+`registration_answer_digest`, NULL for every existing row, with a check that a run holds
+all six or none.
 
 ### Upgrading
 

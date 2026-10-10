@@ -401,9 +401,13 @@ defmodule ApiaryWeb.RunComponents do
   @doc "When the server last heard the run is alive: its last heartbeat, else its first event."
   def heard_at(run), do: Map.get(run, :last_heartbeat_at) || Map.get(run, :inserted_at)
 
-  @doc "The heartbeat interval the run is held to, in seconds: its own within bounds, else 30."
+  @doc """
+  The heartbeat interval the run is held to, in seconds: its heartbeats', else its
+  registration's, within bounds, else 30.
+  """
   def beat(run) do
-    case Map.get(run, :heartbeat_interval_seconds) do
+    case Map.get(run, :heartbeat_interval_seconds) ||
+           Map.get(run, :registration_interval_seconds) do
       interval when is_integer(interval) -> interval |> max(1) |> min(@max_beat)
       _ -> @default_beat
     end

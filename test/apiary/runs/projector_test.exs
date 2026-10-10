@@ -666,7 +666,9 @@ defmodule Apiary.Runs.ProjectorTest do
           registered_at: registered_at,
           registration_labels: labels,
           registration_about: %{"kind" => "fix"},
-          registration_digest: digest
+          registration_digest: digest,
+          registration_interval_seconds: 100,
+          registration_answer_digest: "sha256=" <> String.duplicate("0", 64)
         ]
       )
 
@@ -679,6 +681,8 @@ defmodule Apiary.Runs.ProjectorTest do
       assert rebuilt.registration_about == %{"kind" => "fix"}
       assert rebuilt.registered_at == registered_at
       assert rebuilt.registration_digest == digest
+      assert rebuilt.registration_interval_seconds == 100
+      assert rebuilt.registration_answer_digest == "sha256=" <> String.duplicate("0", 64)
     end
 
     test "what the run is about is stored and survives a rebuild", %{run: run} do

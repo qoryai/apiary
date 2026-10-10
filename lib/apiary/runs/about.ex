@@ -188,7 +188,7 @@ defmodule Apiary.Runs.About do
   defp clean_details?(_value), do: true
 
   # The bytes of compact JSON as the event carries it, `<`, `>` and `&` written as
-  # `<`, `>` and `&`, six bytes each. They are counted here: Jason's
+  # `\u003c`, `\u003e` and `\u0026`, six bytes each. They are counted here: Jason's
   # `html_safe` escape writes `<` alone of the three, and `/` as `\/` besides.
   defp carried_size(json),
     do: byte_size(json) + 5 * length(:binary.matches(json, ["<", ">", "&"]))

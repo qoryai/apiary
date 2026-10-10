@@ -81,10 +81,11 @@ defmodule Apiary.Policy.Serving do
   which means nothing to the gateway. `run` is the run's
   row or nil (a pruned run is looked up by the batch's subject).
 
-  The target is the one the run's row holds; else, for a run that registered
-  (`Apiary.Runs.Registration`), the one its registration's labels name, the baseline's
-  when they name none; else the one the batch's `run.started` names; else the digest the
-  request reported, when it is in force, or the baseline's.
+  For a run that registered (`Apiary.Runs.Registration`), the target is the one its
+  registration's labels name, the baseline's when they name none, whatever its events
+  say. For any other run, the target is the one the run's row holds; else the one the
+  batch's `run.started` names; else the digest the request reported, when it is in force,
+  or the baseline's.
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil
   def digest_for(%AccessKey{} = access_key, run, %Batch{} = batch, reported) do
@@ -116,14 +117,14 @@ defmodule Apiary.Policy.Serving do
     end
   end
 
-  # The target the run's row holds, or, for a run that registered and holds none yet, its
-  # registration's labels, which name it.
+  # For a run that registered, its registration's labels, which name its target whatever
+  # its events say; for any other, the target the run's row holds.
+  defp known_target(_workspace_id, %Run{registration_labels: %{} = labels}, _batch),
+    do: {:registered, labels}
+
   defp known_target(_workspace_id, %Run{target_id: target_id}, _batch)
        when is_binary(target_id),
        do: target_id
-
-  defp known_target(_workspace_id, %Run{registration_labels: %{} = labels}, _batch),
-    do: {:registered, labels}
 
   defp known_target(_workspace_id, %Run{}, _batch), do: nil
 
