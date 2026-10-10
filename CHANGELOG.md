@@ -405,7 +405,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   are kept too, when the stack is deleted and when a create rolls back, their events for
   30 days, under names made from the stack ID in the same way. The outputs are the
   address, the load balancer's DNS name, the edition and the version the stack runs, the
-  key secrets' names, and links into the console: the logs, the set-up link's line in
+  key secrets' ARNs (their names, on a stack given the keys of a deleted one), and links
+  into the console: the logs, the set-up link's line in
   them, the service, the key secrets and the database snapshots. CI lints the template
   with cfn-lint, and two copies a release would write, one with Qory Apiary Community
   first and one with Qory Apiary Pro first, and checks the stack policy, that no output is
