@@ -57,6 +57,11 @@ being one. Every variable named here is described in [Install and configure](ins
   release's download links, which its author chooses on GitLab and Codeberg, are still
   followed to any public https host: [Install and configure](install.md#integrations).
 <!-- /feature -->
+- **The proxy's address.** Behind a reverse proxy, set `TRUSTED_PROXIES` to the address
+  the proxy's connections come from; unset, every client counts as the proxy, and they
+  share its limits on signing in. With `compose.yaml` and a proxy on the same machine,
+  that is the gateway of the network `qory_default`, which `docker network inspect
+  qory_default` shows: [Install and configure](install.md#tls-and-the-reverse-proxy).
 - **The port is not public.** Publish the release's port to the reverse proxy only.
   `compose.yaml` publishes it on `127.0.0.1:4100` alone, for a proxy on the same machine;
   for a proxy elsewhere, publish it in a `compose.override.yaml` on an address only that
