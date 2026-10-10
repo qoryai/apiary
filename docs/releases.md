@@ -11,8 +11,11 @@ whether one is long, and **Upgrading**, anything the operator has to do or know.
 pull request puts back an empty `## [Unreleased]` above the new section, for the changes
 after it. It also sets `version` in `mix.exs` to the version without the `v`: that is what
 `GET /health` and `bin/apiary version` report. Once it is merged, the tag `vX.Y.Z` goes on
-the commit the merge leaves at the head of `main`, and that tag is the release. The release
-workflow refuses a tag whose version `mix.exs` does not carry.
+the commit its merge left on `main`, and that tag is the release.
+`gh pr view <N> --json mergeCommit` prints that commit: the merge commit, the squash commit
+or the last rebased commit, whichever merge method was used. It is not always the head of
+`main`, since another pull request may land first. The release workflow refuses a tag whose
+version `mix.exs` does not carry.
 
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for
