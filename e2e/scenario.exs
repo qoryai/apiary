@@ -53,6 +53,11 @@ defmodule E2E do
     # A line per request is the instance's log, not this job's.
     Logger.configure(level: :warning)
 
+    # The test instance has no SMTP_RELAY, so no mail (`Apiary.Mail`). The scenario gives
+    # the mailer Swoosh's test adapter, which hands each email to the process that sent it,
+    # so the log-in link and the invitation below are mailed as on an instance with mail.
+    Application.put_env(:apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test)
+
     step("a workspace, its owner, a node and its access key")
     scope = owner_scope()
     {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
@@ -429,7 +434,7 @@ defmodule E2E do
   end
 
   # A member of the owner's workspace, joined the way a person joins: an invitation sent
-  # from the workspace, and a sign-up with its token. The email goes to the log.
+  # from the workspace, and a sign-up with its token.
   defp member_scope(%Scope{workspace: %{id: workspace_id}} = owner) do
     email = "member@e2e.test"
     parent = self()

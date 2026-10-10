@@ -32,40 +32,33 @@ defmodule Apiary.RuntimeConfigTest do
     |> get_in([:apiary, Apiary.Mailer])
   end
 
-  test "production without a relay refuses to boot, naming both variables" do
-    error = assert_raise RuntimeError, fn -> prod_mailer() end
-    assert error.message =~ "SMTP_RELAY"
-    assert error.message =~ "MAIL_TO_LOG"
+  test "production without a relay starts, with no mail set" do
+    mailer = prod_mailer()
+    assert Keyword.has_key?(mailer, :adapter)
+    assert mailer[:adapter] == nil
+    assert Apiary.Mail.env_source(mailer) == :none
 
     # A blank line in .env is an unset relay, not a relay called "".
-    System.put_env("SMTP_RELAY", "")
-    assert_raise RuntimeError, ~r/MAIL_TO_LOG/, fn -> prod_mailer() end
-
-    # Only the exact opt-in counts.
-    System.put_env("MAIL_TO_LOG", "yes")
-    assert_raise RuntimeError, ~r/MAIL_TO_LOG/, fn -> prod_mailer() end
+    System.put_env("SMTP_RELAY", "  ")
+    assert prod_mailer()[:adapter] == nil
   end
 
-  test "MAIL_TO_LOG=true is the explicit opt-in to the log adapter" do
+  test "MAIL_TO_LOG is not read: no email goes to the log" do
     System.put_env("MAIL_TO_LOG", "true")
-    assert prod_mailer()[:adapter] == Swoosh.Adapters.Logger
+    assert prod_mailer()[:adapter] == nil
   end
 
-  test "a relay is used when set, whatever MAIL_TO_LOG says" do
+  test "a relay is used when set" do
     System.put_env("SMTP_RELAY", "smtp.example.com")
-    System.put_env("MAIL_TO_LOG", "true")
     mailer = prod_mailer()
     assert mailer[:adapter] == Swoosh.Adapters.SMTP
     assert mailer[:relay] == "smtp.example.com"
+    assert Apiary.Mail.env_source(mailer) == :env
   end
 
   defp prod_config, do: Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
 
   describe "DATABASE_URL" do
-    setup do
-      System.put_env("MAIL_TO_LOG", "true")
-    end
-
     defp prod_repo, do: get_in(prod_config(), [:apiary, Apiary.Repo])
 
     test "missing, it stops the boot with an example" do
@@ -107,10 +100,6 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "APIARY_ENCRYPTION_SECRET" do
-    setup do
-      System.put_env("MAIL_TO_LOG", "true")
-    end
-
     test "its 32 bytes are what every key derives from, and key nothing themselves" do
       config = prod_config()
 
@@ -133,10 +122,6 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "APIARY_SIGNING_SECRET" do
-    setup do
-      System.put_env("MAIL_TO_LOG", "true")
-    end
-
     test "its 32 bytes are the signing key's seed, and nothing derives them" do
       config = prod_config()
       assert get_in(config, [:apiary, Apiary.SigningKey, :seed]) == String.duplicate("g", 32)
@@ -221,10 +206,6 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "the two 32-byte keys in hex" do
-    setup do
-      System.put_env("MAIL_TO_LOG", "true")
-    end
-
     defp configured_keys do
       config = prod_config()
 
@@ -329,10 +310,6 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "the keys file" do
-    setup do
-      System.put_env("MAIL_TO_LOG", "true")
-    end
-
     @file_keys %{
       "SECRET_KEY_BASE" => String.duplicate("f", 64),
       "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("e", 32)),
@@ -427,10 +404,6 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "PUBLIC_URL" do
-    setup do
-      System.put_env("MAIL_TO_LOG", "true")
-    end
-
     test "a scheme, a host and a port are what the endpoint is given" do
       System.put_env("PUBLIC_URL", "https://qory.example:8443/")
       url = get_in(prod_config(), [:apiary, ApiaryWeb.Endpoint, :url])
@@ -506,7 +479,6 @@ defmodule Apiary.RuntimeConfigTest do
   describe "FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME" do
     setup do
       previous = Map.new(~w(FIRST_ADMIN_EMAIL FIRST_ORGANISATION_NAME), &{&1, System.get_env(&1)})
-      System.put_env("MAIL_TO_LOG", "true")
 
       on_exit(fn ->
         Enum.each(previous, fn
@@ -538,7 +510,6 @@ defmodule Apiary.RuntimeConfigTest do
   describe "APIARY_ACCEPT_SIGNING_FINGERPRINT" do
     setup do
       previous = System.get_env("APIARY_ACCEPT_SIGNING_FINGERPRINT")
-      System.put_env("MAIL_TO_LOG", "true")
 
       on_exit(fn ->
         if previous,

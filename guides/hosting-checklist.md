@@ -12,9 +12,8 @@ being one. Every variable named here is described in [Install and configure](ins
   request is redirected to the `https` address again. Forager refuses a `gateway.server.url` over
   plain `http` unless it is an address of its own machine, and one with a path, so serve
   the instance at the root of its host name.
-- **Real mail.** Set `SMTP_RELAY` and the variables beside it, and make sure `MAIL_TO_LOG`
-  is not set: with it, log-in links and invitation links, which are credentials, are
-  written to the log. Send yourself a log-in link before inviting anybody, and check that
+- **Real mail.** Set `SMTP_RELAY` and the variables beside it: without it the instance
+  sends no email. Send yourself a log-in link before inviting anybody, and check that
   `MAIL_FROM` is an address your relay may send from.
 - **The three keys, kept.** With `compose.yaml` the service `keys` generates
   `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` at first

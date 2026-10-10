@@ -39,6 +39,8 @@ defmodule Apiary.Application do
     :ok = Apiary.Edition.boot!()
     # A database connection encrypted without its certificate checked is said once.
     Apiary.DatabaseUrl.boot()
+    # So is an instance without mail (`Apiary.Mail`).
+    Apiary.Mail.boot()
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()

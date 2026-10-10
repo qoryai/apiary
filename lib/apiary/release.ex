@@ -194,10 +194,10 @@ defmodule Apiary.Release do
   address is public: it is the instance's first sign-up, with `email` and
   `organisation_name`, which creates the instance's organisation, its workspace Main and
   the account as its owner, and sends the account its log-in link, as the sign-up page does;
-  `{:ok, :created}`. Should the mail not go out, the instance is claimed all the same, the
-  output says so, without the address or the link, and says to ask for a link at
-  `/users/log-in`: `{:ok, :created_without_mail}`. With `MAIL_TO_LOG=true` the message,
-  its link included, is written to the command's output, as it is to the log.
+  `{:ok, :created}`. Should the mail not go out, no mail being set (`Apiary.Mail`)
+  included, the instance is claimed all the same, the output says so, without the address
+  or the link, and says to ask for a link at `/users/log-in`:
+  `{:ok, :created_without_mail}`.
   `bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'`.
   The organisation's name is required then, `{:error, :organisation_name_required}`
   without it. Should a sign-up on the web have come first, the command does what it does

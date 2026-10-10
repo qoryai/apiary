@@ -2,8 +2,8 @@
 
 This page takes a machine with Docker and `git` to a running Qory Apiary with one run on
 its runs page. It is a trial on one machine, run from a checkout of the repository with an
-image built on the machine: Qory Apiary is reached at `http://localhost:4100`, and emails
-are written to the log instead of being sent. For an installation other people sign in to,
+image built on the machine: Qory Apiary is reached at `http://localhost:4100`, and sends
+its email through an SMTP relay you name. For an installation other people sign in to,
 read [Install and configure](install.md) and the [hosting checklist](hosting-checklist.md).
 
 You need Docker with the `docker compose` command, and `git`. From step 5 on you need the
@@ -23,19 +23,15 @@ git clone https://github.com/qoryai/apiary.git && cd apiary
 
 ```sh
 docker build -t apiary:dev .
-cp .env.example .env && echo MAIL_TO_LOG=true >> .env
+cp .env.example .env
 ```
 
 The build takes a few minutes. The image is `apiary:dev`, never the name of the image a
-release publishes. `.env` needs nothing else for a trial: `PUBLIC_URL` is `http://localhost:4100`
-already, `SMTP_RELAY` stays empty, and `MAIL_TO_LOG=true` writes every email to the log.
-It holds no secret: the keys are generated at first start.
-
-> #### MAIL_TO_LOG is for a trial on one machine only {: .warning}
->
-> With `MAIL_TO_LOG=true` every email is written to the log in full. Log-in links and
-> invitation links are credentials, and with this setting they reach the log and everyone
-> and everything that reads it. Never set it on an installation other people sign in to.
+release publishes. In `.env`, `PUBLIC_URL` is `http://localhost:4100` already. Set
+`SMTP_RELAY` to the host of an SMTP relay you may send from, and `SMTP_USERNAME` and
+`SMTP_PASSWORD` when it asks for them: the log-in link of step 4 comes by email, and with
+`SMTP_RELAY` empty Qory Apiary sends none. The keys are not in `.env`: they are generated
+at first start.
 
 ### 3. Start it
 
@@ -84,14 +80,7 @@ address, `ada@qory.example` say, and the **Organisation name**, usually your com
 Qory Apiary sends a link, and the page says where it went and that the link works for 15
 minutes.
 
-With `MAIL_TO_LOG=true` the email is in the log of the `apiary` service. This prints the
-newest link:
-
-```sh
-docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z0-9_-]*' | tail -n 1
-```
-
-Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
+Open the link in the email. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your workspace. Until a run reaches it, the
 overview is one box, **Send your first run**: Add a node, Connect it, See runs here.
 Steps 5 to 7 below are those steps.

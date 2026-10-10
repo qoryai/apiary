@@ -76,7 +76,6 @@ export DATABASE_URL="$database_url"
 export PORT="$E2E_PORT"
 export PUBLIC_URL="http://127.0.0.1:$E2E_PORT"
 export PHX_SERVER=true
-export MAIL_TO_LOG=true
 # Each secret is a fresh random value of its own, never derived from another. The signing
 # secret is the seed of the key the instance signs its answers with, the key the node pins
 # as apiary_public_key; the instance refuses at boot the Forager contract's fixture seeds,

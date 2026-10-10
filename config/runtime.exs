@@ -362,21 +362,10 @@ if config_env() == :prod do
 
   case smtp_relay do
     nil ->
-      # No relay configured. Writing emails to the log puts log-in links and
-      # invitation links, which are credentials, in front of whoever reads the log,
-      # so it is never the silent fallback: the operator asks for it by name.
-      if System.get_env("MAIL_TO_LOG") == "true" do
-        config :apiary, Apiary.Mailer,
-          adapter: Swoosh.Adapters.Logger,
-          level: :info,
-          log_full_email: true
-      else
-        raise """
-        no mail delivery is configured.
-        Set SMTP_RELAY to the host of an SMTP relay, or, for a trial on one machine only,
-        set MAIL_TO_LOG=true to write every email (log-in links included) to the log.
-        """
-      end
+      # No relay: Qory Apiary starts, and sends no email (`Apiary.Mail.source/0` is
+      # `:none`, and the boot says so in one line). The adapter is unset, so the one
+      # config/config.exs names for development is not used.
+      config :apiary, Apiary.Mailer, adapter: nil
 
     relay ->
       smtp_port = String.to_integer(System.get_env("SMTP_PORT") || "587")

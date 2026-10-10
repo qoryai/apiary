@@ -27,6 +27,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   creates and grants nothing, and sends no email. One set and the other empty, or a value
   the sign-up refuses, stops the boot of an instance nobody has signed up to with a
   message naming the variable.
+- Mail is no longer needed to start. With `SMTP_RELAY` set, Qory Apiary sends its email
+  through that relay; without it, it starts all the same, sends no email, and says so in one
+  line of its log at each start. `Apiary.Mail` says whether mail is set and where from.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces

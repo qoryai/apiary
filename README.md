@@ -22,7 +22,7 @@ start, and the server on port 4100 of `127.0.0.1`.
 ```sh
 git clone https://github.com/qoryai/apiary.git && cd apiary
 docker build -t apiary:dev .
-cp .env.example .env && echo MAIL_TO_LOG=true >> .env
+cp .env.example .env
 APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
 curl http://localhost:4100/health
 ```
@@ -33,9 +33,10 @@ curl http://localhost:4100/health
 `export APIARY_IMAGE=apiary APIARY_VERSION=dev`. `/health` answers once the migrations have
 run, a few seconds after the start.
 
-Sign up at `http://localhost:4100/users/register`; the trial writes the log-in link to
-`docker compose logs apiary`. The first person to sign up creates the organisation and runs
-the instance, and everyone else joins by invitation.
+Sign up at `http://localhost:4100/users/register`. The log-in link comes by email, so set
+`SMTP_RELAY` in `.env`, and the variables beside it, before `docker compose up -d`; with it
+empty, Qory Apiary sends no email. The first person to sign up creates the organisation and
+runs the instance, and everyone else joins by invitation.
 
 Then add a node under **Nodes**, select **Get the command** on its **Access key** tab, run
 the command it gives, `qory access-key enrol <server> <code>`, on the machine, which needs
