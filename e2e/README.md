@@ -44,8 +44,9 @@ reaches the test instance as `http://127.0.0.1:4180`, which is also the instance
 would. Everything after that is the contract as it is: every request signed with the
 node's Ed25519 access key and every answer signed with the instance's own key
 (`APIARY_SIGNING_SECRET`, a fresh random value for each job), which the node pins;
-discovery, the ping, the run configuration for the checkout's forge and repository,
-batches, the digests in the answers.
+discovery, the run's registration, `POST /v1/runs`, whose answer carries the run
+configuration for the checkout's forge and repository, batches, the digests in the
+answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
 
 ## The scenario
 

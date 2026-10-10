@@ -282,7 +282,9 @@ names, else the body's, and its `contract_version` the header's. The projector n
 writes these fields, so a rebuild keeps them, and `registration_time`, the body's `time`,
 on the gateway's clock. The run's projection starts at sequence 1: the registration stands
 for the record's sequence 1, `dev.qory.run.registered`, which is never posted
-(`Apiary.Runs.Run.projected_from/1`); a run its batches created starts at 0. After the
+(`Apiary.Runs.Run.projected_from/1`), so its events count from sequence 2; a run its
+batches created starts at 0. Until an event is projected, whichever start the run has,
+the run page's Details say it is projected through `#0000`. After the
 commit, and never failing the
 request, the key records the time and the versions, and the run is broadcast as changed.
 The run's batches are stored on the same row, and its `run.started` moves it to
