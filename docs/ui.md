@@ -579,8 +579,9 @@ link. A member sees the card with no Change mode and the line that says who may.
 The Document view (`…/policy/document`, a target's `…/-/policy/document`) is the document
 in force under the card and the tabs, a view of History, not a tab of its own: while
 there is a document, History's top has two segments (`PolicyLive.Views.history_switch/1`),
-Changes (`…/history`, the list of changes) and Document, and History is the current tab on
-both, on a version's page and on its export. The view shows its version's number, In
+Changes (`…/history`, the list of changes) and Document; a switch gives the focus to the
+segment now pressed. History is the current tab on both and on a version's page; the
+export page has no tabs. The view shows its version's number, In
 force and the version's views, which stay on the view. The document's bar is the view's
 one place to take it away,
 the code-block header's pattern: two small icon buttons on its right, Copy (the document

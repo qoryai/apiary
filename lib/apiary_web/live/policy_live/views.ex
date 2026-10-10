@@ -39,6 +39,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
   @doc """
   The two views of a policy's History, at its top: its changes (`…/history`) and the
   document in force (`…/document`), each a patch. Shown only while there is a document.
+  The two are in different places on the page, so after a switch the page sends the
+  focus to the segment now pressed (`Common.heading_focus/3`).
   """
   attr :base, :string, required: true
   attr :current, :atom, required: true, values: [:changes, :document]
@@ -46,10 +48,18 @@ defmodule ApiaryWeb.PolicyLive.Views do
   def history_switch(assigns) do
     ~H"""
     <.segments id="history-view" label={gettext("History")}>
-      <:segment patch={"#{@base}/history"} pressed={@current == :changes}>
+      <:segment
+        id="history-view-changes"
+        patch={"#{@base}/history"}
+        pressed={@current == :changes}
+      >
         {gettext("Changes")}
       </:segment>
-      <:segment patch={"#{@base}/document"} pressed={@current == :document}>
+      <:segment
+        id="history-view-document"
+        patch={"#{@base}/document"}
+        pressed={@current == :document}
+      >
         {gettext("Document")}
       </:segment>
     </.segments>

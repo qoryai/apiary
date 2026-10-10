@@ -864,14 +864,19 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   After a patch between a version (or the Document view) and its export (Export, Done),
-  the focus goes to the heading of what is shown now, so it never falls to the page's
-  body: `from` is the view shown before the patch, `to` the one shown now.
+  the focus goes to the heading of what is shown now, and after a patch between
+  History's two views (Changes, Document) to the segment now pressed, so it never falls
+  to the page's body: `from` is the view shown before the patch, `to` the one shown now.
   """
   def heading_focus(socket, from, :export) when from in [:version, :document],
     do: focus(socket, "policy-export-h")
 
   def heading_focus(socket, :export, to) when to in [:version, :document],
     do: focus(socket, "policy-version-h")
+
+  def heading_focus(socket, :history, :document), do: focus(socket, "history-view-document")
+
+  def heading_focus(socket, :document, :history), do: focus(socket, "history-view-changes")
 
   def heading_focus(socket, _from, _to), do: socket
 

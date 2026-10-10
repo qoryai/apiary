@@ -1274,6 +1274,7 @@ defmodule ApiaryWeb.RunComponents do
     attr :patch, :string, required: true
     attr :pressed, :boolean
     attr :count, :any
+    attr :id, :string, doc: "the button's id, for a page that sends it the focus"
   end
 
   def segments(assigns) do
@@ -1281,6 +1282,7 @@ defmodule ApiaryWeb.RunComponents do
     <div id={@id} class="q-seg" role="group" aria-label={@label}>
       <button
         :for={segment <- @segment}
+        id={segment[:id]}
         type="button"
         phx-click={JS.patch(segment.patch)}
         aria-pressed={to_string(segment[:pressed] == true)}
