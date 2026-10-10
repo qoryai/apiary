@@ -45,6 +45,11 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     view
   end
 
+  # The view queries the database in handle_info, on each change it hears of: it is
+  # stopped before the test ends, so none of its queries comes after the test's sandbox
+  # owner exits.
+  defp stop(view), do: GenServer.stop(view.pid)
+
   defp rules(scope, holder \\ nil), do: Policy.list_rules(scope, holder)
   defp rule(scope, host), do: Enum.find(rules(scope), &(&1.host == host))
 
@@ -119,6 +124,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       assert rule(scope, "flags.example")
       render_hook(view, "suggest_allow_all", %{})
       assert Process.alive?(view.pid)
+      stop(view)
     end
   end
 
@@ -178,6 +184,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       {:ok, again} = Policy.allow(scope, nil, %{host: "*.paste.example"})
       render_hook(view, "remove_confirm", %{})
       assert rule(scope, "*.paste.example").id == again.id
+      stop(view)
     end
 
     test "a target's rule that is gone is not acted on",
