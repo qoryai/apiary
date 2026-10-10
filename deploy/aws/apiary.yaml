@@ -101,7 +101,7 @@ Parameters:
     Type: String
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
-    Description: "To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+    Description: "Yes turns it on once Qory first starts healthy, so a failed install still rolls back. To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
   # A pre-release image, such as ghcr.io/qoryai/apiary-prerelease:sha-<7>, which
   # .github/workflows/prerelease.yml publishes. It replaces the Edition's image and version,
   # and is pulled with the download key, whatever the Edition (TestImageNeedsDownloadKey).
@@ -474,8 +474,10 @@ Resources:
   # unchanged: CloudFormation replaces a restored instance whose DBSnapshotIdentifier
   # changes or goes. A restored instance keeps the snapshot's user, database, password and
   # encryption. The password is read once, by each task at its start: no rotation.
-  # Deletion protection follows DatabaseDeletionProtection, changed in place. With it on,
-  # deleting the stack fails at the database; with it off, the delete keeps a final snapshot.
+  # It is made without deletion protection, and names none, so CloudFormation never sets
+  # it: DatabaseProtection, below, follows DatabaseDeletionProtection once the service is
+  # healthy. With it on, deleting the stack fails at the database; with it off, the delete
+  # keeps a final snapshot.
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Snapshot
@@ -491,7 +493,6 @@ Resources:
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
       BackupRetentionPeriod: 7
-      DeletionProtection: !If [ProtectDatabase, true, false]
       DBSnapshotIdentifier: !If [RestoreDatabase, !Ref DatabaseSnapshot, !Ref AWS::NoValue]
       StorageEncrypted: !If [RestoreDatabase, !Ref AWS::NoValue, true]
       DBName: !If [RestoreDatabase, !Ref AWS::NoValue, apiary]
@@ -820,6 +821,158 @@ Resources:
     Properties:
       ServiceToken: !GetAtt StackPolicyFunction.Arn
       ServiceTimeout: "300"
+
+  # The database's deletion protection, set by a function of the stack's own once the
+  # service is healthy: DatabaseProtection is made after the service, whose create waits
+  # until its task answers /health. A create that fails before then leaves the database
+  # unprotected, so the rollback deletes it with the rest. On Create, and on each Update,
+  # DatabaseDeletionProtection changed or an update rolled back, the function sets the
+  # protection to the value the request gives it, in place. On Delete it changes nothing,
+  # so deleting the stack with the protection on still fails at the database; only while
+  # the stack's create rolls back does it turn the protection off, so that rollback can
+  # delete the database too. It answers CloudFormation even when its call fails, and a
+  # request that names another stack fails and changes nothing. Its role may read and
+  # modify this database alone, read this stack, and write its own log group, which is
+  # kept as the task's is. The runtime is pinned, and kept current with each release.
+  DatabaseProtectionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackIdTail}/database-protection
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+      RetentionInDays: 30
+
+  DatabaseProtectionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: database-deletion-protection
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:ModifyDBInstance
+                Resource: !Sub arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${Database}
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Ref AWS::StackId
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt DatabaseProtectionLogGroup.Arn
+
+  DatabaseProtectionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Sets the database's deletion protection once the service is healthy.
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt DatabaseProtectionRole.Arn
+      Timeout: 600
+      LoggingConfig:
+        LogGroup: !Ref DatabaseProtectionLogGroup
+      # The stack and the database are the function's own, never the request's; the
+      # request gives only whether to protect.
+      Environment:
+        Variables:
+          STACK_ID: !Ref AWS::StackId
+          DATABASE: !Ref Database
+      # A database busy with a backup or another change refuses the change; it is asked
+      # again every 20 seconds while at least 120 of the 600 are left. A call takes at most
+      # about 42 seconds (two tries of 5 + 15, a back-off of at most 2 between them), so
+      # the last round, the answer's 10 included, ends inside the timeout.
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import time
+          import urllib.request
+
+          import boto3
+          from botocore.config import Config
+
+          CONFIG = Config(
+              connect_timeout=5,
+              read_timeout=15,
+              retries={"total_max_attempts": 2, "mode": "standard"},
+          )
+
+
+          def protect(rds, database, wanted, context):
+              while True:
+                  instance = rds.describe_db_instances(DBInstanceIdentifier=database)["DBInstances"][0]
+                  if instance["DeletionProtection"] == wanted:
+                      return
+                  try:
+                      rds.modify_db_instance(DBInstanceIdentifier=database, DeletionProtection=wanted)
+                      return
+                  except rds.exceptions.InvalidDBInstanceStateFault:
+                      if context.get_remaining_time_in_millis() < 120_000:
+                          raise
+                      time.sleep(20)
+
+
+          def handler(event, context):
+              status, reason = "SUCCESS", ""
+              try:
+                  if event["StackId"] != os.environ["STACK_ID"]:
+                      raise ValueError(f"the request names another stack, {event['StackId']}")
+                  rds = boto3.client("rds", config=CONFIG)
+                  database = os.environ["DATABASE"]
+                  if event["RequestType"] in ("Create", "Update"):
+                      wanted = event["ResourceProperties"]["DeletionProtection"] == "true"
+                      protect(rds, database, wanted, context)
+                  else:
+                      stack = boto3.client("cloudformation", config=CONFIG).describe_stacks(
+                          StackName=os.environ["STACK_ID"]
+                      )["Stacks"][0]
+                      # A create rolling back: the database goes too, so nothing may hold it.
+                      if stack["StackStatus"] == "ROLLBACK_IN_PROGRESS":
+                          try:
+                              protect(rds, database, False, context)
+                          except rds.exceptions.DBInstanceNotFoundFault:
+                              pass
+              except Exception as error:
+                  status, reason = "FAILED", f"The database's deletion protection was not set: {error}"[:1000]
+                  print(reason)
+
+              # Always answered, so the stack never waits on a function that failed.
+              body = json.dumps(
+                  {
+                      "Status": status,
+                      "Reason": reason or "Done.",
+                      "PhysicalResourceId": event.get("PhysicalResourceId") or "database-protection",
+                      "StackId": event["StackId"],
+                      "RequestId": event["RequestId"],
+                      "LogicalResourceId": event["LogicalResourceId"],
+                  }
+              ).encode()
+              request = urllib.request.Request(
+                  event["ResponseURL"], data=body, method="PUT", headers={"Content-Type": ""}
+              )
+              urllib.request.urlopen(request, timeout=10)
+
+  # Made after the service, so once its task is healthy. Its one setting is
+  # DatabaseDeletionProtection's; CloudFormation waits at most ServiceTimeout seconds for
+  # the function's answer.
+  DatabaseProtection:
+    Type: Custom::DatabaseProtection
+    DependsOn: Service
+    Properties:
+      ServiceToken: !GetAtt DatabaseProtectionFunction.Arn
+      ServiceTimeout: "660"
+      DeletionProtection: !If [ProtectDatabase, "true", "false"]
 
 # Links into the AWS console, and the values a person reads; no output is a command (CI
 # checks it: scripts/aws-template-check.py outputs).
