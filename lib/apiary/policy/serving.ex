@@ -80,6 +80,11 @@ defmodule Apiary.Policy.Serving do
   `managed?/1`), or nil when it cannot be read: the answer then carries no such header,
   which means nothing to the gateway. `run` is the run's
   row or nil (a pruned run is looked up by the batch's subject).
+
+  The target is the one the run's row holds; else, for a run that registered
+  (`Apiary.Runs.Registration`), the one its registration's labels name, the baseline's
+  when they name none; else the one the batch's `run.started` names; else the digest the
+  request reported, when it is in force, or the baseline's.
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil
   def digest_for(%AccessKey{} = access_key, run, %Batch{} = batch, reported) do
@@ -93,6 +98,9 @@ defmodule Apiary.Policy.Serving do
     else
       target_id when is_binary(target_id) ->
         digest(organisation_id, workspace_id, target_id)
+
+      {:registered, labels} ->
+        digest(organisation_id, workspace_id, target_id(access_key, labels))
 
       _unknown ->
         digest(organisation_id, workspace_id, nil)
@@ -108,18 +116,26 @@ defmodule Apiary.Policy.Serving do
     end
   end
 
+  # The target the run's row holds, or, for a run that registered and holds none yet, its
+  # registration's labels, which name it.
   defp known_target(_workspace_id, %Run{target_id: target_id}, _batch)
        when is_binary(target_id),
        do: target_id
 
+  defp known_target(_workspace_id, %Run{registration_labels: %{} = labels}, _batch),
+    do: {:registered, labels}
+
   defp known_target(_workspace_id, %Run{}, _batch), do: nil
 
   defp known_target(workspace_id, nil, %Batch{subject: subject}) do
-    Repo.one(
-      from r in Run,
-        where: r.workspace_id == ^workspace_id and r.run_id == ^subject,
-        select: r.target_id
-    )
+    run =
+      Repo.one(
+        from r in Run,
+          where: r.workspace_id == ^workspace_id and r.run_id == ^subject,
+          select: struct(r, [:target_id, :registration_labels])
+      )
+
+    if run, do: known_target(workspace_id, run, nil)
   end
 
   defp started_target(access_key, %Batch{events: events}) do

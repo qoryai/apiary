@@ -9,8 +9,9 @@ defmodule Apiary.Runs.Liveness do
 
     * a `running` run is measured from its last heartbeat, or, when it has not beaten yet,
       from the arrival of its `run.started`;
-    * a `pending` run, one whose events have begun and whose `run.started` has not come,
-      is measured from the moment the workspace first heard of it (`inserted_at`).
+    * a `pending` run, one that has registered or whose events have begun, and whose
+      `run.started` has not come, is measured from the moment the workspace first heard of
+      it (`inserted_at`, which for a run that registered is its `registered_at`).
 
   **A heartbeat's time.** A heartbeat counts as heard at its own `time`, corrected by the
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival

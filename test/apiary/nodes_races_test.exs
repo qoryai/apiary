@@ -16,7 +16,7 @@ defmodule Apiary.NodesRacesTest do
 
   alias Apiary.{Nodes, Repo}
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Registration, Run}
 
   setup_all :clean_up_leftovers
   setup :setup_races
@@ -65,5 +65,58 @@ defmodule Apiary.NodesRacesTest do
     assert Enum.count(answers, &(&1 == {:error, :instance_limit})) == 1
     assert length(runs(pool)) == 2
     assert %Node{instance_limit_refused: 1} = Repo.get!(Node, pool.id)
+  end
+
+  # A run's registration, as `Apiary.Runs.Registration.register/3` takes it, from
+  # `instance_id` under `key`.
+  defp register(key, run_id, instance_id) do
+    body =
+      Jason.encode!(%{
+        "version" => 1,
+        "run_id" => run_id,
+        "labels" => %{},
+        "time" => DateTime.to_iso8601(DateTime.utc_now()),
+        "forager_version" => "0.8.0",
+        "contract_version" => 1,
+        "interval_seconds" => 30,
+        "events" => ["*"]
+      })
+
+    {:ok, registration} = Registration.parse(Jason.decode!(body))
+    meta = %{body: body, contract_version: 1, instance_id: instance_id}
+    fn -> Registration.register(key, registration, meta) end
+  end
+
+  test "of two registrations at once for a pool's last slot, one is admitted" do
+    %{scope: scope} = sign_up()
+    pool = pool_fixture(scope, name: "spot-runners", instance_limit: 2)
+    %{access_key: key} = Apiary.AccessKeysFixtures.access_key_fixture(scope, node: pool)
+    node_run_fixture(pool, "i_0")
+
+    answers =
+      together([
+        register(key, Ecto.UUID.generate(), "i_1"),
+        register(key, Ecto.UUID.generate(), "i_2")
+      ])
+
+    assert Enum.count(answers, &match?({:ok, %{run: %Run{}}}, &1)) == 1
+    assert Enum.count(answers, &(&1 == {:error, :instance_limit})) == 1
+    assert length(runs(pool)) == 2
+    assert %Node{instance_limit_refused: 1} = Repo.get!(Node, pool.id)
+  end
+
+  test "the same registration twice at once is one run, stored once and answered twice" do
+    %{scope: scope} = sign_up()
+    node = node_fixture(scope, name: "build-01")
+    %{access_key: key} = Apiary.AccessKeysFixtures.access_key_fixture(scope, node: node)
+    same = register(key, Ecto.UUID.generate(), "i_1")
+
+    answers = together([same, same])
+
+    assert [false, true] ==
+             answers |> Enum.map(fn {:ok, %{repeated: repeated}} -> repeated end) |> Enum.sort()
+
+    assert runs(node) == ["i_1"]
+    assert %Node{instance_limit_refused: 0} = Repo.get!(Node, node.id)
   end
 end

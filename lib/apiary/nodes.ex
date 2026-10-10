@@ -513,7 +513,8 @@ defmodule Apiary.Nodes do
   statement of its own. Raises inside a transaction: it is the batch's transaction.
 
   The receiving side calls it for a batch that holds the ping of a run the workspace has
-  not seen (`Apiary.Runs.Ingest`).
+  not seen (`Apiary.Runs.Ingest`), and for a run's registration
+  (`Apiary.Runs.Registration`).
   """
   @spec admit(Node.t(), String.t(), (-> {:ok, value} | {:error, reason}), DateTime.t()) ::
           {:ok, value} | {:error, :instance_limit | reason}
