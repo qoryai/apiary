@@ -1,9 +1,10 @@
 defmodule Apiary.CopiedInvitationsTest do
   @moduledoc """
   Without mail, an invitation is kept and its link is handed back to copy, once; with
-  mail it is emailed, as before. A lost link is replaced with `renew_invitation/3`: the
-  same invitation, a new link, the old one dead at once. The limits are
-  `Apiary.InvitationLimitTest`'s.
+  mail it is emailed, as before. A lost link is replaced with `renew_invitation/4`: the
+  same invitation, a new link, the old one dead at once; with `action:`, for a caller that
+  asked `Apiary.Access` itself, its token is handed back for `send_invitation/4`. The
+  limits are `Apiary.InvitationLimitTest`'s.
   """
   use Apiary.DataCase, async: true
 
@@ -15,7 +16,7 @@ defmodule Apiary.CopiedInvitationsTest do
   alias Apiary.{Mail, Organisations}
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias Apiary.Organisations.{Invitation, Membership}
+  alias Apiary.Organisations.{Invitation, Membership, Organisation}
 
   @url "http://localhost/invitations/"
 
@@ -29,6 +30,19 @@ defmodule Apiary.CopiedInvitationsTest do
         where: e.subject_id == ^invitation.id and e.action == ^action,
         order_by: [asc: e.inserted_at]
     )
+  end
+
+  # An invitation insert_invitation/3 counted against `allowance`, and its token.
+  defp insert!(scope, email, allowance) do
+    {:ok, {invitation, token}} =
+      Repo.transact(fn ->
+        with {:ok, invitation, token} <-
+               Organisations.insert_invitation(scope, %{"email" => email}, allowance: allowance) do
+          {:ok, {invitation, token}}
+        end
+      end)
+
+    {invitation, token}
   end
 
   # An expiry long ago enough that a renewal's is plainly new.
@@ -249,6 +263,56 @@ defmodule Apiary.CopiedInvitationsTest do
                Organisations.renew_invitation(scope, accepted.id, url_fun())
     end
 
+    test "renew_invitation/4 with action: hands the token back; send_invitation/4 makes the link",
+         %{scope: scope} do
+      %{invitation: invitation, token: old} = invitation_fixture(scope)
+      id = invitation.id
+
+      assert {:ok, %Invitation{id: ^id} = renewed, token} =
+               Organisations.renew_invitation(scope, id, url_fun(), action: :"member.invite")
+
+      assert is_binary(token)
+      assert Organisations.get_invitation_by_token(old) == nil
+      assert_no_email_sent()
+
+      assert {:ok, ^renewed, {:link, url}} =
+               Organisations.send_invitation(scope, renewed, token, url_fun())
+
+      assert url == @url <> token
+      assert %Invitation{id: ^id} = Organisations.get_invitation_by_token(token)
+      assert_no_email_sent()
+    end
+
+    test "renew_invitation/4 with action: inside a transaction that holds the allowance already",
+         %{scope: scope} do
+      %{scope: other} = mailed(&sign_up_fixture/0)
+      {invitation, _old} = insert!(scope, "dana@example.com", other.organisation)
+
+      assert {:ok, {%Invitation{} = renewed, token}} =
+               Repo.transact(fn ->
+                 # As an edition's renewal holds it, before it asks.
+                 Repo.one!(
+                   from o in Organisation,
+                     where: o.id == ^other.organisation.id,
+                     select: o.id,
+                     lock: "FOR NO KEY UPDATE"
+                 )
+
+                 with {:ok, renewed, token} <-
+                        Organisations.renew_invitation(scope, invitation.id, url_fun(),
+                          action: :"member.invite"
+                        ) do
+                   {:ok, {renewed, token}}
+                 end
+               end)
+
+      assert renewed.id == invitation.id
+      assert %Invitation{} = Organisations.get_invitation_by_token(token)
+
+      assert [_invited, %Entry{details: details}] = entries(invitation, "member.invite")
+      assert details == %{"allowance_id" => other.organisation.id}
+    end
+
     test "an admin renews too; the instance does not", %{scope: scope} do
       %{invitation: invitation} = invitation_fixture(scope)
       %{scope: admin} = mailed(fn -> member_fixture(scope, :admin) end)
@@ -314,6 +378,43 @@ defmodule Apiary.CopiedInvitationsTest do
         [_, token] = Regex.run(~r{/invitations/([A-Za-z0-9_-]+)}, email.text_body)
         assert %Invitation{id: ^id} = Organisations.get_invitation_by_token(token)
         assert email.to == [{"", invitation.email}]
+      end)
+    end
+
+    test "renew_invitation/4 with action: a member renews, recorded as the action, mailing nothing",
+         %{scope: scope} do
+      %{scope: other} = sign_up_fixture()
+      {invitation, old} = insert!(scope, "dana@example.com", other.organisation)
+      %{scope: member} = member_fixture(scope, :member)
+      flush_emails()
+      id = invitation.id
+
+      # Refused by the core's own question, allowed with the caller's.
+      assert {:error, :forbidden} = Organisations.renew_invitation(member, id, url_fun())
+
+      assert {:ok, %Invitation{id: ^id} = renewed, token} =
+               Organisations.renew_invitation(member, id, url_fun(), action: :"member.invite")
+
+      assert is_binary(token)
+      assert_no_email_sent()
+
+      # The old link is dead at once; the new one is the token handed back.
+      assert Organisations.get_invitation_by_token(old) == nil
+      assert %Invitation{id: ^id} = Organisations.get_invitation_by_token(token)
+
+      # Its entry is the action given, by the member, charged to the recorded allowance.
+      assert entries(invitation, "invitation.renew") == []
+      assert [_invited, %Entry{} = entry] = entries(invitation, "member.invite")
+      assert entry.details == %{"allowance_id" => other.organisation.id}
+      assert entry.actor_id == member.user.id
+      assert entry.organisation_id == scope.organisation.id
+
+      # Then the caller sends it.
+      assert {:ok, ^renewed} = Organisations.send_invitation(member, renewed, token, url_fun())
+
+      assert_email_sent(fn email ->
+        assert email.to == [{"", invitation.email}]
+        assert email.text_body =~ @url <> token
       end)
     end
   end
