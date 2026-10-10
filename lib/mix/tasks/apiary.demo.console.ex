@@ -97,7 +97,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   # The recordings replayed into Main, by how long before now each ended.
   @replays [
-    {"ping-only", 20},
+    {"registered-only", 20},
     {"no-session", 45},
     {"unassigned", 95},
     {"session-with-subagents", 170},

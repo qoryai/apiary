@@ -19,8 +19,8 @@ defmodule Apiary.Runs.Liveness do
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival
   (`heard_at/3`); the fold keeps that as the run's `last_heartbeat_at`. The offset,
   `clock_offset_ms`, is the smallest arrival less own time over the run's heartbeats,
-  and for a run with no session, which the gateway beats for, its ping's
-  (`Apiary.Runs.Fold`). So a backlog of heartbeats delivered late holds no run alive,
+  and for a run with no session, which the gateway beats for, its registration's (and a
+  ping's, stored before the registration replaced it) (`Apiary.Runs.Fold`). So a backlog of heartbeats delivered late holds no run alive,
   unless they were recorded within the tolerance and three intervals of their arrival, or
   the run had no offset before them, when its first heartbeat counts at its arrival; a
   machine whose clock is off by a constant is not lost for it, and a heartbeat dated in

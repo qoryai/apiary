@@ -1,34 +1,38 @@
 defmodule ApiaryWeb.Contract.RawBody do
   @moduledoc """
-  Reads the body of a delivery to the events endpoint, and of an enrolment, before
-  anything parses it.
+  Reads the body of a delivery to the events endpoint, of a run's registration, and of an
+  enrolment, before anything parses it.
 
   The signature of a signed POST is over the raw bytes, and it is checked before the body
   is parsed; an enrolment is read strictly, a member twice refused, which a parser that
-  keeps the last of them cannot tell. So for `POST /v1/events` and
+  keeps the last of them cannot tell. So for `POST /v1/events`, `POST /v1/runs` and
   `POST /.well-known/qory-enrolment`, whatever the content type, this plug reads the body
   itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
   endpoint skips `Plug.Parsers` for such a request. Every other request passes untouched.
 
-  At most `max_bytes/0` of a delivery are read, 2 MiB, and `max_bytes(:enrolment)` of an
-  enrolment, 8 KiB, many times the longest the schema allows: what an unauthenticated
-  sender can make the server hold is small. A longer body is answered `413` here, before
-  the signature or the code is looked at, as the contract's reference receiver does.
+  At most `max_bytes/0` of a delivery are read, 2 MiB, `max_bytes(:registration)` of a
+  registration, 64 KiB, and `max_bytes(:enrolment)` of an enrolment, 8 KiB, the last two
+  many times the longest the schema allows: what an unauthenticated sender can make the
+  server hold is small. A longer body is answered `413` here, before the signature or the
+  code is looked at, as the contract's reference receiver does.
   """
 
   import Plug.Conn
 
   @max_bytes 2 * 1024 * 1024
+  @registration_max_bytes 64 * 1024
   @enrolment_max_bytes 8 * 1024
   @events_path ["v1", "events"]
+  @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]
 
   @doc """
-  The largest body that is accepted, in bytes: of a delivery (`max_bytes/0`), or of an
-  enrolment (`max_bytes(:enrolment)`).
+  The largest body that is accepted, in bytes: of a delivery (`max_bytes/0`), of a
+  registration (`max_bytes(:registration)`), or of an enrolment (`max_bytes(:enrolment)`).
   """
   def max_bytes, do: @max_bytes
   def max_bytes(:events), do: @max_bytes
+  def max_bytes(:registration), do: @registration_max_bytes
   def max_bytes(:enrolment), do: @enrolment_max_bytes
 
   def init(opts), do: opts
@@ -47,6 +51,7 @@ defmodule ApiaryWeb.Contract.RawBody do
   defp kept([_, _] = path_info) do
     case Enum.map(path_info, &decode/1) do
       @events_path -> :events
+      @registration_path -> :registration
       @enrolment_path -> :enrolment
       _other -> nil
     end

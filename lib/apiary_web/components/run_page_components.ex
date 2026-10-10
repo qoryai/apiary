@@ -251,7 +251,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(%{reason: :not_started} = assigns) do
     ~H"""
-    {gettext("Forager has pinged. The run's first event has not arrived.")}
+    {gettext("The run is registered. Its first event has not arrived.")}
     """
   end
 

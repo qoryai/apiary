@@ -168,7 +168,7 @@ defmodule Apiary.Runs.Projector do
     |> Ecto.Changeset.change(blank)
     |> Ecto.Changeset.change(
       state: "pending",
-      projected_sequence: 0,
+      projected_sequence: Run.projected_from(current),
       target_id: nil,
       denied_count: 0
     )

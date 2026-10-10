@@ -60,7 +60,12 @@ defmodule Apiary.Runs.Registration do
   kept on the run, so a repeat is given the same answer.
 
   `fetch/2` is the reload: the run configuration in force for a run, read by its
-  registration's labels, for the access key the run is under alone.
+  registration's labels, for the access key that registered it alone.
+
+  The run keeps its registration's `time` (`registration_time`), on the gateway's clock,
+  from which the fold takes the clock offset of a run a gateway opened
+  (`Apiary.Runs.Fold`), and is projected from sequence 1, which its registration stands
+  for (`Apiary.Runs.Run.projected_from/1`).
   """
 
   import Ecto.Query, warn: false
@@ -452,6 +457,9 @@ defmodule Apiary.Runs.Registration do
               registration_digest: digest,
               registration_interval_seconds: registration.interval_seconds,
               registration_answer_digest: settings.digest,
+              registration_time: registration.time,
+              # The registration stands for the record's sequence 1, never posted.
+              projected_sequence: Run.projected_from(%{registered_at: now}),
               inserted_at: now,
               updated_at: now
             },
@@ -508,11 +516,11 @@ defmodule Apiary.Runs.Registration do
   @doc """
   The reload: the run configuration in force for the run `run_id`, for the key (an access
   key, or its scope). `{:ok, settings}` (`t:settings/0`), read by the labels the run
-  registered with, else the labels its events gave it.
+  registered with.
 
-  `{:error, :not_found}` for a run id the key's workspace does not hold, a run under
-  another access key than this one (registered under it, or created by its first batch),
-  and a workspace that serves no run configuration: nobody has made its policy, the
+  `{:error, :not_found}` for a run id the key's workspace does not hold, a run another
+  access key registered, a run that never registered (its batches created it), and a
+  workspace that serves no run configuration: nobody has made its policy, the
   `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`. That
   last is never the document of no policy, which would take the policy in force off a run
   that started under it: a policy removed mid-run never loosens a run already started.
@@ -532,7 +540,7 @@ defmodule Apiary.Runs.Registration do
                where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^run_id
            ),
          true <- reload_allowed?(access_key, run) do
-      case Serving.fetch(access_key, run.registration_labels || run.labels) do
+      case Serving.fetch(access_key, run.registration_labels) do
         {:ok, %RunConfiguration{document: document, digest: digest}} ->
           {:ok, settings(document, digest, true)}
 
@@ -549,11 +557,12 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  # Who may reload a run: the access key the run is under (`runs.access_key_id`, the key
-  # that registered it or that sent its first batch), and no other. A run whose key is gone
-  # is reloaded by none.
-  defp reload_allowed?(%AccessKey{id: id}, %Run{access_key_id: id}) when is_binary(id),
-    do: true
+  # Who may reload a run: the access key that registered it, and no other. A run its
+  # batches created, which never registered, and a run whose key is gone are reloaded by
+  # none.
+  defp reload_allowed?(%AccessKey{id: id}, %Run{access_key_id: id, registered_at: %DateTime{}})
+       when is_binary(id),
+       do: true
 
   defp reload_allowed?(_access_key, _run), do: false
 

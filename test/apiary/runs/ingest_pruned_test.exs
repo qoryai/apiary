@@ -24,9 +24,10 @@ defmodule Apiary.Runs.IngestPrunedTest do
     %{scope: scope, key: key, secret: secret}
   end
 
-  # The synthetic record as it is on the wire, with ids that stay the same over a replay.
+  # The synthetic record as it is on the wire, with ids that stay the same over a replay:
+  # without its ping, which no batch holds.
   defp wire(subject) do
-    for event <- record() do
+    for event <- record(), elem(event, 1) != "ping" do
       {sequence, type, data} =
         case event do
           {sequence, type, data} -> {sequence, type, data}
@@ -46,7 +47,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
   defp received(scope, key) do
     subject = Ecto.UUID.generate()
     events = wire(subject)
-    assert %{status: 202, inserted: 14} = deliver(key, events)
+    assert %{status: 202, inserted: 13} = deliver(key, events)
 
     run =
       Repo.one!(
@@ -110,9 +111,9 @@ defmodule Apiary.Runs.IngestPrunedTest do
     {run, events} = received(scope, key)
     prune(scope, %{log_retention_days: 30})
     before = state(run)
-    assert %{events: 12, chunks: 0} = before
+    assert %{events: 11, chunks: 0} = before
 
-    assert %{status: 202, inserted: 0, duplicates: 14, conflicts: 0} = deliver(key, events)
+    assert %{status: 202, inserted: 0, duplicates: 13, conflicts: 0} = deliver(key, events)
 
     {:ok, _run} = Projector.project(run)
     assert state(run) == before
@@ -125,7 +126,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
 
     assert %{status: 202, inserted: 1, duplicates: 1} = deliver(key, late)
     {:ok, _run} = Projector.project(run)
-    assert %{events: 13, chunks: 0} = state(run)
+    assert %{events: 12, chunks: 0} = state(run)
   end
 
   test "the endpoint answers 410 with the digests in force and an empty body", %{

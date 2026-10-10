@@ -865,7 +865,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp ended_sentence("pending", _run), do: gettext("Ping only")
+  defp ended_sentence("pending", _run), do: gettext("Registered only")
 
   defp ended_sentence("completed", %{duration_ms: ms}) when is_integer(ms),
     do: gettext("Completed %{duration} after it started", duration: format_duration_ms(ms))
@@ -1910,7 +1910,7 @@ defmodule ApiaryWeb.RunComponents do
   How long a run ran, as its row and its preview say it: the duration its exit gave, as the
   run page says it, also for a run its exit said was lost; for a running run the time since
   it started, ticking; for a quiet one, or one Qory Apiary marked lost, "at least" what it last
-  reported; nothing for a run that has only pinged. A run that did not start
+  reported; nothing for a run that has only registered. A run that did not start
   (`Apiary.Runs.Run.refused?/1`) never ran: the row leaves its cell empty and the preview
   leaves out its Duration.
   """

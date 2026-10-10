@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "run_id": "6d1e1a3f-8b2c-7d40-9e51-2a3b4c5d6e7f",
+  "labels": {
+    "forge": "github.com",
+    "repository": "example-org/example-repo",
+    "run_key": "rk-0001"
+  },
+  "about": {
+    "details": {
+      "requester": "example-requester"
+    }
+  },
+  "forager_version": "0.10.0",
+  "contract_version": 1,
+  "interval_seconds": 300,
+  "events": [
+    "*"
+  ],
+  "time": "2026-09-18T10:00:00Z"
+}

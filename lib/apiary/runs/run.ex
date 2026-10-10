@@ -7,9 +7,10 @@ defmodule Apiary.Runs.Run do
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
-  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
-  are the registration's own: written once, when the run registers, and kept by a
-  rebuild.
+  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,
+  `registration_time`) are the registration's own: written once, when the run registers,
+  and kept by a rebuild. A run that registered is projected from sequence 1, which its
+  registration stands for (`projected_from/1`).
   """
   use Ecto.Schema
 
@@ -77,7 +78,8 @@ defmodule Apiary.Runs.Run do
     field :elapsed_seconds, :integer
     field :heartbeat_interval_seconds, :integer
     # The smallest arrival less own time over the run's heartbeats, and for a run a gateway
-    # opened its ping's, in milliseconds (`Apiary.Runs.Fold`); nil until the first.
+    # opened its registration's and its ping's, in milliseconds (`Apiary.Runs.Fold`); nil
+    # until the first.
     field :clock_offset_ms, :integer
 
     field :policy_digest, :string
@@ -101,7 +103,7 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
-    # The node of the key the run's ping came with, and the instance id that ping claimed:
+    # The node of the key the run's registration came with, and the instance id it claimed:
     # copied when the run is created and never moved, both nil for a key that names no node.
     belongs_to :node, Apiary.Nodes.Node
     field :instance_id, :string
@@ -111,7 +113,8 @@ defmodule Apiary.Runs.Run do
     # its labels, `about` and heartbeat interval as the body sent them (the interval the run
     # is held to, before its heartbeats', `Apiary.Runs.Liveness`); the SHA-256 of
     # the body's bytes, by which a repeat of the same registration is told from another;
-    # and the digest of the run configuration it was given, which a repeat is given again.
+    # the digest of the run configuration it was given, which a repeat is given again; and
+    # the `time` the body was built at, on the gateway's clock (`Apiary.Runs.Fold`).
     # All nil for a run that did not register. Not folded: a rebuild keeps them.
     field :registered_at, :utc_datetime_usec
     field :registration_labels, :map
@@ -119,6 +122,7 @@ defmodule Apiary.Runs.Run do
     field :registration_digest, :binary
     field :registration_interval_seconds, :integer
     field :registration_answer_digest, :string
+    field :registration_time, :utc_datetime_usec
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
@@ -190,4 +194,13 @@ defmodule Apiary.Runs.Run do
   @spec no_session?(t() | map()) :: boolean()
   def no_session?(%{opened_by: "gateway"}), do: true
   def no_session?(_run), do: false
+
+  @doc """
+  The sequence a run's projection starts from: 1 for a run that registered, whose
+  registration stands for the record's sequence 1, `dev.qory.run.registered`, which is
+  never posted, as the ping did before it; 0 for a run its batches created.
+  """
+  @spec projected_from(map) :: 0 | 1
+  def projected_from(%{registered_at: %DateTime{}}), do: 1
+  def projected_from(_run), do: 0
 end

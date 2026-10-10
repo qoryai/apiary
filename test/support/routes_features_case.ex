@@ -86,7 +86,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
         end
       end
 
-      test "the security policy's pages and endpoint belong to security" do
+      test "the security policy's pages belong to security, the run endpoint to observability" do
         policy =
           for {_verb, "/:org/:workspace/policy" <> _, module} <-
                 ApiaryWeb.RoutesFeaturesCase.routes(@router),
@@ -98,7 +98,9 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
           assert module.__feature__() == :security, inspect(module)
         end
 
-        assert ApiaryWeb.Contract.RunConfigurationController.__feature__() == :security
+        # The run endpoint starts a run, as the events endpoint records it; a workspace
+        # without security answers a registration with no policy.
+        assert ApiaryWeb.Contract.RegistrationController.__feature__() == :observability
       end
 
       test "the stored secrets', variables' and integrations' pages belong to secrets" do

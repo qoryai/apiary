@@ -130,16 +130,13 @@ defmodule Apiary.ContractFixtures do
     }
   end
 
-  @doc "A ping and a start of a fresh run: `{subject, events}`."
+  @doc """
+  The first batch of a fresh run, its start: `{subject, events}`. Its sequence is 2, as the
+  gateway posts it, the record's first event, `dev.qory.run.registered`, being never posted.
+  """
   def first_events(subject \\ Ecto.UUID.generate()) do
     {subject,
      [
-       wire_event(subject, 1, "ping", %{
-         "forager_version" => "0.4.0",
-         "events" => ["*"],
-         "contract_version" => 1,
-         "interval_seconds" => 30
-       }),
        wire_event(subject, 2, "run.started", %{
          "opened_by" => "session",
          "credential" => "none",
@@ -154,6 +151,82 @@ defmodule Apiary.ContractFixtures do
          "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"}
        })
      ]}
+  end
+
+  @doc """
+  A run's registration as the gateway builds it, decoded: `run_id`, the labels of a
+  software run, the gateway's versions, a heartbeat interval of 30 seconds, every event
+  type, and `time`, the contract's clock now (`ApiaryWeb.Contract.SignedRequest.now/0`) to
+  the second. `attrs` (string keys) replace members; a nil value leaves one out.
+  """
+  def registration(run_id \\ Ecto.UUID.generate(), attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_id" => run_id,
+      "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"},
+      "forager_version" => "0.4.0",
+      "contract_version" => 1,
+      "interval_seconds" => 30,
+      "events" => ["*"],
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  The registration a record's gateway sent, from the record's lines (`events.jsonl`): its
+  `dev.qory.run.registered`, sequence 1, which the record alone holds, and the labels and
+  `about` of its `dev.qory.run.started`, built now (`registration/2`). Returns
+  `{registration, lines}` with the lines that are posted: all but the registered one.
+  """
+  def record_registration([first | posted] = _lines) do
+    %{"type" => "dev.qory.run.registered", "subject" => run_id, "data" => data} =
+      Jason.decode!(first)
+
+    started =
+      posted
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.find(%{"data" => %{}}, &(&1["type"] == "dev.qory.run.started"))
+
+    registration =
+      registration(
+        run_id,
+        Map.merge(Map.take(data, ~w(forager_version contract_version interval_seconds events)), %{
+          "labels" => started["data"]["labels"],
+          "about" => started["data"]["about"]
+        })
+      )
+
+    {registration, posted}
+  end
+
+  @doc """
+  Registers `registration` (`registration/2`) through `Apiary.Runs.Registration`, as the
+  run endpoint does once it has verified the request: `{:ok, answer}` or `{:error, reason}`.
+  """
+  def register_run(key, registration, instance_id \\ nil) do
+    bytes = Jason.encode!(registration)
+    {:ok, parsed} = Apiary.Runs.Registration.parse(Jason.decode!(bytes))
+
+    Apiary.Runs.Registration.register(key, parsed, %{
+      body: bytes,
+      contract_version: 1,
+      instance_id: instance_id
+    })
+  end
+
+  @doc """
+  Posts `body` (a binary, or a registration to encode) to the run endpoint as the gateway
+  registers a run: `signed_post/5` to `/v1/runs`, as `application/json`, with no
+  `X-Qory-Delivery`. The options are `signed_post/5`'s.
+  """
+  def signed_register(conn, key_id, seed, body, opts \\ []) do
+    defaults = [target: "/v1/runs", content_type: "application/json", delivery: nil]
+    signed_post(conn, key_id, seed, body, Keyword.merge(defaults, opts))
   end
 
   @doc """

@@ -319,9 +319,9 @@ defmodule Apiary.Runs.RegistrationTest do
     end
 
     test "a run its events created without a registration is used", %{key: key} do
-      {subject, [ping, _started]} = first_events()
+      {subject, events} = first_events()
       meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!([ping]), meta)
+      assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!(events), meta)
 
       assert register(key, body(subject)) == {:error, :run_id_used}
       assert [%Run{registered_at: nil}] = runs()
@@ -457,7 +457,7 @@ defmodule Apiary.Runs.RegistrationTest do
          %{key: key} do
       body = body()
       assert {:ok, %{run: run}} = register(key, body)
-      {_subject, [_ping, started]} = first_events(body["run_id"])
+      {_subject, [started]} = first_events(body["run_id"])
       meta = %{contract_version: 1, instance_id: "i_one"}
 
       assert {:ok, %{status: 202, run: %Run{id: id}}} =
@@ -473,17 +473,17 @@ defmodule Apiary.Runs.RegistrationTest do
       assert stored.registered_at == run.registered_at
     end
 
-    test "a run that registered is not admitted again by its ping, whichever instance sends it",
+    test "a run that registered is not admitted again by its batches, whichever instance sends them",
          %{key: key} do
       body = body()
       assert {:ok, %{run: run}} = register(key, body, "i_one")
-      {_subject, [ping, _started]} = first_events(body["run_id"])
+      {_subject, batch} = first_events(body["run_id"])
 
-      # Admitted again, another instance's ping would be refused: the node's one slot is
+      # Admitted again, another instance's batch would be refused: the node's one slot is
       # i_one's.
       for instance <- ["i_one", "i_two"] do
         meta = %{contract_version: 1, instance_id: instance, delivery_id: Ecto.UUID.generate()}
-        assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!([ping]), meta)
+        assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!(batch), meta)
       end
 
       assert [%Run{instance_id: "i_one"} = stored] = runs()
@@ -575,7 +575,7 @@ defmodule Apiary.Runs.RegistrationTest do
     test "keeps the registration's fields", %{key: key} do
       body = body()
       assert {:ok, %{run: run}} = register(key, body)
-      {_subject, [_ping, started]} = first_events(body["run_id"])
+      {_subject, [started]} = first_events(body["run_id"])
       meta = %{contract_version: 1, instance_id: "i_one"}
       assert {:ok, _} = Ingest.ingest(key, batch!([started]), meta)
 
@@ -586,6 +586,71 @@ defmodule Apiary.Runs.RegistrationTest do
       assert rebuilt.registered_at == run.registered_at
       assert rebuilt.registration_digest == run.registration_digest
       assert rebuilt.registration_answer_digest == run.registration_answer_digest
+      assert rebuilt.registration_time == run.registration_time
+      assert rebuilt.projected_sequence == 2
+    end
+  end
+
+  describe "the projection" do
+    test "of a registered run starts from sequence 1, which its registration stands for",
+         %{key: key} do
+      body = body()
+      assert {:ok, %{run: run}} = register(key, body)
+      assert run.projected_sequence == 1
+
+      {_subject, [started]} = first_events(body["run_id"])
+      meta = %{contract_version: 1, instance_id: "i_one"}
+      assert {:ok, _} = Ingest.ingest(key, batch!([started]), meta)
+      assert {:ok, %Run{projected_sequence: 2}} = Projector.project(Repo.get!(Run, run.id))
+    end
+
+    test "of a run its batches created starts from 0", %{key: key} do
+      {subject, events} = first_events()
+      meta = %{contract_version: 1, instance_id: "i_one"}
+      assert {:ok, %{run: run}} = Ingest.ingest(key, batch!(events), meta)
+      assert run.projected_sequence == 0
+      assert {:ok, %Run{projected_sequence: 0}} = Projector.project(Repo.get!(Run, run.id))
+      assert {:ok, %Run{projected_sequence: 0}} = Projector.rebuild(Repo.get!(Run, run.id))
+      assert Repo.get!(Run, run.id).run_id == subject
+    end
+  end
+
+  describe "the clock offset" do
+    # A start as the gateway records it, `opened_by` as given.
+    defp start(run_id, opened_by) do
+      {_subject, [started]} = first_events(run_id)
+
+      data = %{"opened_by" => opened_by, "credential" => "issuer", "forager_version" => "0.8.0"}
+      batch!([%{started | "data" => data}])
+    end
+
+    test "of a run a gateway opened is its registration's: arrival less the gateway's time",
+         %{key: key} do
+      # The gateway's clock two minutes behind this server's.
+      body = body(Ecto.UUID.generate(), %{"time" => now_z(-120)})
+      assert {:ok, %{run: run}} = register(key, body)
+
+      assert run.registration_time ==
+               body["time"] |> DateTime.from_iso8601() |> elem(1) |> DateTime.add(0, :microsecond)
+
+      meta = %{contract_version: 1, instance_id: "i_one"}
+      assert {:ok, _} = Ingest.ingest(key, start(body["run_id"], "gateway"), meta)
+      assert {:ok, projected} = Projector.project(Repo.get!(Run, run.id))
+      expected = div(DateTime.diff(run.registered_at, run.registration_time, :microsecond), 1000)
+      assert projected.clock_offset_ms == expected
+      assert expected in 119_000..122_000
+
+      # A rebuild finds it again.
+      assert {:ok, %Run{clock_offset_ms: ^expected}} = Projector.rebuild(projected)
+    end
+
+    test "of a run a session opened is its heartbeats' alone", %{key: key} do
+      body = body(Ecto.UUID.generate(), %{"time" => now_z(-120)})
+      assert {:ok, %{run: run}} = register(key, body)
+
+      meta = %{contract_version: 1, instance_id: "i_one"}
+      assert {:ok, _} = Ingest.ingest(key, start(body["run_id"], "session"), meta)
+      assert {:ok, %Run{clock_offset_ms: nil}} = Projector.project(Repo.get!(Run, run.id))
     end
   end
 
@@ -646,17 +711,18 @@ defmodule Apiary.Runs.RegistrationTest do
     end
 
     @tag needs: :security
-    test "a run that did not register is read by the labels its events gave it, for its key",
+    test "a run that did not register is not found, even for the key its batches came with",
          %{scope: scope, key: key} do
       shop = target_fixture(scope, "git.example.com", "acme/shop")
       {:ok, _} = Policy.allow(scope, shop, %{host: "mcp.example"})
-      {:ok, own} = Policy.current_configuration(scope, shop)
       {subject, events} = first_events()
       meta = %{contract_version: 1, instance_id: "i_one"}
       assert {:ok, _} = Ingest.ingest(key, batch!(events), meta)
 
-      assert {:ok, %{digest: digest}} = Registration.fetch(key, subject)
-      assert digest == own.digest
+      assert {:ok, _run} =
+               Projector.project(Repo.one!(from r in Run, where: r.run_id == ^subject))
+
+      assert Registration.fetch(key, subject) == {:error, :not_found}
 
       %{access_key: same_node} = contract_key_fixture(scope, node: node_of(key))
       assert Registration.fetch(same_node, subject) == {:error, :not_found}
@@ -681,7 +747,7 @@ defmodule Apiary.Runs.RegistrationTest do
 
       # A start whose labels name the other target: the run's row is assigned to it, and
       # the digests and the reload stay the registration's.
-      {_subject, [_ping, started]} = first_events(body["run_id"])
+      {_subject, [started]} = first_events(body["run_id"])
       started = put_in(started, ["data", "labels", "repository"], "acme/docs")
       meta = %{contract_version: 1, instance_id: "i_one"}
 
@@ -729,10 +795,10 @@ defmodule Apiary.Runs.RegistrationTest do
 
       # A run that did not register keeps the reported digest in force, as before, and then
       # the target its row holds.
-      {subject, [ping, started]} = first_events()
+      {subject, [started]} = first_events()
       meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, %{run: unregistered}} = Ingest.ingest(key, batch!([ping]), meta)
       beat = batch!([wire_event(subject, 3, "run.heartbeat", %{"interval_seconds" => 30})])
+      assert {:ok, %{run: unregistered}} = Ingest.ingest(key, beat, meta)
       assert Serving.digest_for(key, unregistered, beat, own.digest) == own.digest
       assert Serving.digest_for(key, unregistered, beat, nil) == baseline.digest
 

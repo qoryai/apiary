@@ -15,15 +15,12 @@ defmodule Apiary.Runs.Ingest do
   with another (its id under a different run, or its sequence under a different
   id) is dropped and counted.
 
-  **Where a run runs.** A run is created on the node of the key its first batch came
-  with, and the instance id that batch claimed (`Apiary.Nodes.placement/2`), both fixed
-  from then on; each delivery records its instance id too. The first batch of a run that
-  holds its ping is admitted by the node's instance limit (`Apiary.Nodes.admit/4`), in
-  the transaction that creates the run: an instance beyond the limit is
-  `{:error, :instance_limit}` and nothing is stored. A batch that claims no instance id
-  places the run on its key's node with no instance, and is not held to a limit. A run
-  that registered (`Apiary.Runs.Registration`) was admitted then, and its row is there: a
-  later batch, its ping included, is stored on that row and admitted by nothing again.
+  **Where a run runs.** A run starts by its registration (`Apiary.Runs.Registration`),
+  which the node's instance limit admits (`Apiary.Nodes.admit/4`) and which creates its
+  row: its batches are stored on that row and admitted by nothing again. A batch of a run
+  the workspace does not hold creates it, on the node of the key it came with and the
+  instance id it claimed (`Apiary.Nodes.placement/2`), both fixed from then on, and held
+  to no limit; each delivery records its instance id too.
 
   Nothing of the request's headers but the versions, the instance id and the run
   configuration digest is stored, and nothing of an event is logged: the insert of the
@@ -42,7 +39,6 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
-  @ping "dev.qory.ping"
   @log "dev.qory.run.log"
   @insert_chunk 500
 
@@ -72,8 +68,7 @@ defmodule Apiary.Runs.Ingest do
   answer's headers (nil for a workspace that is not managed, and when it could not be
   read). `{:error, :unavailable}` when the batch could not be stored,
   `{:error, :not_found}` when the key may not post (`run.post_events` in
-  `Apiary.Access`), and `{:error, :instance_limit}` when the batch holds the ping of a
-  new run from an instance its node's limit refuses.
+  `Apiary.Access`).
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -82,7 +77,7 @@ defmodule Apiary.Runs.Ingest do
   no configuration of its own and the baseline's is read after it.
   """
   @spec ingest(AccessKey.t(), Batch.t(), meta) ::
-          {:ok, map} | {:error, :unavailable | :not_found | :instance_limit}
+          {:ok, map} | {:error, :unavailable | :not_found}
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
@@ -128,35 +123,12 @@ defmodule Apiary.Runs.Ingest do
   # names the exception's module and nothing else: a Postgres message can
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
-    cond do
-      held_to_limit?(access_key, batch, meta) ->
-        Nodes.admit(
-          access_key.node,
-          meta.instance_id,
-          fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end,
-          now
-        )
-
-      true ->
-        Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
-    end
+    Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
   rescue
     exception ->
       Logger.error("a delivery could not be stored: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
   end
-
-  # The instance limit holds the ping of a run the workspace has not seen yet, claimed by
-  # an instance of the key's node: the batch that would create the run.
-  defp held_to_limit?(%AccessKey{node: %Nodes.Node{}} = access_key, batch, meta) do
-    is_binary(meta[:instance_id]) and Enum.any?(batch.events, &(&1.type == @ping)) and
-      not Repo.exists?(
-        from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
-      )
-  end
-
-  defp held_to_limit?(_access_key, _batch, _meta), do: false
 
   defp store(access_key, batch, meta, delivery_id, now) do
     run = upsert_run(access_key, batch, meta, now)

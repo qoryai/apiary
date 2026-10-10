@@ -115,9 +115,9 @@ config :phoenix, :json_library, Jason
 # The events endpoint: batches per second and at once, per access key.
 config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100
 
-# The run configuration: requests per second and at once, per access key, from a bucket of
-# its own, so a backlog of events never refuses a run its configuration.
-config :apiary, ApiaryWeb.Contract.RunConfigurationController, rate: 50, burst: 100
+# The run endpoint, registration and reload: requests per second and at once, per access
+# key, from a bucket of its own, so a backlog of events never refuses a run its start.
+config :apiary, ApiaryWeb.Contract.RegistrationController, rate: 50, burst: 100
 
 # Enrolments a second, and at once, from one address, and with one code once its key is
 # proven (`ApiaryWeb.Contract.EnrolmentController`).

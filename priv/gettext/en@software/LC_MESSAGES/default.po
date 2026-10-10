@@ -5387,11 +5387,6 @@ msgstr ""
 msgid "Forager file for %{label}"
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Forager has pinged. The run's first event has not arrived."
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -8848,12 +8843,6 @@ msgstr ""
 msgid "Pin %{target}"
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Ping only"
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
@@ -9224,6 +9213,12 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Refused before reaching the tool %{tool}."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Registered only"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -11381,6 +11376,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run has reported it."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run is registered. Its first event has not arrived."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
