@@ -45,3 +45,6 @@ mise.local.toml
 
 # Agent worktrees and local tool state
 .claude/
+
+# Python's bytecode, written when a script under scripts/ is run or imported.
+__pycache__/

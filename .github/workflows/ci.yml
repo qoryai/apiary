@@ -110,8 +110,9 @@ jobs:
       - name: Check the template's mappings
         run: python scripts/aws-template-check.py mappings
 
-      # Every value compared with Edition is one of its AllowedValues, and each is compared:
-      # a Rule or Condition that compares a value Edition no longer allows never applies.
+      # Every Fn::Equals with Edition compares it with one of its AllowedValues, each is
+      # compared, and Rules and Conditions use Edition in no other way: a Rule or Condition
+      # that compares a value Edition no longer allows never applies.
       - name: Check the template's comparisons with Edition
         run: python scripts/aws-template-check.py editions
 

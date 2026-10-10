@@ -36,11 +36,13 @@ mapping exactly Community and Pro; and every Fn::FindInMap names a value the map
 cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the template's are.
 
 editions: in the template, or in each FILE given (such as a release's copy of the
-template), every value compared with !Ref Edition, in a Rule, a Condition or anywhere else,
-however deep in a Fn::And, Fn::Or or Fn::Not, is one of Edition's AllowedValues, and each
-AllowedValue is compared at least once. A Fn::Equals against a value Edition no longer
-allows is never true, so the Rule or Condition it decides stops applying, and cfn-lint
-does not say so.
+template): every Fn::Equals that has !Ref Edition as one of its two arguments, anywhere in
+the template, however deep in a Fn::And, Fn::Or or Fn::Not, has as its other argument a
+plain text that is one of Edition's AllowedValues; each AllowedValue is so compared at
+least once; and under Rules and Conditions, !Ref Edition is used nowhere else than as one
+of the two arguments of a Fn::Equals (not in a Fn::Contains, for one), each other use named
+by where it is. A comparison with a value Edition no longer allows is never true, so the
+Rule or Condition it decides stops applying, and cfn-lint does not say so.
 
 ascii: the template and stack-policy.json, or each FILE given (such as a release's copy of
 the template), hold ASCII characters alone, in every description, label, rule text,
@@ -330,6 +332,24 @@ def equals(value):
             yield from equals(item)
 
 
+def stray_editions(value, where):
+    """Where a value uses !Ref Edition other than as one of the two arguments of a
+    Fn::Equals."""
+    if value == EDITION:
+        yield where
+    elif isinstance(value, dict):
+        for function, argument in value.items():
+            if function == "Fn::Equals" and isinstance(argument, list) and len(argument) == 2:
+                for index, item in enumerate(argument):
+                    if item != EDITION:
+                        yield from stray_editions(item, f"{where}.Fn::Equals[{index}]")
+            else:
+                yield from stray_editions(argument, f"{where}.{function}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from stray_editions(item, f"{where}[{index}]")
+
+
 def check_editions(paths):
     failures = []
     for path in paths:
@@ -354,6 +374,12 @@ def check_editions(paths):
         for value in allowed:
             if value not in compared:
                 failures.append(f"{path}: no Fn::Equals compares Edition with its AllowedValue {value!r}")
+        for section in ("Rules", "Conditions"):
+            for where in stray_editions(template.get(section, {}), section):
+                failures.append(
+                    f"{path}: {where} uses !Ref Edition other than as an argument of a Fn::Equals, "
+                    "which this check cannot hold to Edition's AllowedValues"
+                )
     return failures
 
 
