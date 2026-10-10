@@ -32,7 +32,8 @@ page is the reference for an installation that stays.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay.** People sign in with a link sent by email and are invited by email.
   Without `SMTP_RELAY` the release starts all the same, sends no email, and says so in
-  its log; an invitation is then a link that whoever invites copies and sends themselves.
+  its log; people then sign up with a password ([Mail](#mail)), and an invitation is a link
+  that whoever invites copies and sends themselves.
 
 With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
 three services, and `docker compose logs apiary` shows the boot.
@@ -387,6 +388,14 @@ For example: https://qory.example
 | `SMTP_PASSWORD` | none | The relay's password. |
 | `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. |
 | `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
+
+Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
+person in as soon as the account is made. An invited person's address is the invitation's
+and cannot be changed there. Such an account is unconfirmed: the first log-in link it
+follows, once mail is set, confirms its address and removes the password set before,
+which can be set again in **Account** settings, and signs the account out everywhere
+else. Until then, **Account** settings do not change the email address, since a link sent
+to the new address confirms it.
 
 ```text
 environment variable SMTP_TLS must be always, if_available or never

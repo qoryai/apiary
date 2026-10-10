@@ -12,10 +12,13 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
 
-  # The page of an invitation of `email` into a fresh organisation's workspace.
-  defp invited(conn, email \\ unique_user_email()) do
+  # The page of an invitation of `email` into a fresh organisation's workspace, opened
+  # with the instance's mail from `mail`: the sign-up and the invitation before it are made
+  # by the suite's mail.
+  defp invited(conn, email \\ unique_user_email(), mail \\ :env) do
     %{scope: scope} = sign_up_fixture()
     %{token: token} = invitation_fixture(scope, %{"email" => email})
+    Apiary.Mail.put_test_source(mail)
     {:ok, lv, html} = live(conn, ~p"/users/register?invitation=#{token}")
     %{lv: lv, html: html, email: email, scope: scope}
   end
@@ -103,6 +106,157 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
     end
   end
 
+  describe "without mail" do
+    test "the invitation-only page says the inviter sends the link", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, html} = live(conn, ~p"/users/register")
+
+      if has_element?(lv, "#sign-up-closed") do
+        assert html =~
+                 "Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+
+        refute html =~ "the email they send"
+      end
+    end
+
+    test "an invited sign-up asks for a password, keeps the invited address and says the account joins at once",
+         %{conn: conn} do
+      %{lv: lv, html: html, email: email} = invited(conn, unique_user_email(), :none)
+
+      assert html =~ "Choose a password to sign in with."
+      refute html =~ "no password needed"
+      assert html =~ "Your account joins it as soon as you create it."
+
+      assert has_element?(
+               lv,
+               "#registration_form input[name='user[email]'][value='#{email}'][readonly]"
+             )
+
+      assert has_element?(lv, "#registration_form input[name='user[password]'][type=password]")
+
+      assert has_element?(
+               lv,
+               "#registration_form input[name='user[password_confirmation]'][type=password]"
+             )
+
+      # The page never writes a password back.
+      refute has_element?(lv, "#registration_form input[type=password][value]")
+    end
+
+    test "an invited sign-up makes the account, joins the workspace and signs the person in",
+         %{conn: conn} do
+      %{lv: lv, email: email, scope: scope} = invited(conn, unique_user_email(), :none)
+      password = "a long pass phrase"
+
+      # The browser sends the invited address, which the page shows and cannot change.
+      form =
+        form(lv, "#registration_form",
+          user: %{"email" => email, "password" => password, "password_confirmation" => password}
+        )
+
+      html = render_submit(form)
+      refute html =~ "Check your email"
+      refute html =~ password
+
+      conn = follow_trigger_action(form, conn)
+      assert get_session(conn, :user_token)
+      assert redirected_to(conn) =~ "/"
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert is_nil(user.confirmed_at)
+      assert Apiary.Accounts.get_user_by_email_and_password(email, password)
+      assert [membership] = Apiary.Organisations.list_memberships(user)
+      assert membership.organisation_id == scope.organisation.id
+
+      # No email: the invitation's was sent before the mail was off.
+      refute_received {:email,
+                       %Swoosh.Email{
+                         subject: "Confirm your Qory Apiary account",
+                         to: [{_, ^email}]
+                       }}
+    end
+
+    test "a short password, or one that does not match, is refused and nothing is made",
+         %{conn: conn} do
+      %{lv: lv, email: email} = invited(conn, unique_user_email(), :none)
+
+      html =
+        lv
+        |> form("#registration_form",
+          user: %{"password" => "too short", "password_confirmation" => "too short"}
+        )
+        |> render_submit()
+
+      assert html =~ "should be at least 12 character(s)"
+      assert has_element?(lv, "#user_password-error")
+      refute Apiary.Accounts.get_user_by_email(email)
+
+      html =
+        lv
+        |> form("#registration_form",
+          user: %{
+            "password" => "a long pass phrase",
+            "password_confirmation" => "another pass phrase"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "does not match password"
+      assert has_element?(lv, "#user_password_confirmation-error")
+      refute Apiary.Accounts.get_user_by_email(email)
+    end
+  end
+
+  describe "with mail" do
+    test "the invitation-only page says the email has the link", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/users/register")
+
+      if has_element?(lv, "#sign-up-closed") do
+        assert html =~ "the email they send has the link to sign up."
+      end
+    end
+
+    test "the form does not post to the log-in controller", %{conn: conn} do
+      %{lv: lv} = invited(conn)
+
+      refute has_element?(lv, "#registration_form[action]")
+      refute has_element?(lv, "#registration_form[phx-trigger-action]")
+    end
+
+    test "a password sent all the same is dropped, and the address is confirmed by email",
+         %{conn: conn} do
+      %{lv: lv, email: email} = invited(conn)
+      password = "a long pass phrase"
+
+      html =
+        lv
+        |> element("#registration_form")
+        |> render_submit(%{
+          "user" => %{
+            "email" => email,
+            "password" => password,
+            "password_confirmation" => password
+          }
+        })
+
+      assert html =~ "Check your email"
+      refute has_element?(lv, "#registration_form[phx-trigger-action]")
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert is_nil(user.hashed_password)
+      refute Apiary.Accounts.get_user_by_email_and_password(email, password)
+    end
+
+    test "an invited sign-up asks for no password", %{conn: conn} do
+      %{lv: lv, html: html} = invited(conn)
+
+      assert html =~ "We will email you a link to confirm; no password needed."
+      assert html =~ "Your account joins it as soon as you confirm."
+      refute has_element?(lv, "#registration_form input[type=password]")
+      refute has_element?(lv, "#registration_form input[name='user[email]'][readonly]")
+    end
+  end
+
   describe "registration navigation" do
     test "redirects to login page when the Log in button is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/register")
@@ -167,5 +321,106 @@ defmodule ApiaryWeb.UserLive.RegistrationFirstSignUpTest do
     [membership] = Apiary.Organisations.list_memberships(user)
     assert membership.organisation.name == "Acme Ltd"
     assert membership.organisation.slug == "acme-ltd"
+  end
+
+  test "without mail, asks for a password too, and signs the first admin in", %{conn: conn} do
+    Apiary.Mail.put_test_source(:none)
+    {:ok, lv, html} = live(conn, ~p"/users/register")
+
+    assert html =~
+             "Start an organisation and its first workspace. Choose a password to sign in with."
+
+    fields =
+      lv
+      |> element("#registration_form")
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("input:not([type=hidden]), select, textarea")
+      |> LazyHTML.attribute("name")
+
+    assert Enum.sort(fields) ==
+             [
+               "user[email]",
+               "user[organisation_name]",
+               "user[password]",
+               "user[password_confirmation]"
+             ]
+
+    email = unique_user_email()
+    password = "a long pass phrase"
+
+    form =
+      form(lv, "#registration_form",
+        user: %{
+          "email" => email,
+          "organisation_name" => "Acme Ltd",
+          "password" => password,
+          "password_confirmation" => password
+        }
+      )
+
+    render_submit(form)
+    conn = follow_trigger_action(form, conn)
+    assert get_session(conn, :user_token)
+
+    user = Apiary.Accounts.get_user_by_email(email)
+    assert Apiary.Accounts.get_user_by_email_and_password(email, password)
+    [membership] = Apiary.Organisations.list_memberships(user)
+    assert membership.organisation.name == "Acme Ltd"
+    assert Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(user))
+  end
+end
+
+defmodule ApiaryWeb.UserLive.RegistrationMailFailsTest do
+  @moduledoc """
+  The sign-up page when its confirmation email cannot be sent: the account is made, and the
+  page says so and leads to the log-in page, where a new link is asked for. Not async: the
+  application's mailer is one that refuses every email, for this module's tests alone.
+  """
+  use ApiaryWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+  import Apiary.AccountsFixtures
+  import Apiary.OrganisationsFixtures
+
+  defmodule Refusing do
+    @moduledoc false
+    use Swoosh.Adapter
+
+    @impl true
+    def deliver(_email, _config), do: {:error, :refused}
+  end
+
+  setup do
+    # The invitation goes out first, by the suite's own mailer.
+    %{scope: scope} = sign_up_fixture()
+    email = unique_user_email()
+    %{token: token} = invitation_fixture(scope, %{"email" => email})
+
+    mailer = Application.get_env(:apiary, Apiary.Mailer)
+    Application.put_env(:apiary, Apiary.Mailer, Keyword.put(mailer, :adapter, Refusing))
+    on_exit(fn -> Application.put_env(:apiary, Apiary.Mailer, mailer) end)
+
+    %{email: email, token: token}
+  end
+
+  test "the account is made, and the page says the email could not be sent", %{
+    conn: conn,
+    email: email,
+    token: token
+  } do
+    {:ok, lv, _html} = live(conn, ~p"/users/register?invitation=#{token}")
+
+    {:ok, _login, html} =
+      lv
+      |> form("#registration_form", user: %{"email" => email})
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/users/log-in")
+
+    # The toast shows the first sentence as its title, and the second under it.
+    assert html =~ "Your account is made, but the email with its link could not be sent."
+    assert html =~ "Ask for a new link on the log-in page in a few minutes."
+
+    assert Apiary.Accounts.get_user_by_email(email)
   end
 end
