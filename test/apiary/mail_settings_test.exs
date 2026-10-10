@@ -200,7 +200,8 @@ defmodule Apiary.MailSettingsTest do
 
       assert_received {:sent, _email, config}
       assert {config[:ssl], config[:tls], config[:auth]} == {true, :never, :never}
-      assert config[:username] == nil and config[:password] == nil
+      # Absent, not nil: the SMTP adapter refuses a nil username or password at each send.
+      refute Keyword.has_key?(config, :username) or Keyword.has_key?(config, :password)
       assert row().smtp_password_ciphertext == nil and row().mail_key_id == nil
     end
 

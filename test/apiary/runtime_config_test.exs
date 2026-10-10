@@ -468,12 +468,17 @@ defmodule Apiary.RuntimeConfigTest do
   test "a blank SMTP_USERNAME, as .env.example leaves it, is no authentication" do
     System.put_env("SMTP_RELAY", "smtp.example.com")
     System.put_env("SMTP_USERNAME", "")
-    assert prod_mailer()[:auth] == :never
+    mailer = prod_mailer()
+    assert mailer[:auth] == :never
+    # Absent, not nil: the SMTP adapter refuses a nil username or password at each send.
+    refute Keyword.has_key?(mailer, :username) or Keyword.has_key?(mailer, :password)
 
     System.put_env("SMTP_USERNAME", "relay-user")
     mailer = prod_mailer()
     assert mailer[:auth] == :always
     assert mailer[:username] == "relay-user"
+    # No SMTP_PASSWORD with a username is an empty one, which the adapter takes.
+    assert mailer[:password] == ""
   end
 
   test "TLS checks the relay's certificate and name, in every SMTP_TLS, and the relay is the host connected to" do

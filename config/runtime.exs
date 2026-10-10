@@ -380,17 +380,22 @@ if config_env() == :prod do
       # (`Apiary.Mail.TLS.smtp_options/2`).
       implicit_tls = smtp_port == 465
 
-      mailer = [
-        adapter: Swoosh.Adapters.SMTP,
-        relay: relay,
-        port: smtp_port,
-        username: smtp_username,
-        password: System.get_env("SMTP_PASSWORD"),
-        auth: if(smtp_username, do: :always, else: :never),
-        ssl: implicit_tls,
-        tls: if(implicit_tls, do: :never, else: smtp_tls),
-        retries: 2
-      ]
+      # The username and password only with a username: the adapter refuses either as nil.
+      credentials =
+        if smtp_username,
+          do: [username: smtp_username, password: System.get_env("SMTP_PASSWORD") || ""],
+          else: []
+
+      mailer =
+        [
+          adapter: Swoosh.Adapters.SMTP,
+          relay: relay,
+          port: smtp_port,
+          auth: if(smtp_username, do: :always, else: :never),
+          ssl: implicit_tls,
+          tls: if(implicit_tls, do: :never, else: smtp_tls),
+          retries: 2
+        ] ++ credentials
 
       config :apiary, Apiary.Mailer, mailer ++ Apiary.Mail.TLS.smtp_options(relay, implicit_tls)
   end
