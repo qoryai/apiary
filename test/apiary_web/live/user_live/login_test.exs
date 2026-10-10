@@ -314,18 +314,44 @@ defmodule ApiaryWeb.UserLive.LoginTest do
     test "a link cannot be asked for, and nothing is sent", %{conn: conn, user: user} do
       tokens = Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count)
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      # An address that has an account, typed first: only mail stands in the way.
+      lv |> form("#login_form", user: %{email: user.email}) |> render_change()
+
       render_click(lv, "toggle_mode", %{})
       assert has_element?(lv, "#login_form input[type=password]")
 
-      render_click(lv, "email_link", %{})
+      html = render_click(lv, "email_link", %{})
+      refute html =~ "Check your email"
+      refute html =~ "a log-in link is on its way"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == tokens
 
       html =
         lv |> form("#login_form", user: %{email: user.email, password: ""}) |> render_submit()
 
       assert has_element?(lv, "#login_form_password-error", "Enter your password.")
       refute html =~ "Check your email"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == tokens
+    end
+
+    test "a link asked for once mail is off sends nothing, and the password form shows",
+         %{conn: conn, user: user} do
+      # The page mounts with mail, on the link form.
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      refute has_element?(lv, "#login_form input[type=password]")
+
+      # Mail goes off; the page's process reads it through its callers, this test.
+      Apiary.Mail.put_test_source(:none)
+      tokens = Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count)
+
+      html = lv |> form("#login_form", user: %{email: user.email}) |> render_submit()
+
+      refute html =~ "Check your email"
       refute html =~ "a log-in link is on its way"
       assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == tokens
+      assert has_element?(lv, "#login_form input[type=password]")
+      refute has_element?(lv, "button[phx-click=toggle_mode]")
     end
 
     test "re-authentication asks for the password", %{conn: conn, user: user} do

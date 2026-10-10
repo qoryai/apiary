@@ -279,7 +279,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
 
       {:error, redirect} = live(conn, ~p"/users/settings/confirm-email/oops")
       assert {:live_redirect, %{to: "/users/settings", flash: %{"error" => message}}} = redirect
-      assert message == "That link has expired"
+      assert message == "That link has expired."
     end
 
     test "does not update email with invalid token", %{conn: conn, user: user} do

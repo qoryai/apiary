@@ -228,11 +228,10 @@ defmodule ApiaryWeb.UserLive.Login do
   def handle_event("submit", %{"user" => params}, socket), do: request_link(socket, params)
 
   # "Forgot your password? Email me a link.": a log-in link to the address typed in the
-  # password form, as the link form asks for one.
-  def handle_event("email_link", _params, %{assigns: %{mail?: true}} = socket),
+  # password form, as the link form asks for one. Without mail `request_link/2` sends
+  # nothing.
+  def handle_event("email_link", _params, socket),
     do: request_link(socket, socket.assigns.form.params)
-
-  def handle_event("email_link", _params, socket), do: {:noreply, socket}
 
   def handle_event("use_different_email", _params, socket) do
     {:noreply, assign(socket, sent_to: nil, form: to_form(%{"email" => nil}, as: "user"))}

@@ -200,7 +200,7 @@ defmodule ApiaryWeb.UserSessionControllerTest do
 
       conn = post(conn, ~p"/users/log-in", %{"user" => %{"token" => "invalid"}})
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "That link has expired"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "That link has expired."
       assert redirected_to(conn) == ~p"/users/log-in"
     end
 

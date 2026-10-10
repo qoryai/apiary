@@ -68,7 +68,7 @@ defmodule ApiaryWeb.UserSessionController do
           :error,
           if(Apiary.Mail.configured?(),
             do: gettext("That link has expired. Ask for a new one below."),
-            else: gettext("That link has expired")
+            else: gettext("That link has expired.")
           )
         )
         |> redirect(to: ~p"/users/log-in")
