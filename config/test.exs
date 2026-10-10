@@ -17,7 +17,12 @@ config :apiary, Apiary.Repo,
   pool_size: System.schedulers_online() * 2,
   # The read budgets ask the database for a few hundred MiB in one statement, which a
   # CI machine answers in more than the 15 s default. ExUnit's own limit still holds.
-  timeout: 120_000
+  timeout: 120_000,
+  # In the sandbox a test and its pages share one connection, and on a loaded CI machine
+  # a checkout waits longer than the defaults allow (about 100 ms). Now it is dropped only
+  # after 10 to 15 s.
+  queue_target: 5_000,
+  queue_interval: 5_000
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
