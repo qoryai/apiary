@@ -18,13 +18,15 @@ outputs: no output's value is a command (none starts with "aws "), in any branch
 Fn::If: the person installs from the console alone.
 
 kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replacement
-(Retain), each under a name that carries the stack's ID, not its name alone, so the secrets
-a deleted stack kept never block a new stack of the same name; while the download key's
+(Retain), each under a name that uses the whole UUID of the stack's ID, not the stack's name
+alone, so the secrets a deleted stack kept do not block a new stack of the same name, whose
+stack ID is its own; while the download key's
 secret, RegistryCredentials, is kept by neither, named in no stack policy and not among the
 KeysSecrets output's: it is deleted with the stack. And every log group is kept, on delete
 and on replacement (Retain), so a create that rolls back leaves its log to read, keeps a
-retention, so its events still go, and carries the stack's ID in its name too, unless it
-has no name, CloudFormation's own being unique.
+retention, so its events still go, and uses the stack ID's UUID in its name too. A name
+uses it when it is a Fn::Sub whose text names a variable that is exactly
+!Select [2, !Split ["/", !Ref AWS::StackId]]: a variable given but not used does not count.
 
 mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
 scripts/aws-template-release.py writes and Apiary Pro's release relies on, and the Images
@@ -188,10 +190,21 @@ def check_outputs():
     return failures
 
 
-def unique_to_stack(name):
-    """Whether a resource's name carries the stack's ID, which no other stack shares, even
-    one of the same name made after this one is deleted."""
-    return '{"Ref": "AWS::StackId"}' in json.dumps(name)
+STACK_UUID = {"Fn::Select": [2, {"Fn::Split": ["/", {"Ref": "AWS::StackId"}]}]}
+
+
+def uses_stack_uuid(name):
+    """Whether a resource's name is a Fn::Sub whose text uses a variable that is the whole
+    UUID of the stack's ID. A new stack of the same name has a stack ID of its own."""
+    if not isinstance(name, dict) or list(name) != ["Fn::Sub"]:
+        return False
+    argument = name["Fn::Sub"]
+    if not (isinstance(argument, list) and len(argument) == 2):
+        return False
+    text, variables = argument
+    if not (isinstance(text, str) and isinstance(variables, dict)):
+        return False
+    return any(value == STACK_UUID and "${" + variable + "}" in text for variable, value in variables.items())
 
 
 def check_kept():
@@ -207,10 +220,10 @@ def check_kept():
         for attribute, kept in (("DeletionPolicy", "RetainExceptOnCreate"), ("UpdateReplacePolicy", "Retain")):
             if resource.get(attribute) != kept:
                 failures.append(f"{logical_id} has {attribute} {resource.get(attribute)}, not {kept}")
-        if not unique_to_stack(resource.get("Properties", {}).get("Name")):
+        if not uses_stack_uuid(resource.get("Properties", {}).get("Name")):
             failures.append(
-                f"{logical_id}'s name does not carry the stack's ID: "
-                "a deleted stack's kept secret would block a new stack of the same name"
+                f"{logical_id}'s name does not use the stack ID's UUID: "
+                "a deleted stack's kept secret could block a new stack of the same name"
             )
 
     download_key = resources.get(DOWNLOAD_KEY)
@@ -233,11 +246,10 @@ def check_kept():
         properties = resource.get("Properties", {})
         if "RetentionInDays" not in properties:
             failures.append(f"{logical_id} has no RetentionInDays: a kept log group would keep its events forever")
-        name = properties.get("LogGroupName")
-        if name is not None and not unique_to_stack(name):
+        if not uses_stack_uuid(properties.get("LogGroupName")):
             failures.append(
-                f"{logical_id}'s name does not carry the stack's ID: "
-                "a deleted stack's kept log group would block a new stack of the same name"
+                f"{logical_id}'s name does not use the stack ID's UUID: "
+                "a deleted stack's kept log group could block a new stack of the same name"
             )
 
     body, _where = stack_policy_body(template)

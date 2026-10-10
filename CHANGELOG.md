@@ -399,17 +399,18 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   before then rolls back whole, and an Update with No turns it off before a delete. The
   stack sets its own stack policy at creation, refusing any update that would replace or
   delete the database or a key's secret; the four secrets are kept when the stack is
-  deleted, each named after the stack and the last 12 characters of its stack ID, so they
-  never block a new stack of the same name, and the database leaves a final snapshot. The
-  log groups, the task's and those of the stack's two functions, are kept too, when the
-  stack is deleted and when a create rolls back, their events for 30 days, under names
-  unique to the stack in the same way. The outputs are the address, the load balancer's
-  DNS name, the edition and the version the stack runs, the key secrets' names, and links
-  into the console: the logs, the set-up link's line in them, the service, the key
-  secrets and the database snapshots. CI lints the template with cfn-lint, and two copies
-  a release would write, one with Apiary Community first and one with Apiary Pro first,
-  and checks the stack policy, that no output is a command, which secrets and log groups
-  the stack keeps and that their names are unique to the stack, and the mappings' keys.
+  deleted, each named after the stack and the whole UUID of its stack ID, so they do not
+  block a new stack of the same name, whose stack ID is its own, and the database leaves
+  a final snapshot. The log groups, the task's and those of the stack's two functions,
+  are kept too, when the stack is deleted and when a create rolls back, their events for
+  30 days, under names made from the stack ID in the same way. The outputs are the
+  address, the load balancer's DNS name, the edition and the version the stack runs, the
+  key secrets' names, and links into the console: the logs, the set-up link's line in
+  them, the service, the key secrets and the database snapshots. CI lints the template
+  with cfn-lint, and two copies a release would write, one with Apiary Community first
+  and one with Apiary Pro first, and checks the stack policy, that no output is a
+  command, which secrets and log groups the stack keeps and that their names use the
+  stack ID's UUID, and the mappings' keys.
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps

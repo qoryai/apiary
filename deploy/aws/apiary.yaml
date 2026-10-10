@@ -88,7 +88,7 @@ Parameters:
   KeysFromStack:
     Type: String
     Default: ""
-    Description: "The name a deleted stack's kept key secrets start with, the part before /secret-key-base, such as qory-0a1b2c3d4e5f: this stack uses those secrets instead of generating new ones. Keep it as it was on every later update."
+    Description: "The name a deleted stack's kept key secrets start with, the part before /secret-key-base, such as qory-0a1b2c3d-4e5f-11f0-8a9b-0c1d2e3f4a5b: this stack uses those secrets instead of generating new ones. Keep it as it was on every later update."
   DatabaseSnapshot:
     Type: String
     Default: ""
@@ -380,9 +380,10 @@ Resources:
   # from one release to the next (CI compares them with the previous release's template):
   # a replaced secret would be generated anew.
   #
-  # Each is named after the stack and the last 12 characters of its stack ID, such as
-  # qory-0a1b2c3d4e5f/secret-key-base, so the secrets a deleted stack kept never block a new
-  # stack of the same name. KeysFromStack names them by that prefix.
+  # Each is named after the stack and the whole UUID of its stack ID, such as
+  # qory-0a1b2c3d-4e5f-11f0-8a9b-0c1d2e3f4a5b/secret-key-base. A new stack of the same name
+  # has a stack ID of its own, so the secrets a deleted stack kept do not block it.
+  # KeysFromStack names them by that prefix.
   #
   # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory reads: every other
   # character excluded, and no character type required, so each character is drawn from
@@ -394,8 +395,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub
-        - ${AWS::StackName}-${StackIdTail}/secret-key-base
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - ${AWS::StackName}-${StackUuid}/secret-key-base
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 86
         ExcludePunctuation: true
@@ -408,8 +409,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub
-        - ${AWS::StackName}-${StackIdTail}/encryption-secret
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - ${AWS::StackName}-${StackUuid}/encryption-secret
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 64
         ExcludeCharacters: ghijklmnopqrstuvwxyz
@@ -425,8 +426,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub
-        - ${AWS::StackName}-${StackIdTail}/signing-secret
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - ${AWS::StackName}-${StackUuid}/signing-secret
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 64
         ExcludeCharacters: ghijklmnopqrstuvwxyz
@@ -442,8 +443,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       Name: !Sub
-        - ${AWS::StackName}-${StackIdTail}/database-password
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - ${AWS::StackName}-${StackUuid}/database-password
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 40
         ExcludePunctuation: true
@@ -507,16 +508,16 @@ Resources:
 
   # The task's log. Kept when the stack is deleted, and when a create rolls back, so the
   # log of a task that never became healthy can still be read; its events go after 30 days.
-  # Named, like the key secrets, after the stack and the last 12 characters of its stack
-  # ID: a kept group never blocks a new stack of the same name.
+  # Named, like the key secrets, after the stack and the whole UUID of its stack ID, so a
+  # kept group does not block a new stack of the same name.
   LogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub
-        - /qory/${AWS::StackName}-${StackIdTail}
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - /qory/${AWS::StackName}-${StackUuid}
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       RetentionInDays: 30
 
   Cluster:
@@ -706,8 +707,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub
-        - /qory/${AWS::StackName}-${StackIdTail}/stack-policy
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - /qory/${AWS::StackName}-${StackUuid}/stack-policy
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       RetentionInDays: 30
 
   StackPolicyRole:
@@ -840,8 +841,8 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       LogGroupName: !Sub
-        - /qory/${AWS::StackName}-${StackIdTail}/database-protection
-        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+        - /qory/${AWS::StackName}-${StackUuid}/database-protection
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       RetentionInDays: 30
 
   DatabaseProtectionRole:
@@ -1002,8 +1003,8 @@ Outputs:
   Logs:
     Description: The task's log group in CloudWatch, kept 30 days.
     Value: !Sub
-      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackIdTail}
-      - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackUuid}
+      - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
   # Until Qory is set up, each start of the task logs "Set up Qory Apiary at
   # https://<domain>/setup/<code>." in the log group Logs links to. The link opens that log
   # group's events filtered to "/setup/", the console's filterPattern escaped as the Logs
@@ -1012,8 +1013,8 @@ Outputs:
   SetUp:
     Description: The set-up link is in the log; open it once.
     Value: !Sub
-      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackIdTail}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
-      - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackUuid}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
+      - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
   Service:
     Description: The service's health and events in ECS.
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/ecs/v2/clusters/${Cluster}/services/${Service.Name}/health?region=${AWS::Region}
@@ -1030,8 +1031,8 @@ Outputs:
       - Prefix: !If
           - CreateSecrets
           - !Sub
-            - ${AWS::StackName}-${StackIdTail}
-            - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
+            - ${AWS::StackName}-${StackUuid}
+            - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
           - !Ref KeysFromStack
   DatabaseSnapshots:
     Description: "The RDS console's database snapshots in this region. A deleted stack's final database snapshot is listed there."
