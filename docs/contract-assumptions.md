@@ -437,11 +437,11 @@ Forager's own codes, and the words Qory Apiary says for each
 | `credential_expired` | the run credential expired with no fresh one for the same run key | Cancelled | permission to run expired |
 | `stopped` | the run's starter ended the run, answering that its run credential is no longer active, and gave no outcome | Cancelled | stopped, no outcome given |
 | `interrupted` | a session's run was stopped from where it was started (a Ctrl-C, or a signal to `qory run`) before its program ended by itself, and neither the run's starter, the gateway nor the time limit had ended it first; a run with no session never carries it | Cancelled | interrupted |
-| `session_lost` | the gateway heard nothing from the session for three of its heartbeat intervals, or refused a batch of the session's | Lost | stopped responding |
+| `session_lost` | the gateway heard nothing from the session for three of its heartbeat intervals | Lost | stopped responding |
 | `gateway_lost` | the gateway was lost before the run's exit was recorded; the exit is written when the record is sent again | Lost | end not recorded |
 | `credential_check_unreachable` | the run credential could not be checked: the introspection endpoint could not be reached | Failed | couldn't check whether the run may go on: no answer |
 | `credential_check_invalid` | the run credential could not be checked: the introspection endpoint gave no valid answer | Failed | couldn't check whether the run may go on: unreadable answer |
-| `batch_refused` | nothing: the session's own record alone holds it, and the gateway's says `session_lost` | by its `state` | events refused |
+| `batch_refused` | the gateway refused a batch of the session's, and ended the run | Failed | events refused |
 | `run_closed` | nothing: the session's own record alone holds it, the gateway's `410` to a run already ended there | by its `state` | none |
 
 `quiet_seconds`, an integer of at least 1, comes with `quiet` and with no other reason: the
