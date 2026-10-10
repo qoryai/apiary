@@ -427,6 +427,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       String.starts_with?(path, "/users/log-in/") -> p.login_token
       String.starts_with?(path, "/users/settings/confirm-email/") -> p.login_token
       String.starts_with?(path, "/invitations/") -> p.invitation_token
+      String.starts_with?(path, "/users/password/") -> p.password_token
       true -> nil
     end
   end
@@ -478,6 +479,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     login_token =
       extract_user_token(fn url -> Accounts.deliver_login_instructions(user, url) end)
 
+    # A password link's, as `Apiary.Accounts.build_password_link/3` stores it.
+    {password_token, password_row} =
+      Apiary.Accounts.UserToken.build_password_link_token(user, "password")
+
+    Apiary.Repo.insert!(password_row)
+
     {stories, component_stories} = stories()
 
     base = %{
@@ -494,6 +501,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       target_glob: target.path,
       invitation_token: invitation,
       login_token: login_token,
+      password_token: password_token,
       stories: stories,
       component_stories: component_stories
     }

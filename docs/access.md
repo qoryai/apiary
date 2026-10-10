@@ -151,7 +151,11 @@ else compares a level for it.
 
 Granting and revoking an instance admin (`instance_admin.grant`, `instance_admin.revoke`,
 `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1`) are release
-commands, taken on the strength of a shell on the release, which no role has. Revoking
+commands, taken on the strength of a shell on the release, which no role has. A password
+link (`account.password_link`, `Apiary.Accounts.build_password_link/3`), a one-time link
+that sets an account's password, is no role's either: an instance admin makes one while
+the instance sends no mail, asked by `Apiary.Access.instance_admin?/1` in the context
+function, and a release command makes one mail or not (`Apiary.Release.password_link/1`). Revoking
 the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a new
 instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its log
 shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no

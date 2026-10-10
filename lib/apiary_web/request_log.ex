@@ -3,11 +3,11 @@ defmodule ApiaryWeb.RequestLog do
   The production request log: one JSON line per request, written by
   `LoggerJSON.Plug` from the endpoint's stop event.
 
-  Four routes carry a bearer token in the path (an invitation, a log-in link, an
-  email change), and one the instance's set-up code. The path is logged, so the token
-  segment is replaced with `:token`, and the code with `:code`, before the line is
-  written: a reader of the log must not be able to sign in, join an organisation or set
-  the instance up with what it finds there.
+  Five routes carry a bearer token in the path (an invitation, a log-in link, an
+  email change, a password link), and one the instance's set-up code. The path is logged,
+  so the token segment is replaced with `:token`, and the code with `:code`, before the
+  line is written: a reader of the log must not be able to sign in, set a password, join
+  an organisation or set the instance up with what it finds there.
   """
 
   @handler_id "apiary-request-log"
@@ -57,6 +57,9 @@ defmodule ApiaryWeb.RequestLog do
 
       ["users", "settings", "confirm-email", _token] ->
         "/users/settings/confirm-email/:token"
+
+      ["users", "password", _token] ->
+        "/users/password/:token"
 
       ["setup", _code] ->
         "/setup/:code"

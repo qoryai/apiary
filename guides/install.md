@@ -397,6 +397,22 @@ which can be set again in **Account** settings, and signs the account out everyw
 else. Until then, **Account** settings do not change the email address, since a link sent
 to the new address confirms it.
 
+**A forgotten password, without mail.** An instance admin opens **People** in the
+instance's organisation's settings and, in the ⋯ menu of the person's row, selects
+**Make a password link**. The page shows the link once, to copy and send to the person;
+it works once, for 24 hours, and a new one ends the one before. Following it, the person
+sets a new password, and every session of the account ends. Each link is an entry in the
+organisation's activity. Once mail is set, the menu has no such item: the person asks for
+a log-in link on the log-in page. Whoever has a shell on the release prints such a link,
+mail or not, for an hour:
+
+```sh
+bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
+```
+
+It prints the link and until when it works, and never the address. Whoever has the link
+may set the account's password, so send it to that person alone.
+
 ```text
 environment variable SMTP_TLS must be always, if_available or never
 ```
@@ -658,8 +674,9 @@ workspace Main and the account as its owner, makes the set-up link work no more,
 emails the account its log-in link. Without the name it is refused and says so. Should
 the email not go out, the instance is set up all the same, and the command says to ask
 for a link at `/users/log-in` once the mail settings work; it never prints the address or
-the link. Should the set-up link be used a moment before, the command does what it does
-on any instance.
+the link. Without mail it prints a password link for the account instead, which works
+once, for an hour, and never the address: open it to set your password. Should the set-up
+link be used a moment before, the command does what it does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the

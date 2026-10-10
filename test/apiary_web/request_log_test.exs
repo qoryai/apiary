@@ -17,6 +17,7 @@ defmodule ApiaryWeb.RequestLogTest do
       assert RequestLog.redact_path("/users/settings/confirm-email/#{@token}") ==
                "/users/settings/confirm-email/:token"
 
+      assert RequestLog.redact_path("/users/password/#{@token}") == "/users/password/:token"
       assert RequestLog.redact_path("/setup/#{@token}") == "/setup/:code"
     end
 
@@ -25,6 +26,7 @@ defmodule ApiaryWeb.RequestLogTest do
             "/invitations/#{@token}/",
             "//invitations//#{@token}",
             "/users/log-in/#{@token}/",
+            "//users/password//#{@token}/",
             "/invitations/#{@token}/continue/",
             "/setup/#{@token}/",
             "//setup//#{@token}"

@@ -15,7 +15,8 @@ defmodule Apiary.AccessRows do
 
   Accepting an invitation is taken on the strength of the token, which no role is, and
   granting and revoking an instance admin on the strength of a release command run on the
-  instance's machine: nobody's row says yes. Creating an organisation is a sign-up's, which
+  instance's machine: nobody's row says yes. Nor for a password link, which an instance
+  admin makes, as `Apiary.Accounts.build_password_link/3` asks, or a release command. Creating an organisation is a sign-up's, which
   asks nothing, in the core; an edition may let a signed-in person create one. Creating,
   deleting and restoring a workspace are asked of the organisation: an owner creates one,
   an owner or an admin deletes any workspace of it; purging is the instance's, once a
@@ -53,6 +54,7 @@ defmodule Apiary.AccessRows do
       {:"member.activate", yes: @owners ++ [:admin, :feature_off], on: :workspace},
       {:"instance_admin.grant", yes: []},
       {:"instance_admin.revoke", yes: []},
+      {:"account.password_link", yes: []},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off]},
       {:"audit.prune", yes: [:instance, :feature_off]},
       {:"workspace.create", yes: @owners ++ [:feature_off]},

@@ -27,8 +27,9 @@ defmodule ApiaryWeb.Routes do
     stories are this checkout's.
   - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
-  - `visitor_routes/1`: registration, log-in, an invitation and the set-up link, for
-    anyone, in the `live_session :current_user`, with the session's controller routes.
+  - `visitor_routes/1`: registration, log-in, an invitation, a password link and the
+    set-up link, for anyone, in the `live_session :current_user`, with the session's
+    controller routes.
   - `instance_routes/1`: the Instance level's pages under `/instance`, behind sign-in, in
     the `live_session :instance`; each page checks its own access. Before
     `organisation_routes/1`, whose `/:org` would take `/instance`.
@@ -292,8 +293,9 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
-  visitor_routes/1 defines registration, log-in, an invitation's page and the set-up
-  page, for anyone, and the session's controller routes; the block's routes go into the
+  visitor_routes/1 defines registration, log-in, an invitation's page, a password link's
+  and the set-up page, for anyone, and the session's controller routes; the block's
+  routes go into the
   `live_session :current_user`, after the core's.
   """
   defmacro visitor_routes(opts \\ [], block \\ []) do
@@ -308,6 +310,7 @@ defmodule ApiaryWeb.Routes do
             live "/users/log-in", UserLive.Login, :new
             live "/users/log-in/:token", UserLive.Confirmation, :new
             live "/invitations/:token", InvitationLive.Accept, :show
+            live "/users/password/:token", UserLive.Password, :edit
             live "/setup/:code", SetupLive, :show
             unquote(@block)
           end
