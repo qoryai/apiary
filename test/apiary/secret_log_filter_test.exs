@@ -300,6 +300,87 @@ defmodule Apiary.SecretLogFilterTest do
     end
   end
 
+  describe "an invitation's token in a query" do
+    setup do
+      %{token: Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)}
+    end
+
+    test "is replaced in a join's url, alone and among other parameters, and URL-encoded",
+         %{token: token} do
+      url = "https://qory.example.com/users/register"
+
+      for {query, redacted} <- [
+            {"?invitation=#{token}", "?invitation=:token"},
+            {"?invitation=#{token}&lang=en", "?invitation=:token&lang=en"},
+            {"?lang=en&invitation=#{token}", "?lang=en&invitation=:token"},
+            {"?lang=en&invitation=#{token}#top", "?lang=en&invitation=:token#top"}
+          ] do
+        %{msg: {:string, text}} =
+          SecretLogFilter.filter(event({:string, ~s(join %{"url" => "#{url}#{query}"})}), nil)
+
+        assert text == ~s(join %{"url" => "#{url}#{redacted}"})
+      end
+
+      %{msg: {:string, text}} =
+        SecretLogFilter.filter(
+          event(
+            {:string, "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D#{token}"}
+          ),
+          nil
+        )
+
+      assert text == "GET /users/log-in?return_to=%2Fusers%2Fregister%3Finvitation%3D:token"
+
+      conn = Plug.Test.conn(:get, "/users/register?invitation=#{token}")
+
+      %{meta: %{conn: scrubbed}} =
+        SecretLogFilter.filter(%{event({:string, "x"}) | meta: %{conn: conn}}, nil)
+
+      assert scrubbed.query_string == "invitation=:token"
+    end
+
+    test "is kept out of the production line of a LiveView that crashed", %{token: token} do
+      # A crashed LiveView's report: its join payload, the url among it.
+      report = %{
+        label: {:gen_server, :terminate},
+        last_message: %{
+          "url" => "https://qory.example.com/users/register?invitation=#{token}&lang=en"
+        }
+      }
+
+      event = %{
+        level: :error,
+        msg: {:report, report},
+        meta: %{time: System.os_time(:microsecond)}
+      }
+
+      {formatter, config} = LoggerJSON.Formatters.Basic.new(metadata: [])
+
+      line =
+        event |> SecretLogFilter.filter(nil) |> formatter.format(config) |> IO.iodata_to_binary()
+
+      assert line =~ "invitation=:token&lang=en"
+      refute line =~ token
+    end
+
+    test "leaves a value that is no token as it is, an invitation's id among them" do
+      for text <- [
+            "invitation not withdrawn after a failed delivery invitation=#{Ecto.UUID.generate()}",
+            "GET /users/register?invitation=#{Ecto.UUID.generate()}",
+            "GET /users/register?invitation=short",
+            "GET /users/register?reinvitation=#{String.duplicate("A", 43)}"
+          ] do
+        event = event({:string, text})
+        assert SecretLogFilter.filter(event, nil) == event
+      end
+    end
+
+    test "is masked by the parameters' filter, as Phoenix logs parameters", %{token: token} do
+      assert Phoenix.Logger.filter_values(%{"invitation" => token, "lang" => "en"}) ==
+               %{"invitation" => "[FILTERED]", "lang" => "en"}
+    end
+  end
+
   defmodule Crashing do
     use GenServer
 
