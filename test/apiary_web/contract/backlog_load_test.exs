@@ -80,9 +80,11 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
     repo = Application.fetch_env!(:apiary, Repo)
     projector = Application.get_env(:apiary, Projector, [])
 
+    # The timeout and the sandbox's queue budget are the test config's. An instance runs
+    # with the defaults, and so does this pool.
     restart_repo(
       repo
-      |> Keyword.drop([:timeout])
+      |> Keyword.drop([:timeout, :queue_target, :queue_interval])
       |> Keyword.merge(pool: DBConnection.ConnectionPool, pool_size: @pool_size)
     )
 
