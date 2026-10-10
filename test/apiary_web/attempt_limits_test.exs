@@ -67,6 +67,40 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       assert AttemptLimits.password_log_in(unique_user_email(), client) == :limited
     end
 
+    test "a client past its own 20 spends no address's bucket: the address is still allowed from another client" do
+      client = "203.0.113.60"
+      victim = unique_user_email()
+
+      for _ <- 1..20,
+          do: assert(AttemptLimits.password_log_in(unique_user_email(), client) == :ok)
+
+      for _ <- 1..5, do: assert(AttemptLimits.password_log_in(victim, client) == :limited)
+
+      assert AttemptLimits.password_log_in(victim, "203.0.113.61") == :ok
+    end
+
+    test "an IPv6 client counts with the rest of its /64; another /64 is another bucket" do
+      for _ <- 1..10,
+          do: assert(AttemptLimits.password_log_in(unique_user_email(), "2001:db8::1") == :ok)
+
+      for _ <- 1..10,
+          do:
+            assert(AttemptLimits.password_log_in(unique_user_email(), "2001:db8::ffff:2") == :ok)
+
+      assert AttemptLimits.password_log_in(unique_user_email(), "2001:db8:0:0:1:2:3:4") ==
+               :limited
+
+      assert AttemptLimits.password_log_in(unique_user_email(), "2001:db8:0:1::1") == :ok
+
+      for _ <- 1..20, do: assert(AttemptLimits.link_page("2001:db8:0:2::1") == :ok)
+      assert AttemptLimits.link_page("2001:db8:0:2:ffff::1") == :limited
+      assert AttemptLimits.link_page("2001:db8:0:3::1") == :ok
+
+      # IPv4 is as before: an address is its own bucket.
+      assert AttemptLimits.client_key("203.0.113.62") == "203.0.113.62"
+      assert AttemptLimits.client_key("2001:db8:0:2:ffff::1") == "2001:db8:0:2::/64"
+    end
+
     test "an address in another case or with a dotted capital I is the same bucket, as citext may take it for the same account" do
       n = System.unique_integer([:positive])
       email = "alice#{n}@example.com"
@@ -192,6 +226,36 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       conn = log_in({192, 0, 2, 31}, user.email, valid_user_password())
       assert get_session(conn, :user_token)
+    end
+
+    test "a post of any other shape counts against the client's 20 too, and keeps its answer" do
+      client = {192, 0, 2, 34}
+      conn = Map.put(build_conn(), :remote_ip, client)
+
+      shapes = [
+        %{"user" => %{"email" => unique_user_email()}},
+        %{"user" => %{"password" => "not the password"}},
+        %{"user" => %{"email" => ["a list"], "password" => "not the password"}},
+        %{"user" => "not a map"},
+        %{}
+      ]
+
+      for shape <- shapes do
+        answer = post(conn, ~p"/users/log-in", shape)
+        assert redirected_to(answer) == ~p"/users/log-in"
+
+        assert Phoenix.Flash.get(answer.assigns.flash, :error) ==
+                 "That email and password do not match."
+      end
+
+      for _ <- 1..15, do: post(conn, ~p"/users/log-in", %{"user" => %{"password" => "p"}})
+
+      for shape <- shapes do
+        answer = post(conn, ~p"/users/log-in", shape)
+        assert refused?(answer)
+      end
+
+      assert refused?(log_in(client, unique_user_email(), "not the password"))
     end
 
     test "a client does not choose its bucket by writing X-Forwarded-For from a proxy nobody trusts" do

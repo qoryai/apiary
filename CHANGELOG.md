@@ -154,7 +154,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   the set-up page, 20 per client address and then 1 every 3 seconds. Every attempt counts before the address
   is looked up, so past a limit an address with an account and one without get the same
   answer, "Too many attempts. Try again in a few minutes." The client address is the one
-  the audit trail records, behind the proxies `TRUSTED_PROXIES` names.
+  the audit trail records, behind the proxies `TRUSTED_PROXIES` names; an IPv6 one counts
+  with the rest of its /64.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
   server. Its rules are hosts and paths; credentials are not part of it, and the run

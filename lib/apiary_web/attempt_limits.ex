@@ -16,8 +16,11 @@ defmodule ApiaryWeb.AttemptLimits do
   table's comparison (lowercased, NFKD, without combining marks), never by the address
   itself. Every attempt counts, before anything is looked up: an address with an account
   and one without spend their buckets alike, and past them get the same answer,
-  `message/0`, as soon. The client address is `ApiaryWeb.Origin`'s, which reads
-  `X-Forwarded-For` only from the proxies `TRUSTED_PROXIES` names.
+  `message/0`, as soon. A log-in with a password spends its client's bucket first, and
+  the address's only when the client's allowed it: a client past its own limit spends no
+  one else's. The client address is `ApiaryWeb.Origin`'s, which reads `X-Forwarded-For`
+  only from the proxies `TRUSTED_PROXIES` names; an IPv6 one counts with the rest of its
+  /64, which one machine is commonly given whole.
 
   The numbers can be changed under `config :apiary, #{inspect(__MODULE__)}`, one keyword
   list of `rate` and `burst` per bucket: `:password_address`, `:password_client`,
@@ -38,12 +41,15 @@ defmodule ApiaryWeb.AttemptLimits do
 
   @doc """
   A log-in with a password for `email`, from `client` (`ApiaryWeb.Origin`'s
-  `remote_ip`): `:ok`, or `:limited` once either bucket is empty.
+  `remote_ip`): `:ok`, or `:limited` once either bucket is empty. The client's bucket is
+  spent first, and the address's only when the client's allowed it. A log-in without an
+  address as text, `email` nil, spends the client's bucket alone.
   """
-  @spec password_log_in(String.t(), String.t() | nil) :: :ok | :limited
+  @spec password_log_in(String.t() | nil, String.t() | nil) :: :ok | :limited
   def password_log_in(email, client) do
-    with :ok <- spend(:password_address, address_key(email)),
-         do: spend(:password_client, client)
+    with :ok <- spend(:password_client, client_key(client)) do
+      if is_binary(email), do: spend(:password_address, address_key(email)), else: :ok
+    end
   end
 
   @doc "A log-in link asked for `email`: `:ok`, or `:limited`."
@@ -55,7 +61,7 @@ defmodule ApiaryWeb.AttemptLimits do
   or `:limited`.
   """
   @spec link_page(String.t() | nil) :: :ok | :limited
-  def link_page(client), do: spend(:link_page_client, client)
+  def link_page(client), do: spend(:link_page_client, client_key(client))
 
   @doc """
   A LiveView's mount of a page a link opens, counted from where its socket comes from:
@@ -102,6 +108,22 @@ defmodule ApiaryWeb.AttemptLimits do
     |> Keyword.fetch!(bucket)
     |> Keyword.merge(Keyword.take(Keyword.get(configured, bucket, []), [:rate, :burst]))
   end
+
+  # A client's bucket: its address as `ApiaryWeb.Origin` wrote it, an IPv4 one as it is,
+  # an IPv6 one as its /64, `2001:db8:0:1::/64`, since one machine is commonly given a
+  # whole /64 and may write any address in it.
+  @doc false
+  def client_key(client) when is_binary(client) do
+    case :inet.parse_strict_address(String.to_charlist(client)) do
+      {:ok, {a, b, c, d, _, _, _, _}} ->
+        List.to_string(:inet.ntoa({a, b, c, d, 0, 0, 0, 0})) <> "/64"
+
+      _ipv4_or_other ->
+        client
+    end
+  end
+
+  def client_key(client), do: client
 
   # At least as coarse as citext's comparison, so an address the accounts table takes
   # for the same one is the same bucket, whatever the database's locale lowercases

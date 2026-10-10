@@ -30,7 +30,10 @@ defmodule Apiary.Accounts do
 
   """
   def get_user_by_email(email) when is_binary(email) do
-    Repo.one(from u in User, where: u.email == ^email and is_nil(u.deleted_at))
+    # Text Postgres refuses, a NUL or bytes that are not UTF-8, is no account's address.
+    if String.valid?(email) and not String.contains?(email, <<0>>) do
+      Repo.one(from u in User, where: u.email == ^email and is_nil(u.deleted_at))
+    end
   end
 
   @doc """
@@ -159,6 +162,18 @@ defmodule Apiary.Accounts do
 
   Returns a tuple with the updated user, as well as a list of expired tokens.
 
+  The account's row is held while the password is set, as a log-in link's confirmation
+  holds it (`login_user_by_magic_link/1`), so the two take turns. `{:error, :stale}` when
+  `user` is not the account as it is now: its confirmation differs, as after a first
+  log-in link that removed a password set before it (case 3 there), or it is deleted; and,
+  with `session_token:`, the caller's session token, when that session no longer exists.
+  Nothing is set then.
+
+  Every token of the account ends, its sessions included, but for an account whose address
+  is not confirmed: its log-in links stay. Whoever set its password may not be the
+  address's owner, and the owner's link is what removes that password (case 3 of
+  `login_user_by_magic_link/1`); a change of password does not end it.
+
   ## Examples
 
       iex> update_user_password(user, %{password: ...})
@@ -168,10 +183,36 @@ defmodule Apiary.Accounts do
       {:error, %Ecto.Changeset{}}
 
   """
-  def update_user_password(user, attrs) do
-    user
-    |> User.password_changeset(attrs)
-    |> update_user_and_delete_all_tokens()
+  @spec update_user_password(%User{}, map, keyword) ::
+          {:ok, {%User{}, [%UserToken{}]}} | {:error, Ecto.Changeset.t() | :stale}
+  def update_user_password(%User{} = user, attrs, opts \\ []) do
+    # Hashed before the transaction, which holds the account's row meanwhile.
+    case User.password_changeset(user, attrs) do
+      %Ecto.Changeset{valid?: false} = changeset ->
+        {:error, %{changeset | action: :update}}
+
+      changeset ->
+        Repo.transact(fn ->
+          with {:ok, locked} <- lock_account(user.id),
+               true <- locked.confirmed_at == user.confirmed_at,
+               true <- session_alive?(user, Keyword.get(opts, :session_token)) do
+            update_user_and_delete_all_tokens(%{changeset | data: locked},
+              keep_login_links: is_nil(locked.confirmed_at)
+            )
+          else
+            _stale -> {:error, :stale}
+          end
+        end)
+    end
+  end
+
+  defp session_alive?(_user, nil), do: true
+
+  defp session_alive?(%User{id: id}, token) when is_binary(token) do
+    Repo.exists?(
+      from t in UserToken,
+        where: t.token == ^token and t.context == "session" and t.user_id == ^id
+    )
   end
 
   @doc """
@@ -392,10 +433,14 @@ defmodule Apiary.Accounts do
 
   defp confirm(nil, _token), do: {:error, :not_found}
 
-  # Confirmed by another link meanwhile: logged in as a confirmed account is.
+  # Confirmed by another link meanwhile: logged in as a confirmed account is, while this
+  # link is still there to use up. The confirmation ended every token, this link's too
+  # when it was the one that confirmed, so a second use of it finds it gone.
   defp confirm(%User{confirmed_at: %DateTime{}} = user, token) do
-    Repo.delete_all(from t in UserToken, where: t.id == ^token.id)
-    {:ok, {:kept, {user, []}}}
+    case Repo.delete_all(from t in UserToken, where: t.id == ^token.id) do
+      {1, _} -> {:ok, {:kept, {user, []}}}
+      {0, _} -> {:error, :not_found}
+    end
   end
 
   defp confirm(%User{hashed_password: hash} = user, _token) do
@@ -566,9 +611,9 @@ defmodule Apiary.Accounts do
   @doc """
   set_password_by_link/2 sets the password of the account a password link is for
   (`build_password_link/3`), from `attrs`' `password` and `password_confirmation`, checked
-  as `User.password_changeset/3` checks them, and uses the link up. As a change of
-  password in Account settings does, it ends every token of the account, its sessions
-  included, which the caller disconnects: `{:ok, {user, tokens}}`.
+  as `User.password_changeset/3` checks them, and uses the link up. It ends every token of
+  the account, its sessions included, as a change of password in Account settings ends
+  its sessions; the caller disconnects them: `{:ok, {user, tokens}}`.
 
   A password that is refused is `{:error, changeset}`, and the link still works. A link
   that does not work is `{:error, :invalid}`; of two uses at once, one sets the password
@@ -644,10 +689,16 @@ defmodule Apiary.Accounts do
 
   ## Token helper
 
-  defp update_user_and_delete_all_tokens(changeset) do
+  # Every token of the account, or, with `keep_login_links: true`, every one but its log-in
+  # links.
+  defp update_user_and_delete_all_tokens(changeset, opts \\ []) do
     Repo.transact(fn ->
       with {:ok, user} <- Repo.update(changeset) do
-        tokens_to_expire = Repo.all_by(UserToken, user_id: user.id)
+        tokens_to_expire =
+          if Keyword.get(opts, :keep_login_links, false),
+            do:
+              Repo.all(from t in UserToken, where: t.user_id == ^user.id and t.context != "login"),
+            else: Repo.all_by(UserToken, user_id: user.id)
 
         Repo.delete_all(from(t in UserToken, where: t.id in ^Enum.map(tokens_to_expire, & &1.id)))
 
