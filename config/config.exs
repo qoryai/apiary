@@ -98,8 +98,16 @@ config :logger, :default_formatter,
 # `value` keeps a stored secret's value out of the log, and a variable's; `code` the
 # set-up link's code (`Apiary.Setup`); `token` a link's token, which the path of an
 # invitation, a log-in link, an email change, a password link and Instance settings ›
-# Mail's test link carry.
-config :phoenix, :filter_parameters, ["password", "secret", "value", "code", "token"]
+# Mail's test link carry; `invitation` an invitation's token, which the sign-up page's
+# query carries (`/users/register?invitation=…`).
+config :phoenix, :filter_parameters, [
+  "password",
+  "secret",
+  "value",
+  "code",
+  "token",
+  "invitation"
+]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

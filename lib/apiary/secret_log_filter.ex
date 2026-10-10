@@ -54,6 +54,14 @@ defmodule Apiary.SecretLogFilter do
   writes it whole: the event that carries the metadata `setup_link: true` keeps its
   message as it came, its metadata scrubbed.
 
+  An invitation's token travels in a query too: its page sends a person to sign up at
+  `/users/register?invitation=<token>`. So in every string the filter reads, the value of
+  an `invitation` parameter that is a token (43 base64url characters, the 32 bytes every
+  token is) is replaced by `:token`: after `?`, `&` or `;`, or at the start of the string
+  (a `Plug.Conn`'s `query_string`), and in its URL-encoded form (`%3Finvitation%3D…`, a
+  return path inside another parameter). A value of another shape, an invitation's id
+  among them (`invitation=<uuid>` in a line of the app's own), is left as it is.
+
   An event without a secret is passed on exactly as it came. The filter never stops an
   event and never raises: should a term defeat it, the event is passed on as it came.
 
@@ -62,9 +70,9 @@ defmodule Apiary.SecretLogFilter do
   holding part of `qak_` or `qec_`); a secret or a code in an atom, a
   pid or a function's captured values; and output written without `:logger` (straight to
   standard output or standard error). A public key whose base64url happens to hold `qak_`
-  or `qec_` is filtered from a log line as a secret would be. A link's token outside such a
-  path (percent-encoded in a query, or alone in a parameter, which `:filter_parameters`
-  masks by the name `token`) is not recognised. A path that holds one of those paths after
+  or `qec_` is filtered from a log line as a secret would be. A link's token anywhere else
+  is not recognised: in another parameter of a query, or alone as a parameter's value,
+  which `:filter_parameters` masks by the names `token` and `invitation`. A path that holds one of those paths after
   a segment of its own (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
   route's, and is left whole.
   """
@@ -118,6 +126,12 @@ defmodule Apiary.SecretLogFilter do
                  Enum.map_join(@token_prefixes, "|", fn {before, _name} ->
                    Enum.map_join(before, "/+", &Regex.escape/1)
                  end) <> ")/+)([A-Za-z0-9_%-]+)"
+
+  # An invitation's token as a query parameter's value, bare or URL-encoded: what
+  # `:binary.match/2` looks for, and the regex that keeps the parameter's name and
+  # replaces a token's 43 base64url characters.
+  @query_marks ["invitation=", "invitation%3D", "invitation%3d"]
+  @query_source "((?:^|[?&;]|%3[Ff]|%26)invitation(?:=|%3[Dd]))[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])"
 
   @doc """
   token_routes/0 is the routes that carry a bearer token, or the instance's set-up code,
@@ -280,23 +294,29 @@ defmodule Apiary.SecretLogFilter do
 
   defp printable(_list), do: :none
 
-  defp secret?(binary), do: :binary.match(binary, @prefixes ++ @path_marks) != :nomatch
+  defp secret?(binary),
+    do: :binary.match(binary, @prefixes ++ @path_marks ++ @query_marks) != :nomatch
 
   defp replace(binary) do
     binary = Regex.replace(~r/q(ak|ec)_[A-Za-z0-9_-]*/i, binary, "[FILTERED]")
 
-    if :binary.match(binary, @path_marks) == :nomatch,
+    binary =
+      if :binary.match(binary, @path_marks) == :nomatch,
+        do: binary,
+        else: Regex.replace(regex(:path, @path_source), binary, &redact_token/4)
+
+    if :binary.match(binary, @query_marks) == :nomatch,
       do: binary,
-      else: Regex.replace(path_regex(), binary, &redact_token/4)
+      else: Regex.replace(regex(:query, @query_source), binary, "\\1:token")
   end
 
-  # The path's regex, compiled once and kept in `:persistent_term`: a compiled regex cannot
-  # be a module attribute.
-  defp path_regex do
-    case :persistent_term.get({__MODULE__, :path_regex}, nil) do
+  # A regex compiled once and kept in `:persistent_term`: a compiled regex cannot be a
+  # module attribute.
+  defp regex(name, source) do
+    case :persistent_term.get({__MODULE__, name}, nil) do
       nil ->
-        regex = Regex.compile!(@path_source)
-        :persistent_term.put({__MODULE__, :path_regex}, regex)
+        regex = Regex.compile!(source)
+        :persistent_term.put({__MODULE__, name}, regex)
         regex
 
       regex ->
