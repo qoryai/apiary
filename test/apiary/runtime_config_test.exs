@@ -488,22 +488,15 @@ defmodule Apiary.RuntimeConfigTest do
       end)
     end
 
-    test "are read in production as they are set, for the boot step to check" do
+    test "are read no more: the set-up link makes the first admin (Apiary.Setup)" do
       System.put_env("FIRST_ADMIN_EMAIL", "you@example.com")
       System.put_env("FIRST_ORGANISATION_NAME", "Acme")
-      config = Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
 
-      assert get_in(config, [:apiary, :first_admin_email_setting]) == "you@example.com"
-      assert get_in(config, [:apiary, :first_organisation_name_setting]) == "Acme"
-    end
-
-    test "are not read under test" do
-      System.put_env("FIRST_ADMIN_EMAIL", "you@example.com")
-      System.put_env("FIRST_ORGANISATION_NAME", "Acme")
-      config = Config.Reader.read!("config/runtime.exs", env: :test, target: :host)
-
-      refute Keyword.has_key?(config[:apiary] || [], :first_admin_email_setting)
-      refute Keyword.has_key?(config[:apiary] || [], :first_organisation_name_setting)
+      for env <- [:prod, :test] do
+        config = Config.Reader.read!("config/runtime.exs", env: env, target: :host)
+        refute Keyword.has_key?(config[:apiary] || [], :first_admin_email_setting)
+        refute Keyword.has_key?(config[:apiary] || [], :first_organisation_name_setting)
+      end
     end
   end
 

@@ -700,18 +700,18 @@ defmodule Apiary.Organisations do
 
   @doc """
   sign_up_offer/1 is what a sign-up without an invitation may do on this instance now:
-  `:first`, the instance's first sign-up, while the instance has no organisation of its
-  own (`c:Apiary.Edition.instance_organisation_id/0`), which it creates; `:open`, a later
-  sign-up, which creates an organisation, where the edition opens one
-  (`c:Apiary.Edition.sign_up_open?/0`); `:closed`, where sign-up is by invitation only.
-  The sign-up page asks it on mount, and `sign_up_user/3` asks again, inside its
-  transaction, before it creates anything. `open:`, a boolean, stands in for the
-  edition's answer, for tests.
+  `:not_set_up` while the instance has no organisation of its own
+  (`c:Apiary.Edition.instance_organisation_id/0`), which only its set-up link makes
+  (`Apiary.Setup`), so nobody signs up before it; `:open`, a sign-up that creates an
+  organisation, where the edition opens one (`c:Apiary.Edition.sign_up_open?/0`);
+  `:closed`, where sign-up is by invitation only. The sign-up page asks it on mount, and
+  `sign_up_user/3` asks again, inside its transaction, before it creates anything.
+  `open:`, a boolean, stands in for the edition's answer, for tests.
   """
-  @spec sign_up_offer(keyword) :: :first | :open | :closed
+  @spec sign_up_offer(keyword) :: :not_set_up | :open | :closed
   def sign_up_offer(opts \\ []) do
     cond do
-      not instance_claimed?() -> :first
+      not instance_claimed?() -> :not_set_up
       open?(opts) -> :open
       true -> :closed
     end
@@ -719,10 +719,10 @@ defmodule Apiary.Organisations do
 
   @doc """
   sign_up_offered?/0 says whether a sign-up without an invitation is offered at all: on
-  an instance without its first user yet, and where the edition opens one.
+  an instance that is set up, where the edition opens one.
   """
   @spec sign_up_offered?() :: boolean
-  def sign_up_offered?, do: sign_up_offer() != :closed
+  def sign_up_offered?, do: sign_up_offer() == :open
 
   defp open?(opts), do: Keyword.get_lazy(opts, :open, &Edition.sign_up_open?/0)
 
@@ -821,9 +821,15 @@ defmodule Apiary.Organisations do
 
   - **The instance's first sign-up** creates the instance's own organisation, whose
     owners run the instance (`Apiary.Access.instance_admin?/1`): its owner is the
-    instance's first admin. The edition is told so (`:first_sign_up`). Of two first
-    sign-ups at once, one takes the instance's first-sign-up lock and creates it; the
-    other waits for the lock, finds it, and is a later sign-up.
+    instance's first admin. The edition is told so (`:first_sign_up`). It is the
+    set-up's (`Apiary.Setup.set_up/3`) or a release command's, with `first_only: true`
+    and `actor: :instance`; any other sign-up before it is refused with
+    `{:error, :not_set_up}`. It marks the set-up code used, in its transaction
+    (`Apiary.Setup`); with `setup_code:`, the set-up's, it checks that code
+    first, under the row's lock, and is `{:error, :invalid_code}` when it is not the
+    stored one. Of two first sign-ups at once, one takes the instance's first-sign-up
+    lock and creates it; the other waits for the lock, finds it, and is
+    `{:error, :instance_claimed}`.
   - **A later sign-up** creates an organisation where the edition opens one, and the
     edition is told so, with what the form sent beyond the core's fields, with string
     keys (`{:sign_up, extra}`): an edition may ask more of the form, and refuse it on
@@ -853,17 +859,18 @@ defmodule Apiary.Organisations do
   checked as `change_sign_up/2` checks it and hashed into the account. It is required
   while the instance sends no email (`Apiary.Mail.configured?/0`), since it is then the
   account's only way in, and optional once it does; `actor: :instance` never needs one.
+  `password: :required` or `password: :optional` says otherwise, as the set-up does.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
   inviter's word for it.
 
   `first_only: true` creates the instance's organisation or nothing, for
-  `Apiary.Release.grant_instance_admin/2` on an instance nobody has signed up to:
-  `{:error, :instance_claimed}` once the instance has one, a web sign-up that came first
-  included. `actor: :instance` records the sign-up as the instance's, from `origin:`,
-  rather than the new user's: a release command made it. The entry names the user by id
-  either way.
+  `Apiary.Setup.set_up/3` and `Apiary.Release.grant_instance_admin/2` on an instance
+  that is not set up: `{:error, :instance_claimed}` once the instance has one, a set-up
+  that came first included. `actor: :instance` records the sign-up as the instance's,
+  from `origin:`, rather than the new user's: the set-up or a release command made it.
+  The entry names the user by id either way.
 
   `opts` is also for tests: `pick_slug: fun`, given the organisation's name, stands in for
   the pick of a free slug, and `open:`, a boolean, for the edition's answer to whether a
@@ -877,10 +884,19 @@ defmodule Apiary.Organisations do
              workspace: %Workspace{},
              membership: %Membership{}
            }}
-          | {:error, Ecto.Changeset.t() | :instance_claimed}
+          | {:error, Ecto.Changeset.t() | :instance_claimed | :not_set_up | :invalid_code}
   def sign_up_user(attrs, invitation_or_token \\ nil, opts \\ []) do
-    origin = Keyword.get(opts, :origin)
     invitation = pending_invitation(invitation_or_token)
+
+    # Before set-up the one sign-up is the instance's first, its set-up's or a release
+    # command's; asked again inside the transaction.
+    if match?(%Invitation{}, invitation) or setting_up?(opts) or instance_claimed?(),
+      do: sign_up(attrs, invitation, opts),
+      else: {:error, :not_set_up}
+  end
+
+  defp sign_up(attrs, invitation, opts) do
+    origin = Keyword.get(opts, :origin)
     invited? = match?(%Invitation{}, invitation)
     mail? = Apiary.Mail.configured?()
 
@@ -888,11 +904,14 @@ defmodule Apiary.Organisations do
       invited? or Keyword.get(opts, :first_only, false) or sign_up_offer(opts) != :closed
 
     # The instance's own sign-up, a release command's, is nobody's to choose a password
-    # for; a person's needs one while the instance sends no email.
+    # for; a person's needs one while the instance sends no email. `password:` says
+    # otherwise, as the set-up does.
     password =
-      if mail? or Keyword.get(opts, :actor, :person) == :instance,
-        do: :optional,
-        else: :required
+      Keyword.get_lazy(opts, :password, fn ->
+        if mail? or Keyword.get(opts, :actor, :person) == :instance,
+          do: :optional,
+          else: :required
+      end)
 
     # Without mail, the invitation's link is the inviter's word for its address: the
     # account takes it, whatever the form sent.
@@ -930,8 +949,11 @@ defmodule Apiary.Organisations do
           {:ok,
            %{user: user, organisation: organisation, workspace: workspace, membership: membership}}
 
-        {:error, :how, :instance_claimed, _changes} ->
-          {:error, :instance_claimed}
+        {:error, :how, reason, _changes} when reason in [:instance_claimed, :not_set_up] ->
+          {:error, reason}
+
+        {:error, :set_up, :invalid_code, _changes} ->
+          {:error, :invalid_code}
 
         {:error, :organisation, :slug_taken, _changes} ->
           {:error,
@@ -996,6 +1018,13 @@ defmodule Apiary.Organisations do
 
     Ecto.Multi.new()
     |> Ecto.Multi.run(:how, fn _repo, _changes -> sign_up_how(extra, opts) end)
+    # The instance's first sign-up uses its set-up code: the link's, which it checks, or
+    # whatever code is stored, for a release command's (`Apiary.Setup.use_code/2`).
+    |> Ecto.Multi.run(:set_up, fn repo, %{how: how} ->
+      if how == :first_sign_up,
+        do: Apiary.Setup.use_code(repo, Keyword.get(opts, :setup_code)),
+        else: {:ok, nil}
+    end)
     |> Ecto.Multi.insert(:user, user_changeset)
     |> build_organisation(
       name: name,
@@ -1008,11 +1037,13 @@ defmodule Apiary.Organisations do
 
   # What the sign-up is, decided inside its transaction: the instance's first while the
   # instance has no organisation of its own, read again under the first-sign-up lock, so
-  # of two first sign-ups one creates it; a later one where the edition opens one. The
-  # instance's organisation stays, so one seen without the lock is there.
+  # of two first sign-ups one creates it, and only for its set-up or a release command
+  # (`setting_up?/1`); a later one where the edition opens one. The instance's
+  # organisation stays, so one seen without the lock is there.
   defp sign_up_how(extra, opts) do
     cond do
-      not instance_claimed?() -> first_sign_up_how(extra, opts)
+      not instance_claimed?() and setting_up?(opts) -> first_sign_up_how()
+      not instance_claimed?() -> {:error, :not_set_up}
       Keyword.get(opts, :first_only, false) -> {:error, :instance_claimed}
       true -> later_sign_up_how(extra, opts)
     end
@@ -1020,15 +1051,16 @@ defmodule Apiary.Organisations do
 
   # The instance's first-sign-up lock, for the transaction, then a second look: of two
   # first sign-ups at once, one creates the instance's organisation and the other sees it.
-  defp first_sign_up_how(extra, opts) do
+  defp first_sign_up_how do
     Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended('apiary:first-sign-up', 0))")
 
-    cond do
-      not instance_claimed?() -> {:ok, :first_sign_up}
-      Keyword.get(opts, :first_only, false) -> {:error, :instance_claimed}
-      true -> later_sign_up_how(extra, opts)
-    end
+    if instance_claimed?(), do: {:error, :instance_claimed}, else: {:ok, :first_sign_up}
   end
+
+  # The instance's first sign-up is its set-up's (`Apiary.Setup.set_up/3`) or a release
+  # command's: the instance's, and that sign-up only.
+  defp setting_up?(opts),
+    do: Keyword.get(opts, :first_only, false) and Keyword.get(opts, :actor) == :instance
 
   defp later_sign_up_how(extra, opts) do
     if open?(opts),

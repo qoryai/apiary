@@ -26,6 +26,8 @@ defmodule ApiaryWeb.UserLive.Login do
           {if @current_scope, do: gettext("Confirm it is you"), else: gettext("Log in to Qory Apiary")}
           <:subtitle>
             <%= cond do %>
+              <% !@set_up? -> %>
+                {ApiaryWeb.SetupLive.not_set_up_line()}
               <% @current_scope -> %>
                 {gettext("Log in again to change sensitive account settings.")}
               <% @mode == :password -> %>
@@ -38,6 +40,7 @@ defmodule ApiaryWeb.UserLive.Login do
 
         <.form
           :let={f}
+          :if={@set_up?}
           for={@form}
           id="login_form"
           action={~p"/users/log-in"}
@@ -162,6 +165,8 @@ defmodule ApiaryWeb.UserLive.Login do
        remember_me: true,
        sent_to: nil,
        trigger_submit: false,
+       # Before set-up there is nobody to log in: the page says to use the set-up link.
+       set_up?: Apiary.Setup.set_up?(),
        # Sign-up without an invitation, where the instance offers it: an invitation's
        # email links to the sign-up page itself.
        sign_up?: Apiary.Organisations.sign_up_offered?(),

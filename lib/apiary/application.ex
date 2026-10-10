@@ -59,9 +59,9 @@ defmodule Apiary.Application do
 
   @doc false
   # The supervisor's children, in the order they start. The edition's processes come once
-  # the core's are up and before requests come; the first admin's claim
-  # (`Apiary.FirstAdmin`) after them, and just before the endpoint, so no web sign-up can
-  # come before it.
+  # the core's are up and before requests come; the set-up link's step (`Apiary.Setup`),
+  # which logs the link until the instance is set up, after them, and just before the
+  # endpoint.
   def children do
     [
       ApiaryWeb.Telemetry,
@@ -82,8 +82,8 @@ defmodule Apiary.Application do
       liveness() ++
       retention() ++
       Apiary.Edition.children() ++
+      setup() ++
       [
-        Apiary.FirstAdmin,
         # Start to serve requests, typically the last entry
         ApiaryWeb.Endpoint
       ]
@@ -127,6 +127,11 @@ defmodule Apiary.Application do
   # MIGRATE_ON_BOOT=false too. Off in test, where the tests call `Apiary.KeyCheck.check/0`.
   defp key_check do
     if Apiary.KeyCheck.enabled?(), do: [Apiary.KeyCheck], else: []
+  end
+
+  # Off in test, where the tests call `Apiary.Setup.boot/0` themselves.
+  defp setup do
+    if Apiary.Setup.enabled?(), do: [Apiary.Setup], else: []
   end
 
   # The lost-run check, after the migrator so it never reads a schema it does not know.

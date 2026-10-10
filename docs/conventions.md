@@ -42,9 +42,10 @@ the page.
 
 One row is outside the sandbox on purpose: the instance's own organisation
 (`c:Apiary.Edition.instance_organisation_id/0`). `test/test_helper.exs` commits it before
-the sandbox takes over, with its confirmed admin, through the instance's first sign-up
-(`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`), and every run finds it
-again. Without it the first sign-up of each test would be the instance's first, which
+the sandbox takes over, with its confirmed admin, through the instance's set-up
+(`Apiary.Setup.set_up/3`, in `Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`),
+and every run finds it again; the set-up's row of `instance_settings` is deleted after
+it, so the suite's database holds none, as the key check's tests expect. Without it the first sign-up of each test would be the instance's first, which
 creates the instance's organisation whatever the test asked for. A test of the first
 sign-up hides it inside its own sandbox; a test outside the sandbox that does puts it
 back before it ends. A sweep over every organisation or workspace visits it too.

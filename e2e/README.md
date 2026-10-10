@@ -42,8 +42,8 @@ batches, the digests in the answers.
 
 `scenario.exs`, in order:
 
-1. Signs an owner up (`Apiary.Organisations.sign_up_user/2`): the instance's first
-   sign-up, on its fresh database, which the closed sign-up settings do not refuse and
+1. Sets the instance up with an owner (`Apiary.Setup.set_up/3`, with the code
+   `Apiary.Setup.code!/0` finds): the instance's first sign-up, on its fresh database,
    which makes the instance's own organisation. It sets the workspace to
    `enforce` with nothing allowed (`Apiary.Policy.set_mode/2`, which is also what makes
    the workspace a managed one that serves a run configuration), and makes a node,

@@ -95,8 +95,9 @@ config :logger, :default_formatter,
 # Parameters the Phoenix logger masks in development request logs, and in the lines a
 # LiveView logs for its mount and its events. Production logs never include parameters
 # at all. A parameter whose name holds one of these words is logged as [FILTERED]:
-# `value` keeps a stored secret's value out of the log, and a variable's.
-config :phoenix, :filter_parameters, ["password", "secret", "value"]
+# `value` keeps a stored secret's value out of the log, and a variable's; `code` the
+# set-up link's code (`Apiary.Setup`).
+config :phoenix, :filter_parameters, ["password", "secret", "value", "code"]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

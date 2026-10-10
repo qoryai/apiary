@@ -24,8 +24,8 @@ defmodule Apiary.Edition do
   The callbacks, by where they are asked:
 
   - **Limits and sign-up**: `limits/0`, `sign_up_open?/0`, `organisation_created/2`,
-    `workspace_created/3`, `instance_organisation_id/0`, `audit_retention_max_days/0`,
-    `attribution?/0`.
+    `workspace_created/3`, `instance_organisation_id/0`, `first_sign_up_line/0`,
+    `audit_retention_max_days/0`, `attribution?/0`.
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
@@ -90,6 +90,12 @@ defmodule Apiary.Edition do
 
   @doc "The organisation whose owners run the instance, or nil before the first sign-up."
   @callback instance_organisation_id() :: Ecto.UUID.t() | nil
+
+  @doc """
+  The set-up page's line on what the instance's first sign-up creates
+  (`ApiaryWeb.SetupLive`), translated when it is asked.
+  """
+  @callback first_sign_up_line() :: String.t()
 
   @doc """
   What holds above `workspace`'s security policy, from the level the edition keeps above
@@ -300,6 +306,7 @@ defmodule Apiary.Edition do
     organisation_created: 2,
     workspace_created: 3,
     instance_organisation_id: 0,
+    first_sign_up_line: 0,
     above_workspace: 1,
     audit_retention_max_days: 0,
     attribution?: 0,

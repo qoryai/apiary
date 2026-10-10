@@ -2,11 +2,11 @@ defmodule ApiaryWeb.UserLive.Registration do
   @moduledoc """
   The sign-up page, `/users/register`. With an invitation's token it creates the account
   that joins the invitation's workspace, and asks for the address alone. Without one it
-  offers what `Apiary.Organisations.sign_up_offer/1` answers on mount: the instance's
-  first sign-up, which creates the organisation its first user owns; a later sign-up,
-  where the edition opens one, of an organisation; and nothing where none is open,
-  where the page says sign-up is by invitation. `Apiary.Organisations.sign_up_user/3`
-  asks again when the form is sent.
+  offers what `Apiary.Organisations.sign_up_offer/1` answers on mount: before the
+  instance is set up, nothing, and the page says to use its set-up link
+  (`Apiary.Setup`); a sign-up, where the edition opens one, of an organisation; and
+  nothing where none is open, where the page says sign-up is by invitation.
+  `Apiary.Organisations.sign_up_user/3` asks again when the form is sent.
 
   **With mail** (`Apiary.Mail.configured?/0`) the account is made and a link to confirm
   it is emailed; the page says so in place. When the email cannot be sent, the account
@@ -58,7 +58,17 @@ defmodule ApiaryWeb.UserLive.Registration do
         </.button>
       </div>
 
-      <div :if={!@sent_to && !by_invitation_only?(assigns)} class="grid gap-4">
+      <div :if={!@sent_to && not_set_up?(assigns)} id="sign-up-not-set-up" class="grid gap-4">
+        <Layouts.auth_heading>
+          {gettext("Create your account")}
+          <:subtitle>{ApiaryWeb.SetupLive.not_set_up_line()}</:subtitle>
+        </Layouts.auth_heading>
+      </div>
+
+      <div
+        :if={!@sent_to && !by_invitation_only?(assigns) && !not_set_up?(assigns)}
+        class="grid gap-4"
+      >
         <Layouts.auth_heading>
           {gettext("Create your account")}
           <:subtitle>{subtitle(assigns)}</:subtitle>
@@ -165,6 +175,9 @@ defmodule ApiaryWeb.UserLive.Registration do
   defp by_invitation_only?(%{invitation: nil, offer: :closed}), do: true
   defp by_invitation_only?(_assigns), do: false
 
+  defp not_set_up?(%{invitation: nil, offer: :not_set_up}), do: true
+  defp not_set_up?(_assigns), do: false
+
   @impl true
   def mount(_params, _session, %{assigns: %{current_scope: %{user: user}}} = socket)
       when not is_nil(user) do
@@ -208,6 +221,10 @@ defmodule ApiaryWeb.UserLive.Registration do
 
       {:ok, %{user: user}} ->
         {:noreply, confirm_by_email(socket, user)}
+
+      # The instance is not set up: nobody signs up before its set-up link is used.
+      {:error, :not_set_up} ->
+        {:noreply, assign(socket, :offer, :not_set_up)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         # What the instance offers may have changed since the page mounted: another
