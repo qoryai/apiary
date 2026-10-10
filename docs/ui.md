@@ -1144,8 +1144,8 @@ needs becomes a component, or an attribute of one, not a copy.
   Newer on its first page). `primary` marks the one main action of a screen. `loading_text` is
   the gerund ("Saving") the button shows, with a spinner and `aria-busy`, while its form
   submits; the button keeps its width.
-- **`<.input>`** is every field but a new password; with `prefix` a text input shows, in
-  mono before the value and as one field, what the value completes: the path of the
+- **`<.input>`** is every field but the sign-up page's new password; with `prefix` a text
+  input shows, in mono before the value and as one field, what the value completes: the path of the
   organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
   field's own (its hint, its errors), never replaced by it.
 - **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page

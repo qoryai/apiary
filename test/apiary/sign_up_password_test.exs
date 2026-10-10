@@ -99,6 +99,21 @@ defmodule Apiary.SignUpPasswordTest do
       assert form.valid?
       # The password is checked, never kept in the form's changes.
       refute Map.has_key?(form.changes, :password)
+
+      # 72 bytes at most, as the sign-up checks it: Bcrypt reads 72 bytes.
+      wide = String.duplicate("é", 40)
+
+      form =
+        Organisations.change_sign_up(
+          %{
+            "email" => unique_user_email(),
+            "password" => wide,
+            "password_confirmation" => wide
+          },
+          invited: true
+        )
+
+      assert "should be at most 72 byte(s)" in errors_on(form).password
     end
 
     test "the password reaches no step of the edition's and no entry" do
@@ -110,11 +125,18 @@ defmodule Apiary.SignUpPasswordTest do
       refute inspect(entries) =~ @password
     end
 
-    test "the instance's own sign-up asks for no password" do
+    test "the instance's own sign-up asks for no password, and keeps one given" do
       assert {:ok, %{user: user}} =
                sign_up(attrs(), nil, open: true, actor: :instance, origin: %{worker: "test"})
 
       assert is_nil(user.hashed_password)
+
+      attrs = attrs(%{password: @password, password_confirmation: @password})
+
+      assert {:ok, %{user: user}} =
+               sign_up(attrs, nil, open: true, actor: :instance, origin: %{worker: "test"})
+
+      assert Accounts.get_user_by_email_and_password(user.email, @password)
     end
 
     test "an invited sign-up keeps the invitation's address, whatever the form sent" do
@@ -149,12 +171,43 @@ defmodule Apiary.SignUpPasswordTest do
       assert is_nil(user.confirmed_at)
     end
 
-    test "a password given is checked and kept" do
-      assert {:error, form} = sign_up(attrs(%{password: "too short"}))
-      assert "should be at least 12 character(s)" in errors_on(form).password
+    test "a person's sign-up drops a password sent all the same: the address is confirmed by email first" do
+      # Not even checked: one that would be refused is dropped too.
+      assert {:ok, %{user: user}} = sign_up(attrs(%{password: "too short"}))
+      assert is_nil(user.hashed_password)
 
-      attrs = attrs(%{password: @password, password_confirmation: @password})
+      attrs = attrs(%{"password" => @password, "password_confirmation" => @password})
+      attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
       assert {:ok, %{user: user}} = sign_up(attrs)
+      assert is_nil(user.hashed_password)
+      refute Accounts.get_user_by_email_and_password(user.email, @password)
+    end
+
+    test "an invited person's sign-up drops it too" do
+      %{scope: scope} = sign_up_fixture()
+      email = unique_user_email()
+      %{token: token} = invitation_fixture(scope, %{"email" => email})
+
+      attrs = %{"email" => email, "password" => @password, "password_confirmation" => @password}
+      assert {:ok, %{user: user}} = sign_up(attrs, token)
+      assert is_nil(user.hashed_password)
+    end
+
+    test "the form's changeset leaves the password out" do
+      form =
+        Organisations.change_sign_up(%{"email" => unique_user_email(), "password" => "short"},
+          invited: true
+        )
+
+      assert form.valid?
+    end
+
+    test "the instance's own sign-up keeps a password given" do
+      attrs = attrs(%{password: @password, password_confirmation: @password})
+
+      assert {:ok, %{user: user}} =
+               sign_up(attrs, nil, open: true, actor: :instance, origin: %{worker: "test"})
+
       assert Accounts.get_user_by_email_and_password(user.email, @password)
     end
 
