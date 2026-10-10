@@ -10547,7 +10547,9 @@ msgstr ""
 msgid "That key or code is gone: this node's keys changed meanwhile."
 msgstr ""
 
+#: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/live/user_live/confirmation.ex
+#: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "That link has expired"
 msgstr ""

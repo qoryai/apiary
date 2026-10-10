@@ -195,6 +195,15 @@ defmodule ApiaryWeb.UserSessionControllerTest do
       refute Accounts.get_user_by_session_token(other_session)
     end
 
+    test "without mail, an invalid link's answer offers no new one", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+
+      conn = post(conn, ~p"/users/log-in", %{"user" => %{"token" => "invalid"}})
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "That link has expired"
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+
     test "redirects to login page when magic link is invalid", %{conn: conn} do
       conn =
         post(conn, ~p"/users/log-in", %{
