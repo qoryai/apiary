@@ -164,4 +164,23 @@ defmodule ApiaryWeb.MemberLive.PasswordLinkTest do
     assert tokens(member) == []
     assert Repo.all(from e in Entry, where: e.action == "account.password_link") == []
   end
+
+  test "after a sign-in that is not recent, the admin is sent to log in again first", ctx do
+    Apiary.Mail.put_test_source(:none)
+    stale = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+    stale_conn = log_in_user(build_conn(), ctx.admin, token_authenticated_at: stale)
+
+    # The page opens; the link is offered, and asking for it leads to the log-in page.
+    {:ok, lv, _html} = live(stale_conn, people())
+    item = "#member-#{ctx.membership.id}-password-link"
+    assert has_element?(lv, item)
+
+    assert {:error, {:redirect, %{to: "/users/log-in"}}} = lv |> element(item) |> render_click()
+
+    assert assert_redirect(lv, ~p"/users/log-in") ==
+             %{"error" => "You must re-authenticate to access this page."}
+
+    assert tokens(ctx.member) == []
+    assert Repo.all(from e in Entry, where: e.action == "account.password_link") == []
+  end
 end

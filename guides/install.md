@@ -421,10 +421,11 @@ to the new address confirms it.
 
 **A forgotten password, without mail.** An instance admin opens **People** in the
 instance's organisation's settings and, in the ⋯ menu of the person's row, selects
-**Make a password link**. The page shows the link once, to copy and send to the person;
-it works once, for 24 hours, and a new one ends the one before. Following it, the person
-sets a new password, and every session of the account ends. Each link is an entry in the
-organisation's activity. Once mail is set, the menu has no such item: the person asks for
+**Make a password link**. It needs a recent sign-in, as **Account** settings do: an admin
+who signed in more than 20 minutes ago logs in again first. The page shows the link once,
+to copy and send to the person; it works once, for 24 hours, and a new one ends the one
+before. Following it, the person sets a new password, and every session of the account
+ends. Each link is an entry in the organisation's activity. Once mail is set, the menu has no such item: the person asks for
 a log-in link on the log-in page. Whoever has a shell on the release prints such a link,
 mail or not, for an hour:
 
@@ -592,7 +593,7 @@ like any other. Until the link is used nobody signs up: the sign-up and log-in p
 
 After it, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
-from an owner or an admin of the organisation, sent from its **Members** page. Someone with
+from an owner or an admin of the organisation, sent from its **People** page. Someone with
 an invitation signs up without being asked for an organisation's name, and joins the
 organisation.
 
@@ -710,7 +711,7 @@ refuses the last instance admin: grant another first. Each is an entry in the
 organisation's activity, by Qory Apiary rather than by a person.
 
 **Suspending** a member pauses and removes nothing, and **Activate** undoes it; each is an
-entry in the activity. On the organisation's **Members** page an owner suspends an admin or
+entry in the activity. On the organisation's **People** page an owner suspends an admin or
 a member, and an admin a member, and nobody suspends themselves. A suspended person acts in
 the organisation no more, and is told so when they open it, until they are activated; their
 open pages follow. **The access keys they added keep working**: an access key belongs to

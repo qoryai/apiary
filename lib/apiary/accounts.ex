@@ -469,7 +469,9 @@ defmodule Apiary.Accounts do
     `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
     when the person asks for a log-in link instead. Never for their own account,
     `{:error, :own_account}`: they change their own password in Account settings, behind
-    a recent sign-in, which a link would get around;
+    a recent sign-in, which a link would get around. And only after a recent sign-in
+    (`sudo_mode?/2`), as Account settings ask: a link takes the account over, so a session
+    left open is not enough, `{:error, :sudo}`, and the person signs in again first;
   - the instance (`Apiary.Accounts.Scope.for_instance/2`), a release command run on the
     instance's machine, which controls it already, mail or not: a link that works for an
     hour, context `"password:release"`.
@@ -491,7 +493,13 @@ defmodule Apiary.Accounts do
   @spec build_password_link(Scope.t(), %User{}, (String.t() -> String.t())) ::
           {:ok, String.t(), DateTime.t()}
           | {:error,
-             :forbidden | :mail_set | :own_account | :not_found | :no_instance_organisation | atom}
+             :forbidden
+             | :mail_set
+             | :own_account
+             | :sudo
+             | :not_found
+             | :no_instance_organisation
+             | atom}
   def build_password_link(%Scope{} = by, %User{id: user_id}, url_fun)
       when is_function(url_fun, 1) do
     context = if by.instance and is_nil(by.user), do: "password:release", else: "password"
@@ -499,6 +507,7 @@ defmodule Apiary.Accounts do
     Repo.transact(fn ->
       with :ok <- may_make_password_link(by),
            :ok <- not_own_account(by, user_id),
+           :ok <- signed_in_recently(by),
            {:ok, organisation} <- instance_organisation(),
            {:ok, user} <- lock_account(user_id),
            :ok <- not_refused(user) do
@@ -550,6 +559,13 @@ defmodule Apiary.Accounts do
   # A person's own password is changed in Account settings, behind a recent sign-in.
   defp not_own_account(%Scope{user: %User{id: id}}, id), do: {:error, :own_account}
   defp not_own_account(_by, _user_id), do: :ok
+
+  # A person makes one only after a recent sign-in; the instance, in a release command,
+  # signs in to nothing.
+  defp signed_in_recently(%Scope{user: %User{} = user}),
+    do: if(sudo_mode?(user), do: :ok, else: {:error, :sudo})
+
+  defp signed_in_recently(_by), do: :ok
 
   defp instance_organisation do
     with id when is_binary(id) <- Apiary.Edition.instance_organisation_id(),

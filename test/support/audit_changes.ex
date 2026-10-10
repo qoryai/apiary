@@ -181,7 +181,8 @@ defmodule Apiary.AuditChanges do
   # for an account with no membership there, about the organisation. The link is the
   # secret the entry must not keep.
   def make(:"account.password_link", _ctx) do
-    admin = password_link_admin()
+    # Signed in just now: a link needs a recent sign-in.
+    admin = password_link_admin() |> mail_signed_in(0)
     user = Apiary.AccountsFixtures.user_fixture()
     Apiary.Mail.put_test_source(:none)
     before = entries()

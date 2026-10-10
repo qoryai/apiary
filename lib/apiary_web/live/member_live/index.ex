@@ -42,8 +42,9 @@ defmodule ApiaryWeb.MemberLive.Index do
   **Password links.** On the People page of the instance's organisation, while no mail is
   set (`Apiary.Mail.configured?/0`), an instance admin's ⋯ menu of each other member has
   Make a password link (`Apiary.Accounts.build_password_link/3`): a link that sets that
-  account's password, for a person who forgot theirs. It works once, for 24 hours, and a
-  new one ends the one before. The page shows it once, above the list, to copy and send
+  account's password, for a person who forgot theirs. It needs a recent sign-in, as
+  Account settings do: an admin whose sign-in is older is sent to log in again first. It
+  works once, for 24 hours, and a new one ends the one before. The page shows it once, above the list, to copy and send
   to the person, until Done or until the reader leaves (`CoreComponents.one_time_link/1`,
   `kind: :password`); it keeps the link in its own process alone, never in a path, a flash
   or a title.
@@ -905,6 +906,13 @@ defmodule ApiaryWeb.MemberLive.Index do
              socket
              |> assign(:password_link, nil)
              |> put_flash(:error, gettext("Change your own password in Account settings."))}
+
+          # The sign-in is not recent: signed in again first, as the Mail page asks.
+          {:error, :sudo} ->
+            {:noreply,
+             socket
+             |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+             |> redirect(to: ~p"/users/log-in")}
 
           {:error, reason} when reason in [:forbidden, :no_instance_organisation] ->
             {:noreply,
