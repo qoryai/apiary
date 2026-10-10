@@ -44,7 +44,8 @@ defmodule ApiaryWeb.MemberLive.Index do
   Make a password link (`Apiary.Accounts.build_password_link/3`): a link that sets that
   account's password, for a person who forgot theirs. It needs a recent sign-in, as
   Account settings do: an admin whose sign-in is older is sent to log in again first. It
-  works once, for 24 hours, and a new one ends the one before. The page shows it once, above the list, to copy and send
+  works once, for 24 hours, or until mail is set (`Apiary.Mail.end_password_links/0`), and
+  a new one ends the one before. The page shows it once, above the list, to copy and send
   to the person, until Done or until the reader leaves (`CoreComponents.one_time_link/1`,
   `kind: :password`); it keeps the link in its own process alone, never in a path, a flash
   or a title.
