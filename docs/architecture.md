@@ -535,7 +535,7 @@ refuses all the workspace's connections when one fails. The targets carry no cod
 Every change a person, an access key or the instance makes to what an organisation holds
 leaves one entry in `audit_entries` (`Apiary.Audit`): who, which action, on what, when,
 from where, and the changed fields before and after. It is not the record: the record is
-what runs did and comes from Forager; the trail is what was done to the apiary. The
+what runs did and comes from Forager; the trail is what was done to Qory Apiary. The
 events the gateway posts are the record and leave no entry.
 
 - **Written with the change.** The context function that asked `Access.authorize/3`
