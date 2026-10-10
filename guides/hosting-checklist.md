@@ -88,10 +88,6 @@ being one. Every variable named here is described in [Install and configure](ins
 - **The size of a request.** The receiver takes batches of up to 2 MiB; a proxy with a
   smaller limit on request bodies turns them into errors the gateway retries for ever.
   Allow at least 2 MiB on `/v1/events`.
-  <!-- feature: security -->
-  The gateway sends every label of a run in the query of `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
-  takes 16 KiB, and a proxy has to take as much.
-  <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
 - **The security headers.** Every page carries a `Content-Security-Policy` that lets only

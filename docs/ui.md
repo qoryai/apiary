@@ -1445,7 +1445,7 @@ page has no breadcrumb of its own.
   what ended the run. Any other code is the run's starter's, shown as given with spaces
   for underscores: "no longer needed". The quiet period reads in whole hours, else whole
   minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
-- **The rail's State and Exit.** State is the state's dot and word, "Ping only" under
+- **The rail's State and Exit.** State is the state's dot and word, "Registered only" under
   Pending, and the end reason's words under it. Exit, on a session's run whose exit was
   recorded, whatever its state, is the runtime's exit as recorded, in mono: the signal
   ("SIGTERM"), else the code ("0", "1"), and "not recorded" for `-1` without a signal,

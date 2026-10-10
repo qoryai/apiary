@@ -100,9 +100,22 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
 - The record of every run, reported by Forager over the server contract (version 1,
-  revision 1: discovery, events, the run configuration and enrolment): the session as a
-  timeline, the terminal, every connection with its decision and rule, and how the run
-  ended.
+  revision 1: discovery, a run's registration and reload, events and enrolment): the
+  session as a timeline, the terminal, every connection with its decision and rule, and
+  how the run ended.
+- A run's registration. A run opens with a signed `POST /v1/runs`, whose body holds its
+  id, its labels, what it is about, the heartbeat interval it uses and when it was sent,
+  read strictly; the answer is its run configuration, `{"version":1}` where the workspace
+  serves no policy, always with `X-Qory-Run-Configuration` and an `ETag`. The same bytes
+  sent again under the same access key get the same answer; the run id under another key,
+  or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
+  `410`; a run configuration that cannot be read is `503`, never no policy. No run is
+  stored on any refusal. `GET /v1/runs/<run_id>` reloads a run's configuration for the
+  access key that registered it, and is `404` for any other, and where the workspace
+  serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
+  holds `dev.qory.ping` or `dev.qory.run.registered` is `400` `invalid_request`: a
+  Forager that opens its runs with a ping starts none, so Forager and Qory Apiary are run
+  from the same release.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. The runs list's Runtime column says "no session". Its page says how it ended in
   words after its state, as every run's does; its Terminal tab is the terminal, empty,
@@ -146,18 +159,18 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - Signed requests and signed answers. Every request the gateway makes names a node's access
   key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
   `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
-  clock for a GET; every answer to a verified request is signed with the server's own
+  clock for a GET and a registration's `time`; every answer to a verified request is signed with the server's own
   Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
   `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
   refusals come in the contract's order, coded: a header sent twice or an instance id
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins, 85f95d5 on
-  Forager's main.
+  the contract's own fixtures at the commit `.forager-contract-ref` pins, 94b21f4 on
+  Forager's next.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
-  it: the events endpoint and the run configuration each spend a bucket of their own, 50
-  requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
-  new run's configuration. Discovery is not limited.
+  it: the events endpoint, and a run's registration and reload, each spend a bucket of
+  their own, 50 requests a second and 100 at once, so a gateway flushing a backlog of
+  events still registers a new run. Discovery is not limited.
 - Limits on signing in, on each node: a log-in with a password, 5 per email address from
   one client network (an IPv4 /24 or an IPv6 /48) and then 1 a minute, 50 per email
   address from all networks and then 10 a minute, and 20 per client address and then 1
@@ -242,8 +255,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - A node's instances: what Forager, run with the node's access key, reports itself as, a
   claim kept for display, the audit and the instance limit, never for authorisation.
   Forager names its version in `User-Agent: qory-forager/<version>`, and Qory Apiary
-  records it as a new run's `forager_version`, which the run's ping or `run.started`
-  then replaces, and as the last `forager_version` of the access key and of the instance
+  records it as a new run's `forager_version` when the run registers, which its
+  `run.started` then replaces, and as the last `forager_version` of the access key and of the instance
   that sent it. An instance runs while it has a run the lost-run check holds alive. The Nodes list says
   each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"; a pool
   whose instances were pruned is last seen when its key was last used), with the
@@ -255,8 +268,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `node:` and has a Node column from 1300 px, and its Filter menu has Node; the run page
   says a run's node and instance. Every run records its node and the instance that
   started it, and every delivery its instance. A pool's instance limit is enforced: the
-  ping of a new run from an instance beyond it is a signed `409` `instance_limit`, the run
-  does not start and nothing is stored, and the node counts the starts refused.
+  registration of a new run from an instance beyond it is a signed `409` `instance_limit`,
+  the run does not start and nothing is stored, and the node counts the starts refused.
 - A workspace no run has reached opens on one box, Send your first run: Add a node (a
   node, or a node pool for a fleet that shares one key), Connect it (one command run on
   the machine, or a key generated in the browser for a CI or another system), and See
@@ -279,9 +292,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   no lost run and holds no instance slot: the run stays lost until its exit arrives,
   which keeps it Lost, for good, when it says `session_lost` or `gateway_lost`, and
   otherwise sets the state it says; and
-  the access key's Last heartbeat says when its heartbeats were recorded. Three limits
+  the access key's Last heartbeat says when its heartbeats were recorded. A run is held to
+  the heartbeat interval its registration stated, and found lost after three of them with
+  nothing heard, 90 seconds at Forager's 30. Three limits
   stay: after an outage shorter than about 6½ minutes, a run can still look alive for a
-  moment; a session's run whose heartbeats all arrive late, because the outage began
+  moment; a run whose heartbeats all arrive late, because the outage began
   before its first one, still comes back for a few minutes; and a run whose machine's
   clock ran more than about 6½ minutes ahead and was then set back reads lost until its
   exit arrives.

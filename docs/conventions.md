@@ -112,7 +112,7 @@ node's credential for the server contract, an Ed25519 key; **key id** is its id,
 and sixteen characters; **secret** is the part that signs, which stays on the machine;
 **run** is one execution of one session on a machine of the workspace; **event** is one
 thing a run reports, delivered to the events URL; **receiver** is what answers the events
-URL; **run configuration** is what the gateway fetches before a run; **security policy** is
+URL; **run configuration** is what the server answers a run's registration with; **security policy** is
 `SECURITY.md`. An organisation is never a team, a tenant or an account; a
 workspace is never a team, a project or a hive; an access key is never an API key or a
 token; a secret is never a password. The product surface is the one place with other
