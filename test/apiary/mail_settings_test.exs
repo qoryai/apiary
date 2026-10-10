@@ -93,6 +93,14 @@ defmodule Apiary.MailSettingsTest do
 
   defp row, do: Repo.get!(Settings, true)
 
+  # The Install guide as the documentation tree with `features` has it.
+  defp install_guide(features) do
+    path = "guides/install.md"
+    path |> File.read!() |> Mix.Tasks.Docs.All.split!(path) |> Mix.Tasks.Docs.All.join(features)
+  end
+
+  defp flat(text), do: text |> String.split() |> Enum.join(" ")
+
   # Makes the saved password one the instance cannot read, as a row changed outside the
   # application is: its key id names a key the instance does not hold. Under another
   # APIARY_ENCRYPTION_SECRET the instance does not start at all (`Apiary.KeyCheck`).
@@ -528,6 +536,25 @@ defmodule Apiary.MailSettingsTest do
       guide = "guides/backup.md" |> File.read!() |> String.split() |> Enum.join(" ")
       refute guide =~ "without it, mail from those settings is off"
       assert guide =~ "Where that saved password cannot be read, mail from those settings is off"
+    end
+
+    test "the Install guide's Mail says the settings saved send mail, only where the instance has them" do
+      relay_row =
+        ~r/\| `SMTP_RELAY` \|[^\n]*Not set, and with no other mail settings, the release sends no email/
+
+      paragraph = "an instance admin can set mail in **Instance settings › Mail** instead"
+
+      for features <- [[:observability], [:observability, :security]] do
+        guide = install_guide(features)
+        assert guide =~ relay_row
+        refute flat(guide) =~ paragraph
+        refute guide =~ "instance_mail"
+      end
+
+      guide = install_guide([:observability, :instance_mail])
+      assert guide =~ relay_row
+      assert flat(guide) =~ paragraph
+      assert flat(guide) =~ "With `SMTP_RELAY` set, these variables win whole"
     end
 
     test "off when the password cannot be read" do
