@@ -2,15 +2,36 @@ defmodule ApiaryWeb.UserSessionController do
   use ApiaryWeb, :controller
 
   alias Apiary.Accounts
-  alias ApiaryWeb.UserAuth
+  alias ApiaryWeb.{AttemptLimits, UserAuth}
 
   def create(conn, %{"_action" => "confirmed"} = params) do
-    create(conn, params, gettext("Your account is confirmed."))
+    log_in(conn, params, gettext("Your account is confirmed."))
   end
 
   def create(conn, params) do
-    create(conn, params, gettext("You are logged in."))
+    log_in(conn, params, gettext("You are logged in."))
   end
+
+  # A log-in with a password counts against its limits (`ApiaryWeb.AttemptLimits`)
+  # before the address is looked up: past them, an address with an account and one
+  # without get the same answer, without a password checked. A link's log-in does not.
+  defp log_in(conn, %{"user" => %{"token" => _}} = params, info), do: create(conn, params, info)
+
+  defp log_in(conn, %{"user" => %{"email" => email, "password" => _}} = params, info)
+       when is_binary(email) do
+    case AttemptLimits.password_log_in(email, ApiaryWeb.Origin.from_conn(conn).remote_ip) do
+      :ok ->
+        create(conn, params, info)
+
+      :limited ->
+        conn
+        |> put_flash(:error, AttemptLimits.message())
+        |> put_flash(:email, String.slice(email, 0, 160))
+        |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  defp log_in(conn, params, info), do: create(conn, params, info)
 
   # magic link login
   defp create(conn, %{"user" => %{"token" => token} = user_params}, info) do
@@ -20,6 +41,20 @@ defmodule ApiaryWeb.UserSessionController do
 
         conn
         |> put_flash(:info, info)
+        |> UserAuth.log_in_user(user, user_params)
+
+      # The first link of an account whose password was set before its address was
+      # confirmed: the password is gone, and so is every other session.
+      {:ok, {user, tokens_to_disconnect}, :password_removed} ->
+        UserAuth.disconnect_sessions(tokens_to_disconnect)
+
+        conn
+        |> put_flash(
+          :info,
+          gettext(
+            "Your address is confirmed. The password set before it was confirmed is removed: set a new one in Account settings if you want one."
+          )
+        )
         |> UserAuth.log_in_user(user, user_params)
 
       # An account the edition refuses (`Apiary.Accounts.sign_in_refusal/1`).
@@ -33,9 +68,11 @@ defmodule ApiaryWeb.UserSessionController do
     end
   end
 
-  # email + password login
-  defp create(conn, %{"user" => user_params}, info) do
-    %{"email" => email, "password" => password} = user_params
+  # email + password login. A field missing, or not text, is an empty one: the same
+  # answer as a wrong password, after the same work.
+  defp create(conn, %{"user" => %{} = user_params}, info) do
+    email = text(user_params["email"])
+    password = text(user_params["password"])
 
     user = Accounts.get_user_by_email_and_password(email, password)
 
@@ -57,6 +94,11 @@ defmodule ApiaryWeb.UserSessionController do
     end
   end
 
+  defp create(conn, _params, info), do: create(conn, %{"user" => %{}}, info)
+
+  defp text(value) when is_binary(value), do: value
+  defp text(_value), do: ""
+
   # An account the edition refuses (`Apiary.Accounts.sign_in_refusal/1`), told only once
   # it has shown it is theirs: with its password, or a link sent to its address. The
   # sentence names no reason and no one.
@@ -76,6 +118,10 @@ defmodule ApiaryWeb.UserSessionController do
 
     # disconnect all existing LiveViews with old sessions
     UserAuth.disconnect_sessions(expired_tokens)
+
+    # The log-in that follows is the signed-in person's own, whatever email the form
+    # posted: it is not counted against the limits, so it must not name anyone else.
+    params = put_in(params, ["user", "email"], user.email)
 
     conn
     |> put_session(:user_return_to, ~p"/users/settings")

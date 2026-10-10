@@ -454,7 +454,7 @@ msgstr ""
 
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
-msgid "was not invited: this organisation has sent %{limit} invitations in the last 24 hours, as many as it may. Try again later."
+msgid "was not invited: this organisation has made %{limit} invitations in the last 24 hours, as many as it may. Try again later."
 msgstr ""
 
 #: lib/apiary/organisations.ex

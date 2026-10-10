@@ -270,7 +270,12 @@ replaces the navigation it is in.
   found by their email with Find a person, `?q=`; invitations, suspensions; Invite
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
   page, below), its one field the email address, and a sent invitation goes back to
-  People with a flash; removing, leaving and suspending, each from a member's ⋯ menu, are
+  People with a flash; without mail its button is Create invitation link, and the link
+  shows once in place of the form (`one_time_link/1`: "Copy this link and send it to
+  dana@example.com yourself.", the link with an icon Copy, "Works once, until 17 Oct,
+  14:05 (7 days). It is shown only now.", Done back to People), and a pending
+  invitation's ⋯ menu has Make a new link, whose link its row shows in place of its
+  cells, once, with Done; removing, leaving and suspending, each from a member's ⋯ menu, are
   confirmed in place, the member's row turned into the question, what happens, Yes,
   remove (Yes, leave, Yes, suspend) and Cancel (`inline_confirm/1`), at their paths
   `/settings/people/:id/remove` and `…/suspend`, whose Cancel or Escape goes back to
@@ -1141,10 +1146,15 @@ needs becomes a component, or an attribute of one, not a copy.
   Newer on its first page). `primary` marks the one main action of a screen. `loading_text` is
   the gerund ("Saving") the button shows, with a spinner and `aria-busy`, while its form
   submits; the button keeps its width.
-- **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
-  value and as one field, what the value completes: the path of the organisation before
-  a workspace's slug. A caller's `aria-describedby` is merged with the field's own (its
-  hint, its errors), never replaced by it.
+- **`<.input>`** is every field but the sign-up page's new password; with `prefix` a text
+  input shows, in mono before the value and as one field, what the value completes: the path of the
+  organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
+  field's own (its hint, its errors), never replaced by it.
+- **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
+  asks for them without mail. The server never writes a password back: each input is the
+  browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under
+  the input, outside it, and mark it (`aria-invalid`, `aria-describedby`) as they come and
+  go.
 - **Forms** are `novalidate`, every one, plain `<form>` and `<.form>` alike: the browser
   neither checks a field nor shows its own bubble, and the server answers a field that is
   wrong with an error under it (`<.input>`'s, tied to it by `aria-describedby`), in the
@@ -1423,10 +1433,10 @@ page has no breadcrumb of its own.
   the meta line, under State in the rail, in the timeline's last item and in the runs
   list's preview ([contract-assumptions.md](contract-assumptions.md), How a run ends):
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
-  "stopped, no outcome given", "stopped responding", "end not recorded", "events
-  refused", "couldn't check whether the run may go on: no answer", "couldn't check
-  whether the run may go on: unreadable answer", and for a run that did not start "did
-  not start" with the refusal's code in mono ("did not start: image_unknown"), in the
+  "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
+  "events refused", "couldn't check whether the run may go on: no answer", "couldn't
+  check whether the run may go on: unreadable answer", and for a run that did not start
+  "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
   meta line and the rail as in the timeline's item. None names who or
   what ended the run. Any other code is the run's starter's, shown as given with spaces
   for underscores: "no longer needed". The quiet period reads in whole hours, else whole

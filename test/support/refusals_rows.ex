@@ -82,6 +82,10 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :invitation}},
       {:"invitation.revoke", :other_owner, "/:other_org/settings/people", "revoke_invitation",
        %{"id" => :invitation}, answer: :not_found},
+      {:"invitation.renew", :member, "/:org/settings/people", "renew_invitation",
+       %{"id" => :invitation}},
+      {:"invitation.renew", :other_owner, "/:other_org/settings/people", "renew_invitation",
+       %{"id" => :invitation}, answer: :not_found},
       # Suspending and activating a person's membership: an owner acts on admins and
       # members, an admin on members only. A member cannot open a member's suspension, so
       # their `suspend` arrives without it and the page refuses it for their role; the

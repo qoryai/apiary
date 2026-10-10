@@ -1137,6 +1137,9 @@ defmodule Apiary.Runs.FoldTest do
             {%{"state" => "cancelled"}, "cancelled"},
             {%{"state" => "cancelled", "reason" => "no_longer_needed"}, "cancelled"},
             {%{"state" => "cancelled", "reason" => "stopped"}, "cancelled"},
+            {%{"state" => "cancelled", "reason" => "interrupted"}, "cancelled"},
+            {%{"state" => "failed", "reason" => "interrupted"}, "failed"},
+            {%{"state" => "succeeded", "reason" => "interrupted"}, "completed"},
             {%{"state" => "cancelled", "reason" => "timeout"}, "cancelled"},
             {%{"state" => "cancelled", "reason" => "credential_expired"}, "cancelled"},
             {%{"state" => "cancelled", "reason" => "gateway_lost"}, "cancelled"},
@@ -1149,6 +1152,7 @@ defmodule Apiary.Runs.FoldTest do
             {%{"reason" => "gateway_lost"}, "lost"},
             {%{"reason" => "issuer_unreachable"}, "failed"},
             {%{"reason" => "run_closed"}, "failed"},
+            {%{"reason" => "interrupted"}, "failed"},
             {%{"reason" => "example_reason"}, "failed"},
             {%{}, "failed"}
           ] do
@@ -1292,6 +1296,26 @@ defmodule Apiary.Runs.FoldTest do
       end
 
       assert Fold.fold(@run, [exited(18, %{"state" => "succeeded"})]).run.quiet_seconds == nil
+    end
+
+    test "a session's run stopped where it was started is Cancelled, interrupted, with its exit as observed" do
+      for exit <- [
+            %{"exit_code" => 0},
+            %{"exit_code" => 130},
+            %{"exit_code" => -1, "signal" => "SIGINT"},
+            %{"exit_code" => -1, "signal" => "SIGTERM"},
+            %{"exit_code" => -1, "signal" => "SIGKILL"}
+          ] do
+        data = Map.merge(%{"state" => "cancelled", "reason" => "interrupted"}, exit)
+        %{run: run} = Fold.fold(%{@run | state: "running"}, [started(2), exited(18, data)])
+
+        assert run.state == "cancelled", inspect(exit)
+        assert run.reason == "interrupted", inspect(exit)
+        assert run.exit_code == exit["exit_code"], inspect(exit)
+        assert run.signal == exit["signal"], inspect(exit)
+        assert run.lost_at == nil
+        assert run.state in Apiary.Runs.Filters.family_states("cancelled")
+      end
     end
 
     test "a cancelled run is final: a later start or heartbeat does not undo it" do

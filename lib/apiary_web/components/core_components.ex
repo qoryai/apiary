@@ -239,6 +239,12 @@ defmodule ApiaryWeb.CoreComponents do
   the control's `aria-label` carries the same words.
   """
   attr :tip, :string, required: true
+
+  attr :done, :string,
+    default: nil,
+    doc:
+      "what the tooltip reads while the copy button inside it confirms a copy (`data-tip-done`)"
+
   attr :placement, :string, default: "top", values: ~w(top bottom left right)
   attr :class, :any, default: nil
   slot :inner_block, required: true
@@ -254,6 +260,7 @@ defmodule ApiaryWeb.CoreComponents do
         @class
       ]}
       data-tip={@tip}
+      data-tip-done={@done}
     >
       {render_slot(@inner_block)}
     </span>
@@ -400,13 +407,20 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   A copy-to-clipboard button. Copies `text`, or the text content of the
   element `target` selects, via the CopyToClipboard hook. `icon_only` renders
-  a square button with a tooltip.
+  a square button with a tooltip; with `done_tip` the tooltip reads Copied while the copy
+  is confirmed, the icon Copy of a code block's bar and of a link shown once
+  (`one_time_link/1`).
   """
   attr :id, :string, required: true
   attr :text, :string, default: nil
   attr :target, :string, default: nil, doc: "a CSS selector whose text content is copied"
   attr :label, :string, default: nil, doc: "defaults to Copy"
   attr :icon_only, :boolean, default: false
+
+  attr :done_tip, :boolean,
+    default: false,
+    doc: "with `icon_only`: the tooltip reads Copied while the copy is confirmed"
+
   attr :placement, :string, default: "top"
   attr :class, :any, default: nil
 
@@ -415,7 +429,12 @@ defmodule ApiaryWeb.CoreComponents do
 
   def copy_button(%{icon_only: true} = assigns) do
     ~H"""
-    <.tooltip tip={@label} placement={@placement} class={@class}>
+    <.tooltip
+      tip={@label}
+      done={@done_tip && gettext("Copied")}
+      placement={@placement}
+      class={@class}
+    >
       <button
         id={@id}
         type="button"
@@ -453,6 +472,73 @@ defmodule ApiaryWeb.CoreComponents do
     </button>
     """
   end
+
+  @doc """
+  one_time_link/1 shows a link that works once, the one time it is shown: an invitation's,
+  made without mail (`Apiary.Organisations.invite_member/3`,
+  `Apiary.Organisations.renew_invitation/3`), for the person who made it to copy and send
+  to `for` themselves. It says so, shows the whole link with an icon Copy whose tooltip
+  reads Copied once it is copied (`copy_button/1`, `done_tip`), and says until when the
+  link works and that it is shown only now; then the `actions`, Done.
+
+  Only the link's hash is stored, so the page that shows it holds it in its own process
+  alone, and shows it until the reader leaves: never in a path, a flash or a title, and
+  nothing logs it. It takes the focus as it shows, so a screen reader reads it.
+
+      <.one_time_link id="invitation-link" url={url} expires_at={at} for="dana@example.com">
+        <:actions><.button patch={people}>Done</.button></:actions>
+      </.one_time_link>
+  """
+  attr :id, :string, required: true
+  attr :url, :string, required: true, doc: "the whole link"
+  attr :expires_at, DateTime, required: true, doc: "when the link stops working"
+  attr :for, :string, required: true, doc: "the email address the link is for"
+
+  attr :kind, :atom,
+    default: :invitation,
+    values: [:invitation],
+    doc: "what the link is: an invitation's, which works for its days"
+
+  attr :class, :any, default: nil
+  slot :actions, doc: "what follows the link: Done"
+
+  def one_time_link(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={["grid gap-3 outline-none", @class]}
+      role="group"
+      aria-labelledby={"#{@id}-sentence"}
+      tabindex="-1"
+      phx-mounted={JS.focus()}
+    >
+      <p id={"#{@id}-sentence"} class="text-[13px]/5">{one_time_sentence(@kind, @for)}</p>
+      <div class="flex min-w-0 items-start gap-2 rounded-box border border-line bg-base-200 py-1.5 pr-1.5 pl-3">
+        <code id={"#{@id}-url"} class="q-mono min-w-0 flex-1 py-0.5 text-[12.5px]/5 break-all">{@url}</code>
+        <.copy_button id={"#{@id}-copy"} text={@url} icon_only done_tip />
+      </div>
+      <p id={"#{@id}-works"} class="text-[12.5px]/[18px] text-muted">
+        {gettext("Works once, until %{time} (%{validity}). It is shown only now.",
+          time: until(@expires_at),
+          validity: one_time_validity(@kind)
+        )}
+      </p>
+      <div :if={@actions != []} class="flex items-center gap-2">{render_slot(@actions)}</div>
+    </div>
+    """
+  end
+
+  defp one_time_sentence(:invitation, email),
+    do: gettext("Copy this link and send it to %{email} yourself.", email: email)
+
+  defp one_time_validity(:invitation) do
+    days = Apiary.Organisations.Invitation.validity_days()
+    ngettext("%{number} day", "%{number} days", days, number: Format.number(days))
+  end
+
+  # A date and a time, its year left out in the current one: "17 Oct, 14:05".
+  defp until(at),
+    do: Format.datetime(at, year: Format.local(at).year != Format.local(DateTime.utc_now()).year)
 
   ## Forms
 
@@ -754,6 +840,106 @@ defmodule ApiaryWeb.CoreComponents do
     </p>
     """
   end
+
+  @doc """
+  A new password and its confirmation, as a sign-up or a password page asks for them: two
+  password fields of the form's `password` and `password_confirmation`, the first with
+  a hint, each with the first of its errors once it is used.
+
+  The server never writes a password back: each input is left to the browser
+  (`phx-update="ignore"`) and drawn without a value, so a page re-rendered after a change
+  or a refused submit keeps what was typed without sending it. A page that signs the
+  person in once the form is accepted submits the same form to the log-in controller
+  (`phx-trigger-action`), which posts the typed password as the browser holds it. The
+  errors are drawn outside the inputs, and mark them as they come and go.
+
+  ## Examples
+
+      <.new_password_fields password={@form[:password]} confirmation={@form[:password_confirmation]} />
+  """
+  attr :password, Phoenix.HTML.FormField, required: true
+  attr :confirmation, Phoenix.HTML.FormField, required: true
+  attr :label, :string, default: nil, doc: "defaults to Password"
+  attr :confirm_label, :string, default: nil, doc: "defaults to Confirm password"
+  attr :hint, :string, default: nil, doc: "defaults to At least 12 characters."
+  attr :size, :string, default: "sm", values: ~w(sm md), doc: "md (40 px) on auth pages"
+
+  def new_password_fields(assigns) do
+    ~H"""
+    <.new_password_field
+      field={@password}
+      label={@label || gettext("Password")}
+      hint={@hint || gettext("At least 12 characters.")}
+      size={@size}
+    />
+    <.new_password_field
+      field={@confirmation}
+      label={@confirm_label || gettext("Confirm password")}
+      size={@size}
+    />
+    """
+  end
+
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :label, :string, required: true
+  attr :hint, :string, default: nil
+  attr :size, :string, required: true
+
+  defp new_password_field(%{field: field} = assigns) do
+    errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
+
+    assigns =
+      assigns
+      |> assign(:id, field.id)
+      |> assign(:name, field.name)
+      |> assign(:error, errors |> Enum.take(1) |> Enum.map(&translate_error/1) |> List.first())
+
+    ~H"""
+    <fieldset class="fieldset">
+      <.label for={@id}>{@label}</.label>
+      <%!-- Never patched: the typed password is not echoed back by the server. --%>
+      <div id={"#{@id}-field"} phx-update="ignore">
+        <input
+          type="password"
+          name={@name}
+          id={@id}
+          class={["input", "input-#{@size}"]}
+          autocomplete="new-password"
+          spellcheck="false"
+          required
+          phx-debounce="blur"
+          aria-describedby={@hint && "#{@id}-hint"}
+        />
+      </div>
+      <.hint :if={@hint && !@error} id={"#{@id}-hint"}>{@hint}</.hint>
+      <p
+        :if={@error}
+        id={"#{@id}-error"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        phx-mounted={
+          JS.set_attribute({"aria-invalid", "true"}, to: "##{@id}")
+          |> JS.set_attribute({"aria-describedby", "#{@id}-error"}, to: "##{@id}")
+          |> JS.add_class("input-error", to: "##{@id}")
+        }
+        phx-remove={
+          JS.remove_attribute("aria-invalid", to: "##{@id}")
+          |> describe_by_hint(@id, @hint)
+          |> JS.remove_class("input-error", to: "##{@id}")
+        }
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {@error}
+      </p>
+    </fieldset>
+    """
+  end
+
+  # Once its error goes, a password field is described by its hint again, or by nothing.
+  defp describe_by_hint(js, id, nil),
+    do: JS.remove_attribute(js, "aria-describedby", to: "##{id}")
+
+  defp describe_by_hint(js, id, _hint),
+    do: JS.set_attribute(js, {"aria-describedby", "#{id}-hint"}, to: "##{id}")
 
   ## Layout blocks
 

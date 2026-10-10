@@ -390,6 +390,31 @@ defmodule Apiary.MailSettingsTest do
       assert Mail.turn_on(scope, token) == :error
     end
 
+    test "never removes a password set before the address was confirmed: it is no log-in link, and a log-in link after it keeps the password",
+         %{scope: scope, user: user, token: token} do
+      hashed = Bcrypt.hash_pwd_salt("a password of theirs")
+
+      Repo.update_all(from(u in User, where: u.id == ^user.id),
+        set: [confirmed_at: nil, hashed_password: hashed]
+      )
+
+      # The test link logs no one in: it is not a log-in link.
+      assert Apiary.Accounts.login_user_by_magic_link(token) == {:error, :not_found}
+      assert Repo.get!(User, user.id).hashed_password == hashed
+
+      assert {:ok, _settings} = Mail.turn_on(scope, token)
+
+      # Confirmed by the test link, the address's first log-in link after it keeps the
+      # password: `Apiary.Accounts.login_user_by_magic_link/1` removes one only from an
+      # account not yet confirmed.
+      {login, user_token} = UserToken.build_email_token(Repo.get!(User, user.id), "login")
+      Repo.insert!(user_token)
+
+      assert {:ok, {%User{id: id}, []}} = Apiary.Accounts.login_user_by_magic_link(login)
+      assert id == user.id
+      assert Repo.get!(User, user.id).hashed_password == hashed
+    end
+
     test "does nothing for another instance admin, and still works for the one it was sent to",
          %{scope: scope, token: token} do
       %{scope: other} = with_env_mail(fn -> member_fixture(scope, :owner) end)
