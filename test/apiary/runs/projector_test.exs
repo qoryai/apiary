@@ -656,6 +656,31 @@ defmodule Apiary.Runs.ProjectorTest do
       assert Runs.get_run!(scope, run.id).host == "dev-laptop"
     end
 
+    test "keeps the registration's fields, which no event folds", %{run: run} do
+      labels = %{"forge" => "git.example.com", "repository" => "acme/shop"}
+      registered_at = DateTime.utc_now()
+      digest = :crypto.hash(:sha256, "the registration's body")
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [
+          registered_at: registered_at,
+          registration_labels: labels,
+          registration_about: %{"kind" => "fix"},
+          registration_digest: digest
+        ]
+      )
+
+      events_fixture(run, record())
+      assert {:ok, _} = Projector.project(run)
+      assert {:ok, _} = Projector.rebuild(run)
+
+      rebuilt = Repo.get!(Run, run.id)
+      assert rebuilt.registration_labels == labels
+      assert rebuilt.registration_about == %{"kind" => "fix"}
+      assert rebuilt.registered_at == registered_at
+      assert rebuilt.registration_digest == digest
+    end
+
     test "what the run is about is stored and survives a rebuild", %{run: run} do
       about = %{
         "kind" => "implementation",

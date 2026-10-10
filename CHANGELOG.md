@@ -487,6 +487,9 @@ else `ended`.
 `smtp_password_ciphertext` with its `mail_key_id`, `mail_saved_at`, `mail_saved_by_id` and
 `mail_verified_at`, all NULL, with checks on the port, the TLS mode and the password's key
 id.
+`20261010143819_register_a_run` adds `runs.registered_at`, `registration_labels`,
+`registration_about` and `registration_digest` (32 bytes), NULL for every existing row,
+with a check that a run holds all four or none.
 
 ### Upgrading
 

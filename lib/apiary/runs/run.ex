@@ -2,10 +2,13 @@ defmodule Apiary.Runs.Run do
   @moduledoc """
   A run as the workspace knows it: the projection of the run's events.
 
-  `run_id` is the subject of the run's events, unique within the workspace. The row
-  is created by the receiver on the first event of an unknown subject, in state
-  `pending`; every other field is folded from the events by the projector, so
-  the row can be rebuilt from `events` alone.
+  `run_id` is the subject of the run's events, unique within the workspace. The row is
+  created in state `pending` when the run registers (`Apiary.Runs.Registration`), or by
+  the receiver on the first event of an unknown subject. The folded fields are folded
+  from the events by the projector, so they can be rebuilt from `events` alone. The
+  registration fields (`registered_at`, `registration_labels`, `registration_about`,
+  `registration_digest`) are the registration's own: written once, when the run
+  registers, and kept by a rebuild.
   """
   use Ecto.Schema
 
@@ -102,6 +105,15 @@ defmodule Apiary.Runs.Run do
     belongs_to :node, Apiary.Nodes.Node
     field :instance_id, :string
     belongs_to :target, Apiary.Runs.Target
+
+    # The run's registration, as `Apiary.Runs.Registration` stored it: when it registered,
+    # its labels and `about` as the body sent them, and the SHA-256 of the body's bytes, by
+    # which a repeat of the same registration is told from another. All nil for a run that
+    # did not register. Not folded: a rebuild keeps them.
+    field :registered_at, :utc_datetime_usec
+    field :registration_labels, :map
+    field :registration_about, :map
+    field :registration_digest, :binary
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk

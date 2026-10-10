@@ -44,7 +44,8 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, Liveness, LogChunk, Run, Target}
 
-  # What the fold may change on the run's row.
+  # What the fold may change on the run's row. The registration's fields
+  # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
   @folded_fields ~w(
     state forager_version contract_version opened_by runtime runtime_version command args
     dir interactive terminal_cols terminal_rows host wall image labels
