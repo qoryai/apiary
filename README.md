@@ -33,10 +33,19 @@ curl http://localhost:4100/health
 `export APIARY_IMAGE=apiary APIARY_VERSION=dev`. `/health` answers once the migrations have
 run, a few seconds after the start.
 
-Sign up at `http://localhost:4100/users/register`. The log-in link comes by email, so set
-`SMTP_RELAY` in `.env`, and the variables beside it, before `docker compose up -d`; with it
-empty, Qory Apiary sends no email. The first person to sign up creates the organisation and
-runs the instance, and everyone else joins by invitation.
+Then set it up with the link its log gives, the same at every start until it is used:
+
+```sh
+docker compose logs apiary | grep 'Set up Qory Apiary'
+```
+
+Open the link, `http://localhost:4100/setup/<code>`, and enter your email address, a
+password and your organisation's name. That creates the instance's organisation, its
+workspace Main and your account as its owner, the instance's admin; everyone else joins by
+invitation. Mail is optional: with the mail lines of `.env` empty, Qory Apiary sends no
+email, you sign in with your password, and an invitation is a link you copy and send. To
+send mail, set `SMTP_RELAY` in `.env`, and the variables beside it, then run
+`docker compose up -d` again.
 
 Then add a node under **Nodes**, select **Get the command** on its **Access key** tab, run
 the command it gives, `qory access-key enrol <server> <code>`, on the machine, which needs
