@@ -305,6 +305,46 @@ defmodule Apiary.AccountsTest do
       refute Accounts.get_user_by_email_and_password(user.email, "new valid password")
     end
 
+    test "on an unconfirmed account, keeps the log-in links sent to its address: the owner's still removes the password" do
+      user = unconfirmed_user_fixture()
+      {link, _hashed} = generate_user_magic_link_token(user)
+
+      # Whoever signed up with the address sets a password, signs in, and changes it again.
+      {:ok, {user, _ended}} =
+        Accounts.update_user_password(user, %{password: "a pass phrase set first"})
+
+      session = Accounts.generate_user_session_token(user)
+
+      assert {:ok, {_user, ended}} =
+               Accounts.update_user_password(user, %{password: "a pass phrase set again"},
+                 session_token: session
+               )
+
+      assert Enum.any?(ended, &(&1.token == session))
+      refute Enum.any?(ended, &(&1.context == "login"))
+      session = Accounts.generate_user_session_token(user)
+
+      # The owner follows the link sent before either change.
+      assert {:ok, {confirmed, ended}, :password_removed} =
+               Accounts.login_user_by_magic_link(link)
+
+      assert confirmed.confirmed_at
+      assert is_nil(confirmed.hashed_password)
+      assert Enum.any?(ended, &(&1.token == session))
+      refute Accounts.get_user_by_session_token(session)
+      refute Accounts.get_user_by_email_and_password(user.email, "a pass phrase set again")
+    end
+
+    test "on a confirmed account, ends its log-in links too", %{user: user} do
+      {link, _hashed} = generate_user_magic_link_token(user)
+
+      assert {:ok, {_user, ended}} =
+               Accounts.update_user_password(user, %{password: "new valid password"})
+
+      assert Enum.any?(ended, &(&1.context == "login"))
+      assert {:error, :not_found} = Accounts.login_user_by_magic_link(link)
+    end
+
     test "a session loaded before the first log-in link removed the password sets none after it" do
       user = unconfirmed_user_fixture() |> set_password()
       session = Accounts.generate_user_session_token(user)
