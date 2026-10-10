@@ -94,7 +94,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     # nothing here depends on how fast requests are made.
     bucket = Apiary.Runs.RateLimit
     later = System.monotonic_time(:millisecond) + :timer.hours(1)
-    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 0, later})
+    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 0, later, later})
 
     conn = fetch(ctx, "")
     assert json_response(conn, 429) == %{"error" => "rate_limited"}
@@ -106,9 +106,9 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     # One token back serves one request, which spends it. Spending dates the bucket at the
     # present, from where it refills, so the bucket is read rather than a second request
     # timed. The events endpoint's bucket is untouched.
-    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 1000, later})
+    :ets.insert(bucket, {{:run_configuration, ctx.key.id}, 1000, later, later})
     assert fetch(ctx, "").status == 200
-    assert [{_, 0, _}] = :ets.lookup(bucket, {:run_configuration, ctx.key.id})
+    assert [{_, 0, _, _}] = :ets.lookup(bucket, {:run_configuration, ctx.key.id})
     assert :ets.lookup(bucket, ctx.key.id) == []
   end
 
@@ -117,7 +117,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
     bucket = Apiary.Runs.RateLimit
     later = System.monotonic_time(:millisecond) + :timer.hours(1)
-    :ets.insert(bucket, {ctx.key.id, 0, later})
+    :ets.insert(bucket, {ctx.key.id, 0, later, later})
     {_subject, batch} = first_events()
 
     conn = signed_post(build_conn(), ctx.key.key_id, ctx.secret, batch)
@@ -126,7 +126,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     conn = fetch(ctx, "")
     assert conn.status == 200
     assert get_resp_header(conn, "retry-after") == []
-    assert [{_, 0, ^later}] = :ets.lookup(bucket, ctx.key.id)
+    assert [{_, 0, ^later, _}] = :ets.lookup(bucket, ctx.key.id)
   end
 
   test "the bytes served are the bytes stored, under the stored digest", ctx do

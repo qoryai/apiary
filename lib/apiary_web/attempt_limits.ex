@@ -12,10 +12,11 @@ defmodule ApiaryWeb.AttemptLimits do
       then 1 every 3 seconds, the pages together. Each load of the page counts, and so does
       its live connection.
 
-  An address is keyed by its SHA-256 hash, lowercased as the accounts table compares it,
-  never by the address itself. Every attempt counts, before anything is looked up: an
-  address with an account and one without spend their buckets alike, and past them get
-  the same answer, `message/0`, as soon. The client address is `ApiaryWeb.Origin`'s, which reads
+  An address is keyed by the SHA-256 hash of a form at least as coarse as the accounts
+  table's comparison (lowercased, NFKD, without combining marks), never by the address
+  itself. Every attempt counts, before anything is looked up: an address with an account
+  and one without spend their buckets alike, and past them get the same answer,
+  `message/0`, as soon. The client address is `ApiaryWeb.Origin`'s, which reads
   `X-Forwarded-For` only from the proxies `TRUSTED_PROXIES` names.
 
   The numbers can be changed under `config :apiary, #{inspect(__MODULE__)}`, one keyword
@@ -102,10 +103,25 @@ defmodule ApiaryWeb.AttemptLimits do
     |> Keyword.merge(Keyword.take(Keyword.get(configured, bucket, []), [:rate, :burst]))
   end
 
-  # As citext compares it: an address in another case is the same account, and the
-  # same bucket.
-  defp address_key(email) when is_binary(email),
-    do: :crypto.hash(:sha256, String.downcase(email))
+  # At least as coarse as citext's comparison, so an address the accounts table takes
+  # for the same one is the same bucket, whatever the database's locale lowercases
+  # `İ` to: lowercased, decomposed by compatibility (NFKD), stripped of its combining
+  # marks, lowercased again. Coarser only merges buckets, which limits more, never less.
+  @doc false
+  def address_key(email) when is_binary(email) do
+    folded =
+      if String.valid?(email) do
+        email
+        |> String.downcase()
+        |> :unicode.characters_to_nfkd_binary()
+        |> String.replace(~r/\p{Mn}/u, "")
+        |> String.downcase()
+      else
+        email
+      end
 
-  defp address_key(_email), do: :crypto.hash(:sha256, "")
+    :crypto.hash(:sha256, folded)
+  end
+
+  def address_key(_email), do: :crypto.hash(:sha256, "")
 end

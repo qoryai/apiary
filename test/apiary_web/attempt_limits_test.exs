@@ -20,8 +20,7 @@ defmodule ApiaryWeb.AttemptLimitsTest do
     on_exit(fn -> Application.put_env(:apiary, AttemptLimits, config) end)
   end
 
-  defp address_key(bucket, email),
-    do: {AttemptLimits, bucket, :crypto.hash(:sha256, String.downcase(email))}
+  defp address_key(bucket, email), do: {AttemptLimits, bucket, AttemptLimits.address_key(email)}
 
   # The flash shows the message's first sentence as its title and the second under it.
   defp shows_message?(html),
@@ -29,8 +28,8 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
   # Moves the bucket's last spending `ms` into the past, as if that much time went by.
   defp rewind(key, ms) do
-    [{^key, _tokens, at}] = :ets.lookup(@table, key)
-    true = :ets.update_element(@table, key, {3, at - ms})
+    [{^key, _tokens, at, drop_after}] = :ets.lookup(@table, key)
+    true = :ets.update_element(@table, key, [{3, at - ms}, {4, drop_after - ms}])
   end
 
   describe "the buckets" do
@@ -68,6 +67,23 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       assert AttemptLimits.password_log_in(unique_user_email(), client) == :limited
     end
 
+    test "an address in another case or with a dotted capital I is the same bucket, as citext may take it for the same account" do
+      n = System.unique_integer([:positive])
+      email = "alice#{n}@example.com"
+
+      for variant <- ["alİce#{n}@example.com", "ALİCE#{n}@EXAMPLE.COM"] do
+        assert AttemptLimits.address_key(variant) == AttemptLimits.address_key(email), variant
+      end
+
+      for _ <- 1..5, do: assert(AttemptLimits.password_log_in(email, "198.51.100.25") == :ok)
+      assert AttemptLimits.password_log_in("alİce#{n}@example.com", "198.51.100.26") == :limited
+
+      for _ <- 1..3, do: assert(AttemptLimits.link_request("alİce#{n}@example.com") == :ok)
+      assert AttemptLimits.link_request(email) == :limited
+
+      refute AttemptLimits.address_key("bob#{n}@example.com") == AttemptLimits.address_key(email)
+    end
+
     test "a log-in link: 3 per address, then 1 every 5 minutes" do
       email = unique_user_email()
 
@@ -79,6 +95,20 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       rewind(key, 299_000)
       assert AttemptLimits.link_request(email) == :limited
       rewind(key, 1_000)
+      assert AttemptLimits.link_request(email) == :ok
+      assert AttemptLimits.link_request(email) == :limited
+    end
+
+    test "a log-in link: the bucket is not dropped, full, while it refills" do
+      email = unique_user_email()
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(email) == :ok)
+
+      # Ten minutes and a second idle, then the table's sweep: two of the three are back.
+      rewind(address_key(:link_address, email), 601_000)
+      send(@table, :sweep)
+      :sys.get_state(@table)
+
+      assert AttemptLimits.link_request(email) == :ok
       assert AttemptLimits.link_request(email) == :ok
       assert AttemptLimits.link_request(email) == :limited
     end
@@ -178,6 +208,32 @@ defmodule ApiaryWeb.AttemptLimitsTest do
                  {"x-forwarded-for", "203.0.113.99"}
                ])
              )
+    end
+
+    test "a password change logs in its own account, whatever email it posts" do
+      %{user: victim} = sign_up_fixture()
+      victim = set_password(victim)
+      %{user: user} = sign_up_fixture()
+
+      # The victim's bucket spent, so a log-in in their name is refused.
+      for _ <- 1..5, do: log_in({192, 0, 2, 33}, victim.email, "not the password")
+      assert refused?(log_in({192, 0, 2, 33}, victim.email, valid_user_password()))
+
+      conn =
+        build_conn()
+        |> log_in_user(user)
+        |> post(~p"/users/update-password", %{
+          "user" => %{
+            "email" => victim.email,
+            "password" => valid_user_password(),
+            "password_confirmation" => valid_user_password()
+          }
+        })
+
+      token = get_session(conn, :user_token)
+      assert token
+      assert {%{id: id}, _at} = Apiary.Accounts.get_user_by_session_token(token)
+      assert id == user.id
     end
 
     test "behind a proxy TRUSTED_PROXIES names, each client has its own bucket" do

@@ -14,7 +14,10 @@ defmodule Apiary.Runs.RateLimit do
   `check/2` runs in the caller: the bucket is read, refilled by the time passed
   and written back with a compare-and-swap, so two requests never spend the same
   token and no process is a bottleneck. This process owns the table and drops
-  the buckets nobody has touched for a while, which are full again anyway.
+  the buckets nobody has spent for 10 minutes and that are full again by then: a
+  bucket that refills more slowly, such as 3 at once and 1 every 5 minutes, is kept
+  until it is full. Each row is `{key, tokens, spent_at, drop_after}`, both times on
+  the monotonic clock in milliseconds.
   """
   use GenServer
 
@@ -40,21 +43,29 @@ defmodule Apiary.Runs.RateLimit do
   defp spend(key, rate, capacity, now) do
     case :ets.lookup(@table, key) do
       [] ->
-        if :ets.insert_new(@table, {key, capacity - @unit, now}),
+        if :ets.insert_new(@table, row(key, capacity - @unit, now, rate, capacity)),
           do: :ok,
           else: spend(key, rate, capacity, now)
 
-      [{^key, tokens, at} = old] ->
+      [{^key, tokens, at, _drop_after} = old] ->
         # `rate` tokens a second is `rate` thousandths a millisecond; a rate below one a
         # second is a fraction, and what it adds is cut to whole thousandths.
         tokens = min(capacity, tokens + trunc(max(now - at, 0) * rate))
 
         cond do
           tokens < @unit -> {:error, retry_after(tokens, rate)}
-          swap(old, {key, tokens - @unit, now}) -> :ok
+          swap(old, row(key, tokens - @unit, now, rate, capacity)) -> :ok
           true -> spend(key, rate, capacity, now)
         end
     end
+  end
+
+  # The bucket as spent at `now`, to be dropped once idle and full again: after 10
+  # minutes, or after the time it takes to refill when that is longer. A bucket that
+  # never refills, at a rate of 0, is dropped after 10 minutes.
+  defp row(key, tokens, now, rate, capacity) do
+    refill = if rate > 0, do: ceil((capacity - tokens) / rate), else: 0
+    {key, tokens, now, now + max(@idle, refill)}
   end
 
   defp swap(old, new), do: :ets.select_replace(@table, [{old, [], [{:const, new}]}]) == 1
@@ -78,8 +89,8 @@ defmodule Apiary.Runs.RateLimit do
 
   @impl true
   def handle_info(:sweep, state) do
-    before = System.monotonic_time(:millisecond) - @idle
-    :ets.select_delete(@table, [{{:_, :_, :"$1"}, [{:<, :"$1", before}], [true]}])
+    now = System.monotonic_time(:millisecond)
+    :ets.select_delete(@table, [{{:_, :_, :_, :"$1"}, [{:<, :"$1", now}], [true]}])
     Process.send_after(self(), :sweep, @sweep_every)
     {:noreply, state}
   end

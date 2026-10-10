@@ -181,7 +181,7 @@ defmodule ApiaryWeb.Contract.SignedRequestTest do
     test "the rate limit comes after verification and before the instance id", ctx do
       bucket = Apiary.Runs.RateLimit
       later = System.monotonic_time(:millisecond) + :timer.hours(1)
-      :ets.insert(bucket, {ctx.key.id, 0, later})
+      :ets.insert(bucket, {ctx.key.id, 0, later, later})
       {_subject, batch} = first_events()
 
       conn = signed_post(build_conn(), ctx.key.key_id, "another key", batch)

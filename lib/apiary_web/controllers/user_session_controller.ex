@@ -98,6 +98,10 @@ defmodule ApiaryWeb.UserSessionController do
     # disconnect all existing LiveViews with old sessions
     UserAuth.disconnect_sessions(expired_tokens)
 
+    # The log-in that follows is the signed-in person's own, whatever email the form
+    # posted: it is not counted against the limits, so it must not name anyone else.
+    params = put_in(params, ["user", "email"], user.email)
+
     conn
     |> put_session(:user_return_to, ~p"/users/settings")
     |> create(params, gettext("Your password is updated."))
