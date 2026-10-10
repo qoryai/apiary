@@ -21,35 +21,39 @@ defmodule Apiary.Runs.IngestTest do
     batch
   end
 
+  # A heartbeat of the run, before its start.
+  defp beat(subject), do: wire_event(subject, 3, "run.heartbeat", %{"elapsed_seconds" => 30})
+
   test "counts what was new, what was held and what collided", %{key: key} do
-    {subject, [ping, started]} = first_events()
+    {subject, [started]} = first_events()
+    beat = beat(subject)
 
     assert {:ok, %{status: 202, inserted: 1, duplicates: 0, conflicts: 0, repeated: false}} =
-             Ingest.ingest(key, batch!([ping]), @meta)
+             Ingest.ingest(key, batch!([beat]), @meta)
 
-    usurper = wire_event(subject, 1, "run.exited", %{"state" => "failed"})
+    usurper = wire_event(subject, 3, "run.exited", %{"state" => "failed"})
 
     ExUnit.CaptureLog.capture_log(fn ->
       assert {:ok, %{status: 202, inserted: 1, duplicates: 1, conflicts: 1, run: run}} =
-               Ingest.ingest(key, batch!([ping, usurper, started]), @meta)
+               Ingest.ingest(key, batch!([beat, usurper, started]), @meta)
 
       assert run.event_count == 2
     end)
   end
 
   test "an event twice in one batch is stored once", %{key: key} do
-    {_subject, [ping, _]} = first_events()
+    {_subject, [started]} = first_events()
 
     assert {:ok, %{inserted: 1, duplicates: 1, conflicts: 0}} =
-             Ingest.ingest(key, batch!([ping, ping]), @meta)
+             Ingest.ingest(key, batch!([started, started]), @meta)
   end
 
   test "a repeated delivery id is answered again and touches nothing", %{key: key} do
-    {_subject, [ping, started]} = first_events()
+    {subject, [started]} = first_events()
     meta = %{contract_version: 1, delivery_id: Ecto.UUID.generate()}
 
     assert {:ok, %{status: 202, inserted: 1, repeated: false}} =
-             Ingest.ingest(key, batch!([ping]), meta)
+             Ingest.ingest(key, batch!([beat(subject)]), meta)
 
     # Even with another body: the delivery was answered, and that answer stands.
     assert {:ok, %{status: 202, inserted: 0, repeated: true}} =
@@ -61,26 +65,26 @@ defmodule Apiary.Runs.IngestTest do
 
   test "the same delivery id under another key is another delivery", %{scope: scope, key: key} do
     %{access_key: other} = access_key_fixture(scope)
-    {_subject, [ping, started]} = first_events()
+    {subject, [started]} = first_events()
     meta = %{contract_version: 1, delivery_id: Ecto.UUID.generate()}
 
-    assert {:ok, %{inserted: 1}} = Ingest.ingest(key, batch!([ping]), meta)
+    assert {:ok, %{inserted: 1}} = Ingest.ingest(key, batch!([beat(subject)]), meta)
     assert {:ok, %{inserted: 1, repeated: false}} = Ingest.ingest(other, batch!([started]), meta)
   end
 
   test "the run keeps the key that first delivered it", %{scope: scope, key: key} do
     %{access_key: other} = access_key_fixture(scope)
-    {_subject, [ping, started]} = first_events()
+    {subject, [started]} = first_events()
 
-    assert {:ok, %{run: %Run{id: id}}} = Ingest.ingest(key, batch!([ping]), @meta)
+    assert {:ok, %{run: %Run{id: id}}} = Ingest.ingest(key, batch!([beat(subject)]), @meta)
     assert {:ok, %{run: %Run{id: ^id} = run}} = Ingest.ingest(other, batch!([started]), @meta)
     assert run.access_key_id == key.id
   end
 
   test "what the database refuses is {:error, :unavailable}, logged by its module only",
        %{key: key} do
-    {_subject, [ping, _]} = first_events()
-    batch = batch!([ping])
+    {_subject, events} = first_events()
+    batch = batch!(events)
     # Past the parser on purpose: a NUL, which no text column holds.
     [event] = batch.events
     poisoned = %{batch | events: [%{event | type: "dev.qory.secret-looking\0payload"}]}

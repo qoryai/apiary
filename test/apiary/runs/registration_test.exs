@@ -319,9 +319,9 @@ defmodule Apiary.Runs.RegistrationTest do
     end
 
     test "a run its events created without a registration is used", %{key: key} do
-      {subject, [ping, _started]} = first_events()
+      {subject, events} = first_events()
       meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!([ping]), meta)
+      assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!(events), meta)
 
       assert register(key, body(subject)) == {:error, :run_id_used}
       assert [%Run{registered_at: nil}] = runs()
@@ -457,7 +457,7 @@ defmodule Apiary.Runs.RegistrationTest do
          %{key: key} do
       body = body()
       assert {:ok, %{run: run}} = register(key, body)
-      {_subject, [_ping, started]} = first_events(body["run_id"])
+      {_subject, [started]} = first_events(body["run_id"])
       meta = %{contract_version: 1, instance_id: "i_one"}
 
       assert {:ok, %{status: 202, run: %Run{id: id}}} =
@@ -473,17 +473,17 @@ defmodule Apiary.Runs.RegistrationTest do
       assert stored.registered_at == run.registered_at
     end
 
-    test "a run that registered is not admitted again by its ping, whichever instance sends it",
+    test "a run that registered is not admitted again by its batches, whichever instance sends them",
          %{key: key} do
       body = body()
       assert {:ok, %{run: run}} = register(key, body, "i_one")
-      {_subject, [ping, _started]} = first_events(body["run_id"])
+      {_subject, batch} = first_events(body["run_id"])
 
-      # Admitted again, another instance's ping would be refused: the node's one slot is
+      # Admitted again, another instance's batch would be refused: the node's one slot is
       # i_one's.
       for instance <- ["i_one", "i_two"] do
         meta = %{contract_version: 1, instance_id: instance, delivery_id: Ecto.UUID.generate()}
-        assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!([ping]), meta)
+        assert {:ok, %{status: 202}} = Ingest.ingest(key, batch!(batch), meta)
       end
 
       assert [%Run{instance_id: "i_one"} = stored] = runs()
@@ -575,7 +575,7 @@ defmodule Apiary.Runs.RegistrationTest do
     test "keeps the registration's fields", %{key: key} do
       body = body()
       assert {:ok, %{run: run}} = register(key, body)
-      {_subject, [_ping, started]} = first_events(body["run_id"])
+      {_subject, [started]} = first_events(body["run_id"])
       meta = %{contract_version: 1, instance_id: "i_one"}
       assert {:ok, _} = Ingest.ingest(key, batch!([started]), meta)
 
@@ -681,7 +681,7 @@ defmodule Apiary.Runs.RegistrationTest do
 
       # A start whose labels name the other target: the run's row is assigned to it, and
       # the digests and the reload stay the registration's.
-      {_subject, [_ping, started]} = first_events(body["run_id"])
+      {_subject, [started]} = first_events(body["run_id"])
       started = put_in(started, ["data", "labels", "repository"], "acme/docs")
       meta = %{contract_version: 1, instance_id: "i_one"}
 
@@ -729,10 +729,10 @@ defmodule Apiary.Runs.RegistrationTest do
 
       # A run that did not register keeps the reported digest in force, as before, and then
       # the target its row holds.
-      {subject, [ping, started]} = first_events()
+      {subject, [started]} = first_events()
       meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, %{run: unregistered}} = Ingest.ingest(key, batch!([ping]), meta)
       beat = batch!([wire_event(subject, 3, "run.heartbeat", %{"interval_seconds" => 30})])
+      assert {:ok, %{run: unregistered}} = Ingest.ingest(key, beat, meta)
       assert Serving.digest_for(key, unregistered, beat, own.digest) == own.digest
       assert Serving.digest_for(key, unregistered, beat, nil) == baseline.digest
 

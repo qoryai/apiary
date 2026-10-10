@@ -306,7 +306,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
-  defp now do
+  @doc """
+  The contract's clock, in Unix seconds: the system's, or the function of
+  `config :apiary, :contract_now` a test of the contract's fixtures sets.
+  """
+  @spec now() :: integer
+  def now do
     case Application.get_env(:apiary, :contract_now) do
       clock when is_function(clock, 0) -> clock.()
       _ -> System.os_time(:second)

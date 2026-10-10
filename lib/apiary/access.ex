@@ -265,7 +265,7 @@ defmodule Apiary.Access do
       roles: @admins
     ),
     # The server contract.
-    Action.new(:"run.post_events", "post a run's events",
+    Action.new(:"run.post_events", "open a run and post its events",
       feature: :observability,
       roles: [:access_key],
       audited: {:not, "the events the gateway posts are the record, not the audit trail"}

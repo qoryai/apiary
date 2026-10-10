@@ -27,8 +27,8 @@ defmodule Apiary.Nodes do
   `{:nodes_touched, workspace_id}` (`topic/1`). An instance is **running** while it has a
   run alive by the lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), so running
   means "not yet lost", and a node runs while any of its instances does (`activity/3`).
-  `check_instance_limit/3` and `admit/4` hold a node to its instance limit when a ping
-  would create a run, under the node's row lock; `clear_instance/3` marks an instance's
+  `check_instance_limit/3` and `admit/4` hold a node to its instance limit when a
+  registration would create a run, under the node's row lock; `clear_instance/3` marks an instance's
   open runs lost, for one that stopped without saying so; `prune_instances/1` deletes the
   rows the pages no longer show.
   """
@@ -433,7 +433,8 @@ defmodule Apiary.Nodes do
 
   @doc """
   placement/2 is what a run records of where it runs, `%{node_id:, instance_id:}`: the
-  node of the access key its ping came with, and the instance id that ping claimed, nil
+  node of the access key its registration or first batch came with, and the instance id
+  that request claimed, nil
   when it cannot be kept (`Apiary.Nodes.Instance.instance_id?/1`). The receiving side
   merges it into the run's row when it creates the run, and the instance id into the
   delivery's row (`Apiary.Runs.Ingest`).
@@ -504,17 +505,15 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
-  admit/4 runs `fun`, the store of the batch that creates a run of `instance_id` on
+  admit/4 runs `fun`, the store that creates a run of `instance_id` on
   `node`, in one transaction with the instance limit's check (`check_instance_limit/3`)
   before it: `fun`'s answer when the instance is admitted, `{:ok, value}` or
   `{:error, reason}` (an error rolls the whole back); `{:error, :instance_limit}` when it
   is refused, after the transaction has rolled back with nothing stored, and then the
   node's `instance_limit_refused` is counted and `instance_limit_refused_at` set, in a
-  statement of its own. Raises inside a transaction: it is the batch's transaction.
+  statement of its own. Raises inside a transaction: it is the store's transaction.
 
-  The receiving side calls it for a batch that holds the ping of a run the workspace has
-  not seen (`Apiary.Runs.Ingest`), and for a run's registration
-  (`Apiary.Runs.Registration`).
+  The receiving side calls it for a run's registration (`Apiary.Runs.Registration`).
   """
   @spec admit(Node.t(), String.t(), (-> {:ok, value} | {:error, reason}), DateTime.t()) ::
           {:ok, value} | {:error, :instance_limit | reason}
