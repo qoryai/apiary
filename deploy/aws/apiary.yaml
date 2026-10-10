@@ -504,10 +504,18 @@ Resources:
           - !Sub "{{resolve:secretsmanager:${DatabasePassword}}}"
           - !Sub "{{resolve:secretsmanager:${KeysFromStack}/database-password}}"
 
+  # The task's log. Kept when the stack is deleted, and when a create rolls back, so the
+  # log of a task that never became healthy can still be read; its events go after 30 days.
+  # Named, like the key secrets, after the stack and the last 12 characters of its stack
+  # ID: a kept group never blocks a new stack of the same name.
   LogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Sub /qory/${AWS::StackName}
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackIdTail}
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
       RetentionInDays: 30
 
   Cluster:
@@ -688,12 +696,17 @@ Resources:
   # in a later release reaches new stacks only. It answers CloudFormation even when its call
   # fails, so the stack never waits on it, and a failed call fails the create; a request
   # that names another stack fails and changes nothing. Its role may set the policy of this
-  # stack and nothing else, and write its own log group.
+  # stack and nothing else, and write its own log group, which is kept as the task's is:
+  # a call that fails a create leaves its trace there.
   # The runtime is pinned, and kept current with each release.
   StackPolicyLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Sub /qory/${AWS::StackName}/stack-policy
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackIdTail}/stack-policy
+        - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
       RetentionInDays: 30
 
   StackPolicyRole:
@@ -835,7 +848,9 @@ Outputs:
           - !FindInMap [Release, Versions, CommunityVersion]
   Logs:
     Description: The task's log group in CloudWatch, kept 30 days.
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}
+    Value: !Sub
+      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackIdTail}
+      - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
   # Until Qory is set up, each start of the task logs "Set up Qory Apiary at
   # https://<domain>/setup/<code>." in the log group Logs links to. The link opens that log
   # group's events filtered to "/setup/", the console's filterPattern escaped as the Logs
@@ -843,7 +858,9 @@ Outputs:
   # and without it the line is found by searching the group for /setup/.
   SetUp:
     Description: The set-up link is in the log; open it once.
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
+    Value: !Sub
+      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackIdTail}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
+      - StackIdTail: !Select [4, !Split ["-", !Select [2, !Split ["/", !Ref AWS::StackId]]]]
   Service:
     Description: The service's health and events in ECS.
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/ecs/v2/clusters/${Cluster}/services/${Service.Name}/health?region=${AWS::Region}

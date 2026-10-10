@@ -21,7 +21,10 @@ kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replace
 (Retain), each under a name that carries the stack's ID, not its name alone, so the secrets
 a deleted stack kept never block a new stack of the same name; while the download key's
 secret, RegistryCredentials, is kept by neither, named in no stack policy and not among the
-KeysSecrets output's: it is deleted with the stack.
+KeysSecrets output's: it is deleted with the stack. And every log group is kept, on delete
+and on replacement (Retain), so a create that rolls back leaves its log to read, keeps a
+retention, so its events still go, and carries the stack's ID in its name too, unless it
+has no name, CloudFormation's own being unique.
 
 mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
 scripts/aws-template-release.py writes and Apiary Pro's release relies on, and the Images
@@ -220,6 +223,22 @@ def check_kept():
                     f"{DOWNLOAD_KEY} has {attribute} {download_key[attribute]}: "
                     "the download key's secret is not kept"
                 )
+
+    for logical_id, resource in resources.items():
+        if resource.get("Type") != "AWS::Logs::LogGroup":
+            continue
+        for attribute in ("DeletionPolicy", "UpdateReplacePolicy"):
+            if resource.get(attribute) != "Retain":
+                failures.append(f"{logical_id} has {attribute} {resource.get(attribute)}, not Retain")
+        properties = resource.get("Properties", {})
+        if "RetentionInDays" not in properties:
+            failures.append(f"{logical_id} has no RetentionInDays: a kept log group would keep its events forever")
+        name = properties.get("LogGroupName")
+        if name is not None and not unique_to_stack(name):
+            failures.append(
+                f"{logical_id}'s name does not carry the stack's ID: "
+                "a deleted stack's kept log group would block a new stack of the same name"
+            )
 
     body, _where = stack_policy_body(template)
     policies = (("stack-policy.json", json.loads(POLICY.read_text())), ("the stack's own policy", body or {}))

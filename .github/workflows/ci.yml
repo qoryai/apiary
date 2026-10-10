@@ -100,7 +100,8 @@ jobs:
 
       # The four secrets are kept when the stack is deleted or replaces them, each under a
       # name unique to the stack; the download key's secret is deleted with the stack and
-      # guarded by no stack policy.
+      # guarded by no stack policy. The log groups are kept too, under names unique to the
+      # stack, with their retention.
       - name: Check which secrets the stack keeps
         run: python scripts/aws-template-check.py kept
 
