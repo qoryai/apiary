@@ -104,7 +104,7 @@ Parameters:
     Description: "To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
   # A pre-release image, such as ghcr.io/qoryai/apiary-prerelease:sha-<7>, which
   # .github/workflows/prerelease.yml publishes. It replaces the Edition's image and version,
-  # and is pulled with the download key when one is given, whatever the Edition.
+  # and is pulled with the download key, whatever the Edition (TestImageNeedsDownloadKey).
   TestImage:
     Type: String
     Default: ""
@@ -142,6 +142,12 @@ Rules:
     Assertions:
       - Assert: !Equals [!Ref CpuArchitecture, X86_64]
         AssertDescription: Apiary Pro runs on X86_64 only.
+  # A test image is pulled from a private package, with the download key.
+  TestImageNeedsDownloadKey:
+    RuleCondition: !Not [!Equals [!Ref TestImage, ""]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
+        AssertDescription: "A test image needs the download key: set Apiary Pro download key."
   # With Version empty, the edition's version is the Release mapping's. A Rule cannot read a
   # mapping, so the release writes the same version in here too
   # (scripts/aws-template-release.py), as the value each Assert compares Version with: Version

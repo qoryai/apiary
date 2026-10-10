@@ -392,7 +392,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   deleted with the stack, for the image's pull alone; and the domain, with a Route 53
   hosted zone, or without one, the stack then making the certificate and waiting for its
   validation record. Rules refuse Apiary Pro without its download key, on ARM64, or with
-  no version to install. Under Recovery, `AcceptSigningKey` is passed as
+  no version to install, and a test image without the download key. Under Recovery, `AcceptSigningKey` is passed as
   `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and `DatabaseDeletionProtection` turns the
   database's deletion protection off before a delete. The stack sets its own stack policy
   at creation, refusing any update that would replace or delete the database or a key's
