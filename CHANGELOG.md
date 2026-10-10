@@ -51,6 +51,12 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   (`actor: :instance`) needs none and keeps one given.
   `ApiaryWeb.CoreComponents.new_password_fields/1` draws the two fields and never writes a
   password back to the page. Account settings do not change the email address without mail.
+- The log-in page follows mail. Without mail it asks for the email address and the
+  password only, and says to ask an admin of the instance for a password link when the
+  password is forgotten; an expired log-in link's page leads to the log-in page, not to a
+  new link. With mail a log-in link stays the default and a password the other way in,
+  whose form's **Email me a link** sends a log-in link to the address typed, counted as
+  one asked for.
 - An account whose password was set before its address was confirmed loses that password
   at its first log-in link, which confirms the address and ends every other session; the
   page says so. A sign-up whose confirmation email cannot be sent keeps the account made,

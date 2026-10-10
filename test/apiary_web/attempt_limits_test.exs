@@ -283,6 +283,21 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       assert Repo.aggregate(UserToken, :count) == sent + 3
     end
+
+    test "the password form's \"Email me a link\" counts against the same 3" do
+      user = user_fixture()
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(user.email) == :ok)
+      sent = Repo.aggregate(UserToken, :count)
+
+      {:ok, lv, _html} = live(build_conn(), ~p"/users/log-in")
+      lv |> element("button[phx-click=toggle_mode]") |> render_click()
+      lv |> form("#login_form", user: %{email: user.email}) |> render_change()
+      html = lv |> element("#login_forgot button") |> render_click()
+
+      assert shows_message?(html)
+      refute html =~ "a log-in link is on its way"
+      assert Repo.aggregate(UserToken, :count) == sent
+    end
   end
 
   describe "the pages a link opens" do
