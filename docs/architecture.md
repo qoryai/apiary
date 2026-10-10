@@ -69,9 +69,9 @@ beside it:
   the core's own, and the default.
 - `Apiary.Release` and `Apiary.Release.Migrator`: what the release runs at boot, and the
   commands for whoever runs the instance (`bin/apiary eval "Apiary.Release.…"`).
-- `Apiary.FirstAdmin`: the claim of an instance nobody has signed up to, the release
-  command's and the boot's, which runs it with `FIRST_ADMIN_EMAIL` and
-  `FIRST_ORGANISATION_NAME` just before the endpoint starts.
+- `Apiary.Setup`: the set-up link of a new instance, its code found or made and logged
+  at a start before set-up, just before the endpoint starts, and the set-up that uses it;
+  and the release command's claim of a new instance.
 
 The web side is under `lib/apiary_web/`:
 
@@ -210,16 +210,18 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
   own organisation (`c:Apiary.Edition.instance_organisation_id/0`; in the core's edition,
   the oldest organisation in use), named by the sign-up form's organisation name, with
   its workspace **Main** and the person as its owner, the instance's first admin, and
-  nothing else; the edition is told so (`:first_sign_up`). Whether a sign-up is the first
-  is read inside its transaction: when the instance has no organisation of its own, it
-  takes a transaction-level advisory lock and reads again, so of two first sign-ups one
-  creates it and the other finds it and is a later sign-up. The instance's organisation
-  stays, so a sign-up that sees it without the lock needs none.
+  nothing else; the edition is told so (`:first_sign_up`). It is the set-up's or the
+  release command's alone (`first_only: true`, `actor: :instance`; The set-up link,
+  below); any other sign-up before it is `{:error, :not_set_up}`. Whether a sign-up is
+  the first is read inside its transaction: when the instance has no organisation of its
+  own, it takes a transaction-level advisory lock and reads again, so of two first
+  sign-ups one creates it and the other finds it, `{:error, :instance_claimed}`. The
+  instance's organisation stays, so a sign-up that sees it without the lock needs none.
 - **A later sign-up** without an invitation creates an organisation only where the
   edition opens one (`c:Apiary.Edition.sign_up_open?/0`); the core's edition opens none,
   so after the first sign-up people join by invitation. It hands the edition what the
   form sent beyond the core's fields (`{:sign_up, extra}`), which the edition may refuse
-  on one of its fields. `Apiary.Organisations.sign_up_offer/1` (`:first`, `:open` or
+  on one of its fields. `Apiary.Organisations.sign_up_offer/1` (`:not_set_up`, `:open` or
   `:closed`) is what the page offers, and the sign-up asks again before it creates
   anything. A sign-up with an invitation creates no organisation. Every new organisation
   starts with one workspace, **Main**.
@@ -252,24 +254,23 @@ organisation's `edition` map (`Apiary.Organisations.Organisation`), which is not
 - **Release commands.** `Apiary.Release.grant_instance_admin/2` makes an account an owner
   of the instance's organisation and `revoke_instance_admin/1` makes one a member of it,
   refusing the last owner; both act as the instance, `instance_admin.grant` and
-  `instance_admin.revoke` in its trail, which no role takes. On an instance nobody has
-  signed up to, `grant_instance_admin/2` with an organisation's name is the first
-  sign-up, `first_only: true` to `sign_up_user/3`, under the same lock: of it and a
-  sign-up on the web, one creates the instance's organisation, and the command then
+  `instance_admin.revoke` in its trail, which no role takes. On an instance that is not
+  set up, `grant_instance_admin/2` with an organisation's name is the first sign-up,
+  `first_only: true` and `actor: :instance` to `sign_up_user/3`, under the same lock: of
+  it and the set-up link, one creates the instance's organisation, and the command then
   grants as it would on any instance.
-- **The claim at first start.** `Apiary.FirstAdmin`, a child of the application's
-  supervisor after `Apiary.KeyCheck` and the edition's processes and just before
-  `ApiaryWeb.Endpoint`, runs the command's claim (`Apiary.FirstAdmin.claim/3`, the same
-  `sign_up_user/3` with `first_only: true` and `actor: :instance`, so the edition's part
-  of a first sign-up applies) when `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` are
-  set and the instance has no organisation; its entry's worker is `Apiary.FirstAdmin`.
-  Both empty, it makes no query. On an instance that has its organisation it stops after
-  that one read: it checks neither value, creates and grants nothing, sends no mail and
-  writes no line. Of two boots at once, the second's claim answers
-  `{:error, :instance_claimed}`, the sign-up's own answer or, when the first's account
-  already made the address taken, `claim/3`'s after it reads the organisation again, and
-  the boot goes on, granting nothing. On an instance nobody has signed up to, one set and
-  the other empty, or a value the sign-up refuses, stops the boot.
+- **The set-up link.** `Apiary.Setup`, a child of the application's supervisor after
+  the edition's processes and just before `ApiaryWeb.Endpoint`, logs "Set up Qory Apiary
+  at <url>/setup/<code>." at every start while the instance has no organisation. The code
+  is 32 random bytes in base64url, kept as it is in `instance_settings.setup_code`: found
+  or made by `code!/0` under the row's lock (`FOR UPDATE`), so two starts at once agree on
+  one. `set_up/3` is `sign_up_user/3` with `first_only: true` and `actor: :instance`,
+  whose first sign-up takes the first-sign-up lock, then the row's, compares the code in
+  constant time (`Plug.Crypto.secure_compare/2`), and sets `set_up_at` and makes the code
+  NULL in the transaction that creates the organisation; the release command's first
+  sign-up marks it used the same way. Before set-up, every other sign-up is
+  `{:error, :not_set_up}`. The page is `ApiaryWeb.SetupLive`; its line on what is created
+  is the edition's (`c:Apiary.Edition.first_sign_up_line/0`).
 
 ## Suspending a member
 

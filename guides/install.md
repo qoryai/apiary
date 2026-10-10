@@ -567,18 +567,17 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation makes in 24 hours, emailed or copied: a whole number from `1`. Not set, or empty, is `20`. |
-| `FIRST_ADMIN_EMAIL` | none | Optional. The first admin's address, used once, at the instance's first start, with `FIRST_ORGANISATION_NAME` ([The instance admins](#the-instance-admins)). Not set, or empty, with `FIRST_ORGANISATION_NAME` empty too, leaves the first sign-up to the web. |
-| `FIRST_ORGANISATION_NAME` | none | Optional. The name of the instance's organisation, created with the first admin at the first start; the same rules as an organisation's name on the sign-up page. |
 
-The first person who signs up on a new instance creates its organisation, with its
-workspace **Main**, and is its owner. The instance has that one organisation and that one
-workspace. The organisation is the instance's own, and its owners are the instance's
-**instance admins** ([The instance admins](#the-instance-admins)); to everyone in it, it
-is an organisation like any other. The first sign-up is always offered, until someone has
-signed up; with `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` set, the first start
-makes it before the instance serves a page ([The instance admins](#the-instance-admins)).
+A new instance is set up with its **set-up link**
+([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
+instance's organisation, with its workspace **Main**, and is its owner. The instance has
+that one organisation and that one workspace. The organisation is the instance's own, and
+its owners are the instance's **instance admins**
+([The instance admins](#the-instance-admins)); to everyone in it, it is an organisation
+like any other. Until the link is used nobody signs up: the sign-up and log-in pages say
+"This Qory Apiary is not set up yet: use the set-up link from its install."
 
-After the first, nobody signs up without an invitation: the sign-up page says sign-up is by
+After it, nobody signs up without an invitation: the sign-up page says sign-up is by
 invitation, and the landing and log-in pages offer none. People join through an invitation
 from an owner or an admin of the organisation, sent from its **Members** page. Someone with
 an invitation signs up without being asked for an organisation's name, and joins the
@@ -641,65 +640,52 @@ bin/apiary eval 'Apiary.Release.delete_account("dana@example.com")'
 It deletes an account by its address, as the person would, and refuses while the person is
 the organisation's only owner: make another member an owner first.
 
+### Set up a new instance
+
+Until it is set up, every start of a new instance writes one line to its log, the same
+link every time:
+
+```text
+Set up Qory Apiary at https://qory.example.com/setup/<code>.
+```
+
+With `compose.yaml`, `docker compose logs apiary` shows it. Open the link: its page asks
+for your email address, a password and its confirmation, and your organisation's name,
+and **Set up** creates the instance's organisation, its workspace Main and your account
+as its owner, an instance admin, and signs you in. The code is 32 random bytes, kept in
+the database until it is used; it does not expire before, and it works once: after it,
+any set-up link says "This Qory Apiary is already set up." and leads to the log-in page.
+Anyone who can read the log can use the link before you do, so open it as soon as the
+instance is up. On an instance that is set up, a restored one included, a start writes
+no such line. The address in the link is the instance's own (`PUBLIC_URL`).
+
 ### The instance admins
 
-The instance admins are the owners of the instance's organisation, the one the instance's
-first user signed up with. Inside the organisation they act at their level, as any owner
-does. Two commands, for whoever has a shell on the release, make an account one and take
-it away, for an install that is scripted and for recovery when no admin is left; for the
-first admin of a new instance, `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, below,
-are simpler, as they need no shell:
+The instance admins are the owners of the instance's organisation, the one its set-up
+created. Inside the organisation they act at their level, as any owner does. Two
+commands, for whoever has a shell on the release, make an account one and take it away,
+for an install that is scripted and for recovery when no admin is left:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com")'
 bin/apiary eval 'Apiary.Release.revoke_instance_admin("dana@example.com")'
 ```
 
-**Claim a fresh instance at its first start** with `FIRST_ADMIN_EMAIL` and
-`FIRST_ORGANISATION_NAME`, both optional. With `compose.yaml`, set them in `.env` before
-the first `docker compose up -d`:
-
-```sh
-FIRST_ADMIN_EMAIL=you@example.com
-FIRST_ORGANISATION_NAME=Acme
-```
-
-On an instance nobody has signed up to, the first start claims it before it serves a
-page, so no sign-up on the web can come first: it is the instance's first sign-up, as the
-command below makes it, and emails you your log-in link. Should the email not go out, the
-instance is claimed all the same, and the log says to ask for a link at `/users/log-in`
-once the mail settings work. The boot's own lines never carry the address or the link.
-On an instance that has its organisation, a restored one
-included, the boot ignores the two: it checks neither, creates and grants nothing, sends no
-email and writes no line, so changing them later changes nothing, and later admins are
-invited in Qory. Of two starts at once, one claims and the other starts as on any
-instance. Both empty, the first sign-up is the web's. On an instance nobody has signed up
-to, one set and the other empty, or a value the sign-up page would refuse, stops the boot
-with a message that names the variable and not the value:
-
-```text
-environment variable FIRST_ORGANISATION_NAME is empty, and FIRST_ADMIN_EMAIL is set. Set both to claim this instance at its first start, or neither.
-```
-
-```text
-environment variable FIRST_ADMIN_EMAIL is not valid: must have the @ sign and no spaces.
-```
-
-**Claim a fresh instance before its address is public** with the first command too, given
-the name of your organisation:
+**Set up a new instance from a shell** with the first command too, in place of the
+set-up link, given the name of your organisation:
 
 ```sh
 bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'
 ```
 
-On an instance nobody has signed up to, it is the instance's first sign-up: it creates the
-organisation, its workspace Main and the account as its owner, and emails the account its
-log-in link, as the sign-up page would. Without the name it is refused and says so. Should
-the email not go out, the instance is claimed all the same, and the command says to ask
+On an instance that is not set up, it sets it up: it creates the organisation, its
+workspace Main and the account as its owner, makes the set-up link work no more, and
+emails the account its log-in link. Without the name it is refused and says so. Should
+the email not go out, the instance is set up all the same, and the command says to ask
 for a link at `/users/log-in` once the mail settings work; it never prints the address or
 the link. Without mail it prints a password link for the account instead, which works
-once, for an hour, and never the address: open it to set your password. Should someone sign up on the web a moment before,
-theirs is the first sign-up, and the command does what it does on any instance.
+once, for an hour, and never the address: open it to set your password. Should the set-up
+link be used a moment before, the command does what it does on any instance.
 
 Otherwise the first command makes the account an owner of the instance's organisation,
 adding it to the organisation when it is not there yet; the account must exist, so the

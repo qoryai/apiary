@@ -14,19 +14,20 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 
 ### Added
 
-- One organisation and one workspace. The first person to sign up on a new instance
-  creates the instance's organisation, with its workspace Main, and is its owner; everyone
-  after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
-  `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
-  instance and change its admins.
-- `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME`, both optional and empty in
-  `.env.example`, claim a new instance at its first start, before it serves a page: the
-  instance's first sign-up, as `grant_instance_admin/2` makes it, which emails the log-in
-  link, and claims the instance even when the email does not go out. On an instance that
-  has its organisation, a restored one included, the boot ignores them: it checks neither,
-  creates and grants nothing, and sends no email. One set and the other empty, or a value
-  the sign-up refuses, stops the boot of an instance nobody has signed up to with a
-  message naming the variable.
+- One organisation and one workspace. The person who sets a new instance up creates the
+  instance's organisation, with its workspace Main, and is its owner; everyone after joins
+  it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
+  `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` set a new instance
+  up from a shell and change its admins.
+- The set-up link. Until a new instance is set up, every start logs the same line, "Set up
+  Qory Apiary at https://…/setup/<code>.", and nobody can sign up. The page at that link
+  asks for an email address, a password and its confirmation, and the organisation's
+  name; it creates the instance's organisation, its workspace Main and the account as its
+  owner, and signs the person in. The code is 32 random bytes, stored in the instance's
+  settings until it is used and then gone; any set-up link after says the instance is
+  already set up, and a wrong one before is a page that does not exist. On an instance
+  that is set up, a restored one included, a start logs no such line.
+  `grant_instance_admin/2` on a new instance uses the code too.
 - Mail is no longer needed to start. With `SMTP_RELAY` set, Qory Apiary sends its email
   through that relay; without it, it starts all the same, sends no email, and says so in one
   line of its log at each start. `Apiary.Mail` says whether mail is set and where from.
@@ -59,6 +60,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `Apiary.Release.password_link/1` prints one for an hour, mail or not, and
   `grant_instance_admin/2`'s claim of a new instance prints one in place of the log-in
   link when no mail is set. `Apiary.Accounts.build_password_link/3` makes them.
+- The log-in page follows mail. Without mail it asks for the email address and the
+  password only, and says to ask an admin of the instance for a password link when the
+  password is forgotten. An expired log-in link's page then leads to the log-in page, and
+  an expired link, to log in or to change an address, says only that it has expired, not
+  to ask for a new one; Account settings no longer call the password optional beside
+  log-in links. With mail a log-in link stays the default and a password the other way
+  in, whose form's **Email me a link** sends a log-in link to the address typed, counted
+  as one asked for.
 - An account whose password was set before its address was confirmed loses that password
   at its first log-in link, which confirms the address and ends every other session; the
   page says so. A sign-up whose confirmation email cannot be sent keeps the account made,
@@ -139,8 +148,8 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   new run's configuration. Discovery is not limited.
 - Limits on signing in, on each node: a log-in with a password, 5 per email address and
   then 1 a minute, and 20 per client address and then 1 every 3 seconds; a log-in link
-  asked for, 3 per email address and then 1 every 5 minutes; an invitation's pages, 20
-  per client address and then 1 every 3 seconds. Every attempt counts before the address
+  asked for, 3 per email address and then 1 every 5 minutes; an invitation's pages and
+  the set-up page, 20 per client address and then 1 every 3 seconds. Every attempt counts before the address
   is looked up, so past a limit an address with an account and one without get the same
   answer, "Too many attempts. Try again in a few minutes." The client address is the one
   the audit trail records, behind the proxies `TRUSTED_PROXIES` names.

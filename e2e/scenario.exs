@@ -403,14 +403,18 @@ defmodule E2E do
     :ok
   end
 
-  # The workspace's first owner, made the way sign-up makes one: the instance's first
-  # sign-up, on its fresh database, which every edition offers whatever its settings say,
-  # and makes the instance's own organisation. Anyone else would
-  # need an invitation from it. The owner then signs in with the emailed link, which is
-  # what confirms an account, as it must be before it invites anyone.
+  # The workspace's first owner, made the way the set-up link makes one: the instance's
+  # set-up, on its fresh database, with the code its start logged (`Apiary.Setup`), which
+  # makes the instance's own organisation. Anyone else would need an invitation from it.
+  # The owner then signs in with the emailed link, which is what confirms an account, as
+  # it must be before it invites anyone.
   defp owner_scope do
     {:ok, %{user: user}} =
-      Organisations.sign_up_user(%{email: "owner@e2e.test", organisation_name: "E2E"})
+      Apiary.Setup.set_up(
+        Apiary.Setup.code!(),
+        %{email: "owner@e2e.test", organisation_name: "E2E"},
+        password: :optional
+      )
 
     parent = self()
 

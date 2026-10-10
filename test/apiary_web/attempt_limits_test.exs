@@ -283,6 +283,21 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       assert Repo.aggregate(UserToken, :count) == sent + 3
     end
+
+    test "the password form's \"Email me a link\" counts against the same 3" do
+      user = user_fixture()
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(user.email) == :ok)
+      sent = Repo.aggregate(UserToken, :count)
+
+      {:ok, lv, _html} = live(build_conn(), ~p"/users/log-in")
+      lv |> element("button[phx-click=toggle_mode]") |> render_click()
+      lv |> form("#login_form", user: %{email: user.email}) |> render_change()
+      html = lv |> element("#login_forgot button") |> render_click()
+
+      assert shows_message?(html)
+      refute html =~ "a log-in link is on its way"
+      assert Repo.aggregate(UserToken, :count) == sent
+    end
   end
 
   describe "the pages a link opens" do
@@ -364,6 +379,35 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       assert Apiary.Accounts.get_user_by_password_link(token)
       {:ok, _lv, html} = live(from("198.51.100.45"), ~p"/users/password/#{token}")
       assert html =~ "Set your password"
+    end
+  end
+
+  describe "the set-up page" do
+    setup do
+      Apiary.EditionKit.hide_instance_organisation()
+      %{code: Apiary.Setup.code!()}
+    end
+
+    test "past a client's 20, the code and a wrong one get the same answer, before set-up and after",
+         %{code: code} do
+      client = "198.51.100.44"
+      {:ok, _lv, html} = live(from(client), ~p"/setup/#{code}")
+      assert html =~ "Set up Qory Apiary"
+
+      spend_page(client)
+
+      for path <- [~p"/setup/#{code}", ~p"/setup/not-the-code"] do
+        assert {:error, {:redirect, %{to: "/users/log-in", flash: %{"error" => @message}}}} =
+                 live(from(client), path)
+      end
+
+      {:ok, _lv, html} = live(from("198.51.100.45"), ~p"/setup/#{code}")
+      assert html =~ "Set up Qory Apiary"
+
+      sign_up_fixture()
+
+      assert {:error, {:redirect, %{to: "/users/log-in", flash: %{"error" => @message}}}} =
+               live(from(client), ~p"/setup/#{code}")
     end
   end
 end

@@ -96,6 +96,10 @@ config :apiary, Apiary.Retention.Scheduler, enabled: false
 # of Apiary.KeyCheck call it themselves.
 config :apiary, Apiary.KeyCheck, enabled: false
 
+# The set-up link's step at boot would store a code outside any test's sandbox; the tests
+# of Apiary.Setup call it themselves.
+config :apiary, Apiary.Setup, enabled: false
+
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual

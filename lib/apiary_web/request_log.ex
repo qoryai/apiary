@@ -4,10 +4,11 @@ defmodule ApiaryWeb.RequestLog do
   `LoggerJSON.Plug` from the endpoint's stop event.
 
   Six routes carry a bearer token in the path (an invitation, a log-in link, an
-  email change, a password link, the test link of Instance settings › Mail). The path is
-  logged, so the token segment is replaced with `:token` before the line is written: a
-  reader of the log must not be able to sign in, set a password or join an organisation
-  with what it finds there.
+  email change, a password link, the test link of Instance settings › Mail), and one the
+  instance's set-up code. The path is logged, so the token segment is replaced with
+  `:token`, and the code with `:code`, before the line is written: a reader of the log
+  must not be able to sign in, set a password, join an organisation or set the instance
+  up with what it finds there.
   """
 
   @handler_id "apiary-request-log"
@@ -63,6 +64,9 @@ defmodule ApiaryWeb.RequestLog do
 
       ["instance", "mail", "confirm", _token] ->
         "/instance/mail/confirm/:token"
+
+      ["setup", _code] ->
+        "/setup/:code"
 
       _ ->
         path

@@ -272,102 +272,34 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
   end
 end
 
-defmodule ApiaryWeb.UserLive.RegistrationFirstSignUpTest do
+defmodule ApiaryWeb.UserLive.RegistrationBeforeSetUpTest do
   @moduledoc """
-  The sign-up page on the instance's first sign-up, which every edition offers: the
-  suite's instance organisation is hidden inside the test's sandbox
-  (`Apiary.EditionKit`), and the page asks for the organisation's name.
+  The sign-up page before the instance is set up: nobody signs up before its set-up link
+  is used (`Apiary.Setup`). The suite's instance organisation is hidden inside the test's
+  sandbox (`Apiary.EditionKit`).
   """
-  # Not async: a test of the first sign-up holds the suite's instance organisation's row.
+  # Not async: the test hides the suite's instance organisation's row.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
-  import Apiary.AccountsFixtures
 
   setup do
     Apiary.EditionKit.hide_instance_organisation()
     :ok
   end
 
-  test "asks for the organisation's name, and names the organisation by it", %{conn: conn} do
-    {:ok, lv, _html} = live(conn, ~p"/users/register")
-    assert has_element?(lv, "#registration_form input[name='user[organisation_name]']")
+  test "says to use the set-up link, with no form, with mail or without", %{conn: conn} do
+    for source <- [:env, :none] do
+      Apiary.Mail.put_test_source(source)
+      {:ok, lv, html} = live(conn, ~p"/users/register")
 
-    # Nothing about the workspace's type: Main takes the default domain while there is one.
-    fields =
-      lv
-      |> element("#registration_form")
-      |> render()
-      |> LazyHTML.from_fragment()
-      |> LazyHTML.query("input:not([type=hidden]), select, textarea")
-      |> LazyHTML.attribute("name")
+      assert has_element?(lv, "#sign-up-not-set-up")
+      refute has_element?(lv, "#registration_form")
+      refute has_element?(lv, "#sign-up-closed")
 
-    assert Enum.sort(fields) == ["user[email]", "user[organisation_name]"]
-
-    email = unique_user_email()
-
-    lv
-    |> form("#registration_form", user: %{"email" => email, "organisation_name" => ""})
-    |> render_submit()
-
-    assert has_element?(lv, "#registration_form [name='user[organisation_name]'][aria-invalid]")
-    refute Apiary.Accounts.get_user_by_email(email)
-
-    lv
-    |> form("#registration_form", user: %{"email" => email, "organisation_name" => "Acme Ltd"})
-    |> render_submit()
-
-    user = Apiary.Accounts.get_user_by_email(email)
-    [membership] = Apiary.Organisations.list_memberships(user)
-    assert membership.organisation.name == "Acme Ltd"
-    assert membership.organisation.slug == "acme-ltd"
-  end
-
-  test "without mail, asks for a password too, and signs the first admin in", %{conn: conn} do
-    Apiary.Mail.put_test_source(:none)
-    {:ok, lv, html} = live(conn, ~p"/users/register")
-
-    assert html =~
-             "Start an organisation and its first workspace. Choose a password to sign in with."
-
-    fields =
-      lv
-      |> element("#registration_form")
-      |> render()
-      |> LazyHTML.from_fragment()
-      |> LazyHTML.query("input:not([type=hidden]), select, textarea")
-      |> LazyHTML.attribute("name")
-
-    assert Enum.sort(fields) ==
-             [
-               "user[email]",
-               "user[organisation_name]",
-               "user[password]",
-               "user[password_confirmation]"
-             ]
-
-    email = unique_user_email()
-    password = "a long pass phrase"
-
-    form =
-      form(lv, "#registration_form",
-        user: %{
-          "email" => email,
-          "organisation_name" => "Acme Ltd",
-          "password" => password,
-          "password_confirmation" => password
-        }
-      )
-
-    render_submit(form)
-    conn = follow_trigger_action(form, conn)
-    assert get_session(conn, :user_token)
-
-    user = Apiary.Accounts.get_user_by_email(email)
-    assert Apiary.Accounts.get_user_by_email_and_password(email, password)
-    [membership] = Apiary.Organisations.list_memberships(user)
-    assert membership.organisation.name == "Acme Ltd"
-    assert Apiary.Access.instance_admin?(Apiary.Accounts.Scope.for_user(user))
+      assert html =~
+               "This Qory Apiary is not set up yet: use the set-up link from its install."
+    end
   end
 end
 
