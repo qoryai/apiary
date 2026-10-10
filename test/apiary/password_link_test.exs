@@ -62,8 +62,9 @@ defmodule Apiary.PasswordLinkTest do
           where: t.user_id == ^user.id and t.context in ["password", "password:release"]
       )
 
+  # In the order written: two entries can share a time, and the ids are monotonic.
   defp entries(action \\ "account.password_link"),
-    do: Repo.all(from e in Entry, where: e.action == ^action, order_by: [asc: e.inserted_at])
+    do: Repo.all(from e in Entry, where: e.action == ^action, order_by: [asc: e.id])
 
   defp backdate(user, minutes) do
     at = DateTime.add(DateTime.utc_now(:second), -minutes * 60, :second)
