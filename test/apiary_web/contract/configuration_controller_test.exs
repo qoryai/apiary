@@ -74,6 +74,8 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert url == ApiaryWeb.Endpoint.url() <> Configuration.run_path()
   end
 
+  # Only the security feature lets a workspace have a policy.
+  @tag needs: :security
   test "a workspace's policy changes neither the document nor its digest",
        %{scope: scope, key: key, secret: secret} do
     before = signed_get(build_conn(), key.key_id, secret)
