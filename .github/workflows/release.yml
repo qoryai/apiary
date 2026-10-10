@@ -12,8 +12,9 @@ permissions:
 # apiary.yaml attached: env.example a copy of .env.example naming X.Y.Z in APIARY_VERSION,
 # apiary.yaml a copy of the AWS template, deploy/aws/apiary.yaml, naming X.Y.Z as Apiary
 # Community's version, which scripts/aws-template-release.py writes in. The image's build is
-# ci.yml's: the same labels, build argument and cache. Nothing else publishes an image, or
-# the template.
+# ci.yml's: the same labels, build argument and cache. Nothing else publishes this image, or
+# the template; prerelease.yml, run by hand, publishes pre-release images to another
+# package, ghcr.io/qoryai/apiary-prerelease.
 #
 # env.example has no leading period: GitHub renames asset names with a leading period.
 jobs:

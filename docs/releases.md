@@ -21,3 +21,12 @@ tag from publishing without one. Check both before tagging:
 scripts/changelog-section.sh X.Y.Z
 grep 'version: "X.Y.Z"' mix.exs
 ```
+
+Before a release, `.github/workflows/prerelease.yml` publishes pre-release images. It runs
+only by hand, from the Actions tab, for the branch it is run on or the ref it is given,
+never on a push or a schedule. It builds the image as `release.yml` does and pushes it to
+`ghcr.io/qoryai/apiary-prerelease` alone, as `sha-` and the commit's first seven characters,
+and as `next` when the ref is `next`. That package stays private: GHCR sets visibility per
+package, so pre-release tags never sit beside a release's. Its old `sha-` tags are deleted
+by hand. A test stack names one under Test image, in the AWS template's For testing only
+group, with a download key whose account can read the package.
