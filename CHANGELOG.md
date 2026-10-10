@@ -387,23 +387,32 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   installed from the AWS console's form and upgraded with its Update, with no command. A
   release attaches it as `apiary.yaml` with the release's version written in
   (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
-  template, `VersionOverride` left empty. The form asks for the edition, Apiary Community
-  or Apiary Pro; Apiary Pro's download key, which the stack keeps as a secret of its own,
-  deleted with the stack, for the image's pull alone; and the domain, with a Route 53
-  hosted zone, or without one, the stack then making the certificate and waiting for its
-  validation record. Rules refuse Apiary Pro without its download key, on ARM64, or with
-  no version to install. Under Recovery, `AcceptSigningKey` is passed as
-  `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and `DatabaseDeletionProtection` turns the
-  database's deletion protection off before a delete. The stack sets its own stack policy
-  at creation, refusing any update that would replace or delete the database or a key's
-  secret; the four secrets are kept when the stack is deleted, and the database leaves a
-  final snapshot. The outputs are the address, the load balancer's DNS name, the edition
-  and the version the stack runs, the key secrets' names, and links into the console: the
-  logs, the set-up link's line in them, the service, the key secrets and the database
-  snapshots. CI lints the template with cfn-lint, and two copies a release would write,
-  one with Apiary Community first and one with Apiary Pro first, and checks the stack
-  policy, that no output is a command, which secrets the stack keeps, and the mappings'
-  keys.
+  template, `VersionOverride` left empty. The form asks for the edition, Qory Apiary
+  Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
+  secret of its own, deleted with the stack, for the image's pull alone; and the domain,
+  with a Route 53 hosted zone, or without one, the stack then making the certificate and
+  waiting for its validation record. Rules refuse Qory Apiary Pro without its download key,
+  on ARM64, or with no version to install, and a test image without the download key.
+  Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
+  `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
+  stack's own turns it on once the service is first healthy, so a create that fails
+  before then rolls back whole, and an Update with No turns it off before a delete. The
+  stack sets its own stack policy at creation, refusing any update that would replace or
+  delete the database or a key's secret; the four secrets are kept when the stack is
+  deleted, each named after the stack and the whole UUID of its stack ID, so they do not
+  block a new stack of the same name, whose stack ID is its own, and the database leaves
+  a final snapshot. The log groups, the task's and those of the stack's two functions,
+  are kept too, when the stack is deleted and when a create rolls back, their events for
+  30 days, under names made from the stack ID in the same way. The outputs are the
+  address, the load balancer's DNS name, the edition and the version the stack runs, the
+  key secrets' names, and links into the console: the logs, the set-up link's line in
+  them, the service, the key secrets and the database snapshots. CI lints the template
+  with cfn-lint, and two copies a release would write, one with Qory Apiary Community
+  first and one with Qory Apiary Pro first, and checks the stack policy, that no output is
+  a command, which secrets and log groups the stack keeps and that their names use the
+  stack ID's UUID, the mappings' keys, that every value compared with the edition is one
+  the form allows, and that the template and both copies are ASCII alone, as the AWS
+  console shows any other character as "?".
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps

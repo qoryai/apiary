@@ -4,6 +4,8 @@
     python scripts/aws-template-check.py outputs
     python scripts/aws-template-check.py kept
     python scripts/aws-template-check.py mappings
+    python scripts/aws-template-check.py editions [FILE ...]
+    python scripts/aws-template-check.py ascii [FILE ...]
     python scripts/aws-template-check.py secrets previous-apiary.yaml
 
 policy: every resource stack-policy.json names exists in the template; the database and the
@@ -18,13 +20,34 @@ outputs: no output's value is a command (none starts with "aws "), in any branch
 Fn::If: the person installs from the console alone.
 
 kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replacement
-(Retain), while the download key's secret, RegistryCredentials, is kept by neither, named in
-no stack policy and not among the KeysSecrets output's: it is deleted with the stack.
+(Retain), each under a name that uses the whole UUID of the stack's ID, not the stack's name
+alone, so the secrets a deleted stack kept do not block a new stack of the same name, whose
+stack ID is its own; while the download key's
+secret, RegistryCredentials, is kept by neither, named in no stack policy and not among the
+KeysSecrets output's: it is deleted with the stack. And every log group is kept, on delete
+and on replacement (Retain), so a create that rolls back leaves its log to read, keeps a
+retention, so its events still go, and uses the stack ID's UUID in its name too. A name
+uses it when it is a Fn::Sub whose text names a variable that is exactly
+!Select [2, !Split ["/", !Ref AWS::StackId]]: a variable given but not used does not count.
 
 mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
-scripts/aws-template-release.py writes and Apiary Pro's release relies on, and the Images
+scripts/aws-template-release.py writes and Qory Apiary Pro's release relies on, and the Images
 mapping exactly Community and Pro; and every Fn::FindInMap names a value the mappings hold.
 cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the template's are.
+
+editions: in the template, or in each FILE given (such as a release's copy of the
+template): every Fn::Equals that has !Ref Edition as one of its two arguments, anywhere in
+the template, however deep in a Fn::And, Fn::Or or Fn::Not, has as its other argument a
+plain text that is one of Edition's AllowedValues; each AllowedValue is so compared at
+least once; and under Rules and Conditions, !Ref Edition is used nowhere else than as one
+of the two arguments of a Fn::Equals (not in a Fn::Contains, for one), each other use named
+by where it is. A comparison with a value Edition no longer allows is never true, so the
+Rule or Condition it decides stops applying, and cfn-lint does not say so.
+
+ascii: the template and stack-policy.json, or each FILE given (such as a release's copy of
+the template), hold ASCII characters alone, in every description, label, rule text,
+output, comment and the functions' code: the AWS console shows another character as "?".
+Each other character is named with its line and column.
 
 secrets: the four secrets are the same in the template as in the one given (the previous
 release's): their type, condition, deletion and replacement policies and properties. A
@@ -38,6 +61,7 @@ import itertools
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 from cfnlint.decode import decode
@@ -183,6 +207,23 @@ def check_outputs():
     return failures
 
 
+STACK_UUID = {"Fn::Select": [2, {"Fn::Split": ["/", {"Ref": "AWS::StackId"}]}]}
+
+
+def uses_stack_uuid(name):
+    """Whether a resource's name is a Fn::Sub whose text uses a variable that is the whole
+    UUID of the stack's ID. A new stack of the same name has a stack ID of its own."""
+    if not isinstance(name, dict) or list(name) != ["Fn::Sub"]:
+        return False
+    argument = name["Fn::Sub"]
+    if not (isinstance(argument, list) and len(argument) == 2):
+        return False
+    text, variables = argument
+    if not (isinstance(text, str) and isinstance(variables, dict)):
+        return False
+    return any(value == STACK_UUID and "${" + variable + "}" in text for variable, value in variables.items())
+
+
 def check_kept():
     template = load(TEMPLATE)
     resources = template.get("Resources", {})
@@ -196,6 +237,11 @@ def check_kept():
         for attribute, kept in (("DeletionPolicy", "RetainExceptOnCreate"), ("UpdateReplacePolicy", "Retain")):
             if resource.get(attribute) != kept:
                 failures.append(f"{logical_id} has {attribute} {resource.get(attribute)}, not {kept}")
+        if not uses_stack_uuid(resource.get("Properties", {}).get("Name")):
+            failures.append(
+                f"{logical_id}'s name does not use the stack ID's UUID: "
+                "a deleted stack's kept secret could block a new stack of the same name"
+            )
 
     download_key = resources.get(DOWNLOAD_KEY)
     if download_key is None:
@@ -207,6 +253,21 @@ def check_kept():
                     f"{DOWNLOAD_KEY} has {attribute} {download_key[attribute]}: "
                     "the download key's secret is not kept"
                 )
+
+    for logical_id, resource in resources.items():
+        if resource.get("Type") != "AWS::Logs::LogGroup":
+            continue
+        for attribute in ("DeletionPolicy", "UpdateReplacePolicy"):
+            if resource.get(attribute) != "Retain":
+                failures.append(f"{logical_id} has {attribute} {resource.get(attribute)}, not Retain")
+        properties = resource.get("Properties", {})
+        if "RetentionInDays" not in properties:
+            failures.append(f"{logical_id} has no RetentionInDays: a kept log group would keep its events forever")
+        if not uses_stack_uuid(properties.get("LogGroupName")):
+            failures.append(
+                f"{logical_id}'s name does not use the stack ID's UUID: "
+                "a deleted stack's kept log group could block a new stack of the same name"
+            )
 
     body, _where = stack_policy_body(template)
     policies = (("stack-policy.json", json.loads(POLICY.read_text())), ("the stack's own policy", body or {}))
@@ -256,6 +317,84 @@ def check_mappings():
     return failures
 
 
+EDITION = {"Ref": "Edition"}
+
+
+def equals(value):
+    """The arguments of every Fn::Equals in a value."""
+    if isinstance(value, dict):
+        for function, argument in value.items():
+            if function == "Fn::Equals":
+                yield argument
+            yield from equals(argument)
+    elif isinstance(value, list):
+        for item in value:
+            yield from equals(item)
+
+
+def stray_editions(value, where):
+    """Where a value uses !Ref Edition other than as one of the two arguments of a
+    Fn::Equals."""
+    if value == EDITION:
+        yield where
+    elif isinstance(value, dict):
+        for function, argument in value.items():
+            if function == "Fn::Equals" and isinstance(argument, list) and len(argument) == 2:
+                for index, item in enumerate(argument):
+                    if item != EDITION:
+                        yield from stray_editions(item, f"{where}.Fn::Equals[{index}]")
+            else:
+                yield from stray_editions(argument, f"{where}.{function}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from stray_editions(item, f"{where}[{index}]")
+
+
+def check_editions(paths):
+    failures = []
+    for path in paths:
+        template = load(path)
+        allowed = template.get("Parameters", {}).get("Edition", {}).get("AllowedValues", [])
+        if not allowed:
+            failures.append(f"{path}: Edition has no AllowedValues")
+        compared = set()
+        for argument in equals(template):
+            if not (isinstance(argument, list) and EDITION in argument):
+                continue
+            others = [other for other in argument if other != EDITION]
+            if len(others) != 1 or not isinstance(others[0], str):
+                failures.append(f"{path}: Fn::Equals {json.dumps(argument)} compares Edition with no one value")
+                continue
+            compared.add(others[0])
+            if others[0] not in allowed:
+                failures.append(
+                    f"{path}: Fn::Equals compares Edition with {others[0]!r}, "
+                    f"not one of its AllowedValues {allowed}: it is never true"
+                )
+        for value in allowed:
+            if value not in compared:
+                failures.append(f"{path}: no Fn::Equals compares Edition with its AllowedValue {value!r}")
+        for section in ("Rules", "Conditions"):
+            for where in stray_editions(template.get(section, {}), section):
+                failures.append(
+                    f"{path}: {where} uses !Ref Edition other than as an argument of a Fn::Equals, "
+                    "which this check cannot hold to Edition's AllowedValues"
+                )
+    return failures
+
+
+def check_ascii(paths):
+    failures = []
+    for path in paths:
+        for number, line in enumerate(Path(path).read_bytes().split(b"\n"), start=1):
+            text = line.decode("utf-8", errors="replace")
+            for column, character in enumerate(text, start=1):
+                if not character.isascii():
+                    name = unicodedata.name(character, "an unnamed character")
+                    failures.append(f"{path}:{number}:{column}: U+{ord(character):04X} {name} is not ASCII")
+    return failures
+
+
 def check_secrets(previous_path):
     current = load(TEMPLATE).get("Resources", {})
     previous = load(previous_path).get("Resources", {})
@@ -281,6 +420,10 @@ def main(argv):
         failures = check_kept()
     elif argv[1:] == ["mappings"]:
         failures = check_mappings()
+    elif argv[1:2] == ["editions"]:
+        failures = check_editions(argv[2:] or [TEMPLATE])
+    elif argv[1:2] == ["ascii"]:
+        failures = check_ascii(argv[2:] or [TEMPLATE, POLICY])
     elif len(argv) == 3 and argv[1] == "secrets":
         failures = check_secrets(argv[2])
     else:

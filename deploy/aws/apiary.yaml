@@ -35,7 +35,7 @@ Metadata:
         Parameters: [TestImage]
     ParameterLabels:
       Edition: { default: Edition }
-      ProDownloadKey: { default: Apiary Pro download key }
+      ProDownloadKey: { default: Qory Apiary Pro download key }
       DomainName: { default: Domain name }
       HostedZoneId: { default: Route 53 hosted zone (recommended) }
       CertificateArn: { default: Your own ACM certificate (optional) }
@@ -51,9 +51,9 @@ Metadata:
 Parameters:
   Edition:
     Type: String
-    Default: Apiary Community
-    AllowedValues: [Apiary Community, Apiary Pro]
-    Description: "Apiary Community is free and open source. Apiary Pro needs the download key we sent you. Apiary Community → Apiary Pro is possible later; the way back is not."
+    Default: Qory Apiary Community
+    AllowedValues: [Qory Apiary Community, Qory Apiary Pro]
+    Description: "Qory Apiary Community is free and open source. Qory Apiary Pro needs the download key we sent you. Moving from Qory Apiary Community to Qory Apiary Pro is possible later; the way back is not."
   # <account>:<token>, split on its one colon into the registry's user name and password.
   ProDownloadKey:
     Type: String
@@ -61,7 +61,7 @@ Parameters:
     NoEcho: true
     AllowedPattern: '^$|^[A-Za-z0-9-]+:[^\s"\\:]+$'
     ConstraintDescription: "The download key as we sent it: an account name, a colon and a token."
-    Description: "Only for Apiary Pro: the download key we sent you. Leave empty for Apiary Community. A revoked or expired key stops the running instance at its next task replacement. Also needed to pull a test image."
+    Description: "Only for Qory Apiary Pro: the download key we sent you. Leave empty for Qory Apiary Community. A revoked or expired key stops the running instance at its next task replacement. Also needed to pull a test image."
   DomainName:
     Type: String
     MinLength: 1
@@ -88,7 +88,7 @@ Parameters:
   KeysFromStack:
     Type: String
     Default: ""
-    Description: The name of a deleted stack whose kept key secrets this stack uses instead of generating new ones. Keep it as it was on every later update.
+    Description: "The name a deleted stack's kept key secrets start with, the part before /secret-key-base, such as qory-0a1b2c3d-4e5f-11f0-8a9b-0c1d2e3f4a5b: this stack uses those secrets instead of generating new ones. Keep it as it was on every later update."
   DatabaseSnapshot:
     Type: String
     Default: ""
@@ -101,10 +101,10 @@ Parameters:
     Type: String
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
-    Description: "To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+    Description: "Yes turns it on once Qory first starts healthy, so a failed install still rolls back. To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
   # A pre-release image, such as ghcr.io/qoryai/apiary-prerelease:sha-<7>, which
   # .github/workflows/prerelease.yml publishes. It replaces the Edition's image and version,
-  # and is pulled with the download key when one is given, whatever the Edition.
+  # and is pulled with the download key, whatever the Edition (TestImageNeedsDownloadKey).
   TestImage:
     Type: String
     Default: ""
@@ -132,16 +132,22 @@ Rules:
       - Assert: !Not [!Equals [!Ref KeysFromStack, ""]]
         AssertDescription: "A database snapshot needs the keys of the stack it came from: set Keys of a deleted stack."
   ProNeedsDownloadKey:
-    RuleCondition: !Equals [!Ref Edition, Apiary Pro]
+    RuleCondition: !Equals [!Ref Edition, Qory Apiary Pro]
     Assertions:
       - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
-        AssertDescription: Apiary Pro needs its download key.
-  # Apiary Pro's image is built for linux/amd64 alone.
+        AssertDescription: Qory Apiary Pro needs its download key.
+  # Qory Apiary Pro's image is built for linux/amd64 alone.
   ProOnX86:
-    RuleCondition: !Equals [!Ref Edition, Apiary Pro]
+    RuleCondition: !Equals [!Ref Edition, Qory Apiary Pro]
     Assertions:
       - Assert: !Equals [!Ref CpuArchitecture, X86_64]
-        AssertDescription: Apiary Pro runs on X86_64 only.
+        AssertDescription: Qory Apiary Pro runs on X86_64 only.
+  # A test image is pulled from a private package, with the download key.
+  TestImageNeedsDownloadKey:
+    RuleCondition: !Not [!Equals [!Ref TestImage, ""]]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
+        AssertDescription: "A test image needs the download key: set Qory Apiary Pro download key."
   # With Version empty, the edition's version is the Release mapping's. A Rule cannot read a
   # mapping, so the release writes the same version in here too
   # (scripts/aws-template-release.py), as the value each Assert compares Version with: Version
@@ -150,26 +156,26 @@ Rules:
   # neither Rule applies; the download key and the CPU architecture are still checked above.
   CommunityVersionNamed:
     RuleCondition: !And
-      - !Equals [!Ref Edition, Apiary Community]
+      - !Equals [!Ref Edition, Qory Apiary Community]
       - !Equals [!Ref VersionOverride, ""]
       - !Equals [!Ref TestImage, ""]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
-        AssertDescription: "This copy of the template names no release of Apiary Community: type a version under Version."
+        AssertDescription: "This copy of the template names no release of Qory Apiary Community: type a version under Version."
   ProVersionNamed:
     RuleCondition: !And
-      - !Equals [!Ref Edition, Apiary Pro]
+      - !Equals [!Ref Edition, Qory Apiary Pro]
       - !Equals [!Ref VersionOverride, ""]
       - !Equals [!Ref TestImage, ""]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
-        AssertDescription: Apiary Pro is installed from Apiary Pro's release.
+        AssertDescription: Qory Apiary Pro is installed from Qory Apiary Pro's release.
 
 Conditions:
-  IsPro: !Equals [!Ref Edition, Apiary Pro]
+  IsPro: !Equals [!Ref Edition, Qory Apiary Pro]
   HasVersionOverride: !Not [!Equals [!Ref VersionOverride, ""]]
   HasTestImage: !Not [!Equals [!Ref TestImage, ""]]
-  # A key given with Apiary Community is used for the pull too.
+  # A key given with Qory Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]
@@ -374,6 +380,11 @@ Resources:
   # from one release to the next (CI compares them with the previous release's template):
   # a replaced secret would be generated anew.
   #
+  # Each is named after the stack and the whole UUID of its stack ID, such as
+  # qory-0a1b2c3d-4e5f-11f0-8a9b-0c1d2e3f4a5b/secret-key-base. A new stack of the same name
+  # has a stack ID of its own, so the secrets a deleted stack kept do not block it.
+  # KeysFromStack names them by that prefix.
+  #
   # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory reads: every other
   # character excluded, and no character type required, so each character is drawn from
   # the same 16.
@@ -383,7 +394,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/secret-key-base
+      Name: !Sub
+        - ${AWS::StackName}-${StackUuid}/secret-key-base
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 86
         ExcludePunctuation: true
@@ -395,7 +408,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/encryption-secret
+      Name: !Sub
+        - ${AWS::StackName}-${StackUuid}/encryption-secret
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 64
         ExcludeCharacters: ghijklmnopqrstuvwxyz
@@ -410,7 +425,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/signing-secret
+      Name: !Sub
+        - ${AWS::StackName}-${StackUuid}/signing-secret
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 64
         ExcludeCharacters: ghijklmnopqrstuvwxyz
@@ -425,7 +442,9 @@ Resources:
     DeletionPolicy: RetainExceptOnCreate
     UpdateReplacePolicy: Retain
     Properties:
-      Name: !Sub ${AWS::StackName}/database-password
+      Name: !Sub
+        - ${AWS::StackName}-${StackUuid}/database-password
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       GenerateSecretString:
         PasswordLength: 40
         ExcludePunctuation: true
@@ -456,8 +475,10 @@ Resources:
   # unchanged: CloudFormation replaces a restored instance whose DBSnapshotIdentifier
   # changes or goes. A restored instance keeps the snapshot's user, database, password and
   # encryption. The password is read once, by each task at its start: no rotation.
-  # Deletion protection follows DatabaseDeletionProtection, changed in place. With it on,
-  # deleting the stack fails at the database; with it off, the delete keeps a final snapshot.
+  # It is made without deletion protection, and names none, so CloudFormation never sets
+  # it: DatabaseProtection, below, follows DatabaseDeletionProtection once the service is
+  # healthy. With it on, deleting the stack fails at the database; with it off, the delete
+  # keeps a final snapshot.
   Database:
     Type: AWS::RDS::DBInstance
     DeletionPolicy: Snapshot
@@ -473,7 +494,6 @@ Resources:
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
       BackupRetentionPeriod: 7
-      DeletionProtection: !If [ProtectDatabase, true, false]
       DBSnapshotIdentifier: !If [RestoreDatabase, !Ref DatabaseSnapshot, !Ref AWS::NoValue]
       StorageEncrypted: !If [RestoreDatabase, !Ref AWS::NoValue, true]
       DBName: !If [RestoreDatabase, !Ref AWS::NoValue, apiary]
@@ -486,10 +506,18 @@ Resources:
           - !Sub "{{resolve:secretsmanager:${DatabasePassword}}}"
           - !Sub "{{resolve:secretsmanager:${KeysFromStack}/database-password}}"
 
+  # The task's log. Kept when the stack is deleted, and when a create rolls back, so the
+  # log of a task that never became healthy can still be read; its events go after 30 days.
+  # Named, like the key secrets, after the stack and the whole UUID of its stack ID, so a
+  # kept group does not block a new stack of the same name.
   LogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Sub /qory/${AWS::StackName}
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackUuid}
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       RetentionInDays: 30
 
   Cluster:
@@ -670,12 +698,17 @@ Resources:
   # in a later release reaches new stacks only. It answers CloudFormation even when its call
   # fails, so the stack never waits on it, and a failed call fails the create; a request
   # that names another stack fails and changes nothing. Its role may set the policy of this
-  # stack and nothing else, and write its own log group.
+  # stack and nothing else, and write its own log group, which is kept as the task's is:
+  # a call that fails a create leaves its trace there.
   # The runtime is pinned, and kept current with each release.
   StackPolicyLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      LogGroupName: !Sub /qory/${AWS::StackName}/stack-policy
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackUuid}/stack-policy
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
       RetentionInDays: 30
 
   StackPolicyRole:
@@ -790,6 +823,167 @@ Resources:
       ServiceToken: !GetAtt StackPolicyFunction.Arn
       ServiceTimeout: "300"
 
+  # The database's deletion protection, set by a function of the stack's own once the
+  # service is healthy: DatabaseProtection is made after the service, whose create waits
+  # until its task answers /health. A create that fails before then leaves the database
+  # unprotected, so the rollback deletes it with the rest. On Create, and on each Update,
+  # DatabaseDeletionProtection changed, the database replaced or an update rolled back, the
+  # function sets the protection to the value the request gives it, in place, on the
+  # database its environment names; a request that names another database fails. On Delete
+  # it changes nothing, so deleting the stack with the protection on still fails at the
+  # database; only while the stack's create rolls back does it turn the protection off, so
+  # that rollback can delete the database too. It answers CloudFormation even when its call
+  # fails, and a request that names another stack fails and changes nothing. Its role may
+  # read and modify this database alone, read this stack, and write its own log group, which
+  # is kept as the task's is. The runtime is pinned, and kept current with each release.
+  DatabaseProtectionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub
+        - /qory/${AWS::StackName}-${StackUuid}/database-protection
+        - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      RetentionInDays: 30
+
+  DatabaseProtectionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: database-deletion-protection
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:ModifyDBInstance
+                Resource: !Sub arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${Database}
+              - Effect: Allow
+                Action: cloudformation:DescribeStacks
+                Resource: !Ref AWS::StackId
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt DatabaseProtectionLogGroup.Arn
+
+  DatabaseProtectionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Sets the database's deletion protection once the service is healthy.
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt DatabaseProtectionRole.Arn
+      Timeout: 600
+      LoggingConfig:
+        LogGroup: !Ref DatabaseProtectionLogGroup
+      # The stack and the database are the function's own, never the request's. The request
+      # gives whether to protect, and names the database only so that a replaced database
+      # sends an Update: the function acts only when that name is its own.
+      Environment:
+        Variables:
+          STACK_ID: !Ref AWS::StackId
+          DATABASE: !Ref Database
+      # A database busy with a backup or another change refuses the change; it is asked
+      # again every 20 seconds while at least 120 of the 600 are left. A call takes at most
+      # about 42 seconds (two tries of 5 + 15, a back-off of at most 2 between them), so
+      # the last round, the answer's 10 included, ends inside the timeout.
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import time
+          import urllib.request
+
+          import boto3
+          from botocore.config import Config
+
+          CONFIG = Config(
+              connect_timeout=5,
+              read_timeout=15,
+              retries={"total_max_attempts": 2, "mode": "standard"},
+          )
+
+
+          def protect(rds, database, wanted, context):
+              while True:
+                  instance = rds.describe_db_instances(DBInstanceIdentifier=database)["DBInstances"][0]
+                  if instance["DeletionProtection"] == wanted:
+                      return
+                  try:
+                      rds.modify_db_instance(DBInstanceIdentifier=database, DeletionProtection=wanted)
+                      return
+                  except rds.exceptions.InvalidDBInstanceStateFault:
+                      if context.get_remaining_time_in_millis() < 120_000:
+                          raise
+                      time.sleep(20)
+
+
+          def handler(event, context):
+              status, reason = "SUCCESS", ""
+              try:
+                  if event["StackId"] != os.environ["STACK_ID"]:
+                      raise ValueError(f"the request names another stack, {event['StackId']}")
+                  rds = boto3.client("rds", config=CONFIG)
+                  database = os.environ["DATABASE"]
+                  if event["RequestType"] in ("Create", "Update"):
+                      named = event["ResourceProperties"]["Database"]
+                      if named != database:
+                          raise ValueError(f"the request names the database {named}, not {database}")
+                      wanted = event["ResourceProperties"]["DeletionProtection"] == "true"
+                      protect(rds, database, wanted, context)
+                  else:
+                      stack = boto3.client("cloudformation", config=CONFIG).describe_stacks(
+                          StackName=os.environ["STACK_ID"]
+                      )["Stacks"][0]
+                      # A create rolling back: the database goes too, so nothing may hold it.
+                      if stack["StackStatus"] == "ROLLBACK_IN_PROGRESS":
+                          try:
+                              protect(rds, database, False, context)
+                          except rds.exceptions.DBInstanceNotFoundFault:
+                              pass
+              except Exception as error:
+                  status, reason = "FAILED", f"The database's deletion protection was not set: {error}"[:1000]
+                  print(reason)
+
+              # Always answered, so the stack never waits on a function that failed.
+              body = json.dumps(
+                  {
+                      "Status": status,
+                      "Reason": reason or "Done.",
+                      "PhysicalResourceId": event.get("PhysicalResourceId") or "database-protection",
+                      "StackId": event["StackId"],
+                      "RequestId": event["RequestId"],
+                      "LogicalResourceId": event["LogicalResourceId"],
+                  }
+              ).encode()
+              request = urllib.request.Request(
+                  event["ResponseURL"], data=body, method="PUT", headers={"Content-Type": ""}
+              )
+              urllib.request.urlopen(request, timeout=10)
+
+  # Made after the service, so once its task is healthy. Its setting is
+  # DatabaseDeletionProtection's. It names the database too, so that a replaced database
+  # sends it an Update, after the function's role and environment have moved to the new
+  # one (each refers to Database, and DatabaseProtection to the function), and the new
+  # database is protected as the old one was. CloudFormation waits at most ServiceTimeout
+  # seconds for the function's answer.
+  DatabaseProtection:
+    Type: Custom::DatabaseProtection
+    DependsOn: Service
+    Properties:
+      ServiceToken: !GetAtt DatabaseProtectionFunction.Arn
+      ServiceTimeout: "660"
+      Database: !Ref Database
+      DeletionProtection: !If [ProtectDatabase, "true", "false"]
+
 # Links into the AWS console, and the values a person reads; no output is a command (CI
 # checks it: scripts/aws-template-check.py outputs).
 Outputs:
@@ -817,7 +1011,9 @@ Outputs:
           - !FindInMap [Release, Versions, CommunityVersion]
   Logs:
     Description: The task's log group in CloudWatch, kept 30 days.
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}
+    Value: !Sub
+      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackUuid}
+      - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
   # Until Qory is set up, each start of the task logs "Set up Qory Apiary at
   # https://<domain>/setup/<code>." in the log group Logs links to. The link opens that log
   # group's events filtered to "/setup/", the console's filterPattern escaped as the Logs
@@ -825,7 +1021,9 @@ Outputs:
   # and without it the line is found by searching the group for /setup/.
   SetUp:
     Description: The set-up link is in the log; open it once.
-    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
+    Value: !Sub
+      - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackUuid}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
+      - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
   Service:
     Description: The service's health and events in ECS.
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/ecs/v2/clusters/${Cluster}/services/${Service.Name}/health?region=${AWS::Region}
@@ -839,7 +1037,12 @@ Outputs:
     Description: The keys needed to restore this instance's data, in AWS Secrets Manager.
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/secretsmanager/listsecrets?region=${AWS::Region}&search=all%3D${Prefix}%2F
-      - Prefix: !If [CreateSecrets, !Ref AWS::StackName, !Ref KeysFromStack]
+      - Prefix: !If
+          - CreateSecrets
+          - !Sub
+            - ${AWS::StackName}-${StackUuid}
+            - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
+          - !Ref KeysFromStack
   DatabaseSnapshots:
     Description: "The RDS console's database snapshots in this region. A deleted stack's final database snapshot is listed there."
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/rds/home?region=${AWS::Region}#snapshots-list:"
