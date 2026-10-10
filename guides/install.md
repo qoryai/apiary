@@ -30,10 +30,11 @@ page is the reference for an installation that stays.
   ([Postgres over TLS](#postgres-over-tls)); the role needs the right to create and alter
   tables in its database, since the release migrates it.
 - **A reverse proxy** that terminates TLS, in front of the port.
-- **An SMTP relay.** People sign in with a link sent by email and are invited by email.
-  Without `SMTP_RELAY` the release starts all the same, sends no email, and says so in
-  its log; people then sign up with a password ([Mail](#mail)), and an invitation is a link
-  that whoever invites copies and sends themselves.
+- **An SMTP relay, optional.** Without one the release starts all the same, sends no
+  email, and says so in its log: people sign up and log in with a password, an invitation
+  is a link that whoever invites copies and sends themselves, and a forgotten password is a
+  link an instance admin makes ([Mail](#mail)). With `SMTP_RELAY` set, people log in with
+  a link sent by email, or with a password, and are invited by email.
 
 With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
 three services, and `docker compose logs apiary` shows the boot.
@@ -118,10 +119,18 @@ everything that happened for it without the log holding a customer's or a person
 the job, its attempt and the kind of error, never its arguments or the error's message.
 
 A request line's duration is `metadata.duration_us`, in microseconds. No header and no
-body is ever logged, and neither is anything a gateway signed or sent. Four routes carry a
-secret in their path, an invitation, its continuation, a log-in link and an email change;
-their secret segment is logged as `:token`, so a reader of the log cannot sign in or join
-an organisation with what it finds there.
+body is ever logged, and neither is anything a gateway signed or sent. Five routes carry a
+secret in their path, an invitation, its continuation, a log-in link, an email change and
+a password link; their secret segment is logged as `:token`, so a reader of the log cannot
+sign in, set a password or join an organisation with what it finds there. The set-up
+link's code is logged as `:code` in a request's line; the log holds the code only in the
+line each start writes until the instance is set up
+([Set up a new instance](#set-up-a-new-instance)).
+<!-- feature: instance_mail -->
+
+The test link of **Instance settings › Mail** is logged the same way, its token as
+`:token`.
+<!-- /feature -->
 
 ## Environment variables
 
@@ -396,6 +405,12 @@ that admin, and mail from those settings is on once they follow it, signed in as
 themselves. With `SMTP_RELAY` set, these variables win whole, and that page shows them
 read only.
 
+**Logging in.** Without mail, the log-in page asks for the email address and the
+password, and says to ask an admin of the instance for a password link when the password
+is forgotten. With mail, it emails a log-in link by default, which works once, for 15
+minutes; **Use a password instead** asks for the password of an account that has one, and
+there **Email me a link** sends a log-in link to the address typed.
+
 Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
 person in as soon as the account is made. An invited person's address is the invitation's
 and cannot be changed there. Such an account is unconfirmed: the first log-in link it
@@ -647,15 +662,17 @@ link every time:
 Set up Qory Apiary at https://qory.example.com/setup/<code>.
 ```
 
-With `compose.yaml`, `docker compose logs apiary` shows it. Open the link: its page asks
-for your email address, a password and its confirmation, and your organisation's name,
-and **Set up** creates the instance's organisation, its workspace Main and your account
-as its owner, an instance admin, and signs you in. The code is 32 random bytes, kept in
-the database until it is used; it does not expire before, and it works once: after it,
-any set-up link says "This Qory Apiary is already set up." and leads to the log-in page.
-Anyone who can read the log can use the link before you do, so open it as soon as the
-instance is up. On an instance that is set up, a restored one included, a start writes
-no such line. The address in the link is the instance's own (`PUBLIC_URL`).
+With `compose.yaml`, `docker compose logs apiary | grep 'Set up Qory Apiary'` finds it:
+the log is one JSON object per line ([Logs](#logs)), and the sentence above is the line's
+`message`. Open the link: its page asks for your email address, a password and its
+confirmation, and your organisation's name, and **Set up** creates the instance's
+organisation, its workspace Main and your account as its owner, an instance admin, and
+signs you in. The code is 32 random bytes, kept in the database until it is used; it does
+not expire before, and it works once: after it, any set-up link says "This Qory Apiary is
+already set up." and leads to the log-in page. Anyone who can read the log can use the
+link before you do, so open it as soon as the instance is up. On an instance that is set
+up, a restored one included, a start writes no such line. The address in the link is the
+instance's own (`PUBLIC_URL`).
 
 ### The instance admins
 

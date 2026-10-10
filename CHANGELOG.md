@@ -28,9 +28,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   already set up, and a wrong one before is a page that does not exist. On an instance
   that is set up, a restored one included, a start logs no such line.
   `grant_instance_admin/2` on a new instance uses the code too.
-- Mail is no longer needed to start. With `SMTP_RELAY` set, Qory Apiary sends its email
-  through that relay; without it, it starts all the same, sends no email, and says so in one
-  line of its log at each start. `Apiary.Mail` says whether mail is set and where from.
+- Mail is optional. With `SMTP_RELAY` set, Qory Apiary sends its email through that relay;
+  without it, it starts all the same, sends no email, and says so in one line of its log at
+  each start: people sign up and log in with a password, and invitations and password
+  links are copied by hand. `.env.example` leaves the mail lines empty. `Apiary.Mail` says
+  whether mail is set and where from.
 - Without mail, an invitation is a link to copy. The invite page shows the link once, for
   the person who made it to send themselves, with when it stops working; their account
   need not be confirmed, since no email goes out in their name. A pending invitation's
@@ -350,8 +352,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   (`ERL_CRASH_DUMP_BYTES=0`), so a boot that stops leaves no copy of the release's memory,
   secrets included, on the container's disk. Its base is Debian from
   `public.ecr.aws/docker/library`, Amazon's public copy of Docker's official images, from
-  which CI also pulls the Postgres, nginx and Docker images it runs; the jobs that still pull
-  from Docker Hub log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
+  which CI also pulls the Postgres, nginx and Docker images it runs, and the end to end
+  job's SMTP sink, Mailpit, comes from `ghcr.io`; the jobs that still pull from Docker Hub
+  log in to it when the repository's `DOCKER_HUB_TOKEN_SECRET` is set.
 - Pre-release images: `.github/workflows/prerelease.yml`, run by hand only, never on a
   push or a schedule, builds a branch, tag or commit as a release's image is built and
   publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as

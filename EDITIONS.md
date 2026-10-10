@@ -10,9 +10,12 @@ Apiary Community's code, with more added to it, in one image.
 
 Apache License 2.0, this repository, self-hosted. It is complete for one team:
 
-- **One organisation and one workspace.** The first person to sign up creates the
-  instance's organisation, with its workspace Main, and is its owner. Everyone after joins
-  it by invitation.
+- **One organisation and one workspace.** The person who sets a new instance up, with the
+  set-up link its log gives, creates the instance's organisation, with its workspace Main,
+  and is its owner. Everyone after joins it by invitation.
+- **Mail is optional.** Without it, people sign in with a password, and invitations and
+  password links are copied by hand; with an SMTP relay, Qory Apiary emails log-in links
+  and invitations.
 - **The record.** Every run of every machine of the workspace: the session as a timeline,
   the terminal as it was written, every connection with the decision and the rule behind
   it, and how the run ended.

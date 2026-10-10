@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# The end to end job of live reload, and of a deny that holds under observe. See
+# The end to end job of live reload, and of a deny that holds under observe, on an instance
+# without mail; then, on Linux, of the mailed way in, on an instance whose mail goes to the
+# job's SMTP sink. Each instance is set up with the set-up link its start logged. See
 # e2e/README.md for what it proves.
 #
 #   e2e/run.sh            one run
@@ -76,6 +78,9 @@ export DATABASE_URL="$database_url"
 export PORT="$E2E_PORT"
 export PUBLIC_URL="http://127.0.0.1:$E2E_PORT"
 export PHX_SERVER=true
+# No mail of this shell's: the first instance has none, and the mailed one is given the
+# sink's below.
+unset SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_FROM
 # Each secret is a fresh random value of its own, never derived from another. The signing
 # secret is the seed of the key the instance signs its answers with, the key the node pins
 # as apiary_public_key; the instance refuses at boot the Forager contract's fixture seeds,
@@ -98,9 +103,9 @@ trap cleanup EXIT
 docker image inspect "$wall_image" >/dev/null 2>&1 || docker pull --quiet "$wall_image"
 
 one_run() {
-  local n="$1" log="$E2E_WORK/run-$1.log"
+  local n="$1" log="$E2E_WORK/run-$1.log" mail_log="$E2E_WORK/run-$1-mail.log"
   say "run $n of $runs"
-  rm -f "$E2E_WORK/session-$n.log" "$log"
+  rm -f "$E2E_WORK/session-$n.log" "$log" "$mail_log"
   cleanup
 
   mkdir -p "$E2E_WORK/config/qory" "$E2E_WORK/tls"
@@ -130,6 +135,7 @@ YAML
 
   "${compose[@]}" up --detach --build --quiet-pull
   "${compose[@]}" exec -T node sh -c 'until docker info >/dev/null 2>&1; do sleep 0.5; done'
+  until "${compose[@]}" exec -T sink /mailpit readyz >/dev/null 2>&1; do sleep 0.5; done
   docker save "$wall_image" | "${compose[@]}" exec -T node docker load >/dev/null
   # The server contract lets the gateway speak plain http to a loopback address only, so
   # the node reaches the test instance as 127.0.0.1, the way a tunnel would bring it.
@@ -148,12 +154,32 @@ YAML
   export E2E_PREPARE_COMMAND="${compose[*]} exec -T -e E2E_PORT -e E2E_FORGE -e E2E_REPOSITORY node /e2e/prepare.sh"
   export E2E_SESSION_COMMAND="${compose[*]} exec -T -e E2E_UPSTREAM_URL=https://$E2E_UPSTREAM_HOST/ -e E2E_RETRY_SECONDS -e E2E_THEN_DENIED=1 node /e2e/session.sh"
 
+  # The instance's output, its log, goes to the file the scenario reads the set-up link
+  # from, as a person reads it from `docker compose logs apiary`.
   local status=0
-  "${mix[@]}" run e2e/scenario.exs 2>&1 | tee "$log" || status=$?
+  E2E_MAIL=none E2E_INSTANCE_LOG="$log" "${mix[@]}" run e2e/scenario.exs 2>&1 | tee "$log" || status=$?
 
   echo
   echo "-- the session's own output"
   sed 's/^/   /' "$E2E_SESSION_LOG" 2>/dev/null || true
+
+  # The mailed way in, on a fresh database: the instance's mail goes over SMTP to the
+  # sink, which publishes no port, so the instance reaches it at its address on the job's
+  # network. A Linux host routes to that address; a Mac's engine does not, and there this
+  # part is left out, and says so.
+  say "run $n of $runs: with mail, through the sink"
+  if [ "$(uname -s)" = Linux ]; then
+    local sink_address
+    sink_address="$(docker inspect --format '{{(index .NetworkSettings.Networks "apiary-e2e_outside").IPAddress}}' "$("${compose[@]}" ps -q sink)")"
+    "${mix[@]}" ecto.drop --force --force-drop --quiet
+    "${mix[@]}" ecto.create --quiet
+    SMTP_RELAY="$sink_address" SMTP_PORT=1025 SMTP_TLS=never \
+      E2E_MAIL=sink E2E_INSTANCE_LOG="$mail_log" \
+      E2E_SINK_COMMAND="${compose[*]} exec -T sink wget -qO- http://127.0.0.1:8025/api/v1/" \
+      "${mix[@]}" run e2e/scenario.exs 2>&1 | tee "$mail_log" || status=$?
+  else
+    echo "   left out: on $(uname -s) the host does not reach the sink's address on the job's network"
+  fi
   return "$status"
 }
 
