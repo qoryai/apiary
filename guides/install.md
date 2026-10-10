@@ -382,12 +382,21 @@ For example: https://qory.example
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `SMTP_RELAY` | none | The host of the SMTP relay. Empty counts as not set. Not set, the release sends no email, and says so in one line of its log at each start, at level `info`. |
+| `SMTP_RELAY` | none | The host of the SMTP relay. Empty counts as not set. Not set, and with no other mail settings, the release sends no email, and says so in one line of its log at each start, at level `info`. |
 | `SMTP_PORT` | `587` | The relay's port. An integer. `465` means implicit TLS on connect; any other port uses STARTTLS as `SMTP_TLS` says. |
 | `SMTP_USERNAME` | none | The relay's user. Not set, or left empty as `.env.example` has it, means no authentication; set means the release always authenticates. |
 | `SMTP_PASSWORD` | none | The relay's password. |
 | `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. |
 | `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
+<!-- feature: instance_mail -->
+
+With the opt-in feature `instance_mail` ([Features](#features)), an instance admin can set
+mail in **Instance settings › Mail** instead: the relay, its port, TLS, username and
+password, and the sender, kept in the database with the password encrypted under a key
+derived from `APIARY_ENCRYPTION_SECRET`. Saving sends a test link to that admin, and mail
+from those settings is on once they follow it, signed in as themselves. With `SMTP_RELAY`
+set, these variables win whole, and that page shows them read only.
+<!-- /feature -->
 
 Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
 person in as soon as the account is made. An invited person's address is the invitation's
@@ -430,7 +439,7 @@ environment variable SMTP_TLS must be always, if_available or never
 | `QORY_FEATURES` | `all` | The features this instance has: `all`; `all-` and the features left out, separated by commas; or the features on, separated by commas. Not set, or empty, is `all`. |
 
 - `observability`: the record, the runs with their terminals and timelines, the
-  connections, and retention. Every instance has it, and every other feature needs it.
+  connections, and retention. Every instance has it.
 <!-- feature: security -->
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.

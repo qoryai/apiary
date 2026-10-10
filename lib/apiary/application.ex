@@ -39,8 +39,6 @@ defmodule Apiary.Application do
     :ok = Apiary.Edition.boot!()
     # A database connection encrypted without its certificate checked is said once.
     Apiary.DatabaseUrl.boot()
-    # So is an instance without mail (`Apiary.Mail`).
-    Apiary.Mail.boot()
     # Keeps an access key's secret out of log lines; Apiary.SecretLogFilter says what it
     # covers and what it does not.
     Apiary.SecretLogFilter.install()
@@ -74,6 +72,7 @@ defmodule Apiary.Application do
     ] ++
       migrator() ++
       key_check() ++
+      mail_cache() ++
       [
         # The job queue, after the migrator so its tables exist when it
         # starts. `Apiary.Job` is what every job runs inside.
@@ -127,6 +126,14 @@ defmodule Apiary.Application do
   # MIGRATE_ON_BOOT=false too. Off in test, where the tests call `Apiary.KeyCheck.check/0`.
   defp key_check do
     if Apiary.KeyCheck.enabled?(), do: [Apiary.KeyCheck], else: []
+  end
+
+  # The node's copy of the mail settings an instance admin saved, after the migrator so
+  # their columns exist, and before anything that sends an email: it says once, then, when
+  # no mail is set (`Apiary.Mail.boot/0`). Off in test, where `Apiary.Mail` reads them from
+  # each test's sandbox.
+  defp mail_cache do
+    if Apiary.Mail.Cache.enabled?(), do: [Apiary.Mail.Cache], else: []
   end
 
   # The lost-run check, after the migrator so it never reads a schema it does not know.

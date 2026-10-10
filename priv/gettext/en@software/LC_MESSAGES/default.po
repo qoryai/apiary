@@ -2036,6 +2036,11 @@ msgstr ""
 msgid "14 days"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "587 for STARTTLS; 465 for TLS from the start."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "A change that leaves the document's bytes the same is kept here and makes no new version."
@@ -3024,6 +3029,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Already have an account?"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Always"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4723,6 +4733,11 @@ msgstr ""
 msgid "Empty means no limit. Lowering it stops nothing running now; new instances wait until fewer run."
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Empty when the relay takes mail without logging in."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "End of the record."
@@ -5466,6 +5481,11 @@ msgstr "From the next heartbeat, about 30 s, %{effect} in the runs that name no 
 #, elixir-autogen, elixir-format
 msgid "From the next heartbeat, about 30 s, %{effect} in the runs that name no target: every other connection is let through and recorded."
 msgstr "From the next heartbeat, about 30 s, %{effect} in the runs that name no repository: every other connection is let through and recorded."
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "From the start (port 465)"
+msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -6993,6 +7013,27 @@ msgid "Made an owner a member, by a command run on Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Mail"
+msgstr ""
+
+#: lib/apiary_web/controllers/instance_mail_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Mail is on, and your email address is confirmed."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Mail turns on when the admin who saved these settings follows the link we sent them."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Mail turns on when you follow the link we sent to %{email}, signed in as you."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Main"
 msgstr ""
@@ -7227,6 +7268,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Network access, narrowed to %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Never"
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -7772,6 +7818,11 @@ msgstr "No repository yet"
 msgid "No targets yet"
 msgstr "No repositories yet"
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "No test link is waiting: save the settings again to send one."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No variable matches"
@@ -7885,6 +7936,7 @@ msgstr ""
 msgid "Nodes"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -8194,6 +8246,16 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Off: invitations and password links are copied by hand."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Off: the saved password cannot be read. Enter it again and save."
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -8234,6 +8296,16 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "On Forager's deny list"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "On port 465, TLS from the start, whatever this says."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "On since %{day}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8663,6 +8735,7 @@ msgid "Pages are in English, the one language this instance has."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -8830,6 +8903,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Pool"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Port"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -9748,6 +9826,12 @@ msgstr ""
 msgid "Runtimes"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "SMTP relay"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -9781,6 +9865,16 @@ msgstr ""
 msgid "Save variable"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Saved, but the test link could not be sent through these settings. Check them and save again."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #: lib/apiary_web/live/integration_live/release.ex
@@ -9791,6 +9885,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Saving sends a test link to %{email}. Mail is off until you follow it."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -9903,6 +10002,12 @@ msgstr ""
 msgid "Send your first run"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Sender"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/settings.ex
@@ -9984,6 +10089,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Set by a target too"
 msgstr "Set by a repository too"
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Set by the server's environment (%{variable}); change it there."
+msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
@@ -10472,6 +10582,11 @@ msgstr ""
 msgid "System"
 msgstr "Forge"
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "TLS"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Takes effect in running sessions within a heartbeat, about %{seconds} s."
@@ -10662,6 +10777,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The Forager file's lines for this key. Nothing here is secret."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "The address email comes from. Empty: %{address}."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -10919,6 +11039,11 @@ msgstr ""
 msgid "The link works once, for 15 minutes. If you did not ask for it, ignore this email."
 msgstr ""
 
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "The link works once, for 60 minutes, and only for you. If you did not save these settings, ignore this email."
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10951,6 +11076,21 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "The mail server Qory Apiary sends its email through: invitations, log-in links and password links."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "The mail server's host name, such as smtp.example.com."
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/configuration.ex
+#, elixir-autogen, elixir-format
+msgid "The mail server, set in Instance settings › Mail."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -11572,6 +11712,11 @@ msgstr ""
 msgid "This key's record doesn't match its integrity code: it was changed outside the application. It can't be used."
 msgstr ""
 
+#: lib/apiary_web/controllers/instance_mail_controller.ex
+#, elixir-autogen, elixir-format
+msgid "This link no longer turns mail on."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "This link works once. Setting the password logs this account out everywhere."
@@ -11878,6 +12023,11 @@ msgstr ""
 msgid "Turn finished"
 msgstr ""
 
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "Turn on mail for Qory Apiary"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Two ways to connect a machine"
@@ -12001,6 +12151,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Used by"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "Username"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -12309,6 +12464,11 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "When"
+msgstr ""
+
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "When the server offers it"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -12711,6 +12871,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "You no longer have access to this workspace."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You saved the mail settings of Qory Apiary. To turn mail on, visit the URL below while you are logged in as %{email}:"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex

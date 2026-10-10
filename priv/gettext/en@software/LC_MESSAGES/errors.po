@@ -56,10 +56,17 @@ msgstr ""
 
 ## From Ecto.Changeset.cast/4
 #: lib/apiary/integrations.ex
+#: lib/apiary/mail.ex
 #: lib/apiary/secrets.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen
 msgid "can't be blank"
+msgstr ""
+
+## From Ecto.Changeset.cast/4
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "can't be blank with a password"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -89,6 +96,16 @@ msgstr ""
 #: lib/apiary/accounts/user.ex
 #, elixir-autogen, elixir-format
 msgid "does not match password"
+msgstr ""
+
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "enter it again: the relay, port, TLS or username changed"
+msgstr ""
+
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "enter it again: the saved one cannot be read"
 msgstr ""
 
 ## From Ecto.Changeset.unique_constraint/3
@@ -250,6 +267,11 @@ msgstr ""
 msgid "must be UTF-8 text"
 msgstr ""
 
+#: lib/apiary/mail/settings.ex
+#, elixir-autogen, elixir-format
+msgid "must be a host name, such as smtp.example.com"
+msgstr ""
+
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
 msgid "must be a repository's path or an https address of a description.json"
@@ -312,6 +334,7 @@ msgid "must be owner/repo"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex
+#: lib/apiary/mail/settings.ex
 #: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "must have the @ sign and no spaces"

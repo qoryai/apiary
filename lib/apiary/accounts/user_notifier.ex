@@ -28,7 +28,7 @@ defmodule Apiary.Accounts.UserNotifier do
     end
   end
 
-  defp deliver(recipient, subject, paragraphs, config) do
+  defp deliver(recipient, subject, paragraphs, config, sender \\ nil) do
     body = """
 
     ==============================
@@ -41,7 +41,7 @@ defmodule Apiary.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from(Mailer.from())
+      |> from(Mailer.from(sender))
       |> subject(subject)
       |> text_body(body)
 
@@ -124,5 +124,33 @@ defmodule Apiary.Accounts.UserNotifier do
         )
       ]
     )
+  end
+
+  @doc """
+  Delivers the test link of the mail settings an instance admin saved (`Apiary.Mail`) to
+  that admin, through those settings, `config` (`Apiary.Mail.smtp_config/2`), from
+  `sender`, or the default sender for `nil`, whatever the instance's mail is: the link
+  turns them on. Sent even where no mail is set.
+  """
+  def deliver_mail_test_link(user, url, config, sender) when is_list(config) do
+    ApiaryWeb.Lingo.with_locale(nil, user, fn ->
+      deliver(
+        user.email,
+        gettext("Turn on mail for Qory Apiary"),
+        [
+          gettext("Hi %{email},", email: user.email),
+          gettext(
+            "You saved the mail settings of Qory Apiary. To turn mail on, visit the URL below while you are logged in as %{email}:",
+            email: user.email
+          ),
+          url,
+          gettext(
+            "The link works once, for 60 minutes, and only for you. If you did not save these settings, ignore this email."
+          )
+        ],
+        config,
+        sender
+      )
+    end)
   end
 end
