@@ -38,7 +38,7 @@ def texts(edition_default, community_version, pro_version):
     """The values written in, by their place in the template."""
     version = pro_version if edition_default == PRO else community_version
     named = f"{edition_default} {version}"
-    edition_help = [EDITION_HELP] + ([] if pro_version else [PRO_TEMPLATE_HELP]) + [WAY_BACK_HELP]
+    edition_help = [EDITION_HELP, WAY_BACK_HELP] + ([] if pro_version else [PRO_TEMPLATE_HELP])
     # The approved labels: of a copy that names no Qory Apiary Pro version, as release.yml writes
     # it, and of a copy that names both.
     label = f"Version (leave empty for {named})" if pro_version else "Version (leave empty for this template's)"
