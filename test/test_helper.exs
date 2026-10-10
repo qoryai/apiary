@@ -54,8 +54,8 @@ exclude = exclude ++ [:database_tls]
 
 ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
 
-# The instance has had its first sign-up, committed before the sandbox takes over: a
-# sign-up in a test is a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`).
+# The instance is set up, committed before the sandbox takes over: a sign-up in a test is
+# a later one (`Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`).
 Apiary.OrganisationsFixtures.ensure_instance_organisation!()
 
 Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)

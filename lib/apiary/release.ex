@@ -191,22 +191,22 @@ defmodule Apiary.Release do
   signs up with an invitation, or at the sign-up page where the instance allows it, first.
   Prints what it did and returns `{:ok, membership}` or `{:error, reason}`.
 
-  On an instance nobody has signed up to yet it claims the instance instead, before its
-  address is public: it is the instance's first sign-up, with `email` and
-  `organisation_name`, which creates the instance's organisation, its workspace Main and
-  the account as its owner. With mail (`Apiary.Mail.configured?/0`) it sends the account
-  its log-in link, as the sign-up page does; `{:ok, :created}`. Should that mail not go
-  out, the instance is claimed all the same, the output says so, without the address or
-  the link, and says to ask for a link at `/users/log-in`: `{:ok, :created_without_mail}`.
+  On an instance that is not set up yet it sets the instance up instead, from a shell, in
+  place of its set-up link (`Apiary.Setup`): it is the instance's first sign-up, with
+  `email` and `organisation_name`, which creates the instance's organisation, its
+  workspace Main and the account as its owner, and marks the set-up code used, so the
+  link works no more. With mail (`Apiary.Mail.configured?/0`) it sends the account its
+  log-in link, as the sign-up page does; `{:ok, :created}`. Should that mail not go out,
+  the instance is set up all the same, the output says so, without the address or the
+  link, and says to ask for a link at `/users/log-in`: `{:ok, :created_without_mail}`.
   Without mail it prints a password link for the account instead, which works once, for an
   hour (`password_link/1`), and never the address: `{:ok, :created_without_mail}`.
   `bin/apiary eval 'Apiary.Release.grant_instance_admin("dana@example.com", "Acme")'`.
   The organisation's name is required then, `{:error, :organisation_name_required}`
-  without it. Should a sign-up on the web have come first, the command does what it does
+  without it. Should the set-up link have been used first, the command does what it does
   on any instance that has its organisation.
 
-  The claim is `Apiary.FirstAdmin.claim/3`, which the boot runs at the first start when
-  `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` are set.
+  The claim is `Apiary.Setup.claim/3`.
   """
   def grant_instance_admin(email, organisation_name \\ nil) when is_binary(email) do
     run(fn -> grant_instance_admin_now(String.trim(email), organisation_name) end)
@@ -228,23 +228,23 @@ defmodule Apiary.Release do
   end
 
   defp claim_instance(email, name) do
-    case Apiary.FirstAdmin.claim(email, name, %{worker: "Apiary.Release.grant_instance_admin/2"}) do
+    case Apiary.Setup.claim(email, name, %{worker: "Apiary.Release.grant_instance_admin/2"}) do
       {:ok, user, :sent} ->
-        IO.puts(Apiary.FirstAdmin.message(user, :sent))
+        IO.puts(Apiary.Setup.message(user, :sent))
         {:ok, :created}
 
       # No mail is set: the log-in link had nowhere to go, and a password link takes its
       # place, on this terminal.
       {:ok, user, :not_sent} ->
         if Apiary.Mail.configured?() do
-          IO.puts(Apiary.FirstAdmin.message(user, :not_sent))
+          IO.puts(Apiary.Setup.message(user, :not_sent))
         else
           print_password_link(user, :first_admin, "Apiary.Release.grant_instance_admin/2")
         end
 
         {:ok, :created_without_mail}
 
-      # Someone signed up on the web a moment before: the instance has its admin.
+      # The set-up link was used a moment before: the instance has its admin.
       {:error, :instance_claimed} ->
         grant_existing(email)
 
@@ -276,11 +276,11 @@ defmodule Apiary.Release do
 
   # A changeset's errors by field, with the messages and no value: the address stays off
   # the terminal's scrollback. Each message is filled in by
-  # `Apiary.FirstAdmin.error_messages/1`, which never turns an option such as a list of
+  # `Apiary.Setup.error_messages/1`, which never turns an option such as a list of
   # fields into text.
   defp changeset_errors(changeset) do
     changeset
-    |> Apiary.FirstAdmin.error_messages()
+    |> Apiary.Setup.error_messages()
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
     |> Enum.map_join("; ", fn {field, messages} -> "#{field} #{Enum.join(messages, ", ")}" end)
   end

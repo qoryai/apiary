@@ -233,13 +233,13 @@ defmodule ApiaryWeb.UserLive.LoginTest do
   end
 end
 
-defmodule ApiaryWeb.UserLive.LoginFirstSignUpTest do
+defmodule ApiaryWeb.UserLive.LoginBeforeSetUpTest do
   @moduledoc """
-  The log-in page on the instance's first sign-up, which every edition offers: the suite's
-  instance organisation is hidden inside the test's sandbox (`Apiary.EditionKit`), and
-  the page leads to the sign-up.
+  The log-in page before the instance is set up: there is nobody to log in, and the page
+  says to use the set-up link (`Apiary.Setup`). The suite's instance organisation is
+  hidden inside the test's sandbox (`Apiary.EditionKit`).
   """
-  # Not async: a test of the first sign-up holds the suite's instance organisation's row.
+  # Not async: the test hides the suite's instance organisation's row.
   use ApiaryWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -249,17 +249,11 @@ defmodule ApiaryWeb.UserLive.LoginFirstSignUpTest do
     :ok
   end
 
-  describe "login navigation" do
-    test "goes to the registration page when Create an account is clicked", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+  test "says to use the set-up link, with no form and no sign-up", %{conn: conn} do
+    {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
-      {:ok, _register_live, register_html} =
-        lv
-        |> element("main a", "Create an account")
-        |> render_click()
-        |> follow_redirect(conn, ~p"/users/register")
-
-      assert register_html =~ "Create your account"
-    end
+    assert html =~ "This Qory Apiary is not set up yet: use the set-up link from its install."
+    refute has_element?(lv, "#login_form")
+    refute has_element?(lv, "main a", "Create an account")
   end
 end

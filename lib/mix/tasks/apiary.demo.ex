@@ -13,9 +13,8 @@ defmodule Mix.Tasks.Apiary.Demo do
   line, all of it synthetic. `--file` replays one file instead. The run lands in the
   workspace of the access key named by `--key`, a node's key id, on that key's node;
   without it, in the first workspace that has a key that is not revoked, under its newest
-  such key: on a new instance, the Main workspace of the organisation the first
-  user signed up with, once they have added a key to a node there. Signing up needs no
-  setting: the instance's first sign-up is always open.
+  such key: on a new instance, the Main workspace of the organisation its set-up link
+  made (`Apiary.Setup`), once a key is added to a node there.
 
   Nothing is inserted from here. A file goes the way a delivery goes: cut into batches of
   20 events, each parsed by `Apiary.Runs.Batch` and stored by `Apiary.Runs.Ingest`, the

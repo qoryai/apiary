@@ -411,6 +411,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("story", "/dev/storybook/" <> _, p), do: p.stories
 
   defp value_of("key_id", _path, p), do: p.key_id
+  # The owner set the instance up: any code opens the page that says so.
+  defp value_of("code", "/setup/:code", _p), do: "used-code"
 
   defp value_of("target_id", path, p) do
     cond do

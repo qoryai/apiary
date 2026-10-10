@@ -12,6 +12,8 @@ defmodule Apiary.Edition.Core do
 
   @behaviour Apiary.Edition
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query, warn: false
 
   alias Apiary.Accounts.Scope
@@ -43,6 +45,9 @@ defmodule Apiary.Edition.Core do
         select: o.id
     )
   end
+
+  @impl true
+  def first_sign_up_line, do: gettext("Your organisation and its first workspace.")
 
   @impl true
   def above_workspace(_workspace), do: nil

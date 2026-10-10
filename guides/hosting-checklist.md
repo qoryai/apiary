@@ -33,12 +33,12 @@ being one. Every variable named here is described in [Install and configure](ins
   before they arrive: [Install and configure](install.md#features).
 - **Postgres that is backed up.** The database is the only state. Schedule the dump, and
   restore one into an empty database once, before it is needed.
-- **Claim the instance.** The first person to sign up creates its organisation and becomes
-  its admin. Set `FIRST_ADMIN_EMAIL` and `FIRST_ORGANISATION_NAME` before the first start,
-  or, before the address is public, run `Apiary.Release.grant_instance_admin/2` on the
-  release with your address and your organisation's name: either is the instance's first
-  sign-up, and emails you your log-in link.
-  [Install and configure](install.md#the-instance-admins) has both.
+- **Set the instance up.** Its first start logs its set-up link, "Set up Qory Apiary at
+  …/setup/<code>.": open it as soon as the instance is up, since anyone who reads the log
+  can use it first. Its page makes your account, the instance's organisation and its
+  admin. From a shell, `Apiary.Release.grant_instance_admin/2` with your address and your
+  organisation's name does the same.
+  [Install and configure](install.md#set-up-a-new-instance) has both.
 <!-- feature: secrets -->
 - **Where integrations come from.** A workspace adds an integration from a release on
   `github.com`, `gitlab.com` or `codeberg.org`, or from an https address of its

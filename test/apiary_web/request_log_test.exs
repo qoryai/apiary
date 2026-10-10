@@ -18,6 +18,7 @@ defmodule ApiaryWeb.RequestLogTest do
                "/users/settings/confirm-email/:token"
 
       assert RequestLog.redact_path("/users/password/#{@token}") == "/users/password/:token"
+      assert RequestLog.redact_path("/setup/#{@token}") == "/setup/:code"
 
       assert RequestLog.redact_path("/instance/mail/confirm/#{@token}") ==
                "/instance/mail/confirm/:token"
@@ -30,6 +31,8 @@ defmodule ApiaryWeb.RequestLogTest do
             "/users/log-in/#{@token}/",
             "//users/password//#{@token}/",
             "/invitations/#{@token}/continue/",
+            "/setup/#{@token}/",
+            "//setup//#{@token}",
             "/instance//mail/confirm/#{@token}/"
           ] do
         refute RequestLog.redact_path(path) =~ @token
@@ -44,6 +47,7 @@ defmodule ApiaryWeb.RequestLogTest do
             "/users/log-in",
             "/users/settings",
             "/invitations",
+            "/setup",
             "/.well-known/qory-configuration",
             "/acme/members/7b1c/remove",
             "/instance/mail"

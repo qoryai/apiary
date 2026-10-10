@@ -366,4 +366,33 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       assert html =~ "Set your password"
     end
   end
+
+  describe "the set-up page" do
+    setup do
+      Apiary.EditionKit.hide_instance_organisation()
+      %{code: Apiary.Setup.code!()}
+    end
+
+    test "past a client's 20, the code and a wrong one get the same answer, before set-up and after",
+         %{code: code} do
+      client = "198.51.100.46"
+      {:ok, _lv, html} = live(from(client), ~p"/setup/#{code}")
+      assert html =~ "Set up Qory Apiary"
+
+      spend_page(client)
+
+      for path <- [~p"/setup/#{code}", ~p"/setup/not-the-code"] do
+        assert {:error, {:redirect, %{to: "/users/log-in", flash: %{"error" => @message}}}} =
+                 live(from(client), path)
+      end
+
+      {:ok, _lv, html} = live(from("198.51.100.47"), ~p"/setup/#{code}")
+      assert html =~ "Set up Qory Apiary"
+
+      sign_up_fixture()
+
+      assert {:error, {:redirect, %{to: "/users/log-in", flash: %{"error" => @message}}}} =
+               live(from(client), ~p"/setup/#{code}")
+    end
+  end
 end

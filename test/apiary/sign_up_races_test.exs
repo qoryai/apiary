@@ -1,5 +1,5 @@
 defmodule Apiary.SignUpRacesTest do
-  # Two sign-ups, or two invitations, at once, each on a connection of its own and outside
+  # Two starts, set-ups or invitations at once, each on a connection of its own and outside
   # the SQL sandbox, so that each commits and each waits on the other's locks as it would
   # in production. Not async: what these tests commit is visible to every other test while
   # they run, the instance's organisation hidden included (`Apiary.EditionKit`), and they
@@ -12,21 +12,27 @@ defmodule Apiary.SignUpRacesTest do
 
   alias Apiary.{Organisations, Repo}
   alias Apiary.Accounts.User
-  alias Apiary.Organisations.{Invitation, Membership, Organisation}
+  alias Apiary.Organisations.{Invitation, Organisation}
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
     suite_organisation = ensure_instance_organisation!()
     {:ok, created} = Agent.start(fn -> %{organisations: [], users: []} end)
     Process.put(:created, created)
-    on_exit(fn -> clean_up(created, suite_organisation) end)
+    %{rows: rows} = Repo.query!("SELECT setup_code, set_up_at FROM instance_settings")
+    on_exit(fn -> clean_up(created, suite_organisation, rows) end)
     %{suite_organisation: suite_organisation}
   end
 
-  test "of two first sign-ups at once, exactly one creates the instance's organisation", ctx do
-    for {open, other} <- [{false, :refused}, {true, :later}] do
-      # The instance before its first sign-up, as every connection sees it.
+  test "of two starts at once before set-up, one makes the code and both log the same link",
+       ctx do
+    level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: level) end)
+
+    for _round <- 1..4 do
       Apiary.EditionKit.hide_instance_organisation()
+      Repo.query!("UPDATE instance_settings SET setup_code = NULL")
 
       results =
         1..2
@@ -34,11 +40,38 @@ defmodule Apiary.SignUpRacesTest do
           Task.async(fn ->
             :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
 
-            Organisations.sign_up_user(
-              %{email: unique_user_email(), organisation_name: unique_organisation_name()},
-              nil,
-              open: open
-            )
+            ExUnit.CaptureLog.with_log([level: :info], fn ->
+              {Apiary.Setup.start_link(), Apiary.Setup.code!()}
+            end)
+          end)
+        end)
+        |> Task.await_many(10_000)
+
+      %{rows: [[code]]} = Repo.query!("SELECT setup_code FROM instance_settings")
+      assert [{{:ignore, ^code}, _log}, {{:ignore, ^code}, _other}] = results
+      for {_result, log} <- results, do: assert(log =~ Apiary.Setup.log_line(code))
+
+      Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
+    end
+  end
+
+  test "of two set-ups at once with the code, exactly one sets the instance up", ctx do
+    for round <- 1..4 do
+      Apiary.EditionKit.hide_instance_organisation()
+      code = Apiary.Setup.code!()
+
+      results =
+        1..2
+        |> Enum.map(fn _ ->
+          Task.async(fn ->
+            :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+
+            Apiary.Setup.set_up(code, %{
+              email: unique_user_email(),
+              organisation_name: "Set up #{round}",
+              password: "hello world!",
+              password_confirmation: "hello world!"
+            })
           end)
         end)
         |> Task.await_many(10_000)
@@ -46,28 +79,27 @@ defmodule Apiary.SignUpRacesTest do
       for {:ok, signed_up} <- results, do: created(signed_up)
 
       first = Apiary.Edition.instance_organisation_id()
-      assert Enum.count(results, &match?({:ok, %{organisation: %{id: ^first}}}, &1)) == 1
+      assert [{:ok, %{organisation: %{id: ^first}}}] = Enum.filter(results, &match?({:ok, _}, &1))
+      assert [{:error, :already_set_up}] = Enum.filter(results, &match?({:error, _}, &1))
 
-      case other do
-        :refused ->
-          assert [{:error, changeset}] = Enum.filter(results, &match?({:error, _}, &1))
-          assert changeset.errors[:email]
+      assert Repo.aggregate(
+               from(o in Organisation, where: o.name == ^"Set up #{round}"),
+               :count
+             ) == 1
 
-        :later ->
-          assert [%Organisation{}] =
-                   for({:ok, %{organisation: %{id: id} = o}} <- results, id != first, do: o)
-      end
+      assert %{rows: [[nil, %NaiveDateTime{}]]} =
+               Repo.query!("SELECT setup_code, set_up_at FROM instance_settings")
 
-      # This round's first organisation goes, and the suite's is the instance's again.
+      # This round's organisation goes, and the suite's is the instance's again.
       Repo.delete_all(from o in Organisation, where: o.id == ^first)
       Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
     end
   end
 
-  test "of the release command's claim and a web first sign-up at once, exactly one is first",
-       ctx do
+  test "of the release command's claim and a set-up at once, exactly one is first", ctx do
     for round <- 1..4 do
       Apiary.EditionKit.hide_instance_organisation()
+      code = Apiary.Setup.code!()
 
       claim_email = "claim-#{round}-#{System.unique_integer([:positive])}@example.com"
       web_email = unique_user_email()
@@ -81,11 +113,12 @@ defmodule Apiary.SignUpRacesTest do
             |> elem(0)
           end,
           fn ->
-            Organisations.sign_up_user(
-              %{email: web_email, organisation_name: unique_organisation_name()},
-              nil,
-              open: false
-            )
+            Apiary.Setup.set_up(code, %{
+              email: web_email,
+              organisation_name: unique_organisation_name(),
+              password: "hello world!",
+              password_confirmation: "hello world!"
+            })
           end
         ]
         |> Enum.map(fn fun ->
@@ -105,12 +138,12 @@ defmodule Apiary.SignUpRacesTest do
       created_organisation(first)
 
       case {claim, web} do
-        # The command was first: the web sign-up is a later one, refused while closed.
-        {{:ok, :created}, {:error, %Ecto.Changeset{}}} ->
+        # The command was first: the set-up finds the instance set up.
+        {{:ok, :created}, {:error, :already_set_up}} ->
           assert first.name == "Claimed"
           refute web_user
 
-        # The web was first: the command grants as on any instance, and the account it
+        # The set-up was first: the command grants as on any instance, and the account it
         # names does not exist.
         {{:error, :not_found}, {:ok, %{organisation: %{id: id}}}} when id == first.id ->
           refute claimed
@@ -119,58 +152,9 @@ defmodule Apiary.SignUpRacesTest do
           flunk("both or neither were first: #{inspect(other)}")
       end
 
-      Repo.delete_all(from o in Organisation, where: o.id == ^first.id)
-      Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
-    end
-  end
-
-  test "of two boots at once with FIRST_ADMIN_EMAIL, one claims and the other moves on", ctx do
-    on_exit(fn ->
-      Application.delete_env(:apiary, :first_admin_email_setting)
-      Application.delete_env(:apiary, :first_organisation_name_setting)
-    end)
-
-    for round <- 1..4 do
-      Apiary.EditionKit.hide_instance_organisation()
-
-      email = "first-#{round}-#{System.unique_integer([:positive])}@example.com"
-      Application.put_env(:apiary, :first_admin_email_setting, email)
-      Application.put_env(:apiary, :first_organisation_name_setting, "Claimed at boot")
-
-      results =
-        1..2
-        |> Enum.map(fn _ ->
-          Task.async(fn ->
-            :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
-
-            ExUnit.CaptureLog.with_log(fn ->
-              try do
-                Apiary.FirstAdmin.start_link()
-              catch
-                :exit, reason -> {:exit, reason}
-              end
-            end)
-          end)
-        end)
-        |> Task.await_many(10_000)
-
-      claimed = Apiary.Accounts.get_user_by_email(email)
-      if claimed, do: created_user(claimed)
-      first = Repo.get!(Organisation, Apiary.Edition.instance_organisation_id())
-      created_organisation(first)
-
-      # Both boots go on, and neither says anything went wrong.
-      assert [{:ignore, _}, {:ignore, _}] = results
-      for {_result, log} <- results, do: refute(log =~ "[error]")
-
-      assert first.name == "Claimed at boot"
-      assert %{level: :owner} = Repo.get_by(Membership, organisation_id: first.id)
-      assert Repo.get_by(Membership, organisation_id: first.id).user_id == claimed.id
-
-      assert Repo.aggregate(
-               from(o in Organisation, where: o.name == "Claimed at boot"),
-               :count
-             ) == 1
+      # Either way the code is used.
+      assert %{rows: [[nil, %NaiveDateTime{}]]} =
+               Repo.query!("SELECT setup_code, set_up_at FROM instance_settings")
 
       Repo.delete_all(from o in Organisation, where: o.id == ^first.id)
       Apiary.EditionKit.show_instance_organisation(ctx.suite_organisation.id)
@@ -231,8 +215,21 @@ defmodule Apiary.SignUpRacesTest do
 
   # The organisations first, which take their rows with them, then the accounts; and the
   # suite's organisation is the instance's again, whatever a test left.
-  defp clean_up(created, suite_organisation) do
+  defp clean_up(created, suite_organisation, settings) do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+
+    # The instance's settings row as the suite left it: none, or its set-up as it was.
+    case settings do
+      [] ->
+        Repo.query!("DELETE FROM instance_settings")
+
+      [[setup_code, set_up_at]] ->
+        Repo.query!("UPDATE instance_settings SET setup_code = $1, set_up_at = $2", [
+          setup_code,
+          set_up_at
+        ])
+    end
+
     %{organisations: organisations, users: users} = Agent.get(created, & &1)
     Agent.stop(created)
 

@@ -156,13 +156,14 @@ link (`account.password_link`, `Apiary.Accounts.build_password_link/3`), a one-t
 that sets an account's password, is no role's either: an instance admin makes one while
 the instance sends no mail, asked by `Apiary.Access.instance_admin?/1` in the context
 function, and a release command makes one mail or not (`Apiary.Release.password_link/1`). Revoking
-the last owner who may act is refused, `{:error, :last_owner}`. The claim of an instance
-nobody has signed up to at its first start (`FIRST_ADMIN_EMAIL`, `Apiary.FirstAdmin`) is
-taken on the strength of the release's environment, likewise beyond any role, and acts on
-no instance that has its organisation.
+the last owner who may act is refused, `{:error, :last_owner}`. The set-up of a new
+instance (`Apiary.Setup`) is taken on the strength of its set-up code, which only its log
+shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
+instance that has its organisation.
 
-The instance's own organisation is never deleted nor purged: an instance without it would
-give its next sign-up the instance. `Apiary.Deletion` refuses to mark or purge it,
+The instance's own organisation is never deleted nor purged: an instance without it is
+one that is not set up, where nobody signs up, and its next start would log a new set-up
+link (`Apiary.Setup`) that gives whoever opens it the instance. `Apiary.Deletion` refuses to mark or purge it,
 `:instance_organisation`, the core edition's answer to
 `c:Apiary.Edition.deletion_refusal/2`. An edition may also refuse `organisation.delete` on
 it for every role (`c:Apiary.Edition.check/3`), which its settings page asks through

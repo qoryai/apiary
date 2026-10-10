@@ -4716,6 +4716,7 @@ msgid "Elapsed at the last heartbeat. The clock stops counting when heartbeats s
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #: lib/apiary_web/live/user_live/settings.ex
@@ -5589,6 +5590,7 @@ msgid "Go to the first page"
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
+#: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Go to your workspace"
 msgstr ""
@@ -6846,6 +6848,7 @@ msgstr ""
 
 #: lib/apiary_web/controllers/page_html/home.html.heex
 #: lib/apiary_web/live/invitation_live/accept.ex
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/confirmation.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/password.ex
@@ -8608,6 +8611,7 @@ msgstr ""
 msgid "Organisation deleted"
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation name"
@@ -10141,6 +10145,7 @@ msgid "Set to follow the workspace"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
+#: lib/apiary_web/live/setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Set up"
 msgstr ""
@@ -10148,6 +10153,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set up API"
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Set up Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -10189,6 +10199,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
 msgid "Setting"
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Setting up"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -11611,6 +11626,16 @@ msgstr ""
 msgid "They leave %{organisation} and lose access to its workspaces and their runs at once. Their account stays; you can invite them again."
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "This Qory Apiary is already set up."
+msgstr ""
+
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "This Qory Apiary is not set up yet: use the set-up link from its install."
+msgstr ""
+
 #: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/live/user_live/password.ex
 #, elixir-autogen, elixir-format
@@ -12158,6 +12183,7 @@ msgstr ""
 msgid "Username"
 msgstr ""
 
+#: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Usually your company's name. Owners can change it later in the organisation's settings."
@@ -12781,6 +12807,11 @@ msgid_plural "You are the only owner of these organisations. Make another member
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "You become this instance's admin."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
@@ -12957,6 +12988,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
+msgstr ""
+
+#: lib/apiary/edition/core.ex
+#, elixir-autogen, elixir-format
+msgid "Your organisation and its first workspace."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex

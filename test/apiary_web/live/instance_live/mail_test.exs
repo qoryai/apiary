@@ -68,6 +68,21 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   defp save(view, attrs \\ @attrs),
     do: view |> form("#mail_form", mail: attrs) |> render_submit()
 
+  # Nothing of mail is saved: no row of the instance's settings, or one that holds none of
+  # the mail's columns, as the instance's set-up leaves it (`Apiary.Setup`).
+  defp no_mail_saved? do
+    case Mail.settings() do
+      nil ->
+        true
+
+      settings ->
+        settings
+        |> Map.take(Apiary.Mail.Settings.__schema__(:fields) -- [:id, :updated_at])
+        |> Map.values()
+        |> Enum.all?(&is_nil/1)
+    end
+  end
+
   describe "for an instance admin" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()
@@ -210,7 +225,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute inspect(:sys.get_state(view.pid), limit: :infinity, printable_limit: :infinity) =~
                @password
 
-      assert Mail.settings() == nil
+      assert no_mail_saved?()
       refute_received {:email, %{subject: @subject}}
 
       html = save(view, %{@attrs | "smtp_password" => ""})
