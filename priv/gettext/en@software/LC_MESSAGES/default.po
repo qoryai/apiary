@@ -5387,6 +5387,11 @@ msgstr ""
 msgid "Forager file for %{label}"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Forager has pinged. The run's first event has not arrived."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -8841,6 +8846,12 @@ msgstr ""
 #: lib/apiary_web/components/target_components.ex
 #, elixir-autogen, elixir-format
 msgid "Pin %{target}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ping only"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex

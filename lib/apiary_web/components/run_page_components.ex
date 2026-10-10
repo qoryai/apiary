@@ -195,10 +195,14 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :only_result, :boolean, default: false
   attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
 
+  attr :registered, :boolean,
+    default: false,
+    doc: "for `:not_started`: whether the run registered, else it only pinged"
+
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
     <.notice class="q-limits">
-      <.limit_sentence reason={@reason} runtime={@runtime} />
+      <.limit_sentence reason={@reason} runtime={@runtime} registered={@registered} />
       <span :if={@only_result}>
         {gettext("Only the result, read from the runtime's output, is shown.")}
       </span>
@@ -214,7 +218,13 @@ defmodule ApiaryWeb.RunPageComponents do
       title={limit_title(@reason, @live)}
       class="q-limits"
     >
-      <.limit_sentence :if={@reason != :no_log} reason={@reason} runtime={@runtime} at={@at} />
+      <.limit_sentence
+        :if={@reason != :no_log}
+        reason={@reason}
+        runtime={@runtime}
+        at={@at}
+        registered={@registered}
+      />
       <.listening
         :if={@reason == :not_started or (@reason == :no_log and @live)}
         class="mt-3 justify-center"
@@ -230,6 +240,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :reason, :atom, required: true
   attr :runtime, :string, default: nil
   attr :at, :any, default: nil
+  attr :registered, :boolean, default: false
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
@@ -249,9 +260,16 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  defp limit_sentence(%{reason: :not_started} = assigns) do
+  # A run stored before the registration replaced the ping has only pinged.
+  defp limit_sentence(%{reason: :not_started, registered: true} = assigns) do
     ~H"""
     {gettext("The run is registered. Its first event has not arrived.")}
+    """
+  end
+
+  defp limit_sentence(%{reason: :not_started} = assigns) do
+    ~H"""
+    {gettext("Forager has pinged. The run's first event has not arrived.")}
     """
   end
 

@@ -38,8 +38,10 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
     6. `400` `unsupported_contract_version` (`ApiaryWeb.Contract.ContractVersion`);
     7. for a GET, `401` for a timestamp that is not a decimal integer or is outside the
-       window, unsigned. The contract puts a `400` `invalid_request` for labels before
-       it; the run configuration refuses no labels, so nothing comes between.
+       window, unsigned. A registration sends no timestamp: its `time` is in its body,
+       which the run endpoint reads first, so its `400` `invalid_request` for a body the
+       contract refuses comes before its `401` for a `time` outside the window, as the
+       contract orders them (`ApiaryWeb.Contract.RegistrationController`).
 
   Each endpoint's own refusals follow, in its controller: on the events endpoint the
   `400` `invalid_request` of a body the contract refuses, then deduplication and `410`
