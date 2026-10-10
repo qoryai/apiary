@@ -67,9 +67,10 @@ defmodule Apiary.Runs.Fold do
   lost-run check compares it with the server's clock and Forager's clock may be anywhere.
   The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
   heartbeat of the run, whatever its sequence, and, for a run a gateway opened, its
-  ping's, whose clock is the gateway's, as its heartbeats' are: a minimum, so it is the
-  same in any order. A session's heartbeats are on the session's machine's clock, which
-  behind a separate gateway is not the ping's. Whenever a pass folds a later heartbeat or
+  registration's (`registered_at` less `registration_time`) and its ping's, whose clock is
+  the gateway's, as its heartbeats' are: a minimum, so it is the same in any order. A
+  session's heartbeats are on the session's machine's clock, which behind a separate
+  gateway is not the gateway's. Whenever a pass folds a later heartbeat or
   lowers the offset, the heartbeat with the highest sequence is counted again by the
   offset as the pass leaves it, from its time and arrival (the projector hands them over
   when that heartbeat was projected before), so `last_heartbeat_at` is the same in any
@@ -172,7 +173,8 @@ defmodule Apiary.Runs.Fold do
   `time` stands for it) into `run` (any map with the run's fields, the schema struct
   included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
   already projected. `projected` says what the fold needs of the events already projected:
-  `ping_offset`, the smallest clock offset of the pings, and `beat`, the `time` and
+  `ping_offset`, the smallest clock offset of the pings (the fold lowers it by the
+  registration's own, from `run`), and `beat`, the `time` and
   `received_at` of the heartbeat with the highest sequence; each absent or nil when there
   is none.
 
@@ -185,7 +187,7 @@ defmodule Apiary.Runs.Fold do
     acc = %__MODULE__{
       run: run,
       latest: latest,
-      ping_offset: projected[:ping_offset],
+      ping_offset: lower(projected[:ping_offset], registration_offset(run)),
       beat: projected[:beat]
     }
 
@@ -551,14 +553,24 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The ping's offset counts for a run a gateway opened, whichever of the ping and the
-  # start comes first.
+  # The gateway's offset, its registration's and its ping's, counts for a run a gateway
+  # opened, whichever of the ping and the start comes first.
   defp ping_clock(%{run: %{opened_by: "gateway"}, ping_offset: offset} = acc)
        when is_integer(offset),
        do: put_offset(acc, offset)
 
   defp ping_clock(acc), do: acc
 
+  # The registration's time on the gateway's clock and its arrival at this server, as a
+  # ping's time and arrival were: nil for a run that did not register.
+  defp registration_offset(run) do
+    case {Map.get(run, :registered_at), Map.get(run, :registration_time)} do
+      {%DateTime{} = received_at, %DateTime{} = time} -> Liveness.clock_offset(received_at, time)
+      _ -> nil
+    end
+  end
+
+  defp lower(offset, nil), do: offset
   defp lower(nil, offset), do: offset
   defp lower(current, offset), do: min(current, offset)
 

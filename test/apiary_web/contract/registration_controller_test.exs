@@ -134,12 +134,16 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})
     assert allow(reload(ctx, run_id)) == ["api.example", "cdn.example"]
 
-    # Another key of the workspace, a run the workspace does not hold, a run id that is not
-    # one: 404, signed.
+    # Another key of the workspace, a run its batches created under this key, a run the
+    # workspace does not hold, a run id that is not one: 404, signed.
     %{access_key: other, secret: other_secret} = contract_key_fixture(ctx.scope)
+    {unregistered, events} = first_events()
+    assert build_conn() |> signed_post(ctx.key.key_id, ctx.secret, events) |> response(202)
+    assert run(unregistered).registered_at == nil
 
     for conn <- [
           reload(%{key: other, secret: other_secret}, run_id),
+          reload(ctx, unregistered),
           reload(ctx, Ecto.UUID.generate()),
           reload(ctx, String.upcase(run_id)),
           reload(ctx, "not-a-run")

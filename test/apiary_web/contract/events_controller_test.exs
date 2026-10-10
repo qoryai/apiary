@@ -127,14 +127,18 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
           }
       }
 
-      # A run a gateway opened, its first heartbeat on time; its next one recorded an hour ago.
-      data = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
-      first = wire_event(subject, 3, "run.heartbeat", data, time: stamp.(now, 0))
-      beat = wire_event(subject, 4, "run.heartbeat", data, time: stamp.(now, -3600))
-
+      # A run a gateway opened, its registration on time; its first heartbeat recorded an
+      # hour ago.
       assert build_conn()
-             |> signed_post(key.key_id, secret, [started, first, beat])
-             |> response(202)
+             |> signed_register(key.key_id, secret, registration(subject))
+             |> response(200)
+
+      assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
+
+      data = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
+      beat = wire_event(subject, 3, "run.heartbeat", data, time: stamp.(now, -3600))
+
+      assert build_conn() |> signed_post(key.key_id, secret, [beat]) |> response(202)
 
       heard = Repo.get!(AccessKey, key.id).last_heartbeat_at
       assert heard == run!(scope, subject).last_heartbeat_at

@@ -22,8 +22,9 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   run id the workspace already holds otherwise is `409` `run_id_used`; else the run is
   stored and answered `200`.
 
-  **A reload** is answered only for a run the same access key is under
-  (`Apiary.Runs.Registration.fetch/2`); anything else is `404`, and so is a workspace that
+  **A reload** is answered only for a run the same access key registered
+  (`Apiary.Runs.Registration.fetch/2`); anything else is `404`, a run its batches created
+  among them, and so is a workspace that
   serves no run configuration: a policy removed mid-run never loosens a run already
   started.
 
