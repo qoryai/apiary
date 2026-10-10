@@ -25,7 +25,7 @@ defmodule Apiary.Policy.Serving do
   configuration of its own costs one more, for the baseline's. A run's target is known
   once its start is projected, which is after the receiver answers; until then it is
   taken from the start event when the batch holds it, and a run that names none yet (its
-  ping) is answered the digest it reported when that is one in force in the workspace, the
+  batches held no start so far) is answered the digest it reported when that is one in force in the workspace, the
   baseline's otherwise. A gateway that is told a digest it does not hold fetches again, so
   the answer errs towards the digest it holds only while the target is unknown, and the
   next batch says the truth.

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "run_id": "f4dcf2d9-0e17-755c-952b-bccfabda4e40",
+  "labels": {
+    "forge": "github.com",
+    "repository": "acme/api",
+    "task": "checkout-redesign"
+  },
+  "about": {
+    "kind": "Check",
+    "title": "Run the API tests for the checkout steps",
+    "subjects": [
+      {
+        "type": "ticket",
+        "ref": "SHOP-128",
+        "url": "https://tracker.example.com/browse/SHOP-128",
+        "title": "Split the checkout form into address, delivery and payment steps"
+      }
+    ]
+  },
+  "forager_version": "0.10.0",
+  "contract_version": 1,
+  "interval_seconds": 30,
+  "events": [
+    "*"
+  ],
+  "time": "2026-09-18T09:00:00Z"
+}

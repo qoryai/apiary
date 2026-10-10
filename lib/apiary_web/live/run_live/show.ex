@@ -821,7 +821,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt>{gettext("State")}</dt>
           <dd>
             <.state_mark state={@run.state} word />
-            <span :if={@run.state == "pending"} class="q-rail-sub">{gettext("Ping only")}</span>
+            <span :if={@run.state == "pending"} class="q-rail-sub">{gettext("Registered only")}</span>
             <.end_reason run={@run} id="rail-reason" class="q-rail-sub q-rail-sub-wrap" />
           </dd>
           <%!-- A run with no session: what opened it, and none of a session's facts (exit,

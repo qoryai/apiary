@@ -42,8 +42,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        it; the run configuration refuses no labels, so nothing comes between.
 
   Each endpoint's own refusals follow, in its controller: on the events endpoint the
-  `400` `invalid_request` of a body the contract refuses, then deduplication, `410` and
-  the ping's `409` `instance_limit` (`ApiaryWeb.Contract.EventsController`).
+  `400` `invalid_request` of a body the contract refuses, then deduplication and `410`
+  (`ApiaryWeb.Contract.EventsController`); on the run endpoint the registration's
+  (`ApiaryWeb.Contract.RegistrationController`).
 
   **Signed answers.** From the moment the request verifies, its answer is signed
   (`ApiaryWeb.Contract.SignedAnswer.register/2`), whatever its status but `401`. A refusal

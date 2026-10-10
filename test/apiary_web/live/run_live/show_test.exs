@@ -421,18 +421,29 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
-    test "a pending run says Ping only and waits on every tab", %{
+    test "a pending run says Registered only and waits on every tab", %{
       conn: conn,
       scope: scope
     } do
+      # A run that registered and posted nothing.
       run =
-        projected(scope, [{1, "ping", %{"forager_version" => "0.10.0", "contract_version" => 1}}])
+        projected(scope, [], %{
+          forager_version: "0.10.0",
+          projected_sequence: 1,
+          registered_at: DateTime.utc_now(),
+          registration_labels: %{},
+          registration_about: %{},
+          registration_digest: :crypto.hash(:sha256, "registration"),
+          registration_interval_seconds: 30,
+          registration_answer_digest: Apiary.Policy.Render.digest(~s({"version":1}))
+        })
 
       for path <- ["", "/terminal", "/network"] do
         {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}#{path}")
-        assert html =~ "Ping only"
+        assert html =~ "Registered only"
+        refute html =~ "Ping only"
         assert html =~ "Waiting for the run to start"
-        assert html =~ "The run&#39;s first event has not arrived."
+        assert html =~ "The run is registered. Its first event has not arrived."
       end
     end
 
@@ -503,7 +514,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "permission_prompt · Claude needs your permission to use Bash"
       assert html =~ "success · 14 turns · 3 m 49 s · $0.84"
       assert html =~ "exit 0"
-      assert html =~ "End of the record. 101 events."
+      assert html =~ "End of the record. 100 events."
       assert has_element?(lv, "ol#timeline[aria-label='Session timeline, oldest first']")
       refute html =~ "aria-live=\"polite\" id=\"timeline\""
     end

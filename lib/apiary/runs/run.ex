@@ -78,7 +78,8 @@ defmodule Apiary.Runs.Run do
     field :elapsed_seconds, :integer
     field :heartbeat_interval_seconds, :integer
     # The smallest arrival less own time over the run's heartbeats, and for a run a gateway
-    # opened its ping's, in milliseconds (`Apiary.Runs.Fold`); nil until the first.
+    # opened its registration's and its ping's, in milliseconds (`Apiary.Runs.Fold`); nil
+    # until the first.
     field :clock_offset_ms, :integer
 
     field :policy_digest, :string
