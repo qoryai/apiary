@@ -421,10 +421,11 @@ to the new address confirms it.
 
 **A forgotten password, without mail.** An instance admin opens **People** in the
 instance's organisation's settings and, in the ⋯ menu of the person's row, selects
-**Make a password link**. The page shows the link once, to copy and send to the person;
-it works once, for 24 hours, and a new one ends the one before. Following it, the person
-sets a new password, and every session of the account ends. Each link is an entry in the
-organisation's activity. Once mail is set, the menu has no such item: the person asks for
+**Make a password link**. It needs a recent sign-in, as **Account** settings do: an admin
+who signed in more than 20 minutes ago logs in again first. The page shows the link once,
+to copy and send to the person; it works once, for 24 hours, and a new one ends the one
+before. Following it, the person sets a new password, and every session of the account
+ends. Each link is an entry in the organisation's activity. Once mail is set, the menu has no such item: the person asks for
 a log-in link on the log-in page. Whoever has a shell on the release prints such a link,
 mail or not, for an hour:
 

@@ -12937,6 +12937,7 @@ msgstr ""
 
 #: lib/apiary_web/controllers/instance_mail_controller.ex
 #: lib/apiary_web/live/instance_live/mail.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format

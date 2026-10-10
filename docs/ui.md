@@ -280,8 +280,9 @@ replaces the navigation it is in.
   remove (Yes, leave, Yes, suspend) and Cancel (`inline_confirm/1`), at their paths
   `/settings/people/:id/remove` and `…/suspend`, whose Cancel or Escape goes back to
   People; on the instance's organisation, while no mail is set, an instance admin's ⋯
-  menu of each other member has Make a password link, which shows the link once above the
-  list, to copy and send, until Done, and the link's page, `/users/password/:token`, sets
+  menu of each other member has Make a password link, which, after a recent sign-in (an
+  older one leads to the log-in page first), shows the link once above the list, to copy
+  and send, until Done, and the link's page, `/users/password/:token`, sets
   the account's password), Workspaces
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list

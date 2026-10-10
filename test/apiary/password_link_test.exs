@@ -35,11 +35,16 @@ defmodule Apiary.PasswordLinkTest do
 
   defp account, do: with_mail(&user_fixture/0)
 
+  # An instance admin, signed in just now: a link needs a recent sign-in.
   defp instance_admin do
     %{user: user} = with_mail(&sign_up_fixture/0)
     {:ok, _} = Organisations.grant_instance_admin(user)
-    Scope.for_user(user)
+    user |> Scope.for_user() |> signed_in(0)
   end
+
+  defp signed_in(%Scope{} = scope, minutes_ago),
+    do:
+      put_in(scope.user.authenticated_at, DateTime.add(DateTime.utc_now(), -minutes_ago, :minute))
 
   defp url_fun(token), do: "https://qory.example.com/users/password/#{token}"
 
@@ -167,6 +172,21 @@ defmodule Apiary.PasswordLinkTest do
 
       assert password_tokens(admin.user) == []
       assert entries() == []
+    end
+
+    test "after a sign-in that is not recent, is refused, and nothing is made",
+         %{admin: admin} do
+      user = account()
+
+      for stale <- [signed_in(admin, 21), put_in(admin.user.authenticated_at, nil)] do
+        assert {:error, :sudo} = Accounts.build_password_link(stale, user, &url_fun/1)
+      end
+
+      assert password_tokens(user) == []
+      assert entries() == []
+
+      # Within 20 minutes, it is made.
+      assert {_token, _expires_at} = make(signed_in(admin, 19), user)
     end
 
     test "for a deleted account, is refused", %{admin: admin} do

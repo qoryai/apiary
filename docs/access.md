@@ -154,8 +154,9 @@ Granting and revoking an instance admin (`instance_admin.grant`, `instance_admin
 commands, taken on the strength of a shell on the release, which no role has. A password
 link (`account.password_link`, `Apiary.Accounts.build_password_link/3`), a one-time link
 that sets an account's password, is no role's either: an instance admin makes one while
-the instance sends no mail, asked by `Apiary.Access.instance_admin?/1` in the context
-function, and a release command makes one mail or not (`Apiary.Release.password_link/1`).
+the instance sends no mail, after a recent sign-in (`Apiary.Accounts.sudo_mode?/2`), asked
+by `Apiary.Access.instance_admin?/1` in the context function, and a release command makes
+one mail or not (`Apiary.Release.password_link/1`).
 Saving the instance's mail settings and turning them on by the test link
 (`instance.mail_save`, `Apiary.Mail.save_settings/3`; `instance.mail_on`,
 `Apiary.Mail.turn_on/2`) are no role's either: an instance admin, asked by
