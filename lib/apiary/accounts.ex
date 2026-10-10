@@ -422,7 +422,9 @@ defmodule Apiary.Accounts do
   - an instance admin (`Apiary.Access.instance_admin?/1`), while no mail is set
     (`Apiary.Mail.configured?/0`): a link that works for 24 hours, context `"password"`.
     `{:error, :forbidden}` for anyone else, and `{:error, :mail_set}` once mail is set,
-    when the person asks for a log-in link instead;
+    when the person asks for a log-in link instead. Never for their own account,
+    `{:error, :own_account}`: they change their own password in Account settings, behind
+    a recent sign-in, which a link would get around;
   - the instance (`Apiary.Accounts.Scope.for_instance/2`), a release command run on the
     instance's machine, which controls it already, mail or not: a link that works for an
     hour, context `"password:release"`.
@@ -443,13 +445,15 @@ defmodule Apiary.Accounts do
   """
   @spec build_password_link(Scope.t(), %User{}, (String.t() -> String.t())) ::
           {:ok, String.t(), DateTime.t()}
-          | {:error, :forbidden | :mail_set | :not_found | :no_instance_organisation | atom}
+          | {:error,
+             :forbidden | :mail_set | :own_account | :not_found | :no_instance_organisation | atom}
   def build_password_link(%Scope{} = by, %User{id: user_id}, url_fun)
       when is_function(url_fun, 1) do
     context = if by.instance and is_nil(by.user), do: "password:release", else: "password"
 
     Repo.transact(fn ->
       with :ok <- may_make_password_link(by),
+           :ok <- not_own_account(by, user_id),
            {:ok, organisation} <- instance_organisation(),
            {:ok, user} <- lock_account(user_id),
            :ok <- not_refused(user) do
@@ -497,6 +501,10 @@ defmodule Apiary.Accounts do
   end
 
   defp may_make_password_link(_scope), do: {:error, :forbidden}
+
+  # A person's own password is changed in Account settings, behind a recent sign-in.
+  defp not_own_account(%Scope{user: %User{id: id}}, id), do: {:error, :own_account}
+  defp not_own_account(_by, _user_id), do: :ok
 
   defp instance_organisation do
     with id when is_binary(id) <- Apiary.Edition.instance_organisation_id(),

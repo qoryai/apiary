@@ -897,6 +897,12 @@ defmodule ApiaryWeb.MemberLive.Index do
           {:error, :not_found} ->
             {:noreply, socket |> assign(:password_link, nil) |> load() |> gone()}
 
+          {:error, :own_account} ->
+            {:noreply,
+             socket
+             |> assign(:password_link, nil)
+             |> put_flash(:error, gettext("Change your own password in Account settings."))}
+
           {:error, reason} when reason in [:forbidden, :no_instance_organisation] ->
             {:noreply,
              socket

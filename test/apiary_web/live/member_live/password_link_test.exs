@@ -84,6 +84,18 @@ defmodule ApiaryWeb.MemberLive.PasswordLinkTest do
     refute render(lv) =~ token
   end
 
+  test "a link asked for the admin's own membership, the page offering none, is refused", ctx do
+    Apiary.Mail.put_test_source(:none)
+    {:ok, lv, _html} = live(ctx.conn, people())
+
+    render_click(lv, "password_link", %{"membership_id" => ctx.admin_scope.membership.id})
+
+    assert render(lv) =~ "Change your own password in Account settings."
+    refute has_element?(lv, "#password-link")
+    assert tokens(ctx.admin) == []
+    assert Repo.all(from e in Entry, where: e.action == "account.password_link") == []
+  end
+
   test "a second link ends the first", ctx do
     Apiary.Mail.put_test_source(:none)
     {:ok, lv, _html} = live(ctx.conn, people())

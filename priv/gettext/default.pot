@@ -3443,6 +3443,11 @@ msgstr ""
 msgid "Change version"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change your own password in Account settings."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format

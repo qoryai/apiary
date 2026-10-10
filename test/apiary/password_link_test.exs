@@ -160,6 +160,14 @@ defmodule Apiary.PasswordLinkTest do
       assert entries() == []
     end
 
+    test "for their own account, is refused, and nothing is made", %{admin: admin} do
+      assert {:error, :own_account} =
+               Accounts.build_password_link(admin, admin.user, &url_fun/1)
+
+      assert password_tokens(admin.user) == []
+      assert entries() == []
+    end
+
     test "for a deleted account, is refused", %{admin: admin} do
       user = account()
       {:ok, _} = Accounts.delete_user(%Scope{user: user})
