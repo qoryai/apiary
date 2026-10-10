@@ -110,7 +110,7 @@ defmodule Apiary.MailSettingsTest do
 
   # The Install guide as the documentation tree with `features` has it.
   defp install_guide(features) do
-    path = "guides/install.md"
+    path = Path.expand("../../guides/install.md", __DIR__)
     path |> File.read!() |> Mix.Tasks.Docs.All.split!(path) |> Mix.Tasks.Docs.All.join(features)
   end
 
@@ -548,7 +548,12 @@ defmodule Apiary.MailSettingsTest do
     test "the Backup guide says the saved password cannot be read, not that a secret turns mail off" do
       # Another APIARY_ENCRYPTION_SECRET stops the boot (`Apiary.KeyCheck`): it never
       # leaves an instance running with mail off.
-      guide = "guides/backup.md" |> File.read!() |> String.split() |> Enum.join(" ")
+      guide =
+        Path.expand("../../guides/backup.md", __DIR__)
+        |> File.read!()
+        |> String.split()
+        |> Enum.join(" ")
+
       refute guide =~ "without it, mail from those settings is off"
       assert guide =~ "Where that saved password cannot be read, mail from those settings is off"
     end

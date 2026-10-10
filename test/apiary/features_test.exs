@@ -111,7 +111,7 @@ defmodule Apiary.FeaturesTest do
     end
 
     test "the Install guide says no feature needs observability that does not" do
-      guide = File.read!("guides/install.md")
+      guide = File.read!(Path.expand("../../guides/install.md", __DIR__))
 
       free =
         for f <- Features.all() -- [:observability], :observability not in needs_all(f), do: f
