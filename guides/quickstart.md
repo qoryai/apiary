@@ -1,73 +1,62 @@
 # From nothing to a first run
 
-This page takes a machine with Docker and `git` to a running Qory Apiary with one run on
-its runs page. It is a trial on one machine, run from a checkout of the repository with an
-image built on the machine: Qory Apiary is reached at `http://localhost:4100`, and needs
-no mail: you sign in with a password. For an installation other people sign in to, read
+This page takes a machine with Docker to a running Qory Apiary with one run on its runs
+page. It is a trial on one machine, from the image a release publishes, with nothing
+cloned or built: Qory Apiary is reached at `http://localhost:4100`, and needs no mail: you
+sign in with a password. For an installation other people sign in to, read
 [Install and configure](install.md) and the [hosting checklist](hosting-checklist.md).
 
-You need Docker with the `docker compose` command, and `git`. From step 5 on you need the
+You need Docker with the `docker compose` command, and `curl`. From step 5 on you need the
 `qory` command, one that has `qory access-key`, on the same machine.
 
-## Run it from a checkout (for development)
+## Run it
 
-### 1. Get the source
+### 1. Download the release's files
 
-Clone the repository of Qory Apiary and enter the checkout:
-
-```sh
-git clone https://github.com/qoryai/apiary.git && cd apiary
-```
-
-### 2. Build the image and write `.env`
+Every release attaches `compose.yaml` and `env.example`. In a directory of its own,
+download the latest release's, and rename `env.example` to `.env`:
 
 ```sh
-docker build -t apiary:dev .
-cp .env.example .env
+mkdir qory-apiary && cd qory-apiary
+curl -fLO https://github.com/qoryai/apiary/releases/latest/download/compose.yaml
+curl -fLO https://github.com/qoryai/apiary/releases/latest/download/env.example
+mv env.example .env
 ```
 
-The build takes a few minutes. The image is `apiary:dev`, never the name of the image a
-release publishes. In `.env`, `PUBLIC_URL` is `http://localhost:4100` already. The mail
-lines are optional and stay empty for this trial: without mail Qory Apiary sends no email,
-you sign in with a password, and an invitation is a link you copy
+`.env` names its release in `APIARY_VERSION`, and `compose.yaml` runs the image
+`ghcr.io/qoryai/apiary` at that version. `PUBLIC_URL` is `http://localhost:4100` already.
+The mail lines are optional and stay empty for this trial: without mail Qory Apiary sends
+no email, you sign in with a password, and an invitation is a link you copy
 ([Mail](install.md#mail) says how to set it). The keys are not in `.env`: they are
 generated at first start.
 
-### 3. Start it
+### 2. Start it
 
 ```sh
-APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
+docker compose up -d
 ```
 
-`APIARY_IMAGE` and `APIARY_VERSION` name the image you built, in place of
-`ghcr.io/qoryai/apiary`, which a release publishes; the shell's values win over `.env`'s. Every later `docker compose`
-command reads them too, `docker compose logs` included, so set them in the shell for those
-first:
-
-```sh
-export APIARY_IMAGE=apiary APIARY_VERSION=dev
-```
-
-Compose first runs the service `keys`, which generates `SECRET_KEY_BASE`,
+Compose pulls the image, then runs the service `keys`, which generates `SECRET_KEY_BASE`,
 `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and the database password into the
 volume `keys` and exits. It then starts Postgres 18 with a volume, waits until it is
 healthy, and starts the `apiary` service, which runs the database migrations and listens
 on port 4100 of `127.0.0.1`. A required variable that is missing or malformed stops the
 boot with a message that names it, in `docker compose logs apiary`.
 
-Check that it serves, once the migrations have run, a few seconds after the start:
+### 3. Check that it serves
+
+Once the migrations have run, a few seconds after the start:
 
 ```sh
 curl http://localhost:4100/health
 ```
 
 ```text
-{"status":"ok","database":"ok","version":"0.1.0","revision":null}
+{"status":"ok","database":"ok","version":"0.1.0","revision":"4f2a9c1e0b…"}
 ```
 
-The members of the object may come in another order. `version` is the release's, and
-`revision` the commit the image was built from: `null` here, since a `docker build` of
-your own names none.
+The members of the object may come in another order. `version` is the release's, the one
+`.env` names, and `revision` the commit the release's image was built from.
 
 Keep a copy of the keys if you mean to keep this installation:
 [Backup and restore](backup.md) says how, and what is lost without them.

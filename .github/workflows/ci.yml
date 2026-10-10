@@ -608,7 +608,7 @@ jobs:
           keys_kept
           docker compose down -v
 
-      # README's "Run it from a checkout (for development)", as written: an image without
+      # CONTRIBUTING.md's "Run it from a checkout", as written: an image without
       # APIARY_REVISION reports the revision null.
       - name: Run it from a checkout (for development)
         run: |
