@@ -79,6 +79,20 @@ defmodule Apiary.MailSettingsTest do
 
   defp url(token), do: "https://qory.example.com/instance/mail/confirm/#{token}"
 
+  # What the instance's row keeps of the mail settings: nil where there is no row, or where
+  # the row, which the set-up makes, holds none of them.
+  defp kept_mail do
+    with %Apiary.Mail.Settings{} = settings <- Mail.settings(),
+         kept when kept != %{} <-
+           settings
+           |> Map.take(Apiary.Mail.Settings.__schema__(:fields) -- [:id, :updated_at])
+           |> Map.reject(fn {_field, value} -> is_nil(value) end) do
+      kept
+    else
+      _nothing -> nil
+    end
+  end
+
   # The token of the test link in the email the admin was sent.
   defp sent_token do
     assert_received {:sent, email, _config}
@@ -260,7 +274,7 @@ defmodule Apiary.MailSettingsTest do
                Mail.save_settings(scope, %{@attrs | "smtp_username" => " "}, &url/1)
 
       assert errors_on(changeset) == %{smtp_username: ["can't be blank with a password"]}
-      assert Mail.settings() == nil
+      assert kept_mail() == nil
     end
 
     test "a refused save keeps nothing, and its changeset holds no password", %{scope: scope} do
@@ -282,7 +296,7 @@ defmodule Apiary.MailSettingsTest do
         assert changeset.params["smtp_password"] == ""
       end
 
-      assert Mail.settings() == nil
+      assert kept_mail() == nil
       refute_received {:sent, _email, _config}
     end
 
@@ -347,14 +361,14 @@ defmodule Apiary.MailSettingsTest do
         assert Mail.save_settings(other, @attrs, &url/1) == {:error, :forbidden}
       end
 
-      assert Mail.settings() == nil
+      assert kept_mail() == nil
     end
 
     test "is refused while the environment sets mail, which wins whole", %{scope: scope} do
       put_env(Apiary.Mailer, adapter: Swoosh.Adapters.Test)
 
       assert Mail.save_settings(scope, @attrs, &url/1) == {:error, :env}
-      assert Mail.settings() == nil
+      assert kept_mail() == nil
     end
 
     @tag with_features: [:observability, :security]

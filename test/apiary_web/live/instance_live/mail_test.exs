@@ -59,6 +59,20 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
   @no_link "No test link is waiting: save the settings again to send one."
 
+  # What the instance's row keeps of the mail settings: nil where there is no row, or where
+  # the row, which the set-up makes, holds none of them.
+  defp kept_mail do
+    with %Apiary.Mail.Settings{} = settings <- Mail.settings(),
+         kept when kept != %{} <-
+           settings
+           |> Map.take(Apiary.Mail.Settings.__schema__(:fields) -- [:id, :updated_at])
+           |> Map.reject(fn {_field, value} -> is_nil(value) end) do
+      kept
+    else
+      _nothing -> nil
+    end
+  end
+
   defp sent_path do
     assert_received {:email, %{subject: @subject} = email}
     [path] = Regex.run(~r{/instance/mail/confirm/[A-Za-z0-9_-]+}, email.text_body)
@@ -210,7 +224,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       refute inspect(:sys.get_state(view.pid), limit: :infinity, printable_limit: :infinity) =~
                @password
 
-      assert Mail.settings() == nil
+      assert kept_mail() == nil
       refute_received {:email, %{subject: @subject}}
 
       html = save(view, %{@attrs | "smtp_password" => ""})
