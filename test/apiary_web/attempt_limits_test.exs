@@ -343,5 +343,27 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       assert {:ok, _lv, _html} = live(from(client), ~p"/users/register")
     end
+
+    test "a password link: past a client's 20, a real token and an unknown one get the same answer, and nothing is set" do
+      user = user_fixture()
+      {token, user_token} = UserToken.build_password_link_token(user, "password")
+      Repo.insert!(user_token)
+
+      client = "198.51.100.44"
+      {:ok, _lv, html} = live(from(client), ~p"/users/password/#{token}")
+      assert html =~ "Set your password"
+
+      spend_page(client)
+
+      for path <- [~p"/users/password/#{token}", ~p"/users/password/not-a-token"] do
+        assert {:error, {:redirect, %{to: "/users/log-in", flash: %{"error" => @message}}}} =
+                 live(from(client), path)
+      end
+
+      # The link still works, from another client.
+      assert Apiary.Accounts.get_user_by_password_link(token)
+      {:ok, _lv, html} = live(from("198.51.100.45"), ~p"/users/password/#{token}")
+      assert html =~ "Set your password"
+    end
   end
 end

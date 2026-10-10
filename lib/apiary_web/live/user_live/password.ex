@@ -15,8 +15,8 @@ defmodule ApiaryWeb.UserLive.Password do
   is done.
 
   The page counts as a page a link opens before the token is looked up
-  (`link_page_mount/1`). The token stays in the page's process: the request log writes the
-  path without it (`ApiaryWeb.RequestLog`).
+  (`ApiaryWeb.AttemptLimits.link_page_mount/1`). The token stays in the page's process:
+  the request log writes the path without it (`ApiaryWeb.RequestLog`).
   """
   use ApiaryWeb, :live_view
 
@@ -80,22 +80,13 @@ defmodule ApiaryWeb.UserLive.Password do
 
   @impl true
   def mount(%{"token" => token}, _session, socket) do
-    # Counted before the token is looked up: past the limit the socket comes back
-    # redirected, with the limit's one answer, and nothing of the link is looked up.
-    case link_page_mount(socket) do
-      {_counted, %{redirected: nil} = socket} ->
-        {:ok, socket |> assign(:token, token) |> open(token)}
-
-      {_limited, socket} ->
-        {:ok, socket}
+    # Counted before the token is looked up (`ApiaryWeb.AttemptLimits`): past the limit
+    # nothing of the link is looked up.
+    case ApiaryWeb.AttemptLimits.link_page_mount(socket) do
+      {:ok, socket} -> {:ok, socket |> assign(:token, token) |> open(token)}
+      {:limited, socket} -> {:ok, socket}
     end
   end
-
-  # PIECE-4-SEAM. Piece 4 (fg49/mail-p4) adds `ApiaryWeb.AttemptLimits.link_page_mount/1`,
-  # `{:ok, socket}` or `{:limited, socket}` redirected with its message, which is not on
-  # this branch's base. At the merge this function goes, and `mount/3` calls
-  # `ApiaryWeb.AttemptLimits.link_page_mount(socket)` in its place.
-  defp link_page_mount(socket), do: {:ok, socket}
 
   defp open(socket, token) do
     user = Accounts.get_user_by_password_link(token)
