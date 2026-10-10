@@ -3,6 +3,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
 
   import Phoenix.LiveViewTest
   import Apiary.RunEventsFixtures
+  import Apiary.Midnight
 
   alias Apiary.Retention
   alias Apiary.Runs.{Projector, Run}
@@ -21,12 +22,16 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     Apiary.Repo.get!(Run, run.id)
   end
 
-  defp today, do: ApiaryWeb.Format.date(DateTime.utc_now())
+  # The pruning is dated by the clock, and the page reads it as a date in the reader's
+  # zone: the reader's clock reads about noon (`Apiary.Midnight`), and today is its date.
+  defp today(zone),
+    do: ApiaryWeb.Format.with_time_zone(zone, fn -> ApiaryWeb.Format.date(DateTime.utc_now()) end)
 
   test "a run whose events were pruned keeps its header and says when its timeline went", %{
     conn: conn,
     scope: scope
   } do
+    zone = reader_at_noon(scope.user)
     run = pruned(scope, %{events_retention_days: 30})
     {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
@@ -37,7 +42,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
 
     # Never an empty timeline without a sentence.
     assert has_element?(lv, ".q-limits", "Events pruned")
-    assert has_element?(lv, ".q-limits", "This run's events were pruned on #{today()}")
+    assert has_element?(lv, ".q-limits", "This run's events were pruned on #{today(zone)}")
     refute has_element?(lv, "#timeline")
     refute html =~ "No session events arrived"
   end
@@ -46,12 +51,13 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     conn: conn,
     scope: scope
   } do
+    zone = reader_at_noon(scope.user)
     run = pruned(scope, %{events_retention_days: 30})
 
     {:ok, lv, _html} =
       live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
 
-    assert has_element?(lv, ".q-limits", "This run's events were pruned on #{today()}")
+    assert has_element?(lv, ".q-limits", "This run's events were pruned on #{today(zone)}")
     refute render(lv) =~ "This run wrote no output"
 
     {:ok, _lv, html} =
@@ -67,7 +73,8 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
 
     # the policy card is `security`'s
     if Apiary.Features.on?(:security),
-      do: assert(html =~ "The policy event was pruned with the run&#39;s events on #{today()}."),
+      do:
+        assert(html =~ "The policy event was pruned with the run&#39;s events on #{today(zone)}."),
       else: refute(html =~ "The policy event")
   end
 

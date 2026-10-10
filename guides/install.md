@@ -32,7 +32,8 @@ page is the reference for an installation that stays.
 - **A reverse proxy** that terminates TLS, in front of the port.
 - **An SMTP relay.** People sign in with a link sent by email and are invited by email.
   Without `SMTP_RELAY` the release starts all the same, sends no email, and says so in
-  its log; people then sign up with a password ([Mail](#mail)).
+  its log; people then sign up with a password ([Mail](#mail)), and an invitation is a link
+  that whoever invites copies and sends themselves.
 
 With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
 three services, and `docker compose logs apiary` shows the boot.
@@ -61,16 +62,18 @@ machine, and the URLs in the discovery document are all built from `PUBLIC_URL`,
 from the request's `Host` header. A `PUBLIC_URL` that is not the address machines and
 people use gives them links that do not work.
 
-The audit trail records the address each change came from. Behind a proxy that is the
-proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
-front of the release, separated by commas. For a request from one of them the release
-reads `X-Forwarded-For` from its right-most hop leftwards, passes over the hops the
-trusted proxies added, and takes the first address that is not one of them. What the
-client wrote to the left of that is never read, so a client cannot choose the address
-recorded. Name only the proxies that set the header themselves, and leave it unset when
-nothing is in front of the release: a proxy the release trusts is believed about every
-address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
+The audit trail records the address each change came from, and the limits on signing in
+count attempts by it. Behind a proxy that is the proxy's, unless `TRUSTED_PROXIES` names
+it: addresses or CIDR ranges of the proxies in front of the release, separated by commas.
+For a request from one of them the release reads `X-Forwarded-For` from its right-most
+hop leftwards, passes over the hops the trusted proxies added, and takes the first address
+that is not one of them. What the client wrote to the left of that is never read, so a
+client cannot choose the address recorded. Name only the proxies that set the header
+themselves, and leave it unset when nothing is in front of the release: a proxy the
+release trusts is believed about every address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
 since it would believe any client about its own address. A hop's port is left out.
+Behind a proxy the release does not trust, every client counts as the proxy, and they
+share its limits on signing in.
 
 ```sh
 TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
@@ -482,7 +485,7 @@ whole database schema whatever its features, so nothing is migrated.
 |---|---|---|
 | `AUDIT_RETENTION_DAYS` | `90` | How many days the audit trail keeps an entry: a whole number from `30` to `90`. Not set, or empty, is `90`. |
 | `AUDIT_ADDRESS_RETENTION_DAYS` | `90` | How many days an entry keeps the address and the client (the browser's user agent) it came from, after which they are cleared and the rest of the entry stays: a whole number from `1` to the value of `AUDIT_RETENTION_DAYS`. Not set, or empty, is `90`, or the value of `AUDIT_RETENTION_DAYS` when that is shorter. |
-| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
+| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from, and the address the limits on signing in count by: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
 its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access
@@ -554,7 +557,7 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation sends in 24 hours: a whole number from `1`. Not set, or empty, is `20`. |
+| `INVITATIONS_PER_DAY` | `20` | How many invitations the organisation makes in 24 hours, emailed or copied: a whole number from `1`. Not set, or empty, is `20`. |
 | `FIRST_ADMIN_EMAIL` | none | Optional. The first admin's address, used once, at the instance's first start, with `FIRST_ORGANISATION_NAME` ([The instance admins](#the-instance-admins)). Not set, or empty, with `FIRST_ORGANISATION_NAME` empty too, leaves the first sign-up to the web. |
 | `FIRST_ORGANISATION_NAME` | none | Optional. The name of the instance's organisation, created with the first admin at the first start; the same rules as an organisation's name on the sign-up page. |
 
@@ -579,11 +582,18 @@ not name the person who sent it; only someone whose account is confirmed can sen
 organisation's name cannot hold a web address (`://` or `www.`), quotation marks other
 than an apostrophe, straight or curly, control characters or invisible Unicode characters;
 a name like `Acme.io` or `Dana’s` is fine, though a mail client may turn a bare domain into
-a link. Once the organisation has sent `INVITATIONS_PER_DAY` invitations in the last 24
-hours, whoever sends the next is told so, and it sends no more until the oldest of them is
+a link. Once the organisation has made `INVITATIONS_PER_DAY` invitations in the last 24
+hours, whoever makes the next is told so, and it makes no more until the oldest of them is
 a day old; an invitation that was accepted, revoked or deleted since still counts, and one
 whose email could not be delivered does not. Every invitation tried, delivered or not, counts against three times
 `INVITATIONS_PER_DAY`, so the organisation cannot keep sending to addresses that bounce.
+
+Without mail, nothing is sent: the invite page shows the invitation's link once, for
+whoever invites to copy and send themselves, and their account need not be confirmed.
+Only the link's hash is kept, so it cannot be shown again; **Make a new link** on the
+pending invitation makes another, which works for seven days again, and the old one stops
+working at once. A link copied, and each new link made, count against
+`INVITATIONS_PER_DAY` as an emailed invitation does.
 
 A value it does not accept stops the boot:
 

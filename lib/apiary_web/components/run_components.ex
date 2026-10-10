@@ -180,10 +180,11 @@ defmodule ApiaryWeb.RunComponents do
 
   Forager's own reasons have words of their own, none naming who or what ended the run:
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
-  "stopped, no outcome given", "stopped responding", "end not recorded", "events refused",
-  "couldn't check whether the run may go on: no answer". A reason stored under its earlier
-  name reads as the new one. Any other code is the one the run's starter gave, shown as
-  given with spaces for underscores: `no_longer_needed` reads "no longer needed".
+  "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
+  "events refused", "couldn't check whether the run may go on: no answer". A reason stored
+  under its earlier name reads as the new one. Any other code is the one the run's starter
+  gave, shown as given with spaces for underscores: `no_longer_needed` reads "no longer
+  needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one: "did not start: image_unknown".
@@ -276,6 +277,9 @@ defmodule ApiaryWeb.RunComponents do
       else: gettext("stopped, no outcome given")
   end
 
+  # Forager writes `interrupted` only with cancelled, for a session's run stopped where it was
+  # started (a Ctrl-C, or a signal to `qory run`).
+  defp words_of("interrupted", _run), do: gettext("interrupted")
   defp words_of("session_lost", _run), do: gettext("stopped responding")
   defp words_of("gateway_lost", _run), do: gettext("end not recorded")
   defp words_of("batch_refused", _run), do: gettext("events refused")

@@ -48,6 +48,7 @@ defmodule Apiary.AccessRows do
       {:"member.change_level", yes: @owners ++ [:feature_off], on: :workspace},
       {:"member.remove", yes: @owners ++ [:admin, :feature_off], on: :workspace},
       {:"invitation.revoke", yes: @owners ++ [:admin, :instance, :feature_off]},
+      {:"invitation.renew", yes: @owners ++ [:admin, :feature_off]},
       {:"invitation.accept", yes: []},
       {:"member.suspend", yes: @owners ++ [:admin, :feature_off], on: :workspace},
       {:"member.activate", yes: @owners ++ [:admin, :feature_off], on: :workspace},

@@ -43,6 +43,7 @@ defmodule Apiary.AuditChanges do
       :"member.change_level",
       :"member.remove",
       :"invitation.revoke",
+      :"invitation.renew",
       :"invitation.accept",
       :"member.suspend",
       :"member.activate",
@@ -119,6 +120,16 @@ defmodule Apiary.AuditChanges do
     %{invitation: invitation} = invitation_fixture(scope)
     before = entries()
     {:ok, _} = Organisations.revoke_invitation(scope, invitation.id)
+    %{scope: scope, subject: {"invitation", invitation.id}, before: before}
+  end
+
+  def make(:"invitation.renew", %{scope: scope}) do
+    %{invitation: invitation} = invitation_fixture(scope)
+    before = entries()
+
+    {:ok, _renewed} =
+      Organisations.renew_invitation(scope, invitation.id, &"http://localhost/invitations/#{&1}")
+
     %{scope: scope, subject: {"invitation", invitation.id}, before: before}
   end
 
@@ -447,6 +458,7 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"member.change_level", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"member.remove", %{scope: scope}), do: member_fixture(scope).membership
   defp prepare(:"invitation.revoke", %{scope: scope}), do: invitation_fixture(scope).invitation
+  defp prepare(:"invitation.renew", %{scope: scope}), do: invitation_fixture(scope).invitation
   defp prepare(:"member.suspend", %{scope: scope}), do: member_fixture(scope).membership
 
   defp prepare(:"member.activate", %{scope: scope}) do
@@ -529,6 +541,14 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"invitation.revoke", scope, invitation),
     do: Organisations.revoke_invitation(scope, invitation.id)
+
+  defp attempt(:"invitation.renew", scope, invitation),
+    do:
+      Organisations.renew_invitation(
+        scope,
+        invitation.id,
+        &"http://localhost/invitations/#{&1}"
+      )
 
   defp attempt(:"member.suspend", scope, membership),
     do: Organisations.suspend_member(scope, membership.id)

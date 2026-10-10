@@ -476,6 +476,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     capture(fn url_fun ->
       case Organisations.invite_member(scope, %{"email" => email}, url_fun) do
         {:ok, invitation} -> {:ok, invitation}
+        {:ok, invitation, {:link, _url}} -> {:ok, invitation}
         {:error, reason} -> Mix.raise("#{email} was not invited: #{inspect(reason)}")
       end
     end)

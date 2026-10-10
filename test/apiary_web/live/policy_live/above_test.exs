@@ -14,6 +14,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
   import Phoenix.LiveViewTest
   import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.Policy
   alias Apiary.Policy.{Above, Effective, Rule}
@@ -272,6 +273,10 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       target: target,
       path: path
     } do
+      # The card says "today" of the mode the setup set: in a day of the reader's, clear of
+      # midnight (`Apiary.Midnight`).
+      reader_at_noon(scope.user)
+
       above!([rule("deny", "paste.example"), rule("allow", "api.example")],
         floor: true,
         own_allows: false

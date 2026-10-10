@@ -62,8 +62,8 @@ Deleting a workspace and cancelling it (`workspace.delete`, `workspace.restore`)
 admin's as well as an owner's: an admin manages the workspaces.
 
 Over people, an admin acts on members only. Inviting, changing a level, removing,
-revoking an invitation, suspending and activating (`member.suspend`, `member.activate`)
-are **actions over people**: asked of the membership they are about, whose level decides,
+revoking an invitation, making a new link for one (`invitation.renew`), suspending and
+activating (`member.suspend`, `member.activate`) are **actions over people**: asked of the membership they are about, whose level decides,
 or of the invitation, which is at member: an invitation is an email address and nothing
 else, and its person joins as a member, whom an owner makes an admin or an owner
 afterwards. An owner takes them on anyone, within the last-owner rule, but suspends and
@@ -72,7 +72,8 @@ and on any invitation, never on an owner or an admin. Nobody suspends or activat
 own membership, whatever their level. Asked of a workspace or the organisation, as a page
 asks whether to show a button at all, the role alone answers; the context function asks
 of the row. An invitation is the organisation's whichever workspace it was sent from, so
-an owner or an admin revokes it from any page of the organisation. An edition's own
+an owner or an admin revokes it, or makes a new link for it, from any page of the
+organisation. An edition's own
 action over people asks the same rule (`Apiary.Access.acts_on?/2`).
 
 ## Reach
@@ -364,7 +365,9 @@ The modes keep a row that only names another out of it:
 - An invitation locks the row of the organisation whose allowance it counts against
   `FOR NO KEY UPDATE` while it is counted and written: the organisation's own for
   `member.invite`, or the one an edition's invitation names
-  (`Apiary.Organisations.insert_invitation/3`).
+  (`Apiary.Organisations.insert_invitation/3`). A new link for a pending invitation
+  (`Apiary.Organisations.renew_invitation/3`) locks the row of the allowance the
+  invitation was counted against the same way, then the invitation's `FOR UPDATE`.
 - An invitation's acceptance, and a sign-up with an invitation, let the edition hold the
   organisation first, more strongly if it will (`c:Apiary.Edition.accepting/3`), then hold
   it `FOR SHARE`, before the account and the invitation, so the organisation's marking,

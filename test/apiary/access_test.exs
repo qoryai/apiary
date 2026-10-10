@@ -158,7 +158,7 @@ defmodule Apiary.AccessTest do
       {:node_key, [:"access_key.revoke"]},
       {:code, [:"access_key.cancel_code"]},
       {:membership, [:"member.change_level", :"member.remove"]},
-      {:invitation, [:"invitation.revoke"]}
+      {:invitation, [:"invitation.revoke", :"invitation.renew"]}
     ]
 
     setup do
@@ -226,7 +226,7 @@ defmodule Apiary.AccessTest do
         assert Access.authorize(ctx.owner, action, membership) == :ok
       end
 
-      for action <- [:"member.invite", :"invitation.revoke"] do
+      for action <- [:"member.invite", :"invitation.revoke", :"invitation.renew"] do
         assert Access.authorize(ctx.owner, action, ctx.invitation) == :ok
       end
     end
@@ -244,7 +244,7 @@ defmodule Apiary.AccessTest do
       end
 
       # An invitation makes a member, whoever sent it.
-      for action <- [:"member.invite", :"invitation.revoke"] do
+      for action <- [:"member.invite", :"invitation.revoke", :"invitation.renew"] do
         assert Access.authorize(ctx.admin, action, ctx.invitation) == :ok
       end
     end

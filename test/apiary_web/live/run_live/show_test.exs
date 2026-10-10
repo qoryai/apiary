@@ -2568,6 +2568,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "Cancelled", "stopped, no outcome given", "not recorded", nil},
             {%{"state" => "cancelled", "reason" => "stopped", "exit_code" => -1}, "Cancelled",
              "stopped, no outcome given", "not recorded", nil},
+            # stopped where it was started: Cancelled · interrupted; Exit the program's own,
+            # an exit 0 that is no success, its own 130 on a SIGINT, the session's signal
+            {%{"state" => "cancelled", "reason" => "interrupted", "exit_code" => 0}, "Cancelled",
+             "interrupted", "0", nil},
+            {%{"state" => "cancelled", "reason" => "interrupted", "exit_code" => 130},
+             "Cancelled", "interrupted", "130", nil},
+            {%{
+               "state" => "cancelled",
+               "reason" => "interrupted",
+               "exit_code" => 130,
+               "signal" => "SIGINT"
+             }, "Cancelled", "interrupted", "SIGINT", nil},
+            {%{
+               "state" => "cancelled",
+               "reason" => "interrupted",
+               "exit_code" => -1,
+               "signal" => "SIGTERM"
+             }, "Cancelled", "interrupted", "SIGTERM", nil},
             # the starter's own outcome and reason
             {%{"state" => "succeeded", "reason" => "all_checks_passed", "exit_code" => 0},
              "Completed", "all checks passed", "0", nil},
@@ -2738,6 +2756,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              "Run cancelled: no longer needed."},
             {{"run.exited", %{"state" => "cancelled", "exit_code" => -1}}, "Run cancelled."},
             {{"run.exited",
+              %{"state" => "cancelled", "reason" => "interrupted", "exit_code" => 130}},
+             "Run cancelled: interrupted."},
+            {{"run.exited",
+              %{"state" => "cancelled", "reason" => "interrupted", "exit_code" => 0}},
+             "Run cancelled: interrupted."},
+            {{"run.exited",
               %{"state" => "failed", "reason" => "session_lost", "exit_code" => -1}},
              "Run lost: stopped responding."},
             {{"run.refused", %{"code" => "image_unknown"}}, "Run did not start."},
@@ -2769,9 +2793,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       reasons =
-        ~w(timeout quiet credential_expired stopped session_lost gateway_lost batch_refused
-           credential_check_unreachable credential_check_invalid run_closed run_ended_at_issuer
-           issuer_unreachable issuer_answer_invalid example_reason)
+        ~w(timeout quiet credential_expired stopped interrupted session_lost gateway_lost
+           batch_refused credential_check_unreachable credential_check_invalid run_closed
+           run_ended_at_issuer issuer_unreachable issuer_answer_invalid example_reason)
 
       runs =
         for reason <- reasons, state <- [nil, "succeeded", "failed", "cancelled"] do

@@ -3,7 +3,8 @@
 #
 # A release names its version: scripts/aws-template-release.py writes it into the Release
 # mapping and into the texts that name it. Here, in the repository, the mapping is empty,
-# so an upload by hand types the version under Version.
+# so an upload by hand types the version under Version, or, for a test before a release,
+# names an image under Test image.
 #
 # Upgrade with the console's Update and the new release's template, or with
 # `aws cloudformation deploy`, which keep the parameters they are not given. KeysFromStack
@@ -34,6 +35,8 @@ Metadata:
         Parameters: [KeysFromStack, DatabaseSnapshot]
       - Label: { default: Recovery }
         Parameters: [AcceptSigningKey, DatabaseDeletionProtection]
+      - Label: { default: For testing only }
+        Parameters: [TestImage]
     ParameterLabels:
       Edition: { default: Edition }
       ProDownloadKey: { default: Apiary Pro download key }
@@ -54,6 +57,7 @@ Metadata:
       DatabaseSnapshot: { default: Database snapshot to restore (optional) }
       AcceptSigningKey: { default: Accept a new signing key (fingerprint) }
       DatabaseDeletionProtection: { default: Protect the database from deletion }
+      TestImage: { default: Test image (leave empty) }
 
 Parameters:
   Edition:
@@ -136,6 +140,13 @@ Parameters:
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
     Description: "To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+  # A pre-release image, such as ghcr.io/qoryai/apiary-prerelease:sha-<7>, which
+  # .github/workflows/prerelease.yml publishes. It replaces the Edition's image and version,
+  # and is pulled with the download key when one is given, whatever the Edition.
+  TestImage:
+    Type: String
+    Default: ""
+    Description: "Leave empty. Only for Qory's pre-release tests: a full image reference, which replaces the image the Edition picks."
 
 # The versions a release names, which scripts/aws-template-release.py writes in. Empty
 # here, in the repository. The images are each edition's.
@@ -173,11 +184,13 @@ Rules:
   # mapping, so the release writes the same version in here too
   # (scripts/aws-template-release.py), as the value each Assert compares Version with: Version
   # being empty here, the Assert holds exactly when that value is not. Here, in the
-  # repository, both are empty.
+  # repository, both are empty. With a test image the image names its own version, so
+  # neither Rule applies; the download key and the CPU architecture are still checked above.
   CommunityVersionNamed:
     RuleCondition: !And
       - !Equals [!Ref Edition, Apiary Community]
       - !Equals [!Ref VersionOverride, ""]
+      - !Equals [!Ref TestImage, ""]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
         AssertDescription: "This copy of the template names no release of Apiary Community: type a version under Version."
@@ -185,6 +198,7 @@ Rules:
     RuleCondition: !And
       - !Equals [!Ref Edition, Apiary Pro]
       - !Equals [!Ref VersionOverride, ""]
+      - !Equals [!Ref TestImage, ""]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
         AssertDescription: Apiary Pro is installed from Apiary Pro's release.
@@ -192,6 +206,7 @@ Rules:
 Conditions:
   IsPro: !Equals [!Ref Edition, Apiary Pro]
   HasVersionOverride: !Not [!Equals [!Ref VersionOverride, ""]]
+  HasTestImage: !Not [!Equals [!Ref TestImage, ""]]
   # A key given with Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
@@ -604,7 +619,8 @@ Resources:
 
   # Part 1's settings, from the parameters and Secrets Manager. The database's certificate
   # is checked against the RDS bundle the image carries. The image is the edition's, at
-  # Version when it is given, else at the Release mapping's version for that edition.
+  # Version when it is given, else at the Release mapping's version for that edition; with
+  # Test image, exactly the image it names.
   # FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME name the first administrator;
   # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is.
   TaskDefinition:
@@ -621,19 +637,22 @@ Resources:
       TaskRoleArn: !GetAtt TaskRole.Arn
       ContainerDefinitions:
         - Name: apiary
-          Image: !Sub
-            - ${Repository}:${Tag}
-            - Repository: !If
-                - IsPro
-                - !FindInMap [Images, Pro, Repository]
-                - !FindInMap [Images, Community, Repository]
-              Tag: !If
-                - HasVersionOverride
-                - !Ref VersionOverride
-                - !If
+          Image: !If
+            - HasTestImage
+            - !Ref TestImage
+            - !Sub
+              - ${Repository}:${Tag}
+              - Repository: !If
                   - IsPro
-                  - !FindInMap [Release, Versions, ProVersion]
-                  - !FindInMap [Release, Versions, CommunityVersion]
+                  - !FindInMap [Images, Pro, Repository]
+                  - !FindInMap [Images, Community, Repository]
+                Tag: !If
+                  - HasVersionOverride
+                  - !Ref VersionOverride
+                  - !If
+                    - IsPro
+                    - !FindInMap [Release, Versions, ProVersion]
+                    - !FindInMap [Release, Versions, CommunityVersion]
           Essential: true
           PortMappings:
             - ContainerPort: 4100
@@ -865,15 +884,19 @@ Outputs:
   Edition:
     Description: The edition the stack runs.
     Value: !Ref Edition
+  # With Test image, the image the stack runs in place of a version.
   Version:
     Description: The version the stack runs.
     Value: !If
-      - HasVersionOverride
-      - !Ref VersionOverride
+      - HasTestImage
+      - !Sub "Test image ${TestImage}"
       - !If
-        - IsPro
-        - !FindInMap [Release, Versions, ProVersion]
-        - !FindInMap [Release, Versions, CommunityVersion]
+        - HasVersionOverride
+        - !Ref VersionOverride
+        - !If
+          - IsPro
+          - !FindInMap [Release, Versions, ProVersion]
+          - !FindInMap [Release, Versions, CommunityVersion]
   Logs:
     Description: The task's log group in CloudWatch, kept 30 days.
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}
