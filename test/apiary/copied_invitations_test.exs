@@ -283,6 +283,36 @@ defmodule Apiary.CopiedInvitationsTest do
       assert_no_email_sent()
     end
 
+    test "an invitation found by its link before a renewal is not taken with that link",
+         %{scope: scope} do
+      %{invitation: invitation, token: old} = invitation_fixture(scope)
+
+      # Found by the old link, as a page finds it before the person accepts or signs up.
+      found = Organisations.get_invitation_by_token(old)
+      assert found.id == invitation.id
+
+      assert {:ok, _renewed, {:link, _url}} =
+               Organisations.renew_invitation(scope, invitation.id, url_fun())
+
+      # Neither the accept nor the sign-up takes it with what the old link found.
+      assert {:error, :invalid} = Organisations.accept_invitation(mailed(&user_fixture/0), found)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               mailed(fn ->
+                 Organisations.sign_up_user(
+                   valid_user_attributes(%{email: invitation.email}),
+                   found,
+                   open: true
+                 )
+               end)
+
+      assert "was invited, but the invitation is no longer valid" in errors_on(changeset).email
+
+      # Still pending, for its new link.
+      assert [%Invitation{id: id}] = Organisations.list_invitations(scope)
+      assert id == invitation.id
+    end
+
     test "renew_invitation/4 with action: inside a transaction that holds the allowance already",
          %{scope: scope} do
       %{scope: other} = mailed(&sign_up_fixture/0)
@@ -362,6 +392,26 @@ defmodule Apiary.CopiedInvitationsTest do
                Organisations.renew_invitation(unconfirmed, invitation.id, url_fun())
 
       assert entries(invitation, "invitation.renew") == []
+    end
+
+    test "send_invitation/4 asks for a confirmed inviter as it mails, mail set since the invitation was written",
+         %{scope: scope} do
+      unconfirmed = %{scope | user: %{scope.user | confirmed_at: nil}}
+
+      # Written while no mail was set, which needs no confirmed inviter; then mail is set.
+      Mail.put_test_source(:none)
+      {invitation, token} = insert!(unconfirmed, "dana@example.com", scope.organisation)
+      Mail.put_test_source(:env)
+
+      assert {:error, :unconfirmed} =
+               Organisations.send_invitation(unconfirmed, invitation, token, url_fun())
+
+      # Nothing mailed, and withdrawn as an undelivered one is: its address is free again.
+      assert_no_email_sent()
+      assert Organisations.get_invitation_by_token(token) == nil
+
+      assert [%Entry{details: %{"reason" => "undelivered"}}] =
+               entries(invitation, "invitation.revoke")
     end
 
     test "renew_invitation/3 emails the new link; the old one is dead", %{scope: scope} do

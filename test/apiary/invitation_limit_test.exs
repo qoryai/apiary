@@ -99,6 +99,59 @@ defmodule Apiary.InvitationLimitTest do
     assert refused_for_the_day?(invite(scope))
   end
 
+  test "a renewal withdrawn because its email was not delivered un-counts itself alone",
+       %{scope: scope} do
+    # Two delivered.
+    assert {:ok, %Invitation{} = first} = invite(scope)
+    assert {:ok, %Invitation{}} = invite(scope)
+
+    # The edition's renewal of the first, whose email is then not delivered: withdrawn.
+    assert {:ok, renewed, token} = renew(scope, first, action: :"member.invite")
+
+    previous = Application.fetch_env!(:apiary, Apiary.Mailer)
+    Application.put_env(:apiary, Apiary.Mailer, adapter: Apiary.FailingMailAdapter)
+    on_exit(fn -> Application.put_env(:apiary, Apiary.Mailer, previous) end)
+
+    assert {:error, :delivery_failed} =
+             Organisations.send_invitation(scope, renewed, token, & &1)
+
+    Application.put_env(:apiary, Apiary.Mailer, previous)
+
+    # The withdrawal names the renewal's entry, the one it undoes.
+    [_invited, renewal] =
+      Repo.all(
+        from e in Entry,
+          where: e.subject_id == ^first.id and e.action == "member.invite",
+          order_by: [asc: e.inserted_at, asc: e.id]
+      )
+
+    assert [%Entry{details: details}] =
+             Repo.all(
+               from e in Entry,
+                 where: e.subject_id == ^first.id and e.action == "invitation.revoke"
+             )
+
+    assert details == %{"reason" => "undelivered", "entry_id" => renewal.id}
+
+    # Two mails delivered: one more of the day's three, not two.
+    assert {:ok, %Invitation{}} = invite(scope)
+    assert refused_for_the_day?(invite(scope))
+  end
+
+  test "a withdrawal written before withdrawals named their entry un-counts its invitation",
+       %{scope: scope} do
+    assert {:ok, %Invitation{} = invitation} = invite(scope)
+
+    # Its shape then: the reason alone.
+    {:ok, _entry} =
+      Apiary.Audit.record(Repo, scope, :"invitation.revoke", invitation, %{
+        details: %{reason: "undelivered"}
+      })
+
+    for _ <- 1..@limit, do: assert({:ok, %Invitation{}} = invite(scope))
+    assert refused_for_the_day?(invite(scope))
+  end
+
   test "every invitation tried, delivered or not, counts against three times the day's",
        %{scope: scope} do
     previous = Application.fetch_env!(:apiary, Apiary.Mailer)

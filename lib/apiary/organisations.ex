@@ -2252,14 +2252,17 @@ defmodule Apiary.Organisations do
   `{:ok, invitation}` when it was sent. One that could not be delivered is withdrawn, as
   `invite_member/3` says: `{:error, :delivery_failed}`, or
   `{:error, :delivery_failed_pending}` should the withdrawal fail too; one accepted
-  meanwhile is `{:ok, invitation}`. Without mail nothing is sent and nothing withdrawn:
+  meanwhile is `{:ok, invitation}`. Mail needs the inviter's account confirmed, asked as
+  it is sent too, since mail may have been set after the invitation was written: one
+  that is not gets `{:error, :unconfirmed}`, nothing is sent, and the invitation is
+  withdrawn the same way. Without mail nothing is sent and nothing withdrawn:
   `{:ok, invitation, {:link, url}}`, the link for the inviter to copy, which the caller
   shows once and keeps nowhere else.
   """
   @spec send_invitation(Scope.t(), %Invitation{}, String.t(), (String.t() -> String.t())) ::
           {:ok, %Invitation{}}
           | {:ok, %Invitation{}, {:link, String.t()}}
-          | {:error, :delivery_failed | :delivery_failed_pending}
+          | {:error, :unconfirmed | :delivery_failed | :delivery_failed_pending}
   def send_invitation(%Scope{} = scope, %Invitation{} = invitation, token, url_fun)
       when is_function(url_fun, 1),
       do: hand_over(scope, invitation, token, url_fun, Mail.configured?())
@@ -2268,20 +2271,26 @@ defmodule Apiary.Organisations do
   defp hand_over(_scope, invitation, token, url_fun, false = _mail?),
     do: {:ok, invitation, {:link, url_fun.(token)}}
 
+  # Mailed, it needs a confirmed inviter, asked as it is sent: mail may have been set
+  # since the invitation was written without it (`insert_invitation/3`). Refused, it is
+  # withdrawn as one undelivered is, as nothing was sent.
   defp hand_over(scope, invitation, token, url_fun, true = _mail?) do
-    case deliver_invitation(invitation, scope.organisation, url_fun.(token)) do
-      :ok ->
-        {:ok, invitation}
-
-      :error ->
+    with :ok <- ensure_confirmed(scope.user, true),
+         :ok <- deliver_invitation(invitation, scope.organisation, url_fun.(token)) do
+      {:ok, invitation}
+    else
+      refused_or_undelivered ->
         # An invitation nobody received must not occupy the pending slot.
         case withdraw_undelivered(scope, invitation) do
           {:ok, {:accepted, accepted}} -> {:ok, accepted}
-          {:ok, _withdrawn_or_gone} -> {:error, :delivery_failed}
-          {:error, _reason} -> {:error, :delivery_failed_pending}
+          {:ok, _withdrawn_or_gone} -> undelivered(refused_or_undelivered, :delivery_failed)
+          {:error, _reason} -> undelivered(refused_or_undelivered, :delivery_failed_pending)
         end
     end
   end
+
+  defp undelivered({:error, :unconfirmed} = refused, _reason), do: refused
+  defp undelivered(:error, reason), do: {:error, reason}
 
   @doc """
   renew_invitation/4 makes a new link for the pending invitation `invitation_id` of the
@@ -2410,19 +2419,25 @@ defmodule Apiary.Organisations do
   # latest entry that names one says, `member.invite`, the edition's, or a renewal's, in
   # the invitation's organisation's trail; the invitation's own organisation should the
   # trail no longer hold one.
-  defp allowance_of(%Invitation{id: id, organisation_id: organisation_id}) do
+  defp allowance_of(%Invitation{organisation_id: organisation_id} = invitation) do
     allowance_id =
       Repo.one(
-        from e in Apiary.Audit.Entry,
-          where: e.organisation_id == ^organisation_id and e.subject_id == ^id,
-          where: e.subject_kind == "invitation",
-          where: fragment("? \\? 'allowance_id'", e.details),
-          order_by: [desc: e.inserted_at, desc: e.id],
-          select: fragment("?->>'allowance_id'", e.details),
-          limit: 1
+        counted_entries(invitation)
+        |> select([e], fragment("?->>'allowance_id'", e.details))
+        |> limit(1)
       ) || organisation_id
 
     Repo.get(Organisation, allowance_id) || {:error, :forbidden}
+  end
+
+  # The invitation's entries that counted it against an allowance, each naming the one it
+  # was counted against: the latest first.
+  defp counted_entries(%Invitation{id: id, organisation_id: organisation_id}) do
+    from e in Apiary.Audit.Entry,
+      where: e.organisation_id == ^organisation_id and e.subject_id == ^id,
+      where: e.subject_kind == "invitation",
+      where: fragment("? \\? 'allowance_id'", e.details),
+      order_by: [desc: e.inserted_at, desc: e.id]
   end
 
   # A new invitation to the scope's workspace, by the scope's person, and its URL token.
@@ -2493,7 +2508,7 @@ defmodule Apiary.Organisations do
           with {:ok, _deleted} <- Repo.delete(pending),
                {:ok, _entry} <-
                  Audit.record(Repo, scope, :"invitation.revoke", pending, %{
-                   details: %{reason: "undelivered"}
+                   details: undelivered_details(pending)
                  }) do
             {:ok, :withdrawn}
           end
@@ -2516,6 +2531,15 @@ defmodule Apiary.Organisations do
       )
 
       {:error, :not_withdrawn}
+  end
+
+  # A withdrawal's reason, and the entry it undoes, `entry_id`: the one that counted the
+  # invitation's latest sending, which sent nothing (`refuse_over_daily_limit/2`).
+  defp undelivered_details(invitation) do
+    case Repo.one(counted_entries(invitation) |> select([e], e.id) |> limit(1)) do
+      nil -> %{reason: "undelivered"}
+      entry_id -> %{reason: "undelivered", entry_id: entry_id}
+    end
   end
 
   # When the invitation was accepted, by its entry in the trail: an accepted invitation is
@@ -2582,7 +2606,10 @@ defmodule Apiary.Organisations do
     attempts_limit = limit * @attempts_per_invitation
 
     # Its withdrawal, in the invitation's workspace and after it: on the trail's index of
-    # `(workspace_id, subject_id, inserted_at)`.
+    # `(workspace_id, subject_id, inserted_at)`. A withdrawal names the entry it undoes,
+    # `details.entry_id`, and undoes that one alone: an invitation sent, then renewed and
+    # withdrawn, still counts once. One written before withdrawals named it undoes every
+    # earlier entry of its invitation.
     undelivered =
       from r in Apiary.Audit.Entry,
         where: r.workspace_id == parent_as(:invite).workspace_id,
@@ -2590,7 +2617,14 @@ defmodule Apiary.Organisations do
         where: r.inserted_at >= parent_as(:invite).inserted_at,
         where: r.organisation_id == parent_as(:invite).organisation_id,
         where: r.action == "invitation.revoke",
-        where: fragment("?->>'reason'", r.details) == "undelivered"
+        where: fragment("?->>'reason'", r.details) == "undelivered",
+        where:
+          fragment(
+            "NOT (? \\? 'entry_id') OR ?->>'entry_id' = ?::text",
+            r.details,
+            r.details,
+            parent_as(:invite).id
+          )
 
     # Only an invitation's entry names an allowance: the index of the entries that do
     # answers the count.
@@ -2794,7 +2828,7 @@ defmodule Apiary.Organisations do
   transaction, so it makes one membership however many callers hold it: the others get
   `{:error, :invalid}`, and so does an account deleted meanwhile, or an invitation whose
   organisation or workspace was marked for deletion, or whose organisation the edition
-  stopped. The token is the check: nobody's role is asked. A user alone, not a scope, is
+  stopped, or that was renewed since it was found, whose old link no longer works. The token is the check: nobody's role is asked. A user alone, not a scope, is
   accepted as a scope without an origin.
   """
   @spec accept_invitation(%User{} | Scope.t(), %Invitation{} | String.t()) ::
@@ -2873,8 +2907,10 @@ defmodule Apiary.Organisations do
   # undelivered invitation, lock the same row. The organisation is held already
   # (`lock_open_organisation/1`), so its marking, and what the edition stops, wait for the
   # claim, or came first and are seen; the workspace's `FOR KEY SHARE` holds it against
-  # its purge's deletion, and its marking is read as the claim finds it.
-  defp claim_invitation(%Invitation{id: id}) do
+  # its purge's deletion, and its marking is read as the claim finds it. It is claimed by
+  # the token it was found by: renewed since (`renew_invitation/4`), it has another, and
+  # the old link claims nothing.
+  defp claim_invitation(%Invitation{id: id, token_hash: token_hash}) do
     now = DateTime.utc_now()
 
     claim =
@@ -2882,7 +2918,8 @@ defmodule Apiary.Organisations do
         join: o in assoc(i, :organisation),
         as: :organisation,
         join: w in assoc(i, :workspace),
-        where: i.id == ^id and is_nil(i.accepted_at) and i.expires_at > ^now,
+        where: i.id == ^id and i.token_hash == ^token_hash,
+        where: is_nil(i.accepted_at) and i.expires_at > ^now,
         where: is_nil(o.deletion_marked_at) and is_nil(w.deletion_marked_at),
         lock: fragment("FOR UPDATE OF ? FOR KEY SHARE OF ?, ?", i, o, w)
       )
