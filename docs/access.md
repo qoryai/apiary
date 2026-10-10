@@ -157,8 +157,9 @@ instance (`Apiary.Setup`) is taken on the strength of its set-up code, which onl
 shows, likewise beyond any role, by the instance (`actor: :instance`), and acts on no
 instance that has its organisation.
 
-The instance's own organisation is never deleted nor purged: an instance without it would
-give its next sign-up the instance. `Apiary.Deletion` refuses to mark or purge it,
+The instance's own organisation is never deleted nor purged: an instance without it is
+one that is not set up, where nobody signs up, and its next start would log a new set-up
+link (`Apiary.Setup`) that gives whoever opens it the instance. `Apiary.Deletion` refuses to mark or purge it,
 `:instance_organisation`, the core edition's answer to
 `c:Apiary.Edition.deletion_refusal/2`. An edition may also refuse `organisation.delete` on
 it for every role (`c:Apiary.Edition.check/3`), which its settings page asks through

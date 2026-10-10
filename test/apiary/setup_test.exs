@@ -49,6 +49,41 @@ defmodule Apiary.SetupTest do
     end
   end
 
+  # The calls this process makes of `mfa` while `fun` runs, each its arguments, in order,
+  # gathered by a tracer of their own: a process cannot trace itself.
+  defp traced({module, function, _arity} = mfa, fun) do
+    tracer = spawn_link(fn -> gather([]) end)
+    :erlang.trace_pattern(mfa, true, [:global])
+    :erlang.trace(self(), true, [:call, {:tracer, tracer}])
+
+    try do
+      fun.()
+    after
+      :erlang.trace(self(), false, [:call])
+      :erlang.trace_pattern(mfa, false, [:global])
+    end
+
+    # Every trace message on its way to the tracer before it is asked.
+    ref = :erlang.trace_delivered(self())
+
+    receive do
+      {:trace_delivered, _pid, ^ref} -> :ok
+    end
+
+    send(tracer, {:calls, self()})
+
+    receive do
+      {:calls, calls} -> for {^module, ^function, args} <- calls, do: args
+    end
+  end
+
+  defp gather(calls) do
+    receive do
+      {:trace, _pid, :call, call} -> gather([call | calls])
+      {:calls, to} -> send(to, {:calls, Enum.reverse(calls)})
+    end
+  end
+
   defp attrs(extra \\ %{}) do
     Enum.into(extra, %{email: unique_user_email(), organisation_name: "Acme Hosting"})
   end
@@ -123,15 +158,43 @@ defmodule Apiary.SetupTest do
       assert {^code, nil} = stored()
     end
 
-    test "the address is the configured one when the endpoint does not run" do
-      assert Setup.configured_url(host: "qory.example.com", scheme: "https", port: 443) ==
-               "https://qory.example.com"
+    test "the address is the configured one when the endpoint does not run, as Phoenix builds it" do
+      # Development's default: no scheme or port in url:, the server on http port 4100.
+      assert Setup.configured_url(url: [host: "localhost"], http: [port: 4100]) ==
+               "http://localhost:4100"
 
-      assert Setup.configured_url(host: "qory.example.com", scheme: "http", port: 8080) ==
-               "http://qory.example.com:8080"
+      assert Setup.configured_url(url: [host: "localhost"], http: [port: "4100"]) ==
+               "http://localhost:4100"
 
-      assert Setup.configured_url(host: "example.com", port: 443, path: "/qory/") ==
-               "https://example.com/qory"
+      # Behind a proxy: url: names the public scheme and port, whatever the server's.
+      assert Setup.configured_url(
+               url: [host: "qory.example.com", scheme: "https", port: 443],
+               http: [port: 4000]
+             ) == "https://qory.example.com"
+
+      assert Setup.configured_url(url: [host: "qory.example.com"], https: [port: 8443]) ==
+               "https://qory.example.com:8443"
+
+      assert Setup.configured_url(url: [host: "example.com"]) == "http://example.com"
+
+      # The same address the running endpoint gives, from the suite's configuration.
+      assert Setup.configured_url(Application.get_env(:apiary, ApiaryWeb.Endpoint)) ==
+               ApiaryWeb.Endpoint.url()
+    end
+
+    test "both comparisons of a code are made in constant time" do
+      code = Setup.code!()
+      sent = String.duplicate("A", 43)
+
+      calls =
+        traced({Plug.Crypto, :secure_compare, 2}, fn ->
+          refute Setup.valid_code?(sent)
+          assert Setup.valid_code?(code)
+          assert {:ok, _signed_up} = Setup.set_up(code, password_attrs())
+        end)
+
+      # valid_code?/1 twice, then set_up/3's own look and its check under the lock.
+      assert calls == [[code, sent], [code, code], [code, code], [code, code]]
     end
 
     test "nobody signs up: sign_up_offer/1 says so, and sign_up_user/3 refuses" do

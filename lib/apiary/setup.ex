@@ -163,12 +163,16 @@ defmodule Apiary.Setup do
   @spec valid_code?(term) :: boolean
   def valid_code?(code) when is_binary(code) do
     case Repo.query!("SELECT setup_code FROM instance_settings WHERE id") do
-      %{rows: [[stored]]} when is_binary(stored) -> Plug.Crypto.secure_compare(stored, code)
+      %{rows: [[stored]]} when is_binary(stored) -> same_code?(stored, code)
       _none -> false
     end
   end
 
   def valid_code?(_code), do: false
+
+  # The one comparison of a code with the stored one, in constant time, so the time it
+  # takes tells nothing of how much of the code was right.
+  defp same_code?(stored, code), do: Plug.Crypto.secure_compare(stored, code)
 
   @doc """
   set_up/3 sets the instance up with `code`: the instance's first sign-up,
@@ -227,7 +231,7 @@ defmodule Apiary.Setup do
   def use_code(repo, code) do
     stored = lock_row(repo)
 
-    if is_nil(code) or (is_binary(stored) and Plug.Crypto.secure_compare(stored, code)) do
+    if is_nil(code) or (is_binary(stored) and same_code?(stored, code)) do
       repo.query!(
         "UPDATE instance_settings SET setup_code = NULL, set_up_at = $1 WHERE id",
         [DateTime.utc_now()]
@@ -318,21 +322,34 @@ defmodule Apiary.Setup do
   def public_url do
     if :persistent_term.get({Phoenix.Endpoint, ApiaryWeb.Endpoint}, nil),
       do: ApiaryWeb.Endpoint.url(),
-      else: configured_url(Application.get_env(:apiary, ApiaryWeb.Endpoint, [])[:url] || [])
+      else: configured_url(Application.get_env(:apiary, ApiaryWeb.Endpoint, []))
   end
 
   @doc false
-  # The address the endpoint's `url:` configuration gives, as the endpoint would: a
-  # scheme's own port left out.
+  # The address the endpoint's configuration gives, built as Phoenix builds the endpoint's
+  # own (`Phoenix.Endpoint.url/0`), which is not there before the endpoint starts: the
+  # scheme and port of `https:`, else of `http:`, else http and 80, each replaced by the
+  # one `url:` names; a scheme's own port left out.
   @spec configured_url(keyword) :: String.t()
-  def configured_url(url) do
+  def configured_url(config) do
+    url = config[:url] || []
+
+    {scheme, port} =
+      cond do
+        https = config[:https] -> {"https", https[:port] || 443}
+        http = config[:http] -> {"http", http[:port] || 80}
+        true -> {"http", 80}
+      end
+
     URI.to_string(%URI{
-      scheme: url[:scheme] || "https",
+      scheme: url[:scheme] || scheme,
       host: url[:host] || "localhost",
-      port: url[:port],
-      path: url[:path] && String.trim_trailing(url[:path], "/")
+      port: port_integer(url[:port] || port)
     })
   end
+
+  defp port_integer(port) when is_binary(port), do: String.to_integer(port)
+  defp port_integer(port), do: port
 
   # The log-in link, sent as the sign-up page sends it. A failure says nothing of why: the
   # relay's reason may quote the message, which holds the address and the link.
