@@ -64,9 +64,11 @@ from the request's `Host` header. A `PUBLIC_URL` that is not the address machine
 people use gives them links that do not work.
 
 The audit trail records the address each change came from, and the limits on signing in
-count attempts by it, an IPv6 address with the rest of its /64. Behind a proxy that is
-the proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
-front of the release, separated by commas.
+count attempts by it, an IPv6 address with the rest of its /64; the tries at one email
+address are counted per client network, an IPv4 /24 or an IPv6 /48, under a larger limit
+for that email address from all networks. Behind a proxy that is the proxy's, unless
+`TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in front of the
+release, separated by commas.
 For a request from one of them the release reads `X-Forwarded-For` from its right-most
 hop leftwards, passes over the hops the trusted proxies added, and takes the first address
 that is not one of them. What the client wrote to the left of that is never read, so a

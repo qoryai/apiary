@@ -20,7 +20,14 @@ defmodule ApiaryWeb.AttemptLimitsTest do
     on_exit(fn -> Application.put_env(:apiary, AttemptLimits, config) end)
   end
 
-  defp address_key(bucket, email), do: {AttemptLimits, bucket, AttemptLimits.address_key(email)}
+  # An address's bucket from a client's network.
+  defp address_key(bucket, email, client),
+    do:
+      {AttemptLimits, bucket,
+       AttemptLimits.network_address_key(AttemptLimits.address_key(email), client)}
+
+  # Where the link tests ask from; the log-in page in a test is open from 127.0.0.1.
+  @client "198.51.100.50"
 
   # The flash shows the message's first sentence as its title and the second under it.
   defp shows_message?(html),
@@ -42,7 +49,7 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       assert AttemptLimits.password_log_in(String.upcase(email), "198.51.100.6") == :limited
       assert AttemptLimits.password_log_in(unique_user_email(), "198.51.100.6") == :ok
 
-      key = address_key(:password_address, email)
+      key = address_key(:password_address, email, "198.51.100.7")
       rewind(key, 59_000)
       assert AttemptLimits.password_log_in(email, "198.51.100.7") == :limited
       rewind(key, 1_000)
@@ -112,8 +119,10 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       for _ <- 1..5, do: assert(AttemptLimits.password_log_in(email, "198.51.100.25") == :ok)
       assert AttemptLimits.password_log_in("alİce#{n}@example.com", "198.51.100.26") == :limited
 
-      for _ <- 1..3, do: assert(AttemptLimits.link_request("alİce#{n}@example.com") == :ok)
-      assert AttemptLimits.link_request(email) == :limited
+      for _ <- 1..3,
+          do: assert(AttemptLimits.link_request("alİce#{n}@example.com", @client) == :ok)
+
+      assert AttemptLimits.link_request(email, @client) == :limited
 
       refute AttemptLimits.address_key("bob#{n}@example.com") == AttemptLimits.address_key(email)
     end
@@ -121,30 +130,104 @@ defmodule ApiaryWeb.AttemptLimitsTest do
     test "a log-in link: 3 per address, then 1 every 5 minutes" do
       email = unique_user_email()
 
-      for _ <- 1..3, do: assert(AttemptLimits.link_request(email) == :ok)
-      assert AttemptLimits.link_request(String.upcase(email)) == :limited
-      assert AttemptLimits.link_request(unique_user_email()) == :ok
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(email, @client) == :ok)
+      assert AttemptLimits.link_request(String.upcase(email), @client) == :limited
+      assert AttemptLimits.link_request(unique_user_email(), @client) == :ok
 
-      key = address_key(:link_address, email)
+      key = address_key(:link_address, email, @client)
       rewind(key, 299_000)
-      assert AttemptLimits.link_request(email) == :limited
+      assert AttemptLimits.link_request(email, @client) == :limited
       rewind(key, 1_000)
-      assert AttemptLimits.link_request(email) == :ok
-      assert AttemptLimits.link_request(email) == :limited
+      assert AttemptLimits.link_request(email, @client) == :ok
+      assert AttemptLimits.link_request(email, @client) == :limited
     end
 
     test "a log-in link: the bucket is not dropped, full, while it refills" do
       email = unique_user_email()
-      for _ <- 1..3, do: assert(AttemptLimits.link_request(email) == :ok)
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(email, @client) == :ok)
 
       # Ten minutes and a second idle, then the table's sweep: two of the three are back.
-      rewind(address_key(:link_address, email), 601_000)
+      rewind(address_key(:link_address, email, @client), 601_000)
       send(@table, :sweep)
       :sys.get_state(@table)
 
-      assert AttemptLimits.link_request(email) == :ok
-      assert AttemptLimits.link_request(email) == :ok
-      assert AttemptLimits.link_request(email) == :limited
+      assert AttemptLimits.link_request(email, @client) == :ok
+      assert AttemptLimits.link_request(email, @client) == :ok
+      assert AttemptLimits.link_request(email, @client) == :limited
+    end
+
+    test "a password log-in: a stranger's network past an address's 5 does not lock out its owner's network" do
+      email = unique_user_email()
+
+      for n <- 1..5, do: assert(AttemptLimits.password_log_in(email, "203.0.113.#{n}") == :ok)
+
+      # The stranger's /24 is one network, and so is an IPv6 /48, whatever /64 of it.
+      assert AttemptLimits.password_log_in(email, "203.0.113.200") == :limited
+      for _ <- 1..5, do: assert(AttemptLimits.password_log_in(email, "2001:db8:a::1") == :ok)
+      assert AttemptLimits.password_log_in(email, "2001:db8:a:1::1") == :limited
+
+      for k <- 2..200,
+          do: assert(AttemptLimits.password_log_in(email, "2001:db8:a:#{k}::1") == :limited)
+
+      assert AttemptLimits.network_key("2001:db8:a:ff::1") == "2001:db8:a::/48"
+      assert AttemptLimits.network_key("203.0.113.200") == "203.0.113.0/24"
+
+      # The owner's network is its own.
+      assert AttemptLimits.password_log_in(email, "198.51.100.9") == :ok
+      assert AttemptLimits.password_log_in(email, "2001:db8:b::1") == :ok
+    end
+
+    test "a password log-in: 50 per address from all networks, then 10 a minute, spent only when a network's allowed it" do
+      email = unique_user_email()
+
+      # One network's tries past its own 5 spend none of the 50.
+      for _ <- 1..5, do: assert(AttemptLimits.password_log_in(email, "2001:db8:c::1") == :ok)
+
+      for _ <- 1..10,
+          do: assert(AttemptLimits.password_log_in(email, "2001:db8:c::1") == :limited)
+
+      for network <- 1..9,
+          n <- 1..5,
+          do:
+            assert(AttemptLimits.password_log_in(email, "2001:db8:#{100 + network}::#{n}") == :ok)
+
+      assert AttemptLimits.password_log_in(email, "2001:db8:110::1") == :limited
+
+      key = {AttemptLimits, :password_address_total, AttemptLimits.address_key(email)}
+      rewind(key, 6_000)
+      assert AttemptLimits.password_log_in(email, "2001:db8:111::1") == :ok
+      assert AttemptLimits.password_log_in(email, "2001:db8:112::1") == :limited
+    end
+
+    test "a password log-in from no known client: 5 per address, as one network" do
+      email = unique_user_email()
+      for _ <- 1..5, do: assert(AttemptLimits.password_log_in(email, nil) == :ok)
+      assert AttemptLimits.password_log_in(email, nil) == :limited
+      assert AttemptLimits.password_log_in(email, "198.51.100.10") == :ok
+    end
+
+    test "a log-in link: a stranger's network past an address's 3 does not block its owner's network" do
+      email = unique_user_email()
+
+      for n <- 1..3, do: assert(AttemptLimits.link_request(email, "203.0.113.#{n}") == :ok)
+      assert AttemptLimits.link_request(email, "203.0.113.99") == :limited
+
+      assert AttemptLimits.link_request(email, "198.51.100.11") == :ok
+    end
+
+    test "a log-in link: 30 per address from all networks, spent only when a network's allowed it" do
+      email = unique_user_email()
+
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(email, "2001:db8:e::1") == :ok)
+      for _ <- 1..5, do: assert(AttemptLimits.link_request(email, "2001:db8:e::1") == :limited)
+
+      for network <- 1..9,
+          _ <- 1..3,
+          do: assert(AttemptLimits.link_request(email, "2001:db8:#{200 + network}::1") == :ok)
+
+      assert AttemptLimits.link_request(email, "2001:db8:210::1") == :limited
+
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(unique_user_email(), nil) == :ok)
     end
 
     test "the pages a link opens: 20 per client address, then 1 every 3 seconds" do
@@ -167,7 +250,7 @@ defmodule ApiaryWeb.AttemptLimitsTest do
       for _ <- 1..5,
           do: assert(AttemptLimits.password_log_in(email, "198.51.100.24") == :ok)
 
-      assert AttemptLimits.link_request(email) == :ok
+      assert AttemptLimits.link_request(email, "198.51.100.24") == :ok
       assert AttemptLimits.link_page("198.51.100.24") == :ok
     end
   end
@@ -350,7 +433,7 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
     test "the password form's \"Email me a link\" counts against the same 3" do
       user = user_fixture()
-      for _ <- 1..3, do: assert(AttemptLimits.link_request(user.email) == :ok)
+      for _ <- 1..3, do: assert(AttemptLimits.link_request(user.email, "127.0.0.1") == :ok)
       sent = Repo.aggregate(UserToken, :count)
 
       {:ok, lv, _html} = live(build_conn(), ~p"/users/log-in")

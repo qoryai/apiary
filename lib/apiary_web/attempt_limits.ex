@@ -4,10 +4,12 @@ defmodule ApiaryWeb.AttemptLimits do
   `Apiary.Runs.RateLimit`: a number at once (`burst`), then one more every so often
   (`rate`, in tokens a second).
 
-    * **Log-in with a password** (`password_log_in/2`): 5 per address, then 1 a minute;
+    * **Log-in with a password** (`password_log_in/2`): 5 per address from one client
+      network, then 1 a minute, and 50 per address from all of them, then 10 a minute;
       and 20 per client address, then 1 every 3 seconds.
-    * **A log-in link asked for** (`link_request/1`): 3 per address, then 1 every 5
-      minutes.
+    * **A log-in link asked for** (`link_request/2`): 3 per address from one client
+      network, then 1 every 5 minutes, and 30 per address from all of them, then 10 every
+      5 minutes.
     * **A page a link opens** (`link_page/1`), an invitation's, a password link's or the
       set-up page (`ApiaryWeb.SetupLive`): 20 per client address, then 1 every 3 seconds,
       the pages together. Each load of the page counts, and so does its live connection.
@@ -22,10 +24,17 @@ defmodule ApiaryWeb.AttemptLimits do
   only from the proxies `TRUSTED_PROXIES` names; an IPv6 one counts with the rest of its
   /64, which one machine is commonly given whole.
 
+  An address's buckets are counted per client network, an IPv4 /24 or an IPv6 /48, the
+  allocation a site is commonly given, so a stranger trying an address from their network
+  does not lock out its owner on another; with no client address known, per address
+  alone. The bucket of the address from all networks, ten times as large, is spent only
+  when the network's allowed it: one network never empties it, while guesses spread over
+  many networks stay bounded.
+
   The numbers can be changed under `config :apiary, #{inspect(__MODULE__)}`, one keyword
-  list of `rate` and `burst` per bucket: `:password_address`, `:password_client`,
-  `:link_address` and `:link_page_client`. A bucket lives on its node, so on several nodes
-  each one allows as many.
+  list of `rate` and `burst` per bucket: `:password_address` and `:password_address_total`,
+  `:password_client`, `:link_address` and `:link_address_total`, and `:link_page_client`.
+  A bucket lives on its node, so on several nodes each one allows as many.
   """
   use Gettext, backend: ApiaryWeb.Gettext
   use ApiaryWeb, :verified_routes
@@ -34,27 +43,37 @@ defmodule ApiaryWeb.AttemptLimits do
 
   @defaults [
     password_address: [rate: 1 / 60, burst: 5],
+    password_address_total: [rate: 10 / 60, burst: 50],
     password_client: [rate: 1 / 3, burst: 20],
     link_address: [rate: 1 / 300, burst: 3],
+    link_address_total: [rate: 10 / 300, burst: 30],
     link_page_client: [rate: 1 / 3, burst: 20]
   ]
 
   @doc """
   A log-in with a password for `email`, from `client` (`ApiaryWeb.Origin`'s
-  `remote_ip`): `:ok`, or `:limited` once either bucket is empty. The client's bucket is
-  spent first, and the address's only when the client's allowed it. A log-in without an
-  address as text, `email` nil, spends the client's bucket alone.
+  `remote_ip`): `:ok`, or `:limited` once a bucket is empty. The client's bucket is spent
+  first, then the address's from the client's network, then the address's from all
+  networks, each only when the one before allowed it. A log-in without an address as
+  text, `email` nil, spends the client's bucket alone.
   """
   @spec password_log_in(String.t() | nil, String.t() | nil) :: :ok | :limited
   def password_log_in(email, client) do
     with :ok <- spend(:password_client, client_key(client)) do
-      if is_binary(email), do: spend(:password_address, address_key(email)), else: :ok
+      if is_binary(email),
+        do: spend_address(:password_address, :password_address_total, email, client),
+        else: :ok
     end
   end
 
-  @doc "A log-in link asked for `email`: `:ok`, or `:limited`."
-  @spec link_request(String.t()) :: :ok | :limited
-  def link_request(email), do: spend(:link_address, address_key(email))
+  @doc """
+  A log-in link asked for `email`, from `client` (`ApiaryWeb.Origin`'s `remote_ip`):
+  `:ok`, or `:limited`. The address's bucket from the client's network is spent first,
+  and the address's from all networks only when that one allowed it.
+  """
+  @spec link_request(String.t(), String.t() | nil) :: :ok | :limited
+  def link_request(email, client),
+    do: spend_address(:link_address, :link_address_total, email, client)
 
   @doc """
   A page a link opens, loaded from `client` (`ApiaryWeb.Origin`'s `remote_ip`): `:ok`,
@@ -94,6 +113,18 @@ defmodule ApiaryWeb.AttemptLimits do
   @spec message() :: String.t()
   def message, do: gettext("Too many attempts. Try again in a few minutes.")
 
+  defp spend_address(bucket, total, email, client) do
+    address = address_key(email)
+
+    with :ok <- spend(bucket, network_address_key(address, client)),
+         do: spend(total, address)
+  end
+
+  # An address from a client network; from no known client, the address alone.
+  @doc false
+  def network_address_key(address, nil), do: address
+  def network_address_key(address, client), do: {address, network_key(client)}
+
   defp spend(bucket, key) do
     case RateLimit.check({__MODULE__, bucket, key}, limit(bucket)) do
       :ok -> :ok
@@ -124,6 +155,23 @@ defmodule ApiaryWeb.AttemptLimits do
   end
 
   def client_key(client), do: client
+
+  # A client's network, for an address's buckets: an IPv4 address's /24,
+  # `203.0.113.0/24`, an IPv6 one's /48, `2001:db8:a::/48`, the allocation a site is
+  # commonly given whole, whose thousands of /64s would otherwise each be a network.
+  @doc false
+  def network_key(client) when is_binary(client) do
+    case :inet.parse_strict_address(String.to_charlist(client)) do
+      {:ok, {a, b, c, _d}} ->
+        List.to_string(:inet.ntoa({a, b, c, 0})) <> "/24"
+
+      {:ok, {a, b, c, _, _, _, _, _}} ->
+        List.to_string(:inet.ntoa({a, b, c, 0, 0, 0, 0, 0})) <> "/48"
+
+      _other ->
+        client
+    end
+  end
 
   # At least as coarse as citext's comparison, so an address the accounts table takes
   # for the same one is the same bucket, whatever the database's locale lowercases

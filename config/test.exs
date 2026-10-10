@@ -82,8 +82,10 @@ config :apiary, ApiaryWeb.Contract.EnrolmentController,
 # email address; the limits' own tests set their own (ApiaryWeb.AttemptLimitsTest).
 config :apiary, ApiaryWeb.AttemptLimits,
   password_address: [rate: 1000, burst: 100_000],
+  password_address_total: [rate: 1000, burst: 100_000],
   password_client: [rate: 1000, burst: 100_000],
   link_address: [rate: 1000, burst: 100_000],
+  link_address_total: [rate: 1000, burst: 100_000],
   link_page_client: [rate: 1000, burst: 100_000]
 
 # Projections run in the caller's process, inside its sandbox connection, and the
