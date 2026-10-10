@@ -37,7 +37,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   old link stops working at once. A link copied, and a new one made, count against
   `INVITATIONS_PER_DAY` as an emailed invitation does. `Apiary.Organisations.invite_member/3`
   and `send_invitation/4` hand the link back, `{:ok, invitation, {:link, url}}`, and
-  `renew_invitation/3` (`invitation.renew`) makes a new one.
+  `renew_invitation/4` (`invitation.renew`) makes a new one. With `action:`, as
+  `insert_invitation/3` takes, an edition that asked `Apiary.Access` itself renews it: the
+  entry records its action, charged to the allowance the invitation was counted against,
+  and the token comes back for `send_invitation/4`, which sends it once the edition's
+  transaction has committed.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces

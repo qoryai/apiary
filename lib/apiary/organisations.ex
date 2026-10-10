@@ -2012,7 +2012,7 @@ defmodule Apiary.Organisations do
   kept, and its link is handed back for the inviter to copy and send themselves,
   `{:ok, invitation, {:link, url}}`, whether or not their account is confirmed, since no
   mail goes out in their name. The token is in that link and nowhere else: only its hash
-  is stored, so the link cannot be shown again; `renew_invitation/3` makes a new one.
+  is stored, so the link cannot be shown again; `renew_invitation/4` makes a new one.
 
   Refused with an error on `:email`: an address that already belongs to a member of the
   organisation; an address with a pending invitation; an organisation with
@@ -2020,7 +2020,7 @@ defmodule Apiary.Organisations do
   `Apiary.Instance.invitations_per_day/0` invitations in the last 24 hours, which says how
   many it may. That count is of the entries of the invitations counted against its
   allowance (`details.allowance_id`), a link copied, or made again with
-  `renew_invitation/3`, as much as one emailed, in a rolling window by the database's
+  `renew_invitation/4`, as much as one emailed, in a rolling window by the database's
   clock, so an invitation accepted, revoked or deleted since still counts; one withdrawn
   because its email could not be delivered does not, as no mail was sent. Every invitation
   tried in those 24 hours, delivered or not, counts against #{@attempts_per_invitation}
@@ -2083,7 +2083,7 @@ defmodule Apiary.Organisations do
   (`c:Apiary.Edition.active_organisations/2`). With mail (`Apiary.Mail.configured?/0`) the
   inviter's account is confirmed, `{:error, :unconfirmed}` otherwise; without mail it
   need not be, as `invite_member/3` says. The entry names the allowance,
-  `details.allowance_id`, which `renew_invitation/3` charges again.
+  `details.allowance_id`, which `renew_invitation/4` charges again.
 
   `{:ok, invitation, token}`, the token for `send_invitation/4` once the transaction has
   committed; `{:error, changeset}` for the refusals of `invite_member/3`, and
@@ -2144,7 +2144,7 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  renew_invitation/3 makes a new link for the pending invitation `invitation_id` of the
+  renew_invitation/4 makes a new link for the pending invitation `invitation_id` of the
   scope's organisation (`invitation.renew`), for one whose link was lost: the same
   invitation, a new token and #{Invitation.validity_days()} days again from now. Only the
   new token's hash is stored, so the old link stops working at once. An owner or an admin
@@ -2156,7 +2156,8 @@ defmodule Apiary.Organisations do
   whichever organisation the scope's person acts from, and refused as `invite_member/3`
   refuses one over the day's limit, `{:error, changeset}` with the same error on
   `:email`. Its entry is an `invitation.renew` in the invitation's organisation's trail,
-  by the scope's person, naming that allowance.
+  by the scope's person, naming that allowance. The allowance's organisation row is
+  locked `FOR NO KEY UPDATE` first, then the invitation's `FOR UPDATE`.
 
   Then the link is handed over as `send_invitation/4` hands over an invitation's: without
   mail, `{:ok, invitation, {:link, url}}`, the link built by `url_fun.(token)`, to show
@@ -2166,28 +2167,51 @@ defmodule Apiary.Organisations do
   renew again or revoke. `{:error, :not_found}` for an invitation that is not a pending
   one of the organisation, accepted, revoked or expired meanwhile included;
   `{:error, :forbidden}` for whom `Apiary.Access` refuses, and for an allowance out of use.
+
+  **With `action:`**, for a caller that asked `Apiary.Access` itself, as
+  `insert_invitation/3`'s does: `invitation.renew` is not asked, and the entry records
+  `action` in its place, in the same trail, by the same person, naming the same
+  allowance. The renewal is still charged to the allowance the invitation was counted
+  against; there is no `allowance:`. The inviter's account is confirmed with mail, and
+  the day's limit refuses, as without. Nothing is sent: `{:ok, invitation, token}`, the
+  token for `send_invitation/4` once the caller's transaction has committed, so no
+  transaction waits on the mail relay. Should `send_invitation/4` then fail to deliver
+  it, it withdraws the invitation as it withdraws a new one, `{:error, :delivery_failed}`;
+  without `action:` an undelivered renewal stays pending instead. Called inside the
+  caller's own `Repo.transact/2`, it joins that transaction, and the caller may hold the
+  allowance's organisation row already; a refusal then rolls the caller's back.
   """
-  @spec renew_invitation(Scope.t(), term, (String.t() -> String.t())) ::
+  @spec renew_invitation(Scope.t(), term, (String.t() -> String.t()), keyword) ::
           {:ok, %Invitation{}}
           | {:ok, %Invitation{}, {:link, String.t()}}
+          | {:ok, %Invitation{}, String.t()}
           | {:error,
              Ecto.Changeset.t()
              | :not_found
              | :forbidden
              | :unconfirmed
              | :delivery_failed_pending}
-  def renew_invitation(%Scope{organisation: %Organisation{}} = scope, invitation_id, url_fun)
-      when is_function(url_fun, 1) do
+  def renew_invitation(scope, invitation_id, url_fun, opts \\ [])
+
+  def renew_invitation(
+        %Scope{organisation: %Organisation{}} = scope,
+        invitation_id,
+        url_fun,
+        opts
+      )
+      when is_function(url_fun, 1) and is_list(opts) do
+    action = Keyword.get(opts, :action)
     {token, token_hash} = Invitation.build_token()
     mail? = Mail.configured?()
 
     Repo.transact(fn ->
       # The lock order (docs/access.md): the allowance's organisation row first, then the
-      # invitation's. Read once to find the allowance, then again under its lock.
+      # invitation's. Read once, without a lock, to find the allowance, then again under
+      # its lock.
       with %Invitation{} = found <-
              Repo.one(pending_invitation_query(scope, invitation_id, false)) ||
                {:error, :not_found},
-           :ok <- Access.authorize(scope, :"invitation.renew", found),
+           :ok <- authorize_renewal(scope, action, found),
            :ok <- ensure_confirmed(scope.user, mail?),
            %Organisation{} = allowance <- allowance_of(found),
            :ok <- lock_allowance(allowance),
@@ -2204,7 +2228,7 @@ defmodule Apiary.Organisations do
              )
              |> Repo.update(),
            {:ok, _entry} <-
-             Audit.record(Repo, scope, :"invitation.renew", renewed, %{
+             Audit.record(Repo, scope, action || :"invitation.renew", renewed, %{
                details: %{allowance_id: allowance.id}
              }) do
         {:ok, renewed}
@@ -2214,12 +2238,20 @@ defmodule Apiary.Organisations do
       end
     end)
     |> case do
+      # The caller hands it over once its transaction has committed.
+      {:ok, renewed} when not is_nil(action) -> {:ok, renewed, token}
       {:ok, renewed} -> hand_over_renewed(scope, renewed, token, url_fun, mail?)
       {:error, _reason} = error -> error
     end
   end
 
-  def renew_invitation(_scope, _invitation_id, _url_fun), do: {:error, :not_found}
+  def renew_invitation(_scope, _invitation_id, _url_fun, _opts), do: {:error, :not_found}
+
+  # Asked of `Apiary.Access` here, unless the caller asked it for an action of its own.
+  defp authorize_renewal(scope, nil = _action, invitation),
+    do: Access.authorize(scope, :"invitation.renew", invitation)
+
+  defp authorize_renewal(_scope, _action, _invitation), do: :ok
 
   # A renewed invitation's new link, handed over as a new invitation's. Emailed and
   # undelivered, it is not withdrawn: its old link is gone, and it stays pending for an

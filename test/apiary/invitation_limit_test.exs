@@ -35,8 +35,8 @@ defmodule Apiary.InvitationLimitTest do
 
   defp refused_for_the_day?(_result), do: false
 
-  defp renew(scope, invitation),
-    do: Organisations.renew_invitation(scope, invitation.id, & &1)
+  defp renew(scope, invitation, opts \\ []),
+    do: Organisations.renew_invitation(scope, invitation.id, & &1, opts)
 
   # The organisation's `member.invite` entries, moved `hours` back.
   defp age_invitations!(scope, hours) do
@@ -169,6 +169,16 @@ defmodule Apiary.InvitationLimitTest do
     assert {:error, %Ecto.Changeset{} = changeset} = invite(scope)
     assert [message] = errors_on(changeset).email
     assert message =~ "has made 20 invitations in the last 24 hours"
+  end
+
+  test "a new link with action: counts, and is refused as one without", %{scope: scope} do
+    {:ok, invitation} = invite(scope)
+    renew = fn -> renew(scope, invitation, action: :"member.invite") end
+
+    for _ <- 2..@limit, do: assert({:ok, %Invitation{}, "" <> _token} = renew.())
+
+    assert refused_for_the_day?(renew.())
+    assert refused_for_the_day?(invite(scope))
   end
 
   describe "without mail" do
