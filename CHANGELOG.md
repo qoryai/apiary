@@ -371,22 +371,21 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
   template, `VersionOverride` left empty. The form asks for the edition, Apiary Community
   or Apiary Pro; Apiary Pro's download key, which the stack keeps as a secret of its own,
-  deleted with the stack, for the image's pull alone; the first administrator's email
-  address and organisation's name, which the task gets as `FIRST_ADMIN_EMAIL` and
-  `FIRST_ORGANISATION_NAME`; the domain, with a Route 53 hosted zone, or without one, the
-  stack then making the certificate and waiting for its validation record; and the mail
-  relay. Rules refuse Apiary Pro without its download key, on ARM64, or with no version to
-  install. Under Recovery, `AcceptSigningKey` is passed as
+  deleted with the stack, for the image's pull alone; and the domain, with a Route 53
+  hosted zone, or without one, the stack then making the certificate and waiting for its
+  validation record. Rules refuse Apiary Pro without its download key, on ARM64, or with
+  no version to install. Under Recovery, `AcceptSigningKey` is passed as
   `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and `DatabaseDeletionProtection` turns the
   database's deletion protection off before a delete. The stack sets its own stack policy
   at creation, refusing any update that would replace or delete the database or a key's
-  secret; the five secrets are kept when the stack is deleted, and the database leaves a
+  secret; the four secrets are kept when the stack is deleted, and the database leaves a
   final snapshot. The outputs are the address, the load balancer's DNS name, the edition
   and the version the stack runs, the key secrets' names, and links into the console: the
-  logs, the service, the key secrets and the database snapshots. CI lints the template
-  with cfn-lint, and two copies a release would write, one with Apiary Community first and
-  one with Apiary Pro first, and checks the stack policy, that no output is a command,
-  which secrets the stack keeps, and the mappings' keys.
+  logs, the set-up link's line in them, the service, the key secrets and the database
+  snapshots. CI lints the template with cfn-lint, and two copies a release would write,
+  one with Apiary Community first and one with Apiary Pro first, and checks the stack
+  policy, that no output is a command, which secrets the stack keeps, and the mappings'
+  keys.
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps
