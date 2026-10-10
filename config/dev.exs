@@ -23,9 +23,7 @@ config :apiary, ApiaryWeb.Endpoint,
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [
     ip: {127, 0, 0, 1},
-    port: String.to_integer(System.get_env("PORT") || "4100"),
-    # As in runtime.exs: room for a run configuration request carrying every label.
-    http_1_options: [max_request_line_length: 16_384]
+    port: String.to_integer(System.get_env("PORT") || "4100")
   ],
   check_origin: false,
   code_reloader: true,
