@@ -12,9 +12,16 @@ being one. Every variable named here is described in [Install and configure](ins
   request is redirected to the `https` address again. Forager refuses a `gateway.server.url` over
   plain `http` unless it is an address of its own machine, and one with a path, so serve
   the instance at the root of its host name.
-- **Real mail.** Set `SMTP_RELAY` and the variables beside it: without it the instance
-  sends no email. Send yourself a log-in link before inviting anybody, and check that
-  `MAIL_FROM` is an address your relay may send from.
+- **Mail, or none.** Mail is optional. Without it the instance sends no email: people log
+  in with a password, whoever invites copies the invitation's link and sends it, and a
+  forgotten password is a link an instance admin makes on **People** and sends by hand.
+  With mail, set `SMTP_RELAY` and the variables beside it, send yourself a log-in link
+  before inviting anybody, and check that `MAIL_FROM` is an address your relay may send
+  from: [Install and configure](install.md#mail).
+  <!-- feature: instance_mail -->
+  With the opt-in feature `instance_mail`, an instance admin can set mail in **Instance
+  settings › Mail** instead.
+  <!-- /feature -->
 - **The three keys, kept.** With `compose.yaml` the service `keys` generates
   `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` at first
   start, each on its own, into the volume `keys`. Copy them out once
@@ -33,10 +40,12 @@ being one. Every variable named here is described in [Install and configure](ins
   before they arrive: [Install and configure](install.md#features).
 - **Postgres that is backed up.** The database is the only state. Schedule the dump, and
   restore one into an empty database once, before it is needed.
-- **Set the instance up.** Its first start logs its set-up link, "Set up Qory Apiary at
-  …/setup/<code>.": open it as soon as the instance is up, since anyone who reads the log
-  can use it first. Its page makes your account, the instance's organisation and its
-  admin. From a shell, `Apiary.Release.grant_instance_admin/2` with your address and your
+- **Set the instance up.** Until it is set up, every start logs its set-up link, "Set up
+  Qory Apiary at …/setup/<code>.", the same each time; `docker compose logs apiary` shows
+  it with `compose.yaml`. Open it as soon as the instance is up, since anyone who reads
+  the log can use it first. Its page asks for your email address, a password and your
+  organisation's name, and makes your account, the instance's organisation and its admin.
+  From a shell, `Apiary.Release.grant_instance_admin/2` with your address and your
   organisation's name does the same.
   [Install and configure](install.md#set-up-a-new-instance) has both.
 <!-- feature: secrets -->
@@ -61,8 +70,9 @@ being one. Every variable named here is described in [Install and configure](ins
   workspace.
 - **Logs.** The release writes one JSON object per line on stdout. Ship them as they are.
   A line never holds a request's headers or body, and the paths that carry a credential
-  are rewritten before they are logged.
-- **Sign-up.** Once the instance is claimed, nobody signs up without an invitation: people
+  are rewritten before they are logged. The set-up link is written whole, by each start
+  until the instance is set up: that line is how you get it.
+- **Sign-up.** Once the instance is set up, nobody signs up without an invitation: people
   join by invitation from an owner or an admin on the organisation's **Members** page, as
   members. `INVITATIONS_PER_DAY` bounds how many invitations the organisation makes a day.
   [Install and configure](install.md#sign-up-and-invitations) has the details.

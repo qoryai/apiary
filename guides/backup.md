@@ -201,9 +201,11 @@ refuses its answers until it pins the new public key. Nothing in the database is
 It signs the session cookie and the "Keep me signed in" cookie. With another value every
 browser's cookies stop verifying, and everybody signs in again. That is all.
 
-Nothing in the database depends on it. Log-in links, invitation links and email-change links
-are stored as hashes of their secret and are checked against the database, so the links
-already sent keep working for as long as they would have. Access keys do not depend on it.
+Nothing in the database depends on it. Log-in links, password links, invitation links and
+email-change links are stored as hashes of their secret and are checked against the
+database, so the links already sent keep working for as long as they would have. Neither
+does a new instance's set-up code, kept in the database until it is used. Access keys do
+not depend on it.
 
 ## A restore drill
 
@@ -213,13 +215,22 @@ are taken, restore the newest dump on another machine:
 1. Put a copy of the installation's `compose.yaml` in an empty directory, with the dump and
    `qory-keys.env`.
 2. Write a `.env` there with the installation's `APIARY_VERSION`, and its `APIARY_IMAGE`
-   when it sets one, `COMPOSE_PROFILES=postgres`, `PUBLIC_URL=http://localhost:4100` and
-   its mail settings, `SMTP_RELAY` and the variables beside it. Nobody else signs in to
-   it.
+   when it sets one, `COMPOSE_PROFILES=postgres`, `PUBLIC_URL=http://localhost:4100` and,
+   when it has them, its mail settings, `SMTP_RELAY` and the variables beside it. Nobody
+   else signs in to it.
 3. Restore as under "The compose installation" above, the keys first.
-4. `curl http://localhost:4100/health` answers `200`.
-5. Ask for a log-in link at `http://localhost:4100/users/log-in` with your own address,
-   and sign in with the link the email brings. The runs are there.
+4. `curl http://localhost:4100/health` answers `200`. The restored instance is set up
+   already, so its log has no set-up link.
+5. Log in at `http://localhost:4100/users/log-in` with your own address: without mail,
+   with your password; with mail, with the log-in link the email brings, or with your
+   password if your account has one. Without mail and without your password, this prints
+   a one-time link that sets your account's password, which works for an hour:
+
+   ```sh
+   docker compose exec apiary bin/apiary eval 'Apiary.Release.password_link("dana@example.com")'
+   ```
+
+   The runs are there.
    <!-- feature: security -->
    So are the policy and its history.
    <!-- /feature -->
