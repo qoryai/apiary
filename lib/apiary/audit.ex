@@ -54,7 +54,10 @@ defmodule Apiary.Audit do
   the instance. A password link, which an instance admin or a release command makes for an
   account (`Apiary.Accounts.build_password_link/3`), is an `account.password_link` in that
   organisation's trail too, by the person or the instance, naming the account by user id
-  and never holding the link. A new organisation's trail begins with the entry of its creation,
+  and never holding the link. Saving the instance's mail settings and turning them on
+  (`Apiary.Mail.save_settings/3`, `turn_on/2`) are an `instance.mail_save` and an
+  `instance.mail_on` there, by the instance admin, never holding the password. A new
+  organisation's trail begins with the entry of its creation,
   `organisation.create` or the edition's action for it
   (`Apiary.Organisations.build_organisation/2`). An edition's actions leave their entries
   the same way, and what the edition changes in the core's transactions is an entry of

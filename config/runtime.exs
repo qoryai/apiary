@@ -374,10 +374,13 @@ if config_env() == :prod do
         end
 
       # Port 465 means implicit TLS on connect; every other port uses STARTTLS as
-      # SMTP_TLS says.
+      # SMTP_TLS says. TLS checks the relay's certificate against the system's
+      # certificate authorities and the relay's name, and the relay is the host
+      # connected to, as for the settings saved in Instance settings › Mail
+      # (`Apiary.Mail.TLS.smtp_options/2`).
       implicit_tls = smtp_port == 465
 
-      config :apiary, Apiary.Mailer,
+      mailer = [
         adapter: Swoosh.Adapters.SMTP,
         relay: relay,
         port: smtp_port,
@@ -387,6 +390,9 @@ if config_env() == :prod do
         ssl: implicit_tls,
         tls: if(implicit_tls, do: :never, else: smtp_tls),
         retries: 2
+      ]
+
+      config :apiary, Apiary.Mailer, mailer ++ Apiary.Mail.TLS.smtp_options(relay, implicit_tls)
   end
 
   # ## Logs

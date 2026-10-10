@@ -122,13 +122,26 @@ defmodule Apiary.MailSettingsTest do
   defp unreadable!,
     do: Repo.update_all(Settings, set: [mail_key_id: "0000000000000000"])
 
+  # `scope` as a sign-in `minutes` ago leaves it (`Apiary.Accounts.sudo_mode?/2`).
+  defp signed_in(scope, minutes \\ 0),
+    do: put_in(scope.user.authenticated_at, DateTime.add(DateTime.utc_now(), -minutes, :minute))
+
+  # The trail's entries of `action` in the instance's organisation.
+  defp entries(action) do
+    Repo.all(
+      from e in Apiary.Audit.Entry,
+        where: e.action == ^action,
+        where: e.organisation_id == ^Apiary.Edition.instance_organisation_id()
+    )
+  end
+
   setup do
     Apiary.EditionKit.hide_instance_organisation()
     %{scope: scope, user: user} = sign_up_fixture()
     assert Apiary.Access.instance_admin?(scope)
     put_env(Mail, smtp_adapter: Capture)
     no_env_mail()
-    %{scope: scope, user: user}
+    %{scope: signed_in(scope), user: user}
   end
 
   describe "save_settings/3" do
@@ -230,7 +243,6 @@ defmodule Apiary.MailSettingsTest do
       for {field, value} <- [
             {"smtp_relay", "smtp.example.net"},
             {"smtp_port", "2525"},
-            {"smtp_tls", "if_available"},
             {"smtp_username", "someone-else"}
           ] do
         attrs = %{@attrs | "smtp_password" => ""} |> Map.put(field, value)
@@ -247,6 +259,158 @@ defmodule Apiary.MailSettingsTest do
       save!(scope, %{@attrs | "smtp_relay" => "smtp.example.net"})
       assert Password.decrypt(row()) == {:ok, @password}
       refute row().smtp_password_ciphertext == first
+
+      # TLS changed, on port 465, where it may be anything with a username.
+      save!(scope, %{@attrs | "smtp_port" => "465"})
+      on_465 = row().smtp_password_ciphertext
+      attrs = %{@attrs | "smtp_port" => "465", "smtp_password" => "", "smtp_tls" => "never"}
+      assert {:error, changeset} = Mail.save_settings(scope, attrs, &url/1)
+
+      assert errors_on(changeset) == %{
+               smtp_password: ["enter it again: the relay, port, TLS or username changed"]
+             }
+
+      assert row().smtp_password_ciphertext == on_465
+    end
+
+    test "TLS is Always with a username, but on port 465, so the password is never sent unencrypted",
+         %{scope: scope} do
+      for tls <- ["never", "if_available"] do
+        assert {:error, changeset} =
+                 Mail.save_settings(scope, %{@attrs | "smtp_tls" => tls}, &url/1)
+
+        assert errors_on(changeset) == %{smtp_tls: ["must be Always with a username"]}
+        refute inspect(changeset, limit: :infinity, printable_limit: :infinity) =~ @password
+      end
+
+      assert no_mail_saved?()
+
+      # Without a username, there is no password to protect; on port 465, TLS is from the
+      # start whatever this says.
+      no_login = %{@attrs | "smtp_username" => "", "smtp_password" => ""}
+
+      for attrs <- [
+            %{no_login | "smtp_tls" => "never"},
+            %{no_login | "smtp_tls" => "if_available"},
+            %{@attrs | "smtp_tls" => "never", "smtp_port" => "465"}
+          ] do
+        save!(scope, attrs)
+      end
+    end
+
+    test "the relay, the username and the sender are counted in bytes, which the password's encryption binds",
+         %{scope: scope} do
+      # One character, a letter with 40,000 combining accents: 80,001 bytes.
+      long = "a" <> String.duplicate("\u0301", 40_000)
+      assert String.length(long) == 1
+
+      for {field, error} <- [
+            {"smtp_username", "should be at most 320 byte(s)"},
+            {"mail_from", "should be at most 160 byte(s)"}
+          ] do
+        value = if field == "mail_from", do: long <> "@example.com", else: long
+
+        assert {:error, changeset} =
+                 Mail.save_settings(scope, Map.put(@attrs, field, value), &url/1)
+
+        assert errors_on(changeset) == %{String.to_existing_atom(field) => [error]}
+      end
+
+      assert {:error, changeset} =
+               Mail.save_settings(scope, %{@attrs | "smtp_relay" => long}, &url/1)
+
+      assert "should be at most 253 byte(s)" in errors_on(changeset).smtp_relay
+      assert no_mail_saved?()
+    end
+
+    test "TLS checks the relay's certificate and name, and the relay is the host connected to",
+         %{scope: scope} do
+      no_login = %{@attrs | "smtp_username" => "", "smtp_password" => ""}
+
+      for {attrs, ssl, tls, key} <- [
+            {@attrs, false, :always, :tls_options},
+            {%{no_login | "smtp_tls" => "if_available"}, false, :if_available, :tls_options},
+            {%{no_login | "smtp_tls" => "never"}, false, :never, :tls_options},
+            {%{@attrs | "smtp_port" => "465"}, true, :never, :sockopts}
+          ] do
+        save!(scope, attrs)
+        assert_received {:sent, _email, config}
+        assert {config[:ssl], config[:tls]} == {ssl, tls}
+        assert config[:no_mx_lookups] == true
+        # sockopts are also the plain connection's: only for TLS from the start.
+        refute Keyword.has_key?(config, if(key == :sockopts, do: :tls_options, else: :sockopts))
+
+        options = Keyword.fetch!(config, key)
+        assert options[:verify] == :verify_peer
+        assert options[:cacerts] == :public_key.cacerts_get()
+        assert options[:cacerts] != []
+        assert options[:depth] == 10
+        assert options[:versions] == [:"tlsv1.2", :"tlsv1.3"]
+        assert options[:server_name_indication] == ~c"smtp.example.com"
+        assert [match_fun: match_fun] = options[:customize_hostname_check]
+        assert is_function(match_fun, 2)
+        refute Keyword.has_key?(options, :verify_fun)
+      end
+    end
+
+    test "a relay given as an IP address sends no server name, and its certificate must name the address",
+         %{scope: scope} do
+      for {relay, ip} <- [{"192.0.2.10", {192, 0, 2, 10}}, {"2001:db8::10", nil}] do
+        if ip do
+          save!(scope, %{@attrs | "smtp_relay" => relay})
+          assert_received {:sent, _email, config}
+          options = config[:tls_options]
+          assert options[:verify] == :verify_peer
+          assert options[:server_name_indication] == :disable
+          assert options[:verify_fun] == {&Apiary.Mail.TLS.verify_ip/3, ip}
+          refute Keyword.has_key?(options, :customize_hostname_check)
+        else
+          # The form takes no IPv6 address; the environment's relay may be one.
+          options = Apiary.Mail.TLS.ssl_options(relay)
+          assert options[:server_name_indication] == :disable
+          assert {_fun, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 0x10}} = options[:verify_fun]
+        end
+      end
+    end
+
+    test "is refused to an instance admin whose sign-in is not recent, who signs in again first",
+         %{scope: scope} do
+      for stale <- [signed_in(scope, 21), put_in(scope.user.authenticated_at, nil)] do
+        assert Mail.save_settings(stale, @attrs, &url/1) == {:error, :sudo}
+      end
+
+      assert no_mail_saved?()
+      refute_received {:sent, _email, _config}
+      assert entries("instance.mail_save") == []
+
+      save!(signed_in(scope, 19))
+    end
+
+    test "is an instance.mail_save entry in the instance's trail, by the admin, without the password or any address",
+         %{scope: scope} do
+      save!(scope)
+      assert [entry] = entries("instance.mail_save")
+      assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
+      assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
+
+      assert entry.details == %{
+               "relay" => "smtp.example.com",
+               "port" => 587,
+               "tls" => "always",
+               "username" => true,
+               "sender" => true
+             }
+
+      kept = Jason.encode!([entry.before, entry.after, entry.details])
+      refute kept =~ @password
+      refute kept =~ "qory@example.com"
+      refute kept =~ "\"qory\""
+
+      # A refused save leaves none.
+      assert {:error, _changeset} =
+               Mail.save_settings(scope, %{@attrs | "smtp_relay" => ""}, &url/1)
+
+      assert [_one] = entries("instance.mail_save")
     end
 
     test "a saved password that cannot be read is asked for again, saying so", %{scope: scope} do
@@ -441,6 +605,7 @@ defmodule Apiary.MailSettingsTest do
     test "does nothing for another instance admin, and still works for the one it was sent to",
          %{scope: scope, token: token} do
       %{scope: other} = with_env_mail(fn -> member_fixture(scope, :owner) end)
+      other = signed_in(other)
       assert Apiary.Access.instance_admin?(other)
 
       assert Mail.turn_on(other, token) == :error
@@ -459,6 +624,28 @@ defmodule Apiary.MailSettingsTest do
 
       assert Mail.state(row()) == :pending
       assert [_token] = Repo.all_by(UserToken, context: "instance_mail")
+    end
+
+    test "asks the admin who saved for a recent sign-in, and works once they have signed in again",
+         %{scope: scope, token: token} do
+      assert Mail.turn_on(signed_in(scope, 21), token) == {:error, :sudo}
+      assert Mail.state(row()) == :pending
+      assert entries("instance.mail_on") == []
+
+      assert {:ok, _settings} = Mail.turn_on(signed_in(scope, 1), token)
+    end
+
+    test "is an instance.mail_on entry in the instance's trail, by the admin",
+         %{scope: scope, token: token} do
+      assert {:ok, _settings} = Mail.turn_on(scope, token)
+      assert [entry] = entries("instance.mail_on")
+      assert {entry.actor_kind, entry.actor_id} == {:person, scope.user.id}
+      assert {entry.subject_kind, entry.subject_id} == {"organisation", entry.organisation_id}
+      assert entry.details == %{"relay" => "smtp.example.com", "port" => 587}
+
+      # Once: the link used, nothing more.
+      assert Mail.turn_on(scope, token) == :error
+      assert [_one] = entries("instance.mail_on")
     end
 
     test "works for 60 minutes", %{scope: scope, token: token} do

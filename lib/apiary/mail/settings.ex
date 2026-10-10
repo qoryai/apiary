@@ -44,11 +44,15 @@ defmodule Apiary.Mail.Settings do
 
   @doc """
   changeset/2 is what an instance admin saves: the relay, required, a host name of at most
-  253 characters without a scheme, a port or a space; the port, 1 to 65535, 587 when
-  empty; TLS, one of `tls_values/0`, `always` when empty; the username, empty for a relay
-  without a log-in; the sender, an email address or empty for the server's default; and
-  the password, the virtual `smtp_password`, empty for none given. Each value is trimmed
-  but the password, and an empty one is `nil`.
+  253 bytes without a scheme, a port or a space; the port, 1 to 65535, 587 when empty;
+  TLS, one of `tls_values/0`, `always` when empty, and `always` with a username but on
+  port 465, which is TLS from the start, so the password is never sent unencrypted; the
+  username, at most 320 bytes, empty for a relay without a log-in; the sender, an email
+  address of at most 160 bytes, or empty for the server's default; and the password, the
+  virtual `smtp_password`, empty for none given. Each value is trimmed but the password,
+  and an empty one is `nil`. The relay and the username are bound into the password's
+  encryption (`Apiary.Mail.Password`), which takes each of at most 65535 bytes: their
+  lengths are counted in bytes.
   """
   @spec changeset(t, map) :: Ecto.Changeset.t()
   def changeset(settings, attrs) do
@@ -61,18 +65,35 @@ defmodule Apiary.Mail.Settings do
     |> default(:smtp_port, 587)
     |> default(:smtp_tls, "always")
     |> validate_required([:smtp_relay])
-    |> validate_length(:smtp_relay, max: 253)
+    |> validate_length(:smtp_relay, max: 253, count: :bytes)
     |> validate_format(:smtp_relay, ~r/\A[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\z/,
       message: dgettext_noop("errors", "must be a host name, such as smtp.example.com")
     )
     |> validate_number(:smtp_port, greater_than_or_equal_to: 1, less_than_or_equal_to: 65_535)
     |> validate_inclusion(:smtp_tls, @tls)
-    |> validate_length(:smtp_username, max: 320)
+    |> validate_tls_with_username()
+    |> validate_length(:smtp_username, max: 320, count: :bytes)
     |> validate_length(:smtp_password, max: 1_000)
-    |> validate_length(:mail_from, max: 160)
+    |> validate_length(:mail_from, max: 160, count: :bytes)
     |> validate_format(:mail_from, ~r/\A[^@,;<>"\s]+@[^@,;<>"\s]+\z/,
       message: dgettext_noop("errors", "must have the @ sign and no spaces")
     )
+  end
+
+  # A username logs in with the password: STARTTLS that is never asked for, or that goes
+  # on in plain text where the relay offers none, which anyone on the way can hide, would
+  # send the password unencrypted. Port 465 is TLS from the start, whatever TLS says.
+  defp validate_tls_with_username(changeset) do
+    if is_binary(get_field(changeset, :smtp_username)) and
+         get_field(changeset, :smtp_port) != 465 and
+         get_field(changeset, :smtp_tls) in ["if_available", "never"],
+       do:
+         add_error(
+           changeset,
+           :smtp_tls,
+           dgettext_noop("errors", "must be Always with a username")
+         ),
+       else: changeset
   end
 
   defp blank_to_nil(nil), do: nil

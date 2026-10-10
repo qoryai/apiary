@@ -116,6 +116,12 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"membership_id" => :other_member}},
       {:"account.password_link", :member, "/:org/settings/people", "password_link",
        %{"membership_id" => :other_member}},
+      # The instance's mail is an instance admin's: none of the world's people is one, and
+      # its page does not exist for them.
+      {:"instance.mail_save", :owner, "/instance/mail", "save",
+       %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
+      {:"instance.mail_save", :admin, "/instance/mail", "save",
+       %{"mail" => %{"smtp_relay" => "smtp.example.com"}}, answer: :not_found_at_mount},
 
       # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
@@ -357,6 +363,10 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Linking
   # a stored secret to what uses it: no page links one, and the context's tests
   # refuse it. Nor does a page offer the connections (`test/apiary/connections_test.exs`).
+  # Turning the instance's mail on is following the test link a save sent, a controller's
+  # redirect, not a page's event: the link's tests refuse it to anyone but the instance
+  # admin it was sent to (`test/apiary/mail_settings_test.exs`,
+  # `test/apiary_web/live/instance_live/mail_test.exs`).
   @impl true
   def exempt do
     %{
@@ -372,6 +382,7 @@ defmodule ApiaryWeb.RefusalsRows do
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
+      link: [:"instance.mail_on"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],

@@ -31,6 +31,15 @@ defmodule Apiary.AuditChanges do
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
 
+  @mail_attrs %{
+    "smtp_relay" => "smtp.example.com",
+    "smtp_port" => "587",
+    "smtp_tls" => "always",
+    "smtp_username" => "qory",
+    "smtp_password" => "a relay password",
+    "mail_from" => ""
+  }
+
   @doc "actions/0 is the core's audited actions, each made and refused below."
   @spec actions() :: [Access.action()]
   def actions do
@@ -50,6 +59,8 @@ defmodule Apiary.AuditChanges do
       :"instance_admin.grant",
       :"instance_admin.revoke",
       :"account.password_link",
+      :"instance.mail_save",
+      :"instance.mail_on",
       :"audit.prune",
       :"workspace.create",
       :"workspace.rename",
@@ -179,6 +190,45 @@ defmodule Apiary.AuditChanges do
       Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")
 
     [_, token] = Regex.run(~r{/users/password/(.+)$}, url)
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: token
+    }
+  end
+
+  # An instance admin's, after a recent sign-in, in the trail of the instance's
+  # organisation, about the organisation. The relay's password is the secret the entry must
+  # not keep.
+  def make(:"instance.mail_save", _ctx) do
+    admin = mail_admin()
+    before = entries()
+
+    {:ok, _settings, :sent} =
+      Apiary.Mail.save_settings(
+        admin,
+        @mail_attrs,
+        &"http://localhost/instance/mail/confirm/#{&1}"
+      )
+
+    instance = instance_organisation()
+
+    %{
+      scope: Scope.in_organisation(admin, instance),
+      subject: {"organisation", instance.id},
+      before: before,
+      secret: @mail_attrs["smtp_password"]
+    }
+  end
+
+  # The admin who saved, by the test link the save sent them. The link is the secret.
+  def make(:"instance.mail_on", _ctx) do
+    {admin, token} = mail_saved()
+    before = entries()
+    {:ok, _settings} = Apiary.Mail.turn_on(admin, token)
     instance = instance_organisation()
 
     %{
@@ -422,6 +472,25 @@ defmodule Apiary.AuditChanges do
     {before, Accounts.build_password_link(admin, user, &"http://localhost/users/password/#{&1}")}
   end
 
+  # An instance admin whose sign-in is no longer recent signs in again first.
+  def refuse(:"instance.mail_save", _ctx) do
+    admin = mail_admin() |> mail_signed_in(-21)
+    before = entries()
+
+    {before,
+     Apiary.Mail.save_settings(
+       admin,
+       @mail_attrs,
+       &"http://localhost/instance/mail/confirm/#{&1}"
+     )}
+  end
+
+  def refuse(:"instance.mail_on", _ctx) do
+    {admin, token} = mail_saved()
+    before = entries()
+    {before, Apiary.Mail.turn_on(mail_signed_in(admin, -21), token)}
+  end
+
   # The instance's last admin, the suite's first user, stays one.
   def refuse(:"instance_admin.revoke", _ctx) do
     [admin] =
@@ -627,6 +696,37 @@ defmodule Apiary.AuditChanges do
     %{user: admin} = sign_up_fixture()
     {:ok, _} = Organisations.grant_instance_admin(admin)
     Scope.for_user(admin)
+  end
+
+  # A fresh instance admin, signed in just now, on an instance whose mail comes from no
+  # environment: their scope.
+  defp mail_admin do
+    admin = password_link_admin() |> mail_signed_in(0)
+    Apiary.Mail.put_test_source(:none)
+    admin
+  end
+
+  defp mail_signed_in(%Scope{} = scope, minutes),
+    do: put_in(scope.user.authenticated_at, DateTime.add(DateTime.utc_now(), minutes, :minute))
+
+  # Mail settings saved by a fresh instance admin: their scope, and the test link's token.
+  defp mail_saved do
+    admin = mail_admin()
+
+    {:ok, _settings, :sent} =
+      Apiary.Mail.save_settings(
+        admin,
+        @mail_attrs,
+        &"http://localhost/instance/mail/confirm/#{&1}"
+      )
+
+    receive do
+      {:email, %Swoosh.Email{subject: "Turn on mail for Qory Apiary", text_body: body}} ->
+        [_, token] = Regex.run(~r{/instance/mail/confirm/([A-Za-z0-9_-]+)}, body)
+        {admin, token}
+    after
+      0 -> raise "no test link was sent"
+    end
   end
 
   # The entries of `entries` of the edition's own actions (`Apiary.Edition.actions/0`).

@@ -7046,6 +7046,16 @@ msgstr ""
 msgid "Mail is on, and your email address is confirmed."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Mail settings saved"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Mail turned on"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "Mail turns on when the admin who saved these settings follows the link we sent them."
@@ -9889,6 +9899,11 @@ msgstr ""
 msgid "Save variable"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Saved the mail settings, which sent a test link"
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
 msgid "Saved, and never shown. Leave it empty to keep it, unless you change the relay, port, TLS or username."
@@ -12079,6 +12094,11 @@ msgstr ""
 msgid "Turn on mail for Qory Apiary"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Turned mail on, by the test link"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Two ways to connect a machine"
@@ -12920,6 +12940,8 @@ msgstr ""
 msgid "You must log in to access this page."
 msgstr ""
 
+#: lib/apiary_web/controllers/instance_mail_controller.ex
+#: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format

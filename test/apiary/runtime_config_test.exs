@@ -476,6 +476,40 @@ defmodule Apiary.RuntimeConfigTest do
     assert mailer[:username] == "relay-user"
   end
 
+  test "TLS checks the relay's certificate and name, in every SMTP_TLS, and the relay is the host connected to" do
+    System.put_env("SMTP_RELAY", "smtp.example.com")
+
+    for {port, tls, ssl, key} <- [
+          {"587", "always", false, :tls_options},
+          {"587", "if_available", false, :tls_options},
+          {"587", "never", false, :tls_options},
+          {"465", "always", true, :sockopts}
+        ] do
+      System.put_env("SMTP_PORT", port)
+      System.put_env("SMTP_TLS", tls)
+      mailer = prod_mailer()
+
+      assert mailer[:ssl] == ssl
+      assert mailer[:no_mx_lookups] == true
+      # sockopts are also the plain connection's: only for TLS from the start.
+      refute Keyword.has_key?(mailer, if(ssl, do: :tls_options, else: :sockopts))
+
+      options = Keyword.fetch!(mailer, key)
+      assert options == Apiary.Mail.TLS.ssl_options("smtp.example.com")
+      assert options[:verify] == :verify_peer
+      assert [_ | _] = options[:cacerts]
+      assert options[:server_name_indication] == ~c"smtp.example.com"
+      assert [match_fun: _fun] = options[:customize_hostname_check]
+    end
+
+    # A relay given as an IP address: no server name; its certificate must name it.
+    System.put_env("SMTP_RELAY", "192.0.2.10")
+    System.put_env("SMTP_PORT", "587")
+    options = prod_mailer()[:tls_options]
+    assert options[:server_name_indication] == :disable
+    assert options[:verify_fun] == {&Apiary.Mail.TLS.verify_ip/3, {192, 0, 2, 10}}
+  end
+
   describe "FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME" do
     setup do
       previous = Map.new(~w(FIRST_ADMIN_EMAIL FIRST_ORGANISATION_NAME), &{&1, System.get_env(&1)})
