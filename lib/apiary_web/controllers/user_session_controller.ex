@@ -47,9 +47,11 @@ defmodule ApiaryWeb.UserSessionController do
     end
   end
 
-  # email + password login
-  defp create(conn, %{"user" => user_params}, info) do
-    %{"email" => email, "password" => password} = user_params
+  # email + password login. A field missing, or not text, is an empty one: the same
+  # answer as a wrong password, after the same work.
+  defp create(conn, %{"user" => %{} = user_params}, info) do
+    email = text(user_params["email"])
+    password = text(user_params["password"])
 
     user = Accounts.get_user_by_email_and_password(email, password)
 
@@ -70,6 +72,11 @@ defmodule ApiaryWeb.UserSessionController do
         |> redirect(to: ~p"/users/log-in")
     end
   end
+
+  defp create(conn, _params, info), do: create(conn, %{"user" => %{}}, info)
+
+  defp text(value) when is_binary(value), do: value
+  defp text(_value), do: ""
 
   # An account the edition refuses (`Apiary.Accounts.sign_in_refusal/1`), told only once
   # it has shown it is theirs: with its password, or a link sent to its address. The

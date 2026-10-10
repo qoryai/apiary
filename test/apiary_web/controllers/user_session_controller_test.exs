@@ -94,6 +94,21 @@ defmodule ApiaryWeb.UserSessionControllerTest do
       assert is_nil(Accounts.get_user!(user.id).confirmed_at)
     end
 
+    test "a post without a password is answered as wrong credentials", %{conn: conn, user: user} do
+      user = set_password(user)
+      conn = post(conn, ~p"/users/log-in", %{"user" => %{"email" => user.email}})
+
+      refute get_session(conn, :user_token)
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "That email and password do not match."
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+
+      conn = post(build_conn(), ~p"/users/log-in", %{})
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+
     test "redirects to login page with invalid credentials", %{conn: conn, user: user} do
       conn =
         post(conn, ~p"/users/log-in?mode=password", %{

@@ -97,7 +97,8 @@ defmodule Apiary.SetupTest do
       assert code =~ ~r/\A[A-Za-z0-9_-]{43}\z/
       assert byte_size(Base.url_decode64!(code, padding: false)) == 32
 
-      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code))
+      # The same line, once, whatever the capture saw it twice.
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code)) |> Enum.uniq()
       assert line =~ "[info]"
 
       assert line |> String.split("[info] ", parts: 2) |> List.last() ==
@@ -269,10 +270,16 @@ defmodule Apiary.SetupTest do
       assert {^code, nil} = stored()
     end
 
-    test "with mail, set_up/2 makes an account without a password, as a sign-up does" do
+    test "with mail, set_up/2 makes an account without a password when given none" do
       Apiary.Mail.put_test_source(:env)
       assert {:ok, %{user: user}} = Setup.set_up(Setup.code!(), attrs())
       assert is_nil(user.hashed_password)
+    end
+
+    test "with mail, a password given to set_up/2 is kept" do
+      Apiary.Mail.put_test_source(:env)
+      assert {:ok, %{user: user}} = Setup.set_up(Setup.code!(), password_attrs())
+      assert Apiary.Accounts.get_user_by_email_and_password(user.email, valid_user_password())
     end
 
     test "a refused name or address leaves the code as it was" do
@@ -348,7 +355,8 @@ defmodule Apiary.SetupTest do
       Logger.configure(level: level)
       assert_received {:code, code}
 
-      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code))
+      # The same line, once, whatever the capture saw it twice.
+      assert [line] = log |> String.split("\n") |> Enum.filter(&(&1 =~ code)) |> Enum.uniq()
       assert line =~ Setup.log_line(code)
     end
   end

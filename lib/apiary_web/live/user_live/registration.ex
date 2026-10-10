@@ -96,7 +96,7 @@ defmodule ApiaryWeb.UserLive.Registration do
         <.form
           for={@form}
           id="registration_form"
-          action={~p"/users/log-in"}
+          action={!@mail? && ~p"/users/log-in"}
           phx-submit="save"
           phx-change="validate"
           phx-trigger-action={@trigger_submit}
@@ -208,12 +208,20 @@ defmodule ApiaryWeb.UserLive.Registration do
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
+    # With mail the page asks for no password, and sends none: the address is confirmed
+    # by email first.
+    user_params =
+      if socket.assigns.mail?,
+        do: Map.drop(user_params, ~w(password password_confirmation)),
+        else: user_params
+
     case Organisations.sign_up_user(user_params, socket.assigns.invitation_token,
            origin: socket.assigns.origin
          ) do
-      # A password was set: the same form goes to the log-in controller, with the
-      # address the account has, and signs the person in.
-      {:ok, %{user: %{hashed_password: hash} = user}} when is_binary(hash) ->
+      # Without mail, a password was set: the same form goes to the log-in controller,
+      # with the address the account has, and signs the person in.
+      {:ok, %{user: %{hashed_password: hash} = user}}
+      when is_binary(hash) and not socket.assigns.mail? ->
         {:noreply,
          socket
          |> assign_form(change_sign_up(socket, %{"email" => user.email}))

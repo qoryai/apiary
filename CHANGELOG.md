@@ -34,8 +34,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
   person in as soon as the account is made; an invited person keeps the invitation's
   address. `Apiary.Organisations.sign_up_user/3` takes `password` and
-  `password_confirmation`, required without mail and optional with it, and never asked of
-  a release command's sign-up. `ApiaryWeb.CoreComponents.new_password_fields/1` draws the
+  `password_confirmation`: a person's sign-up needs them without mail, and drops them
+  with mail, whose address a link confirms first; the instance's own sign-up
+  (`actor: :instance`) needs none and keeps one given. `ApiaryWeb.CoreComponents.new_password_fields/1` draws the
   two fields and never writes a password back to the page. Account settings do not change
   the email address without mail.
 - An account whose password was set before its address was confirmed loses that password

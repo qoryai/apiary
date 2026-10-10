@@ -742,9 +742,10 @@ defmodule Apiary.Organisations do
   password is (`Apiary.Accounts.User.password_changeset/3`: 12 to 72 characters, and
   72 bytes at most, the confirmation the same), with their errors on those fields. They
   are never kept in the changeset's changes. `password: :required` asks for one, as a
-  sign-up does while the instance sends no email (`Apiary.Mail.configured?/0`), and
-  `password: :optional` checks one only when it is given, as a sign-up does once the
-  instance sends email; the default is the one the instance's mail gives.
+  person's sign-up does while the instance sends no email (`Apiary.Mail.configured?/0`);
+  `password: :none` leaves them out, as a person's sign-up does once the instance sends
+  email; `password: :optional` checks one only when it is given, as the instance's own
+  sign-up does. The default is the person's, by the instance's mail.
   """
   @spec change_sign_up(map, keyword) :: Ecto.Changeset.t()
   def change_sign_up(attrs \\ %{}, opts \\ []) do
@@ -783,20 +784,28 @@ defmodule Apiary.Organisations do
     end)
   end
 
-  # Whether a sign-up asks for a password: while the instance sends no email, a password
-  # is the account's only way in.
-  defp password_rule, do: if(Apiary.Mail.configured?(), do: :optional, else: :required)
+  # Whether a person's sign-up takes a password: while the instance sends no email, a
+  # password is the account's only way in; once it sends email, the address is confirmed
+  # by a link before the account has any, so none is taken.
+  defp password_rule, do: if(Apiary.Mail.configured?(), do: :none, else: :required)
 
   # The password's errors on the form, checked on an account's password changeset without
-  # hashing it; an optional one only when it is given.
+  # hashing it, with the 72 bytes the hashing checks; an optional one only when it is
+  # given, and none at all for `:none`.
+  defp check_password(form, _attrs, :none), do: form
+
   defp check_password(form, attrs, rule) do
     if rule == :required or password_given?(attrs),
-      do:
-        copy_errors(
-          form,
-          User.password_changeset(%User{}, password_attrs(attrs), hash_password: false)
-        ),
+      do: copy_errors(form, checked_password(attrs)),
       else: form
+  end
+
+  defp checked_password(attrs) do
+    changeset = User.password_changeset(%User{}, password_attrs(attrs), hash_password: false)
+
+    if changeset.valid?,
+      do: Ecto.Changeset.validate_length(changeset, :password, max: 72, count: :bytes),
+      else: changeset
   end
 
   defp password_given?(attrs),
@@ -856,10 +865,12 @@ defmodule Apiary.Organisations do
   `origin:` (see `Apiary.Accounts.Scope.put_origin/2`), the request's address and client.
 
   **The password.** `password`, with `password_confirmation`, is the account's password,
-  checked as `change_sign_up/2` checks it and hashed into the account. It is required
-  while the instance sends no email (`Apiary.Mail.configured?/0`), since it is then the
-  account's only way in, and optional once it does; `actor: :instance` never needs one.
-  `password: :required` or `password: :optional` says otherwise, as the set-up does.
+  checked as `change_sign_up/2` checks it and hashed into the account. A person's sign-up
+  needs one while the instance sends no email (`Apiary.Mail.configured?/0`), since it is
+  then the account's only way in. Once the instance sends email, a person's sign-up takes
+  none, and drops one sent all the same: the address is confirmed by a link before the
+  account can sign in. `actor: :instance` needs none, and keeps one given, mail or not.
+  `password: :required` asks for one whatever the mail, as the set-up page does.
   Either way the account is unconfirmed until a log-in link sent to its address is
   followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
   sign-up takes the invitation's address, whatever `email` says: the link is the
@@ -903,15 +914,24 @@ defmodule Apiary.Organisations do
     offered? =
       invited? or Keyword.get(opts, :first_only, false) or sign_up_offer(opts) != :closed
 
-    # The instance's own sign-up, a release command's, is nobody's to choose a password
-    # for; a person's needs one while the instance sends no email. `password:` says
-    # otherwise, as the set-up does.
+    # The instance's own sign-up (a release command's, the set-up's) takes a password
+    # when it is given one. A person's needs one while the instance sends no email, and
+    # takes none once it does: its address is confirmed by a link first, so a password
+    # sent all the same is dropped. `password:` says otherwise, as the set-up page does.
     password =
       Keyword.get_lazy(opts, :password, fn ->
-        if mail? or Keyword.get(opts, :actor, :person) == :instance,
-          do: :optional,
-          else: :required
+        cond do
+          Keyword.get(opts, :actor, :person) == :instance -> :optional
+          mail? -> :none
+          true -> :required
+        end
       end)
+
+    attrs =
+      if password == :none,
+        do:
+          Map.drop(attrs, [:password, :password_confirmation | ~w(password password_confirmation)]),
+        else: attrs
 
     # Without mail, the invitation's link is the inviter's word for its address: the
     # account takes it, whatever the form sent.

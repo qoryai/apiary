@@ -85,6 +85,20 @@ defmodule ApiaryWeb.SetupLiveTest do
       assert Setup.set_up?()
     end
 
+    test "with mail too, keeps the password and signs the person in with it",
+         %{conn: conn, code: code} do
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/setup/#{code}")
+      email = unique_user_email()
+
+      form = form(lv, "#setup_form", user: params(%{"email" => email}))
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      assert get_session(conn, :user_token)
+      assert Apiary.Accounts.get_user_by_email_and_password(email, @password)
+    end
+
     test "asks for a password with mail too, and refuses what the sign-up refuses",
          %{conn: conn, code: code} do
       Apiary.Mail.put_test_source(:env)
