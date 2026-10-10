@@ -35,7 +35,7 @@ Metadata:
         Parameters: [TestImage]
     ParameterLabels:
       Edition: { default: Edition }
-      ProDownloadKey: { default: Apiary Pro download key }
+      ProDownloadKey: { default: Qory Apiary Pro download key }
       DomainName: { default: Domain name }
       HostedZoneId: { default: Route 53 hosted zone (recommended) }
       CertificateArn: { default: Your own ACM certificate (optional) }
@@ -51,9 +51,9 @@ Metadata:
 Parameters:
   Edition:
     Type: String
-    Default: Apiary Community
-    AllowedValues: [Apiary Community, Apiary Pro]
-    Description: "Apiary Community is free and open source. Apiary Pro needs the download key we sent you. Apiary Community → Apiary Pro is possible later; the way back is not."
+    Default: Qory Apiary Community
+    AllowedValues: [Qory Apiary Community, Qory Apiary Pro]
+    Description: "Qory Apiary Community is free and open source. Qory Apiary Pro needs the download key we sent you. Moving from Qory Apiary Community to Qory Apiary Pro is possible later; the way back is not."
   # <account>:<token>, split on its one colon into the registry's user name and password.
   ProDownloadKey:
     Type: String
@@ -61,7 +61,7 @@ Parameters:
     NoEcho: true
     AllowedPattern: '^$|^[A-Za-z0-9-]+:[^\s"\\:]+$'
     ConstraintDescription: "The download key as we sent it: an account name, a colon and a token."
-    Description: "Only for Apiary Pro: the download key we sent you. Leave empty for Apiary Community. A revoked or expired key stops the running instance at its next task replacement. Also needed to pull a test image."
+    Description: "Only for Qory Apiary Pro: the download key we sent you. Leave empty for Qory Apiary Community. A revoked or expired key stops the running instance at its next task replacement. Also needed to pull a test image."
   DomainName:
     Type: String
     MinLength: 1
@@ -132,22 +132,22 @@ Rules:
       - Assert: !Not [!Equals [!Ref KeysFromStack, ""]]
         AssertDescription: "A database snapshot needs the keys of the stack it came from: set Keys of a deleted stack."
   ProNeedsDownloadKey:
-    RuleCondition: !Equals [!Ref Edition, Apiary Pro]
+    RuleCondition: !Equals [!Ref Edition, Qory Apiary Pro]
     Assertions:
       - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
-        AssertDescription: Apiary Pro needs its download key.
-  # Apiary Pro's image is built for linux/amd64 alone.
+        AssertDescription: Qory Apiary Pro needs its download key.
+  # Qory Apiary Pro's image is built for linux/amd64 alone.
   ProOnX86:
-    RuleCondition: !Equals [!Ref Edition, Apiary Pro]
+    RuleCondition: !Equals [!Ref Edition, Qory Apiary Pro]
     Assertions:
       - Assert: !Equals [!Ref CpuArchitecture, X86_64]
-        AssertDescription: Apiary Pro runs on X86_64 only.
+        AssertDescription: Qory Apiary Pro runs on X86_64 only.
   # A test image is pulled from a private package, with the download key.
   TestImageNeedsDownloadKey:
     RuleCondition: !Not [!Equals [!Ref TestImage, ""]]
     Assertions:
       - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
-        AssertDescription: "A test image needs the download key: set Apiary Pro download key."
+        AssertDescription: "A test image needs the download key: set Qory Apiary Pro download key."
   # With Version empty, the edition's version is the Release mapping's. A Rule cannot read a
   # mapping, so the release writes the same version in here too
   # (scripts/aws-template-release.py), as the value each Assert compares Version with: Version
@@ -156,26 +156,26 @@ Rules:
   # neither Rule applies; the download key and the CPU architecture are still checked above.
   CommunityVersionNamed:
     RuleCondition: !And
-      - !Equals [!Ref Edition, Apiary Community]
+      - !Equals [!Ref Edition, Qory Apiary Community]
       - !Equals [!Ref VersionOverride, ""]
       - !Equals [!Ref TestImage, ""]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
-        AssertDescription: "This copy of the template names no release of Apiary Community: type a version under Version."
+        AssertDescription: "This copy of the template names no release of Qory Apiary Community: type a version under Version."
   ProVersionNamed:
     RuleCondition: !And
-      - !Equals [!Ref Edition, Apiary Pro]
+      - !Equals [!Ref Edition, Qory Apiary Pro]
       - !Equals [!Ref VersionOverride, ""]
       - !Equals [!Ref TestImage, ""]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
-        AssertDescription: Apiary Pro is installed from Apiary Pro's release.
+        AssertDescription: Qory Apiary Pro is installed from Qory Apiary Pro's release.
 
 Conditions:
-  IsPro: !Equals [!Ref Edition, Apiary Pro]
+  IsPro: !Equals [!Ref Edition, Qory Apiary Pro]
   HasVersionOverride: !Not [!Equals [!Ref VersionOverride, ""]]
   HasTestImage: !Not [!Equals [!Ref TestImage, ""]]
-  # A key given with Apiary Community is used for the pull too.
+  # A key given with Qory Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]

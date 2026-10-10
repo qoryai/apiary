@@ -10,8 +10,8 @@ permissions:
 # A tag vX.Y.Z publishes the image ghcr.io/qoryai/apiary as X.Y.Z, X.Y and latest, for
 # linux/amd64 and linux/arm64, and the GitHub release with compose.yaml, env.example and
 # apiary.yaml attached: env.example a copy of .env.example naming X.Y.Z in APIARY_VERSION,
-# apiary.yaml a copy of the AWS template, deploy/aws/apiary.yaml, naming X.Y.Z as Apiary
-# Community's version, which scripts/aws-template-release.py writes in. The image's build is
+# apiary.yaml a copy of the AWS template, deploy/aws/apiary.yaml, naming X.Y.Z as Qory
+# Apiary Community's version, which scripts/aws-template-release.py writes in. The image's build is
 # ci.yml's: the same labels, build argument and cache. Nothing else publishes this image, or
 # the template; prerelease.yml, run by hand or by a push to the branch prerelease,
 # publishes pre-release images to another package, ghcr.io/qoryai/apiary-prerelease.
@@ -59,7 +59,7 @@ jobs:
           test -f deploy/aws/stack-policy.json || { echo "deploy/aws/stack-policy.json is missing" >&2; exit 1; }
           cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary.yaml"
           python3 scripts/aws-template-release.py "$RUNNER_TEMP/apiary.yaml" \
-            --edition-default "Apiary Community" --community-version "$VERSION" --pro-version ""
+            --edition-default "Qory Apiary Community" --community-version "$VERSION" --pro-version ""
 
   # Each platform on a runner of its own architecture, pushed by digest alone: no tag
   # names an image until both are built.
@@ -188,7 +188,7 @@ jobs:
           grep -qx "APIARY_VERSION=$VERSION" dist/env.example
           cp deploy/aws/apiary.yaml dist/apiary.yaml
           python3 scripts/aws-template-release.py dist/apiary.yaml \
-            --edition-default "Apiary Community" --community-version "$VERSION" --pro-version ""
+            --edition-default "Qory Apiary Community" --community-version "$VERSION" --pro-version ""
           grep -qx "      CommunityVersion: \"$VERSION\"" dist/apiary.yaml
           cp deploy/aws/stack-policy.json dist/stack-policy.json
 

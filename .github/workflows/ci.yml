@@ -105,24 +105,37 @@ jobs:
       - name: Check which secrets and log groups the stack keeps
         run: python scripts/aws-template-check.py kept
 
-      # The Release mapping's keys, which Apiary Pro's release writes too, and every
+      # The Release mapping's keys, which Qory Apiary Pro's release writes too, and every
       # Fn::FindInMap against the mappings: cfn-lint does not check one inside a Fn::If.
       - name: Check the template's mappings
         run: python scripts/aws-template-check.py mappings
 
+      # Every value compared with Edition is one of its AllowedValues, and each is compared:
+      # a Rule or Condition that compares a value Edition no longer allows never applies.
+      - name: Check the template's comparisons with Edition
+        run: python scripts/aws-template-check.py editions
+
+      # The AWS console shows a character that is not ASCII as "?": the template and its
+      # stack policy hold none, in any text, comment or code.
+      - name: Check the AWS template is ASCII alone
+        run: python scripts/aws-template-check.py ascii
+
       # A release writes its versions into a copy of the template, as release.yml does for
-      # Apiary Community (the Apiary Pro version empty) and as a release naming both does,
-      # with Apiary Pro first; the script fails unless it writes every place exactly once.
-      # cfn-lint then reads each copy.
+      # Qory Apiary Community (the Qory Apiary Pro version empty) and as a release naming
+      # both does, with Qory Apiary Pro first; the script fails unless it writes every place
+      # exactly once. cfn-lint then reads each copy, and each is checked for its comparisons
+      # with Edition and for ASCII alone.
       - name: Write a release's template, and lint it
         run: |
           cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-community.yaml"
           python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-community.yaml" \
-            --edition-default "Apiary Community" --community-version 0.0.0 --pro-version ""
+            --edition-default "Qory Apiary Community" --community-version 0.0.0 --pro-version ""
           cp deploy/aws/apiary.yaml "$RUNNER_TEMP/apiary-pro.yaml"
           python scripts/aws-template-release.py "$RUNNER_TEMP/apiary-pro.yaml" \
-            --edition-default "Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
+            --edition-default "Qory Apiary Pro" --community-version 0.0.0 --pro-version 0.0.1
           cfn-lint "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
+          python scripts/aws-template-check.py editions "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
+          python scripts/aws-template-check.py ascii "$RUNNER_TEMP/apiary-community.yaml" "$RUNNER_TEMP/apiary-pro.yaml"
 
       # update-stack resets every parameter it is not given to its default, DatabaseSnapshot
       # included, which replaces a restored database with an empty one. The guides name

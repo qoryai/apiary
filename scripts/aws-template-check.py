@@ -4,6 +4,8 @@
     python scripts/aws-template-check.py outputs
     python scripts/aws-template-check.py kept
     python scripts/aws-template-check.py mappings
+    python scripts/aws-template-check.py editions [FILE ...]
+    python scripts/aws-template-check.py ascii [FILE ...]
     python scripts/aws-template-check.py secrets previous-apiary.yaml
 
 policy: every resource stack-policy.json names exists in the template; the database and the
@@ -29,9 +31,21 @@ uses it when it is a Fn::Sub whose text names a variable that is exactly
 !Select [2, !Split ["/", !Ref AWS::StackId]]: a variable given but not used does not count.
 
 mappings: the Release mapping holds exactly CommunityVersion and ProVersion, the names
-scripts/aws-template-release.py writes and Apiary Pro's release relies on, and the Images
+scripts/aws-template-release.py writes and Qory Apiary Pro's release relies on, and the Images
 mapping exactly Community and Pro; and every Fn::FindInMap names a value the mappings hold.
 cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the template's are.
+
+editions: in the template, or in each FILE given (such as a release's copy of the
+template), every value compared with !Ref Edition, in a Rule, a Condition or anywhere else,
+however deep in a Fn::And, Fn::Or or Fn::Not, is one of Edition's AllowedValues, and each
+AllowedValue is compared at least once. A Fn::Equals against a value Edition no longer
+allows is never true, so the Rule or Condition it decides stops applying, and cfn-lint
+does not say so.
+
+ascii: the template and stack-policy.json, or each FILE given (such as a release's copy of
+the template), hold ASCII characters alone, in every description, label, rule text,
+output, comment and the functions' code: the AWS console shows another character as "?".
+Each other character is named with its line and column.
 
 secrets: the four secrets are the same in the template as in the one given (the previous
 release's): their type, condition, deletion and replacement policies and properties. A
@@ -45,6 +59,7 @@ import itertools
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 from cfnlint.decode import decode
@@ -300,6 +315,60 @@ def check_mappings():
     return failures
 
 
+EDITION = {"Ref": "Edition"}
+
+
+def equals(value):
+    """The arguments of every Fn::Equals in a value."""
+    if isinstance(value, dict):
+        for function, argument in value.items():
+            if function == "Fn::Equals":
+                yield argument
+            yield from equals(argument)
+    elif isinstance(value, list):
+        for item in value:
+            yield from equals(item)
+
+
+def check_editions(paths):
+    failures = []
+    for path in paths:
+        template = load(path)
+        allowed = template.get("Parameters", {}).get("Edition", {}).get("AllowedValues", [])
+        if not allowed:
+            failures.append(f"{path}: Edition has no AllowedValues")
+        compared = set()
+        for argument in equals(template):
+            if not (isinstance(argument, list) and EDITION in argument):
+                continue
+            others = [other for other in argument if other != EDITION]
+            if len(others) != 1 or not isinstance(others[0], str):
+                failures.append(f"{path}: Fn::Equals {json.dumps(argument)} compares Edition with no one value")
+                continue
+            compared.add(others[0])
+            if others[0] not in allowed:
+                failures.append(
+                    f"{path}: Fn::Equals compares Edition with {others[0]!r}, "
+                    f"not one of its AllowedValues {allowed}: it is never true"
+                )
+        for value in allowed:
+            if value not in compared:
+                failures.append(f"{path}: no Fn::Equals compares Edition with its AllowedValue {value!r}")
+    return failures
+
+
+def check_ascii(paths):
+    failures = []
+    for path in paths:
+        for number, line in enumerate(Path(path).read_bytes().split(b"\n"), start=1):
+            text = line.decode("utf-8", errors="replace")
+            for column, character in enumerate(text, start=1):
+                if not character.isascii():
+                    name = unicodedata.name(character, "an unnamed character")
+                    failures.append(f"{path}:{number}:{column}: U+{ord(character):04X} {name} is not ASCII")
+    return failures
+
+
 def check_secrets(previous_path):
     current = load(TEMPLATE).get("Resources", {})
     previous = load(previous_path).get("Resources", {})
@@ -325,6 +394,10 @@ def main(argv):
         failures = check_kept()
     elif argv[1:] == ["mappings"]:
         failures = check_mappings()
+    elif argv[1:2] == ["editions"]:
+        failures = check_editions(argv[2:] or [TEMPLATE])
+    elif argv[1:2] == ["ascii"]:
+        failures = check_ascii(argv[2:] or [TEMPLATE, POLICY])
     elif len(argv) == 3 and argv[1] == "secrets":
         failures = check_secrets(argv[2])
     else:

@@ -4,15 +4,16 @@
         --community-version X.Y.Z --pro-version [X.Y.Z]
 
 TEMPLATE is written in place, and must be the repository's template, whose Release mapping
-is empty. EDITION, the edition the form offers first, is "Apiary Community" or "Apiary Pro".
---pro-version may be empty, unless EDITION is Apiary Pro: the copy then installs Apiary Pro
-only with a version typed under Version, and a Rule says so.
+is empty. EDITION, the edition the form offers first, is "Qory Apiary Community" or
+"Qory Apiary Pro". --pro-version may be empty, unless EDITION is Qory Apiary Pro: the copy
+then installs Qory Apiary Pro only with a version typed under Version, and a Rule says so.
 
 Written in: the Release mapping's CommunityVersion and ProVersion, and the same versions in
 the Rules that refuse an edition with no version; Edition's default and help; Version's
 (VersionOverride's) label and help, the help naming EDITION and its version, and the label
 too when --pro-version is given; and the Version output's description. Each is found by its place in the template, its keys from the top,
-and must be there exactly once and be written exactly once, or nothing is written.
+and must be there exactly once and be written exactly once, in ASCII alone, or nothing is
+written.
 
 The template is read as text: the standard library has no YAML reader, and the lines
 written keep the rest of the file, its comments included, as it is.
@@ -24,13 +25,13 @@ import re
 import sys
 from pathlib import Path
 
-COMMUNITY = "Apiary Community"
-PRO = "Apiary Pro"
+COMMUNITY = "Qory Apiary Community"
+PRO = "Qory Apiary Pro"
 VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?")
 
-EDITION_HELP = "Apiary Community is free and open source. Apiary Pro needs the download key we sent you."
-PRO_TEMPLATE_HELP = "For Apiary Pro, use the Apiary Pro template we sent you."
-WAY_BACK_HELP = "Apiary Community → Apiary Pro is possible later; the way back is not."
+EDITION_HELP = "Qory Apiary Community is free and open source. Qory Apiary Pro needs the download key we sent you."
+PRO_TEMPLATE_HELP = "For Qory Apiary Pro, use the Qory Apiary Pro template we sent you."
+WAY_BACK_HELP = "Moving from Qory Apiary Community to Qory Apiary Pro is possible later; the way back is not."
 
 
 def texts(edition_default, community_version, pro_version):
@@ -38,7 +39,7 @@ def texts(edition_default, community_version, pro_version):
     version = pro_version if edition_default == PRO else community_version
     named = f"{edition_default} {version}"
     edition_help = [EDITION_HELP] + ([] if pro_version else [PRO_TEMPLATE_HELP]) + [WAY_BACK_HELP]
-    # The approved labels: of a copy that names no Apiary Pro version, as release.yml writes
+    # The approved labels: of a copy that names no Qory Apiary Pro version, as release.yml writes
     # it, and of a copy that names both.
     label = f"Version (leave empty for {named})" if pro_version else "Version (leave empty for this template's)"
 
@@ -143,11 +144,14 @@ def write(text, targets):
     if failures:
         return None, failures
 
-    # Each place again, now holding its value once.
+    # Each place again, now holding its value once, in ASCII alone: the console shows
+    # another character as "?" (scripts/aws-template-check.py ascii).
     for path, _placeholder, value in targets:
         line = lines[find(lines, path)]
         if line.count(value) != 1 or not line.endswith(value):
             failures.append(f"{where(path)} was not written")
+        elif not value.isascii():
+            failures.append(f"{where(path)} would hold a character that is not ASCII: {value}")
     return "\n".join(lines), failures
 
 
@@ -166,7 +170,7 @@ def main(argv):
     if args.pro_version and not VERSION.fullmatch(args.pro_version):
         parser.error(f"--pro-version {args.pro_version!r} is not a version such as 0.2.0, or empty")
     if args.edition_default == PRO and not args.pro_version:
-        parser.error("--edition-default 'Apiary Pro' needs --pro-version")
+        parser.error(f"--edition-default {PRO!r} needs --pro-version")
 
     text, failures = write(
         args.template.read_text(encoding="utf-8"),
