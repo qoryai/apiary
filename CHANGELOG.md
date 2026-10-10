@@ -155,9 +155,12 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   it: the events endpoint and the run configuration each spend a bucket of their own, 50
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
   new run's configuration. Discovery is not limited.
-- Limits on signing in, on each node: a log-in with a password, 5 per email address and
-  then 1 a minute, and 20 per client address and then 1 every 3 seconds; a log-in link
-  asked for, 3 per email address and then 1 every 5 minutes; an invitation's pages and
+- Limits on signing in, on each node: a log-in with a password, 5 per email address from
+  one client network (an IPv4 /24 or an IPv6 /64) and then 1 a minute, 50 per email
+  address from all networks and then 10 a minute, and 20 per client address and then 1
+  every 3 seconds; a log-in link asked for, 3 per email address from one client network
+  and then 1 every 5 minutes, and 30 from all networks and then 10 every 5 minutes, so a
+  stranger's network does not lock an address's owner out of theirs; an invitation's pages and
   the set-up page, 20 per client address and then 1 every 3 seconds. Every attempt counts before the address
   is looked up, so past a limit an address with an account and one without get the same
   answer, "Too many attempts. Try again in a few minutes." The client address is the one

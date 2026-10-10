@@ -191,7 +191,10 @@ defmodule ApiaryWeb.UserLive.Login do
        # Sign-up without an invitation, where the instance offers it: an invitation's
        # email links to the sign-up page itself.
        sign_up?: Apiary.Organisations.sign_up_offered?(),
-       page_title: gettext("Log in")
+       page_title: gettext("Log in"),
+       # Where the page is open from, which a link asked for is counted by: known only
+       # while it mounts.
+       client: (ApiaryWeb.Origin.from_socket(socket) || %{})[:remote_ip]
      )}
   end
 
@@ -252,7 +255,7 @@ defmodule ApiaryWeb.UserLive.Login do
 
         # Counted before the address is looked up (`ApiaryWeb.AttemptLimits`): the same
         # answer whether or not the address has an account, within the limit and past it.
-        case AttemptLimits.link_request(email) do
+        case AttemptLimits.link_request(email, socket.assigns.client) do
           :ok ->
             if user = Accounts.get_user_by_email(email) do
               Accounts.deliver_login_instructions(
