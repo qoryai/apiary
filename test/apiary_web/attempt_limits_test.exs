@@ -161,10 +161,16 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       for n <- 1..5, do: assert(AttemptLimits.password_log_in(email, "203.0.113.#{n}") == :ok)
 
-      # The stranger's /24 is one network, and so is an IPv6 /64.
+      # The stranger's /24 is one network, and so is an IPv6 /48, whatever /64 of it.
       assert AttemptLimits.password_log_in(email, "203.0.113.200") == :limited
       for _ <- 1..5, do: assert(AttemptLimits.password_log_in(email, "2001:db8:a::1") == :ok)
-      assert AttemptLimits.password_log_in(email, "2001:db8:a::ffff:1") == :limited
+      assert AttemptLimits.password_log_in(email, "2001:db8:a:1::1") == :limited
+
+      for k <- 2..200,
+          do: assert(AttemptLimits.password_log_in(email, "2001:db8:a:#{k}::1") == :limited)
+
+      assert AttemptLimits.network_key("2001:db8:a:ff::1") == "2001:db8:a::/48"
+      assert AttemptLimits.network_key("203.0.113.200") == "203.0.113.0/24"
 
       # The owner's network is its own.
       assert AttemptLimits.password_log_in(email, "198.51.100.9") == :ok
@@ -182,14 +188,15 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       for network <- 1..9,
           n <- 1..5,
-          do: assert(AttemptLimits.password_log_in(email, "2001:db8:d:#{network}::#{n}") == :ok)
+          do:
+            assert(AttemptLimits.password_log_in(email, "2001:db8:#{100 + network}::#{n}") == :ok)
 
-      assert AttemptLimits.password_log_in(email, "2001:db8:d:10::1") == :limited
+      assert AttemptLimits.password_log_in(email, "2001:db8:110::1") == :limited
 
       key = {AttemptLimits, :password_address_total, AttemptLimits.address_key(email)}
       rewind(key, 6_000)
-      assert AttemptLimits.password_log_in(email, "2001:db8:d:11::1") == :ok
-      assert AttemptLimits.password_log_in(email, "2001:db8:d:12::1") == :limited
+      assert AttemptLimits.password_log_in(email, "2001:db8:111::1") == :ok
+      assert AttemptLimits.password_log_in(email, "2001:db8:112::1") == :limited
     end
 
     test "a password log-in from no known client: 5 per address, as one network" do
@@ -216,9 +223,9 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
       for network <- 1..9,
           _ <- 1..3,
-          do: assert(AttemptLimits.link_request(email, "2001:db8:f:#{network}::1") == :ok)
+          do: assert(AttemptLimits.link_request(email, "2001:db8:#{200 + network}::1") == :ok)
 
-      assert AttemptLimits.link_request(email, "2001:db8:f:10::1") == :limited
+      assert AttemptLimits.link_request(email, "2001:db8:210::1") == :limited
 
       for _ <- 1..3, do: assert(AttemptLimits.link_request(unique_user_email(), nil) == :ok)
     end

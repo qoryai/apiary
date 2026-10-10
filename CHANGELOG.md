@@ -156,7 +156,7 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   requests a second and 100 at once, so a gateway flushing a backlog of events still gets a
   new run's configuration. Discovery is not limited.
 - Limits on signing in, on each node: a log-in with a password, 5 per email address from
-  one client network (an IPv4 /24 or an IPv6 /64) and then 1 a minute, 50 per email
+  one client network (an IPv4 /24 or an IPv6 /48) and then 1 a minute, 50 per email
   address from all networks and then 10 a minute, and 20 per client address and then 1
   every 3 seconds; a log-in link asked for, 3 per email address from one client network
   and then 1 every 5 minutes, and 30 from all networks and then 10 every 5 minutes, so a

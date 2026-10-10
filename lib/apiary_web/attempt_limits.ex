@@ -24,11 +24,12 @@ defmodule ApiaryWeb.AttemptLimits do
   only from the proxies `TRUSTED_PROXIES` names; an IPv6 one counts with the rest of its
   /64, which one machine is commonly given whole.
 
-  An address's buckets are counted per client network, an IPv4 /24 or an IPv6 /64, so a
-  stranger trying an address from their network does not lock out its owner on another;
-  with no client address known, per address alone. The bucket of the address from all
-  networks, ten times as large, is spent only when the network's allowed it: one network
-  never empties it, while guesses spread over many networks stay bounded.
+  An address's buckets are counted per client network, an IPv4 /24 or an IPv6 /48, the
+  allocation a site is commonly given, so a stranger trying an address from their network
+  does not lock out its owner on another; with no client address known, per address
+  alone. The bucket of the address from all networks, ten times as large, is spent only
+  when the network's allowed it: one network never empties it, while guesses spread over
+  many networks stay bounded.
 
   The numbers can be changed under `config :apiary, #{inspect(__MODULE__)}`, one keyword
   list of `rate` and `burst` per bucket: `:password_address` and `:password_address_total`,
@@ -156,12 +157,19 @@ defmodule ApiaryWeb.AttemptLimits do
   def client_key(client), do: client
 
   # A client's network, for an address's buckets: an IPv4 address's /24,
-  # `203.0.113.0/24`, an IPv6 one's /64, as `client_key/1` has it.
+  # `203.0.113.0/24`, an IPv6 one's /48, `2001:db8:a::/48`, the allocation a site is
+  # commonly given whole, whose thousands of /64s would otherwise each be a network.
   @doc false
   def network_key(client) when is_binary(client) do
     case :inet.parse_strict_address(String.to_charlist(client)) do
-      {:ok, {a, b, c, _d}} -> List.to_string(:inet.ntoa({a, b, c, 0})) <> "/24"
-      _ipv6_or_other -> client_key(client)
+      {:ok, {a, b, c, _d}} ->
+        List.to_string(:inet.ntoa({a, b, c, 0})) <> "/24"
+
+      {:ok, {a, b, c, _, _, _, _, _}} ->
+        List.to_string(:inet.ntoa({a, b, c, 0, 0, 0, 0, 0})) <> "/48"
+
+      _other ->
+        client
     end
   end
 
