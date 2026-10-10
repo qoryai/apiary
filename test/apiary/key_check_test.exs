@@ -20,6 +20,7 @@ defmodule Apiary.KeyCheckTest do
 
   alias Apiary.{AccessKeys, Connections, KeyCheck, KeyDerivation, Release, Secrets, SigningKey}
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Mail.{Password, Settings}
 
   setup do
     derivation = Application.get_env(:apiary, KeyDerivation)
@@ -35,13 +36,17 @@ defmodule Apiary.KeyCheckTest do
   defp encryption_secret(secret), do: Application.put_env(:apiary, KeyDerivation, secret: secret)
   defp signing_seed(seed), do: Application.put_env(:apiary, SigningKey, seed: seed)
 
-  # What the instance's row holds, nil when it has none.
+  # What the instance's row holds, nil when it has none, or records neither value: the
+  # row of a database whose mail settings were saved before the check recorded anything.
   defp recorded do
-    Repo.one(
-      from(s in "instance_settings",
-        select: {s.encryption_secret_check, s.signing_key_fingerprint}
-      )
-    )
+    case Repo.one(
+           from(s in "instance_settings",
+             select: {s.encryption_secret_check, s.signing_key_fingerprint}
+           )
+         ) do
+      {nil, nil} -> nil
+      recorded -> recorded
+    end
   end
 
   defp current, do: {KeyCheck.check_value(), SigningKey.fingerprint()}
@@ -348,7 +353,35 @@ defmodule Apiary.KeyCheckTest do
 
   # Makes every row of `table` older than any other row with a key id.
   defp oldest(table),
-    do: Repo.query!("UPDATE #{table} SET inserted_at = '2000-01-01'")
+    do: Repo.query!("UPDATE #{table} SET #{KeyCheck.made_at_column(table)} = '2000-01-01'")
+
+  # Saves mail settings with a password, encrypted under the current `:mail` key, in the
+  # instance's row, as Instance settings › Mail does.
+  defp mail_password_fixture do
+    now = DateTime.utc_now()
+
+    settings = %Settings{
+      id: true,
+      smtp_relay: "smtp.example.com",
+      smtp_port: 587,
+      smtp_tls: "always",
+      smtp_username: "qory"
+    }
+
+    {ciphertext, key_id} = Password.encrypt(settings, "an SMTP password")
+
+    Repo.insert!(
+      %{
+        settings
+        | smtp_password_ciphertext: ciphertext,
+          mail_key_id: key_id,
+          mail_saved_at: now,
+          updated_at: now
+      },
+      on_conflict: {:replace_all_except, [:id]},
+      conflict_target: :id
+    )
+  end
 
   defp count(table), do: Repo.one(from(t in table, select: count()))
 
@@ -441,7 +474,7 @@ defmodule Apiary.KeyCheckTest do
       Repo.query!("""
       SELECT table_name, column_name FROM information_schema.columns
       WHERE table_schema = current_schema()
-        AND column_name IN ('integrity_key_id', 'wrapping_key_id')
+        AND column_name IN ('integrity_key_id', 'wrapping_key_id', 'mail_key_id')
       """)
 
     assert Enum.sort(for [table, column] <- rows, do: {table, String.to_atom(column)}) ==
@@ -471,6 +504,8 @@ defmodule Apiary.KeyCheckTest do
           "auth" => %{"scheme" => "bearer", "secret" => "key"},
           "declares" => [%{"id" => "key", "title" => "API key", "name" => "STATUS_API_KEY"}]
         })
+
+      mail_password_fixture()
 
       for {table, _column, _purpose} <- KeyCheck.key_id_columns(),
           do: assert(count(table) > 0, table)

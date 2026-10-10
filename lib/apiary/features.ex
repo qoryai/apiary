@@ -7,6 +7,7 @@ defmodule Apiary.Features do
   | `observability` | runs, the terminal log, the session timeline, the connections, retention | nothing |
   | `security` | the security policy and the run configuration served to the gateway | `observability` |
   | `secrets` | the stored secrets, the variables and the integrations of a workspace; opt-in | `security` |
+  | `instance_mail` | Instance settings › Mail, the mail settings an instance admin saves (`Apiary.Mail`); opt-in | nothing |
 
   An edition adds its own features after the core's (`c:Apiary.Edition.features/0`), each
   with the features it needs, whether it is built, and whether it is opt-in. The list is
@@ -60,7 +61,8 @@ defmodule Apiary.Features do
   @core [
     observability: [needs: [], built: true],
     security: [needs: [:observability], built: true],
-    secrets: [needs: [:security], built: true, default: false]
+    secrets: [needs: [:security], built: true, default: false],
+    instance_mail: [needs: [], built: true, default: false]
   ]
 
   # What `registry/1` says an entry is, when it refuses one.
@@ -182,8 +184,8 @@ defmodule Apiary.Features do
     * `observability,security`: those features and no other; an opt-in feature is on only
       where a list names it.
 
-  `all` may not be one of the features of a list. Every feature but `observability` needs
-  `observability`, whichever form names them.
+  `all` may not be one of the features of a list. Every feature but `observability` and
+  `instance_mail` needs `observability`, whichever form names them.
   """
   @spec parse(String.t() | nil) :: {:ok, [feature]} | {:error, String.t()}
   def parse(nil), do: {:ok, all() -- opt_in()}

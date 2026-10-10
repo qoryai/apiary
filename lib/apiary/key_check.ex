@@ -79,16 +79,24 @@ defmodule Apiary.KeyCheck do
   """
 
   # Each column that stores a key id derived from APIARY_ENCRYPTION_SECRET, with its table
-  # and the purpose of the key it names (`Apiary.KeyDerivation`). This release's migration
-  # comes after the last of these tables, so a schema with the check's columns has them all.
+  # and the purpose of the key it names (`Apiary.KeyDerivation`). The check's migration
+  # comes after every table but `instance_settings`' mail columns, which a later migration
+  # adds: a table or column the schema does not have yet holds no key id
+  # (`oldest_key_id/1`).
   @key_id_columns [
     {"access_keys", :integrity_key_id, :integrity},
     {"access_key_enrolment_codes", :integrity_key_id, :integrity},
     {"integration_releases", :integrity_key_id, :integrity},
     {"service_definitions", :integrity_key_id, :integrity},
     {"workspace_connections", :integrity_key_id, :integrity},
-    {"workspace_data_keys", :wrapping_key_id, :values}
+    {"workspace_data_keys", :wrapping_key_id, :values},
+    {"instance_settings", :mail_key_id, :mail}
   ]
+
+  # The column that says when a table's key id was written, where it is not `inserted_at`:
+  # the instance's one row of settings has none, and its SMTP password is written when the
+  # mail settings are saved.
+  @made_at %{"instance_settings" => :mail_saved_at}
 
   @accept """
   INSERT INTO instance_settings (id, signing_key_fingerprint, updated_at)
@@ -165,6 +173,14 @@ defmodule Apiary.KeyCheck do
   """
   @spec key_id_columns() :: [{String.t(), atom, KeyDerivation.purpose()}, ...]
   def key_id_columns, do: @key_id_columns
+
+  @doc """
+  made_at_column/1 is the column of `table`, one of `key_id_columns/0`'s, that says when
+  its row's key id was written, which the check orders the rows by: `inserted_at`, and
+  `mail_saved_at` for `instance_settings`, whose one row the mail settings' save writes.
+  """
+  @spec made_at_column(String.t()) :: atom
+  def made_at_column(table), do: Map.get(@made_at, table, :inserted_at)
 
   @doc """
   check_value/0 is the check value of the current `APIARY_ENCRYPTION_SECRET`: HMAC-SHA256
@@ -268,16 +284,26 @@ defmodule Apiary.KeyCheck do
     end
   end
 
+  # The oldest row's time and key id, none for a table without one, nor for a column the
+  # schema does not have yet (its migration not yet run): it holds no key id.
   defp oldest_key_id({table, column, purpose}) do
+    made_at = made_at_column(table)
+
     query =
       from(t in table,
         where: not is_nil(field(t, ^column)),
-        order_by: [asc: t.inserted_at, asc: t.id],
+        order_by: [asc: field(t, ^made_at), asc: t.id],
         limit: 1,
-        select: {t.inserted_at, field(t, ^column)}
+        select: {field(t, ^made_at), field(t, ^column)}
       )
 
-    for {inserted_at, key_id} <- Repo.all(query), do: {inserted_at, key_id, purpose}
+    for {made_at, key_id} <- Repo.all(query), do: {made_at, key_id, purpose}
+  rescue
+    error in Postgrex.Error ->
+      case error.postgres do
+        %{code: code} when code in [:undefined_column, :undefined_table] -> []
+        _other -> reraise error, __STACKTRACE__
+      end
   end
 
   # The signing key `APIARY_ACCEPT_SIGNING_FINGERPRINT` names, recorded as the instance's
