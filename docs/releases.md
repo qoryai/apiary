@@ -12,10 +12,17 @@ tag without the `v`: that is what `GET /health` and `bin/apiary version` report,
 release workflow refuses a tag whose version `mix.exs` does not carry.
 
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
-the release body from the changelog, builds the image from the `Dockerfile` and publishes
-it to `ghcr.io` under the version and `latest`. `scripts/changelog-section.sh 0.1.0` prints
-the section the workflow would take, and fails when there is none, which is what stops a
-tag from publishing without one. Check both before tagging:
+the release body from the changelog, builds the image from the `Dockerfile` for
+`linux/amd64` and `linux/arm64`, and publishes it as `ghcr.io/qoryai/apiary`, tagged
+`X.Y.Z`, `X.Y` and `latest`. It publishes the GitHub release with three files attached:
+`compose.yaml`; `env.example`, a copy of `.env.example` that names `X.Y.Z` in
+`APIARY_VERSION`; and `apiary.yaml`, the AWS template `deploy/aws/apiary.yaml` with the
+version written in. `deploy/aws/stack-policy.json` is not attached: the template job
+uploads it to the S3 bucket beside the template, and only when the repository variables
+`AWS_TEMPLATE_BUCKET` and `AWS_TEMPLATE_ROLE_ARN` are set. Without them, nothing goes to
+S3. `scripts/changelog-section.sh 0.1.0` prints the section the workflow would take, and
+fails when there is none, which is what stops a tag from publishing without one. Check
+both before tagging:
 
 ```sh
 scripts/changelog-section.sh X.Y.Z
