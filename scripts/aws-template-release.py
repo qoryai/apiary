@@ -64,7 +64,8 @@ def texts(edition_default, community_version, pro_version):
             None,
             quote(
                 f"Empty installs or upgrades to {named}, the version of this template. "
-                "Only to run another version on purpose: type it here."
+                "Only to run another version on purpose: type it here. "
+                "Ignored when a test image is set."
             ),
         ),
         (

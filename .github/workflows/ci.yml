@@ -98,7 +98,7 @@ jobs:
       - name: Check no output of the template is a command
         run: python scripts/aws-template-check.py outputs
 
-      # The five secrets are kept when the stack is deleted or replaces them; the download
+      # The four secrets are kept when the stack is deleted or replaces them; the download
       # key's secret is deleted with the stack and guarded by no stack policy.
       - name: Check which secrets the stack keeps
         run: python scripts/aws-template-check.py kept
@@ -133,7 +133,7 @@ jobs:
           fi
 
       # A changed property can replace a secret, and a replaced secret is generated anew, so
-      # the five secrets stay as the previous release's template has them. The previous
+      # the four secrets stay as the previous release's template has them. The previous
       # release is the repository's latest, as GitHub names it (the newest that is neither a
       # draft nor a prerelease), and its template the apiary.yaml attached to it. With no
       # release, or a release without one, there is nothing to compare with.

@@ -21,12 +21,8 @@ Metadata:
     ParameterGroups:
       - Label: { default: Edition }
         Parameters: [Edition, ProDownloadKey]
-      - Label: { default: First administrator }
-        Parameters: [AdminEmail, OrganisationName]
       - Label: { default: Address }
         Parameters: [DomainName, HostedZoneId, CertificateArn]
-      - Label: { default: Mail }
-        Parameters: [SmtpRelay, SmtpPort, SmtpUsername, SmtpPassword, MailFrom]
       - Label: { default: Version }
         Parameters: [VersionOverride]
       - Label: { default: Size }
@@ -40,16 +36,9 @@ Metadata:
     ParameterLabels:
       Edition: { default: Edition }
       ProDownloadKey: { default: Apiary Pro download key }
-      AdminEmail: { default: Your email address }
-      OrganisationName: { default: Your organisation's name }
       DomainName: { default: Domain name }
       HostedZoneId: { default: Route 53 hosted zone (recommended) }
       CertificateArn: { default: Your own ACM certificate (optional) }
-      SmtpRelay: { default: SMTP relay host }
-      SmtpPort: { default: SMTP port }
-      SmtpUsername: { default: SMTP username }
-      SmtpPassword: { default: SMTP password }
-      MailFrom: { default: Sender address (optional) }
       VersionOverride: { default: Version }
       DatabaseInstanceClass: { default: Database instance class }
       CpuArchitecture: { default: CPU architecture }
@@ -72,17 +61,7 @@ Parameters:
     NoEcho: true
     AllowedPattern: '^$|^[A-Za-z0-9-]+:[^\s"\\:]+$'
     ConstraintDescription: "The download key as we sent it: an account name, a colon and a token."
-    Description: "Only for Apiary Pro: the download key we sent you. Leave empty for Apiary Community. A revoked or expired key stops the running instance at its next task replacement."
-  AdminEmail:
-    Type: String
-    MinLength: 1
-    AllowedPattern: '^[^@,;\s]+@[^@,;\s]+$'
-    ConstraintDescription: An email address, such as dana@example.com.
-    Description: The log-in link goes to this address. Used once, at the first start. Later admins are invited in Qory.
-  OrganisationName:
-    Type: String
-    MinLength: 1
-    Description: For example Acme. Used once, at the first start.
+    Description: "Only for Apiary Pro: the download key we sent you. Leave empty for Apiary Community. A revoked or expired key stops the running instance at its next task replacement. Also needed to pull a test image."
   DomainName:
     Type: String
     MinLength: 1
@@ -95,27 +74,10 @@ Parameters:
     Type: String
     Default: ""
     Description: "An ACM certificate for the domain, in this region. Empty: the stack makes one."
-  SmtpRelay:
-    Type: String
-    MinLength: 1
-  SmtpPort:
-    Type: Number
-    Default: 587
-  SmtpUsername:
-    Type: String
-    Default: ""
-  SmtpPassword:
-    Type: String
-    Default: ""
-    NoEcho: true
-  MailFrom:
-    Type: String
-    Default: ""
-    Description: Empty means qory@ and the domain name.
   VersionOverride:
     Type: String
     Default: ""
-    Description: "This copy of the template names no release: type the version to install, such as 0.2.0."
+    Description: "This copy of the template names no release: type the version to install, such as 0.2.0. Ignored when a test image is set."
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
@@ -146,7 +108,7 @@ Parameters:
   TestImage:
     Type: String
     Default: ""
-    Description: "Leave empty. Only for Qory's pre-release tests: a full image reference, which replaces the image the Edition picks."
+    Description: "Leave empty. Only for Qory's pre-release tests: a full image reference, which replaces the image the Edition picks. Needs the download key above."
 
 # The versions a release names, which scripts/aws-template-release.py writes in. Empty
 # here, in the repository. The images are each edition's.
@@ -213,14 +175,8 @@ Conditions:
   ProtectDatabase: !Equals [!Ref DatabaseDeletionProtection, "Yes"]
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, ""]]
   CreateCertificate: !Equals [!Ref CertificateArn, ""]
-  HasSmtpUsername: !Not [!Equals [!Ref SmtpUsername, ""]]
-  HasSmtpPassword: !Not [!Equals [!Ref SmtpPassword, ""]]
-  HasMailFrom: !Not [!Equals [!Ref MailFrom, ""]]
   # With KeysFromStack, the stack makes no secret: it reads the ones the named stack kept.
   CreateSecrets: !Equals [!Ref KeysFromStack, ""]
-  CreateSmtpPassword: !And
-    - !Condition CreateSecrets
-    - !Condition HasSmtpPassword
   RestoreDatabase: !Not [!Equals [!Ref DatabaseSnapshot, ""]]
 
 Resources:
@@ -475,18 +431,9 @@ Resources:
         ExcludePunctuation: true
         IncludeSpace: false
 
-  SmtpPasswordSecret:
-    Type: AWS::SecretsManager::Secret
-    Condition: CreateSmtpPassword
-    DeletionPolicy: RetainExceptOnCreate
-    UpdateReplacePolicy: Retain
-    Properties:
-      Name: !Sub ${AWS::StackName}/smtp-password
-      SecretString: !Ref SmtpPassword
-
   # The download key, split on its one colon (ProDownloadKey's pattern allows no other) into
   # the registry's user name and password: the execution role reads it to pull the image,
-  # and the container never sees it. Unlike the five secrets above it is deleted with the
+  # and the container never sees it. Unlike the four secrets above it is deleted with the
   # stack, kept by no policy and guarded by no stack policy: it locks no data, and it is
   # typed again. KeysFromStack does not carry it.
   RegistryCredentials:
@@ -577,15 +524,10 @@ Resources:
                     - !Ref EncryptionSecret
                     - !Ref SigningSecret
                     - !Ref DatabasePassword
-                    - !If [CreateSmtpPassword, !Ref SmtpPasswordSecret, !Ref AWS::NoValue]
                   - - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/secret-key-base-*
                     - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/encryption-secret-*
                     - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/signing-secret-*
                     - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/database-password-*
-                    - !If
-                      - HasSmtpPassword
-                      - !Sub arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KeysFromStack}/smtp-password-*
-                      - !Ref AWS::NoValue
               - !If
                 - HasDownloadKey
                 - Effect: Allow
@@ -621,7 +563,6 @@ Resources:
   # is checked against the RDS bundle the image carries. The image is the edition's, at
   # Version when it is given, else at the Release mapping's version for that edition; with
   # Test image, exactly the image it names.
-  # FIRST_ADMIN_EMAIL and FIRST_ORGANISATION_NAME name the first administrator;
   # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is.
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -676,24 +617,6 @@ Resources:
               Value: !Sub postgres://apiary@${Database.Endpoint.Address}:5432/apiary?sslmode=verify-full&sslrootcert=/app/certs/rds-global-bundle.pem
             - Name: TRUSTED_PROXIES
               Value: 10.0.0.0/16
-            - Name: SMTP_RELAY
-              Value: !Ref SmtpRelay
-            - Name: SMTP_PORT
-              Value: !Ref SmtpPort
-            - !If
-              - HasSmtpUsername
-              - Name: SMTP_USERNAME
-                Value: !Ref SmtpUsername
-              - !Ref AWS::NoValue
-            - !If
-              - HasMailFrom
-              - Name: MAIL_FROM
-                Value: !Ref MailFrom
-              - !Ref AWS::NoValue
-            - Name: FIRST_ADMIN_EMAIL
-              Value: !Ref AdminEmail
-            - Name: FIRST_ORGANISATION_NAME
-              Value: !Ref OrganisationName
             - !If
               - HasAcceptSigningKey
               - Name: APIARY_ACCEPT_SIGNING_FINGERPRINT
@@ -709,11 +632,6 @@ Resources:
               ValueFrom: !If [CreateSecrets, !Ref SigningSecret, !Sub "${KeysFromStack}/signing-secret"]
             - Name: DATABASE_PASSWORD
               ValueFrom: !If [CreateSecrets, !Ref DatabasePassword, !Sub "${KeysFromStack}/database-password"]
-            - !If
-              - HasSmtpPassword
-              - Name: SMTP_PASSWORD
-                ValueFrom: !If [CreateSecrets, !Ref SmtpPasswordSecret, !Sub "${KeysFromStack}/smtp-password"]
-              - !Ref AWS::NoValue
 
   # One task. An upgrade starts the new task beside the old one, which serves until the new
   # one has migrated under Ecto's lock and answers /health; the old release runs on the new
@@ -900,6 +818,14 @@ Outputs:
   Logs:
     Description: The task's log group in CloudWatch, kept 30 days.
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}
+  # Until Qory is set up, each start of the task logs "Set up Qory Apiary at
+  # https://<domain>/setup/<code>." in the log group Logs links to. The link opens that log
+  # group's events filtered to "/setup/", the console's filterPattern escaped as the Logs
+  # link escapes the group's name. The filter is a convenience: the log group is the source,
+  # and without it the line is found by searching the group for /setup/.
+  SetUp:
+    Description: The set-up link is in the log; open it once.
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}/log-events$3FfilterPattern$3D$2522$252Fsetup$252F$2522
   Service:
     Description: The service's health and events in ECS.
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/ecs/v2/clusters/${Cluster}/services/${Service.Name}/health?region=${AWS::Region}

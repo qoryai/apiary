@@ -17,7 +17,7 @@ a word.
 outputs: no output's value is a command (none starts with "aws "), in any branch of its
 Fn::If: the person installs from the console alone.
 
-kept: the five secrets are kept, on delete (RetainExceptOnCreate) and on replacement
+kept: the four secrets are kept, on delete (RetainExceptOnCreate) and on replacement
 (Retain), while the download key's secret, RegistryCredentials, is kept by neither, named in
 no stack policy and not among the KeysSecrets output's: it is deleted with the stack.
 
@@ -26,7 +26,7 @@ scripts/aws-template-release.py writes and Apiary Pro's release relies on, and t
 mapping exactly Community and Pro; and every Fn::FindInMap names a value the mappings hold.
 cfn-lint does not check a Fn::FindInMap inside a Fn::If, where the template's are.
 
-secrets: the five secrets are the same in the template as in the one given (the previous
+secrets: the four secrets are the same in the template as in the one given (the previous
 release's): their type, condition, deletion and replacement policies and properties. A
 changed property can replace a secret, and a replaced secret is generated anew.
 
@@ -47,7 +47,7 @@ TEMPLATE = ROOT / "deploy" / "aws" / "apiary.yaml"
 POLICY = ROOT / "deploy" / "aws" / "stack-policy.json"
 
 GUARDED = ["Database", "SecretKeyBase", "EncryptionSecret", "SigningSecret", "DatabasePassword"]
-SECRETS = ["SecretKeyBase", "EncryptionSecret", "SigningSecret", "DatabasePassword", "SmtpPasswordSecret"]
+SECRETS = ["SecretKeyBase", "EncryptionSecret", "SigningSecret", "DatabasePassword"]
 DOWNLOAD_KEY = "RegistryCredentials"
 RETAINED = {"Retain", "RetainExceptOnCreate"}
 MAPPINGS = {
