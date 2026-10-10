@@ -24,11 +24,12 @@ defmodule Apiary.CopiedInvitationsTest do
 
   defp token_of({:link, @url <> token}), do: token
 
+  # In the order written: two entries can share a time, and the ids are monotonic.
   defp entries(invitation, action) do
     Repo.all(
       from e in Entry,
         where: e.subject_id == ^invitation.id and e.action == ^action,
-        order_by: [asc: e.inserted_at]
+        order_by: [asc: e.id]
     )
   end
 
