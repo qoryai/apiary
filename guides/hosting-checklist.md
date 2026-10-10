@@ -17,11 +17,8 @@ being one. Every variable named here is described in [Install and configure](ins
   forgotten password is a link an instance admin makes on **People** and sends by hand.
   With mail, set `SMTP_RELAY` and the variables beside it, send yourself a log-in link
   before inviting anybody, and check that `MAIL_FROM` is an address your relay may send
-  from: [Install and configure](install.md#mail).
-  <!-- feature: instance_mail -->
-  With the opt-in feature `instance_mail`, an instance admin can set mail in **Instance
-  settings › Mail** instead.
-  <!-- /feature -->
+  from: [Install and configure](install.md#mail). An instance admin can set mail in
+  **Instance settings › Mail** instead.
 - **The three keys, kept.** With `compose.yaml` the service `keys` generates
   `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` at first
   start, each on its own, into the volume `keys`. Copy them out once

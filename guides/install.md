@@ -126,11 +126,9 @@ sign in, set a password or join an organisation with what it finds there. The se
 link's code is logged as `:code` in a request's line; the log holds the code only in the
 line each start writes until the instance is set up
 ([Set up a new instance](#set-up-a-new-instance)).
-<!-- feature: instance_mail -->
 
 The test link of **Instance settings › Mail** is logged the same way, its token as
 `:token`.
-<!-- /feature -->
 
 ## Environment variables
 
