@@ -328,9 +328,11 @@ defmodule ApiaryWeb.Routes do
   carries the workspace the person opened last, as on their own pages, so the sidebar
   stays the one they came from and the Instance's sections open beside it
   (`ApiaryWeb.Layouts`, `place: :instance`). Every page checks its own access. The
-  block's routes go into the `live_session :instance`, after the core's. The core's one
-  page here is Instance settings › Configuration
-  (`ApiaryWeb.InstanceLive.Configuration`), for the instance's admins; `/instance` itself
+  block's routes go into the `live_session :instance`, after the core's. The core's pages
+  here are Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`), with the
+  `instance_mail` feature, and its test link (`ApiaryWeb.InstanceMailController`), and
+  Instance settings › Configuration (`ApiaryWeb.InstanceLive.Configuration`), for the
+  instance's admins; `/instance` itself
   sends on to the first section the person may open, and is not found for whoever may
   open none (`ApiaryWeb.InstanceController`).
   """
@@ -342,12 +344,16 @@ defmodule ApiaryWeb.Routes do
 
           # The level itself: sent on to the first of its sections the person may open.
           get "/instance", InstanceController, :show
+          # Instance › Mail's test link, which turns mail on for the admin who saved it.
+          get "/instance/mail/confirm/:token", InstanceMailController, :turn_on
 
           live_session :instance,
             on_mount: [
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # Instance › Mail: the mail server, with the `instance_mail` feature.
+            live "/instance/mail", InstanceLive.Mail, :show
             # Instance › Configuration: what whoever runs the server set, read only.
             live "/instance/configuration", InstanceLive.Configuration, :show
             unquote(@block)

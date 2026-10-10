@@ -9,11 +9,12 @@ defmodule Apiary.KeyDerivation do
   | `:values` | `"apiary values v1"` | wraps each workspace's data key, which encrypts the workspace's stored secret values (`Apiary.Secrets`) |
   | `:integrity` | `"apiary integrity v1"` | keys the integrity codes of stored rows (`Apiary.Integrity`) |
   | `:check` | `"apiary check v1"` | keys the check value of the secret the instance records at its first boot and compares at every boot (`Apiary.KeyCheck`) |
+  | `:mail` | `"apiary mail v1"` | encrypts the SMTP password an instance admin saves in Instance settings › Mail (`Apiary.Mail.Password`) |
 
   Each derived key has a **key id**: the first 8 bytes of SHA-256 over
   `"apiary key id v1"` and the key, as 16 lowercase hexadecimal characters. It names the
   key without telling anything of it, and is stored beside what the key made (a wrapped
-  data key, an integrity code), so that once the secret can be rotated a reader knows
+  data key, an integrity code, the encrypted SMTP password), so that once the secret can be rotated a reader knows
   which key to take, and one made under a key the instance no longer holds is told apart
   from one that is wrong.
 
@@ -24,7 +25,7 @@ defmodule Apiary.KeyDerivation do
   call, which costs two HMACs, so nothing caches a key in a process's state.
 
   Losing `APIARY_ENCRYPTION_SECRET` loses every key derived from it, and with them every
-  stored secret value: there is no other copy.
+  stored secret value and the stored SMTP password: there is no other copy.
 
   The instance's signing key, which machines pin, is not derived here: its seed is a
   secret of its own, `APIARY_SIGNING_SECRET` (`Apiary.SigningKey`), so it does not change
@@ -35,13 +36,14 @@ defmodule Apiary.KeyDerivation do
   @infos %{
     values: "apiary values v1",
     integrity: "apiary integrity v1",
-    check: "apiary check v1"
+    check: "apiary check v1",
+    mail: "apiary mail v1"
   }
   @key_id_label "apiary key id v1"
   @hash_len 32
 
   @typedoc "A purpose a key is derived for."
-  @type purpose :: :values | :integrity | :check
+  @type purpose :: :values | :integrity | :check | :mail
 
   @typedoc "A key id: 16 lowercase hexadecimal characters."
   @type key_id :: String.t()

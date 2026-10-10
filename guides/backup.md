@@ -149,6 +149,14 @@ each under its workspace's data key, which is kept in `workspace_data_keys` encr
 a key derived from it.
 <!-- /feature -->
 
+<!-- feature: instance_mail -->
+
+It also encrypts the SMTP password saved in Instance settings › Mail. A restore needs the
+`APIARY_ENCRYPTION_SECRET` the dump was taken under to keep that password: without it, mail
+from those settings is off until an instance admin enters the password again there. Mail
+set by `SMTP_RELAY` and the variables beside it does not depend on it.
+<!-- /feature -->
+
 <!-- feature: secrets -->
 **Losing `APIARY_ENCRYPTION_SECRET` loses every stored secret value.** There is no other
 copy and no way to recover them: each value has to be entered again, in the workspace's

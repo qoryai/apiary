@@ -150,6 +150,49 @@ defmodule Apiary.SchemaConstraintsTest do
     end)
   end
 
+  test "the instance's mail settings hold a port, a TLS mode, and a password only with its key id" do
+    Repo.query!(
+      "INSERT INTO instance_settings (updated_at) VALUES (now()) ON CONFLICT DO NOTHING"
+    )
+
+    mail = fn assignments, params ->
+      Repo.query!("UPDATE instance_settings SET #{assignments}", params)
+    end
+
+    refused("instance_settings_smtp_port_range", fn -> mail.("smtp_port = 0", []) end)
+    refused("instance_settings_smtp_port_range", fn -> mail.("smtp_port = 65536", []) end)
+    refused("instance_settings_smtp_tls_check", fn -> mail.("smtp_tls = 'sometimes'", []) end)
+
+    # A password without the key it is encrypted under, a key id without a password, a
+    # key id that is not one, or a ciphertext shorter than its nonce and tag.
+    ciphertext = :crypto.strong_rand_bytes(40)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("smtp_password_ciphertext = $1", [ciphertext])
+    end)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("mail_key_id = '0123456789abcdef'", [])
+    end)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("smtp_password_ciphertext = $1, mail_key_id = 'not a key id'", [ciphertext])
+    end)
+
+    refused("instance_settings_smtp_password_key", fn ->
+      mail.("smtp_password_ciphertext = $1, mail_key_id = '0123456789abcdef'", [
+        :crypto.strong_rand_bytes(27)
+      ])
+    end)
+
+    assert %{num_rows: 1} =
+             mail.(
+               "smtp_port = 587, smtp_tls = 'always', smtp_password_ciphertext = $1, " <>
+                 "mail_key_id = '0123456789abcdef'",
+               [ciphertext]
+             )
+  end
+
   test "a node's kind never changes, and holds its public id's prefix and its limit" do
     %{scope: scope} = sign_up_fixture()
     node = node_fixture(scope)

@@ -27,7 +27,7 @@ defmodule Apiary.FeaturesTest do
     end
 
     test "a feature without the features it needs is refused" do
-      for feature <- Features.all() -- [:observability] do
+      for feature <- Features.all() -- [:observability | needs_nothing()] do
         assert {:error, reason} = Features.parse(to_string(feature))
         [need | _] = Features.needs(feature)
         assert reason == "#{feature} needs #{need}, which is left out"
@@ -98,9 +98,16 @@ defmodule Apiary.FeaturesTest do
     test "every feature but observability needs observability, itself or through what it needs" do
       assert Features.needs(:observability) == []
 
-      for feature <- Features.all() -- [:observability] do
+      for feature <- Features.all() -- [:observability | needs_nothing()] do
         assert :observability in needs_all(feature)
       end
+    end
+
+    test "instance_mail, Instance settings › Mail, is opt-in and needs nothing" do
+      assert Features.needs(:instance_mail) == []
+      assert :instance_mail in Features.opt_in()
+      refute :instance_mail in Features.built()
+      assert Features.parse("instance_mail") == {:ok, [:instance_mail]}
     end
 
     test "a name that is no feature is a mistake in the caller" do
@@ -120,10 +127,10 @@ defmodule Apiary.FeaturesTest do
 
   describe "the core's features and the edition's" do
     test "the core's come first, the edition's after, each built or not" do
-      core = [:observability, :security, :secrets]
+      core = [:observability, :security, :secrets, :instance_mail]
       edition = Enum.map(Apiary.Edition.features(), &elem(&1, 0))
 
-      assert Enum.take(Features.all(), 3) == core
+      assert Enum.take(Features.all(), 4) == core
       assert Enum.take(Features.all(), -length(edition)) == edition
 
       # An opt-in feature is never offered for an organisation's switch.
@@ -245,6 +252,10 @@ defmodule Apiary.FeaturesTest do
     |> Enum.flat_map(&[&1 | needs_all(&1)])
     |> Enum.uniq()
   end
+
+  # The features that need nothing beside observability: Instance settings › Mail, behind
+  # its opt-in feature while it is built, which is the instance's (241 (a)).
+  defp needs_nothing, do: [:instance_mail]
 end
 
 defmodule Apiary.FeaturesBootTest do

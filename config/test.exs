@@ -33,6 +33,11 @@ config :apiary, Apiary.Lingo.Domain, test_domains: %{"example" => Apiary.Lingo.D
 # In test we don't send emails
 config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 
+# Nor through the mail settings an instance admin saves (`Apiary.Mail`), which no node
+# keeps a copy of here: each test reads them from its own sandbox.
+config :apiary, Apiary.Mail, smtp_adapter: Swoosh.Adapters.Test
+config :apiary, Apiary.Mail.Cache, enabled: false
+
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 

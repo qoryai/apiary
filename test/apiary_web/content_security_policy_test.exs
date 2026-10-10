@@ -425,6 +425,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       String.starts_with?(path, "/users/log-in/") -> p.login_token
       String.starts_with?(path, "/users/settings/confirm-email/") -> p.login_token
       String.starts_with?(path, "/invitations/") -> p.invitation_token
+      # Not the test link's: it leads to the page, and changes nothing.
+      String.starts_with?(path, "/instance/mail/confirm/") -> p.login_token
       true -> nil
     end
   end

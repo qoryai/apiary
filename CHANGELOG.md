@@ -30,6 +30,15 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - Mail is optional. With `SMTP_RELAY` set, Qory Apiary sends its email through that relay;
   without it, it starts all the same, sends no email, and says so in one line of its log
   at each start. `Apiary.Mail` says whether mail is set and where from.
+- Behind the opt-in feature `instance_mail`, Instance settings › Mail: an instance admin
+  saves the SMTP relay, its port, TLS, username and password, and the sender, stored in the
+  database with the password encrypted under a key derived from `APIARY_ENCRYPTION_SECRET`
+  for that purpose alone. Saving sends a test link to that admin; mail is on once they
+  follow it, signed in as themselves, and their address is confirmed. The link works once,
+  for 60 minutes, and does nothing for anyone else. With `SMTP_RELAY` set, the
+  environment wins whole and the section is read only. Each node reads the settings again
+  when they change. The boot's check of `APIARY_ENCRYPTION_SECRET` covers the stored
+  password.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces
@@ -391,6 +400,11 @@ first boot after it records them.
 and counts as Completed, and one stored `timed_out` or `ended` as Cancelled. Rolled back, a
 completed run is `succeeded`, and a cancelled one `timed_out` when it reached its time limit,
 else `ended`.
+`20261010120000_keep_the_mail_settings` adds the mail settings to `instance_settings`:
+`smtp_relay`, `smtp_port`, `smtp_tls`, `smtp_username`, `mail_from`,
+`smtp_password_ciphertext` with its `mail_key_id`, `mail_saved_at`, `mail_saved_by_id` and
+`mail_verified_at`, all NULL, with checks on the port, the TLS mode and the password's key
+id.
 
 ### Upgrading
 

@@ -407,8 +407,11 @@ where `QORY_FEATURES` lists it by name, and is never one of those.
 `APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the key the instance encrypts and codes
 with, and nothing is encrypted or keyed under its own bytes: every key is derived from it
 with HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per
-purpose: `apiary values v1` for stored values and `apiary integrity v1` for integrity
-codes. Each derived key
+purpose: `apiary values v1` for stored values, `apiary integrity v1` for integrity
+codes, `apiary check v1` for the check value the boot compares (`Apiary.KeyCheck`) and
+`apiary mail v1` for the SMTP password saved in Instance settings › Mail
+(`Apiary.Mail.Password`, AES-256-GCM with associated data binding it to its row, its
+field, the relay, the port, TLS and the username). Each derived key
 has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
 rotation of the secret can keep the previous one to read with and tell the two apart.
 

@@ -255,6 +255,9 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   defp description(:secrets),
     do: gettext("Stored secrets, variables and integrations, in each workspace's settings.")
 
+  defp description(:instance_mail),
+    do: gettext("The mail server, set in Instance settings › Mail.")
+
   defp description(_feature), do: nil
 
   # Where each value comes from: the setting of the server's environment, as
