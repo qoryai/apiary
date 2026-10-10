@@ -11673,6 +11673,11 @@ msgstr ""
 msgid "Today, %{time}"
 msgstr ""
 
+#: lib/apiary_web/attempt_limits.ex
+#, elixir-autogen, elixir-format
+msgid "Too many attempts. Try again in a few minutes."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Tool"

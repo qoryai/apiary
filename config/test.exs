@@ -73,6 +73,14 @@ config :apiary, ApiaryWeb.Contract.EnrolmentController,
   code_rate: 1000,
   code_burst: 100_000
 
+# Every test signs in and opens its links from the same address, and some with the same
+# email address; the limits' own tests set their own (ApiaryWeb.AttemptLimitsTest).
+config :apiary, ApiaryWeb.AttemptLimits,
+  password_address: [rate: 1000, burst: 100_000],
+  password_client: [rate: 1000, burst: 100_000],
+  link_address: [rate: 1000, burst: 100_000],
+  link_page_client: [rate: 1000, burst: 100_000]
+
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.
 config :apiary, Apiary.Runs.Projector, async: false

@@ -2,15 +2,36 @@ defmodule ApiaryWeb.UserSessionController do
   use ApiaryWeb, :controller
 
   alias Apiary.Accounts
-  alias ApiaryWeb.UserAuth
+  alias ApiaryWeb.{AttemptLimits, UserAuth}
 
   def create(conn, %{"_action" => "confirmed"} = params) do
-    create(conn, params, gettext("Your account is confirmed."))
+    log_in(conn, params, gettext("Your account is confirmed."))
   end
 
   def create(conn, params) do
-    create(conn, params, gettext("You are logged in."))
+    log_in(conn, params, gettext("You are logged in."))
   end
+
+  # A log-in with a password counts against its limits (`ApiaryWeb.AttemptLimits`)
+  # before the address is looked up: past them, an address with an account and one
+  # without get the same answer, without a password checked. A link's log-in does not.
+  defp log_in(conn, %{"user" => %{"token" => _}} = params, info), do: create(conn, params, info)
+
+  defp log_in(conn, %{"user" => %{"email" => email, "password" => _}} = params, info)
+       when is_binary(email) do
+    case AttemptLimits.password_log_in(email, ApiaryWeb.Origin.from_conn(conn).remote_ip) do
+      :ok ->
+        create(conn, params, info)
+
+      :limited ->
+        conn
+        |> put_flash(:error, AttemptLimits.message())
+        |> put_flash(:email, String.slice(email, 0, 160))
+        |> redirect(to: ~p"/users/log-in")
+    end
+  end
+
+  defp log_in(conn, params, info), do: create(conn, params, info)
 
   # magic link login
   defp create(conn, %{"user" => %{"token" => token} = user_params}, info) do

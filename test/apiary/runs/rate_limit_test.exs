@@ -19,6 +19,16 @@ defmodule Apiary.Runs.RateLimitTest do
     assert RateLimit.check(key, rate: 5, burst: 1) == :ok
   end
 
+  test "a rate below one a second is a fraction, and the bucket still counts whole thousandths" do
+    key = key()
+    assert RateLimit.check(key, rate: 1 / 60, burst: 2) == :ok
+    Process.sleep(5)
+    assert RateLimit.check(key, rate: 1 / 60, burst: 2) == :ok
+    assert {:error, 60} = RateLimit.check(key, rate: 1 / 60, burst: 2)
+    assert [{^key, tokens, _at}] = :ets.lookup(RateLimit, key)
+    assert is_integer(tokens)
+  end
+
   test "one key's bucket is not another's" do
     {one, other} = {key(), key()}
     assert RateLimit.check(one, rate: 1, burst: 1) == :ok

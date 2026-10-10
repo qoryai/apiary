@@ -7,7 +7,9 @@ defmodule Apiary.Runs.RateLimit do
   this node only: on several nodes a key gets the limit on each. Other limits
   spend buckets of their own, under keys of their own and with their own `rate`
   and `burst`: the run configuration's per access key
-  (`ApiaryWeb.Contract.SignedRequest`), and enrolment's per address and per code.
+  (`ApiaryWeb.Contract.SignedRequest`), enrolment's per address and per code, and
+  signing in's (`ApiaryWeb.AttemptLimits`), whose `rate` may be a fraction, 1 / 60 for
+  one a minute.
 
   `check/2` runs in the caller: the bucket is read, refilled by the time passed
   and written back with a compare-and-swap, so two requests never spend the same
@@ -43,8 +45,9 @@ defmodule Apiary.Runs.RateLimit do
           else: spend(key, rate, capacity, now)
 
       [{^key, tokens, at} = old] ->
-        # `rate` tokens a second is `rate` thousandths a millisecond.
-        tokens = min(capacity, tokens + max(now - at, 0) * rate)
+        # `rate` tokens a second is `rate` thousandths a millisecond; a rate below one a
+        # second is a fraction, and what it adds is cut to whole thousandths.
+        tokens = min(capacity, tokens + trunc(max(now - at, 0) * rate))
 
         cond do
           tokens < @unit -> {:error, retry_after(tokens, rate)}
