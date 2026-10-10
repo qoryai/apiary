@@ -484,7 +484,8 @@ defmodule ApiaryWeb.CoreComponents do
 
   Only the link's hash is stored, so the page that shows it holds it in its own process
   alone, and shows it until the reader leaves: never in a path, a flash or a title, and
-  nothing logs it. It takes the focus as it shows, so a screen reader reads it.
+  nothing logs it (a log line that would carry such a link has its token replaced,
+  `Apiary.SecretLogFilter`). It takes the focus as it shows, so a screen reader reads it.
 
       <.one_time_link id="invitation-link" url={url} expires_at={at} for="dana@example.com">
         <:actions><.button patch={people}>Done</.button></:actions>

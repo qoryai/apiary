@@ -24,7 +24,8 @@ defmodule Apiary.Setup do
 
       Set up Qory Apiary at https://qory.example.com/setup/<code>.
 
-  That line is the only place the code is written. Once the instance is set up, a start
+  That line is the only place the code is written: every other log line has it replaced
+  by `:code`, a request's path among them (`Apiary.SecretLogFilter`). Once the instance is set up, a start
   finds, makes and logs nothing. Off in test (`config :apiary, Apiary.Setup, enabled:
   false`), where the tests call `boot/0` themselves.
 
@@ -81,7 +82,8 @@ defmodule Apiary.Setup do
   @spec boot() :: :ok
   def boot do
     case find_or_create() do
-      {:ok, code} -> Logger.info(log_line(code))
+      # The one line the log filter lets the code through (`Apiary.SecretLogFilter`).
+      {:ok, code} -> Logger.info(log_line(code), setup_link: true)
       :set_up -> :ok
     end
 

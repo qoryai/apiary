@@ -96,8 +96,10 @@ config :logger, :default_formatter,
 # LiveView logs for its mount and its events. Production logs never include parameters
 # at all. A parameter whose name holds one of these words is logged as [FILTERED]:
 # `value` keeps a stored secret's value out of the log, and a variable's; `code` the
-# set-up link's code (`Apiary.Setup`).
-config :phoenix, :filter_parameters, ["password", "secret", "value", "code"]
+# set-up link's code (`Apiary.Setup`); `token` a link's token, which the path of an
+# invitation, a log-in link, an email change, a password link and Instance settings ›
+# Mail's test link carry.
+config :phoenix, :filter_parameters, ["password", "secret", "value", "code", "token"]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

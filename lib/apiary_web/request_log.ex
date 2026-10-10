@@ -41,37 +41,9 @@ defmodule ApiaryWeb.RequestLog do
 
   @doc """
   The request path with the token segment of the token-bearing routes replaced
-  by `:token`. Any other path is returned as it is.
+  by `:token`, and the set-up code by `:code`. Any other path is returned as it is. The
+  routes are `Apiary.SecretLogFilter`'s, which keeps the same tokens out of every other
+  log line (`Apiary.SecretLogFilter.redact_path/1`).
   """
-  def redact_path(path) when is_binary(path) do
-    # Empty segments are dropped the way the router drops them, so a doubled or
-    # trailing slash does not get a token past the redaction.
-    case String.split(path, "/", trim: true) do
-      ["invitations", _token] ->
-        "/invitations/:token"
-
-      ["invitations", _token, "continue"] ->
-        "/invitations/:token/continue"
-
-      ["users", "log-in", _token] ->
-        "/users/log-in/:token"
-
-      ["users", "settings", "confirm-email", _token] ->
-        "/users/settings/confirm-email/:token"
-
-      ["users", "password", _token] ->
-        "/users/password/:token"
-
-      ["setup", _code] ->
-        "/setup/:code"
-
-      ["instance", "mail", "confirm", _token] ->
-        "/instance/mail/confirm/:token"
-
-      _ ->
-        path
-    end
-  end
-
-  def redact_path(path), do: path
+  defdelegate redact_path(path), to: Apiary.SecretLogFilter
 end
