@@ -755,6 +755,106 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
+  @doc """
+  A new password and its confirmation, as a sign-up or a password page asks for them: two
+  password fields of the form's `password` and `password_confirmation`, the first with
+  a hint, each with the first of its errors once it is used.
+
+  The server never writes a password back: each input is left to the browser
+  (`phx-update="ignore"`) and drawn without a value, so a page re-rendered after a change
+  or a refused submit keeps what was typed without sending it. A page that signs the
+  person in once the form is accepted submits the same form to the log-in controller
+  (`phx-trigger-action`), which posts the typed password as the browser holds it. The
+  errors are drawn outside the inputs, and mark them as they come and go.
+
+  ## Examples
+
+      <.new_password_fields password={@form[:password]} confirmation={@form[:password_confirmation]} />
+  """
+  attr :password, Phoenix.HTML.FormField, required: true
+  attr :confirmation, Phoenix.HTML.FormField, required: true
+  attr :label, :string, default: nil, doc: "defaults to Password"
+  attr :confirm_label, :string, default: nil, doc: "defaults to Confirm password"
+  attr :hint, :string, default: nil, doc: "defaults to At least 12 characters."
+  attr :size, :string, default: "sm", values: ~w(sm md), doc: "md (40 px) on auth pages"
+
+  def new_password_fields(assigns) do
+    ~H"""
+    <.new_password_field
+      field={@password}
+      label={@label || gettext("Password")}
+      hint={@hint || gettext("At least 12 characters.")}
+      size={@size}
+    />
+    <.new_password_field
+      field={@confirmation}
+      label={@confirm_label || gettext("Confirm password")}
+      size={@size}
+    />
+    """
+  end
+
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :label, :string, required: true
+  attr :hint, :string, default: nil
+  attr :size, :string, required: true
+
+  defp new_password_field(%{field: field} = assigns) do
+    errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
+
+    assigns =
+      assigns
+      |> assign(:id, field.id)
+      |> assign(:name, field.name)
+      |> assign(:error, errors |> Enum.take(1) |> Enum.map(&translate_error/1) |> List.first())
+
+    ~H"""
+    <fieldset class="fieldset">
+      <.label for={@id}>{@label}</.label>
+      <%!-- Never patched: the typed password is not echoed back by the server. --%>
+      <div id={"#{@id}-field"} phx-update="ignore">
+        <input
+          type="password"
+          name={@name}
+          id={@id}
+          class={["input", "input-#{@size}"]}
+          autocomplete="new-password"
+          spellcheck="false"
+          required
+          phx-debounce="blur"
+          aria-describedby={@hint && "#{@id}-hint"}
+        />
+      </div>
+      <.hint :if={@hint && !@error} id={"#{@id}-hint"}>{@hint}</.hint>
+      <p
+        :if={@error}
+        id={"#{@id}-error"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        phx-mounted={
+          JS.set_attribute({"aria-invalid", "true"}, to: "##{@id}")
+          |> JS.set_attribute({"aria-describedby", "#{@id}-error"}, to: "##{@id}")
+          |> JS.add_class("input-error", to: "##{@id}")
+        }
+        phx-remove={
+          JS.remove_attribute("aria-invalid", to: "##{@id}")
+          |> describe_by_hint(@id, @hint)
+          |> JS.remove_class("input-error", to: "##{@id}")
+        }
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {@error}
+      </p>
+    </fieldset>
+    """
+  end
+
+  # Once its error goes, a password field is described by its hint again, or by nothing.
+  defp describe_by_hint(js, id, nil),
+    do: JS.remove_attribute(js, "aria-describedby", to: "##{id}")
+
+  defp describe_by_hint(js, id, _hint),
+    do: JS.set_attribute(js, {"aria-describedby", "#{id}-hint"}, to: "##{id}")
+
   ## Layout blocks
 
   @doc """

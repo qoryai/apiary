@@ -2463,6 +2463,11 @@ msgstr ""
 msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; they send you the link to sign up."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
@@ -3181,6 +3186,7 @@ msgstr ""
 msgid "Asking"
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "At least 12 characters."
@@ -3545,6 +3551,11 @@ msgstr ""
 msgid "Changes to this target's rules, newest first"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Check the fields below."
@@ -3573,6 +3584,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a day to jump to."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a password to sign in with."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -3759,6 +3775,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Confirm new password"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm password"
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -8550,6 +8571,7 @@ msgstr ""
 msgid "Pages are in English, the one language this instance has."
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/live/user_live/login.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -10165,6 +10187,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Source on GitHub"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Start an organisation and its first workspace. Choose a password to sign in with."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -12399,6 +12426,11 @@ msgstr ""
 msgid "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you create it."
+msgstr ""
+
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "You are invited to the %{workspace} workspace of the %{organisation} organisation, as a member."
@@ -12562,6 +12594,16 @@ msgstr ""
 #: lib/apiary_web/controllers/user_session_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Your account is deleted."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Your account is made, but the email with its link could not be sent. Ask for a new link on the log-in page in a few minutes."
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Your address is confirmed. The password set before it was confirmed is removed: set a new one in Account settings if you want one."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex

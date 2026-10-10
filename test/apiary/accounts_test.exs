@@ -35,6 +35,16 @@ defmodule Apiary.AccountsTest do
     end
   end
 
+  describe "get_user_by_email_and_password/2 for an unconfirmed account" do
+    test "returns it: an account made without mail signs in with its password" do
+      %{id: id} = user = unconfirmed_user_fixture() |> set_password()
+      assert is_nil(user.confirmed_at)
+
+      assert %User{id: ^id} =
+               Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+    end
+  end
+
   describe "get_user!/1" do
     test "raises if id is invalid" do
       assert_raise Ecto.NoResultsError, fn ->
@@ -356,19 +366,35 @@ defmodule Apiary.AccountsTest do
       assert {:error, :not_found} = Accounts.login_user_by_magic_link(encoded_token)
     end
 
-    test "raises when unconfirmed user has password set" do
-      user = unconfirmed_user_fixture()
-
-      {1, nil} =
-        Repo.update_all(from(u in User, where: u.id == ^user.id),
-          set: [hashed_password: "hashed"]
-        )
-
+    test "an unconfirmed account's password, set before its address was confirmed, goes at its first link log-in, and so do its sessions" do
+      user = unconfirmed_user_fixture() |> set_password()
+      assert is_nil(user.confirmed_at)
+      session = Accounts.generate_user_session_token(user)
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
-      assert_raise RuntimeError, ~r/magic link log in is not allowed/, fn ->
-        Accounts.login_user_by_magic_link(encoded_token)
-      end
+      assert {:ok, {user, expired}, :password_removed} =
+               Accounts.login_user_by_magic_link(encoded_token)
+
+      assert user.confirmed_at
+      assert is_nil(user.hashed_password)
+      assert Enum.any?(expired, &(&1.token == session))
+      refute Accounts.get_user_by_session_token(session)
+      refute Accounts.get_user_by_email_and_password(user.email, valid_user_password())
+
+      reloaded = Accounts.get_user!(user.id)
+      assert reloaded.confirmed_at
+      assert is_nil(reloaded.hashed_password)
+
+      # The link worked once.
+      assert {:error, :not_found} = Accounts.login_user_by_magic_link(encoded_token)
+    end
+
+    test "a confirmed account keeps its password at a link log-in" do
+      user = user_fixture() |> set_password()
+      {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
+
+      assert {:ok, {_user, []}} = Accounts.login_user_by_magic_link(encoded_token)
+      assert Accounts.get_user_by_email_and_password(user.email, valid_user_password())
     end
   end
 

@@ -76,6 +76,24 @@ defmodule ApiaryWeb.UserSessionControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "You are logged in."
     end
 
+    test "logs in an unconfirmed account with its password", %{
+      conn: conn,
+      unconfirmed_user: user,
+      unconfirmed_home: home
+    } do
+      user = set_password(user)
+      assert is_nil(user.confirmed_at)
+
+      conn =
+        post(conn, ~p"/users/log-in", %{
+          "user" => %{"email" => user.email, "password" => valid_user_password()}
+        })
+
+      assert get_session(conn, :user_token)
+      assert redirected_to(conn) == home
+      assert is_nil(Accounts.get_user!(user.id).confirmed_at)
+    end
+
     test "redirects to login page with invalid credentials", %{conn: conn, user: user} do
       conn =
         post(conn, ~p"/users/log-in?mode=password", %{
@@ -136,6 +154,30 @@ defmodule ApiaryWeb.UserSessionControllerTest do
       assert response =~ user.email
       assert response =~ ~p"/users/settings"
       assert response =~ ~p"/users/log-out"
+    end
+
+    test "an unconfirmed account's password goes at its first link log-in, and the page says so",
+         %{conn: conn, unconfirmed_user: user} = context do
+      user = set_password(user)
+      other_session = Accounts.generate_user_session_token(user)
+      {token, _hashed_token} = generate_user_magic_link_token(user)
+
+      conn =
+        post(conn, ~p"/users/log-in", %{
+          "user" => %{"token" => token},
+          "_action" => "confirmed"
+        })
+
+      assert get_session(conn, :user_token)
+      assert redirected_to(conn) == context.unconfirmed_home
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+               "Your address is confirmed. The password set before it was confirmed is removed: set a new one in Account settings if you want one."
+
+      user = Accounts.get_user!(user.id)
+      assert user.confirmed_at
+      assert is_nil(user.hashed_password)
+      refute Accounts.get_user_by_session_token(other_session)
     end
 
     test "redirects to login page when magic link is invalid", %{conn: conn} do

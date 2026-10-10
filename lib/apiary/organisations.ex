@@ -692,7 +692,11 @@ defmodule Apiary.Organisations do
   ## Sign-up
 
   @sign_up_types %{email: :string, organisation_name: :string}
-  @sign_up_fields Enum.map(Map.keys(@sign_up_types), &Atom.to_string/1)
+  # The password and its confirmation are checked on the form (`change_sign_up/2`) and
+  # hashed into the account (`sign_up_user/3`); never kept in the form's changes, and never
+  # handed to the edition.
+  @sign_up_fields Enum.map(Map.keys(@sign_up_types), &Atom.to_string/1) ++
+                    ~w(password password_confirmation)
 
   @doc """
   sign_up_offer/1 is what a sign-up without an invitation may do on this instance now:
@@ -733,6 +737,14 @@ defmodule Apiary.Organisations do
   form does while it is typed in. An edition whose sign-up page asks more checks it on
   this changeset, and is given it when the organisation is created
   (`c:Apiary.Edition.organisation_created/2`, `sign_up_user/3`).
+
+  **The password.** `password` and `password_confirmation` are checked as an account's
+  password is (`Apiary.Accounts.User.password_changeset/3`: 12 to 72 characters, and
+  72 bytes at most, the confirmation the same), with their errors on those fields. They
+  are never kept in the changeset's changes. `password: :required` asks for one, as a
+  sign-up does while the instance sends no email (`Apiary.Mail.configured?/0`), and
+  `password: :optional` checks one only when it is given, as a sign-up does once the
+  instance sends email; the default is the one the instance's mail gives.
   """
   @spec change_sign_up(map, keyword) :: Ecto.Changeset.t()
   def change_sign_up(attrs \\ %{}, opts \\ []) do
@@ -744,6 +756,7 @@ defmodule Apiary.Organisations do
       |> Ecto.Changeset.cast(attrs, Map.keys(@sign_up_types))
       |> Ecto.Changeset.update_change(:organisation_name, &String.trim/1)
       |> copy_errors(user)
+      |> check_password(attrs, Keyword.get_lazy(opts, :password, &password_rule/0))
 
     if Keyword.get(opts, :invited, false) do
       form
@@ -754,13 +767,48 @@ defmodule Apiary.Organisations do
   end
 
   # The errors of the account's or the organisation's changeset, on the form's fields: the
-  # address on `email`, the organisation's name and slug on `organisation_name`, and
-  # anything else on `email`, which is where the form says it could not sign up.
+  # address on `email`, the password and its confirmation on theirs, the organisation's
+  # name and slug on `organisation_name`, and anything else on `email`, which is where the
+  # form says it could not sign up.
   defp copy_errors(form, %Ecto.Changeset{errors: errors}) do
     Enum.reduce(errors, form, fn {field, {message, keys}}, form ->
-      field = if field in [:name, :slug], do: :organisation_name, else: :email
+      field =
+        cond do
+          field in [:name, :slug] -> :organisation_name
+          field in [:password, :password_confirmation] -> field
+          true -> :email
+        end
+
       Ecto.Changeset.add_error(form, field, message, keys)
     end)
+  end
+
+  # Whether a sign-up asks for a password: while the instance sends no email, a password
+  # is the account's only way in.
+  defp password_rule, do: if(Apiary.Mail.configured?(), do: :optional, else: :required)
+
+  # The password's errors on the form, checked on an account's password changeset without
+  # hashing it; an optional one only when it is given.
+  defp check_password(form, attrs, rule) do
+    if rule == :required or password_given?(attrs),
+      do:
+        copy_errors(
+          form,
+          User.password_changeset(%User{}, password_attrs(attrs), hash_password: false)
+        ),
+      else: form
+  end
+
+  defp password_given?(attrs),
+    do: Enum.any?(Map.values(password_attrs(attrs)), &(is_binary(&1) and &1 != ""))
+
+  # The password and its confirmation, of a form's string keys or a caller's atom keys.
+  defp password_attrs(attrs) do
+    for field <- [:password, :password_confirmation],
+        value = Map.get(attrs, field, Map.get(attrs, Atom.to_string(field))),
+        not is_nil(value),
+        into: %{},
+        do: {field, value}
   end
 
   @doc """
@@ -801,6 +849,15 @@ defmodule Apiary.Organisations do
   organisation, with `details.sign_up` true, `invitation.accept` for an invitation, from
   `origin:` (see `Apiary.Accounts.Scope.put_origin/2`), the request's address and client.
 
+  **The password.** `password`, with `password_confirmation`, is the account's password,
+  checked as `change_sign_up/2` checks it and hashed into the account. It is required
+  while the instance sends no email (`Apiary.Mail.configured?/0`), since it is then the
+  account's only way in, and optional once it does; `actor: :instance` never needs one.
+  Either way the account is unconfirmed until a log-in link sent to its address is
+  followed (`Apiary.Accounts.login_user_by_magic_link/1`). Without mail, an invited
+  sign-up takes the invitation's address, whatever `email` says: the link is the
+  inviter's word for it.
+
   `first_only: true` creates the instance's organisation or nothing, for
   `Apiary.Release.grant_instance_admin/2` on an instance nobody has signed up to:
   `{:error, :instance_claimed}` once the instance has one, a web sign-up that came first
@@ -825,18 +882,34 @@ defmodule Apiary.Organisations do
     origin = Keyword.get(opts, :origin)
     invitation = pending_invitation(invitation_or_token)
     invited? = match?(%Invitation{}, invitation)
+    mail? = Apiary.Mail.configured?()
 
     offered? =
       invited? or Keyword.get(opts, :first_only, false) or sign_up_offer(opts) != :closed
 
+    # The instance's own sign-up, a release command's, is nobody's to choose a password
+    # for; a person's needs one while the instance sends no email.
+    password =
+      if mail? or Keyword.get(opts, :actor, :person) == :instance,
+        do: :optional,
+        else: :required
+
+    # Without mail, the invitation's link is the inviter's word for its address: the
+    # account takes it, whatever the form sent.
+    attrs = if invited? and not mail?, do: put_email(attrs, invitation.email), else: attrs
+
     form =
       attrs
-      |> change_sign_up(invited: invited?, validate_unique: false)
+      |> change_sign_up(invited: invited?, validate_unique: false, password: password)
       |> refuse_closed_sign_up(offered?)
 
     if form.valid? do
       email = Ecto.Changeset.get_field(form, :email)
-      user_changeset = User.email_changeset(%User{}, %{email: email})
+
+      user_changeset =
+        %User{}
+        |> User.email_changeset(%{email: email})
+        |> put_password(attrs)
 
       multi =
         if invited?,
@@ -879,6 +952,21 @@ defmodule Apiary.Organisations do
     else
       {:error, Map.put(form, :action, :insert)}
     end
+  end
+
+  # The address of the form's attributes, under the key kind they use.
+  defp put_email(attrs, email) do
+    if Enum.any?(Map.keys(attrs), &is_atom/1),
+      do: attrs |> Map.delete("email") |> Map.put(:email, email),
+      else: Map.put(attrs, "email", email)
+  end
+
+  # The password, hashed into the account, once the form has checked it; none when none
+  # was given.
+  defp put_password(user_changeset, attrs) do
+    if password_given?(attrs),
+      do: User.password_changeset(user_changeset, password_attrs(attrs)),
+      else: user_changeset
   end
 
   defp refuse_closed_sign_up(form, true), do: form

@@ -30,6 +30,17 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - Mail is optional. With `SMTP_RELAY` set, Qory Apiary sends its email through that relay;
   without it, it starts all the same, sends no email, and says so in one line of its log
   at each start. `Apiary.Mail` says whether mail is set and where from.
+- Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
+  person in as soon as the account is made; an invited person keeps the invitation's
+  address. `Apiary.Organisations.sign_up_user/3` takes `password` and
+  `password_confirmation`, required without mail and optional with it, and never asked of
+  a release command's sign-up. `ApiaryWeb.CoreComponents.new_password_fields/1` draws the
+  two fields and never writes a password back to the page. Account settings do not change
+  the email address without mail.
+- An account whose password was set before its address was confirmed loses that password
+  at its first log-in link, which confirms the address and ends every other session; the
+  page says so. A sign-up whose confirmation email cannot be sent keeps the account made,
+  and sends the person to the log-in page for a new link.
 - A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
   action, `workspace.create`, asked of the organisation: named, at a slug made from the
   name or given, empty, in observe, counted against the edition's limit of workspaces

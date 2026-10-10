@@ -100,6 +100,33 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert Accounts.get_user_by_email(user.email)
     end
 
+    test "without mail, the address cannot be changed, and the page says why", %{
+      conn: conn,
+      user: user
+    } do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, html} = live(conn, ~p"/users/settings")
+
+      assert html =~
+               "Changing your address needs mail. Ask an admin of this Qory Apiary to set it up."
+
+      refute html =~ "We send a confirmation link to the new address."
+      assert has_element?(lv, "#email_form input[name='user[email]'][disabled]")
+      assert has_element?(lv, "#email_form button[type=submit][disabled]")
+
+      # A crafted submit changes nothing and sends nothing.
+      lv
+      |> element("#email_form")
+      |> render_submit(%{"user" => %{"email" => unique_user_email()}})
+
+      refute_received {:email, %Swoosh.Email{subject: "Confirm your new email address" <> _}}
+
+      refute Apiary.Repo.get_by(Accounts.UserToken,
+               user_id: user.id,
+               context: "change:#{user.email}"
+             )
+    end
+
     test "renders errors with invalid data (phx-change)", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/settings")
 

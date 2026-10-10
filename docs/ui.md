@@ -1141,10 +1141,15 @@ needs becomes a component, or an attribute of one, not a copy.
   Newer on its first page). `primary` marks the one main action of a screen. `loading_text` is
   the gerund ("Saving") the button shows, with a spinner and `aria-busy`, while its form
   submits; the button keeps its width.
-- **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
-  value and as one field, what the value completes: the path of the organisation before
-  a workspace's slug. A caller's `aria-describedby` is merged with the field's own (its
-  hint, its errors), never replaced by it.
+- **`<.input>`** is every field but a new password; with `prefix` a text input shows, in
+  mono before the value and as one field, what the value completes: the path of the
+  organisation before a workspace's slug. A caller's `aria-describedby` is merged with the
+  field's own (its hint, its errors), never replaced by it.
+- **`<.new_password_fields>`** is a new password and its confirmation, as the sign-up page
+  asks for them without mail. The server never writes a password back: each input is the
+  browser's (`phx-update="ignore"`) and drawn without a value. Its errors are drawn under
+  the input, outside it, and mark it (`aria-invalid`, `aria-describedby`) as they come and
+  go.
 - **Forms** are `novalidate`, every one, plain `<form>` and `<.form>` alike: the browser
   neither checks a field nor shows its own bubble, and the server answers a field that is
   wrong with an error under it (`<.input>`'s, tied to it by `aria-describedby`), in the

@@ -323,35 +323,31 @@ defmodule Apiary.Accounts do
 
   There are three cases to consider:
 
-  1. The user has already confirmed their email. They are logged in
-     and the magic link is expired.
+  1. The account's address is confirmed. It is logged in and the link is used up:
+     `{:ok, {user, []}}`.
 
-  2. The user has not confirmed their email and no password is set.
-     In this case, the user gets confirmed, logged in, and all tokens -
-     including session ones - are expired. In theory, no other tokens
-     exist but we delete all of them for best security practices.
+  2. The address is not confirmed and no password is set. The link confirms it, logs the
+     account in and ends every token of the account, its sessions included:
+     `{:ok, {user, tokens}}`, with the tokens deleted, whose sessions the caller
+     disconnects.
 
-  3. The user has not confirmed their email but a password is set.
-     This cannot happen in the default implementation but may be the
-     source of security pitfalls. See the "Mixing magic link and password registration" section of
-     `mix help phx.gen.auth`.
+  3. The address is not confirmed and a password is set: one chosen at a sign-up without
+     mail, or in Account settings, before anyone showed the address was theirs. Whoever
+     set it may not be the address's owner, who now follows a link sent to it. The link
+     confirms the address, **removes the password** and ends every token of the account,
+     its sessions included, so whoever set it keeps no way in:
+     `{:ok, {user, tokens}, :password_removed}`, and the page says so. This is
+     phx.gen.auth's guard for mixing log-in links and passwords ("Mixing magic link and
+     password registration" in `mix help phx.gen.auth`).
   """
   @spec login_user_by_magic_link(String.t()) ::
-          {:ok, {%User{}, [%UserToken{}]}} | {:error, atom | Ecto.Changeset.t()}
+          {:ok, {%User{}, [%UserToken{}]}}
+          | {:ok, {%User{}, [%UserToken{}]}, :password_removed}
+          | {:error, atom | Ecto.Changeset.t()}
   def login_user_by_magic_link(token) do
     {:ok, query} = UserToken.verify_magic_link_token_query(token)
 
     case Repo.one(query) do
-      # Prevent session fixation attacks by disallowing magic links for unconfirmed users with password
-      {%User{confirmed_at: nil, hashed_password: hash}, _token} when not is_nil(hash) ->
-        raise """
-        magic link log in is not allowed for unconfirmed users with a password set!
-
-        This cannot happen with the default implementation, which indicates that you
-        might have adapted the code to a different use case. Please make sure to read the
-        "Mixing magic link and password registration" section of `mix help phx.gen.auth`.
-        """
-
       {user, token} ->
         case sign_in_refusal(user) do
           # An account the edition refuses signs in nowhere; the link is used up.
@@ -368,15 +364,49 @@ defmodule Apiary.Accounts do
     end
   end
 
-  defp log_in(%User{confirmed_at: nil} = user, _token) do
-    user
-    |> User.confirm_changeset()
-    |> update_user_and_delete_all_tokens()
+  # An unconfirmed account: confirmed, its password removed if it has one (case 3 above),
+  # every token ended (cases 2 and 3). The account is read again under its lock, so a
+  # password set meanwhile goes too, and the answer says what was done.
+  defp log_in(%User{confirmed_at: nil, id: id}, token) do
+    Repo.transact(fn ->
+      locked =
+        Repo.one(
+          from u in User,
+            where: u.id == ^id and is_nil(u.deleted_at),
+            lock: "FOR NO KEY UPDATE"
+        )
+
+      confirm(locked, token)
+    end)
+    |> case do
+      {:ok, {:password_removed, result}} -> {:ok, result, :password_removed}
+      {:ok, {_kept, result}} -> {:ok, result}
+      {:error, _reason} = error -> error
+    end
   end
 
   defp log_in(user, token) do
     Repo.delete!(token)
     {:ok, {user, []}}
+  end
+
+  defp confirm(nil, _token), do: {:error, :not_found}
+
+  # Confirmed by another link meanwhile: logged in as a confirmed account is.
+  defp confirm(%User{confirmed_at: %DateTime{}} = user, token) do
+    Repo.delete_all(from t in UserToken, where: t.id == ^token.id)
+    {:ok, {:kept, {user, []}}}
+  end
+
+  defp confirm(%User{hashed_password: hash} = user, _token) do
+    changeset =
+      user
+      |> User.confirm_changeset()
+      |> Ecto.Changeset.put_change(:hashed_password, nil)
+
+    with {:ok, result} <- update_user_and_delete_all_tokens(changeset) do
+      {:ok, {if(is_binary(hash), do: :password_removed, else: :kept), result}}
+    end
   end
 
   @doc ~S"""
