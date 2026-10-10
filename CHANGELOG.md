@@ -414,8 +414,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
   stack's own turns it on once the service is first healthy, so a create that fails
   before then rolls back whole, and an Update with No turns it off before a delete. The
-  stack sets its own stack policy at creation, refusing any update that would replace or
-  delete the database or a key's secret; the four secrets are kept when the stack is
+  stack sets its own stack policy, refusing any update that would replace or delete the
+  database or a key's secret: an EventBridge rule sends this stack's own status changes to
+  a function of the stack's, which sets the policy once the create completes, and again
+  once each update completes or rolls back, as CloudFormation refuses a stack policy while
+  the stack is in progress. The four secrets are kept when the stack is
   deleted, each named after the stack and the whole UUID of its stack ID, so they do not
   block a new stack of the same name, whose stack ID is its own, and the database leaves
   a final snapshot. The log groups, the task's and those of the stack's two functions,
@@ -426,7 +429,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   into the console: the logs, the set-up link's line in
   them, the service, the key secrets and the database snapshots. CI lints the template
   with cfn-lint, and two copies a release would write, one with Qory Apiary Community
-  first and one with Qory Apiary Pro first, and checks the stack policy, that no output is
+  first and one with Qory Apiary Pro first, and checks the stack policy and the rule,
+  function, permission and role that set it, and that nothing sets it from inside the
+  stack's create or update, that no output is
   a command, which secrets and log groups the stack keeps and that their names use the
   stack ID's UUID, the mappings' keys, that every value compared with the edition is one
   the form allows, and that the template and both copies are ASCII alone, as the AWS

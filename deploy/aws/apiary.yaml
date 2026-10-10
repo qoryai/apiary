@@ -10,9 +10,9 @@
 # `aws cloudformation deploy`, which keep the parameters they are not given. KeysFromStack
 # and DatabaseSnapshot keep their values for the life of the stack: an update that drops
 # DatabaseSnapshot replaces the restored database with an empty one. The stack sets its own
-# stack policy once, at creation (StackPolicy, below), the policy of
-# deploy/aws/stack-policy.json in the repository: it refuses any update that would replace
-# or delete the database or a key's secret.
+# stack policy once its create completes, and again once each update completes or rolls back
+# (StackPolicyRule, below), the policy of deploy/aws/stack-policy.json in the repository: it
+# refuses any update that would replace or delete the database or a key's secret.
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Qory Apiary on ECS Fargate, with RDS for PostgreSQL, an Application Load Balancer and Secrets Manager.
 
@@ -693,13 +693,19 @@ Resources:
           ContainerPort: 4100
           TargetGroupArn: !Ref TargetGroup
 
-  # The stack policy, set once at creation by a function of the stack's own, so nobody has
-  # to set it. On Update and Delete the function answers without acting: a policy changed
-  # in a later release reaches new stacks only. It answers CloudFormation even when its call
-  # fails, so the stack never waits on it, and a failed call fails the create; a request
-  # that names another stack fails and changes nothing. Its role may set the policy of this
-  # stack and nothing else, and write its own log group, which is kept as the task's is:
-  # a call that fails a create leaves its trace there.
+  # The stack policy, set by a function of the stack's own, so nobody has to set it.
+  # CloudFormation refuses SetStackPolicy while the stack is in progress, so nothing inside
+  # the stack's create or update can set it: no custom resource does. Instead StackPolicyRule,
+  # on the account's default event bus, sends the function this stack's own status changes
+  # to CREATE_COMPLETE, UPDATE_COMPLETE and UPDATE_ROLLBACK_COMPLETE, and the function sets
+  # the policy each time: after the create, and after every update, so a policy changed in a
+  # later release takes effect once its update completes, and after a rolled-back update,
+  # the rolled-back policy. Until the create completes the stack has no policy, and an
+  # update runs under the policy set before it. The rule is made during the create, long
+  # before the stack completes. The function runs apart from the stack, which never waits on
+  # it: a call that fails changes nothing in the stack, and is logged, and Lambda tries the
+  # event twice more. Its role may set the policy of this stack and nothing else, and write
+  # its own log group, which is kept as the task's is. Only the rule may invoke it.
   # The runtime is pinned, and kept current with each release.
   StackPolicyLogGroup:
     Type: AWS::Logs::LogGroup
@@ -737,7 +743,7 @@ Resources:
   StackPolicyFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Description: Sets the stack's policy once, at creation.
+      Description: Sets the stack's policy each time the stack's create or update completes.
       Runtime: python3.13
       Handler: index.handler
       Role: !GetAtt StackPolicyRole.Arn
@@ -768,60 +774,68 @@ Resources:
                 }
               ]
             }
-      # At worst about 52 seconds, under the 60 of its timeout: two calls of at most
-      # 5 + 15 seconds with a back-off of at most 2 between them, then 10 for the answer.
+      # The event is checked again: this stack, and a status it may act on. A call takes at
+      # worst about 42 seconds, under the 60 of its timeout: two tries of at most 5 + 15
+      # seconds with a back-off of at most 2 between them. A failed call is logged and
+      # raised, so Lambda tries the event again; the stack is long done with it.
       Code:
         ZipFile: |
-          import json
           import os
-          import urllib.request
 
           import boto3
           from botocore.config import Config
 
+          COMPLETE = {"CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"}
+
 
           def handler(event, context):
-              status, reason = "SUCCESS", ""
-              try:
-                  if event["StackId"] != os.environ["STACK_ID"]:
-                      raise ValueError(f"the request names another stack, {event['StackId']}")
-                  if event["RequestType"] == "Create":
-                      config = Config(
-                          connect_timeout=5,
-                          read_timeout=15,
-                          retries={"total_max_attempts": 2, "mode": "standard"},
-                      )
-                      boto3.client("cloudformation", config=config).set_stack_policy(
-                          StackName=os.environ["STACK_ID"],
-                          StackPolicyBody=os.environ["STACK_POLICY"],
-                      )
-              except Exception as error:
-                  status, reason = "FAILED", f"The stack policy was not set: {error}"[:1000]
-                  print(reason)
-
-              # Always answered, so the stack never waits on a function that failed.
-              body = json.dumps(
-                  {
-                      "Status": status,
-                      "Reason": reason or "Done.",
-                      "PhysicalResourceId": event.get("PhysicalResourceId") or "stack-policy",
-                      "StackId": event["StackId"],
-                      "RequestId": event["RequestId"],
-                      "LogicalResourceId": event["LogicalResourceId"],
-                  }
-              ).encode()
-              request = urllib.request.Request(
-                  event["ResponseURL"], data=body, method="PUT", headers={"Content-Type": ""}
+              detail = event.get("detail") or {}
+              stack = detail.get("stack-id")
+              status = (detail.get("status-details") or {}).get("status")
+              if stack != os.environ["STACK_ID"] or status not in COMPLETE:
+                  print(f"Ignored: the status {status} of the stack {stack}.")
+                  return
+              config = Config(
+                  connect_timeout=5,
+                  read_timeout=15,
+                  retries={"total_max_attempts": 2, "mode": "standard"},
               )
-              urllib.request.urlopen(request, timeout=10)
+              try:
+                  boto3.client("cloudformation", config=config).set_stack_policy(
+                      StackName=os.environ["STACK_ID"],
+                      StackPolicyBody=os.environ["STACK_POLICY"],
+                  )
+              except Exception as error:
+                  print(f"The stack policy was not set at {status}: {error}"[:1000])
+                  raise
+              print(f"The stack policy was set at {status}.")
 
-  # No property but the function: what the function sets is its own. CloudFormation waits
-  # at most ServiceTimeout seconds for its answer.
-  StackPolicy:
-    Type: Custom::StackPolicy
+  # This stack's own status changes, as CloudFormation sends them to the default event bus,
+  # to the three statuses the function acts on; any other is never sent to it.
+  StackPolicyRule:
+    Type: AWS::Events::Rule
     Properties:
-      ServiceToken: !GetAtt StackPolicyFunction.Arn
-      ServiceTimeout: "300"
+      Description: Sends the stack's completed creates and updates to the function that sets its policy.
+      State: ENABLED
+      EventPattern:
+        source: [aws.cloudformation]
+        detail-type: [CloudFormation Stack Status Change]
+        detail:
+          stack-id: [!Ref AWS::StackId]
+          status-details:
+            status: [CREATE_COMPLETE, UPDATE_COMPLETE, UPDATE_ROLLBACK_COMPLETE]
+      Targets:
+        - Id: stack-policy
+          Arn: !GetAtt StackPolicyFunction.Arn
+
+  # The rule, and nothing else, may invoke the function.
+  StackPolicyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt StackPolicyFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StackPolicyRule.Arn
 
   # The database's deletion protection, set by a function of the stack's own once the
   # service is healthy: DatabaseProtection is made after the service, whose create waits
