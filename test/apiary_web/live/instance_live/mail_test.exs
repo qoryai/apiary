@@ -3,14 +3,12 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   Instance settings › Mail (`ApiaryWeb.InstanceLive.Mail`) and its test link
   (`ApiaryWeb.InstanceMailController`): the form for the instance's admins, which never
   shows a password; the test link that turns mail on for the admin who saved; the page
-  read only where the server's environment sets mail; and a path that does not exist for
-  anyone else, and without the `instance_mail` feature.
+  read only where the server's environment sets mail, and on an instance of any features;
+  and a path that does not exist for anyone else.
   """
   # Not async: hiding the instance's organisation acts on the row every test shares, and
   # the mailer's environment is the whole node's.
   use ApiaryWeb.ConnCase, async: false
-
-  @moduletag needs: :instance_mail
 
   import Phoenix.LiveViewTest
   import Ecto.Query, only: [from: 2]
@@ -360,7 +358,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
     end
   end
 
-  describe "without the instance_mail feature" do
+  describe "on an instance with the record alone" do
     setup do
       Apiary.EditionKit.hide_instance_organisation()
       :ok
@@ -368,16 +366,13 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
     setup :register_and_log_in_user
 
-    @tag with_features: [:observability, :security]
-    test "there is no Mail section, and its paths do not exist", %{conn: conn, scope: scope} do
+    @tag with_features: [:observability]
+    test "an instance admin has the Mail section", %{conn: conn, scope: scope} do
       assert Apiary.Access.instance_admin?(scope)
-      refute Enum.any?(ApiaryWeb.Layouts.instance_sections(scope), &(&1.key == :mail))
+      assert Enum.any?(ApiaryWeb.Layouts.instance_sections(scope), &(&1.key == :mail))
 
-      assert conn |> get(~p"/instance/mail") |> response(404)
-
-      assert conn
-             |> get(~p"/instance/mail/confirm/#{Base.url_encode64("x", padding: false)}")
-             |> response(404)
+      {:ok, _view, html} = live(conn, ~p"/instance/mail")
+      assert html =~ "Mail"
     end
   end
 end

@@ -72,10 +72,9 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   at its first log-in link, which confirms the address and ends every other session; the
   page says so. A sign-up whose confirmation email cannot be sent keeps the account made,
   and sends the person to the log-in page for a new link.
-- Behind the opt-in feature `instance_mail`, Instance settings › Mail: an instance admin
-  saves the SMTP relay, its port, TLS, username and password, and the sender, stored in the
-  database with the password encrypted under a key derived from `APIARY_ENCRYPTION_SECRET`
-  for that purpose alone. Saving sends a test link to that admin; mail is on once they
+- Instance settings › Mail: an instance admin saves the SMTP relay, its port, TLS,
+  username and password, and the sender, stored in the database with the password
+  encrypted under a key derived from `APIARY_ENCRYPTION_SECRET` for that purpose alone. Saving sends a test link to that admin; mail is on once they
   follow it, signed in as themselves, and their address is confirmed. The link works once,
   for 60 minutes, and does nothing for anyone else. With `SMTP_RELAY` set, the
   environment wins whole and the section is read only. Each node reads the settings again

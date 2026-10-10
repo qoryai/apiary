@@ -388,15 +388,13 @@ For example: https://qory.example
 | `SMTP_PASSWORD` | none | The relay's password. |
 | `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. |
 | `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
-<!-- feature: instance_mail -->
 
-With the opt-in feature `instance_mail` ([Features](#features)), an instance admin can set
-mail in **Instance settings › Mail** instead: the relay, its port, TLS, username and
-password, and the sender, kept in the database with the password encrypted under a key
-derived from `APIARY_ENCRYPTION_SECRET`. Saving sends a test link to that admin, and mail
-from those settings is on once they follow it, signed in as themselves. With `SMTP_RELAY`
-set, these variables win whole, and that page shows them read only.
-<!-- /feature -->
+An instance admin can set mail in **Instance settings › Mail** instead: the relay, its
+port, TLS, username and password, and the sender, kept in the database with the password
+encrypted under a key derived from `APIARY_ENCRYPTION_SECRET`. Saving sends a test link to
+that admin, and mail from those settings is on once they follow it, signed in as
+themselves. With `SMTP_RELAY` set, these variables win whole, and that page shows them
+read only.
 
 Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
 person in as soon as the account is made. An invited person's address is the invitation's

@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.InstanceLive.Mail do
   @moduledoc """
   Instance settings › Mail, `/instance/mail`: the mail server Qory Apiary sends its email
-  through (`Apiary.Mail`), for the instance's admins (`Apiary.Access.instance_admin?/1`),
-  with the `instance_mail` feature; anyone else is answered as a path that does not exist
+  through (`Apiary.Mail`), for the instance's admins (`Apiary.Access.instance_admin?/1`);
+  anyone else is answered as a path that does not exist
   (`ApiaryWeb.NotFound`). It comes after an edition's sections and before Configuration
   (`ApiaryWeb.Layouts.instance_sections/1`).
 
@@ -17,7 +17,6 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   field stays empty and nothing it is bound to changes (`Apiary.Mail.save_settings/3`).
   """
   use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :instance_mail
 
   alias Apiary.{Access, Mail}
   alias Apiary.Mail.{Password, Settings}
