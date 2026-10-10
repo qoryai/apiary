@@ -64,8 +64,9 @@ repository; the rules for people are the same, and are written out in
   keys, the edition seams),
   `conventions.md` (migrations, tests, doc comments, vocabulary), `access.md`, `lingo.md`,
   `ui.md` (the rules the pages follow), `contract-assumptions.md`, `releases.md`.
-  `CONTRIBUTING.md` says only how to contribute (where contributions go, the CLA, the
-  licence, running the checkout, pull requests); how the code is built or what rule it
+  `CONTRIBUTING.md` says how to contribute (where contributions go, the CLA, the licence,
+  running it from a checkout, the toolchain, commands, contract tests and CI, an index of
+  `docs/`, releases, pull requests); how the code is built or what rule it
   follows goes in `docs/`, changed in the same pull request as the code it describes.
 - **Documentation.** It ships with the application: the guides are Markdown under
   `guides/`, built with the module reference by ExDoc (`mix docs`, an alias of
