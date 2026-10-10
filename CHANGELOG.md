@@ -105,14 +105,16 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   how the run ended.
 - A run's registration. A run opens with a signed `POST /v1/runs`, whose body holds its
   id, its labels, what it is about, the heartbeat interval it uses and when it was sent,
-  read strictly; the answer is its run configuration, `{"version":1}` where the workspace
-  serves no policy, always with `X-Qory-Run-Configuration` and an `ETag`. The same bytes
+  read strictly, a body it refuses being `400` `invalid_request` with the member at fault
+  in `names`; the answer is its run configuration, `{"version":1}` where the workspace
+  serves no policy, always with `X-Qory-Run-Configuration`, an `ETag` and
+  `X-Qory-Configuration`. The same bytes
   sent again under the same access key get the same answer; the run id under another key,
   or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
   `410`; a run configuration that cannot be read is `503`, never no policy. No run is
   stored on any refusal. `GET /v1/runs/<run_id>` reloads a run's configuration for the
-  access key that registered it, and is `404` for any other, and where the workspace
-  serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
+  access key that registered it, by its registration's labels, and is `404` for any other
+  key, for a run its batches created, and where the workspace serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
   holds `dev.qory.ping` or `dev.qory.run.registered` is `400` `invalid_request`: a
   Forager that opens its runs with a ping starts none, so Forager and Qory Apiary are run
   from the same release.
@@ -165,8 +167,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   refusals come in the contract's order, coded: a header sent twice or an instance id
   absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
   server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins, 94b21f4 on
-  Forager's next.
+  the contract's own fixtures at the commit `.forager-contract-ref` pins, 5ddac44 on
+  Forager's main.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a bucket of
   their own, 50 requests a second and 100 at once, so a gateway flushing a backlog of
@@ -296,7 +298,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the heartbeat interval its registration stated, and found lost after three of them with
   nothing heard, 90 seconds at Forager's 30. Three limits
   stay: after an outage shorter than about 6½ minutes, a run can still look alive for a
-  moment; a run whose heartbeats all arrive late, because the outage began
+  moment; a session's run whose heartbeats all arrive late, because the outage began
   before its first one, still comes back for a few minutes; and a run whose machine's
   clock ran more than about 6½ minutes ahead and was then set back reads lost until its
   exit arrives.
@@ -506,6 +508,9 @@ id.
 `registration_about`, `registration_digest` (32 bytes), `registration_interval_seconds` and
 `registration_answer_digest`, NULL for every existing row, with a check that a run holds
 all six or none.
+`20261010190000_keep_a_registration_s_time` adds `runs.registration_time`, the `time` a
+run's registration was built at, NULL for every existing row, with a check that it is set
+only on a run that registered.
 
 ### Upgrading
 

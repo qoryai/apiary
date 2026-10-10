@@ -222,13 +222,13 @@ The answers, in order; the first that applies is the answer:
 | Status | When | Body |
 |---|---|---|
 | `413` | the body is over 64 KiB, or cannot be read | `{"error":"payload_too_large"}` |
-| `415` | the content type is not `application/json` | `{"error":"unsupported_media_type"}` |
+| `415` | the media type is not `application/json`, compared exactly, whatever its case and parameters | `{"error":"unsupported_media_type"}` |
 | `400` | a header the signature depends on is sent twice | `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `429` | the key's rate for registrations is spent; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a registration, or breaks a rule | `{"error":"invalid_request"}` |
+| `400` | the body is not a registration, or breaks a rule | `{"error":"invalid_request","names":["<member>"]}`, `"body"` for a member the contract does not name or a body that is no object |
 | `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
 | `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: the same bytes again, under the same access key | the answer the registration was given |
@@ -250,7 +250,7 @@ time, and nothing is stored again. Once that run configuration is gone, because 
 repository was deleted, the repeat is given the configuration in force now for its labels.
 
 A `200` carries `X-Qory-Run-Configuration: sha256=<hex>` and `ETag` with the same string
-quoted, always, and `Cache-Control: no-store, no-transform`. Its body is the run's run
+quoted, always, `X-Qory-Configuration` and `Cache-Control: no-store, no-transform`. Its body is the run's run
 configuration. `{"version":1}` is the run configuration of no policy: the run keeps the
 policy of its machine's own Forager file.
 
@@ -297,11 +297,13 @@ configuration in force now for the labels the run registered with.
 | `200` | the workspace has a policy | the run configuration |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | the run is not one this access key registered, an unknown run id among them; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `404` | the run is not one this access key registered: an unknown run id, a run another key registered, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
 | `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
-The reload is answered only to the access key that registered the run. To the gateway any
+The reload is answered only to the access key that registered the run, and only by the
+labels it registered with; a run whose events retention has pruned is reloaded all the
+same. To the gateway any
 answer but `200` is a reload that failed: the policy in force stays, and it tries again on
 the next answer. The endpoint never answers `304`.
 
@@ -319,7 +321,7 @@ this order, and the first refusal that applies is the answer:
 | Status | When | Body |
 |---|---|---|
 | `413` | the body is over 2 MiB, or cannot be read | `{"error":"payload_too_large"}` |
-| `415` | the content type is not `application/cloudevents-batch+json` | `{"error":"unsupported_media_type"}` |
+| `415` | the media type is not `application/cloudevents-batch+json`, compared exactly, whatever its case and parameters | `{"error":"unsupported_media_type"}` |
 | `400` | a header the signature depends on is sent twice | `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |

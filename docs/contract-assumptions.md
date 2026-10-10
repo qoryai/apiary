@@ -139,7 +139,7 @@ first refusal that applies is the answer:
 | Status | When | Body |
 |---|---|---|
 | `413` | the body is over 2 MiB (2 097 152 bytes), or cannot be read; unsigned | `{"error":"payload_too_large"}` |
-| `415` | the content type is not `application/cloudevents-batch+json` (its case and any parameters are ignored); unsigned | `{"error":"unsupported_media_type"}` |
+| `415` | the media type is not `application/cloudevents-batch+json`, compared exactly (its case and any parameters are ignored, so `application/cloudevents-batch+jsonx` is refused); unsigned | `{"error":"unsupported_media_type"}` |
 | `400` | `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice; unsigned | `{"error":"bad_request"}` |
 | `401` | any failure of authentication (see Failure); unsigned | `{"error":"unauthorized"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
@@ -222,7 +222,8 @@ the body is logged.
 run configuration (`ApiaryWeb.Contract.RegistrationController`,
 `Apiary.Runs.Registration`). Both are signed as above.
 
-**The registration.** `Content-Type: application/json`, a body of at most 64 KiB, the
+**The registration.** `Content-Type: application/json`, the media type compared exactly,
+whatever its case and parameters (`415` otherwise), a body of at most 64 KiB, the
 contract's `run-registration.schema.json`:
 
 ```json
@@ -230,8 +231,10 @@ contract's `run-registration.schema.json`:
 ```
 
 The body is read strictly (`Apiary.Runs.Registration.parse/1`). Each rule it breaks is
-`400 invalid_request`, which names the member and never repeats a value: a member the
-contract does not name; a `version` other than `1`; a `run_id` that is not a lower-case
+`400` `{"error":"invalid_request","names":["<member>"]}`, which names the member and never
+repeats a value, `"body"` for a member the contract does not name and a body that is not a
+JSON object (the events endpoint's `400` carries no `names`): a member the contract does
+not name; a `version` other than `1`; a `run_id` that is not a lower-case
 UUID; `labels` that are not an object of at most 16, each key 1 to 64 of `a-z`, `0-9`,
 `_`, `.` and `-`, each value a string of at most 256 bytes of UTF-8 with no NUL; an
 `about` that breaks any rule of `about` (`Apiary.Runs.About.validate/1`, the rules under
@@ -276,7 +279,11 @@ state `pending`, under the key, on its node and the instance the request claimed
 which a repeat is told from another registration, and the digest of the run configuration
 it was given (`registration_answer_digest`). Its `forager_version` is the one `User-Agent`
 names, else the body's, and its `contract_version` the header's. The projector never
-writes these fields, so a rebuild keeps them. After the commit, and never failing the
+writes these fields, so a rebuild keeps them, and `registration_time`, the body's `time`,
+on the gateway's clock. The run's projection starts at sequence 1: the registration stands
+for the record's sequence 1, `dev.qory.run.registered`, which is never posted
+(`Apiary.Runs.Run.projected_from/1`); a run its batches created starts at 0. After the
+commit, and never failing the
 request, the key records the time and the versions, and the run is broadcast as changed.
 The run's batches are stored on the same row, and its `run.started` moves it to
 `running`.
@@ -284,7 +291,8 @@ The run's batches are stored on the same row, and its `run.started` moves it to
 **The answer** to a registration and to a reload is a signed `200`,
 `Content-Type: application/json`, whose body is the run's run configuration, with
 `X-Qory-Run-Configuration: sha256=<lowercase hex>` and `ETag: "sha256=<hex>"` (the same
-string, quoted), always, and `Cache-Control: no-store, no-transform`:
+string, quoted), always, `X-Qory-Configuration`, and `Cache-Control: no-store,
+no-transform`:
 
 ```json
 {"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
@@ -319,9 +327,11 @@ registration is answered `{"version":1}`, the document of no policy
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
 to the access key that registered the run: a run id the key's workspace does not hold, a
-run under another access key, and a `run_id` that is not a lower-case UUID are `404`
+run another access key registered, a run its batches created without a registration, even
+for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
 `{"error":"not_found"}`. Its `200` is the run configuration in force now for the labels the
-run registered with, with the headers above. A reload on a workspace with no policy, or a
+run registered with, and no others, with the headers above. A run whose events retention
+has pruned is reloaded all the same: `200`, never `410`. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`. A policy removed mid-run never loosens a run that's
 already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
@@ -566,7 +576,9 @@ heartbeats', else 30 seconds, so 90 seconds in all. A `running` run is measured 
 last heartbeat, else from the arrival of its `run.started`, and a `pending` run from when
 the workspace first heard of it, its registration for a run that registered. A heartbeat
 counts by its own `time`, corrected by the run's clock offset (the smallest arrival less
-`time` over the run's heartbeats), plus 300 seconds, and never after its arrival, as the
+`time` over the run's heartbeats, and for a run a gateway opened its registration's,
+`registered_at` less the registration's `time`, both on the gateway's clock, as its
+heartbeats are), plus 300 seconds, and never after its arrival, as the
 contract's liveness for the server says; a run's first heartbeat with no offset before it
 counts at its arrival. Only the server's clock is compared.
 
@@ -600,10 +612,14 @@ Forager's default of 30:
   until the next check after them. So after an outage shorter than 390 seconds at
   30-second intervals, a run that ended during it can be alive again for up to 90
   seconds.
-- A run whose heartbeats all arrive late, because the outage began before its first one,
-  has no offset before them: its first heartbeat counts at its arrival and sets an offset
-  as late as the backlog, so the run runs again while its heartbeats arrive, until its
-  `dev.qory.run.exited` arrives or three intervals after the last of them.
+- A session's run whose heartbeats all arrive late, because the outage began before its
+  first one, has no offset before them: its first heartbeat counts at its arrival and sets
+  an offset as late as the backlog, so the run runs again while its heartbeats arrive,
+  until its `dev.qory.run.exited` arrives or three intervals after the last of them. A run
+  a gateway opened takes its registration's offset, from a registration accepted before
+  the run opened, so its heartbeats bring it back only as the first limit says; its
+  `run.started`, arriving late, brings it back until the next check after a heartbeat
+  folded behind it, or for three intervals when none is.
 - A run whose machine's clock ran ahead and was then set back keeps the offset the clock
   ahead gave, the smallest, so each heartbeat after it counts the clock's lead less 300
   seconds before its arrival. More than 300 seconds and two intervals ahead, 360 seconds
