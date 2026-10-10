@@ -116,8 +116,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
     |> follow_document()
   end
 
-  # The Document view shows the version in force: after a change, read again with the tab,
-  # it shows the new one in place, the target's first own version too.
+  # History's Document view shows the version in force: after a change, read again with
+  # the tab, it shows the new one in place, the target's first own version too.
   defp follow_document(%{assigns: %{loaded: true, action: :document}} = socket),
     do: document(socket)
 
@@ -700,8 +700,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
   @doc """
   content/1 is the tab's content, under the target's page's header and tabs: what the
   policy of the target is, with the version in force and its export; the tab's own
-  views (the effective policy, its history, its document); the view of the action; and
-  the export page. Its skeleton until the connected mount has read it.
+  views (the effective policy, its history with the document as History's other view);
+  the view of the action; and the export page. Its skeleton until the connected mount
+  has read it.
   """
   def content(%{loaded: false} = assigns) do
     ~H"""
@@ -770,7 +771,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
           base={@base}
           rules={length(@rows)}
           changes={@change_total}
-          document={@version != nil}
         />
         <div :if={@version && !(@action in [:version, :export] && @v)} class="q-head-side">
           <span class="inline-flex items-center gap-2">
@@ -826,8 +826,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
         scope={:target}
         summary={@summary}
         now={@now}
+        switch={@version != nil}
       />
       <.version_view :if={@action == :version && @v} v={@v} base={@base} now={@now} />
+      <div :if={@action == :document && @v} class="q-filters">
+        <.history_switch base={@base} current={:document} />
+      </div>
       <Show.version_head
         :if={@action == :document && @v}
         v={@v}
@@ -1064,7 +1068,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :base, :string, required: true
   attr :rules, :integer, required: true
   attr :changes, :integer, required: true
-  attr :document, :boolean, required: true
 
   defp target_tabs(assigns) do
     ~H"""
@@ -1073,16 +1076,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
         {gettext("Effective policy")}
         <span :if={@rules > 0} class="q-views-n">{@rules}</span>
       </.link>
-      <.link patch={"#{@base}/history"} aria-current={@action == :history && "page"}>
+      <%!-- The document, a version and its export are History's. --%>
+      <.link
+        patch={"#{@base}/history"}
+        aria-current={@action in [:history, :document, :version, :export] && "page"}
+      >
         {gettext("History")}
         <span :if={@changes > 0} class="q-views-n">{@changes}</span>
-      </.link>
-      <.link
-        :if={@document}
-        patch={"#{@base}/document"}
-        aria-current={@action in [:document, :version, :export] && "page"}
-      >
-        {gettext("Document")}
       </.link>
     </nav>
     """

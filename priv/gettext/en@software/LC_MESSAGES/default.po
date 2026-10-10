@@ -4617,8 +4617,6 @@ msgstr ""
 msgid "Docs"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Document"
@@ -5679,6 +5677,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "History"
 msgstr ""

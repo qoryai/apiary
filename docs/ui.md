@@ -568,7 +568,7 @@ menu's acts, the workspace's are read there and lead to the workspace's page. A 
 the level above the workspace has that level's tile in its Source, which says whose it is;
 the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
 The mode is a card above the tabs, the same on the workspace's Policy page, on each of
-its tabs, the Document tab included, and on a target's Policy tab, above each of its
+its tabs, History's Document view included, and on a target's Policy tab, above each of its
 views (`PolicyComponents.mode_card/1`); a version opened from the History (the one in
 force too) and the export, which state their own mode, have none. It states the mode in
 force: a honey tile with the mode's icon (a lock where a level above requires enforce),
@@ -576,17 +576,21 @@ force: a honey tile with the mode's icon (a lock where a level above requires en
 workspace, by its name, or Its own; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
-The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
-in force under the card and the tabs: its version's number, In force and the version's
-views, which stay on the tab. The document's bar is the tab's one place to take it away,
+The Document view (`…/policy/document`, a target's `…/-/policy/document`) is the document
+in force under the card and the tabs, a view of History, not a tab of its own: while
+there is a document, History's top has two segments (`PolicyLive.Views.history_switch/1`),
+Changes (`…/history`, the list of changes) and Document, and History is the current tab on
+both, on a version's page and on its export. The view shows its version's number, In
+force and the version's views, which stay on the view. The document's bar is the view's
+one place to take it away,
 the code-block header's pattern: two small icon buttons on its right, Copy (the document
 as served; its hint reads Copied while the copy is confirmed, which is said politely
 too) and Download (the document as served, the bytes Copy copies, saved as
 run-configuration.json; the export page's policy file stays on the export page), each
-named by its hint, which opens under it, flush with its right edge. The tab has no Export;
-the export page opens from the header's Export on the other tabs and from a version's
-own page. In the list of versions, on the tab and on each
-version's page, the version in force leads to the Document tab and an older one to its
+named by its hint, which opens under it, flush with its right edge. The view has no
+Export; the export page opens from the header's Export on the tabs and from a version's
+own page. In the list of versions, on the view and on each
+version's page, the version in force leads to the Document view and an older one to its
 own page. A change that makes a new version, Enforce or
 Observe among them, shows the new version, its number and its mode there in place. A
 target served the workspace's policy shows the workspace's version: in its list the
@@ -621,7 +625,7 @@ with Version n and Export and is the one way back, with no trail of the page's o
 title "Export for a node without a server" and what is exported (an h2 under a target's
 own title), the policy file with Download and Copy, the command for the
 node and the Forager file's egress section, each with Copy, the notes, and Done back to the
-Document tab (a target's Document view), the version in force under the card. Only the
+Document view, the version in force under the card. Only the
 version in force is exported; another version's path sends on to it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network

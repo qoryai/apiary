@@ -135,7 +135,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       # A software workspace reads Targets as Repositories.
       assert has_element?(view, "#policy-tabs-targets", "Repositories")
       assert has_element?(view, "#policy-tabs-history", "History")
-      assert has_element?(view, "#policy-tabs-document", "Document")
+      # The document is a view of History, not a tab of its own.
+      refute has_element?(view, "#policy-tabs-document")
+      refute has_element?(view, "#policy-tabs a", "Document")
 
       # The Security policy is not narrowed: its sidebar entry, and the lists', link plainly.
       for {key, path} <- [policy: "/policy", runs: "/runs", network: "/network"] do
@@ -166,6 +168,88 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                {"Policy", workspace_path(scope, "/policy")},
                {"Version 1", nil}
              ]
+    end
+  end
+
+  describe "History's views" do
+    test "the tabs are Rules, Targets and History, with no Document tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+
+      for rest <- ~w(/policy /policy/history /policy/document) do
+        view = open(conn, scope, rest)
+
+        tabs =
+          view
+          |> render()
+          |> LazyHTML.from_fragment()
+          |> LazyHTML.query("#policy-tabs a")
+          |> LazyHTML.attribute("id")
+
+        assert tabs == ~w(policy-tabs-rules policy-tabs-targets policy-tabs-history), rest
+
+        refute has_element?(view, "#policy-tabs-document"), rest
+      end
+    end
+
+    test "History is the current tab on its changes, the document, a version and an export",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      # The export of the version in force is a page without the tabs; one that is not
+      # there keeps them, under History.
+      for rest <-
+            ~w(/policy/history /policy/document /policy/versions/1 /policy/versions/2 /policy/versions/99/export) do
+        view = open(conn, scope, rest)
+        assert has_element?(view, "#policy-tabs-history[aria-current=page]"), rest
+        assert has_element?(view, "#policy-tabs [aria-current=page]", "History"), rest
+        # Its count stays the number of changes.
+        assert text(view, "#policy-tabs-history .q-tabs-n") == "2", rest
+      end
+    end
+
+    test "Changes and Document at History's top, the view shown pressed, each a patch", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      history = workspace_path(scope, "/policy/history")
+      document = workspace_path(scope, "/policy/document")
+
+      view = open(conn, scope, "/policy/history")
+      assert has_element?(view, "#history-view.q-seg[role=group][aria-label=History]")
+      assert has_element?(view, "#policy-history .q-filters #history-view")
+      assert has_element?(view, "#history-view button[aria-pressed=true]", "Changes")
+      assert has_element?(view, "#history-view button[aria-pressed=false]", "Document")
+      assert has_element?(view, "#history-list")
+
+      view |> element("#history-view button", "Document") |> render_click()
+      assert_patch(view, document)
+      assert has_element?(view, "#history-view button[aria-pressed=false]", "Changes")
+      assert has_element?(view, "#history-view button[aria-pressed=true]", "Document")
+      assert has_element?(view, "h2#policy-version-h", "Version 1")
+      refute has_element?(view, "#policy-history")
+
+      view |> element("#history-view button", "Changes") |> render_click()
+      assert_patch(view, history)
+      assert has_element?(view, "#history-view button[aria-pressed=true]", "Changes")
+      assert has_element?(view, "#history-list")
+
+      # A version and its export keep their own layout.
+      for rest <- ~w(/policy/versions/1 /policy/versions/1/export) do
+        refute has_element?(open(conn, scope, rest), "#history-view"), rest
+      end
+    end
+
+    test "with no document yet, History shows just the changes", %{conn: conn, scope: scope} do
+      view = open(conn, scope, "/policy/history")
+      assert has_element?(view, "#policy-history")
+      assert has_element?(view, "#policy-tabs-history[aria-current=page]")
+      refute has_element?(view, "#history-view")
+      refute has_element?(view, "#policy-tabs-document")
     end
   end
 
@@ -247,10 +331,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#policy-export-button[aria-disabled]")
       refute has_element?(view, "#policy-export-why")
       refute has_element?(view, "#policy-first-version")
-      assert has_element?(view, "#policy-tabs a", "Document")
       assert text(view, "#flash-info") =~ "api.example is allowed for the workspace. Version 1."
       assert text(view, "#policy-announce") == "Rule added. Version 1."
       assert text(view, "#nav-policy-mode") == "observe"
+
+      # With a document, History shows its two views.
+      view |> element("#policy-tabs-history") |> render_click()
+      assert has_element?(view, "#history-view button", "Changes")
+      assert has_element?(view, "#history-view button", "Document")
     end
   end
 
@@ -930,18 +1018,20 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       end
     end
 
-    test "the Document tab shows the document in force under the card, and a mode change in place",
+    test "History's Document view shows the document in force under the card, and a mode change in place",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
-      view |> element("#policy-tabs-document") |> render_click()
+      view |> element("#policy-tabs-history") |> render_click()
+      view |> element("#history-view button", "Document") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/document"))
 
-      # The page's own header, the card and the tabs, then the version in force.
-      [header, card, tabs, version] =
-        order(view, ~w(policy-header policy-mode policy-tabs policy-version-h))
+      # The page's own header, the card, the tabs and History's views, then the version in force.
+      [header, card, tabs, views, version] =
+        order(view, ~w(policy-header policy-mode policy-tabs history-view policy-version-h))
 
-      assert header < card and card < tabs and tabs < version
-      assert has_element?(view, "#policy-tabs-document[aria-current=page]")
+      assert header < card and card < tabs and tabs < views and views < version
+      assert has_element?(view, "#policy-tabs-history[aria-current=page]")
+      assert has_element?(view, "#history-view button[aria-pressed=true]", "Document")
       assert has_element?(view, "h1", "Policy")
       assert has_element?(view, "h2#policy-version-h", "Version 1")
       assert text(view, "#policy-page") =~ "In force"
@@ -949,7 +1039,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-mode-value") == "Observe"
       assert page_title(view) =~ "Version 1 · Policy"
 
-      # The document's bar holds Copy, the tab's one place for it; no Export on this tab.
+      # The document's bar holds Copy, the view's one place for it; no Export on this view.
       assert has_element?(
                view,
                "#version-doc .q-docwell-bar button#version-copy[aria-label=Copy][data-copy]"
@@ -958,7 +1048,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#version-export")
       refute has_element?(view, "#policy-export-button")
 
-      # Its views stay on the tab.
+      # Its views stay on the view.
       view |> element("#version-view button", "Document") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/document?view=document"))
       assert text(view, "#version-pretty") =~ ~s("mode" : "observe")
@@ -970,7 +1060,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(view, "#policy-mode")
       assert text(view, "#policy-mode-value") == "Enforce"
-      assert has_element?(view, "#policy-tabs-document[aria-current=page]")
+      assert has_element?(view, "#policy-tabs-history[aria-current=page]")
       assert has_element?(view, "h2#policy-version-h", "Version 2")
       assert text(view, "#version-strip") =~ "Mode enforce"
       assert text(view, "#version-pretty") =~ ~s("mode" : "enforce")
@@ -1452,7 +1542,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       :ok
     end
 
-    test "the document tab shows the current one in place", %{conn: conn, scope: scope} do
+    test "the Document view shows the current one in place", %{conn: conn, scope: scope} do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy/document")
 
@@ -1460,7 +1550,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "h2#policy-version-h", "Version 2")
       assert text(view, "#version-doc") =~ "v1 → v2 · 1 line added"
 
-      # Done on the export comes back to the tab.
+      # Done on the export comes back to the view.
       view = open(conn, scope, "/policy/versions/2/export")
       view |> element("#export-done") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/document"))
@@ -1469,12 +1559,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
     end
 
-    test "the versions list leads to the Document tab for the version in force, to its page for an older one",
+    test "the versions list leads to the Document view for the version in force, to its page for an older one",
          %{conn: conn, scope: scope} do
       document = workspace_path(scope, "/policy/document")
       older = workspace_path(scope, "/policy/versions/1")
 
-      # On the tab, the version in force is the page itself.
+      # On the view, the version in force is the page itself.
       view = open(conn, scope, "/policy/document")
       assert has_element?(view, "#ver-2[href='#{document}'][aria-current=page]")
       assert has_element?(view, "#ver-1[href='#{older}']")
@@ -1499,7 +1589,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(view, "h1", "Version 2")
 
-      # The frame's breadcrumb names the version after Policy; the Document tab is current.
+      # The frame's breadcrumb names the version after Policy; History is the current tab.
       assert has_element?(
                view,
                "#breadcrumb a[href='#{workspace_path(scope, "/policy")}']",
@@ -1507,7 +1597,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
              )
 
       assert has_element?(view, "#breadcrumb [aria-current=page]", "Version 2")
-      assert has_element?(view, "#policy-tabs-document[aria-current=page]")
+      assert has_element?(view, "#policy-tabs-history[aria-current=page]")
+      # A version keeps its own layout: History's views are not at its top.
+      refute has_element?(view, "#history-view")
       refute has_element?(view, "#policy-page nav.q-crumbs")
       assert text(view, "#policy-page") =~ "In force"
       assert text(view, "#version-strip") =~ "Allowed files.cdn.example"
@@ -1624,13 +1716,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "h1#policy-export-h.outline-none[tabindex='-1']")
       refute_push_event(view, "policy:focus", %{id: "policy-export-h"})
 
-      # Done goes back to the Document tab, the version in force under the card.
+      # Done goes back to History's Document view, the version in force under the card.
       view |> element("#policy-export a", "Done") |> render_click()
       assert_patch(view, workspace_path(scope, "/policy/document"))
       assert has_element?(view, "h2#policy-version-h.outline-none[tabindex='-1']", "Version 3")
       assert_push_event(view, "policy:focus", %{id: "policy-version-h"})
 
-      # The tab has no Export: the header's, on the other tabs, opens the page again.
+      # The view has no Export: the header's, on the tabs, opens the page again.
       refute has_element?(view, "#version-export")
       refute has_element?(view, "#policy-export-button")
       view |> element("#policy-tabs-rules") |> render_click()
@@ -1648,7 +1740,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert_push_event(view, "policy:focus", %{id: "policy-export-h"})
     end
 
-    test "the Document tab's document has Copy and Download in its bar, the tab no Export",
+    test "the Document view's document has Copy and Download in its bar, the view no Export",
          %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
       {:ok, configuration} = Policy.get_configuration(scope, nil, 3)

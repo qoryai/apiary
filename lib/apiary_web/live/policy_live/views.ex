@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
   The views the workspace's policy and a target's policy share: the history with its
-  diffs, one version with its document, the export page, a confirm in place with a list
+  diffs and the switch between its two views (its changes, the document in force), one
+  version with its document, the export page, a confirm in place with a list
   (`confirm_panel/1`, an edition's pages use it) and the list of keys. Function
-  components; the two
-  LiveViews load what they show through `ApiaryWeb.PolicyLive.Common`.
+  components; the two LiveViews load what they show through `ApiaryWeb.PolicyLive.Common`.
   """
   use ApiaryWeb, :html
 
@@ -36,6 +36,26 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   ## History
 
+  @doc """
+  The two views of a policy's History, at its top: its changes (`…/history`) and the
+  document in force (`…/document`), each a patch. Shown only while there is a document.
+  """
+  attr :base, :string, required: true
+  attr :current, :atom, required: true, values: [:changes, :document]
+
+  def history_switch(assigns) do
+    ~H"""
+    <.segments id="history-view" label={gettext("History")}>
+      <:segment patch={"#{@base}/history"} pressed={@current == :changes}>
+        {gettext("Changes")}
+      </:segment>
+      <:segment patch={"#{@base}/document"} pressed={@current == :document}>
+        {gettext("Document")}
+      </:segment>
+    </.segments>
+    """
+  end
+
   attr :history, :map, required: true
   attr :open, :any, default: nil
   attr :diff, :any, default: nil
@@ -44,10 +64,15 @@ defmodule ApiaryWeb.PolicyLive.Views do
   attr :summary, :map, required: true, doc: "%{versions:, since:}"
   attr :now, :any, required: true
 
+  attr :switch, :boolean,
+    default: false,
+    doc: "whether the policy has a document, so History shows its two views (`history_switch/1`)"
+
   def history_view(assigns) do
     ~H"""
     <div id="policy-history" class="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div class="q-filters">
+        <.history_switch :if={@switch} base={@base} current={:changes} />
         <span class="q-filters-grow"></span>
         <span id="history-summary" class="q-summary">
           <span>

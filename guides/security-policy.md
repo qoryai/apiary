@@ -192,7 +192,8 @@ it is stored.
 - **A version's page**, `/:org/:workspace/policy/versions/:n` and
   `/:org/:workspace/targets/:forge/:path/-/policy/versions/:n`, has the changes from any
   earlier version, the document indented for reading, and the bytes as served.
-  `/:org/:workspace/policy/document` is the document in force.
+  `/:org/:workspace/policy/document`, the Document view of History, is the document in
+  force.
 
 A run's page names the policy version the run last reported, as a link to that exact
 version, and says when an alive run is behind the version in force.

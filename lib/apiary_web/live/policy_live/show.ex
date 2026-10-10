@@ -4,9 +4,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
   place and are saved by one button, Network access (the
   hosts and paths allowed and denied, with the composer that reads a rule back before it
   is saved, and a link to the Network access page, what the runs reached), the targets
-  and their policy, the history with diffs, the document in force (the Document tab, which
-  shows the new version in place after a change), one version with its document, and the
-  export. The Network access page's rule links (`?rule=`) lead to the rule in that
+  and their policy, the history with diffs and, as its other view, the document in force
+  (which shows the new version in place after a change), one version with its document,
+  and the export. The Network access page's rule links (`?rule=`) lead to the rule in that
   section.
 
   One LiveView, six live actions, so a tab is a patch. A version and its export name
@@ -100,8 +100,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     |> follow_document()
   end
 
-  # The Document tab shows the version in force: after a change, read again with the page,
-  # it shows the new one in place.
+  # History's Document view shows the version in force: after a change, read again with
+  # the page, it shows the new one in place.
   defp follow_document(%{assigns: %{loaded: true, live_action: :document}} = socket),
     do: document(socket)
 
@@ -972,7 +972,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 }
                 copy
               />
-              <%!-- On the Document tab the document's own bar is the one place: Copy, Download. --%>
+              <%!-- On the Document view the document's own bar is the one place: Copy, Download. --%>
               <.button
                 :if={@live_action != :document}
                 id="policy-export-button"
@@ -1042,7 +1042,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
           rules={length(@rows)}
           targets={@target_total}
           changes={@change_total}
-          document={@managed? && @version != nil}
         />
 
         <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
@@ -1074,7 +1073,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
           scope={:workspace}
           summary={@summary}
           now={@now}
+          switch={@managed? && @version != nil}
         />
+        <div :if={@live_action == :document && @v} class="q-filters">
+          <.history_switch base={@base} current={:document} />
+        </div>
         <.version_head
           :if={@live_action == :document && @v}
           v={@v}
@@ -1131,7 +1134,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :heading, :string,
     default: "h1",
     values: ~w(h1 h2),
-    doc: "h2 under a page's own title, as a target's Policy tab and the Document tab have"
+    doc: "h2 under a page's own title, as a target's Policy tab and History's Document view have"
 
   attr :away, :boolean,
     default: false,
@@ -1199,7 +1202,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :rules, :integer, required: true
   attr :targets, :integer, required: true
   attr :changes, :integer, required: true
-  attr :document, :boolean, required: true
 
   attr :scope, :map,
     required: true,
@@ -1232,20 +1234,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
       >
         {gettext("History")}
       </:tab>
-      <:tab
-        :if={@document}
-        key={:document}
-        patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/document"}
-        icon="hero-document-text"
-      >
-        {gettext("Document")}
-      </:tab>
     </.page_tabs>
     """
   end
 
-  # The tab a live action is under: a version and its export are the Document's too.
-  defp tab_key(action) when action in [:version, :export, :document], do: :document
+  # The tab a live action is under: the document, a version and its export are History's.
+  defp tab_key(action) when action in [:document, :version, :export], do: :history
   defp tab_key(action), do: action
 
   defp rules_tab(assigns) do
