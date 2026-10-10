@@ -865,7 +865,10 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp ended_sentence("pending", _run), do: gettext("Registered only")
+  # A run that registered and posted nothing yet, or, stored before the registration
+  # replaced the ping, one that pinged and posted nothing else.
+  defp ended_sentence("pending", %{registered_at: %DateTime{}}), do: gettext("Registered only")
+  defp ended_sentence("pending", _run), do: gettext("Ping only")
 
   defp ended_sentence("completed", %{duration_ms: ms}) when is_integer(ms),
     do: gettext("Completed %{duration} after it started", duration: format_duration_ms(ms))

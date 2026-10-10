@@ -207,7 +207,9 @@ defmodule ApiaryWeb.Contract.BacklogLoadTest do
 
     for %{run: run} = flushed <- runs do
       stored_run = Repo.get!(Run, run.id)
-      assert stored_run.event_count == 6 + length(flushed.backlog)
+      # Its live events, from sequence 2 (the registration stands for 1, never posted), and
+      # its backlog.
+      assert stored_run.event_count == map_size(flushed.live) + length(flushed.backlog)
     end
 
     deliveries =

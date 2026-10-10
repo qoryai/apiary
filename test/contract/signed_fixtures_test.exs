@@ -108,7 +108,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
     for name <- @skipped, do: assert(name in names)
   end
 
-  for {name, fixture} <- @fixtures, name not in @skipped do
+  for {name, _fixture} <- @fixtures, name not in @skipped do
     @name name
     # A reload is answered only where the workspace serves a run configuration, which is
     # the security feature's: without it, no reload is answered.
