@@ -469,7 +469,7 @@ vendored byte for byte as `priv/contract/runtimes.json` at the commit in
 `.forager-contract-ref` (`Apiary.Kinds.Runtimes`). Forager generates it from its built-in
 descriptors; it is read at compile time, and a list missing from a runtime fails the
 compile. Services come from a service definition, the one source of a service's hosts,
-paths, auth and declared secrets, whose `auth` is Apiary's own: its `scheme`, `header`
+paths, auth and declared secrets, whose `auth` is Qory Apiary's own: its `scheme`, `header`
 and `username` are the members of the contract's `auth.schema.json`, vendored beside the
 catalogue, with a username of at most 128 characters, and `secret` and `username_secret`
 are ids of secrets Qory Apiary stores for the definition, `secret` required: built in (`priv/services/*.json`, `Apiary.Kinds.Services`,

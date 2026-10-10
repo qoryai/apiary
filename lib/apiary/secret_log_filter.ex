@@ -6,7 +6,7 @@ defmodule Apiary.SecretLogFilter do
   after it with `[FILTERED]`, in a log event's message and in its metadata, before any
   handler sees the event.
 
-  Apiary never has a key's secret: a key made in a browser sends its public half alone
+  Qory Apiary never has a key's secret: a key made in a browser sends its public half alone
   (`ApiaryWeb.NodeLive.AccessKey`). But an event can still carry what a client sent: the
   parameters of a LiveView event, which `Phoenix.LiveView.Logger` logs at debug before the
   page refuses an event holding a secret, or the arguments and the last message that a
@@ -17,7 +17,7 @@ defmodule Apiary.SecretLogFilter do
 
   An enrolment code (`qec_` and 26 characters of Crockford base32, which a person may type
   in groups split by `-`) is a credential too, for the 15 minutes it works: a machine that
-  sends it gets a key on the node. Apiary shows it once, inside the command, and logs it
+  sends it gets a key on the node. Qory Apiary shows it once, inside the command, and logs it
   nowhere; the filter takes it as it takes a secret, should a client send it back in an
   event's parameters, or a crash print it. The fingerprint after it in the command (`.`
   and the server key's fingerprint) is public, and stays.

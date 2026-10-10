@@ -15,7 +15,7 @@ defmodule Apiary.AccessKeys do
       authority, and the key itself the actor of its entry, `access_key.add`;
     * a key **made in a browser** (`add_access_key/3`, `access_key.add`) is added by its
       public key alone, active as it is added, marked `arrived_by: :browser`: its secret
-      stayed in the browser that made it, and Apiary never receives it;
+      stayed in the browser that made it, and Qory Apiary never receives it;
     * a key is **revoked** (`revoke_access_key/2`, `access_key.revoke`), and every key of
       a deleted node with it (`Apiary.Nodes.delete_node/2`).
 
@@ -166,7 +166,7 @@ defmodule Apiary.AccessKeys do
   key_variable/1 is the variable that names `key` to Forager when it is given its key in
   variables rather than in the Forager file: `QORY_ACCESS_KEY_ID`, the key's id. It is the
   key's part of what Forager is given, and nothing of it is secret. The key's secret,
-  `QORY_ACCESS_KEY_SECRET`, is not Apiary's to give; the server's part is
+  `QORY_ACCESS_KEY_SECRET`, is not Qory Apiary's to give; the server's part is
   `server_variable/1`.
   """
   @spec key_variable(AccessKey.t()) :: {String.t(), String.t()}

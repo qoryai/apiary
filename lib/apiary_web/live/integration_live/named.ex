@@ -12,7 +12,7 @@ defmodule ApiaryWeb.IntegrationLive.Named do
   asked for by an exact one (`Apiary.Integrations.request_release/2`).
 
   The list is empty: a release joins it only once it can be added, its release carrying
-  the `description.json` and `checksums.txt` Apiary reads.
+  the `description.json` and `checksums.txt` Qory Apiary reads.
   """
 
   @enforce_keys [:name, :source, :about]

@@ -1,7 +1,7 @@
 defmodule Apiary.Access.Action do
   @moduledoc """
   Action is one verb of `Apiary.Access`: something a person, an access key or the instance
-  may be allowed to do, named once, with everything the rest of the apiary asks of it.
+  may be allowed to do, named once, with everything the rest of Qory Apiary asks of it.
 
   - `name`: the action's atom, `:"noun.verb"`, the name the audit trail records.
   - `feature`: the feature it belongs to (`Apiary.Features`), nil for one every instance

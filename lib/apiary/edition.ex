@@ -1,6 +1,6 @@
 defmodule Apiary.Edition do
   @moduledoc """
-  The edition: what this build of the apiary is beyond its core, named once in the
+  The edition: what this build of Qory Apiary is beyond its core, named once in the
   configuration and asked at the few places where an edition may add to the core or narrow
   it.
 

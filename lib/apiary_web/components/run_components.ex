@@ -754,7 +754,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A subject in words, as text: its type and ref as given, "pull request #412", for a
-  tooltip. Apiary knows no subject types, so neither is mapped or translated.
+  tooltip. Qory Apiary knows no subject types, so neither is mapped or translated.
   `subject_name/1` is the same words as markup.
   """
   def subject_words(subject), do: "#{subject["type"]} #{subject["ref"]}"
@@ -1905,7 +1905,7 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   How long a run ran, as its row and its preview say it: the duration its exit gave, as the
   run page says it, also for a run its exit said was lost; for a running run the time since
-  it started, ticking; for a quiet one, or one Apiary marked lost, "at least" what it last
+  it started, ticking; for a quiet one, or one Qory Apiary marked lost, "at least" what it last
   reported; nothing for a run that has only pinged. A run that did not start
   (`Apiary.Runs.Run.refused?/1`) never ran: the row leaves its cell empty and the preview
   leaves out its Duration.

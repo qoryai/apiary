@@ -32,7 +32,7 @@
       "items": {"type": "string", "maxLength": 512, "pattern": "^/[^*?#\\s]*\\*?$"}
     },
     "auth": {
-      "description": "How the value is sent: Apiary's own auth. Its scheme, header and username are the members of the Forager contract's auth.schema.json, with a username of at most 128 characters, and a header only with the header scheme. secret and username_secret are ids of secrets Qory Apiary stores for the definition.",
+      "description": "How the value is sent: Qory Apiary's own auth. Its scheme, header and username are the members of the Forager contract's auth.schema.json, with a username of at most 128 characters, and a header only with the header scheme. secret and username_secret are ids of secrets Qory Apiary stores for the definition.",
       "type": "object",
       "additionalProperties": false,
       "required": ["scheme", "secret"],
