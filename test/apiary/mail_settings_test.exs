@@ -93,6 +93,12 @@ defmodule Apiary.MailSettingsTest do
 
   defp row, do: Repo.get!(Settings, true)
 
+  # Makes the saved password one the instance cannot read, as a row changed outside the
+  # application is: its key id names a key the instance does not hold. Under another
+  # APIARY_ENCRYPTION_SECRET the instance does not start at all (`Apiary.KeyCheck`).
+  defp unreadable!,
+    do: Repo.update_all(Settings, set: [mail_key_id: "0000000000000000"])
+
   setup do
     Apiary.EditionKit.hide_instance_organisation()
     %{scope: scope, user: user} = sign_up_fixture()
@@ -220,6 +226,22 @@ defmodule Apiary.MailSettingsTest do
       refute row().smtp_password_ciphertext == first
     end
 
+    test "a saved password that cannot be read is asked for again, saying so", %{scope: scope} do
+      save!(scope)
+      unreadable!()
+
+      assert {:error, changeset} =
+               Mail.save_settings(scope, %{@attrs | "smtp_password" => ""}, &url/1)
+
+      assert errors_on(changeset) == %{
+               smtp_password: ["enter it again: the saved one cannot be read"]
+             }
+
+      # Given again, it is saved.
+      save!(scope)
+      assert Password.decrypt(row()) == {:ok, @password}
+    end
+
     test "a username needs a password, and a password a username", %{scope: scope} do
       assert {:error, changeset} =
                Mail.save_settings(scope, %{@attrs | "smtp_password" => ""}, &url/1)
@@ -261,6 +283,31 @@ defmodule Apiary.MailSettingsTest do
 
       assert {:ok, _settings, :not_sent} = Mail.save_settings(scope, @attrs, &url/1)
       assert Mail.state(row()) == :pending
+      # No link went out, so none waits.
+      refute Mail.test_link_waiting?(row())
+      assert Repo.all_by(UserToken, context: "instance_mail") == []
+    end
+
+    test "a test link waits while it can still be followed", %{scope: scope, user: user} do
+      save!(scope)
+      assert Mail.test_link_waiting?(row())
+
+      # Its 60 minutes past.
+      Repo.update_all(from(t in UserToken, where: t.context == "instance_mail"),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -61, :minute)]
+      )
+
+      refute Mail.test_link_waiting?(row())
+
+      # The admin's address changed since.
+      save!(scope)
+
+      Repo.update_all(from(u in User, where: u.id == ^user.id),
+        set: [email: "dana@example.com"]
+      )
+
+      refute Mail.test_link_waiting?(row())
+      refute Mail.test_link_waiting?(nil)
     end
 
     test "a save ends every test link sent before, and turns mail off until the new one is followed",
@@ -450,8 +497,16 @@ defmodule Apiary.MailSettingsTest do
       assert Mail.mailer_config() == nil
     end
 
-    test "off when the password cannot be read with this secret" do
-      put_env(KeyDerivation, secret: :crypto.strong_rand_bytes(32))
+    test "the Backup guide says the saved password cannot be read, not that a secret turns mail off" do
+      # Another APIARY_ENCRYPTION_SECRET stops the boot (`Apiary.KeyCheck`): it never
+      # leaves an instance running with mail off.
+      guide = "guides/backup.md" |> File.read!() |> String.split() |> Enum.join(" ")
+      refute guide =~ "without it, mail from those settings is off"
+      assert guide =~ "Where that saved password cannot be read, mail from those settings is off"
+    end
+
+    test "off when the password cannot be read" do
+      unreadable!()
 
       assert Mail.state(row()) == :unreadable
       assert Mail.source() == :none
@@ -480,9 +535,12 @@ defmodule Apiary.MailSettingsTest do
 
     test "says when the saved password cannot be read, and nothing of it", %{scope: scope} do
       save!(scope)
-      put_env(KeyDerivation, secret: :crypto.strong_rand_bytes(32))
+      unreadable!()
 
       log = capture_log(fn -> start_supervised!(Cache) end)
+
+      assert Cache.unreadable_message() ==
+               "The SMTP password saved in Instance settings › Mail cannot be read, so mail is off. An instance admin enters it again there."
 
       assert log =~ Cache.unreadable_message()
       refute log =~ @password

@@ -13,6 +13,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
   @moduletag needs: :instance_mail
 
   import Phoenix.LiveViewTest
+  import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures, only: [member_fixture: 1, member_fixture: 2]
 
   alias Apiary.Mail
@@ -55,6 +56,8 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
   # The path of the test link in the email the admin was sent.
   @subject "Turn on mail for Qory Apiary"
+
+  @no_link "No test link is waiting: save the settings again to send one."
 
   defp sent_path do
     assert_received {:email, %{subject: @subject} = email}
@@ -169,8 +172,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       conn = get(conn, path)
       assert redirected_to(conn) == ~p"/instance/mail"
 
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "This link did not turn mail on: it has expired, it was sent to another admin, or the settings were saved again since."
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "This link no longer turns mail on."
     end
 
     test "for another instance admin, the link does nothing, and the page says who it waits for",
@@ -187,7 +189,7 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       conn = get(conn, path)
       assert redirected_to(conn) == ~p"/instance/mail"
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "This link did not turn mail on"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "This link no longer turns mail on."
       assert Mail.state(Mail.settings()) == :pending
 
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
@@ -227,21 +229,51 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
                "Saved, but the test link could not be sent through these settings. Check them and save again."
 
       refute has_element?(view, "#mail-pending")
+      refute has_element?(view, "#mail-no-link")
       assert Mail.state(Mail.settings()) == :pending
+
+      # Opened again: no link waits, and the page says what to do.
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      refute has_element?(view, "#mail-pending")
+      assert text(view, "#mail-no-link") == @no_link
     end
 
-    test "says when the saved password cannot be read with this secret", %{conn: conn} do
+    test "once the test link no longer works, says so in place of who it waits for",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      assert has_element?(view, "#mail-pending")
+      refute has_element?(view, "#mail-no-link")
+
+      Apiary.Repo.update_all(
+        from(t in Apiary.Accounts.UserToken, where: t.context == "instance_mail"),
+        set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -61, :minute)]
+      )
+
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      refute has_element?(view, "#mail-pending")
+      assert text(view, "#mail-no-link") == @no_link
+
+      # Another admin sees the same.
+      Mail.put_test_source(:env)
+      other = member_fixture(scope, :owner)
+      Mail.put_test_source(:none)
+      {:ok, view, _html} = live(log_in_user(build_conn(), other.user), ~p"/instance/mail")
+      refute has_element?(view, "#mail-pending")
+      assert text(view, "#mail-no-link") == @no_link
+    end
+
+    test "says when the saved password cannot be read", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
       save(view)
 
-      before = Application.get_env(:apiary, Apiary.KeyDerivation)
-      Application.put_env(:apiary, Apiary.KeyDerivation, secret: :crypto.strong_rand_bytes(32))
-      on_exit(fn -> Application.put_env(:apiary, Apiary.KeyDerivation, before) end)
+      # A row changed outside the application: its key id names no key the instance holds.
+      Apiary.Repo.update_all(Apiary.Mail.Settings, set: [mail_key_id: "0000000000000000"])
 
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
 
       assert text(view, "#mail-status") ==
-               "Off: the saved password cannot be read with this server's encryption secret. Enter it again and save."
+               "Off: the saved password cannot be read. Enter it again and save."
 
       refute text(view, "#mail_form") =~ "Saved, and never shown."
     end
@@ -267,6 +299,10 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
 
       refute has_element?(view, "#mail_form")
       refute html =~ @password
+
+      refute inspect(:sys.get_state(view.pid), limit: :infinity, printable_limit: :infinity) =~
+               @password
+
       assert text(view, "#mail-env-relay-value") == "smtp.example.com"
       assert text(view, "#mail-env-port-value") == "465"
       assert text(view, "#mail-env-tls-value") == "From the start (port 465)"

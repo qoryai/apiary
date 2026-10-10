@@ -110,6 +110,15 @@ defmodule Apiary.FeaturesTest do
       assert Features.parse("instance_mail") == {:ok, [:instance_mail]}
     end
 
+    test "the Install guide says no feature needs observability that does not" do
+      guide = File.read!("guides/install.md")
+
+      free =
+        for f <- Features.all() -- [:observability], :observability not in needs_all(f), do: f
+
+      if free != [], do: refute(guide =~ ~r/every other feature\s+needs it/)
+    end
+
     test "a name that is no feature is a mistake in the caller" do
       assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
         Features.needs(:dispatch)

@@ -71,9 +71,7 @@ defmodule ApiaryWeb.InstanceLive.Mail do
               {gettext("On since %{day}.", day: Format.day(@settings.mail_verified_at))}
             </.notice>
             <.notice :if={@state == :unreadable} kind={:error}>
-              {gettext(
-                "Off: the saved password cannot be read with this server's encryption secret. Enter it again and save."
-              )}
+              {gettext("Off: the saved password cannot be read. Enter it again and save.")}
             </.notice>
           </div>
 
@@ -159,7 +157,11 @@ defmodule ApiaryWeb.InstanceLive.Mail do
               )}
             </.notice>
           </div>
-          <p :if={@state == :pending and @sent != :not_sent} id="mail-pending" class="q-foot-note">
+          <p
+            :if={@state == :pending and @sent != :not_sent and @link_waiting}
+            id="mail-pending"
+            class="q-foot-note"
+          >
             {if @settings.mail_saved_by_id == @current_scope.user.id,
               do:
                 gettext(
@@ -170,6 +172,13 @@ defmodule ApiaryWeb.InstanceLive.Mail do
                 gettext(
                   "Mail turns on when the admin who saved these settings follows the link we sent them."
                 )}
+          </p>
+          <p
+            :if={@state == :pending and @sent != :not_sent and not @link_waiting}
+            id="mail-no-link"
+            class="q-foot-note"
+          >
+            {gettext("No test link is waiting: save the settings again to send one.")}
           </p>
         </SettingsComponents.part>
       </.settings_page>
@@ -230,20 +239,24 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   end
 
   # What the page shows, read now: where mail comes from, and the saved settings, their
-  # state and the form, which never holds a password.
+  # state, whether a test link waits, and the form. None of it holds a password.
   defp load(socket) do
     settings = Mail.settings()
 
     assign(socket,
       source: Mail.source(),
-      env: Mail.env(),
+      env: env_shown(),
       default_sender: Apiary.Mailer.default_address(),
       settings: settings,
       state: Mail.state(settings),
+      link_waiting: Mail.test_link_waiting?(settings),
       password_saved: match?({:ok, _password}, settings && Password.decrypt(settings)),
       form: settings_form(settings)
     )
   end
+
+  # The environment's settings the page shows: never the password.
+  defp env_shown, do: Keyword.take(Mail.env(), [:relay, :port, :ssl, :tls, :username])
 
   defp settings_form(settings) do
     (settings || %Settings{})

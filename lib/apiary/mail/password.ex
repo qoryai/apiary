@@ -4,9 +4,8 @@ defmodule Apiary.Mail.Password do
   (`Apiary.Mail`): AES-256-GCM (`Apiary.Secrets.Cipher`) under the key
   `Apiary.KeyDerivation` derives for the purpose `:mail`, with a random 96-bit nonce for
   each encryption. `smtp_password_ciphertext` holds the nonce, the ciphertext and the
-  tag; `mail_key_id` the key's id, so a password encrypted under a key the instance no
-  longer holds, its `APIARY_ENCRYPTION_SECRET` lost or replaced, is told apart from one
-  that was changed.
+  tag; `mail_key_id` the key's id, so a password encrypted under a key the instance does
+  not hold is told apart from one that was changed.
 
   **The associated data** binds the password to its row and its field, and to where it is
   sent:

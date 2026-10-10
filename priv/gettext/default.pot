@@ -7711,6 +7711,11 @@ msgstr ""
 msgid "No targets yet"
 msgstr ""
 
+#: lib/apiary_web/live/instance_live/mail.ex
+#, elixir-autogen, elixir-format
+msgid "No test link is waiting: save the settings again to send one."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No variable matches"
@@ -8141,7 +8146,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/mail.ex
 #, elixir-autogen, elixir-format
-msgid "Off: the saved password cannot be read with this server's encryption secret. Enter it again and save."
+msgid "Off: the saved password cannot be read. Enter it again and save."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -11554,7 +11559,7 @@ msgstr ""
 
 #: lib/apiary_web/controllers/instance_mail_controller.ex
 #, elixir-autogen, elixir-format
-msgid "This link did not turn mail on: it has expired, it was sent to another admin, or the settings were saved again since."
+msgid "This link no longer turns mail on."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

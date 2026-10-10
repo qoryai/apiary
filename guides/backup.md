@@ -151,10 +151,11 @@ a key derived from it.
 
 <!-- feature: instance_mail -->
 
-It also encrypts the SMTP password saved in Instance settings › Mail. A restore needs the
-`APIARY_ENCRYPTION_SECRET` the dump was taken under to keep that password: without it, mail
-from those settings is off until an instance admin enters the password again there. Mail
-set by `SMTP_RELAY` and the variables beside it does not depend on it.
+It also encrypts the SMTP password saved in Instance settings › Mail, which a restore keeps
+with the secret the dump recorded. Where that saved password cannot be read, mail from
+those settings is off, and the page and the log say so, until an instance admin enters the
+password again there. Mail set by `SMTP_RELAY` and the variables beside it does not depend
+on it.
 <!-- /feature -->
 
 <!-- feature: secrets -->

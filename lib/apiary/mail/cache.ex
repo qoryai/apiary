@@ -27,7 +27,7 @@ defmodule Apiary.Mail.Cache do
   @key {__MODULE__, :stored}
   @topic "instance_mail"
 
-  @unreadable "The SMTP password saved in Instance settings › Mail cannot be read with this APIARY_ENCRYPTION_SECRET, so mail is off. An instance admin enters it again there."
+  @unreadable "The SMTP password saved in Instance settings › Mail cannot be read, so mail is off. An instance admin enters it again there."
 
   @doc "Starts the cache, named after its module."
   @spec start_link(keyword) :: GenServer.on_start()

@@ -97,6 +97,11 @@ msgstr ""
 msgid "enter it again: the relay, port, TLS or username changed"
 msgstr ""
 
+#: lib/apiary/mail.ex
+#, elixir-autogen, elixir-format
+msgid "enter it again: the saved one cannot be read"
+msgstr ""
+
 #: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "has already been invited"

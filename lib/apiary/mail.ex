@@ -26,7 +26,7 @@ defmodule Apiary.Mail do
   | `:none` | Nothing saved. |
   | `:pending` | Saved; mail is off until the admin who saved them follows the test link. |
   | `:on` | Saved and followed: the source is `:settings`. |
-  | `:unreadable` | Saved with a password the instance cannot decrypt, its `APIARY_ENCRYPTION_SECRET` lost or replaced, or the row changed outside the application: mail is off until an admin enters it again. |
+  | `:unreadable` | Saved with a password the instance cannot read, such as a row changed outside the application: mail is off until an admin enters it again. |
 
   Each node keeps a copy (`Apiary.Mail.Cache`), read again over `Apiary.PubSub` whenever
   they change.
@@ -335,7 +335,7 @@ defmodule Apiary.Mail do
       {:ok, {settings, token}} ->
         Cache.changed()
         settings = %{settings | smtp_password: nil}
-        {:ok, settings, send_test_link(settings, user, url_fun.(token))}
+        {:ok, settings, send_test_link(settings, user, token, url_fun.(token))}
 
       {:error, _changeset} = error ->
         error
@@ -380,43 +380,82 @@ defmodule Apiary.Mail do
           mail_key_id: key_id
         )
 
-      keeps_password?(current, next) ->
-        changeset
+      not is_binary(current.smtp_password_ciphertext) ->
+        Ecto.Changeset.add_error(
+          changeset,
+          :smtp_password,
+          dgettext_noop("errors", "can't be blank")
+        )
 
-      is_binary(current.smtp_password_ciphertext) ->
+      not bound_alike?(current, next) ->
         Ecto.Changeset.add_error(
           changeset,
           :smtp_password,
           dgettext_noop("errors", "enter it again: the relay, port, TLS or username changed")
         )
 
+      match?({:ok, _password}, Password.decrypt(current)) ->
+        changeset
+
       true ->
         Ecto.Changeset.add_error(
           changeset,
           :smtp_password,
-          dgettext_noop("errors", "can't be blank")
+          dgettext_noop("errors", "enter it again: the saved one cannot be read")
         )
     end
   end
 
-  # Whether the saved password stays: nothing it is bound to changed, and it can be read.
-  defp keeps_password?(current, next) do
+  # Whether nothing the saved password is bound to changed.
+  defp bound_alike?(current, next) do
     Enum.all?(
       [:smtp_relay, :smtp_port, :smtp_tls, :smtp_username],
       &(Map.fetch!(current, &1) == Map.fetch!(next, &1))
-    ) and match?({:ok, _password}, Password.decrypt(current))
+    )
   end
 
-  # Sends the test link through the settings just saved, whatever the source is.
-  defp send_test_link(settings, user, url) do
+  # Sends the test link through the settings just saved, whatever the source is. A link
+  # that could not be sent is ended, so none waits.
+  defp send_test_link(settings, user, token, url) do
     with config when is_list(config) <- settings_config(settings),
          {:ok, _email} <-
            UserNotifier.deliver_mail_test_link(user, url, config, settings.mail_from) do
       :sent
     else
-      _not_sent -> :not_sent
+      _not_sent ->
+        {:ok, decoded} = Base.url_decode64(token, padding: false)
+        hashed = :crypto.hash(:sha256, decoded)
+
+        Repo.delete_all(
+          from t in UserToken, where: t.context == @token_context and t.token == ^hashed
+        )
+
+        :not_sent
     end
   end
+
+  @doc """
+  test_link_waiting?/1 is whether the settings saved, `settings`, still wait on a test link
+  that can turn them on: one sent to the admin who saved them, to their current address,
+  less than #{@test_link_minutes} minutes ago. False for settings already on, or for none.
+  """
+  @spec test_link_waiting?(Settings.t() | nil) :: boolean
+  def test_link_waiting?(%Settings{
+        smtp_relay: relay,
+        mail_verified_at: nil,
+        mail_saved_by_id: user_id
+      })
+      when is_binary(relay) and is_binary(user_id) do
+    Repo.exists?(
+      from t in UserToken,
+        join: u in assoc(t, :user),
+        where: t.context == @token_context and t.user_id == ^user_id,
+        where: t.sent_to == u.email and is_nil(u.deleted_at),
+        where: t.inserted_at > ago(^@test_link_minutes, "minute")
+    )
+  end
+
+  def test_link_waiting?(_settings), do: false
 
   @doc "test_link_minutes/0 is how long a test link works: #{@test_link_minutes} minutes."
   @spec test_link_minutes() :: pos_integer

@@ -403,7 +403,7 @@ environment variable SMTP_TLS must be always, if_available or never
 | `QORY_FEATURES` | `all` | The features this instance has: `all`; `all-` and the features left out, separated by commas; or the features on, separated by commas. Not set, or empty, is `all`. |
 
 - `observability`: the record, the runs with their terminals and timelines, the
-  connections, and retention. Every instance has it, and every other feature needs it.
+  connections, and retention. Every instance has it.
 <!-- feature: security -->
 - `security`: the security policy, and the run configuration served to gateways. Needs
   `observability`.

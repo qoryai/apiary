@@ -9,8 +9,8 @@ defmodule ApiaryWeb.InstanceMailController do
   admin, signed in as themselves, within its time, it turns mail on and confirms their
   address (`Apiary.Mail.turn_on/2`), and leads to the page with a line saying so. It signs
   no one in and changes no password. Followed by another instance admin, or once it has
-  expired or been replaced, it changes nothing, and the page says it did not turn mail
-  on; for anyone else it is a path that does not exist (`ApiaryWeb.NotFound`). The token
+  expired or been replaced, it changes nothing, and the page says the link no longer
+  turns mail on; for anyone else it is a path that does not exist (`ApiaryWeb.NotFound`). The token
   is in the path, so `ApiaryWeb.RequestLog` logs the path without it.
   """
   use ApiaryWeb, :controller
@@ -30,12 +30,7 @@ defmodule ApiaryWeb.InstanceMailController do
       :error ->
         if Access.instance_admin?(scope) do
           conn
-          |> put_flash(
-            :error,
-            gettext(
-              "This link did not turn mail on: it has expired, it was sent to another admin, or the settings were saved again since."
-            )
-          )
+          |> put_flash(:error, gettext("This link no longer turns mail on."))
           |> redirect(to: ~p"/instance/mail")
         else
           raise ApiaryWeb.NotFound
