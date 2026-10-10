@@ -425,6 +425,7 @@ defmodule Apiary.SetupTest do
   end
 
   test "first_sign_up_line/0 is the core's line" do
-    assert Apiary.Edition.first_sign_up_line() == "Your organisation and its first workspace."
+    assert Apiary.Edition.Core.first_sign_up_line() ==
+             "Your organisation and its first workspace."
   end
 end

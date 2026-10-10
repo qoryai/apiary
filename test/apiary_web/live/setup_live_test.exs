@@ -54,7 +54,6 @@ defmodule ApiaryWeb.SetupLiveTest do
              |> String.trim() ==
                Apiary.Edition.first_sign_up_line()
 
-      assert html =~ "Your organisation and its first workspace."
       assert has_element?(lv, "#setup-admin", "You become this instance's admin.")
 
       assert fields(lv) == [
