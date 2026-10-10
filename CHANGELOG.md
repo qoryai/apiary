@@ -60,6 +60,14 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   `Apiary.Release.password_link/1` prints one for an hour, mail or not, and
   `grant_instance_admin/2`'s set-up of a new instance prints one in place of the log-in
   link when no mail is set. `Apiary.Accounts.build_password_link/3` makes them.
+- The log-in page follows mail. Without mail it asks for the email address and the
+  password only, and says to ask an admin of the instance for a password link when the
+  password is forgotten. An expired log-in link's page then leads to the log-in page, and
+  an expired link, to log in or to change an address, says only that it has expired, not
+  to ask for a new one; Account settings no longer call the password optional beside
+  log-in links. With mail a log-in link stays the default and a password the other way
+  in, whose form's **Email me a link** sends a log-in link to the address typed, counted
+  as one asked for.
 - An account whose password was set before its address was confirmed loses that password
   at its first log-in link, which confirms the address and ends every other session; the
   page says so. A sign-up whose confirmation email cannot be sent keeps the account made,

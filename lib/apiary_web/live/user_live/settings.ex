@@ -118,7 +118,10 @@ defmodule ApiaryWeb.UserLive.Settings do
               <.button type="submit" loading_text={gettext("Saving")}>
                 {gettext("Save password")}
               </.button>
-              <:note>{gettext("Optional. Log-in links keep working either way.")}</:note>
+              <%!-- Without mail there are no log-in links: the password is the way in. --%>
+              <:note :if={@mail?}>
+                {gettext("Optional. Log-in links keep working either way.")}
+              </:note>
             </SettingsComponents.save>
           </.form>
         </SettingsComponents.part>
@@ -295,7 +298,15 @@ defmodule ApiaryWeb.UserLive.Settings do
           put_flash(socket, :info, gettext("Your email address is changed."))
 
         {:error, _} ->
-          put_flash(socket, :error, gettext("That link has expired. Ask for a new one below."))
+          # Without mail no new link can be asked for: the address cannot be changed.
+          put_flash(
+            socket,
+            :error,
+            if(Apiary.Mail.configured?(),
+              do: gettext("That link has expired. Ask for a new one below."),
+              else: gettext("That link has expired.")
+            )
+          )
       end
 
     {:ok, push_navigate(socket, to: ~p"/users/settings")}

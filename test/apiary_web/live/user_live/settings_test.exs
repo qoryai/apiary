@@ -163,6 +163,21 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       %{conn: log_in_user(conn, user), user: user}
     end
 
+    test "with mail, the password is optional beside log-in links", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#password_form", "Optional. Log-in links keep working either way.")
+    end
+
+    test "without mail, the password form says nothing of log-in links", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+      {:ok, lv, html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#password_form button[type=submit]", "Save password")
+      refute html =~ "Log-in links keep working"
+      refute html =~ "Optional."
+    end
+
     test "updates the user password", %{conn: conn, user: user} do
       new_password = valid_user_password()
 
@@ -257,6 +272,14 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert path == ~p"/users/settings"
       assert %{"error" => message} = flash
       assert message == "That link has expired. Ask for a new one below."
+    end
+
+    test "without mail, an expired link does not offer a new one", %{conn: conn} do
+      Apiary.Mail.put_test_source(:none)
+
+      {:error, redirect} = live(conn, ~p"/users/settings/confirm-email/oops")
+      assert {:live_redirect, %{to: "/users/settings", flash: %{"error" => message}}} = redirect
+      assert message == "That link has expired."
     end
 
     test "does not update email with invalid token", %{conn: conn, user: user} do

@@ -63,7 +63,14 @@ defmodule ApiaryWeb.UserSessionController do
 
       _ ->
         conn
-        |> put_flash(:error, gettext("That link has expired. Ask for a new one below."))
+        # Without mail the log-in page asks for no link: it takes a password.
+        |> put_flash(
+          :error,
+          if(Apiary.Mail.configured?(),
+            do: gettext("That link has expired. Ask for a new one below."),
+            else: gettext("That link has expired.")
+          )
+        )
         |> redirect(to: ~p"/users/log-in")
     end
   end

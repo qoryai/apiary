@@ -6,6 +6,11 @@ defmodule ApiaryWeb.UserLive.LoginTest do
 
   @remember_me_cookie "_apiary_web_user_remember_me"
 
+  # An element's text as read: its tags gone, its runs of white space one space.
+  defp visible_text(html) do
+    html |> LazyHTML.from_fragment() |> LazyHTML.text() |> String.split() |> Enum.join(" ")
+  end
+
   defp password_mode(lv) do
     lv |> element("button[phx-click=toggle_mode]") |> render_click()
     lv
@@ -211,6 +216,153 @@ defmodule ApiaryWeb.UserLive.LoginTest do
       assert html =~ "That email and password do not match."
       assert has_element?(lv, "#login_form input[type=password]")
       assert has_element?(lv, ~s|#login_form_email[value="test@email.com"]|)
+    end
+  end
+
+  describe "a forgotten password, with mail" do
+    test "the password form offers a link; the link form does not need it", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
+
+      refute html =~ "Forgot your password?"
+      html = lv |> password_mode() |> render()
+
+      assert html =~ "Forgot your password?"
+      # The period follows the button: no space between them.
+      assert lv |> element("#login_forgot") |> render() =~
+               ~r{\A<p[^>]*>\s*Forgot your password\?\s*<button[^>]*>\s*Email me a link\s*</button>\.\s*</p>\z}
+
+      assert has_element?(lv, "#login_forgot button[phx-click=email_link]", "Email me a link")
+      refute html =~ "Ask an admin"
+    end
+
+    test "Email me a link sends a log-in link to the typed address", %{conn: conn} do
+      user = user_fixture()
+
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
+      lv |> form("#login_form", user: %{email: user.email}) |> render_change()
+
+      html = lv |> element("#login_forgot button") |> render_click()
+
+      assert html =~ "Check your email"
+      assert html =~ "a log-in link is on its way"
+      refute has_element?(lv, "#login_form")
+
+      assert Apiary.Repo.get_by!(Apiary.Accounts.UserToken, user_id: user.id).context ==
+               "login"
+    end
+
+    test "Email me a link answers an address that cannot be one in the field", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
+      lv |> form("#login_form", user: %{email: "dana"}) |> render_change()
+
+      html = lv |> element("#login_forgot button") |> render_click()
+
+      assert has_element?(lv, "#login_form_email-error", "Enter an email address")
+      refute html =~ "Check your email"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == 0
+    end
+  end
+
+  describe "without mail" do
+    # The account is made first, while the test's mail is the suite's: its fixture logs
+    # in with an emailed link.
+    setup do
+      user = user_fixture() |> set_password()
+      Apiary.Mail.put_test_source(:none)
+      %{user: user}
+    end
+
+    test "asks for the email and the password, and offers no link", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
+
+      assert html =~ "Log in to Qory Apiary"
+      assert has_element?(lv, "#login_form input[type=email]")
+      assert has_element?(lv, "#login_form input[type=password]")
+      assert has_element?(lv, "#login_form button", "Log in")
+      assert has_element?(lv, ~s|#login_form input[type=checkbox][name="user[remember_me]"]|)
+
+      assert lv |> element("#login_forgot") |> render() |> visible_text() ==
+               "Forgot your password? Ask an admin of this Qory Apiary for a password link."
+
+      refute has_element?(lv, "#login_forgot button")
+      refute has_element?(lv, "button[phx-click=toggle_mode]")
+      refute html =~ "We will email you a link"
+      refute html =~ "Send me a log-in link"
+      refute html =~ "Use a password instead"
+      refute html =~ "Email me a link"
+      refute html =~ "account settings"
+    end
+
+    test "logs in with the password", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      form =
+        form(lv, "#login_form",
+          user: %{email: user.email, password: valid_user_password(), remember_me: true}
+        )
+
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      assert redirected_to(conn) == ~p"/users/organisations"
+      assert get_session(conn, :user_token)
+      assert conn.resp_cookies[@remember_me_cookie]
+    end
+
+    test "a link cannot be asked for, and nothing is sent", %{conn: conn, user: user} do
+      tokens = Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count)
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      # An address that has an account, typed first: only mail stands in the way.
+      lv |> form("#login_form", user: %{email: user.email}) |> render_change()
+
+      render_click(lv, "toggle_mode", %{})
+      assert has_element?(lv, "#login_form input[type=password]")
+
+      html = render_click(lv, "email_link", %{})
+      refute html =~ "Check your email"
+      refute html =~ "a log-in link is on its way"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == tokens
+
+      html =
+        lv |> form("#login_form", user: %{email: user.email, password: ""}) |> render_submit()
+
+      assert has_element?(lv, "#login_form_password-error", "Enter your password.")
+      refute html =~ "Check your email"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == tokens
+    end
+
+    test "a link asked for once mail is off sends nothing, and the password form shows",
+         %{conn: conn, user: user} do
+      # The page mounts with mail, on the link form.
+      Apiary.Mail.put_test_source(:env)
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      refute has_element?(lv, "#login_form input[type=password]")
+
+      # Mail goes off; the page's process reads it through its callers, this test.
+      Apiary.Mail.put_test_source(:none)
+      tokens = Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count)
+
+      html = lv |> form("#login_form", user: %{email: user.email}) |> render_submit()
+
+      refute html =~ "Check your email"
+      refute html =~ "a log-in link is on its way"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == tokens
+      assert has_element?(lv, "#login_form input[type=password]")
+      refute has_element?(lv, "button[phx-click=toggle_mode]")
+    end
+
+    test "re-authentication asks for the password", %{conn: conn, user: user} do
+      {:ok, lv, html} = live(log_in_user(conn, user), ~p"/users/log-in")
+
+      assert html =~ "Confirm it is you"
+      assert html =~ "Log in again to change sensitive account settings."
+      assert has_element?(lv, ~s|#login_form_email[readonly][value="#{user.email}"]|)
+      assert has_element?(lv, "#login_form input[type=password]")
+      refute has_element?(lv, "button[phx-click=toggle_mode]")
+      refute html =~ "Send me a log-in link"
     end
   end
 

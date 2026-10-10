@@ -3193,6 +3193,11 @@ msgstr ""
 msgid "As served"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an admin of this Qory Apiary for a password link."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Ask for a release again"
@@ -4726,6 +4731,11 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
+msgid "Email me a link"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
 msgid "Email me a link instead"
 msgstr ""
 
@@ -5386,6 +5396,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Forever"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Forgot your password?"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -6906,6 +6921,11 @@ msgid "Log, %{number} line, read only. Slash searches, Enter and Shift Enter mov
 msgid_plural "Log, %{number} lines, read only. Slash searches, Enter and Shift Enter move between matches, Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Log-in links work once and for a short time."
+msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
@@ -10721,6 +10741,12 @@ msgstr ""
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "That link has expired"
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "That link has expired."
 msgstr ""
 
 #: lib/apiary_web/controllers/user_session_controller.ex
