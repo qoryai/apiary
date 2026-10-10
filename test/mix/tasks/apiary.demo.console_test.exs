@@ -25,8 +25,10 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     Mix.shell(Mix.Shell.Process)
     on_exit(fn -> Mix.shell(shell) end)
 
-    # The suite's instance organisation is committed before any test: marked for deletion
-    # in this test's sandbox, the instance has none in use, as a new database has not.
+    # The suite's instance organisation is committed before any test: hidden as the edition
+    # hides it, and every organisation marked for deletion in this test's sandbox, the
+    # instance has none in use and is not set up, as a new database is not.
+    Apiary.EditionKit.hide_instance_organisation()
     now = DateTime.utc_now()
 
     Repo.update_all(Organisation,
