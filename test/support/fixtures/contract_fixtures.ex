@@ -178,6 +178,48 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
+  The registration a record's gateway sent, from the record's lines (`events.jsonl`): its
+  `dev.qory.run.registered`, sequence 1, which the record alone holds, and the labels and
+  `about` of its `dev.qory.run.started`, built now (`registration/2`). Returns
+  `{registration, lines}` with the lines that are posted: all but the registered one.
+  """
+  def record_registration([first | posted] = _lines) do
+    %{"type" => "dev.qory.run.registered", "subject" => run_id, "data" => data} =
+      Jason.decode!(first)
+
+    started =
+      posted
+      |> Enum.map(&Jason.decode!/1)
+      |> Enum.find(%{"data" => %{}}, &(&1["type"] == "dev.qory.run.started"))
+
+    registration =
+      registration(
+        run_id,
+        Map.merge(Map.take(data, ~w(forager_version contract_version interval_seconds events)), %{
+          "labels" => started["data"]["labels"],
+          "about" => started["data"]["about"]
+        })
+      )
+
+    {registration, posted}
+  end
+
+  @doc """
+  Registers `registration` (`registration/2`) through `Apiary.Runs.Registration`, as the
+  run endpoint does once it has verified the request: `{:ok, answer}` or `{:error, reason}`.
+  """
+  def register_run(key, registration, instance_id \\ nil) do
+    bytes = Jason.encode!(registration)
+    {:ok, parsed} = Apiary.Runs.Registration.parse(Jason.decode!(bytes))
+
+    Apiary.Runs.Registration.register(key, parsed, %{
+      body: bytes,
+      contract_version: 1,
+      instance_id: instance_id
+    })
+  end
+
+  @doc """
   Posts `body` (a binary, or a registration to encode) to the run endpoint as the gateway
   registers a run: `signed_post/5` to `/v1/runs`, as `application/json`, with no
   `X-Qory-Delivery`. The options are `signed_post/5`'s.
