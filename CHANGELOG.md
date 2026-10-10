@@ -32,7 +32,10 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   without it, it starts all the same, sends no email, and says so in one line of its log at
   each start: people sign up and log in with a password, and invitations and password
   links are copied by hand. `.env.example` leaves the mail lines empty. `Apiary.Mail` says
-  whether mail is set and where from.
+  whether mail is set and where from. TLS, STARTTLS or from the start on port 465, checks
+  the relay's certificate against the system's certificate authorities and the relay's
+  name, TLS 1.2 or 1.3; a relay given as an IP address needs a certificate that names that
+  address. The relay is the host connected to, not its MX records (`Apiary.Mail.TLS`).
 - Without mail, an invitation is a link to copy. The invite page shows the link once, for
   the person who made it to send themselves, with when it stops working; their account
   need not be confirmed, since no email goes out in their name. A pending invitation's
@@ -77,9 +80,13 @@ team, as `EDITIONS.md` at the root of the repository describes it.
 - Behind the opt-in feature `instance_mail`, Instance settings › Mail: an instance admin
   saves the SMTP relay, its port, TLS, username and password, and the sender, stored in the
   database with the password encrypted under a key derived from `APIARY_ENCRYPTION_SECRET`
-  for that purpose alone. Saving sends a test link to that admin; mail is on once they
-  follow it, signed in as themselves, and their address is confirmed. The link works once,
-  for 60 minutes, and does nothing for anyone else. With `SMTP_RELAY` set, the
+  for that purpose alone. TLS is **Always** with a username, but on port 465, so the
+  password is never sent unencrypted. The section, the save and the test link ask for a
+  recent sign-in, as Account settings do. Saving sends a test link to that admin; mail is
+  on once they follow it, signed in as themselves, and their address is confirmed. The
+  link works once, for 60 minutes, and does nothing for anyone else. Each save is an
+  `instance.mail_save` entry in the activity of the instance's organisation, with the
+  relay, port and TLS, and each link followed an `instance.mail_on`. With `SMTP_RELAY` set, the
   environment wins whole and the section is read only. Each node reads the settings again
   when they change. The boot's check of `APIARY_ENCRYPTION_SECRET` covers the stored
   password.

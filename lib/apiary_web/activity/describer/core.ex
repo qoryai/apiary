@@ -44,6 +44,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
   def label(:"account.password_link"), do: gettext("Password link made")
+  def label(:"instance.mail_save"), do: gettext("Mail settings saved")
+  def label(:"instance.mail_on"), do: gettext("Mail turned on")
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
@@ -149,6 +151,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"account.password_link", _details, _actor),
     do: gettext("Made a password link for a person")
+
+  defp said(:"instance.mail_save", _details, _actor),
+    do: gettext("Saved the mail settings, which sent a test link")
+
+  defp said(:"instance.mail_on", _details, _actor),
+    do: gettext("Turned mail on, by the test link")
 
   defp said(:"member.suspend", _details, _actor), do: gettext("Suspended a member")
   defp said(:"member.activate", _details, _actor), do: gettext("Activated a member")
@@ -355,6 +363,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       _other -> nil
     end
   end
+
+  def change(action, _before, _after, %{"relay" => relay, "port" => port})
+      when action in [:"instance.mail_save", :"instance.mail_on"] and is_binary(relay),
+      do: [{:m, "#{relay}:#{port}"}]
 
   def change(:"member.suspend", _before, _after, _details), do: gettext("Suspended")
   def change(:"member.activate", _before, _after, _details), do: gettext("Active")

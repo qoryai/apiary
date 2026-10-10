@@ -10,8 +10,11 @@ defmodule ApiaryWeb.InstanceMailController do
   address (`Apiary.Mail.turn_on/2`), and leads to the page with a line saying so. It signs
   no one in and changes no password. Followed by another instance admin, or once it has
   expired or been replaced, it changes nothing, and the page says the link no longer
-  turns mail on; for anyone else it is a path that does not exist (`ApiaryWeb.NotFound`). The token
-  is in the path, so `ApiaryWeb.RequestLog` logs the path without it.
+  turns mail on; for anyone else it is a path that does not exist (`ApiaryWeb.NotFound`).
+  Followed by an instance admin whose sign-in is no longer recent, it changes nothing and
+  leads to the log-in page, as the Mail page does, and back to the link once they have
+  signed in again. The token is in the path, so `ApiaryWeb.RequestLog` logs the path
+  without it.
   """
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :instance_mail
@@ -26,6 +29,12 @@ defmodule ApiaryWeb.InstanceMailController do
         conn
         |> put_flash(:info, gettext("Mail is on, and your email address is confirmed."))
         |> redirect(to: ~p"/instance/mail")
+
+      {:error, :sudo} ->
+        conn
+        |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+        |> put_session(:user_return_to, current_path(conn))
+        |> redirect(to: ~p"/users/log-in")
 
       :error ->
         if Access.instance_admin?(scope) do

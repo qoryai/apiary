@@ -215,6 +215,98 @@ defmodule ApiaryWeb.InstanceLive.MailTest do
       assert text(view, "#mail-save") =~ "Saving sends a test link to #{other.user.email}."
     end
 
+    test "asks for a recent sign-in, as Account settings does", %{conn: conn, user: user} do
+      stale = DateTime.add(DateTime.utc_now(:second), -11, :minute)
+      stale_conn = log_in_user(build_conn(), user, token_authenticated_at: stale)
+
+      assert {:error, {:redirect, %{to: "/users/log-in", flash: flash}}} =
+               live(stale_conn, ~p"/instance/mail")
+
+      assert flash == %{"error" => "You must re-authenticate to access this page."}
+
+      # Opened in time, and saved once the sign-in has grown old, as Account settings
+      # counts it for a change, 20 minutes: nothing is saved, and the page leads to the
+      # log-in page the same way.
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      old = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+
+      :sys.replace_state(view.pid, fn state ->
+        put_in(state.socket.assigns.current_scope.user.authenticated_at, old)
+      end)
+
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} = save(view)
+
+      assert assert_redirect(view, ~p"/users/log-in") ==
+               %{"error" => "You must re-authenticate to access this page."}
+
+      assert no_mail_saved?()
+      refute_received {:email, %{subject: @subject}}
+    end
+
+    test "the test link asks for a recent sign-in, and works once the admin has signed in again",
+         %{conn: conn, user: user} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      path = sent_path()
+
+      stale = DateTime.add(DateTime.utc_now(:second), -21, :minute)
+      stale_conn = log_in_user(build_conn(), user, token_authenticated_at: stale) |> get(path)
+
+      assert redirected_to(stale_conn) == ~p"/users/log-in"
+
+      assert Phoenix.Flash.get(stale_conn.assigns.flash, :error) ==
+               "You must re-authenticate to access this page."
+
+      # Back to the link once signed in again.
+      assert get_session(stale_conn, :user_return_to) == path
+      assert Mail.state(Mail.settings()) == :pending
+
+      assert conn |> get(path) |> redirected_to() == ~p"/instance/mail"
+      assert Mail.state(Mail.settings()) == :on
+    end
+
+    test "a save and the test link followed are entries of the instance's activity",
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      save(view)
+      get(conn, sent_path())
+
+      entries =
+        Apiary.Repo.all(
+          from e in Apiary.Audit.Entry,
+            where: e.organisation_id == ^Apiary.Edition.instance_organisation_id(),
+            where: e.action in ["instance.mail_save", "instance.mail_on"],
+            order_by: [asc: e.inserted_at, asc: e.id],
+            select: {e.action, e.actor_id}
+        )
+
+      assert Enum.sort(entries) ==
+               [{"instance.mail_on", scope.user.id}, {"instance.mail_save", scope.user.id}]
+    end
+
+    test "TLS other than Always with a username is refused, saying so", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+
+      for tls <- ["never", "if_available"] do
+        html = save(view, %{@attrs | "smtp_tls" => tls})
+        assert html =~ "must be Always with a username"
+        refute html =~ @password
+      end
+
+      assert no_mail_saved?()
+    end
+
+    test "a username of one character over 320 bytes is refused, not a crash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/instance/mail")
+      long = "a" <> String.duplicate("\u0301", 40_000)
+
+      html = save(view, %{@attrs | "smtp_username" => long})
+      assert html =~ "should be at most 320 byte(s)"
+      refute html =~ @password
+      assert Process.alive?(view.pid)
+      assert no_mail_saved?()
+    end
+
     test "a refused save shows what to change, and keeps no password", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/instance/mail")
       html = save(view, %{@attrs | "smtp_relay" => "smtp example com"})

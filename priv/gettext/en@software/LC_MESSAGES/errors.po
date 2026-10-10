@@ -261,6 +261,11 @@ msgstr ""
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
 msgstr ""
 
+#: lib/apiary/mail/settings.ex
+#, elixir-autogen, elixir-format
+msgid "must be Always with a username"
+msgstr ""
+
 #: lib/apiary/secrets/value.ex
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format

@@ -31,14 +31,17 @@ defmodule Apiary.Mail do
   Each node keeps a copy (`Apiary.Mail.Cache`), read again over `Apiary.PubSub` whenever
   they change.
 
-  **Saving** (`save_settings/3`), for an instance admin, sets the state back to
-  `:pending` and sends a test link to the admin who saved, through the settings saved.
-  **The test link** (`turn_on/2`) works once, for 60 minutes (`test_link_minutes/0`), and
-  only for that admin, signed in: it turns mail on and confirms their address. It signs
-  no one in and changes no password. From anyone else it does nothing. It is stored as
+  **Saving** (`save_settings/3`), for an instance admin who signed in recently
+  (`Apiary.Accounts.sudo_mode?/2`), sets the state back to `:pending` and sends a test link
+  to the admin who saved, through the settings saved. **The test link** (`turn_on/2`)
+  works once, for 60 minutes (`test_link_minutes/0`), and only for that admin, signed in,
+  recently too: it turns mail on and confirms their address. It signs no one in and
+  changes no password. From anyone else it does nothing. It is stored as
   the SHA-256 hash of its 32 random bytes, in `users_tokens` under the context
   `"instance_mail"`, so a reader of the database cannot follow it; a later save, a change
-  of the admin's address or password, and its use each end it.
+  of the admin's address or password, and its use each end it. Each save is an
+  `instance.mail_save` entry in the trail of the instance's organisation, and each test
+  link followed an `instance.mail_on`, by the admin, never with the password.
 
   **The test seam.** `put_test_source/1` sets the source for the calling process and the
   processes it starts that keep it among their `$callers` (a `Task`, a LiveView under
@@ -53,9 +56,10 @@ defmodule Apiary.Mail do
 
   require Logger
 
-  alias Apiary.{Access, Features, Repo}
+  alias Apiary.{Access, Accounts, Audit, Features, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier, UserToken}
-  alias Apiary.Mail.{Cache, Password, Settings}
+  alias Apiary.Organisations.Organisation
+  alias Apiary.Mail.{Cache, Password, Settings, TLS}
 
   @typedoc "Where the mail settings come from."
   @type source :: :env | :settings | :none
@@ -228,7 +232,8 @@ defmodule Apiary.Mail do
   smtp_config/2 is the mailer's configuration for `settings` with `password`, `nil` for
   none, as `config/runtime.exs` makes it from `SMTP_RELAY` and the variables beside it:
   port 465 is TLS from the start, any other STARTTLS as `smtp_tls` says; a username means
-  logging in. Its adapter is `Swoosh.Adapters.SMTP`, or the one
+  logging in. TLS checks the relay's certificate, and the relay is the host connected to
+  (`Apiary.Mail.TLS.smtp_options/2`). Its adapter is `Swoosh.Adapters.SMTP`, or the one
   `config :apiary, Apiary.Mail, smtp_adapter:` names, which the tests set.
   """
   @spec smtp_config(Settings.t(), String.t() | nil) :: keyword
@@ -245,7 +250,7 @@ defmodule Apiary.Mail do
       ssl: implicit_tls,
       tls: if(implicit_tls, do: :never, else: tls(settings.smtp_tls)),
       retries: 2
-    ]
+    ] ++ TLS.smtp_options(settings.smtp_relay, implicit_tls)
   end
 
   defp tls("always"), do: :always
@@ -283,33 +288,40 @@ defmodule Apiary.Mail do
   username, where no password is kept. A password needs a username.
 
   The save sets the state to `:pending`, ends every test link sent before, and broadcasts
-  the change to every node's cache. Returns `{:ok, settings, :sent}`, or
+  the change to every node's cache. It is an `instance.mail_save` entry in the trail of the
+  instance's organisation, by the admin, about the organisation: the relay, the port, TLS,
+  and whether a username and a sender are set, never the password, the username or the
+  sender's address. Returns `{:ok, settings, :sent}`, or
   `{:ok, settings, :not_sent}` when the test link could not be sent through them, the
   settings saved all the same; `{:error, changeset}`, without the password given
   (`Apiary.Mail.Settings.without_password/1`); `{:error, :env}` while the environment
-  sets mail, which wins whole; or `{:error, :forbidden}` for anyone but an instance
-  admin, and on an instance without the `instance_mail` feature.
+  sets mail, which wins whole; `{:error, :sudo}` for an instance admin who did not sign in
+  recently (`Apiary.Accounts.sudo_mode?/2`), who signs in again first; or
+  `{:error, :forbidden}` for anyone but an instance admin, and on an instance without the
+  `instance_mail` feature.
   """
   @spec save_settings(Scope.t(), map, (String.t() -> String.t())) ::
           {:ok, Settings.t(), :sent | :not_sent}
-          | {:error, Ecto.Changeset.t() | :env | :forbidden}
+          | {:error, Ecto.Changeset.t() | :env | :sudo | :forbidden}
   def save_settings(%Scope{user: %User{} = user} = scope, attrs, url_fun)
       when is_map(attrs) and is_function(url_fun, 1) do
     cond do
       not (Features.on?(:instance_mail) and Access.instance_admin?(scope)) -> {:error, :forbidden}
+      not Accounts.sudo_mode?(user) -> {:error, :sudo}
       source() == :env -> {:error, :env}
-      true -> save(user, attrs, url_fun)
+      true -> save(scope, attrs, url_fun)
     end
   end
 
   def save_settings(_scope, _attrs, _url_fun), do: {:error, :forbidden}
 
-  defp save(user, attrs, url_fun) do
+  defp save(%Scope{user: user} = scope, attrs, url_fun) do
     Repo.transact(fn ->
       current = lock_row()
       changeset = current |> Settings.changeset(attrs) |> put_password(current)
 
-      if changeset.valid? do
+      with true <- changeset.valid? || {:error, Settings.without_password(changeset)},
+           {:ok, organisation} <- instance_organisation() do
         now = DateTime.utc_now()
 
         settings =
@@ -326,9 +338,16 @@ defmodule Apiary.Mail do
         Repo.delete_all(from t in UserToken, where: t.context == @token_context)
         {token, user_token} = UserToken.build_email_token(user, @token_context)
         Repo.insert!(user_token)
-        {:ok, {settings, token}}
-      else
-        {:error, Settings.without_password(changeset)}
+
+        with {:ok, _entry} <-
+               Audit.record(
+                 Repo,
+                 Scope.in_organisation(scope, organisation),
+                 :"instance.mail_save",
+                 organisation,
+                 %{details: saved_details(settings)}
+               ),
+             do: {:ok, {settings, token}}
       end
     end)
     |> case do
@@ -339,6 +358,29 @@ defmodule Apiary.Mail do
 
       {:error, _changeset} = error ->
         error
+    end
+  end
+
+  # What the trail says of settings saved: never the password, the username or the
+  # sender's address, which may be a person's.
+  defp saved_details(%Settings{} = settings) do
+    %{
+      relay: settings.smtp_relay,
+      port: settings.smtp_port,
+      tls: settings.smtp_tls,
+      username: is_binary(settings.smtp_username),
+      sender: is_binary(settings.mail_from)
+    }
+  end
+
+  # The instance's own organisation, whose trail holds the mail's entries; its owners are
+  # the instance's admins.
+  defp instance_organisation do
+    with id when is_binary(id) <- Apiary.Edition.instance_organisation_id(),
+         %Organisation{} = organisation <- Repo.get(Organisation, id) do
+      {:ok, organisation}
+    else
+      _none -> {:error, :forbidden}
     end
   end
 
@@ -465,28 +507,33 @@ defmodule Apiary.Mail do
   turn_on/2 follows the test link whose token is `token` for the person of `scope`: where
   they are an instance admin, saved the settings that are waiting, and the link is the one
   sent to them, to their current address, within #{@test_link_minutes} minutes, it turns
-  mail on, confirms their address where it was not yet, and ends the link, in one
-  transaction, then broadcasts the change to every node's cache. It signs no one in and
-  changes no password. `{:ok, settings}`, or `:error` for any other link or person, which
-  changes nothing: the link still works for the admin it was sent to; `:error` too on an
-  instance without the `instance_mail` feature.
+  mail on, confirms their address where it was not yet, ends the link, and is an
+  `instance.mail_on` entry in the trail of the instance's organisation, by the admin, in
+  one transaction, then broadcasts the change to every node's cache. It signs no one in
+  and changes no password. `{:ok, settings}`; `{:error, :sudo}` for an instance admin who
+  did not sign in recently (`Apiary.Accounts.sudo_mode?/2`), which changes nothing, so the
+  link still works once they sign in again; or `:error` for any other link or person,
+  which changes nothing: the link still works for the admin it was sent to; `:error` too
+  on an instance without the `instance_mail` feature.
   """
-  @spec turn_on(Scope.t() | nil, String.t()) :: {:ok, Settings.t()} | :error
-  def turn_on(%Scope{user: %User{id: user_id}} = scope, token) when is_binary(token) do
+  @spec turn_on(Scope.t() | nil, String.t()) :: {:ok, Settings.t()} | {:error, :sudo} | :error
+  def turn_on(%Scope{user: %User{} = user} = scope, token) when is_binary(token) do
     with true <- Features.on?(:instance_mail),
          {:ok, decoded} <- Base.url_decode64(token, padding: false),
          true <- Access.instance_admin?(scope),
-         {:ok, settings} <- turn_on_now(user_id, :crypto.hash(:sha256, decoded)) do
+         true <- Accounts.sudo_mode?(user) || {:error, :sudo},
+         {:ok, settings} <- turn_on_now(scope, :crypto.hash(:sha256, decoded)) do
       Cache.changed()
       {:ok, settings}
     else
+      {:error, :sudo} = sudo -> sudo
       _not_turned_on -> :error
     end
   end
 
   def turn_on(_scope, _token), do: :error
 
-  defp turn_on_now(user_id, hashed) do
+  defp turn_on_now(%Scope{user: %User{id: user_id}} = scope, hashed) do
     Repo.transact(fn ->
       settings = Repo.one(from s in Settings, where: s.id == true, lock: "FOR UPDATE")
 
@@ -500,21 +547,31 @@ defmodule Apiary.Mail do
             preload: [user: u]
         )
 
-      case {settings, user_token} do
-        {%Settings{smtp_relay: relay, mail_verified_at: nil, mail_saved_by_id: ^user_id},
-         %UserToken{user: user}}
-        when is_binary(relay) ->
-          Repo.delete!(user_token)
-          if is_nil(user.confirmed_at), do: user |> User.confirm_changeset() |> Repo.update!()
-          now = DateTime.utc_now()
+      with {%Settings{smtp_relay: relay, mail_verified_at: nil, mail_saved_by_id: ^user_id},
+            %UserToken{user: user}}
+           when is_binary(relay) <- {settings, user_token},
+           {:ok, organisation} <- instance_organisation() do
+        Repo.delete!(user_token)
+        if is_nil(user.confirmed_at), do: user |> User.confirm_changeset() |> Repo.update!()
+        now = DateTime.utc_now()
 
-          {:ok,
-           settings
-           |> Ecto.Changeset.change(mail_verified_at: now, updated_at: now)
-           |> Repo.update!()}
+        settings =
+          settings
+          |> Ecto.Changeset.change(mail_verified_at: now, updated_at: now)
+          |> Repo.update!()
 
-        _other ->
-          {:error, :invalid}
+        with {:ok, _entry} <-
+               Audit.record(
+                 Repo,
+                 Scope.in_organisation(scope, organisation),
+                 :"instance.mail_on",
+                 organisation,
+                 %{details: %{relay: settings.smtp_relay, port: settings.smtp_port}}
+               ),
+             do: {:ok, settings}
+      else
+        {:error, _reason} = error -> error
+        _other -> {:error, :invalid}
       end
     end)
   end

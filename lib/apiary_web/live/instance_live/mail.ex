@@ -15,9 +15,15 @@ defmodule ApiaryWeb.InstanceLive.Mail do
   The password is never shown: its field is always empty, and the page keeps neither the
   password given nor the one saved; a saved one is said to be there, and is kept while the
   field stays empty and nothing it is bound to changes (`Apiary.Mail.save_settings/3`).
+
+  The page asks for a recent sign-in, as Account settings does (`ApiaryWeb.UserAuth`'s
+  sudo mode): whoever controls the mail receives every log-in link. A save after the
+  sign-in has grown old leads to the log-in page the same way.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :instance_mail
+
+  on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
 
   alias Apiary.{Access, Mail}
   alias Apiary.Mail.{Password, Settings}
@@ -231,6 +237,13 @@ defmodule ApiaryWeb.InstanceLive.Mail do
 
       {:error, :env} ->
         {:noreply, socket |> assign(sent: nil) |> load()}
+
+      # The sign-in has grown old since the page opened: as the page's own mount does.
+      {:error, :sudo} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+         |> redirect(to: ~p"/users/log-in")}
 
       # No longer an instance admin: the page itself is not found now.
       {:error, :forbidden} ->

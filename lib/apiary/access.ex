@@ -102,6 +102,17 @@ defmodule Apiary.Access do
       "make a one-time link that sets an account's password: an instance admin while the instance sends no mail, or a release command, which no role takes (Apiary.Accounts.build_password_link/3)",
       asked_of: :organisation
     ),
+    # The instance's mail, in Instance settings › Mail.
+    Action.new(
+      :"instance.mail_save",
+      "save the mail settings, which sends a test link to the admin who saved them: an instance admin after a recent sign-in, which no role takes (Apiary.Mail.save_settings/3)",
+      asked_of: :organisation
+    ),
+    Action.new(
+      :"instance.mail_on",
+      "turn the saved mail settings on by the test link their save sent: the instance admin who saved them, after a recent sign-in, which no role takes (Apiary.Mail.turn_on/2)",
+      asked_of: :organisation
+    ),
     # The audit trail.
     Action.new(:"audit.read", "read the organisation's audit trail, its Activity page",
       roles: @admins,
@@ -438,7 +449,9 @@ defmodule Apiary.Access do
   organisation they act at their level as anyone there. Beyond it, while the instance sends
   no mail, an instance admin makes a one-time link that sets an account's password
   (`account.password_link`, `Apiary.Accounts.build_password_link/3`), which no role takes
-  either: the context function asks `instance_admin?/1`.
+  either: the context function asks `instance_admin?/1`. So do saving the mail settings
+  and turning them on (`instance.mail_save`, `Apiary.Mail.save_settings/3`;
+  `instance.mail_on`, `Apiary.Mail.turn_on/2`), which also ask for a recent sign-in.
 
   ## Features
 
