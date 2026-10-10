@@ -291,6 +291,42 @@ defmodule Apiary.AccountsTest do
 
       assert "must not contain a NUL byte" in errors_on(changeset).password
     end
+
+    test "with the caller's session token, sets nothing once that session ended", %{user: user} do
+      session = Accounts.generate_user_session_token(user)
+      {loaded, _at} = Accounts.get_user_by_session_token(session)
+      :ok = Accounts.delete_user_session_token(session)
+
+      assert {:error, :stale} =
+               Accounts.update_user_password(loaded, %{password: "new valid password"},
+                 session_token: session
+               )
+
+      refute Accounts.get_user_by_email_and_password(user.email, "new valid password")
+    end
+
+    test "a session loaded before the first log-in link removed the password sets none after it" do
+      user = unconfirmed_user_fixture() |> set_password()
+      session = Accounts.generate_user_session_token(user)
+      # What a request of whoever set the password loaded, before the owner's link.
+      {stale, _at} = Accounts.get_user_by_session_token(session)
+
+      {link, _hashed} = generate_user_magic_link_token(user)
+      assert {:ok, {_user, _ended}, :password_removed} = Accounts.login_user_by_magic_link(link)
+
+      attrs = %{password: "a later pass phrase", password_confirmation: "a later pass phrase"}
+
+      assert {:error, :stale} =
+               Accounts.update_user_password(stale, attrs, session_token: session)
+
+      # Without the token too: the account is confirmed since it was loaded.
+      assert {:error, :stale} = Accounts.update_user_password(stale, attrs)
+
+      reloaded = Accounts.get_user!(user.id)
+      assert reloaded.confirmed_at
+      assert is_nil(reloaded.hashed_password)
+      refute Accounts.get_user_by_email_and_password(user.email, "a later pass phrase")
+    end
   end
 
   describe "generate_user_session_token/1" do

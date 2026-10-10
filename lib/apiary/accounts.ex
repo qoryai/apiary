@@ -162,6 +162,13 @@ defmodule Apiary.Accounts do
 
   Returns a tuple with the updated user, as well as a list of expired tokens.
 
+  The account's row is held while the password is set, as a log-in link's confirmation
+  holds it (`login_user_by_magic_link/1`), so the two take turns. `{:error, :stale}` when
+  `user` is not the account as it is now: its confirmation differs, as after a first
+  log-in link that removed a password set before it (case 3 there), or it is deleted; and,
+  with `session_token:`, the caller's session token, when that session no longer exists.
+  Nothing is set then.
+
   ## Examples
 
       iex> update_user_password(user, %{password: ...})
@@ -171,10 +178,34 @@ defmodule Apiary.Accounts do
       {:error, %Ecto.Changeset{}}
 
   """
-  def update_user_password(user, attrs) do
-    user
-    |> User.password_changeset(attrs)
-    |> update_user_and_delete_all_tokens()
+  @spec update_user_password(%User{}, map, keyword) ::
+          {:ok, {%User{}, [%UserToken{}]}} | {:error, Ecto.Changeset.t() | :stale}
+  def update_user_password(%User{} = user, attrs, opts \\ []) do
+    # Hashed before the transaction, which holds the account's row meanwhile.
+    case User.password_changeset(user, attrs) do
+      %Ecto.Changeset{valid?: false} = changeset ->
+        {:error, %{changeset | action: :update}}
+
+      changeset ->
+        Repo.transact(fn ->
+          with {:ok, locked} <- lock_account(user.id),
+               true <- locked.confirmed_at == user.confirmed_at,
+               true <- session_alive?(user, Keyword.get(opts, :session_token)) do
+            update_user_and_delete_all_tokens(%{changeset | data: locked})
+          else
+            _stale -> {:error, :stale}
+          end
+        end)
+    end
+  end
+
+  defp session_alive?(_user, nil), do: true
+
+  defp session_alive?(%User{id: id}, token) when is_binary(token) do
+    Repo.exists?(
+      from t in UserToken,
+        where: t.token == ^token and t.context == "session" and t.user_id == ^id
+    )
   end
 
   @doc """
@@ -395,10 +426,14 @@ defmodule Apiary.Accounts do
 
   defp confirm(nil, _token), do: {:error, :not_found}
 
-  # Confirmed by another link meanwhile: logged in as a confirmed account is.
+  # Confirmed by another link meanwhile: logged in as a confirmed account is, while this
+  # link is still there to use up. The confirmation ended every token, this link's too
+  # when it was the one that confirmed, so a second use of it finds it gone.
   defp confirm(%User{confirmed_at: %DateTime{}} = user, token) do
-    Repo.delete_all(from t in UserToken, where: t.id == ^token.id)
-    {:ok, {:kept, {user, []}}}
+    case Repo.delete_all(from t in UserToken, where: t.id == ^token.id) do
+      {1, _} -> {:ok, {:kept, {user, []}}}
+      {0, _} -> {:error, :not_found}
+    end
   end
 
   defp confirm(%User{hashed_password: hash} = user, _token) do

@@ -12914,6 +12914,7 @@ msgstr ""
 msgid "You left %{name}."
 msgstr ""
 
+#: lib/apiary_web/controllers/user_session_controller.ex
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format
 msgid "You must log in to access this page."
