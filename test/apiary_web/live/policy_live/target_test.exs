@@ -34,6 +34,20 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
   end
 
+  # The card says when the target's mode was set as the reader's day: today, yesterday or
+  # a date. The change's time is the database's, taken when the test's transaction began,
+  # and the page reads its day from the clock, so a test that ran across midnight UTC read
+  # "yesterday". A test that asserts "today" gives its reader a zone whose clock reads
+  # between 12:00 and 13:00 now, so the change and the read lie in one of the reader's
+  # days, whatever the hour in UTC.
+  defp reader_at_noon(user) do
+    hours = 12 - DateTime.utc_now().hour
+    # The Etc zones count the other way: Etc/GMT-12 is twelve hours ahead of UTC.
+    zone = if hours > 0, do: "Etc/GMT-#{hours}", else: "Etc/GMT+#{-hours}"
+    {:ok, _} = Apiary.Accounts.update_user_preferences(user, %{time_zone: zone})
+    :ok
+  end
+
   defp open(conn, path) do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 5_000)
@@ -560,6 +574,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
          %{conn: conn, scope: scope, target: target, path: path} do
+      reader_at_noon(scope.user)
+
       started_run(scope, shop(),
         egress: [
           %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""},
@@ -669,6 +685,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     test "to observe names the locked denies that still hold, and the card keeps saying so",
          %{conn: conn, scope: scope, target: target, path: path} do
+      reader_at_noon(scope.user)
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
 
