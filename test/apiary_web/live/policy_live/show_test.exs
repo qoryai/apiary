@@ -8,6 +8,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.Policy
   alias ApiaryWeb.PolicyLive.Common
@@ -1385,6 +1386,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
     test "every change with who, the version it made or that it made none",
          %{conn: conn, user: user, scope: scope} do
+      # The list heads the setup's changes "Today": in a day of the reader's, clear of
+      # midnight (`Apiary.Midnight`).
+      reader_at_noon(user)
       view = open(conn, scope, "/policy/history")
 
       assert text(view, "#history-summary") =~ "4 changes"

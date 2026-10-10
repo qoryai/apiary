@@ -8,6 +8,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -30,19 +31,6 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     )
 
     :ok
-  end
-
-  # The page reads its today from the clock when it mounts, and a run started now is dated
-  # by the clock when it starts: started in the last moments of a UTC day and read in the
-  # first of the next, the run is yesterday's. A test that reads its runs as today's starts
-  # them clear of midnight: within `seconds` of it, it waits until the day has turned. It
-  # returns the day.
-  defp clear_of_midnight(seconds \\ 20) do
-    now = DateTime.utc_now()
-    midnight = DateTime.new!(Date.add(DateTime.to_date(now), 1), ~T[00:00:00], "Etc/UTC")
-    left = DateTime.diff(midnight, now, :millisecond)
-    if left < seconds * 1000, do: Process.sleep(left + 1)
-    Date.utc_today()
   end
 
   defp open(conn, scope) do

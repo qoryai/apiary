@@ -9,6 +9,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
+  import Apiary.Midnight
 
   alias Apiary.Policy
   alias ApiaryWeb.PolicyComponents
@@ -32,20 +33,6 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
 
     %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
-  end
-
-  # The card says when the target's mode was set as the reader's day: today, yesterday or
-  # a date. The change's time is the database's, taken when the test's transaction began,
-  # and the page reads its day from the clock, so a test that ran across midnight UTC read
-  # "yesterday". A test that asserts "today" gives its reader a zone whose clock reads
-  # between 12:00 and 13:00 now, so the change and the read lie in one of the reader's
-  # days, whatever the hour in UTC.
-  defp reader_at_noon(user) do
-    hours = 12 - DateTime.utc_now().hour
-    # The Etc zones count the other way: Etc/GMT-12 is twelve hours ahead of UTC.
-    zone = if hours > 0, do: "Etc/GMT-#{hours}", else: "Etc/GMT+#{-hours}"
-    {:ok, _} = Apiary.Accounts.update_user_preferences(user, %{time_zone: zone})
-    :ok
   end
 
   defp open(conn, path) do
@@ -574,6 +561,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
          %{conn: conn, scope: scope, target: target, path: path} do
+      # The card says "today" of the mode it sets: in a day of the reader's, clear of
+      # midnight (`Apiary.Midnight`).
       reader_at_noon(scope.user)
 
       started_run(scope, shop(),
