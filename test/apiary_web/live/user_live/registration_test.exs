@@ -216,6 +216,37 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       end
     end
 
+    test "the form does not post to the log-in controller", %{conn: conn} do
+      %{lv: lv} = invited(conn)
+
+      refute has_element?(lv, "#registration_form[action]")
+      refute has_element?(lv, "#registration_form[phx-trigger-action]")
+    end
+
+    test "a password sent all the same is dropped, and the address is confirmed by email",
+         %{conn: conn} do
+      %{lv: lv, email: email} = invited(conn)
+      password = "a long pass phrase"
+
+      html =
+        lv
+        |> element("#registration_form")
+        |> render_submit(%{
+          "user" => %{
+            "email" => email,
+            "password" => password,
+            "password_confirmation" => password
+          }
+        })
+
+      assert html =~ "Check your email"
+      refute has_element?(lv, "#registration_form[phx-trigger-action]")
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      assert is_nil(user.hashed_password)
+      refute Apiary.Accounts.get_user_by_email_and_password(email, password)
+    end
+
     test "an invited sign-up asks for no password", %{conn: conn} do
       %{lv: lv, html: html} = invited(conn)
 
