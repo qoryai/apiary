@@ -342,7 +342,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
               </div>
             <% @run.state == "pending" and @index.items == [] -> %>
-              <.limits reason={:not_started} variant="empty" />
+              <.limits reason={:not_started} variant="empty" registered={!!@run.registered_at} />
             <% @run.events_pruned_at && @index.items == [] && @tab == :timeline -> %>
               <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
             <% @tab == :timeline -> %>
@@ -508,6 +508,7 @@ defmodule ApiaryWeb.RunLive.Show do
         :if={@limit}
         reason={@limit}
         runtime={@run.runtime}
+        registered={!!@run.registered_at}
         only_result={@limit == :vm_wall and @index.session_items > 0}
       />
 
@@ -530,7 +531,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.live_end
         live={alive?(@run)}
         events={@run.event_count}
-        last_sequence={@run.projected_sequence > 0 && @run.projected_sequence}
+        last_sequence={projected_through(@run)}
         last_event_at={@run.last_event_at}
       />
 
@@ -821,7 +822,9 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt>{gettext("State")}</dt>
           <dd>
             <.state_mark state={@run.state} word />
-            <span :if={@run.state == "pending"} class="q-rail-sub">{gettext("Ping only")}</span>
+            <span :if={@run.state == "pending"} class="q-rail-sub">
+              {if @run.registered_at, do: gettext("Registered only"), else: gettext("Ping only")}
+            </span>
             <.end_reason run={@run} id="rail-reason" class="q-rail-sub q-rail-sub-wrap" />
           </dd>
           <%!-- A run with no session: what opened it, and none of a session's facts (exit,
@@ -968,7 +971,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <.rich text={
               rich_gettext("%{number}, projected through %{sequence}",
                 number: Format.number(@run.event_count),
-                sequence: {:m, "#" <> pad(@run.projected_sequence), "font-mono"}
+                sequence: {:m, "#" <> pad(projected_through(@run) || 0), "font-mono"}
               )
             } />
           </dd>
@@ -1731,7 +1734,7 @@ defmodule ApiaryWeb.RunLive.Show do
       earlier: earlier,
       later: later,
       new_count: min(socket.assigns.new_count, later),
-      unread: max(run.event_count - run.projected_sequence, 0),
+      unread: max(run.event_count - projected_count(run), 0),
       limit: limit_reason(run, index)
     )
   end
@@ -1761,6 +1764,16 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   ## The limits of the record, chosen from it in this order
+
+  # The last sequence projected, nil while none is: a registered run's projection starts at
+  # its registration's sequence 1 (`Apiary.Runs.Run.projected_from/1`), which is no event.
+  defp projected_through(%Run{} = run) do
+    if run.projected_sequence > Run.projected_from(run), do: run.projected_sequence
+  end
+
+  # How many of the run's stored events are projected: its events start after the
+  # sequence its projection starts from.
+  defp projected_count(%Run{} = run), do: max(run.projected_sequence - Run.projected_from(run), 0)
 
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 

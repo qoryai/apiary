@@ -21,7 +21,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   the same runs on any day, and a run still running at a time long past is found lost at
   once.
 
-  Each run is a record Forager could have sent: its start, with what it is about (an
+  Each run is a record Forager could have sent: its registration, then its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
   heartbeats, and its exit. A run on a shared machine has a starter, which gave it its
@@ -660,7 +660,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
        outcome: outcome,
        reason: reason,
        duration: duration,
-       long: outcome not in [:alive, :ping] and chance(0.005),
+       long: outcome not in [:alive, :registered] and chance(0.005),
        days_ago: days_ago
      }, issues}
   end
@@ -740,7 +740,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   # the exit; cancelled by its time limit, or by its starter, which no longer needed it; lost,
   # silent with no exit, or by the exit that says the gateway stopped hearing from the
   # session or that Forager died before the end was recorded. Only a run with a starter
-  # (`starter?/1`) has a starter's reason. A ping is a machine that pinged and ran nothing.
+  # (`starter?/1`) has a starter's reason. A run that registered and ran nothing is
+  # `:registered`.
   defp outcome(:alive, _runtime, _machine, at, now_ms), do: {:alive, nil, now_ms - at}
 
   defp outcome(_kind, runtime, machine, _at, _now_ms) do
@@ -761,7 +762,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
             {{:lost, nil}, 2},
             {{:lost, "session_lost"}, 1},
             {{:lost, "gateway_lost"}, 0.5},
-            {{:ping, nil}, 0.5}
+            {{:registered, nil}, 0.5}
           ] ++ if(starter, do: [{{:cancelled, "no_longer_needed"}, 2}], else: [])
         )
       end
@@ -776,7 +777,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     duration =
       case {reason, outcome, runtime} do
         {"timeout", _, _} -> 3_600_000
-        {_, :ping, _} -> 0
+        {_, :registered, _} -> 0
         {_, _, :program} -> clamp(lognormal(90_000, 0.7), 5_000, 1_200_000)
         {_, :failed, _} -> clamp(lognormal(240_000, 0.8), 20_000, 3_000_000)
         {_, _, _} -> clamp(lognormal(420_000, 0.8), 25_000, 3_300_000)
@@ -827,7 +828,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     length(specs)
   end
 
-  # The run's row as the receiver makes it on a first event, and its events as stored.
+  # The run's row as its registration makes it, and its events as stored, from sequence 2:
+  # the registration stands for sequence 1.
   defp build(spec, ctx) do
     :rand.seed(:exsss, {ctx.seed, spec.index, 97})
     %Scope{organisation: organisation, workspace: workspace} = ctx.scope
@@ -838,7 +840,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       spec
       |> record()
       |> Enum.sort_by(fn {at, n, _type, _data} -> {at, n} end)
-      |> Enum.with_index(1)
+      |> Enum.with_index(2)
       |> Enum.map(fn {{at, _n, type, data}, sequence} ->
         time = spec.at + at
 
@@ -856,14 +858,17 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         }
       end)
 
-    first = hd(events)
     last = List.last(events)
+    run_id = uuid7(spec.at)
+    registration = registration(spec, run_id)
+    # Drawn after the events, so the seed gives the events it gave before.
+    registered_at = instant(spec.at + between(20, 100))
 
     run = %{
       id: id,
       organisation_id: organisation.id,
       workspace_id: workspace.id,
-      run_id: uuid7(spec.at),
+      run_id: run_id,
       access_key_id: key.id,
       node_id: key.node_id,
       instance_id: instance_id(key.node_id, spec.host),
@@ -871,9 +876,17 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       forager_version: forager_version(spec),
       contract_version: 1,
       event_count: length(events),
-      last_event_at: last.received_at,
-      inserted_at: first.received_at,
-      updated_at: last.received_at
+      projected_sequence: 1,
+      registered_at: registered_at,
+      registration_labels: Map.get(registration, "labels", %{}),
+      registration_about: Map.get(registration, "about", %{}),
+      registration_digest: :crypto.hash(:sha256, Jason.encode!(registration)),
+      registration_interval_seconds: registration["interval_seconds"],
+      registration_answer_digest: answer_digest(spec),
+      registration_time: instant(div(spec.at, 1000) * 1000),
+      last_event_at: last && last.received_at,
+      inserted_at: registered_at,
+      updated_at: if(last, do: last.received_at, else: registered_at)
     }
 
     {run, events}
@@ -902,16 +915,13 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # `{offset_ms, n, type, data}` items, in no order: the caller sorts them by time, and
   # by the order they were put at one time.
-  defp record(%{outcome: :ping} = spec) do
-    put(new(), 0, "ping", ping(spec)) |> items()
-  end
+  defp record(%{outcome: :registered}), do: []
 
   defp record(spec) do
     mode = mode(spec)
     ends = ends(spec)
 
     new()
-    |> put(0, "ping", ping(spec))
     |> put(120, "run.started", started(spec))
     |> put(150, "run.policy_applied", policy_applied(spec, mode))
     |> log(200, spec, banner(spec, mode))
@@ -937,29 +947,51 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   defp cut_short?(%{reason: "no_longer_needed"}), do: true
   defp cut_short?(_spec), do: false
 
-  defp ping(spec) do
+  # The body of the run's registration, as Forager posts it, with the labels and `about`
+  # its start has: the registration's time is to the whole second.
+  defp registration(spec, run_id) do
+    about = about(spec)
+    labels = labels(spec)
+
     %{
+      "version" => 1,
+      "run_id" => run_id,
       "forager_version" => forager_version(spec),
-      "events" => ["*"],
       "contract_version" => 1,
-      "interval_seconds" => 30
+      "interval_seconds" => 30,
+      "events" => ["*"],
+      "time" => spec.at |> div(1000) |> DateTime.from_unix!() |> DateTime.to_iso8601()
     }
+    |> put_if(labels != %{}, "labels", labels)
+    |> put_if(about, "about", about)
+  end
+
+  # The digest of the run configuration the registration was given: the workspace's own
+  # once it was managed, as the run's policy_applied names it, else the document of no
+  # policy.
+  defp answer_digest(spec) do
+    if spec.days_ago <= 50,
+      do: "sha256=" <> digest("configuration#{div(spec.days_ago, 9)}"),
+      else: Apiary.Policy.Render.digest(Apiary.Policy.Render.no_policy_document())
+  end
+
+  defp labels(spec) do
+    repository = spec.repository
+
+    %{
+      "forge" => repository && repository.system,
+      "repository" => repository && repository.path,
+      "task" => spec.task,
+      "trigger" => trigger(spec)
+    }
+    |> Enum.reject(fn {_label, value} -> is_nil(value) end)
+    |> Map.new()
   end
 
   defp started(spec) do
     {command, args} = command(spec)
-    repository = spec.repository
     about = about(spec)
-
-    labels =
-      %{
-        "forge" => repository && repository.system,
-        "repository" => repository && repository.path,
-        "task" => spec.task,
-        "trigger" => trigger(spec)
-      }
-      |> Enum.reject(fn {_label, value} -> is_nil(value) end)
-      |> Map.new()
+    labels = labels(spec)
 
     %{
       "opened_by" => "session",
@@ -1136,7 +1168,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       "source" => if(managed, do: "fetched", else: "config"),
       "digest" => digest("policy#{epoch}#{mode}")
     }
-    |> put_if(managed, "url", "#{ApiaryWeb.Endpoint.url()}/v1/run-configuration")
+    |> put_if(managed, "url", "#{ApiaryWeb.Endpoint.url()}/v1/runs")
     |> put_if(managed, "run_configuration", "sha256=" <> digest("configuration#{epoch}"))
   end
 
@@ -1883,9 +1915,10 @@ defmodule Mix.Tasks.Apiary.Demo.History do
         Repo.one(
           from r in Run,
             where: r.access_key_id == ^key.id,
-            order_by: [desc: r.last_event_at],
+            # A run that registered and posted nothing was last heard at its registration.
+            order_by: [desc: coalesce(r.last_event_at, r.registered_at)],
             limit: 1,
-            select: {r.last_event_at, r.forager_version}
+            select: {coalesce(r.last_event_at, r.registered_at), r.forager_version}
         )
 
       with {at, version} <- last do

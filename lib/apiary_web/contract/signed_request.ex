@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   @moduledoc ~S"""
   Verifies a signed request of the Forager contract under a node's access key, signs every
   answer to it, and refuses what the contract refuses, in the contract's order, for
-  discovery, the run configuration and the events endpoint alike.
+  discovery, the run endpoint and the events endpoint alike.
 
   **The request.** The gateway sends `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, the
   unsigned `X-Qory-Instance-Name`, `X-Qory-Contract-Version` and
@@ -18,8 +18,10 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   **The order of refusals**, as the contract has it (the `413` of a body over its limit
   comes before this plug, in `ApiaryWeb.Contract.RawBody`):
 
-    1. `415` for a POST whose content type is not `application/cloudevents-batch+json`,
-       unsigned;
+    1. `415` for a POST whose media type is not the pipeline's, unsigned: the plug is
+       given it, `content_type: "application/cloudevents-batch+json"` for the events
+       endpoint, `content_type: "application/json"` for the run endpoint; a pipeline
+       given none takes no POST;
     2. `400` `bad_request` for `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`,
        `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice, unsigned;
     3. `401` `{"error":"unauthorized"}`, unsigned and the same whatever the cause: a key id
@@ -29,19 +31,22 @@ defmodule ApiaryWeb.Contract.SignedRequest do
        of strict base64url or does not verify (cofactorless, `Apiary.Contract.Ed25519`);
     4. `429` `rate_limited` with `Retry-After`, when the plug is given a bucket of the
        key's rate limit (`Apiary.Runs.RateLimit`): `rate_limit: :events` for the events
-       endpoint, `rate_limit: :run_configuration` for the run configuration, which has a
-       bucket of its own, so a backlog of events never refuses a run its configuration;
+       endpoint, `rate_limit: :registration` for the run endpoint, which has a bucket of
+       its own, so a backlog of events never refuses a run its start;
        discovery is not limited;
     5. `400` `bad_request` for an instance id absent or outside
        `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`;
     6. `400` `unsupported_contract_version` (`ApiaryWeb.Contract.ContractVersion`);
     7. for a GET, `401` for a timestamp that is not a decimal integer or is outside the
-       window, unsigned. The contract puts a `400` `invalid_request` for labels before
-       it; the run configuration refuses no labels, so nothing comes between.
+       window, unsigned. A registration sends no timestamp: its `time` is in its body,
+       which the run endpoint reads first, so its `400` `invalid_request` for a body the
+       contract refuses comes before its `401` for a `time` outside the window, as the
+       contract orders them (`ApiaryWeb.Contract.RegistrationController`).
 
   Each endpoint's own refusals follow, in its controller: on the events endpoint the
-  `400` `invalid_request` of a body the contract refuses, then deduplication, `410` and
-  the ping's `409` `instance_limit` (`ApiaryWeb.Contract.EventsController`).
+  `400` `invalid_request` of a body the contract refuses, then deduplication and `410`
+  (`ApiaryWeb.Contract.EventsController`); on the run endpoint the registration's
+  (`ApiaryWeb.Contract.RegistrationController`).
 
   **Signed answers.** From the moment the request verifies, its answer is signed
   (`ApiaryWeb.Contract.SignedAnswer.register/2`), whatever its status but `401`. A refusal
@@ -75,13 +80,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   alias Apiary.Nodes
   alias Apiary.Nodes.Node
   alias Apiary.Runs.RateLimit
-  alias ApiaryWeb.Contract.{ContractVersion, RunConfigurationController, SignedAnswer}
+  alias ApiaryWeb.Contract.{ContractVersion, RegistrationController, SignedAnswer}
 
   @window_seconds 300
   @key_id_format ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   @instance_id_format ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
   @timestamp_format ~r/\A[0-9]{1,19}\z/
-  @content_type "application/cloudevents-batch+json"
   @forager_version_max 80
   # String.printable?/1 lets escape sequences through; a version has no control characters.
   @printable ~r/\A[^[:cntrl:]]+\z/u
@@ -98,10 +102,10 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   # key of the seed of 32 zero bytes: a key nobody holds as theirs.
   @unknown_key elem(:crypto.generate_key(:eddsa, :ed25519, <<0::256>>), 0)
 
-  @buckets [false, :events, :run_configuration]
+  @buckets [false, :events, :registration]
 
   def init(opts) do
-    opts = Keyword.validate!(opts, rate_limit: false)
+    opts = Keyword.validate!(opts, rate_limit: false, content_type: nil)
 
     unless opts[:rate_limit] in @buckets,
       do: raise(ArgumentError, "rate_limit is one of #{inspect(@buckets)}")
@@ -110,7 +114,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   end
 
   def call(conn, opts) do
-    with :ok <- content_type(conn),
+    with :ok <- content_type(conn, opts[:content_type]),
          :ok <- sent_once(conn),
          {:ok, access_key, signature} <- verify(conn) do
       LogMetadata.put(access_key)
@@ -159,11 +163,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   end
 
   # As the reference receiver reads it: the media type, whatever its case and whatever
-  # parameters follow. Only a POST, a delivery, has a body to type.
-  defp content_type(%Plug.Conn{method: "POST"} = conn) do
+  # parameters follow, and nothing else. Only a POST, a delivery or a registration, has a
+  # body to type.
+  defp content_type(%Plug.Conn{method: "POST"} = conn, expected) do
     case get_req_header(conn, "content-type") do
-      [value] ->
-        if String.starts_with?(String.downcase(value), @content_type),
+      [value] when is_binary(expected) ->
+        if media_type(value) == expected,
           do: :ok,
           else: {:refuse, 415, "unsupported_media_type"}
 
@@ -172,7 +177,11 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
-  defp content_type(_conn), do: :ok
+  defp content_type(_conn, _expected), do: :ok
+
+  defp media_type(value) do
+    value |> String.split(";", parts: 2) |> hd() |> String.trim() |> String.downcase()
+  end
 
   defp sent_once(conn) do
     if Enum.any?(@once, &match?([_, _ | _], get_req_header(conn, &1))),
@@ -242,15 +251,15 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   end
 
   # The events endpoint spends the key's bucket, under `Apiary.Runs.RateLimit`'s own
-  # configuration; the run configuration a bucket of its own, under
-  # `ApiaryWeb.Contract.RunConfigurationController`'s.
+  # configuration; the run endpoint a bucket of its own, under
+  # `ApiaryWeb.Contract.RegistrationController`'s.
   defp spend(false, _id), do: :ok
   defp spend(:events, id), do: RateLimit.check(id)
 
-  defp spend(:run_configuration, id) do
-    limit = Application.get_env(:apiary, RunConfigurationController, [])
+  defp spend(:registration, id) do
+    limit = Application.get_env(:apiary, RegistrationController, [])
     limit = Keyword.merge([rate: 50, burst: 100], Keyword.take(limit, [:rate, :burst]))
-    RateLimit.check({:run_configuration, id}, limit)
+    RateLimit.check({:registration, id}, limit)
   end
 
   defp instance_id(instance_id) when is_binary(instance_id) do
@@ -300,7 +309,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
-  defp now do
+  @doc """
+  The contract's clock, in Unix seconds: the system's, or the function of
+  `config :apiary, :contract_now` a test of the contract's fixtures sets.
+  """
+  @spec now() :: integer
+  def now do
     case Application.get_env(:apiary, :contract_now) do
       clock when is_function(clock, 0) -> clock.()
       _ -> System.os_time(:second)

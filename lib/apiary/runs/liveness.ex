@@ -3,21 +3,24 @@ defmodule Apiary.Runs.Liveness do
   Finds the runs that stopped talking and marks them `lost`, after projecting whatever a
   dead task or a stopped node left unprojected.
 
-  A run announces how often it beats (`interval_seconds` of its heartbeats). It is lost
-  when nothing has been heard for more than three of those intervals; a run that has not
-  announced one is held to 30 seconds, Forager's default, so to 90 seconds of silence.
+  A run announces how often it beats (`interval_seconds` of its registration,
+  `Apiary.Runs.Registration`, and of its heartbeats). It is lost when nothing has been
+  heard for more than three of those intervals: the one its registration stated, else its
+  heartbeats'; a run that has announced none is held to 30 seconds, Forager's default, so
+  to 90 seconds of silence.
 
     * a `running` run is measured from its last heartbeat, or, when it has not beaten yet,
       from the arrival of its `run.started`;
-    * a `pending` run, one whose events have begun and whose `run.started` has not come,
-      is measured from the moment the workspace first heard of it (`inserted_at`).
+    * a `pending` run, one that has registered or whose events have begun, and whose
+      `run.started` has not come, is measured from the moment the workspace first heard of
+      it (`inserted_at`, which for a run that registered is its `registered_at`).
 
   **A heartbeat's time.** A heartbeat counts as heard at its own `time`, corrected by the
   run's clock offset, plus a tolerance of 300 seconds, and never after its arrival
   (`heard_at/3`); the fold keeps that as the run's `last_heartbeat_at`. The offset,
   `clock_offset_ms`, is the smallest arrival less own time over the run's heartbeats,
-  and for a run with no session, which the gateway beats for, its ping's
-  (`Apiary.Runs.Fold`). So a backlog of heartbeats delivered late holds no run alive,
+  and for a run with no session, which the gateway beats for, its registration's (and a
+  ping's, stored before the registration replaced it) (`Apiary.Runs.Fold`). So a backlog of heartbeats delivered late holds no run alive,
   unless they were recorded within the tolerance and three intervals of their arrival, or
   the run had no offset before them, when its first heartbeat counts at its arrival; a
   machine whose clock is off by a constant is not lost for it, and a heartbeat dated in
@@ -152,12 +155,14 @@ defmodule Apiary.Runs.Liveness do
   end
 
   # The interval is bounded here as well as in the fold, so the arithmetic cannot
-  # overflow whatever the column holds.
-  defmacrop silence(interval) do
+  # overflow whatever the column holds: the registration's, else the heartbeats', else the
+  # default.
+  defmacrop silence(registration, heartbeat) do
     quote do
       fragment(
-        "LEAST(GREATEST(COALESCE(?, ?), 1), ?) * ? * interval '1 second'",
-        unquote(interval),
+        "LEAST(GREATEST(COALESCE(?, ?, ?), 1), ?) * ? * interval '1 second'",
+        unquote(registration),
+        unquote(heartbeat),
         @default_beat,
         @max_beat,
         @missed
@@ -206,7 +211,7 @@ defmodule Apiary.Runs.Liveness do
         r.last_heartbeat_at,
         subquery(started),
         r.inserted_at,
-        silence(r.heartbeat_interval_seconds),
+        silence(r.registration_interval_seconds, r.heartbeat_interval_seconds),
         ^now
       )
     )
@@ -215,7 +220,12 @@ defmodule Apiary.Runs.Liveness do
   defp silent(:pending, now) do
     dynamic(
       [run: r],
-      fragment("? + ? < ?", r.inserted_at, silence(r.heartbeat_interval_seconds), ^now)
+      fragment(
+        "? + ? < ?",
+        r.inserted_at,
+        silence(r.registration_interval_seconds, r.heartbeat_interval_seconds),
+        ^now
+      )
     )
   end
 

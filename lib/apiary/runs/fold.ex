@@ -31,9 +31,9 @@ defmodule Apiary.Runs.Fold do
   allowed (`Apiary.Runs.tool_invocation?/2`); one a path rule refused keeps its tool, and
   never reached it.
 
-  What a run is about is `about` of its `run.started`, read member by member. No string of
-  it, key or value, may hold a control character (U+0000 to U+001F, U+007F to U+009F,
-  U+2028, U+2029). `kind` (1 to 64 bytes), `title` (1 to 256) and `details` are each kept
+  What a run is about is `about` of its `run.started`, read member by member
+  (`Apiary.Runs.About.read/1`). No string of it, key or value, may hold a control
+  character (U+0000 to U+001F, U+007F to U+009F, U+2028, U+2029). `kind` (1 to 64 bytes), `title` (1 to 256) and `details` are each kept
   whole or dropped whole. `details` is an object of at most 8192 bytes as the event carries
   it (compact, with `<`, `>` and `&` written as `\\u003c`, `\\u003e` and `\\u0026`), nested
   at most 4 levels deep, each key at any level 1 to 64 bytes; a key or a string that
@@ -67,9 +67,10 @@ defmodule Apiary.Runs.Fold do
   lost-run check compares it with the server's clock and Forager's clock may be anywhere.
   The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
   heartbeat of the run, whatever its sequence, and, for a run a gateway opened, its
-  ping's, whose clock is the gateway's, as its heartbeats' are: a minimum, so it is the
-  same in any order. A session's heartbeats are on the session's machine's clock, which
-  behind a separate gateway is not the ping's. Whenever a pass folds a later heartbeat or
+  registration's (`registered_at` less `registration_time`) and its ping's, whose clock is
+  the gateway's, as its heartbeats' are: a minimum, so it is the same in any order. A
+  session's heartbeats are on the session's machine's clock, which behind a separate
+  gateway is not the gateway's. Whenever a pass folds a later heartbeat or
   lowers the offset, the heartbeat with the highest sequence is counted again by the
   offset as the pass leaves it, from its time and arrival (the projector hands them over
   when that heartbeat was projected before), so `last_heartbeat_at` is the same in any
@@ -81,7 +82,7 @@ defmodule Apiary.Runs.Fold do
   after it across a clock set back between the two. The next lost-run check settles it.
   """
 
-  alias Apiary.Runs.Liveness
+  alias Apiary.Runs.{About, Liveness}
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
@@ -125,20 +126,6 @@ defmodule Apiary.Runs.Fold do
   @max_labels 64
   @max_cells 65_535
   @statuses 100..599
-
-  @about_kind 64
-  @about_title 256
-  @max_subjects 16
-  @subject_type ~r/\A[a-z0-9]+([ _.-][a-z0-9]+)*\z/
-  @subject_type_bytes 64
-  @subject_text 256
-  @subject_url 2048
-  @details_bytes 8192
-  @details_depth 4
-  @details_key 64
-  # What no string of `about` holds, key or value, as `Apiary.Runs.Target` reads a label: C0
-  # and DEL, C1, and the line and paragraph separators.
-  @control ~r/[\x{00}-\x{1F}\x{7F}-\x{9F}\x{2028}\x{2029}]/u
 
   # The states no start or heartbeat folded later changes, with the old names an older
   # release stored them under (`Apiary.Runs.Run.old_states/0`).
@@ -186,7 +173,8 @@ defmodule Apiary.Runs.Fold do
   `time` stands for it) into `run` (any map with the run's fields, the schema struct
   included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
   already projected. `projected` says what the fold needs of the events already projected:
-  `ping_offset`, the smallest clock offset of the pings, and `beat`, the `time` and
+  `ping_offset`, the smallest clock offset of the pings (the fold lowers it by the
+  registration's own, from `run`), and `beat`, the `time` and
   `received_at` of the heartbeat with the highest sequence; each absent or nil when there
   is none.
 
@@ -199,7 +187,7 @@ defmodule Apiary.Runs.Fold do
     acc = %__MODULE__{
       run: run,
       latest: latest,
-      ping_offset: projected[:ping_offset],
+      ping_offset: lower(projected[:ping_offset], registration_offset(run)),
       beat: projected[:beat]
     }
 
@@ -535,7 +523,9 @@ defmodule Apiary.Runs.Fold do
   defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
     heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
     run = Map.put(acc.run, :last_heartbeat_at, heard_at)
-    interval = Map.get(run, :heartbeat_interval_seconds)
+    # The registration's interval, else the heartbeats': the rule of the lost-run check.
+    interval =
+      Map.get(run, :registration_interval_seconds) || Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
       do: %{acc | run: revive(run)},
@@ -563,14 +553,24 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The ping's offset counts for a run a gateway opened, whichever of the ping and the
-  # start comes first.
+  # The gateway's offset, its registration's and its ping's, counts for a run a gateway
+  # opened, whichever of the ping and the start comes first.
   defp ping_clock(%{run: %{opened_by: "gateway"}, ping_offset: offset} = acc)
        when is_integer(offset),
        do: put_offset(acc, offset)
 
   defp ping_clock(acc), do: acc
 
+  # The registration's time on the gateway's clock and its arrival at this server, as a
+  # ping's time and arrival were: nil for a run that did not register.
+  defp registration_offset(run) do
+    case {Map.get(run, :registered_at), Map.get(run, :registration_time)} do
+      {%DateTime{} = received_at, %DateTime{} = time} -> Liveness.clock_offset(received_at, time)
+      _ -> nil
+    end
+  end
+
+  defp lower(offset, nil), do: offset
   defp lower(nil, offset), do: offset
   defp lower(current, offset), do: min(current, offset)
 
@@ -628,116 +628,9 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The four fields of what the run is about, from `about` (see the moduledoc). Every one
-  # is set, so a later `run.started` replaces all of them.
-  defp about(data) do
-    about =
-      case data do
-        %{"about" => %{} = about} -> about
-        _ -> %{}
-      end
-
-    %{
-      about_kind: bounded(about, "kind", @about_kind),
-      about_title: bounded(about, "title", @about_title),
-      about_subjects: subjects(about),
-      about_details: details(about)
-    }
-  end
-
-  # A string of 1 to `max` bytes with no control character, whole, or nil: never cut.
-  defp bounded(data, key, max) do
-    case data do
-      %{^key => value} when is_binary(value) and byte_size(value) in 1..max//1 ->
-        if clean?(value), do: value
-
-      _ ->
-        nil
-    end
-  end
-
-  defp clean?(string), do: String.valid?(string) and not Regex.match?(@control, string)
-
-  # Dropped one by one, then the first of each type and ref, then cut.
-  defp subjects(%{"subjects" => subjects}) when is_list(subjects) do
-    subjects
-    |> Stream.map(&subject/1)
-    |> Stream.reject(&is_nil/1)
-    |> Stream.uniq_by(&{&1["type"], &1["ref"]})
-    |> Enum.take(@max_subjects)
-  end
-
-  defp subjects(_about), do: []
-
-  # A type and a ref, or no subject; a title or a url only when it keeps its bound.
-  defp subject(%{} = subject) do
-    with type when is_binary(type) <- bounded(subject, "type", @subject_type_bytes),
-         true <- Regex.match?(@subject_type, type),
-         ref when is_binary(ref) <- bounded(subject, "ref", @subject_text) do
-      [{"url", url(subject)}, {"title", bounded(subject, "title", @subject_text)}]
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
-      |> Map.merge(%{"type" => type, "ref" => ref})
-    else
-      _ -> nil
-    end
-  end
-
-  defp subject(_subject), do: nil
-
-  # An absolute http or https url with a host and no user name or password, as given, or
-  # nil.
-  defp url(subject) do
-    with url when is_binary(url) <- bounded(subject, "url", @subject_url),
-         {:ok, %URI{scheme: scheme, host: host, userinfo: nil}}
-         when scheme in ["http", "https"] and is_binary(host) and host != "" <- URI.new(url) do
-      url
-    else
-      _ -> nil
-    end
-  end
-
-  # An object within its bounds, whole, or nil.
-  defp details(%{"details" => %{} = details}) do
-    with true <- nested_within?(details, @details_depth),
-         true <- clean_details?(details),
-         {:ok, json} <- Jason.encode(details),
-         true <- carried_size(json) <= @details_bytes do
-      details
-    else
-      _ -> nil
-    end
-  end
-
-  defp details(_about), do: nil
-
-  # Whether `value` nests no deeper than `levels`. An object or an array is a level, the
-  # outermost the first, as `Apiary.Runs.Batch` counts the depth of `data`.
-  defp nested_within?(%{} = map, levels),
-    do: levels > 0 and Enum.all?(Map.values(map), &nested_within?(&1, levels - 1))
-
-  defp nested_within?(list, levels) when is_list(list),
-    do: levels > 0 and Enum.all?(list, &nested_within?(&1, levels - 1))
-
-  defp nested_within?(_value, _levels), do: true
-
-  # Whether every key at every level is 1 to 64 bytes, and every key and string has no
-  # control character.
-  defp clean_details?(%{} = map) do
-    Enum.all?(map, fn {key, value} ->
-      byte_size(key) in 1..@details_key//1 and clean?(key) and clean_details?(value)
-    end)
-  end
-
-  defp clean_details?(list) when is_list(list), do: Enum.all?(list, &clean_details?/1)
-  defp clean_details?(string) when is_binary(string), do: clean?(string)
-  defp clean_details?(_value), do: true
-
-  # The bytes of compact JSON as the event carries it, `<`, `>` and `&` written as
-  # `\u003c`, `\u003e` and `\u0026`, six bytes each. They are counted here: Jason's
-  # `html_safe` escape writes `<` alone of the three, and `/` as `\/` besides.
-  defp carried_size(json),
-    do: byte_size(json) + 5 * length(:binary.matches(json, ["<", ">", "&"]))
+  # The four fields of what the run is about, from `about` (`Apiary.Runs.About.read/1`).
+  defp about(%{"about" => about}), do: About.read(about)
+  defp about(_data), do: About.read(nil)
 
   # The target the labels as sent name, whole, by the workspace's domain
   # (`Apiary.Lingo.Domain`), or nil. Labels that name no target stay in `labels` (cut like

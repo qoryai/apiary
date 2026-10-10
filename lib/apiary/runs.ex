@@ -135,7 +135,7 @@ defmodule Apiary.Runs do
 
   @doc """
   A page of the workspace's runs under the filters, in their order (`sort`: newest first by
-  when they started, a run that has only pinged placed by when its ping arrived; oldest
+  when they started, a run that has only registered placed by when it registered; oldest
   first; the longest first, by the duration its exit gave or else the time it reported
   elapsed; the most denials first), `per` to a page. Returns the page's runs, the page it
   is (the last one, when the filters asked for one beyond it), the total, the pages and
@@ -1234,7 +1234,7 @@ defmodule Apiary.Runs do
 
   ## The workspace overview
 
-  # The runs are placed by when they started, or, for a run that has only pinged, by when
+  # The runs are placed by when they started, or, for a run that has only registered, by when
   # the workspace first heard of it: the expression of
   # `runs_workspace_id_started_or_first_heard_index`. A run's UTC day is that expression
   # cast to a date as it is, since the columns hold UTC with no zone: `AT TIME ZONE 'UTC'`
@@ -1264,7 +1264,7 @@ defmodule Apiary.Runs do
 
   @doc """
   The workspace's runs from `from` on, one row per UTC day they started (a pending run by
-  when its ping arrived), oldest first; a day with no run has no row. One grouped query
+  when it registered), oldest first; a day with no run has no row. One grouped query
   over the index the runs list reads by; the caller fills the days in. `to`, when given,
   bounds the read above (exclusive), so one call can read today alone.
   """

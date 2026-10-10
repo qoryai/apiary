@@ -24,6 +24,23 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     run
   end
 
+  # The registration fields of a run that registered, with `attrs`, as
+  # `Apiary.Runs.Registration` stores them: projected from sequence 1.
+  defp registered(attrs) do
+    Map.merge(
+      %{
+        projected_sequence: 1,
+        registered_at: DateTime.utc_now(),
+        registration_labels: %{},
+        registration_about: %{},
+        registration_digest: :crypto.hash(:sha256, "registration"),
+        registration_interval_seconds: 30,
+        registration_answer_digest: Apiary.Policy.Render.digest(~s({"version":1}))
+      },
+      attrs
+    )
+  end
+
   defp project_more(run, events) do
     events_fixture(run, events)
     {:ok, run} = Projector.project(run)
@@ -421,18 +438,74 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
     end
 
-    test "a pending run says Ping only and waits on every tab", %{
+    test "a pending run says Registered only and waits on every tab", %{
+      conn: conn,
+      scope: scope
+    } do
+      # A run that registered and posted nothing.
+      run = projected(scope, [], registered(%{forager_version: "0.10.0"}))
+
+      for path <- ["", "/terminal", "/network"] do
+        {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}#{path}")
+        assert html =~ "Registered only"
+        refute html =~ "Ping only"
+        assert html =~ "Waiting for the run to start"
+        assert html =~ "The run is registered. Its first event has not arrived."
+        refute html =~ "Forager has pinged."
+      end
+    end
+
+    test "a pending run stored before the registration, which only pinged, says Ping only", %{
       conn: conn,
       scope: scope
     } do
       run =
         projected(scope, [{1, "ping", %{"forager_version" => "0.10.0", "contract_version" => 1}}])
 
+      assert run.registered_at == nil
+
       for path <- ["", "/terminal", "/network"] do
         {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}#{path}")
         assert html =~ "Ping only"
+        refute html =~ "Registered only"
         assert html =~ "Waiting for the run to start"
-        assert html =~ "The run&#39;s first event has not arrived."
+        assert html =~ "Forager has pinged. The run&#39;s first event has not arrived."
+        refute html =~ "The run is registered."
+      end
+    end
+
+    test "a registered run's events are counted from its sequence 2, a batch-created run's from 1",
+         %{conn: conn, scope: scope} do
+      page = &live(conn, "#{workspace_path(scope)}/runs/#{&1.run_id}")
+
+      # Registered, nothing projected: as any run with nothing projected.
+      run = projected(scope, [], registered(%{forager_version: "0.10.0"}))
+      assert run.projected_sequence == 1
+      {:ok, _lv, html} = page.(run)
+      assert html =~ ~r/projected through <span[^>]*>#0000</
+      refute html =~ "Last event #"
+
+      # Two events stored and not read yet: two, by either kind of run.
+      started = %{"opened_by" => "session", "credential" => "none", "forager_version" => "0.10.0"}
+      running = %{state: "running", started_at: DateTime.utc_now(), event_count: 2}
+
+      for {attrs, first} <- [{registered(running), 2}, {running, 1}] do
+        run = run_fixture(scope, attrs)
+
+        events_fixture(run, [
+          {first, "run.started", started},
+          {first + 1, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}}
+        ])
+
+        {:ok, _lv, html} = page.(run)
+        assert html =~ "2 events have arrived and are being read.", inspect(first)
+
+        # Once read, none is left, and the record is projected through its last.
+        {:ok, run} = Projector.project(run)
+        assert run.projected_sequence == first + 1
+        {:ok, _lv, html} = page.(run)
+        refute html =~ "have arrived and are being read."
+        assert html =~ ~r/projected through <span[^>]*>#000#{first + 1}</
       end
     end
 
@@ -503,7 +576,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "permission_prompt · Claude needs your permission to use Bash"
       assert html =~ "success · 14 turns · 3 m 49 s · $0.84"
       assert html =~ "exit 0"
-      assert html =~ "End of the record. 101 events."
+      assert html =~ "End of the record. 100 events."
       assert has_element?(lv, "ol#timeline[aria-label='Session timeline, oldest first']")
       refute html =~ "aria-live=\"polite\" id=\"timeline\""
     end

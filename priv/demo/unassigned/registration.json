@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "run_id": "4e8b2d17-9a3c-7b60-8f25-1c6d0e9a5b44",
+  "about": {
+    "kind": "Chore",
+    "title": "Bump the changelog"
+  },
+  "forager_version": "0.10.0",
+  "contract_version": 1,
+  "interval_seconds": 30,
+  "events": [
+    "*"
+  ],
+  "time": "2026-09-18T11:00:00Z"
+}

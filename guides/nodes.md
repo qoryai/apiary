@@ -224,8 +224,8 @@ for display, the audit and the instance limit: what a request is allowed rests o
 alone.
 
 An instance counts as running while one of its runs is alive. A node runs one at a time,
-and a pool up to its limit: the ping that starts a run, from an instance beyond the limit,
-is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
+and a pool up to its limit: the registration that starts a run, from an instance beyond
+the limit, is refused, `instance_limit`, the run does not start, and the node's **Overview** counts
 the starts refused. Lowering a limit stops nothing that runs; new instances wait
 until fewer run.
 
@@ -250,12 +250,8 @@ by when it was recorded, not when it arrived, so the catch-up shows what happene
 - An access key's **Last heartbeat** is when its newest heartbeat was recorded, allowing 5
   minutes for the machine's clock, and never later than it arrived.
 - A new run opens during a catch-up, on a node or pool the catching-up runs had filled
-  too: old heartbeats hold no instance's place. Its ping spends the key's rate with the
-  catch-up, so it can be refused for a moment; the gateway sends it again, up to 3 tries
-  in all, and a run whose ping is refused on every try does not open.
-  <!-- feature: security -->
-  Its run configuration has a rate of its own, which a catch-up never spends.
-  <!-- /feature -->
+  too: old heartbeats hold no instance's place. Its registration has a rate of its own,
+  which a catch-up never spends.
 - Every event is kept, however late it arrives, while its run is: retention keeps a lost
   run for 7 days after it was lost, however short its settings
   ([Retention](retention.md)).

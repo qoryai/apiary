@@ -2,7 +2,8 @@
 
 The server contract is what Forager and a server say to each other: how Forager's gateway
 finds the server's endpoints, how a machine enrols its access key, how a request proves
-which key it holds, and how the gateway delivers a run's events.
+which key it holds, how a run registers before it starts, and how the gateway delivers a
+run's events.
 <!-- feature: security -->
 It is also how a run is given its security policy.
 <!-- /feature -->
@@ -20,6 +21,9 @@ Qory Apiary implements version 1, revision 1, tool invocations included: the `to
 <!-- feature: security -->
 [Tool invocations](security-policy.md#tool-invocations) says what they are.
 <!-- /feature -->
+A run opens with its registration (below). A Forager that opens a run with a ping,
+`dev.qory.ping`, is refused, and the run does not start: run Forager and Qory Apiary of the
+same release.
 
 Where this page and the contract disagree, the contract wins. Two files in the server's
 repository tie the two together:
@@ -41,7 +45,7 @@ and every run configuration is validated against them before it is stored.
 Every request names a node's access key, an Ed25519 key, and is signed with that key's
 secret, which never leaves the machine: the server holds the public key alone. The key
 decides the workspace and the node: a run is stored in the workspace of the key that
-delivered it, on the key's node or node pool.
+registered it, on the key's node or node pool.
 <!-- feature: security -->
 A run configuration is the one of the key's workspace.
 <!-- /feature -->
@@ -88,20 +92,20 @@ The contract's known answers for these strings are in its
 
 ### A signed GET
 
-For the configuration document.
-<!-- feature: security -->
-The run configuration is fetched the same way.
-<!-- /feature -->
-It carries `X-Qory-Timestamp`, Unix seconds, UTC, a decimal integer.
+For the configuration document and a run's reload. It carries `X-Qory-Timestamp`, Unix
+seconds, UTC, a decimal integer.
 
 **The five-minute window.** The server accepts the request when its own clock and the
-timestamp differ by at most 300 seconds, earlier or later alike. A machine whose clock is
-more than five minutes wrong is refused, so keep the clocks of the server and of the
-machines synchronised.
+timestamp differ by at most 300 seconds, earlier or later alike. A run's registration
+carries its own `time`, held to the same window. A machine whose clock is more than five
+minutes wrong is refused, so keep the clocks of the server and of the machines
+synchronised.
 
 ### A signed POST
 
-For the events endpoint.
+For a run's registration and for the events endpoint. A registration carries
+`Content-Type: application/json`, and its body says when it was built (below). A batch
+carries:
 
 | Header | Value |
 |---|---|
@@ -111,10 +115,10 @@ For the events endpoint.
 | `X-Qory-Run-Configuration` | optional: the digest of the run configuration the run holds |
 <!-- /feature -->
 
-No timestamp is signed and no window is checked: a replayed batch is a duplicate, and the
-server discards duplicates by event id. The signature covers the path and the body, so a
-body signed for one endpoint fails at every other, and it is verified over the bytes as
-received, before anything parses them.
+No timestamp line is signed: a replayed batch is a duplicate, which the server discards by
+event id, and a registration's `time` is in its signed body. The signature covers the path
+and the body, so a body signed for one endpoint fails at every other, and it is verified
+over the bytes as received, before anything parses them.
 
 ### Signed answers
 
@@ -133,18 +137,20 @@ neither kind of answer can pass for the other (below).
 
 On every endpoint, the first refusal that applies is the answer:
 
-1. `413`, a body over 2 MiB (the events endpoint);
-2. `415`, a content type other than `application/cloudevents-batch+json` (the events
-   endpoint);
+1. `413`, a body over 64 KiB (a registration) or 2 MiB (the events endpoint);
+2. `415`, a content type other than `application/json` (a registration) or
+   `application/cloudevents-batch+json` (the events endpoint);
 3. `400` `bad_request`, unsigned, for `X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`,
    `X-Qory-Signature-Ed25519` or `X-Qory-Timestamp` sent twice;
 4. `401`, any failure of authentication (below);
-5. `429` `rate_limited`, the key's rate is spent (the events endpoint and the run
-   configuration, each from a bucket of its own);
+5. `429` `rate_limited`, the key's rate is spent (the events endpoint, and a run's
+   registration and reload, each from a bucket of its own);
 6. `400` `bad_request`, signed, an instance id absent or outside its pattern;
 7. `400` `unsupported_contract_version`;
-8. `400` `invalid_request`, a body the contract refuses (the events endpoint);
-9. `401`, a GET's timestamp that is not an integer or is outside the window;
+8. `400` `invalid_request`, a body the contract refuses (a registration, the events
+   endpoint);
+9. `401`, a GET's timestamp that is not an integer or is outside the window, or a
+   registration's `time` outside it;
 10. then each endpoint's own.
 
 A refusal after verification is `application/json`, `{"error":"<code>"}`, signed.
@@ -154,8 +160,8 @@ A refusal after verification is `application/json`, `{"error":"<code>"}`, signed
 Every failure of authentication is `401` with the body `{"error":"unauthorized"}` and
 nothing more, unsigned: a key id or signature missing or empty, a key id of the wrong shape,
 a key the server does not know, has revoked, or that is no node's, a signature that does
-not verify, a stale timestamp. The body never says which, and nothing about the request's
-headers is logged. The key is looked up only after its shape is checked, and the signature
+not verify, a stale timestamp or registration `time`. The body never says which, and
+nothing about the request's headers is logged. The key is looked up only after its shape is checked, and the signature
 is verified cofactorless, as RFC 8032 defines it.
 
 ## The endpoints
@@ -171,24 +177,141 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
   "version": 1,
   "node_id": "nd_f1xt0re000000000",
   "events": {"url": "https://qory.example/v1/events", "types": ["*"]},
+  "run": {"url": "https://qory.example/v1/runs"},
   "apiary_public_key": [{"alg": "ed25519", "public_key": "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"}]
 }
 ```
 
 `node_id` is the key's node or node pool, and `apiary_public_key` lists the server's
-signing key, for information: the gateway verifies under the key it pinned. The document, and
-its digest, differ by node.
+signing key, for information: the gateway verifies under the key it pinned. `run.url` is
+the run endpoint, with no trailing slash: a run registers there, and a reload adds `/` and
+the run's id. The document, and its digest, differ by node, never by the workspace's
+policy.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A Forager file's `gateway.server.url` is that address, and the
 gateway finds the other endpoints through this document alone.
 
+### A run's registration: `POST /v1/runs`
+
+A signed POST, `Content-Type: application/json`, before the run starts. The body is the
+contract's `run-registration.schema.json`:
+
+```json
+{"version": 1,
+ "run_id": "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+ "labels": {"forge": "git.example", "issue": "77", "repository": "acme/shop"},
+ "about": {"title": "Fix the failing build"},
+ "forager_version": "0.7.0",
+ "contract_version": 1,
+ "interval_seconds": 30,
+ "events": ["*"],
+ "time": "2026-10-10T12:00:00Z"}
+```
+
+`version` is `1`; `run_id` is the run's id, a lower-case UUID; `forager_version`,
+`contract_version`, `interval_seconds` and `events` are what the gateway announces for the
+run, the heartbeat interval from 1 to 300 seconds; `time` is when the gateway built the
+body, in UTC, to the whole second, ending in `Z`. All of them are required. `labels`, at
+most 16, each value at most 256 bytes, and `about`, what the run is about as
+`dev.qory.run.started` carries it, may be left out. The body is read strictly: a member
+the contract does not name, or one that breaks its rule, is `400 invalid_request`. A
+`time` more than 300 seconds from the server's clock is `401`.
+
+The answers, in order; the first that applies is the answer:
+
+| Status | When | Body |
+|---|---|---|
+| `413` | the body is over 64 KiB, or cannot be read | `{"error":"payload_too_large"}` |
+| `415` | the media type is not `application/json`, compared exactly, whatever its case and parameters | `{"error":"unsupported_media_type"}` |
+| `400` | a header the signature depends on is sent twice | `{"error":"bad_request"}` |
+| `401` | any failure of authentication | `{"error":"unauthorized"}` |
+| `429` | the key's rate for registrations is spent; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
+| `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | the body is not a registration, or breaks a rule | `{"error":"invalid_request","names":["<member>"]}`, `"body"` for a member the contract does not name or a body that is no object |
+| `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
+| `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
+| `200` | a repeat: the same bytes again, under the same access key | the answer the registration was given |
+| `410` | retention has pruned the run's events | empty |
+| `409` | a new instance beyond its node's instance limit; the node counts the start refused | `{"error":"instance_limit"}` |
+| `409` | the run id is taken: registered with other bytes or under another access key, or holding events that came without a registration | `{"error":"run_id_used"}` |
+| `503` | the run configuration could not be read, or the run could not be stored | `{"error":"unavailable"}` |
+| `200` | registered | the run configuration |
+
+No run is stored on any refusal. A node runs one instance at a time, and a node pool up to
+its instance limit: an instance counts while one of its runs is live.
+
+The gateway builds the body once and sends the same bytes on every try, `time` included.
+It tries up to 3 times as a run opens, 1 second and then 2 seconds after the try before
+ends, none more than 6 seconds after the run was asked for: again after no answer, a `5xx`
+or a signed `429`, whose `Retry-After` it does not read. A run whose registration is
+refused on every try does not open. A repeat is given the answer it was given the first
+time, and nothing is stored again. Once that run configuration is gone, because its
+repository was deleted, the repeat is given the configuration in force now for its labels.
+
+A `200` carries `X-Qory-Run-Configuration: sha256=<hex>` and `ETag` with the same string
+quoted, always, `X-Qory-Configuration` and `Cache-Control: no-store, no-transform`. Its body is the run's run
+configuration. `{"version":1}` is the run configuration of no policy: the run keeps the
+policy of its machine's own Forager file.
+
+The run is stored `pending`, on the key's node and the instance the request claimed, with
+the labels, `about` and heartbeat interval of its registration. Its `run.started` moves it
+to running. It is found lost when nothing is heard of it for three of the intervals it
+registered with, 90 seconds at Forager's 30. The labels name what the run works on;
+`about` is for display and never selects a policy.
+
 <!-- feature: security -->
-For a workspace whose policy somebody has made, the document has a `run` section too,
-`"run": {"url": "https://qory.example/v1/run-configuration"}`. A workspace nobody has
-given a policy is answered the document without `run`, and its machines run under the
-policy of their own Forager file ([The security policy](security-policy.md)). The document
-is therefore one of two for a node, by its workspace, and so is its digest.
+For a workspace whose policy somebody has made, the body is the workspace's run
+configuration for the repository the registration's labels name:
+
+```json
+{"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
+```
+
+The server reads the repository from two labels, `forge` and `repository`
+(`Apiary.Lingo.Domain.Software`). Any other label names nothing. A repository the
+workspace does not know, or labels that name none, or one label of the two, get the
+workspace's baseline. The labels are compared to the stored ones byte for byte. The body
+is the bytes that were stored when the policy was last changed. Nothing is rendered for a
+request, so the digest is of exactly what is sent.
+
+A workspace nobody has given a policy, or one without the `security` feature, is answered
+`{"version":1}`, and its machines run under the policy of their own Forager file
+([The security policy](security-policy.md)).
+
+The gateway applies the `security_policy` narrowed by the machine's own `egress`; the
+machine only takes away.
+When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
+gateway denies first and in either mode; without any, the section is as above.
+<!-- /feature -->
+
+### The reload: `GET /v1/runs/<run_id>`
+
+A signed GET, with `X-Qory-Timestamp`: the run endpoint, a slash and the run's id. The
+gateway sends it when an answer carries an `X-Qory-Run-Configuration` other than the one
+it holds. Its `200` has the same headers as the registration's, and its body is the run
+configuration in force now for the labels the run registered with.
+
+| Status | When | Body |
+|---|---|---|
+| `200` | the workspace has a policy | the run configuration |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
+| `401` | any failure of authentication | `{"error":"unauthorized"}` |
+| `404` | the run is not one this access key registered: an unknown run id, a run another key registered, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
+| `503` | the configuration could not be read | `{"error":"unavailable"}` |
+
+The reload is answered only to the access key that registered the run, and only by the
+labels it registered with; a run whose events retention has pruned is reloaded all the
+same. To the gateway any
+answer but `200` is a reload that failed: the policy in force stays, and it tries again on
+the next answer. The endpoint never answers `304`.
+
+<!-- feature: security -->
+A reload on a workspace with no policy, or a policy removed mid-run, answers `404`. A
+policy removed mid-run never loosens a run that's already started, and the next run gets
+the new state when it registers.
 <!-- /feature -->
 
 ### Events: `POST /v1/events`
@@ -199,41 +322,33 @@ this order, and the first refusal that applies is the answer:
 | Status | When | Body |
 |---|---|---|
 | `413` | the body is over 2 MiB, or cannot be read | `{"error":"payload_too_large"}` |
-| `415` | the content type is not `application/cloudevents-batch+json` | `{"error":"unsupported_media_type"}` |
+| `415` | the media type is not `application/cloudevents-batch+json`, compared exactly, whatever its case and parameters | `{"error":"unsupported_media_type"}` |
 | `400` | a header the signature depends on is sent twice | `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch, is over a limit, or holds a ping whose `interval_seconds` is absent or not from 1 to 300 | `{"error":"invalid_request"}` |
+| `400` | the body is not a batch, is over a limit, or holds `dev.qory.ping` or `dev.qory.run.registered` | `{"error":"invalid_request"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
-| `409` | the ping of a new run, from an instance beyond its node's instance limit: nothing is stored | `{"error":"instance_limit"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
 To the gateway a `2xx` means accepted, `410` means send nothing more for this run, and anything
-else is retried with backoff until the run ends. The ping that opens a run is a batch like
-any other: a `202` lets the run start, and a revoked key, a bad signature, an instance
-beyond the limit or an unsupported version does not. The gateway tries it up to 3 times,
-1 second and then 2 seconds after the try before ends, none more than 6 seconds after the
-run was asked for: again after no answer, a `5xx` or a signed `429`, whose `Retry-After`
-it does not read. A run whose ping is refused on every try does not open.
+else is retried with backoff until the run ends.
 
 - **The envelope is checked, the data is not.** Each event has `id` and `subject` (lower-case
   UUIDs), `type` (beginning `dev.qory.`), `sequence` (ten digits, from `0000000001`),
   `source`, `time` (RFC 3339) and `data` (an object), all of one subject. A batch holds at
   most 1000 events; the gateway cuts one at a hundred. A type this release does not know is
   stored like any other, so a newer Forager's events are kept until a release reads them.
-  A ping's `interval_seconds` is read too, the heartbeat interval the run uses.
+  A run opens with its registration, never with an event: a batch that holds
+  `dev.qory.ping` is refused, and so is one that holds `dev.qory.run.registered`, which
+  stays in the gateway's own record.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again, or `410` for a run retention has
   pruned, and nothing is stored.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
-  The run is created on the first event of a subject the key's workspace has not seen, on
-  the key's node and the instance the request claimed. A node runs one instance at a time,
-  and a node pool up to its instance limit: an instance counts while one of its runs is
-  live. The
-  events are projected into the run, its connections and its log after the answer, in
+  The events are projected into the run, its connections and its log after the answer, in
   order of `sequence`, never of arrival.
 - **What a run is about.** `about` of `dev.qory.run.started`, its kind, title, subjects
   and details, is read within its bounds and shown in the console: its title is the run's
@@ -243,65 +358,18 @@ it does not read. A run whose ping is refused on every try does not open.
   alone.
 - **The rate** is per access key and per server node: 50 batches a second, 100 at once.
   Every request that passed the `413`, the `415` and the `401` spends one, whatever it is
-  answered after that. The ping is a batch and spends one too, so while a gateway flushes
-  a backlog on the same key, a new run's ping can be refused `429`, and is sent again.
+  answered after that. A run's registration and its reloads spend a bucket of their own,
+  the same 50 a second and 100 at once, so a gateway flushing a backlog on the same key
+  still opens a new run.
 - **The digests.** Every `202` and `410` carries `X-Qory-Configuration`. A gateway that
   holds another digest fetches the document again; nothing in an answer's body is read.
   <!-- feature: security -->
   For a workspace with a policy the answer carries `X-Qory-Run-Configuration` too, the
-  digest in force for the run's repository. That is how a change of the policy reaches a
-  run in flight, and the whole of it.
+  digest in force for the repository the run's registration named. A gateway that holds
+  another digest reloads the run's configuration. That is how a change of the policy,
+  the workspace's first among them, reaches a run in flight, and the whole of it.
   <!-- /feature -->
 - Neither the signature nor the body is logged, and no batch is answered `500`.
-
-<!-- feature: security -->
-### The run configuration: `GET /v1/run-configuration`
-
-A signed GET, with the query signed as sent: one parameter per label of the run. The
-gateway sends every label of the run, such as
-`?forge=github.com&issue=77&repository=acme%2Fshop`. The
-server reads every parameter as a label and reads the repository from two of them, `forge`
-and `repository` (`Apiary.Lingo.Domain.Software`). Any other label names nothing. A
-repository the workspace does not know, or labels that name none, get the workspace's
-baseline.
-
-| Status | When | Body |
-|---|---|---|
-| `200` | the workspace has a policy | the run configuration |
-| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
-| `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | nobody has made the workspace's policy; discovery named no `run` section, so the gateway does not ask | `{"error":"not_found"}` |
-| `404` | the `security` feature is off for the key's workspace or organisation, or for the instance; a gateway asks only when it went off after a discovery that named a `run` section. The endpoint is absent: a request that verifies is answered, signed, as a path that does not exist. On an instance without the feature, a request with no signature is answered as one too, unsigned, before anything is verified | `Not Found`, as `text/html`, whatever the request accepts; to a request with no signature, what a path that does not exist answers in the format it accepts |
-| `429` | the key's rate for the run configuration is spent: 50 requests a second, 100 at once, per server node, from a bucket of its own, so events the gateway delivers never spend it; with `Retry-After` | `{"error":"rate_limited"}` |
-| `503` | the configuration could not be read | `{"error":"unavailable"}` |
-
-As a run opens, the gateway tries the run configuration up to 3 times, as it tries the
-ping: again after no answer, a `5xx` or a signed `429`. Any other answer but `200` is no
-run, and so is the last try's. During a run, any answer but `200` is a reload that
-failed, tried again on the next answer. The endpoint never answers `304`.
-
-A `200` carries `X-Qory-Run-Configuration: sha256=<hex>`, `ETag` with the same string
-quoted, `X-Qory-Configuration` and `Cache-Control: no-store, no-transform`:
-
-```json
-{"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
-```
-
-The body is the bytes that were stored when the policy was last changed. Nothing is
-rendered for a request, so the digest is of exactly what is sent. It is the configuration
-of the key's workspace for the repository the two labels name; a repository the workspace
-has not seen, one with no rules of its own, and a request that names none, or one label of
-the two, get the workspace's baseline. The labels are compared to the stored ones byte for
-byte after the query's percent-decoding. Qory Apiary does not answer `400` to a query the
-contract's rules for labels refuse, as the reference receiver does: a `forge` or
-`repository` that cannot be a label names no repository, and of a parameter sent twice the
-last is read.
-
-The gateway applies the `security_policy` narrowed by the machine's own `egress`; the
-machine only takes away.
-When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
-gateway denies first and in either mode; without any, the section is as above.
-<!-- /feature -->
 
 ### Enrolment: `POST /.well-known/qory-enrolment`
 
@@ -346,10 +414,10 @@ revoked, is the same `201` for the same key; any other key on a used code is `40
 ## A receiver of your own
 
 Forager's repository ships a reference receiver and the fixtures any receiver is tested
-against. Discovery and the events endpoint are enough.
+against. Discovery, the run endpoint and the events endpoint are enough.
 <!-- feature: security -->
-A receiver that names no `run` section offers no run configuration, and the policy stays
-the machine's.
+A receiver whose run endpoint answers every registration `{"version":1}` offers no run
+configuration, and the policy stays the machine's.
 <!-- /feature -->
 On the machine it is configured like Qory Apiary ([The Forager file's `server`
 section](forager-file.md)).

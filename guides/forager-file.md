@@ -92,27 +92,23 @@ With a `server` section, every `qory run` on the machine:
 
 1. fetches Qory Apiary's configuration document, a signed `GET` of
    `/.well-known/qory-configuration` under `url`;
-2. sends a ping, a batch of one event, to the events URL the document names, which on Qory
-   Apiary is `/v1/events`;
+2. registers the run, a signed `POST` to the run endpoint the document names, which on
+   Qory Apiary is `/v1/runs`, with the run's id, its labels, what it is about and its
+   heartbeat interval. The answer is the run's run configuration;
    <!-- feature: security -->
-3. when the document names a `run` section, fetches the run configuration for the checkout,
-   a signed `GET` of `/v1/run-configuration` with the run's labels as the query. That
-   document is the run's security policy;
+   when the workspace has a policy, that document is the run's security policy;
    <!-- /feature -->
-4. starts the runtime, and posts the run's events in signed batches while it runs.
+3. starts the runtime, and posts the run's events in signed batches to the events URL the
+   document names, which on Qory Apiary is `/v1/events`, while it runs.
 
 Each request names the machine's instance, its id kept in the file `instance-id` beside
 `forager.yaml`, and is signed with the access key. Each answer is signed with Qory Apiary's
 key, and the gateway verifies it under the pin before it reads anything of it.
 
 The run fails closed. A configuration fetch that fails or is refused, an answer that does
-not verify under the pin, or a ping Qory Apiary does not accept: no run, and the error
-names the URL and the status. An instance beyond its node pool's instance limit is refused
-`instance_limit`.
-<!-- feature: security -->
-A named run configuration that does not answer `200` is no run either.
-<!-- /feature -->
-A redirect is not followed.
+not verify under the pin, or a registration Qory Apiary does not accept: no run, and the
+error names the URL and the status. An instance beyond its node pool's instance limit is
+refused `instance_limit`. A redirect is not followed.
 
 Once the run is under way Qory Apiary never delays the session. Events are posted behind a
 queue. At the end of a run qory prints where the run's record is, once, after the line
@@ -136,7 +132,7 @@ The `server` section replaced the `webhook` section in version 0.10.0 of the com
 Forager file that still has a `webhook` section is refused with a message that says so, and
 `QORY_WEBHOOK_SECRET` is not read any more. A receiver of your own that is not a Qory Apiary
 is configured with the same `server` section, and implements the same contract: the
-configuration document and the events endpoint are enough.
+configuration document, the run endpoint and the events endpoint are enough.
 
 <!-- feature: security -->
 ## The `egress` section and the workspace's policy
@@ -157,8 +153,9 @@ It applies:
 
 - on a machine with no `server` section;
 - with `qory run --local`, which records to files only and does not contact Qory Apiary;
-- while the workspace of the access key's node has no policy yet. Qory Apiary then names
-  no run configuration, and the machine's own policy stands, enforcement included.
+- while the workspace of the access key's node has no policy yet. Qory Apiary then answers
+  each run's registration with no policy, `{"version":1}`, and the machine's own policy
+  stands, enforcement included.
 
 From the first change of the workspace's policy in the console, Qory Apiary's run
 configuration, narrowed by the file's `egress` section (enforce when either enforces;
@@ -178,8 +175,8 @@ none of the machine's `credentials`, so a run under it uses none.
 
 Qory Apiary reads a run's repository from two of its labels, `forge` and `repository`.
 <!-- feature: security -->
-It keeps a policy per repository, and the gateway asks for the run configuration with the
-run's labels.
+It keeps a policy per repository, and the gateway registers each run with the run's
+labels.
 <!-- /feature -->
 Both come from the checkout's origin remote:
 
@@ -211,6 +208,7 @@ named. Every other label is shown with the run under Labels, as given; none of t
 or titles it.
 
 <!-- feature: security -->
-The gateway sends every label of the run on the run configuration request. Qory Apiary
-reads the repository from `forge` and `repository`; any other label names no repository.
+The gateway sends every label of the run in the body of its registration. Qory Apiary
+reads the repository from `forge` and `repository`; any other label names no repository,
+and what the run is about selects no policy.
 <!-- /feature -->

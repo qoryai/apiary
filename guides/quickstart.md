@@ -198,8 +198,8 @@ installed on this machine and able to start a session. Arguments after `--` go t
 runtime.
 
 Before the runtime starts, the gateway fetches Qory Apiary's configuration, signed with the
-machine's access key, checks the answer under Qory Apiary's key it pinned, and sends a
-ping. If Qory Apiary does not answer, or refuses the key, there is no run, and the error
+machine's access key, checks the answer under Qory Apiary's key it pinned, and registers
+the run. If Qory Apiary does not answer, or refuses the key, there is no run, and the error
 names the URL and the status. At the end of the run qory prints where its record is,
 `qory run: the record is in <folder>/<id>`. The record is written whatever Qory Apiary
 does, under `~/.local/state/qory/runs/`, or `$XDG_STATE_HOME/qory/runs/` when

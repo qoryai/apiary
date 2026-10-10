@@ -16,7 +16,7 @@ defmodule ApiaryWeb.Routes do
 
   - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
     `:contract` (a signed request of the server contract), `:contract_events` and
-    `:contract_run_configuration` (the same, each held to a bucket of the key's rate
+    `:contract_registration` (the same, each typing its body and held to a bucket of the key's rate
     limit) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
     plugs of `ApiaryWeb.UserAuth` the routes pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
@@ -114,17 +114,24 @@ defmodule ApiaryWeb.Routes do
         plug ApiaryWeb.Contract.SignedRequest
       end
 
-      # The same, for the events endpoint, which spends the key's bucket of the rate limit.
+      # The same, for the events endpoint, which takes a batch and spends the key's bucket
+      # of the rate limit.
       pipeline :contract_events do
         plug :accepts, ["json"]
-        plug ApiaryWeb.Contract.SignedRequest, rate_limit: :events
+
+        plug ApiaryWeb.Contract.SignedRequest,
+          rate_limit: :events,
+          content_type: "application/cloudevents-batch+json"
       end
 
-      # The same, for the run configuration, which spends a bucket of the key's own, apart
-      # from the events endpoint's.
-      pipeline :contract_run_configuration do
+      # The same, for the run endpoint, which takes a registration, answers a reload, and
+      # spends a bucket of the key's own, apart from the events endpoint's.
+      pipeline :contract_registration do
         plug :accepts, ["json"]
-        plug ApiaryWeb.Contract.SignedRequest, rate_limit: :run_configuration
+
+        plug ApiaryWeb.Contract.SignedRequest,
+          rate_limit: :registration,
+          content_type: "application/json"
       end
 
       # First for the organisation's and the workspace's pages: a segment in the place of
@@ -158,7 +165,8 @@ defmodule ApiaryWeb.Routes do
         get "/health", HealthController, :show
       end
 
-      # The server contract: signed requests, discovery, events, run configuration.
+      # The server contract: signed requests, discovery, events, a run's registration and
+      # reload.
       scope "/.well-known", ApiaryWeb.Contract do
         pipe_through :contract
 
@@ -180,9 +188,10 @@ defmodule ApiaryWeb.Routes do
       end
 
       scope "/v1", ApiaryWeb.Contract do
-        pipe_through :contract_run_configuration
+        pipe_through :contract_registration
 
-        get "/run-configuration", RunConfigurationController, :show
+        post "/runs", RegistrationController, :create
+        get "/runs/:run_id", RegistrationController, :show
       end
 
       # LiveDashboard and the Swoosh mailbox preview, in development only. Their scripts

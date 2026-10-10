@@ -401,9 +401,13 @@ defmodule ApiaryWeb.RunComponents do
   @doc "When the server last heard the run is alive: its last heartbeat, else its first event."
   def heard_at(run), do: Map.get(run, :last_heartbeat_at) || Map.get(run, :inserted_at)
 
-  @doc "The heartbeat interval the run is held to, in seconds: its own within bounds, else 30."
+  @doc """
+  The heartbeat interval the run is held to, in seconds: the one its registration stated,
+  else its heartbeats', within bounds, else 30.
+  """
   def beat(run) do
-    case Map.get(run, :heartbeat_interval_seconds) do
+    case Map.get(run, :registration_interval_seconds) ||
+           Map.get(run, :heartbeat_interval_seconds) do
       interval when is_integer(interval) -> interval |> max(1) |> min(@max_beat)
       _ -> @default_beat
     end
@@ -861,6 +865,9 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  # A run that registered and posted nothing yet, or, stored before the registration
+  # replaced the ping, one that pinged and posted nothing else.
+  defp ended_sentence("pending", %{registered_at: %DateTime{}}), do: gettext("Registered only")
   defp ended_sentence("pending", _run), do: gettext("Ping only")
 
   defp ended_sentence("completed", %{duration_ms: ms}) when is_integer(ms),
@@ -1906,7 +1913,7 @@ defmodule ApiaryWeb.RunComponents do
   How long a run ran, as its row and its preview say it: the duration its exit gave, as the
   run page says it, also for a run its exit said was lost; for a running run the time since
   it started, ticking; for a quiet one, or one Qory Apiary marked lost, "at least" what it last
-  reported; nothing for a run that has only pinged. A run that did not start
+  reported; nothing for a run that has only registered. A run that did not start
   (`Apiary.Runs.Run.refused?/1`) never ran: the row leaves its cell empty and the preview
   leaves out its Duration.
   """

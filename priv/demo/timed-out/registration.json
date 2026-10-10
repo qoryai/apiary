@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "run_id": "0b6f6a52-5d0e-7c11-8a54-3f1d2e9c7a10",
+  "labels": {
+    "forge": "github.com",
+    "repository": "acme/shop",
+    "task": "upgrade-framework",
+    "pipeline": "4790"
+  },
+  "about": {
+    "kind": "Maintenance",
+    "title": "Upgrade the web framework to the next major version",
+    "subjects": [
+      {
+        "type": "ticket",
+        "ref": "SHOP-119",
+        "url": "https://tracker.example.com/browse/SHOP-119",
+        "title": "Move to the next major version of the web framework"
+      },
+      {
+        "type": "pipeline",
+        "ref": "4790",
+        "url": "https://ci.example.com/acme/shop/pipelines/4790"
+      }
+    ]
+  },
+  "forager_version": "0.10.0",
+  "contract_version": 1,
+  "interval_seconds": 300,
+  "events": [
+    "*"
+  ],
+  "time": "2026-09-17T08:00:00Z"
+}

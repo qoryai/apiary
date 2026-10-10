@@ -48,7 +48,7 @@ beside it:
   (`node_instances`) are claims Forager makes under the node's key, recorded by
   `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
   run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
-  the node's row lock (`check_instance_limit/3`, `admit/4`).
+  the node's row lock when a run registers (`check_instance_limit/3`, `admit/4`).
 - `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
   with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
   answers what uses one before a deletion: nothing links a secret, so the answer is
@@ -78,9 +78,10 @@ The web side is under `lib/apiary_web/`:
 - `contract/`: the server contract. `ApiaryWeb.Contract.SignedRequest` is the plug that
   verifies a signed request and assigns the access key; the controllers behind it answer
   the contract's endpoints: `ConfigurationController` for the discovery document,
-  `EventsController` for the events, whose body `RawBody` keeps as it was sent,
-  `RunConfigurationController` for the run configuration. Each of them refuses a
-  contract revision it does not serve through `ContractVersion`. `EnrolmentController`
+  `RegistrationController` for a run's registration and its reload, and
+  `EventsController` for the events, whose bodies `RawBody` keeps as they were sent.
+  Each of them refuses a contract revision it does not serve through `ContractVersion`.
+  `EnrolmentController`
   answers enrolment, beside them and outside `SignedRequest`: a machine with no access
   key yet enrols one with a code (`Apiary.AccessKeys.enrol/2`), its body kept by `RawBody`
   too, and its answers signed with the instance's key.

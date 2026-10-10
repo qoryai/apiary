@@ -394,8 +394,8 @@ The modes keep a row that only names another out of it:
   change an edition locks so, first and alone.
 
 - A node's instance limit is checked under the node's row, `FOR UPDATE`
-  (`Apiary.Nodes.check_instance_limit/3`), before the batch that would create a run
-  locks the run's row: two starts for a node's last slot take turns, and the second
+  (`Apiary.Nodes.check_instance_limit/3`), before the registration that would create a
+  run inserts the run's row: two starts for a node's last slot take turns, and the second
   counts the first's run and is refused. Clearing an instance (`node.clear_instance`)
   locks the node's row the same way before it marks the instance's runs lost, so a
   clearing and a start take turns too. Nothing locks a run and then its node. A node's

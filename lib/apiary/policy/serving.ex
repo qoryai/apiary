@@ -11,12 +11,12 @@ defmodule Apiary.Policy.Serving do
   (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
   `digest_for/4` is nil, and nothing is rendered from here: the workspace's machines use
   the policy of their own `forager.yaml`. The same holds on an instance, or for a
-  workspace, without the `security` feature (`Apiary.Features`): nothing is served, the
-  discovery document names no `run` section, and the policy is absent from the contract.
+  workspace, without the `security` feature (`Apiary.Features`): nothing is served, and
+  the policy is absent from the contract.
 
-  `fetch/2` is the run configuration endpoint's: the stored bytes and their digest for the
-  target the labels name, the baseline's for a target the workspace does not know or that
-  has no rules of its own. A managed workspace always has a baseline: its first change
+  `fetch/2` is the run endpoint's (`Apiary.Runs.Registration`), for a registration and a
+  reload: the stored bytes and their digest for the target the labels name, the
+  baseline's for a target the workspace does not know or that has no rules of its own. A managed workspace always has a baseline: its first change
   rendered one, and nothing here renders anything.
 
   `digest_for/4` is the events endpoint's, on the path the receiver answers from, so it
@@ -25,7 +25,7 @@ defmodule Apiary.Policy.Serving do
   configuration of its own costs one more, for the baseline's. A run's target is known
   once its start is projected, which is after the receiver answers; until then it is
   taken from the start event when the batch holds it, and a run that names none yet (its
-  ping) is answered the digest it reported when that is one in force in the workspace, the
+  batches held no start so far) is answered the digest it reported when that is one in force in the workspace, the
   baseline's otherwise. A gateway that is told a digest it does not hold fetches again, so
   the answer errs towards the digest it holds only while the target is unknown, and the
   next batch says the truth.
@@ -80,6 +80,12 @@ defmodule Apiary.Policy.Serving do
   `managed?/1`), or nil when it cannot be read: the answer then carries no such header,
   which means nothing to the gateway. `run` is the run's
   row or nil (a pruned run is looked up by the batch's subject).
+
+  For a run that registered (`Apiary.Runs.Registration`), the target is the one its
+  registration's labels name, the baseline's when they name none, whatever its events
+  say. For any other run, the target is the one the run's row holds; else the one the
+  batch's `run.started` names; else the digest the request reported, when it is in force,
+  or the baseline's.
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil
   def digest_for(%AccessKey{} = access_key, run, %Batch{} = batch, reported) do
@@ -93,6 +99,9 @@ defmodule Apiary.Policy.Serving do
     else
       target_id when is_binary(target_id) ->
         digest(organisation_id, workspace_id, target_id)
+
+      {:registered, labels} ->
+        digest(organisation_id, workspace_id, target_id(access_key, labels))
 
       _unknown ->
         digest(organisation_id, workspace_id, nil)
@@ -108,6 +117,11 @@ defmodule Apiary.Policy.Serving do
     end
   end
 
+  # For a run that registered, its registration's labels, which name its target whatever
+  # its events say; for any other, the target the run's row holds.
+  defp known_target(_workspace_id, %Run{registration_labels: %{} = labels}, _batch),
+    do: {:registered, labels}
+
   defp known_target(_workspace_id, %Run{target_id: target_id}, _batch)
        when is_binary(target_id),
        do: target_id
@@ -115,11 +129,14 @@ defmodule Apiary.Policy.Serving do
   defp known_target(_workspace_id, %Run{}, _batch), do: nil
 
   defp known_target(workspace_id, nil, %Batch{subject: subject}) do
-    Repo.one(
-      from r in Run,
-        where: r.workspace_id == ^workspace_id and r.run_id == ^subject,
-        select: r.target_id
-    )
+    run =
+      Repo.one(
+        from r in Run,
+          where: r.workspace_id == ^workspace_id and r.run_id == ^subject,
+          select: struct(r, [:target_id, :registration_labels])
+      )
+
+    if run, do: known_target(workspace_id, run, nil)
   end
 
   defp started_target(access_key, %Batch{events: events}) do
