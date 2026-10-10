@@ -64,8 +64,9 @@ defmodule Apiary.SecretLogFilter do
   standard output or standard error). A public key whose base64url happens to hold `qak_`
   or `qec_` is filtered from a log line as a secret would be. A link's token outside such a
   path (percent-encoded in a query, or alone in a parameter, which `:filter_parameters`
-  masks by the name `token`) is not recognised; a path of another route that holds one
-  of those paths after a segment of its own loses that segment all the same.
+  masks by the name `token`) is not recognised. A path that holds one of those paths after
+  a segment of its own (`/acme/users/password/…`, `https://…/docs/setup/…`) is another
+  route's, and is left whole.
   """
 
   @id :apiary_access_key_secrets
@@ -286,7 +287,21 @@ defmodule Apiary.SecretLogFilter do
 
     if :binary.match(binary, @path_marks) == :nomatch,
       do: binary,
-      else: Regex.replace(Regex.compile!(@path_source), binary, &redact_token/4)
+      else: Regex.replace(path_regex(), binary, &redact_token/4)
+  end
+
+  # The path's regex, compiled once and kept in `:persistent_term`: a compiled regex cannot
+  # be a module attribute.
+  defp path_regex do
+    case :persistent_term.get({__MODULE__, :path_regex}, nil) do
+      nil ->
+        regex = Regex.compile!(@path_source)
+        :persistent_term.put({__MODULE__, :path_regex}, regex)
+        regex
+
+      regex ->
+        regex
+    end
   end
 
   # The path up to the token kept, and the token replaced by its name.

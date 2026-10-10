@@ -246,7 +246,10 @@ defmodule Apiary.SecretLogFilterTest do
             "GET /users/password/:token",
             "GET /acme/settings/people",
             "lib/apiary_web/live/setup/page.ex:12",
-            "GET /setup"
+            "GET /setup",
+            # Another route's path, that holds one after a segment of its own.
+            "GET /acme/users/password/abc",
+            "GET https://qory.example.com/docs/setup/abc"
           ] do
         event = event({:string, text})
         assert SecretLogFilter.filter(event, nil) == event
