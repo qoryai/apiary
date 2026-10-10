@@ -38,7 +38,11 @@ team, as `EDITIONS.md` at the root of the repository describes it.
   old link stops working at once. A link copied, and a new one made, count against
   `INVITATIONS_PER_DAY` as an emailed invitation does. `Apiary.Organisations.invite_member/3`
   and `send_invitation/4` hand the link back, `{:ok, invitation, {:link, url}}`, and
-  `renew_invitation/3` (`invitation.renew`) makes a new one.
+  `renew_invitation/4` (`invitation.renew`) makes a new one. With `action:`, as
+  `insert_invitation/3` takes, an edition that asked `Apiary.Access` itself renews it: the
+  entry records its action, charged to the allowance the invitation was counted against,
+  and the token comes back for `send_invitation/4`, which sends it once the edition's
+  transaction has committed.
 - Without mail, the sign-up page asks for a password, 12 to 72 characters, and signs the
   person in as soon as the account is made; an invited person keeps the invitation's
   address. `Apiary.Organisations.sign_up_user/3` takes `password` and

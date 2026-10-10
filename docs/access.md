@@ -74,7 +74,9 @@ asks whether to show a button at all, the role alone answers; the context functi
 of the row. An invitation is the organisation's whichever workspace it was sent from, so
 an owner or an admin revokes it, or makes a new link for it, from any page of the
 organisation. An edition's own
-action over people asks the same rule (`Apiary.Access.acts_on?/2`).
+action over people asks the same rule (`Apiary.Access.acts_on?/2`). An edition that
+makes a new link with an action of its own asks it itself, and passes it as `action:`
+(`Apiary.Organisations.renew_invitation/4`), which then does not ask `invitation.renew`.
 
 ## Reach
 
@@ -362,8 +364,10 @@ The modes keep a row that only names another out of it:
   `FOR NO KEY UPDATE` while it is counted and written: the organisation's own for
   `member.invite`, or the one an edition's invitation names
   (`Apiary.Organisations.insert_invitation/3`). A new link for a pending invitation
-  (`Apiary.Organisations.renew_invitation/3`) locks the row of the allowance the
-  invitation was counted against the same way, then the invitation's `FOR UPDATE`.
+  (`Apiary.Organisations.renew_invitation/4`) reads the invitation without a lock to find
+  the allowance it was counted against, locks that allowance's row the same way, then
+  the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
+  (`action:`) runs inside its own transaction, which may hold the allowance's row already.
 - An invitation's acceptance, and a sign-up with an invitation, let the edition hold the
   organisation first, more strongly if it will (`c:Apiary.Edition.accepting/3`), then hold
   it `FOR SHARE`, before the account and the invitation, so the organisation's marking,
