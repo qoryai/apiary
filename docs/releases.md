@@ -1,15 +1,15 @@
 # Releases
 
-How a release is cut and published.
+How a release is cut and published. There are no release branches.
 
-A release is a tag on a branch named after it, `v0.1.0`, opened as one pull request. That
-branch adds the release's section to `CHANGELOG.md`, `[X.Y.Z] - YYYY-MM-DD` with the day
-the tag lands, with Added, Changed and Fixed as they apply and always **Migrations**, the
-tables the release's migrations touch and whether one is long, and **Upgrading**, anything
-the operator has to do or know; a fix that goes to `main` outside a release branch goes
-under `[Unreleased]` until the next one. The same branch sets `version` in `mix.exs` to the
-tag without the `v`: that is what `GET /health` and `bin/apiary version` report, and the
-release workflow refuses a tag whose version `mix.exs` does not carry.
+Changes go under `[Unreleased]` in `CHANGELOG.md`. A release is one pull request to `main`
+that turns `[Unreleased]` into the release's section, `[X.Y.Z] - YYYY-MM-DD`, dated the day
+the tag lands. The section has Added, Changed and Fixed as they apply, and always
+**Migrations**, the tables the release's migrations touch and whether one is long, and
+**Upgrading**, anything the operator has to do or know. The same pull request sets
+`version` in `mix.exs` to the version without the `v`: that is what `GET /health` and
+`bin/apiary version` report. Once it is merged, the tag `vX.Y.Z` on its merge commit is the
+release. The release workflow refuses a tag whose version `mix.exs` does not carry.
 
 Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
 the release body from the changelog, builds the image from the `Dockerfile` for
