@@ -15,10 +15,17 @@ defmodule ApiaryWeb.UserSessionController do
   # A log-in with a password counts against its limits (`ApiaryWeb.AttemptLimits`)
   # before the address is looked up: past them, an address with an account and one
   # without get the same answer, without a password checked. A link's log-in does not.
+  # Every other post counts, whatever its shape, since each costs a password check: one
+  # without an address as text spends its client's bucket alone.
   defp log_in(conn, %{"user" => %{"token" => _}} = params, info), do: create(conn, params, info)
 
-  defp log_in(conn, %{"user" => %{"email" => email, "password" => _}} = params, info)
-       when is_binary(email) do
+  defp log_in(conn, params, info) do
+    email =
+      case params do
+        %{"user" => %{"email" => email}} when is_binary(email) -> email
+        _other -> nil
+      end
+
     case AttemptLimits.password_log_in(email, ApiaryWeb.Origin.from_conn(conn).remote_ip) do
       :ok ->
         create(conn, params, info)
@@ -26,12 +33,10 @@ defmodule ApiaryWeb.UserSessionController do
       :limited ->
         conn
         |> put_flash(:error, AttemptLimits.message())
-        |> put_flash(:email, String.slice(email, 0, 160))
+        |> put_flash(:email, String.slice(email || "", 0, 160))
         |> redirect(to: ~p"/users/log-in")
     end
   end
-
-  defp log_in(conn, params, info), do: create(conn, params, info)
 
   # magic link login
   defp create(conn, %{"user" => %{"token" => token} = user_params}, info) do
