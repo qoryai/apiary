@@ -21,9 +21,11 @@ Everywhere. Four kinds are the most useful:
   `contracts/forager/v1/`; a change to the contract goes there, and this repository follows it.
 - **The security policy.** [SECURITY.md](SECURITY.md) says what counts as a vulnerability
   here. A tighter definition, or a case it misses, is a contribution.
-- **Docs.** [README.md](README.md) for running it, the guides under [guides/](guides/), which
-  every instance serves at `/docs` ([guides/upgrading.md](guides/upgrading.md) for a
-  self-hoster's restart), [CHANGELOG.md](CHANGELOG.md) for what a release did.
+- **Docs.** [README.md](README.md) for running the released image, the guides under
+  [guides/](guides/), which every instance serves at `/docs`
+  ([guides/upgrading.md](guides/upgrading.md) for a self-hoster's restart),
+  [CHANGELOG.md](CHANGELOG.md) for what a release did, and this file for running it from a
+  checkout.
 
 ## Contributor Licence Agreement
 
@@ -48,6 +50,40 @@ project moves into a dedicated entity, existing grants travel with it and nobody
 By contributing, you agree that your contribution is licensed under the Apache License,
 Version 2.0 (see [LICENSE](LICENSE)) in addition to the CLA grant above.
 
+## Run it from a checkout
+
+You need Docker with `docker compose`, and `git`. This builds the image from the checkout
+and runs it with the repository's `compose.yaml`: Postgres, the keys generated at first
+start, and the server on port 4100 of `127.0.0.1`.
+
+```sh
+git clone https://github.com/qoryai/apiary.git && cd apiary
+docker build -t apiary:dev .
+cp .env.example .env
+APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
+curl http://localhost:4100/health
+```
+
+The build takes a few minutes. The image is `apiary:dev`, never the name of the image a
+release publishes. `APIARY_IMAGE` and `APIARY_VERSION` name it in place of
+`ghcr.io/qoryai/apiary`, which a release publishes; the shell's values win over `.env`'s.
+Every later `docker compose` command reads them too, `docker compose logs` included, so set
+them in the shell for those first:
+
+```sh
+export APIARY_IMAGE=apiary APIARY_VERSION=dev
+```
+
+`/health` answers once the migrations have run, a few seconds after the start:
+
+```text
+{"status":"ok","database":"ok","version":"0.1.0","revision":null}
+```
+
+`revision` is the commit the image was built from: `null` here, since a `docker build` of
+your own names none. From the set-up link on, go on as the
+[quickstart](guides/quickstart.md) does from its step 4, with the `export` set.
+
 ## Development
 
 The toolchain is pinned in `mise.toml`; `mise install` provides it. Erlang 29, Elixir 1.20
@@ -68,15 +104,29 @@ node --test 'assets/js/test/*.test.mjs'  # the browser scripts' tests, under Nod
 mix phx.server                     # http://localhost:4100
 ```
 
-CI (`.github/workflows/ci.yml`) runs two jobs side by side: Checks, which runs the
-formatting check, the compile with warnings as errors, the Gettext check, the browser
-scripts' tests and the documentation build, then `MIX_ENV=prod mix assets.deploy` to prove
-the assets still build; and the tests, once for each of three sets of features. Links the application generates, magic links and invitations, are built for
+The tests tagged `:contract` replay Forager's contract fixtures at the commit in
+`.forager-contract-ref`. They take them from `FORAGER_CONTRACT_DIR`, set to
+`contracts/forager/v1` of a qoryai/forager checkout, or from a checkout of qoryai/forager
+beside this one. Without either they are left out, and a line says so.
+
+CI (`.github/workflows/ci.yml`) runs five jobs side by side. **Checks**, the checks that
+do not depend on the features, runs once: the formatting check, the compile with warnings
+as errors, the Gettext check, the browser scripts' tests, the documentation build,
+`MIX_ENV=prod mix assets.deploy` to prove the assets still build, and the AWS template's
+checks. **The tests** run under each of three sets of features: every feature, the
+default features, and the record alone. **The image** is built on each platform,
+`linux/amd64` and `linux/arm64`. **Database over TLS** runs the tests tagged
+`database_tls` against a Postgres 18 that serves TLS. **Compose install and upgrade**
+runs `compose.yaml` as a person does: the install, a restart, the path from a checkout,
+the upgrade from the base commit's image and from the latest release, and an external
+Postgres over TLS.
+
+Links the application generates, magic links and invitations, are built for
 `PHX_HOST`, default `localhost`; when a local reverse proxy serves the dev server under
 another name, set `PHX_HOST` (or a full `PUBLIC_URL`) in `mise.local.toml`, which is not
 tracked, or in the shell. Emails in development go to `http://localhost:4100/dev/mailbox`.
 
-## Developer documentation
+## Architecture, access and conventions
 
 How the application is built and the rules its code follows are under [docs/](docs/):
 [architecture.md](docs/architecture.md) for the layout, the organisation keys and the
@@ -84,10 +134,18 @@ edition seams,
 [conventions.md](docs/conventions.md) for migrations, tests, doc comments and the vocabulary,
 [access.md](docs/access.md) for who may do what,
 [lingo.md](docs/lingo.md) for the words on the page,
-[ui.md](docs/ui.md) for the rules the pages follow,
-[contract-assumptions.md](docs/contract-assumptions.md) for the server contract, and
-[releases.md](docs/releases.md) for how a release is made. A change to what they describe
-changes them in the same pull request.
+[ui.md](docs/ui.md) for the rules the pages follow, and
+[contract-assumptions.md](docs/contract-assumptions.md) for the server contract. A change to
+what they describe changes them in the same pull request.
+
+## Releases
+
+How a release is made is in [docs/releases.md](docs/releases.md). A tag `vX.Y.Z` runs
+`.github/workflows/release.yml`, which publishes the image `ghcr.io/qoryai/apiary` as
+`X.Y.Z`, `X.Y` and `latest`, and the GitHub release with `compose.yaml`, `env.example` and
+`apiary.yaml` attached; the README's Run it downloads the first two. Pre-release images go
+to `ghcr.io/qoryai/apiary-prerelease`, a private package and not a place to install from:
+only releases are installed.
 
 ## Pull requests
 

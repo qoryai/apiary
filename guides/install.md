@@ -20,7 +20,9 @@ page is the reference for an installation that stays.
   ([The keys generated at first start](#the-keys-generated-at-first-start)). The commit it
   was built from is its label `org.opencontainers.image.revision` and `revision` at
   [`GET /health`](#health).
-- **`compose.yaml`** of the repository runs it as three services. `keys` runs once at every
+- **`compose.yaml`** and **`env.example`**, which every release attaches, run it as three
+  services. `env.example` is the repository's `.env.example` with the release's version in
+  `APIARY_VERSION`, and becomes `.env`. `keys` runs once at every
   start and exits: it generates the keys the volume `keys` does not hold yet. `postgres`,
   in the profile `postgres` that `.env` turns on with `COMPOSE_PROFILES=postgres`, is
   Postgres 18 with the role `apiary`, the database `apiary` and the volume `postgres-data`.
@@ -36,10 +38,19 @@ page is the reference for an installation that stays.
   link an instance admin makes ([Mail](#mail)). With `SMTP_RELAY` set, people log in with
   a link sent by email, or with a password, and are invited by email.
 
-With `compose.yaml` and its `.env` in one directory, `docker compose up -d` starts the
-three services, and `docker compose logs apiary` shows the boot.
-[From nothing to a first run](quickstart.md) runs them from a checkout, with an image built
-on the machine.
+Download the two files into a directory of their own, and rename `env.example` to `.env`:
+
+```sh
+curl -fLO https://github.com/qoryai/apiary/releases/latest/download/compose.yaml
+curl -fLO https://github.com/qoryai/apiary/releases/latest/download/env.example
+mv env.example .env
+```
+
+A given release's files are under `releases/download/vX.Y.Z/` in place of
+`releases/latest/download/`. With `compose.yaml` and its `.env` in one directory,
+`docker compose up -d` starts the three services, and `docker compose logs apiary` shows
+the boot. [From nothing to a first run](quickstart.md) does the same for a trial on one
+machine.
 
 ## TLS and the reverse proxy
 
@@ -734,7 +745,7 @@ shell that runs it before `.env`: a value exported in the shell wins over the li
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `APIARY_VERSION` | required by `docker compose` | The tag of the image to run: a release's version, without the `v`. `.env.example` leaves it empty, and compose refuses to start without it and says `set APIARY_VERSION in .env`. |
+| `APIARY_VERSION` | required by `docker compose` | The tag of the image to run: a release's version, without the `v`. A release's `env.example` names that release. The repository's `.env.example` leaves it empty, and compose refuses to start without it and says `set APIARY_VERSION in .env`. |
 | `APIARY_IMAGE` | `ghcr.io/qoryai/apiary` | The image, without its tag. |
 | `COMPOSE_PROFILES` | `postgres` in `.env.example` | `postgres` runs the bundled Postgres. Take the line out, or leave it empty, with an external Postgres in `DATABASE_URL`. |
 
