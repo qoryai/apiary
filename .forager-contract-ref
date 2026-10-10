@@ -1,5 +1,6 @@
 # The commit of qoryai/forager whose contracts/forager/v1 the :contract tests replay, in CI and
-# in development (Apiary.ContractFixtures.contract_dir/0): a commit on Forager's next
+# in development (Apiary.ContractFixtures.contract_dir/0): a commit of Forager's main
 # branch, pinned by its id: the contract of Forager in three parts over one core, the session,
-# the gateway and the wall, with a gateway between the session and Qory Apiary.
-8dda7aff2b0fccaee30d5f64440e49c74cf6c0e0
+# the gateway and the wall, with a gateway between the session and Qory Apiary, and every
+# run's exit saying how the run ended.
+85f95d55c99b47f61f7e104369e5cf8eb620acb5
