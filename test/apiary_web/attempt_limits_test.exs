@@ -375,7 +375,7 @@ defmodule ApiaryWeb.AttemptLimitsTest do
 
     test "past a client's 20, the code and a wrong one get the same answer, before set-up and after",
          %{code: code} do
-      client = "198.51.100.44"
+      client = "198.51.100.46"
       {:ok, _lv, html} = live(from(client), ~p"/setup/#{code}")
       assert html =~ "Set up Qory Apiary"
 
@@ -386,7 +386,7 @@ defmodule ApiaryWeb.AttemptLimitsTest do
                  live(from(client), path)
       end
 
-      {:ok, _lv, html} = live(from("198.51.100.45"), ~p"/setup/#{code}")
+      {:ok, _lv, html} = live(from("198.51.100.47"), ~p"/setup/#{code}")
       assert html =~ "Set up Qory Apiary"
 
       sign_up_fixture()

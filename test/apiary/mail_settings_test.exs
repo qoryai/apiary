@@ -93,6 +93,21 @@ defmodule Apiary.MailSettingsTest do
 
   defp row, do: Repo.get!(Settings, true)
 
+  # Nothing of mail is saved: no row of the instance's settings, or one that holds none of
+  # the mail's columns, as the instance's set-up leaves it (`Apiary.Setup`).
+  defp no_mail_saved? do
+    case Mail.settings() do
+      nil ->
+        true
+
+      settings ->
+        settings
+        |> Map.take(Apiary.Mail.Settings.__schema__(:fields) -- [:id, :updated_at])
+        |> Map.values()
+        |> Enum.all?(&is_nil/1)
+    end
+  end
+
   # The Install guide as the documentation tree with `features` has it.
   defp install_guide(features) do
     path = "guides/install.md"
@@ -260,7 +275,7 @@ defmodule Apiary.MailSettingsTest do
                Mail.save_settings(scope, %{@attrs | "smtp_username" => " "}, &url/1)
 
       assert errors_on(changeset) == %{smtp_username: ["can't be blank with a password"]}
-      assert Mail.settings() == nil
+      assert no_mail_saved?()
     end
 
     test "a refused save keeps nothing, and its changeset holds no password", %{scope: scope} do
@@ -282,7 +297,7 @@ defmodule Apiary.MailSettingsTest do
         assert changeset.params["smtp_password"] == ""
       end
 
-      assert Mail.settings() == nil
+      assert no_mail_saved?()
       refute_received {:sent, _email, _config}
     end
 
@@ -347,14 +362,14 @@ defmodule Apiary.MailSettingsTest do
         assert Mail.save_settings(other, @attrs, &url/1) == {:error, :forbidden}
       end
 
-      assert Mail.settings() == nil
+      assert no_mail_saved?()
     end
 
     test "is refused while the environment sets mail, which wins whole", %{scope: scope} do
       put_env(Apiary.Mailer, adapter: Swoosh.Adapters.Test)
 
       assert Mail.save_settings(scope, @attrs, &url/1) == {:error, :env}
-      assert Mail.settings() == nil
+      assert no_mail_saved?()
     end
 
     @tag with_features: [:observability, :security]
