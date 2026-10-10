@@ -79,10 +79,8 @@ edition's too. No file of the core names an edition's module
 
 The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
 at the commit in `.forager-contract-ref`. They take it from `FORAGER_CONTRACT_DIR`, set to
-`contracts/forager/v1` of a qoryai/forager checkout, or else from a checkout of
-qoryai/forager beside this one: that commit's `contracts/forager/v1`, taken once with
-`git archive` into `_build/` (that checkout is only read, whatever it has checked out).
-Without either they are excluded and a line says so; CI checks Forager out at that commit
+`contracts/forager/v1` of a qoryai/forager checkout at that commit. Without it they are
+excluded and a line says so; CI checks Forager out at that commit
 and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes their absence a failure. The commit is
 one on Forager's `next` branch, pinned by its id. The end to end job builds qory against
 Forager at `.forager-e2e-ref`, pinned apart.

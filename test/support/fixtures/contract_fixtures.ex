@@ -237,10 +237,9 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  Forager's contract directory: `FORAGER_CONTRACT_DIR`, else the contract at the
-  commit in `.forager-contract-ref`, taken once from the sibling checkout of qoryai/forager
-  (`../../forager/main`) with `git archive` into the build directory, whatever that
-  checkout has checked out; else nil. The checkout is only read.
+  Forager's contract directory: `FORAGER_CONTRACT_DIR`, set to `contracts/forager/v1` of a
+  qoryai/forager checkout at the commit in `.forager-contract-ref`. Unset, a default that
+  fits the maintainers' own checkout layout applies. Nil when there is neither.
   """
   def contract_dir do
     case System.get_env("FORAGER_CONTRACT_DIR") do

@@ -15,8 +15,7 @@ exclude =
     true ->
       IO.puts(
         "Excluding the :contract tests: no Forager contract directory " <>
-          "(set FORAGER_CONTRACT_DIR to contracts/forager/v1 of a qoryai/forager checkout, " <>
-          "or fetch #{Apiary.ContractFixtures.pinned_ref()} into ../../forager/main)"
+          "(set FORAGER_CONTRACT_DIR to contracts/forager/v1 of a qoryai/forager checkout)"
       )
 
       [:contract]
