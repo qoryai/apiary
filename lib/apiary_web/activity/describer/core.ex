@@ -39,6 +39,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.change_level"), do: gettext("Member's level changed")
   def label(:"member.remove"), do: gettext("Member removed")
   def label(:"invitation.revoke"), do: gettext("Invitation revoked")
+  def label(:"invitation.renew"), do: gettext("Invitation renewed")
   def label(:"invitation.accept"), do: gettext("Invitation accepted")
   def label(:"instance_admin.grant"), do: gettext("Owner made on Qory Apiary")
   def label(:"instance_admin.revoke"), do: gettext("Owner made a member on Qory Apiary")
@@ -130,6 +131,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Withdrew an invitation that could not be delivered")
 
   defp said(:"invitation.revoke", _details, _actor), do: gettext("Revoked an invitation")
+
+  defp said(:"invitation.renew", _details, _actor),
+    do: gettext("Made a new link for an invitation")
+
   defp said(:"invitation.accept", _details, _actor), do: gettext("Accepted an invitation")
 
   defp said(:"instance_admin.grant", _details, _actor),

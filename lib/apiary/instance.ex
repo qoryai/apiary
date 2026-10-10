@@ -1,10 +1,10 @@
 defmodule Apiary.Instance do
   @moduledoc """
-  The instance's setting for how many invitations an organisation sends, read from the
+  The instance's setting for how many invitations an organisation makes, read from the
   environment at boot (`boot!/0`) and fixed for the life of the node.
 
   `INVITATIONS_PER_DAY`, a whole number from 1, 20 when unset: how many invitations an
-  organisation sends in 24 hours (`Apiary.Organisations.invite_member/3`).
+  organisation makes in 24 hours, emailed or copied (`Apiary.Organisations.invite_member/3`).
 
   Who may sign up after the instance's first sign-up is the edition's to say
   (`c:Apiary.Edition.sign_up_open?/0`).
@@ -13,7 +13,7 @@ defmodule Apiary.Instance do
   @default_invitations_per_day 20
 
   @doc """
-  invitations_per_day/0 is how many invitations an organisation sends in 24 hours:
+  invitations_per_day/0 is how many invitations an organisation makes in 24 hours:
   `INVITATIONS_PER_DAY`, #{@default_invitations_per_day} when unset.
   """
   @spec invitations_per_day() :: pos_integer

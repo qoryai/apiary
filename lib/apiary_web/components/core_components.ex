@@ -239,6 +239,12 @@ defmodule ApiaryWeb.CoreComponents do
   the control's `aria-label` carries the same words.
   """
   attr :tip, :string, required: true
+
+  attr :done, :string,
+    default: nil,
+    doc:
+      "what the tooltip reads while the copy button inside it confirms a copy (`data-tip-done`)"
+
   attr :placement, :string, default: "top", values: ~w(top bottom left right)
   attr :class, :any, default: nil
   slot :inner_block, required: true
@@ -254,6 +260,7 @@ defmodule ApiaryWeb.CoreComponents do
         @class
       ]}
       data-tip={@tip}
+      data-tip-done={@done}
     >
       {render_slot(@inner_block)}
     </span>
@@ -400,13 +407,20 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   A copy-to-clipboard button. Copies `text`, or the text content of the
   element `target` selects, via the CopyToClipboard hook. `icon_only` renders
-  a square button with a tooltip.
+  a square button with a tooltip; with `done_tip` the tooltip reads Copied while the copy
+  is confirmed, the icon Copy of a code block's bar and of a link shown once
+  (`one_time_link/1`).
   """
   attr :id, :string, required: true
   attr :text, :string, default: nil
   attr :target, :string, default: nil, doc: "a CSS selector whose text content is copied"
   attr :label, :string, default: nil, doc: "defaults to Copy"
   attr :icon_only, :boolean, default: false
+
+  attr :done_tip, :boolean,
+    default: false,
+    doc: "with `icon_only`: the tooltip reads Copied while the copy is confirmed"
+
   attr :placement, :string, default: "top"
   attr :class, :any, default: nil
 
@@ -415,7 +429,12 @@ defmodule ApiaryWeb.CoreComponents do
 
   def copy_button(%{icon_only: true} = assigns) do
     ~H"""
-    <.tooltip tip={@label} placement={@placement} class={@class}>
+    <.tooltip
+      tip={@label}
+      done={@done_tip && gettext("Copied")}
+      placement={@placement}
+      class={@class}
+    >
       <button
         id={@id}
         type="button"
@@ -453,6 +472,73 @@ defmodule ApiaryWeb.CoreComponents do
     </button>
     """
   end
+
+  @doc """
+  one_time_link/1 shows a link that works once, the one time it is shown: an invitation's,
+  made without mail (`Apiary.Organisations.invite_member/3`,
+  `Apiary.Organisations.renew_invitation/3`), for the person who made it to copy and send
+  to `for` themselves. It says so, shows the whole link with an icon Copy whose tooltip
+  reads Copied once it is copied (`copy_button/1`, `done_tip`), and says until when the
+  link works and that it is shown only now; then the `actions`, Done.
+
+  Only the link's hash is stored, so the page that shows it holds it in its own process
+  alone, and shows it until the reader leaves: never in a path, a flash or a title, and
+  nothing logs it. It takes the focus as it shows, so a screen reader reads it.
+
+      <.one_time_link id="invitation-link" url={url} expires_at={at} for="dana@example.com">
+        <:actions><.button patch={people}>Done</.button></:actions>
+      </.one_time_link>
+  """
+  attr :id, :string, required: true
+  attr :url, :string, required: true, doc: "the whole link"
+  attr :expires_at, DateTime, required: true, doc: "when the link stops working"
+  attr :for, :string, required: true, doc: "the email address the link is for"
+
+  attr :kind, :atom,
+    default: :invitation,
+    values: [:invitation],
+    doc: "what the link is: an invitation's, which works for its days"
+
+  attr :class, :any, default: nil
+  slot :actions, doc: "what follows the link: Done"
+
+  def one_time_link(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={["grid gap-3 outline-none", @class]}
+      role="group"
+      aria-labelledby={"#{@id}-sentence"}
+      tabindex="-1"
+      phx-mounted={JS.focus()}
+    >
+      <p id={"#{@id}-sentence"} class="text-[13px]/5">{one_time_sentence(@kind, @for)}</p>
+      <div class="flex min-w-0 items-start gap-2 rounded-box border border-line bg-base-200 py-1.5 pr-1.5 pl-3">
+        <code id={"#{@id}-url"} class="q-mono min-w-0 flex-1 py-0.5 text-[12.5px]/5 break-all">{@url}</code>
+        <.copy_button id={"#{@id}-copy"} text={@url} icon_only done_tip />
+      </div>
+      <p id={"#{@id}-works"} class="text-[12.5px]/[18px] text-muted">
+        {gettext("Works once, until %{time} (%{validity}). It is shown only now.",
+          time: until(@expires_at),
+          validity: one_time_validity(@kind)
+        )}
+      </p>
+      <div :if={@actions != []} class="flex items-center gap-2">{render_slot(@actions)}</div>
+    </div>
+    """
+  end
+
+  defp one_time_sentence(:invitation, email),
+    do: gettext("Copy this link and send it to %{email} yourself.", email: email)
+
+  defp one_time_validity(:invitation) do
+    days = Apiary.Organisations.Invitation.validity_days()
+    ngettext("%{number} day", "%{number} days", days, number: Format.number(days))
+  end
+
+  # A date and a time, its year left out in the current one: "17 Oct, 14:05".
+  defp until(at),
+    do: Format.datetime(at, year: Format.local(at).year != Format.local(DateTime.utc_now()).year)
 
   ## Forms
 

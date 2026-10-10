@@ -65,6 +65,12 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     Action.new(
+      :"invitation.renew",
+      "make a new link for a pending invitation, whose old link stops working at once",
+      roles: @admins,
+      asked_of: :organisation
+    ),
+    Action.new(
       :"invitation.accept",
       "accept an invitation: its token allows it, and no role, so nobody is asked",
       asked_of: :organisation
@@ -273,7 +279,8 @@ defmodule Apiary.Access do
     :"member.remove",
     :"member.suspend",
     :"member.activate",
-    :"invitation.revoke"
+    :"invitation.revoke",
+    :"invitation.renew"
   ]
   @acts_on %{owner: [:owner, :admin, :member], admin: [:member]}
 
@@ -357,7 +364,8 @@ defmodule Apiary.Access do
      without a membership where the scope is, unless the edition gives them a role there;
      the page decides whether it says forbidden or not found.
   8. **Whom the action is over**, for the actions over people: inviting, changing a
-     level, removing, suspending, activating and revoking an invitation. An owner takes
+     level, removing, suspending, activating, and revoking an invitation or making a new
+     link for it. An owner takes
      them over anyone (suspending and activating over admins and members), within the
      rule that an organisation keeps an owner (`Apiary.Organisations`); an admin over
      members only, never over an owner or an admin (`acts_on?/2`). Asked of the
