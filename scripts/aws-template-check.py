@@ -10,11 +10,20 @@
 
 policy: every resource stack-policy.json names exists in the template; the database and the
 four key secrets are each denied Update:Replace and Update:Delete; and the policy the stack
-sets on itself at creation is the same as the file's. That policy is the STACK_POLICY of the
-function behind the template's one Custom::StackPolicy, whose STACK_ID is the stack's own
-id; the function reads neither from the request, which passes it nothing but its
-ServiceToken and ServiceTimeout. A renamed resource would otherwise lose its guard without
-a word.
+sets on itself is the same as the file's. A renamed resource would otherwise lose its guard
+without a word. That policy is the STACK_POLICY of the function the template's one rule on
+CloudFormation's stack status changes targets, and nothing else does: the rule is enabled,
+on the default event bus, matches the source aws.cloudformation, the detail-type
+"CloudFormation Stack Status Change", this stack's own id under detail.stack-id and the
+statuses CREATE_COMPLETE, UPDATE_COMPLETE and UPDATE_ROLLBACK_COMPLETE under
+detail.status-details.status, and nothing more. The function's STACK_ID is the stack's own
+id, and its code checks the event's stack and status again. One Lambda permission lets
+events.amazonaws.com invoke it, from that rule alone. Its role is trusted by Lambda alone
+and allows cloudformation:SetStackPolicy on this stack and writing to the function's own
+log group, nothing else. And no function sets a stack policy from inside the stack's create
+or update, where CloudFormation refuses it: no custom resource's function, and no function
+but the rule's target, calls set_stack_policy, and no other role allows
+cloudformation:SetStackPolicy.
 
 outputs: no output's value is a command (none starts with "aws "), in any branch of its
 Fn::If: the person installs from the console alone.
@@ -113,44 +122,193 @@ def named(policy):
     return names, denied, failures
 
 
+STACK_ID = {"Ref": "AWS::StackId"}
+STACK_STATUS_CHANGE = "CloudFormation Stack Status Change"
+COMPLETE = {"CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"}
+CUSTOM_RESOURCE = re.compile(r"^(Custom::.+|AWS::CloudFormation::CustomResource)$")
+SETS_STACK_POLICY = re.compile(r"set_stack_policy|SetStackPolicy")
+
+
+def get_att(value, attribute="Arn"):
+    """The logical ID a !GetAtt <id>.<attribute> names, or None."""
+    if isinstance(value, dict) and list(value) == ["Fn::GetAtt"]:
+        argument = value["Fn::GetAtt"]
+        if isinstance(argument, str):
+            argument = argument.split(".", 1)
+        if isinstance(argument, list) and len(argument) == 2 and argument[1] == attribute:
+            return argument[0]
+    return None
+
+
+def of_type(resources, kind):
+    return {name: resource for name, resource in resources.items() if resource.get("Type") == kind}
+
+
+def statements(role):
+    """Every statement of a role's inline policies."""
+    for policy in role.get("Properties", {}).get("Policies", []):
+        yield from as_list(policy.get("PolicyDocument", {}).get("Statement", []))
+
+
+def allows_set_stack_policy(role):
+    return any(
+        statement.get("Effect") == "Allow"
+        and any(action in ("cloudformation:SetStackPolicy", "cloudformation:*", "*") for action in as_list(statement.get("Action")))
+        for statement in statements(role)
+    )
+
+
+def check_role(name, role, log_group):
+    """The function's role: trusted by Lambda alone, allowing cloudformation:SetStackPolicy
+    on this stack and writing to its own log group, and nothing else."""
+    failures = []
+    if role.get("Type") != "AWS::IAM::Role":
+        return [f"the stack policy's function has no role of the template's ({name})"]
+    properties = role.get("Properties", {})
+    trust = as_list(properties.get("AssumeRolePolicyDocument", {}).get("Statement", []))
+    if trust != [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]:
+        failures.append(f"{name} is trusted by another than lambda.amazonaws.com alone")
+    for extra in ("ManagedPolicyArns", "PermissionsBoundary"):
+        if extra in properties:
+            failures.append(f"{name} has {extra}: its inline policy alone says what it may do")
+    found = sorted(
+        (statement.get("Effect"), sorted(as_list(statement.get("Action"))), json.dumps(statement.get("Resource"), sort_keys=True))
+        for statement in statements(role)
+    )
+    wanted = sorted(
+        [
+            ("Allow", ["cloudformation:SetStackPolicy"], json.dumps(STACK_ID)),
+            ("Allow", ["logs:CreateLogStream", "logs:PutLogEvents"], json.dumps({"Fn::GetAtt": [log_group, "Arn"]})),
+        ]
+    )
+    if found != wanted:
+        failures.append(
+            f"{name} allows other than cloudformation:SetStackPolicy on this stack and writing to "
+            f"{log_group}: {json.dumps(found)}"
+        )
+    return failures
+
+
 def stack_policy_body(template):
-    """The policy the stack sets on itself, and what is wrong with where it is kept: the
-    function behind the one Custom::StackPolicy holds the stack and the policy itself, in
-    STACK_ID and STACK_POLICY, and reads neither from the request."""
+    """The policy the stack sets on itself, and what is wrong with how it sets it: the one
+    rule on CloudFormation's stack status changes, filtered to this stack and to its
+    completed creates and updates, targets one function, which holds the stack and the
+    policy itself, in STACK_ID and STACK_POLICY; one permission lets that rule alone invoke
+    it; and its role may set this stack's policy and write its log, nothing else."""
     resources = template.get("Resources", {})
-    custom = [(name, resource) for name, resource in resources.items() if resource.get("Type") == "Custom::StackPolicy"]
-    if len(custom) != 1:
-        return None, [f"apiary.yaml has {len(custom)} Custom::StackPolicy resources, not one"]
-    name, resource = custom[0]
-    properties = resource.get("Properties", {})
+    rules = {
+        name: rule
+        for name, rule in of_type(resources, "AWS::Events::Rule").items()
+        if "aws.cloudformation" in json.dumps(rule.get("Properties", {}).get("EventPattern", {}))
+    }
+    if len(rules) != 1:
+        return None, [f"apiary.yaml has {len(rules)} rules on aws.cloudformation events, not one"]
+    (rule_name, rule), = rules.items()
+    properties = rule.get("Properties", {})
     failures = []
 
-    extra = sorted(set(properties) - {"ServiceToken", "ServiceTimeout"})
-    if extra:
-        failures.append(f"{name} passes {', '.join(extra)}: the function takes nothing from the request")
+    if properties.get("State") != "ENABLED":
+        failures.append(f"{rule_name} is not ENABLED")
+    if properties.get("EventBusName", "default") != "default":
+        failures.append(f"{rule_name} is not on the default event bus, where CloudFormation sends its events")
+    wanted_pattern = {
+        "source": ["aws.cloudformation"],
+        "detail-type": [STACK_STATUS_CHANGE],
+        "detail": {"stack-id": [STACK_ID], "status-details": {"status": sorted(COMPLETE)}},
+    }
+    pattern = properties.get("EventPattern", {})
+    found_pattern = json.loads(json.dumps(pattern))
+    try:
+        found_pattern["detail"]["status-details"]["status"] = sorted(found_pattern["detail"]["status-details"]["status"])
+    except (KeyError, TypeError):
+        pass
+    if found_pattern != wanted_pattern:
+        failures.append(
+            f"{rule_name}'s pattern is not this stack's {STACK_STATUS_CHANGE} to "
+            f"{', '.join(sorted(COMPLETE))} alone: {json.dumps(pattern)}"
+        )
 
-    token = properties.get("ServiceToken")
-    function_name = token.get("Fn::GetAtt", [None])[0] if isinstance(token, dict) else None
-    function = resources.get(function_name, {}) if isinstance(function_name, str) else {}
+    targets = properties.get("Targets", [])
+    function_name = get_att(targets[0].get("Arn")) if len(targets) == 1 else None
+    function = resources.get(function_name, {}) if function_name else {}
     if function.get("Type") != "AWS::Lambda::Function":
-        return None, failures + [f"{name}'s ServiceToken is not a function of the template"]
+        return None, failures + [f"{rule_name} has not one target, a function of the template"]
+    if set(targets[0]) - {"Id", "Arn"}:
+        failures.append(f"{rule_name}'s target passes the function more than the event")
+
+    permissions = {
+        name: permission.get("Properties", {})
+        for name, permission in of_type(resources, "AWS::Lambda::Permission").items()
+        if function_name in json.dumps(permission.get("Properties", {}).get("FunctionName"))
+    }
+    wanted_permission = {
+        "FunctionName": {"Fn::GetAtt": [function_name, "Arn"]},
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {"Fn::GetAtt": [rule_name, "Arn"]},
+    }
+    if list(permissions.values()) != [wanted_permission]:
+        failures.append(
+            f"{function_name} may be invoked by other than {rule_name} alone: "
+            f"its permissions are {json.dumps(permissions)}"
+        )
 
     function_properties = function.get("Properties", {})
+    log_group = function_properties.get("LoggingConfig", {}).get("LogGroup", {})
+    log_group = log_group.get("Ref") if isinstance(log_group, dict) else None
+    if not log_group or resources.get(log_group, {}).get("Type") != "AWS::Logs::LogGroup":
+        failures.append(f"{function_name} does not log to a log group of the template's")
+    role_name = get_att(function_properties.get("Role"))
+    failures.extend(check_role(role_name, resources.get(role_name, {}), log_group))
+
     variables = function_properties.get("Environment", {}).get("Variables", {})
     code = function_properties.get("Code", {}).get("ZipFile", "")
-    if variables.get("STACK_ID") != {"Ref": "AWS::StackId"}:
+    if variables.get("STACK_ID") != STACK_ID:
         failures.append(f"{function_name}'s STACK_ID is not the stack's own id")
-    if "ResourceProperties" in code:
-        failures.append(f"{function_name} reads the request's ResourceProperties")
-    for needed in ('os.environ["STACK_ID"]', 'os.environ["STACK_POLICY"]'):
+    for needed in (
+        'os.environ["STACK_ID"]',
+        'os.environ["STACK_POLICY"]',
+        '"stack-id"',
+        '"status-details"',
+        *(f'"{status}"' for status in sorted(COMPLETE)),
+    ):
         if needed not in code:
-            failures.append(f"{function_name}'s code does not read {needed}")
+            failures.append(f"{function_name}'s code does not check or read {needed}")
+    if "ResponseURL" in code or "ResourceProperties" in code:
+        failures.append(f"{function_name} answers a custom resource: CloudFormation refuses its call during the create")
 
     try:
         body = json.loads(variables.get("STACK_POLICY", ""))
     except (TypeError, json.JSONDecodeError):
         return None, failures + [f"{function_name} has no STACK_POLICY in JSON for the stack to set"]
     return body, failures
+
+
+def check_no_policy_in_progress(template, rule_target):
+    """CloudFormation refuses SetStackPolicy while the stack's own create or update is in
+    progress, so nothing inside them may call it: no custom resource's function, and no
+    function but the rule's target, calls set_stack_policy, and no other role allows it."""
+    resources = template.get("Resources", {})
+    failures = []
+    functions = of_type(resources, "AWS::Lambda::Function")
+    for name, resource in resources.items():
+        if not CUSTOM_RESOURCE.match(resource.get("Type", "")):
+            continue
+        function_name = get_att(resource.get("Properties", {}).get("ServiceToken"))
+        code = functions.get(function_name, {}).get("Properties", {}).get("Code", {}).get("ZipFile", "")
+        if SETS_STACK_POLICY.search(code) or function_name == rule_target:
+            failures.append(
+                f"{name} is a custom resource whose function sets the stack policy: "
+                "CloudFormation refuses SetStackPolicy while the stack is in progress, and the create fails"
+            )
+    for name, function in functions.items():
+        if name != rule_target and SETS_STACK_POLICY.search(function.get("Properties", {}).get("Code", {}).get("ZipFile", "")):
+            failures.append(f"{name} calls set_stack_policy, and is not the target of the rule on the stack's completions")
+    allowed = {get_att(functions.get(rule_target, {}).get("Properties", {}).get("Role"))}
+    for name, role in of_type(resources, "AWS::IAM::Role").items():
+        if name not in allowed and allows_set_stack_policy(role):
+            failures.append(f"{name} allows cloudformation:SetStackPolicy: only the stack policy function's role may")
+    return failures
 
 
 def check_policy():
@@ -171,6 +329,14 @@ def check_policy():
     failures.extend(where)
     if body is not None and body != policy:
         failures.append("the stack sets another policy on itself than stack-policy.json")
+
+    rule_targets = [
+        get_att(target.get("Arn"))
+        for rule in of_type(resources, "AWS::Events::Rule").values()
+        if "aws.cloudformation" in json.dumps(rule.get("Properties", {}).get("EventPattern", {}))
+        for target in rule.get("Properties", {}).get("Targets", [])
+    ]
+    failures.extend(check_no_policy_in_progress(template, rule_targets[0] if len(rule_targets) == 1 else None))
 
     return failures
 

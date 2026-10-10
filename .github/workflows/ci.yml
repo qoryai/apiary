@@ -89,8 +89,11 @@ jobs:
         run: cfn-lint deploy/aws/apiary.yaml
 
       # Every resource stack-policy.json names is the template's, the database and the four
-      # key secrets are all guarded, and the policy the stack sets on itself at creation is
-      # the same.
+      # key secrets are all guarded, and the policy the stack sets on itself is the same. The
+      # stack sets it once its create or an update completes, through a rule on its own
+      # status changes alone, a function only that rule may invoke, and a role that may set
+      # this stack's policy and nothing else; no custom resource or other function sets it,
+      # since CloudFormation refuses a stack policy while the stack is in progress.
       - name: Check the stack policy against the template
         run: python scripts/aws-template-check.py policy
 
