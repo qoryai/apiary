@@ -2100,14 +2100,14 @@ defmodule Apiary.Policy do
   end
 
   defp valid(document) do
-    case Schema.validate(document) do
+    case with(:ok <- Schema.validate(document), do: in_grammar(document)) do
       :ok ->
         :ok
 
       {:error, reason} ->
         # The document holds hosts and paths, never a secret.
         Logger.error(
-          "a rendered run configuration was refused by the contract's schema: #{inspect(reason, limit: 20)}"
+          "a rendered run configuration was refused by the contract's schema or the host grammar: #{inspect(reason, limit: 20)}"
         )
 
         {:error,
@@ -2117,6 +2117,22 @@ defmodule Apiary.Policy do
              "The change was not made: the run configuration it renders is not one Forager's contract accepts."
            )
          )}
+    end
+  end
+
+  # The schema's host pattern takes an address in any form; the gateway takes one only as
+  # `a.b.c.d`, and refuses the whole document for another. Every host of the document is
+  # held to the grammar again, so no render ever carries one.
+  defp in_grammar(document) do
+    egress = get_in(Jason.decode!(document), ["security_policy", "egress"]) || %{}
+
+    hosts =
+      Map.get(egress, "allow", []) ++
+        Map.get(egress, "deny", []) ++ Map.keys(Map.get(egress, "paths", %{}))
+
+    case Enum.reject(hosts, &Grammar.host?/1) do
+      [] -> :ok
+      refused -> {:error, {:out_of_grammar, refused}}
     end
   end
 

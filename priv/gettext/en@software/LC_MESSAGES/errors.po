@@ -36,6 +36,11 @@ msgstr ""
 msgid "A secret holds at most %{count} values."
 msgstr ""
 
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an email address, such as dana@example.com."
