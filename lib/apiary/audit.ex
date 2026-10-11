@@ -361,7 +361,7 @@ defmodule Apiary.Audit do
         added = Map.keys(answer) -- Map.keys(given)
 
         cond do
-          Map.take(answer, Map.keys(given)) != given ->
+          Map.take(answer, Map.keys(given)) !== given ->
             raise ArgumentError,
                   "the edition's audit details add keys, and change or remove none of the entry's"
 

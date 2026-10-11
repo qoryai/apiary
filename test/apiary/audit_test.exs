@@ -34,6 +34,15 @@ defmodule Apiary.AuditTest do
     def audit_details(_scope, _organisation_id, details), do: Map.delete(details, "note")
   end
 
+  defmodule Floats do
+    def audit_details(_scope, _organisation_id, details), do: Map.put(details, "runs", 1.0)
+  end
+
+  defmodule NestedFloats do
+    def audit_details(_scope, _organisation_id, details),
+      do: put_in(details, ["counts", "runs"], 1.0)
+  end
+
   defmodule Counts do
     def audit_details(_scope, organisation_id, details),
       do: Map.put(details, "allowance_id", organisation_id)
@@ -653,6 +662,13 @@ defmodule Apiary.AuditTest do
       for edition <- [Rewrites, Removes] do
         assert_raise ArgumentError, ~r/change or remove none of the entry's/, fn ->
           record(ctx.scope, %{details: %{note: "kept"}}, edition: edition)
+        end
+      end
+
+      # Equal is not enough: 1 and 1.0 are not the same value, at any depth.
+      for edition <- [Floats, NestedFloats] do
+        assert_raise ArgumentError, ~r/change or remove none of the entry's/, fn ->
+          record(ctx.scope, %{details: %{runs: 1, counts: %{runs: 1}}}, edition: edition)
         end
       end
 

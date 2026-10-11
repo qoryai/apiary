@@ -284,7 +284,8 @@ defmodule Apiary.Edition do
   It is asked inside the change's transaction, before the entry is inserted, so it must be
   cheap: an answer from the scope (its `reach` and `edition`) needs no read, and a read it
   must make takes no lock, neither `FOR UPDATE` nor `FOR SHARE`, beyond those the change
-  holds already. An error raised rolls the change back.
+  holds already. Anything it raises, or an answer that can't be stored as JSON, rolls the
+  change back.
   """
   @callback audit_details(Scope.t(), organisation_id :: Ecto.UUID.t(), details :: map) :: map
 

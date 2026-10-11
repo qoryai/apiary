@@ -120,6 +120,37 @@ defmodule ApiaryWeb.EditionTest do
       assert html =~ "Qory Apiary"
     end
 
+    test "is drawn by the core as it always was", ctx do
+      key = Ecto.UUID.generate()
+      names = put_in(ctx.names, [:access_keys, key], %{label: "build-01", key_id: "ak_1"})
+      key_entry = %{ctx.entry | actor_kind: :access_key, actor_id: key}
+      instance = %{ctx.entry | actor_kind: :instance, actor_id: nil}
+      gone = %{ctx.entry | actor_id: Ecto.UUID.generate()}
+      cell = ~s(<span phx-r id="who" class="inline-flex min-w-0 items-center gap-2">\n  \n)
+      icon = &~s(<span phx-r class="hero-#{&1} size-3.5 flex-none text-faint"></span>)
+
+      for {entry, scope, inner} <- [
+            {ctx.entry, %Scope{user: %User{id: Ecto.UUID.generate()}},
+             ~s(      <span class="truncate">dana@example.com</span>\n      \n    \n)},
+            {ctx.entry, %Scope{user: %User{id: ctx.person}},
+             ~s(      <span class="truncate">dana@example.com</span>\n) <>
+               ~s(      <span class="q-faint">you</span>\n    \n)},
+            {gone, %Scope{},
+             ~s(      <span class="q-faint truncate">Former member</span>\n    \n)},
+            {key_entry, %Scope{},
+             ~s(      #{icon.("key")}\n) <>
+               ~s(      <span class="truncate">build-01</span>\n) <>
+               ~s(      <span class="q-faint q-mono">ak_1</span>\n    \n)},
+            {instance, %Scope{},
+             ~s(      #{icon.("cpu-chip")}\n      <span>Qory Apiary</span>\n  \n)}
+          ] do
+        actor = Actor.of(entry, names, scope, Edition.Core)
+
+        assert render_component(&Actor.actor/1, id: "who", actor: actor) ==
+                 cell <> inner <> "</span>"
+      end
+    end
+
     test "is the edition's where it says it, and the core's where it says nil", ctx do
       scope = %Scope{}
       reached = %{ctx.entry | details: %{"reached_through_id" => ctx.through}}

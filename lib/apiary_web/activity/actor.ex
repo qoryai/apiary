@@ -82,36 +82,34 @@ defmodule ApiaryWeb.Activity.Actor do
   attr :id, :string, required: true
   attr :actor, :map, required: true, doc: "the actor, as `of/4` answers"
 
-  def actor(assigns) do
+  def actor(%{actor: %{edition: nil, words: words}} = assigns) do
+    assigns = assign(assigns, :actor, words)
+
     ~H"""
     <span id={@id} class="inline-flex min-w-0 items-center gap-2">
-      <%= if @actor.edition do %>
-        {@actor.edition}
-      <% else %>
-        <.core_words words={@actor.words} />
+      <%= case @actor.kind do %>
+        <% :person -> %>
+          <span class="truncate">{@actor.text}</span>
+          <span :if={@actor.you?} class="q-faint">{gettext("you")}</span>
+        <% :gone -> %>
+          <span class="q-faint truncate">{@actor.text}</span>
+        <% :access_key -> %>
+          <.icon name="hero-key" class="size-3.5 flex-none text-faint" />
+          <span :if={@actor.text} class="truncate">{@actor.text}</span>
+          <span class="q-faint q-mono">{@actor.detail}</span>
+        <% :instance -> %>
+          <.icon name="hero-cpu-chip" class="size-3.5 flex-none text-faint" />
+          <span>{@actor.text}</span>
       <% end %>
     </span>
     """
   end
 
-  attr :words, :map, required: true
-
-  defp core_words(assigns) do
+  def actor(assigns) do
     ~H"""
-    <%= case @words.kind do %>
-      <% :person -> %>
-        <span class="truncate">{@words.text}</span>
-        <span :if={@words.you?} class="q-faint">{gettext("you")}</span>
-      <% :gone -> %>
-        <span class="q-faint truncate">{@words.text}</span>
-      <% :access_key -> %>
-        <.icon name="hero-key" class="size-3.5 flex-none text-faint" />
-        <span :if={@words.text} class="truncate">{@words.text}</span>
-        <span class="q-faint q-mono">{@words.detail}</span>
-      <% :instance -> %>
-        <.icon name="hero-cpu-chip" class="size-3.5 flex-none text-faint" />
-        <span>{@words.text}</span>
-    <% end %>
+    <span id={@id} class="inline-flex min-w-0 items-center gap-2">
+      {@actor.edition}
+    </span>
     """
   end
 end
