@@ -105,6 +105,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   the audit trail (`Apiary.Access.reads_only?/1`). One whose role there changes something
   is told what a refusal tells anyone else. In the core no one is let in without a
   membership, so no page says it.
+- The organisation's settings list its workspaces under Workspaces for whoever may rename
+  or delete one (`workspace.rename`, `workspace.delete`, asked of the organisation,
+  `Apiary.Organisations.lists_workspaces?/1`), owners and admins in the core. A
+  workspace's Delete…, the deletions waiting to be cancelled and the note on what a
+  deletion does are there for whoever may delete one.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration and reload, events and enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and
