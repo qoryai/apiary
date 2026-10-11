@@ -262,4 +262,96 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     # A `*.` elsewhere is still the sentence it was.
     assert flat(read(%{"host" => "*.*.0.0.1"}).text) =~ "may only lead a host"
   end
+
+  describe "a level above the workspace (scope :organisation)" do
+    defp level(own, attrs \\ %{}),
+      do: context(Map.merge(%{scope: :organisation, own: own}, Map.new(attrs)))
+
+    defp said(form, context), do: flat(read(form, context).text)
+
+    test "the same rule again says every workspace, with who and when where known" do
+      for {action, word} <- [{"allow", "allowed"}, {"deny", "denied"}] do
+        by = level([own(host: "a.example", action: action)])
+        since = level([own(host: "a.example", action: action, by: nil)])
+        nobody = level([own(host: "a.example", action: action, by: nil, at: nil)])
+        form = %{"host" => "a.example", "action" => action}
+
+        assert said(form, by) ==
+                 "a.example is already #{word} for every workspace, by beekeeper on 2 Sep."
+
+        assert said(form, since) ==
+                 "a.example is already #{word} for every workspace, since 2 Sep."
+
+        assert said(form, nobody) == "a.example is already #{word} for every workspace."
+      end
+    end
+
+    test "the opposite rule, a host held to paths and other paths say every workspace" do
+      context =
+        level([
+          own(host: "registry.example"),
+          own(host: "paste.example", action: "deny"),
+          own(host: "api.example", paths: ["/v1/*"])
+        ])
+
+      assert %{kind: :note, button: "Replace with deny"} =
+               reading = read(%{"host" => "registry.example", "action" => "deny"}, context)
+
+      assert flat(reading.text) ==
+               "registry.example is allowed for every workspace. Adding this deny replaces that rule."
+
+      assert %{kind: :note, button: "Replace with allow"} =
+               reading = read(%{"host" => "paste.example"}, context)
+
+      assert flat(reading.text) ==
+               "paste.example is denied for every workspace. Adding this allow replaces that rule."
+
+      assert %{kind: :error, fix: {"Every path", "rule_every", _}} =
+               reading = read(%{"host" => "api.example"}, context)
+
+      assert flat(reading.text) ==
+               "api.example is held to /v1/* for every workspace. Name the paths it should have, or choose Every path to open them all."
+
+      assert %{kind: :note, button: "Change paths"} =
+               reading = read(%{"host" => "api.example", "paths" => "/v2/*"}, context)
+
+      assert flat(reading.text) ==
+               "api.example is allowed for every workspace on /v1/*. Saving changes its paths to /v2/*."
+    end
+
+    test "a deny of a host holds in every workspace and target; a suffix's reads as before" do
+      context = level([])
+
+      assert %{kind: :ok} =
+               reading = read(%{"host" => "telemetry.example", "action" => "deny"}, context)
+
+      assert flat(reading.text) ==
+               "Deny telemetry.example. It holds in every workspace and repository, and no rule of theirs can allow it. It is denied in either mode, observe too."
+
+      # The engine's words, the message as written.
+      Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+        assert said(%{"host" => "telemetry.example", "action" => "deny"}, context) =~
+                 "Deny telemetry.example. It holds in every workspace and target, and no rule of theirs can allow it."
+      end)
+
+      assert said(%{"host" => "*.paste.example", "action" => "deny"}, context) =~
+               "Deny every host below paste.example, and every allow rule it covers."
+    end
+
+    test "no locked rule of a workspace refuses it" do
+      entries = [
+        entry(host: "*.paste.example", action: :deny, locked: true),
+        entry(host: "github.example", locked: true)
+      ]
+
+      context = level([], entries: entries, owner: false)
+
+      assert %{kind: :ok} = read(%{"host" => "bin.paste.example"}, context)
+      assert %{kind: :ok} = read(%{"host" => "github.example", "action" => "deny"}, context)
+
+      # The same entries refuse on a target's page.
+      assert %{kind: :refusal} =
+               read(%{"host" => "bin.paste.example"}, %{context | scope: :target})
+    end
+  end
 end

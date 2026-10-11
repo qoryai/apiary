@@ -1032,7 +1032,8 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The form of a host rule, a page of its own (`ApiaryWeb.PageComponents.page_form/1`):
   the New rule page, `…/policy/rules/new` of the workspace or of a target, and the Edit
-  rule page, `…/policy/rules/:id/edit`. Top to bottom: the title and its sentence (the
+  rule page, `…/policy/rules/:id/edit`; an edition draws it too for a level above the
+  workspace (`scope` `:organisation`). Top to bottom: the title and its sentence (the
   `description` slot), "What should runs do?" as two radio cards, Allow and Deny, each
   saying what it does; Host, a labelled field with its help under it (on Edit, the host
   shown and kept); Paths, optional, for an allow only (a deny says it covers every path);
@@ -1054,7 +1055,12 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :id, :string, required: true, doc: "the page's; the fields' ids start with it"
   attr :title, :string, required: true
   attr :form, :any, required: true, doc: "action, host, paths, every"
-  attr :scope, :atom, required: true, values: [:workspace, :target]
+
+  attr :scope, :atom,
+    required: true,
+    values: [:workspace, :target, :organisation],
+    doc: "where the rule is written: the workspace, a target, or a level above the workspace"
+
   attr :reading, :map, default: nil
   attr :queued, :integer, default: 0, doc: "pasted hosts still to add"
   attr :cancel, :string, required: true, doc: "the list as the reader left it"
@@ -1086,9 +1092,9 @@ defmodule ApiaryWeb.PolicyComponents do
         refusal?: reading.kind == :refusal,
         button:
           reading.button ||
-            if(assigns.scope == :workspace,
-              do: gettext("Add rule"),
-              else: gettext("Add target rule")
+            if(assigns.scope == :target,
+              do: gettext("Add target rule"),
+              else: gettext("Add rule")
             )
       )
 
