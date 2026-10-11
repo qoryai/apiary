@@ -138,9 +138,17 @@ may:
   (`c:Apiary.Edition.accepted/4`);
 - refuse a deletion or a purge, and hear of each (Marked for deletion, below);
 - say who may take an action in its own words (`c:ApiaryWeb.Edition.who_may_sentence/2`),
-  where a page tells a person who is refused it, or offered no way to take it, which
-  levels may: the core's sentence names them, such as "Only owners and admins add nodes.",
-  and stays where the edition has none (`ApiaryWeb.Access.who_may/3`).
+  where the core's sentence names the levels that may, such as "Only owners and admins
+  add nodes.", which stays where the edition has none (`ApiaryWeb.Access.who_may/3`). It
+  is asked for the refusals, and the notices to whoever may not act, of the nodes' pages
+  and a node's Access key tab, the workspace overview's Get the command, the
+  organisation's and the workspace's settings, People, stored secrets and variables, and
+  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's deletion on Your organisations; for the security policy's own refusals
+  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
+  The policy pages' mode row and their lock and unlock hints, the lock hint of a
+  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
+  a locked rule have no scope at hand, and keep the core's words.
 
 ## The instance's admins
 

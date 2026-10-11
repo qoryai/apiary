@@ -110,11 +110,19 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `Apiary.Organisations.lists_workspaces?/1`), owners and admins in the core. A
   workspace's Delete…, the deletions waiting to be cancelled and the note on what a
   deletion does are there for whoever may delete one.
-- A page that refuses a person an action, or offers them no way to take it, says which
-  levels may, such as "Only owners and admins add nodes.", through
-  `ApiaryWeb.Access.who_may/3`: an edition may say it in its own words
-  (`c:ApiaryWeb.Edition.who_may_sentence/2`, asked with the action and the scope), and
-  the core's sentence stands where it has none, as it does in the core.
+- An edition may say in its own words who may take an action
+  (`c:ApiaryWeb.Edition.who_may_sentence/2`, asked with the action and the scope, through
+  `ApiaryWeb.Access.who_may/3`), where the core's sentence names the levels, such as
+  "Only owners and admins add nodes.", and the core's sentence stands where it has none,
+  as it does in the core. It is asked for the refusals, and the notices to whoever may not
+  act, of the nodes' pages and a node's Access key tab, the workspace overview's Get the
+  command, the organisation's and the workspace's settings, People, integrations, and the
+  pages that say "Only owners and admins change this."; for People's line of what each
+  level does; for the refusal to cancel an organisation's deletion on Your organisations;
+  for the security policy's own refusals (`Apiary.Policy`); and for the policy pages'
+  refusals of a click on the mode or a lock. The policy pages' mode row and their lock and unlock hints, the lock
+  hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
+  mode and on a locked rule have no scope at hand, and keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration and reload, events and enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and

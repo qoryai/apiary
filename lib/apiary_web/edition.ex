@@ -36,8 +36,8 @@ defmodule ApiaryWeb.Edition do
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
-    `c:who_may_sentence/2`, what a page says of who may take an action, where the core's
-    sentence names the levels (`ApiaryWeb.Access.who_may/3`).
+    `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
+    the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
@@ -172,6 +172,16 @@ defmodule ApiaryWeb.Edition do
     what owners and admins manage, and what members do: they see the runs, and change the
     policy's rules that are not locked where a member's role holds
     `:"security_policy.edit"` and its feature is on.
+
+  It is asked for the refusals, and the notices to whoever may not act, of the nodes'
+  pages and a node's Access key tab, the workspace overview's Get the command, the
+  organisation's and the workspace's settings, People, stored secrets and variables, and
+  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's deletion on Your organisations; for the security policy's own refusals
+  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
+  The policy pages' mode row and their lock and unlock hints, the lock hint of a
+  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
+  a locked rule have no scope at hand, and keep the core's words.
 
   A reader (`Apiary.Access.reader/1`) is told `c:reader_sentence/2`'s words instead,
   where a page refuses them a change.
