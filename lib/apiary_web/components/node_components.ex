@@ -530,7 +530,7 @@ defmodule ApiaryWeb.NodeComponents do
   `reached_workspaces/1`) by its organisation and its name, and counting the rest; "No
   node uses it now." when there are none.
   """
-  @spec using_words([Apiary.Organisations.Workspace.t()], MapSet.t()) :: String.t()
+  @spec using_words([%Apiary.Organisations.Workspace{}], MapSet.t()) :: String.t()
   def using_words([], _reached), do: gettext("No node uses it now.")
 
   def using_words(workspaces, reached) do

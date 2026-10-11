@@ -303,6 +303,35 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the organisation's own page names
   are; a workspace named Gateways gets the slug `gateways-2`.
+- A gateway may live at an organisation as well as at a workspace: its row has no
+  workspace, and nor have its access keys, enrolment codes and instances. It may serve
+  every workspace of its organisation, and those an edition names
+  (`c:Apiary.Edition.serving_organisations/1`, `c:Apiary.Edition.served_organisations/1`;
+  the core's edition names none). An organisation's gateways have names of their own,
+  unique among them, and at most one default. A workspace's default gateway is its own
+  default; without one, its organisation's; without that, one of an organisation that
+  serves it. `Apiary.Nodes.create_organisation_gateway/2`,
+  `list_organisation_gateways/1` and `list_serving_gateways/1` make and list them, asked
+  of the organisation (`node.create`, `node.read`); a gateway's changes, keys and codes
+  are asked at its place. A change of an organisation's gateways takes turns with every
+  change of a node's choice in a workspace it may serve, on the organisations' rows
+  (`Apiary.Gateways.lock/1`, `docs/access.md`). A gateway's key is checked while its
+  organisation is out of use, not marked for deletion, and acts for a run only while the
+  run's workspace is in use, the gateway may serve it, and either the gateway's
+  organisation is in use or the run is another organisation's. The console offers an
+  organisation's gateways only where an organisation may have more than one workspace
+  (`c:Apiary.Edition.limits/0`): with one workspace, as here, Organisation › Gateways, its
+  sidebar entry and New gateway in New are not offered, and their paths are not found.
+  Where they are offered, Gateways lists them, with their URL, Default and whether each is
+  connected; New gateway is a page of its own; a gateway's page has the tabs a workspace's
+  gateway has, says whose nodes can use it and which workspaces' nodes use it now,
+  naming only the workspaces the reader reaches and counting the rest, and its deletion
+  is confirmed in place. A workspace's Nodes lists its organisation's gateways beside its
+  own, each "Set for" the organisation; a node's choice groups the gateways by level; a
+  gateway of another organisation is named with its organisation and linked only where
+  the reader may open it. `c:ApiaryWeb.Edition.gateway_reach_sentence/2` and
+  `c:ApiaryWeb.Edition.nodes_managed_by_sentence/1` let an edition word whose nodes can
+  use an organisation's gateways and who manages the nodes.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a bucket of
   their own, 50 requests a second and 100 at once, so a gateway flushing a backlog of
@@ -767,6 +796,20 @@ heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_even
 every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
 and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
 backfilled: an event with none counts towards its run's liveness as it did.
+`20261011160500_let_a_gateway_live_at_an_organisation` lets `nodes.workspace_id`,
+`access_keys.workspace_id`, `access_key_enrolment_codes.workspace_id` and
+`node_instances.workspace_id` be NULL, for a gateway of an organisation and its rows:
+only a gateway may have none (`nodes_place_check`). The keys to the workspace become
+`MATCH SIMPLE` instead of `MATCH FULL`, so they hold a row with a workspace as before and
+leave one without; new composite keys hold each key, code and instance to its node's
+organisation (`(node_id, organisation_id)` to a new unique `(id, organisation_id)` of
+`nodes`), and a key to its enrolment code's; the trigger `node_place_matches` refuses a
+row without a workspace whose node has one. It adds the unique indexes
+`nodes_organisation_live_name_index` and `nodes_organisation_default_gateway_index`. The
+checks and keys are added NOT VALID, and
+`20261011160600_validate_a_gateway_s_organisation_keys` validates them. Nothing is
+backfilled: every row keeps its workspace. Rolled back, it refuses while any row without
+a workspace is there.
 
 ### Upgrading
 

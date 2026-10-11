@@ -972,6 +972,37 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   this gateway: … Delete it once they end.", or both in one notice. It names the first
   five of this workspace, then "and 3 more", which counts those of other workspaces too,
   never named.
+- **An organisation's gateways** (`ApiaryWeb.NodeLive.Gateways`, `/:org/gateways`) are
+  offered only where an organisation may have more than one workspace
+  (`NodeComponents.organisation_gateways?/0`, from `c:Apiary.Edition.limits/0`); with one,
+  the Gateways entry of the organisation's sidebar (`#nav-gateways`, after Audit log, for
+  a reader of `node.read`) and New gateway in the New menu are not there, and the paths
+  are not found. The list, on the list pattern, says under its heading whose nodes can use
+  them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`, `:intro`), then a row a gateway:
+  its name and public id, its URL from `sm`, Default beside the organisation's default,
+  and Connected, Yes or No by whether it holds an active key. Owners and admins have **New
+  gateway** (`/gateways/new`), a form page as a workspace's New gateway is, which opens the
+  gateway's Access key tab. A gateway's page is a workspace gateway's page under
+  `/:org/gateways/:node_id`, with its Access key and Settings tabs, the breadcrumb and the
+  sidebar's current entry Gateways (`nav={:gateways}`). Its Overview adds who can use it
+  (`:who_can_use`) and who uses it now, "Nodes in Acme › Main, Acme › Build use it now."
+  or "No node uses it now." (`NodeComponents.using_words/2`), naming only the workspaces
+  the reader reaches, then "and 2 more workspaces"; the organisation's default reads
+  `:default_row`. Its deletion is confirmed in place, in its own words, and a refusal names
+  the nodes and runs of the workspaces the reader reaches and counts the rest
+  (`NodeComponents.in_use_words/3`).
+- **A workspace's Nodes and an organisation's gateways.** Nodes lists the organisation's
+  gateways beside the workspace's, each with "Set for Acme" (`#node-<id>-level`), linked
+  to its page, and Default beside the gateway the workspace's default resolves to. A
+  gateway of another organisation that serves the workspace is no row of it. A node's
+  Gateway select groups the gateways by level where there is more than one, "This
+  workspace" first, then each organisation by name, and its hint names the organisation
+  whose default it is. Where a node uses a gateway of another organisation, its About,
+  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, linked
+  only where the reader may open it. Who manages the nodes is the core's sentence unless
+  the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
+  instance limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
+  `node.set_limit`, "You can't change the instance limit." when it gives none.
 - **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
   (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the command's page, Key
   for a node and a key's Forager file, an info notice: "Runs of build-01 go through the
