@@ -396,15 +396,35 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
     test "by a gateway that may no longer serve the run's workspace is workspace_not_served",
          ctx do
       {run_id, run_key} = registered(ctx)
-      elsewhere = workspace_fixture(ctx.scope.organisation)
 
-      # The gateway as it would be had it moved to another workspace: core's gateways serve
-      # their own workspace alone, so its record is changed here, not in the table.
+      # The gateway as it would be had it been deleted after its key was verified: core's
+      # gateways serve their own workspace alone, and a deletion refuses while the run
+      # waits, so its row is marked here, past the application. The attach reads the
+      # gateway's row as it is once the run's row is held.
       {key, _secret} = ctx.gateway_key
-      moved = %{key | node: %{key.node | workspace_id: elsewhere.id}}
+
+      Repo.update_all(from(n in Node, where: n.id == ^key.node_id),
+        set: [deleted_at: DateTime.utc_now(), default_gateway: false]
+      )
+
       {:ok, body} = Attach.parse(attach_body(run_key))
 
-      assert Attach.attach(moved, run_id, body, %{}) == {:error, :workspace_not_served}
+      assert Attach.attach(key, run_id, body, %{}) == {:error, :workspace_not_served}
+      assert run(run_id).attached_at == nil
+    end
+
+    test "by a gateway whose row is gone is refused, and the run stays unattached", ctx do
+      {run_id, run_key} = registered(ctx)
+
+      # The gateway as it would be had its row been purged after its key was verified: the
+      # run's reference to it is cleared with it, so the run names another gateway.
+      {key, _secret} = ctx.gateway_key
+      Repo.delete_all(from k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^key.node_id)
+      Repo.delete_all(from n in Node, where: n.id == ^key.node_id)
+      {:ok, body} = Attach.parse(attach_body(run_key))
+
+      assert run(run_id).gateway_id == nil
+      assert Attach.attach(key, run_id, body, %{}) == {:error, :wrong_gateway}
       assert run(run_id).attached_at == nil
     end
 

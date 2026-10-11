@@ -64,6 +64,12 @@ defmodule Apiary.Runs.Registration do
        transaction of the instance limit; a run through a gateway with the gateway, its
        run key's payload, when it was made and the end of its attach window.
 
+  A run through a gateway is stored with the gateway's row read `FOR SHARE` first, in the
+  same transaction, the way a gateway's deletion holds it (`Apiary.Gateways`): a gateway
+  deleted since the choice resolved, or that may no longer serve the workspace, is
+  `{:error, :gateway_not_serving}` then, and no run is stored. So a deletion either finds
+  the run, or the run is refused.
+
   No run is stored on any refusal. Once the run is stored, the key's use is recorded and
   the run is broadcast as changed. A later event of the run is stored on the same row
   (`Apiary.Runs.Ingest`), and its `run.started` moves it to `running`; the projector never
@@ -510,9 +516,15 @@ defmodule Apiary.Runs.Registration do
 
     store = fn ->
       case answer do
-        :used -> {:error, :run_id_used}
-        {:error, :unavailable} -> {:error, :unavailable}
-        {:ok, answer} -> insert(access_key, registration, meta, digest, answer, now)
+        :used ->
+          {:error, :run_id_used}
+
+        {:error, :unavailable} ->
+          {:error, :unavailable}
+
+        {:ok, answer} ->
+          with :ok <- serving(answer, access_key),
+               do: insert(access_key, registration, meta, digest, answer, now)
       end
     end
 
@@ -535,6 +547,19 @@ defmodule Apiary.Runs.Registration do
   rescue
     exception -> unavailable(exception)
   end
+
+  # The gateway a run through a gateway is stored with, read `FOR SHARE` in the store's
+  # transaction, as a deletion holds it `FOR UPDATE`: it still serves the workspace, or the
+  # run is refused as a choice that leads to it would be now.
+  defp serving(%{through: %{gateway_id: gateway_id}}, %AccessKey{workspace: workspace}) do
+    gateway = Repo.one(from n in Nodes.Node, where: n.id == ^gateway_id, lock: "FOR SHARE")
+
+    if gateway && Gateways.may_serve?(gateway, workspace),
+      do: :ok,
+      else: {:error, :gateway_not_serving}
+  end
+
+  defp serving(_answer, _access_key), do: :ok
 
   # A direct run is answered its run configuration; a run through a gateway its run key,
   # which names the gateway, with the attach window granted.

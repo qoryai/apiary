@@ -32,11 +32,11 @@ defmodule Apiary.Nodes do
   otherwise. `:named` must name one of `Apiary.Gateways.gateway_choices/1`, and
   `:default` needs a default that resolves for the workspace. A gateway made when no
   default resolves for its workspace becomes its default; `make_default_gateway/2` moves
-  the mark. A gateway is deleted only when nothing points to it
-  (`Apiary.Gateways.delete_blockers/1`), and the deletion then marks the oldest gateway
-  left as the default when none resolves any more. Each of these takes the workspace's
-  gateway lock first (`Apiary.Gateways.lock/1`), and a mark that moves leaves an entry of
-  `node.edit` for each gateway it moved on or off.
+  the mark. A gateway is deleted only when nothing points to it and no run through it is
+  live or waiting (`Apiary.Gateways.delete_blockers/1`), and the deletion then marks the
+  oldest gateway left as the default when none resolves any more. Each of these takes the
+  workspace's gateway lock first (`Apiary.Gateways.lock/1`), and a mark that moves leaves
+  an entry of `node.edit` for each gateway it moved on or off.
 
   **Instances.** An instance is what Forager, under a node's access key, reports itself as
   (`Apiary.Nodes.Instance`): a claim, for display, the audit and the instance limit, never
@@ -344,11 +344,14 @@ defmodule Apiary.Nodes do
   (`Apiary.AccessKeys.revoke_node_keys/3`). `{:ok, node}`, `{:error, :forbidden}`, or
   `{:error, :not_found}` for a node that is deleted already or not the workspace's.
 
-  A gateway is deleted only when nothing points to it: otherwise
-  `{:error, {:gateway_in_use, blockers}}` (`Apiary.Gateways.delete_blockers/1`), and
-  nothing changes. A deleted gateway loses its default mark; when no default resolves
-  any more for a workspace it served and gateways remain that may serve it, the oldest
-  of them at its level becomes the default, with its entry of `node.edit`. No node moves.
+  A gateway is deleted only when nothing points to it and no run through it is live or
+  waiting: otherwise `{:error, {:gateway_in_use, blockers}}`, which names the nodes and
+  the runs (`Apiary.Gateways.delete_blockers/1`), and nothing changes. The runs are read
+  with the gateway's row held `FOR UPDATE`, so a registration through it or an attach by
+  it that commits first is among them, and one that commits after finds it deleted. A
+  deleted gateway loses its default mark; when no default resolves any more for a
+  workspace it served and gateways remain that may serve it, the oldest of them at its
+  level becomes the default, with its entry of `node.edit`. No node moves.
   `{:error, changeset}` when the database refuses that mark, and nothing changes.
   """
   @spec delete_node(Scope.t(), Node.t()) ::
@@ -385,9 +388,10 @@ defmodule Apiary.Nodes do
     end)
   end
 
+  # Under the gateway's row, held `FOR UPDATE` by `mutate/4`.
   defp unblocked(%Node{kind: :gateway} = gateway) do
     case Gateways.delete_blockers(gateway) do
-      %{nodes: []} -> :ok
+      %{nodes: [], runs: []} -> :ok
       blockers -> {:error, {:gateway_in_use, blockers}}
     end
   end

@@ -36,8 +36,9 @@ defmodule Apiary.Runs.Attach do
        is locked, or already lost, as the lost-run check finds it at `attach_by` and a
        person's clearing of its instance leaves it;
     7. a run key that names another gateway is `{:error, :wrong_gateway}`;
-    8. a gateway that may not serve the run's workspace (`Apiary.Gateways.may_serve?/2`)
-       is `{:error, :workspace_not_served}`;
+    8. a gateway that may not serve the run's workspace (`Apiary.Gateways.may_serve?/2`),
+       or that is deleted or gone, read `FOR SHARE` once the run's row is held, is
+       `{:error, :workspace_not_served}`;
     9. a run another gateway attached is `{:error, :run_attached}`;
     10. a workspace whose run configuration cannot be read is `{:error, :unavailable}`;
     11. else the run is attached: when, its heartbeat interval, which
@@ -53,6 +54,10 @@ defmodule Apiary.Runs.Attach do
   `labels` and `about` of the run's registration added after its last member, each left
   out when the registration had none; and its digest, which is the configuration's, for
   `X-Qory-Run-Configuration` and `ETag`.
+
+  The gateway's row is read `FOR SHARE` in the attach's transaction, the way a gateway's
+  deletion holds it (`Apiary.Gateways`), and the clock after it: a deletion either finds
+  the run it would attach, or the attach finds the gateway deleted.
 
   No run is changed on any refusal. Once the run is attached, the gateway's batches,
   heartbeats and reloads are taken for it, and nobody else's (`Apiary.Runs.Sender`).
@@ -279,14 +284,18 @@ defmodule Apiary.Runs.Attach do
   end
 
   # Under the run's projection lock and its row's, as an outcome is stored, so two attaches
-  # of one run take turns and a pass never writes over the attach. The clock is read once
-  # the row is held, so the window is judged against the row as it is then.
+  # of one run take turns and a pass never writes over the attach; then the gateway's row,
+  # `FOR SHARE`, as its deletion holds it `FOR UPDATE`, so the two take turns as well. The
+  # clock is read once the rows are held, so the window is judged against the row as it is
+  # then.
   defp store(id, access_key, grant, workspace, attach, meta) do
     Repo.transact(fn ->
       Runs.Projector.lock(id)
       run = Repo.one!(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
+
+      # Nil once the gateway's row is gone: it may serve nothing.
+      gateway = Repo.one(from n in Node, where: n.id == ^access_key.node_id, lock: "FOR SHARE")
       now = DateTime.utc_now()
-      gateway = access_key.node
 
       cond do
         repeat?(run, gateway) ->
@@ -298,7 +307,7 @@ defmodule Apiary.Runs.Attach do
         expired?(run, now) ->
           {:error, :run_key_expired}
 
-        grant.gateway != gateway.public_id or run.gateway_id != gateway.id ->
+        grant.gateway != access_key.node.public_id or run.gateway_id != access_key.node_id ->
           {:error, :wrong_gateway}
 
         not Gateways.may_serve?(gateway, workspace) ->
