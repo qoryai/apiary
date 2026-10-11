@@ -843,7 +843,7 @@ defmodule ApiaryWeb.RunComponents do
         <% @state == "running" -> %>
           <span>{gettext("Alive")}</span>
         <% true -> %>
-          <span>{ended_sentence(current_state(@state), @run)}</span>
+          <span>{outcome_sentence(@run) || ended_sentence(current_state(@state), @run)}</span>
       <% end %>
     </span>
     """
@@ -864,6 +864,70 @@ defmodule ApiaryWeb.RunComponents do
     >{format_seconds(max(DateTime.diff(@now, @at, :second), 0))}</time>
     """
   end
+
+  @doc """
+  The sentence of a run whose state is its starter's outcome and differs from what its exit
+  said (`Apiary.Runs.Run.outcome_differs?/1`): the outcome's state, then what the runtime
+  did. "Succeeded, as its starter said; the runtime exited 1"; with a signal, "Failed, as
+  its starter said; the runtime ended with SIGKILL"; before any exit, "Cancelled, as its
+  starter said; the runtime has not exited yet"; an exit with no code of its own, "...; the
+  runtime's exit was not recorded". Nil for any other run, which reads as it always has.
+  """
+  @spec outcome_sentence(map() | nil) :: String.t() | nil
+  def outcome_sentence(%{outcome_state: state} = run) when is_binary(state) do
+    if Run.outcome_differs?(run), do: outcome_sentence(state, runtime_exit(run))
+  end
+
+  def outcome_sentence(_run), do: nil
+
+  # What the runtime did, as the outcome's sentence says it.
+  defp runtime_exit(%{exited_at: nil}), do: :running
+
+  defp runtime_exit(%{signal: signal}) when is_binary(signal) and signal != "",
+    do: {:signal, signal}
+
+  defp runtime_exit(%{exit_code: code}) when is_integer(code) and code != -1,
+    do: {:code, code}
+
+  defp runtime_exit(_run), do: :not_recorded
+
+  defp outcome_sentence("succeeded", {:code, code}),
+    do: gettext("Succeeded, as its starter said; the runtime exited %{code}", code: code)
+
+  defp outcome_sentence("failed", {:code, code}),
+    do: gettext("Failed, as its starter said; the runtime exited %{code}", code: code)
+
+  defp outcome_sentence("cancelled", {:code, code}),
+    do: gettext("Cancelled, as its starter said; the runtime exited %{code}", code: code)
+
+  defp outcome_sentence("succeeded", {:signal, signal}),
+    do:
+      gettext("Succeeded, as its starter said; the runtime ended with %{signal}", signal: signal)
+
+  defp outcome_sentence("failed", {:signal, signal}),
+    do: gettext("Failed, as its starter said; the runtime ended with %{signal}", signal: signal)
+
+  defp outcome_sentence("cancelled", {:signal, signal}),
+    do:
+      gettext("Cancelled, as its starter said; the runtime ended with %{signal}", signal: signal)
+
+  defp outcome_sentence("succeeded", :running),
+    do: gettext("Succeeded, as its starter said; the runtime has not exited yet")
+
+  defp outcome_sentence("failed", :running),
+    do: gettext("Failed, as its starter said; the runtime has not exited yet")
+
+  defp outcome_sentence("cancelled", :running),
+    do: gettext("Cancelled, as its starter said; the runtime has not exited yet")
+
+  defp outcome_sentence("succeeded", :not_recorded),
+    do: gettext("Succeeded, as its starter said; the runtime's exit was not recorded")
+
+  defp outcome_sentence("failed", :not_recorded),
+    do: gettext("Failed, as its starter said; the runtime's exit was not recorded")
+
+  defp outcome_sentence("cancelled", :not_recorded),
+    do: gettext("Cancelled, as its starter said; the runtime's exit was not recorded")
 
   # A run that registered and posted nothing yet, or, stored before the registration
   # replaced the ping, one that pinged and posted nothing else.

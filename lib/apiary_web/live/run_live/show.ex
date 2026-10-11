@@ -129,7 +129,16 @@ defmodule ApiaryWeb.RunLive.Show do
           <div class="q-run-sub">
             <div class="q-run-meta-wrap">
               <p id="run-meta" class="q-run-meta">
-                <.state_mark id="run-state" state={@run.state} word />
+                <%!-- A state its starter's outcome set, unlike what the exit said: the
+                      sentence in the place of the state's word. --%>
+                <span
+                  :if={outcome_sentence(@run)}
+                  id="run-state"
+                  class={["q-sdot", "q-sdot-#{@run.state}"]}
+                >
+                  <i aria-hidden="true"></i><span id="run-outcome">{outcome_sentence(@run)}</span>
+                </span>
+                <.state_mark :if={!outcome_sentence(@run)} id="run-state" state={@run.state} word />
                 <.end_reason run={@run} id="run-reason" />
                 <.alive
                   :if={@run.state in ~w(pending running)}
@@ -2482,9 +2491,11 @@ defmodule ApiaryWeb.RunLive.Show do
     announce(socket, state_sentence(run), :now)
   end
 
-  # A state stored under an earlier name is said as the state that took it in.
+  # A state its starter's outcome set, unlike what the exit said, is said as the header
+  # says it (`outcome_sentence/1`). A state stored under an earlier name is said as the
+  # state that took it in.
   defp state_sentence(%Run{state: state} = run),
-    do: state_sentence(Run.current_state(state), run)
+    do: outcome_sentence(run) || state_sentence(Run.current_state(state), run)
 
   defp state_sentence("completed", %Run{duration_ms: ms}) when is_integer(ms),
     do: gettext("Run completed after %{duration}.", duration: format_duration_ms(ms))
@@ -2720,9 +2731,10 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The program's exit after a failed session's run's state, when the program exited
   # non-zero by itself and no reason words stand: "exit 1", "SIGKILL". Nil otherwise.
+  # A run whose outcome's sentence says the exit says it there.
   defp program_exit(%Run{} = run) do
     if Run.current_state(run.state) == "failed" and !Run.no_session?(run) and
-         is_nil(reason_words(run)) do
+         is_nil(reason_words(run)) and is_nil(outcome_sentence(run)) do
       cond do
         signal?(run) -> run.signal
         is_integer(run.exit_code) and run.exit_code not in [0, -1] -> exit_words(run.exit_code)
