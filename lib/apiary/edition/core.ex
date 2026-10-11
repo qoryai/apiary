@@ -81,6 +81,9 @@ defmodule Apiary.Edition.Core do
   def places_to_lock(%Organisation{id: id}), do: [id]
 
   @impl true
+  def lock_rows(_about), do: :ok
+
+  @impl true
   def every_workspace_levels, do: [:owner, :admin, :member]
 
   @impl true

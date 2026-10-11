@@ -1104,13 +1104,13 @@ defmodule Apiary.Organisations do
   end
 
   # The edition first, which may hold the organisation more strongly, then the
-  # organisation, as the lock order has it (`lock_open_organisation/1`): its marking, and
+  # organisation, as the lock order has it (`lock_open_organisation/2`): its marking, and
   # what the edition stops, wait for the sign-up, or came first and refuse it.
   defp invited_sign_up_multi(user_changeset, %Invitation{} = invitation, origin) do
     Ecto.Multi.new()
     |> Ecto.Multi.run(:level, fn repo, _changes ->
       with {:ok, level} <- Edition.accepting(repo, invitation, nil),
-           :ok <- lock_open_organisation(invitation),
+           :ok <- lock_open_organisation(nil, invitation),
            :ok <- grantable_on_accept(nil, invitation, level) do
         {:ok, level}
       else
@@ -1658,7 +1658,8 @@ defmodule Apiary.Organisations do
           {:ok, %Membership{}} | {:error, :not_found | :forbidden | term}
   def activate_member(%Scope{} = scope, membership_id) do
     fn ->
-      with {:ok, membership} <- get_member(scope, membership_id),
+      with :ok <- lock_people(scope),
+           {:ok, membership} <- get_member(scope, membership_id),
            :ok <- Access.authorize(scope, :"member.activate", membership) do
         if is_nil(membership.suspended_at) do
           {:ok, membership}
@@ -1702,8 +1703,24 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  lock_owners/1 holds the scope's organisation, with what the edition holds beside it,
-  `FOR SHARE` (`Apiary.Access.lock_places/1`), then locks the organisation's owners' memberships
+  lock_people/1 holds the scope's organisation, with what the edition holds beside it,
+  `FOR SHARE` (`Apiary.Access.lock_places/1`), then the edition's own rows for a change of
+  the organisation's people (`c:Apiary.Edition.lock_rows/1`, `{:people, scope,
+  organisation}`): the first rows of the lock order of docs/access.md, before any
+  membership. For a caller inside a transaction that changes a membership of the
+  organisation, before it reads the membership. `:ok`.
+  """
+  @spec lock_people(Scope.t()) :: :ok
+  def lock_people(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    :ok = Access.lock_places(scope)
+    :ok = Edition.lock_rows({:people, scope, organisation})
+  end
+
+  def lock_people(_scope), do: :ok
+
+  @doc """
+  lock_owners/1 holds the scope's organisation and the edition's rows for a change of its
+  people (`lock_people/1`), then locks the organisation's owners' memberships
   `FOR UPDATE`, in the order of their ids: the lock order of docs/access.md, organisation
   rows before memberships. For a caller inside a transaction that counts the owners who
   remain, as a change of a level, a removal and a suspension do, so two of them cannot
@@ -1713,7 +1730,7 @@ defmodule Apiary.Organisations do
   # The caller is authorized after the lock, so a concurrent demotion of the caller is seen
   # too.
   def lock_owners(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
-    :ok = Access.lock_places(scope)
+    :ok = lock_people(scope)
 
     Repo.all(
       from m in Membership,
@@ -1822,10 +1839,12 @@ defmodule Apiary.Organisations do
   `set_member_level/3` and `remove_member/2` refuse to leave an organisation without an
   owner. An organisation marked for deletion is not counted: it goes, owner or not.
 
-  `lock: true`, for a caller inside a transaction, first holds every organisation the user
-  owns `FOR SHARE`, then locks the owners' memberships of them, in the order of their ids,
-  as a change of a level locks them (`lock_owners/1`): a concurrent demotion or removal of another owner waits, and what was
-  counted stays true until the caller commits.
+  `lock: true`, for a caller inside a transaction that deletes the account, first holds
+  every organisation the user owns `FOR SHARE`, then the edition's rows for the deletion
+  (`c:Apiary.Edition.lock_rows/1`, `{:account, user_id}`), then locks the owners'
+  memberships of them, in the order of their ids, as a change of a level locks them
+  (`lock_owners/1`): a concurrent demotion or removal of another owner waits, and what
+  was counted stays true until the caller commits.
   """
   @spec sole_owned_organisations(%User{}, keyword) :: [%Organisation{}]
   def sole_owned_organisations(%User{id: user_id}, opts \\ []) do
@@ -1835,7 +1854,7 @@ defmodule Apiary.Organisations do
         select: m.organisation_id
 
     # The lock order (docs/access.md): the organisations `FOR SHARE`, in the order of
-    # `lock_order/1`; then their owners.
+    # `lock_order/1`; then the edition's rows; then their owners.
     if Keyword.get(opts, :lock, false) do
       order = Repo.all(from o in Organisation, where: o.id in subquery(owned)) |> lock_order()
 
@@ -1846,6 +1865,8 @@ defmodule Apiary.Organisations do
           select: o.id,
           lock: "FOR SHARE"
       )
+
+      :ok = Edition.lock_rows({:account, user_id})
 
       Repo.all(
         from m in Membership,
@@ -2902,7 +2923,7 @@ defmodule Apiary.Organisations do
             # more strongly, then the organisation, which its marking waits for, or came
             # first and is seen; then the account, then the invitation.
             with {:ok, level} <- Edition.accepting(Repo, invitation, user),
-                 :ok <- lock_open_organisation(invitation),
+                 :ok <- lock_open_organisation(here, invitation),
                  :ok <- grantable_on_accept(here, invitation, level),
                  {:ok, claimed} <- lock_person_then_claim(user, invitation),
                  {:ok, membership} <-
@@ -2925,10 +2946,13 @@ defmodule Apiary.Organisations do
   end
 
   # The invitation's organisation, while it is in use: `FOR SHARE`, which its marking and
-  # what the edition stops wait for, then whether it is in use, read under the lock. Gone
-  # or stopped, the invitation is `{:error, :invalid}`, as an expired one is.
-  defp lock_open_organisation(%Invitation{organisation_id: id}) do
+  # what the edition stops wait for, then the edition's rows for a change of its people
+  # (`c:Apiary.Edition.lock_rows/1`), `scope` the person who accepts, nil for a sign-up,
+  # then whether it is in use, read under the lock. Gone or stopped, the invitation is
+  # `{:error, :invalid}`, as an expired one is.
+  defp lock_open_organisation(scope, %Invitation{organisation_id: id} = invitation) do
     Repo.one(from o in Organisation, where: o.id == ^id, select: o.id, lock: "FOR SHARE")
+    :ok = Edition.lock_rows({:people, scope, invitation.organisation})
 
     if in_use?(id), do: :ok, else: {:error, :invalid}
   end
@@ -2960,7 +2984,7 @@ defmodule Apiary.Organisations do
   # two concurrent accepts exactly one finds it. The other waits on the lock, and finds
   # nothing once the first has deleted it. A revocation, and the withdrawal of an
   # undelivered invitation, lock the same row. The organisation is held already
-  # (`lock_open_organisation/1`), so its marking, and what the edition stops, wait for the
+  # (`lock_open_organisation/2`), so its marking, and what the edition stops, wait for the
   # claim, or came first and are seen; the workspace's `FOR KEY SHARE` holds it against
   # its purge's deletion, and its marking is read as the claim finds it. It is claimed by
   # the token it was found by: renewed since (`renew_invitation/4`), it has another, and

@@ -195,4 +195,19 @@ defmodule Apiary.InstanceAdminTest do
       assert Repo.aggregate(Entry, :count) == before
     end
   end
+
+  test "granting and revoking each ask the edition's rows once, {:places} then {:people}" do
+    %{user: user} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.RecordsLockRows)
+
+    assert {:ok, %{granted?: true}} = Organisations.grant_instance_admin(user)
+    assert_received {:lock_rows, :places}
+    assert_received {:lock_rows, :people}
+    refute_received {:lock_rows, _point}
+
+    assert {:ok, %Membership{level: :member}} = Organisations.revoke_instance_admin(user)
+    assert_received {:lock_rows, :places}
+    assert_received {:lock_rows, :people}
+    refute_received {:lock_rows, _point}
+  end
 end

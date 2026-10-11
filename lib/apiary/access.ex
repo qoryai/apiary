@@ -905,8 +905,8 @@ defmodule Apiary.Access do
   def reload(%Scope{user: %User{id: user_id}, organisation: %Organisation{}} = scope, opts) do
     lock? = opts[:lock] == :share
 
-    # The lock order (docs/access.md, The lock order): the organisation rows first, then
-    # the membership, then what the edition holds, then the account.
+    # The lock order (docs/access.md, The lock order): the organisation rows, with the
+    # edition's own (`lock_places/1`), first, then the membership, then the account.
     if lock?, do: lock_places(scope)
 
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
@@ -941,12 +941,13 @@ defmodule Apiary.Access do
   rows of the lock order (docs/access.md). A change that must not happen under such a
   write locks these rows for update, and waits for the write, or comes first and is
   seen; a row that only names the organisation takes `FOR KEY SHARE`, which does not
-  wait. `reload/2` with `lock: :share` takes them first; a write that locks a row of its
-  own before it asks, as the security policy's locks its workspace, calls this first.
-  `:ok`.
+  wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
+  `{:places, scope}`), before any workspace, membership or account. `reload/2` with
+  `lock: :share` takes them first; a write that locks a row of its own before it asks, as
+  the security policy's locks its workspace, calls this first. `:ok`.
   """
   @spec lock_places(Scope.t()) :: :ok
-  def lock_places(%Scope{organisation: %Organisation{id: id}}) do
+  def lock_places(%Scope{organisation: %Organisation{id: id}} = scope) do
     case Repo.one(from o in Organisation, where: o.id == ^id, lock: "FOR SHARE") do
       nil ->
         :ok
@@ -956,7 +957,7 @@ defmodule Apiary.Access do
           Repo.one(from o in Organisation, where: o.id == ^other, select: o.id, lock: "FOR SHARE")
         end
 
-        :ok
+        :ok = Edition.lock_rows({:places, scope})
     end
   end
 

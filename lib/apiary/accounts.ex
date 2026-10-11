@@ -279,8 +279,9 @@ defmodule Apiary.Accounts do
 
   defp delete(%User{id: id}, actor) do
     Repo.transact(fn ->
-      # The lock order (docs/access.md): the organisations the person owns and their
-      # owners (`Organisations.sole_owned_organisations/2` with `lock: true`), then the
+      # The lock order (docs/access.md): the organisations the person owns, the edition's
+      # rows for the deletion and the organisations' owners
+      # (`Organisations.sole_owned_organisations/2` with `lock: true`), then the
       # person's memberships, then the account, `FOR NO KEY UPDATE`: an invitation's
       # acceptance, which holds the account `FOR SHARE`, waits for it, and one that came
       # first is waited for; a row that only names the account, which takes its key share,

@@ -48,7 +48,7 @@ defmodule Apiary.EditionStubs do
   end
 
   @doc """
-  rendezvous/0 pauses a change once the edition holds its rows, while the test that
+  rendezvous/0 pauses a change once the edition holds its first rows, while the test that
   started it asks so (`Process.put(:level_refusal_rendezvous, true)` in the test's
   process): it says `{:level_refusal_held, pid}` to the test and waits for
   `:level_refusal_go`, so two changes hold their rows at once before either goes on.
@@ -65,25 +65,72 @@ defmodule Apiary.EditionStubs do
         5_000 -> :ok
       end
     end
+
+    :ok
   end
 
-  defmodule LocksItsOwn do
+  defmodule LocksItsRows do
     @moduledoc """
-    Refuses no level, and, asked inside a change (`lock: :share`), holds a row of its own
-    `FOR SHARE`, as the lock order lets an edition (`c:Apiary.Edition.level_refusal/4`):
-    the core has no table of the edition's, so its row is a transaction-level advisory
-    lock, shared, keyed by the person who asks, which is held as a row would be until the
-    change ends.
+    Keeps the lock order (`c:Apiary.Edition.lock_rows/1`): it takes its rows at the one
+    point a change has, in one fixed order, its rows of people before its rows of
+    organisations, each by key, and none later. The core has no table of the edition's, so
+    its rows are transaction-level advisory locks: a write's or a change's asker, shared
+    (`{:places, scope}`); the organisation whose people change, exclusive
+    (`{:people, scope, organisation}`); every organisation of a deleted account, exclusive
+    (`{:account, user_id}`). Each is held as a row would be until the change ends.
+    """
+    import Ecto.Query
+
+    alias Apiary.Accounts.{Scope, User}
+    alias Apiary.Organisations.{Membership, Organisation}
+
+    def lock_rows({:places, %Scope{user: %User{id: user_id}}}) do
+      :ok = take(:shared, [{:person, user_id}])
+      :ok = Apiary.EditionStubs.rendezvous()
+    end
+
+    def lock_rows({:people, _scope, %Organisation{id: id}}),
+      do: take(:exclusive, [{:organisation, id}])
+
+    def lock_rows({:account, user_id}) do
+      ids =
+        Apiary.Repo.all(
+          from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id
+        )
+
+      take(:exclusive, Enum.map(ids, &{:organisation, &1}))
+    end
+
+    def lock_rows(_about), do: :ok
+
+    # Rows of people come before rows of organisations, then by key.
+    defp take(mode, rows) do
+      function =
+        if mode == :shared, do: "pg_advisory_xact_lock_shared", else: "pg_advisory_xact_lock"
+
+      for {class, id} <- Enum.sort(rows) do
+        Apiary.Repo.query!(
+          "SELECT #{function}(hashtextextended($1, 0))",
+          ["apiary-edition-stub:#{class}:#{id}"]
+        )
+      end
+
+      :ok
+    end
+  end
+
+  defmodule LocksTwice do
+    @moduledoc """
+    Breaks the lock order: it takes a row of its own as it is asked for a level, shared,
+    keyed by the asker, and another later in the same change, once the membership is
+    written, exclusive, keyed by the person whose level changed. A test shows the deadlock
+    it makes.
     """
     alias Apiary.Accounts.{Scope, User}
 
     def level_refusal(%Scope{user: %User{id: user_id}} = scope, organisation, level, opts) do
       if opts[:lock] == :share do
-        Apiary.Repo.query!(
-          "SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))",
-          ["apiary-edition-stub:" <> user_id]
-        )
-
+        lock("pg_advisory_xact_lock_shared", user_id)
         Apiary.EditionStubs.rendezvous()
       end
 
@@ -92,6 +139,29 @@ defmodule Apiary.EditionStubs do
 
     def level_refusal(scope, organisation, level, opts),
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
+
+    def membership_changed(repo, scope, change, old, new) do
+      lock("pg_advisory_xact_lock", new.user_id)
+      Apiary.Edition.module().membership_changed(repo, scope, change, old, new)
+    end
+
+    defp lock(function, user_id) do
+      Apiary.Repo.query!("SELECT #{function}(hashtextextended($1, 0))", [
+        "apiary-edition-stub:person:#{user_id}"
+      ])
+    end
+  end
+
+  defmodule RecordsLockRows do
+    @moduledoc """
+    Says each time the core asks the edition to lock its rows (`c:Apiary.Edition.lock_rows/1`)
+    to the process that asks, `{:lock_rows, about}`, `about` the point's name, and answers
+    as the configured edition does.
+    """
+    def lock_rows(about) do
+      send(self(), {:lock_rows, elem(about, 0)})
+      Apiary.Edition.module().lock_rows(about)
+    end
   end
 
   defmodule LocksAMembership do
@@ -133,8 +203,8 @@ defmodule Apiary.EditionStubs do
   defmodule AdminsChangeLevels do
     @moduledoc """
     An admin changes the levels of admins and members (`member.change_level`), as an
-    edition that lets admins manage both may, and the levels are asked as `LocksItsOwn`
-    asks them, holding a row of its own.
+    edition that lets admins manage both may, and its rows are taken as `LocksItsRows`
+    takes them.
     """
     alias Apiary.Access
     alias Apiary.Organisations.Membership
@@ -150,8 +220,7 @@ defmodule Apiary.EditionStubs do
 
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
 
-    def level_refusal(scope, organisation, level, opts),
-      do: LocksItsOwn.level_refusal(scope, organisation, level, opts)
+    def lock_rows(about), do: LocksItsRows.lock_rows(about)
   end
 
   defmodule None do

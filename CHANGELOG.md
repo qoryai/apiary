@@ -292,8 +292,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   instance admin each refuse it, asked in the lock order inside their transaction, and
   People offers only the levels it refuses none of (`Apiary.Access.grantable_levels/1`)
   and says a refusal in the edition's words
-  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). A test may have a stub answer some of
-  the edition's callbacks in its own processes (`Apiary.Edition.put_test_stub/1`).
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An edition locks its own rows for a
+  change at one point, right after the organisation rows and before any membership
+  (`c:Apiary.Edition.lock_rows/1`), in every change of people and every write that must
+  stay allowed. A test may have a stub answer some of the edition's callbacks in its own
+  processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an

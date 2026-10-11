@@ -29,8 +29,8 @@ defmodule Apiary.Edition do
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
-    `reload/2`, `places_to_lock/1`, `every_workspace_levels/0`, `reaches_workspace?/3`,
-    `reached_workspaces/2`.
+    `reload/2`, `places_to_lock/1`, `lock_rows/1`, `every_workspace_levels/0`,
+    `reaches_workspace?/3`, `reached_workspaces/2`.
   - **In use**, refinements of the queries that must leave out what the edition holds out
     of use: `active_accounts/2`, `active_organisations/2`, `account_refusal/1`.
   - **Places**: `places/1`, the organisations a person reaches.
@@ -61,6 +61,17 @@ defmodule Apiary.Edition do
 
   @typedoc "What a deletion or purge is about."
   @type deletion_subject :: %Organisation{} | %Workspace{}
+
+  @typedoc """
+  What a change asks the edition to lock its rows for (`c:lock_rows/1`): `{:places, scope}`,
+  a write that must stay allowed for the scope's person; `{:people, scope, organisation}`, a
+  change of the organisation's people, `scope` nil for a sign-up; `{:account, user_id}`,
+  the deletion of an account, with every membership it holds.
+  """
+  @type lock_about ::
+          {:places, Scope.t()}
+          | {:people, Scope.t() | nil, %Organisation{}}
+          | {:account, Ecto.UUID.t()}
 
   # Limits and sign-up
 
@@ -159,7 +170,8 @@ defmodule Apiary.Edition do
   @doc """
   Reads again what the edition put on the scope, after `Apiary.Access.reload/2` has read
   the membership and the marks and taken their locks, and before it holds the account;
-  with `lock: :share` it holds what it reads `FOR SHARE`.
+  with `lock: :share` its own rows are held already (`c:lock_rows/1`, `{:places, scope}`),
+  and it locks nothing.
   """
   @callback reload(Scope.t(), keyword) :: Scope.t()
 
@@ -169,6 +181,44 @@ defmodule Apiary.Edition do
   held `FOR SHARE` already (`Apiary.Access.lock_places/1`).
   """
   @callback places_to_lock(%Organisation{}) :: [Ecto.UUID.t()]
+
+  @doc """
+  Locks the edition's own rows for a change, inside its transaction: an edition takes all
+  its own rows for a change here, at one point before the change's first write, in its
+  own fixed order and in the strongest mode the change needs, and none later in that
+  change; otherwise two changes can wait on each other. The rule is the change's, not a
+  callback's: what the edition reads or writes of its own later in the change
+  (`c:reload/2`, `c:level_refusal/4`, `c:membership_changed/5`, `c:accepted/4`) it holds
+  from here. The core's answer is `:ok`, and it locks nothing.
+
+  The lock order, by class of row (docs/access.md):
+
+  1. the organisation rows, then this callback's rows;
+  2. then the workspaces, the owners' memberships and the other memberships;
+  3. then the account and the invitation.
+
+  The edition never locks a membership or any other row of the core's here. It is asked:
+
+  - `{:places, scope}` at the end of `Apiary.Access.lock_places/1`, once the scope's
+    organisation rows are held, before the membership `Apiary.Access.reload/2` holds for
+    a write that must stay allowed. A write may ask it twice in one change, as the
+    security policy's does, once before its workspace and once as it reads the scope: the
+    edition answers the second with the same rows in the same mode, never a stronger one;
+  - `{:people, scope, organisation}` once the organisation rows are held, before the
+    owners' memberships, in every change of the organisation's people: a change of level,
+    a removal or leaving, a suspension, an activation, and the release commands that grant
+    and revoke an instance admin (`Apiary.Organisations.lock_people/1`, after
+    `{:places, scope}`, which comes just before with no lock between), an invitation's
+    acceptance and a sign-up with one, `scope` nil for the sign-up;
+  - `{:account, user_id}` in an account's deletion, once the organisations the person
+    owns are held, before their owners and the person's memberships: the rows of every
+    organisation the account is a member of, at this one point. It takes rows of
+    organisations whose own rows the deletion has not locked, which holds while no
+    transaction that holds an organisation row `FOR UPDATE` asks this callback: the core
+    keeps that rule, and the purge of an organisation runs its batches each in a
+    transaction of its own.
+  """
+  @callback lock_rows(lock_about) :: :ok
 
   @doc "The levels that reach every workspace of their organisation."
   @callback every_workspace_levels() :: [level]
@@ -234,6 +284,7 @@ defmodule Apiary.Edition do
   entry is written: `:level`, its level changed (`member.change_level`, or a release
   command's `instance_admin.revoke`); `:activated`, its suspension ended
   (`member.activate`). `scope` is whoever changed it. An error rolls the change back.
+  The edition's rows are held already (`c:lock_rows/1`), and it locks nothing here.
   """
   @callback membership_changed(
               Ecto.Repo.t(),
@@ -252,25 +303,12 @@ defmodule Apiary.Edition do
   way the core gives a level asks it (`Apiary.Access.level_refusal/4`), and a page offers
   no level it refuses (`Apiary.Access.grantable_levels/1`). The core's answer is nil.
 
-  With `lock: :share` it is asked inside the transaction of the change, in the lock order
-  of docs/access.md, which goes by class of row:
-
-  1. the core's rows of `organisation`: the organisation rows `FOR SHARE`, with those
-     `c:places_to_lock/1` names, the allowance's row `FOR NO KEY UPDATE` for an
-     invitation, and the owners' memberships `FOR UPDATE` for a change of level and the
-     release commands;
-  2. then the edition's own rows, which this callback may lock;
-  3. then the membership the change writes, and after it the account and the
-     invitation an acceptance holds.
-
-  The edition locks only rows of its own here: never a membership, of `organisation` or
-  of any other, and never another row of the core's. Where it needs a fact to stay true
-  while the change runs, it holds its own row of that fact `FOR SHARE`, and every path of
-  its own that changes the fact holds the same row `FOR UPDATE` from inside the core's
-  transaction, through the core's callbacks, so after the core's rows of class 1 too. A
-  membership of another organisation held here waits on that organisation's own changes
-  of level, which hold their class 1 first: two such changes, each by a person on the
-  other, deadlock. Without `lock:` a page asks what to offer, and nothing is held.
+  With `lock: :share` it is asked inside the transaction of the change, before the
+  membership is written: in a change of level, an invitation's acceptance, a sign-up with
+  one and the release commands, once the edition's rows are held already
+  (`c:lock_rows/1`). It reads, and locks nothing here. An invitation, which writes no
+  membership, asks it once the allowance's row is held, with none of the edition's rows
+  held. Without `lock:` a page asks what to offer, and nothing is held.
   """
   @callback level_refusal(Scope.t() | nil, %Organisation{}, level, keyword) :: nil | atom
 
@@ -352,6 +390,7 @@ defmodule Apiary.Edition do
     role: 1,
     reload: 2,
     places_to_lock: 1,
+    lock_rows: 1,
     every_workspace_levels: 0,
     reaches_workspace?: 3,
     reached_workspaces: 2,
