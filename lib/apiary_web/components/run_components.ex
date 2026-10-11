@@ -2040,12 +2040,12 @@ defmodule ApiaryWeb.RunComponents do
   The preview of a run beside the runs list, from 1920 px: one pane with a rule at its
   left and no card, the run's state and its title, a line of what it ran on, when it
   started and for how long, its denials, and the last lines of its log as plain text in the
-  terminal's dark box, the one box in it; Open run leads to its page. `preview` is nil while
-  it loads.
+  terminal's dark box, the one box in it, for a reader who may read the log
+  (`run.read_log`, `log?`); Open run leads to its page. `preview` is nil while it loads.
   """
   attr :id, :string, required: true
   attr :scope, :map, required: true
-  attr :preview, :map, default: nil, doc: "%{run:, lines:, denials:, quiet:}"
+  attr :preview, :map, default: nil, doc: "%{run:, log?:, lines:, denials:, quiet:}"
   attr :shared, :any, default: nil
 
   def run_preview(assigns) do
@@ -2138,7 +2138,7 @@ defmodule ApiaryWeb.RunComponents do
             {cost_words(@preview.run.cost_usd)}
           </dd>
         </dl>
-        <div class="q-pv-term">
+        <div :if={@preview.log?} class="q-pv-term">
           <div class="q-pv-bar">
             <span class="flex-1">
               {if @preview.run.state in Apiary.Runs.Run.alive_states(),
@@ -2416,7 +2416,7 @@ defmodule ApiaryWeb.RunComponents do
           title={reason_title(@c, @mixed)}
         >
           <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
-          {gettext("%{name} allows only its own hosts", name: @act.allow_elsewhere.name)}
+          {gettext("%{name} allows only the hosts on its list", name: @act.allow_elsewhere.name)}
         </span>
         <.after_line
           :if={@act && @act[:after]}
@@ -2518,7 +2518,7 @@ defmodule ApiaryWeb.RunComponents do
           title={reason_title(@c, @mixed)}
         >
           <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
-          {gettext("%{name} allows only its own hosts", name: @act.allow_elsewhere.name)}
+          {gettext("%{name} allows only the hosts on its list", name: @act.allow_elsewhere.name)}
         </span>
         <span
           :if={!(@act && @act[:above]) && !elsewhere?(@act)}
@@ -2794,7 +2794,7 @@ defmodule ApiaryWeb.RunComponents do
     main =
       case reason_kind(c) do
         :own_address ->
-          [gettext("The wall refuses the machine's own address,"), gettext("in either mode.")]
+          [gettext("The wall refuses the machine's address,"), gettext("in either mode.")]
 
         :ambiguous_path ->
           [
@@ -2938,7 +2938,7 @@ defmodule ApiaryWeb.RunComponents do
     <b :if={@variant == "inline" && @c.decision == "denied"}>{gettext("Denied.")}</b>
     <%= case @kind do %>
       <% :own_address -> %>
-        <b>{gettext("The wall refuses the machine's own address,")}</b> {gettext("in either mode.")}
+        <b>{gettext("The wall refuses the machine's address,")}</b> {gettext("in either mode.")}
       <% :ambiguous_path -> %>
         <b>{gettext("The path can be read two ways.")}</b> {gettext(
           "The wall denies it in either mode."
@@ -3678,7 +3678,7 @@ defmodule ApiaryWeb.RunComponents do
       </header>
       <p id={"#{@id}-elsewhere"}>
         {gettext(
-          "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?",
+          "%{name} allows only the hosts on its list, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?",
           name: @panel.elsewhere.name
         )}
       </p>
@@ -3886,8 +3886,8 @@ defmodule ApiaryWeb.RunComponents do
             </small>
             <small :if={@panel[:own_rule]} id={"#{@id}-own-rule"}>
               {if @panel.page == :run,
-                do: gettext("This target's own rule still decides here."),
-                else: gettext("A target's own rule for this host still decides there.")}
+                do: gettext("A rule on this target still decides here."),
+                else: gettext("A target rule for this host still decides there.")}
             </small>
           </label>
         </fieldset>

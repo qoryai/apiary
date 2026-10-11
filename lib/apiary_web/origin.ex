@@ -181,8 +181,8 @@ defmodule ApiaryWeb.Origin do
         {:ok, {_address, 0}} ->
           {:halt,
            {:error,
-            "#{inspect(entry)} is every address, which would believe any client about its " <>
-              "own; name the proxies in front of the instance"}}
+            "#{inspect(entry)} is every address, which would believe whatever address a " <>
+              "request claims; name the proxies in front of the instance"}}
 
         {:ok, range} ->
           {:cont, {:ok, ranges ++ [range]}}

@@ -1138,7 +1138,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp way_when(:new_code, node),
     do:
       gettext(
-        "Choose it when you can open a terminal on %{name}: a laptop, or a server of your own.",
+        "Choose it when you can open a terminal on %{name}: a laptop, or your server.",
         name: node.name
       )
 

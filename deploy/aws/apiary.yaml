@@ -38,7 +38,7 @@ Metadata:
       ProDownloadKey: { default: Qory Apiary Pro download key }
       DomainName: { default: Domain name }
       HostedZoneId: { default: Route 53 hosted zone (recommended) }
-      CertificateArn: { default: Your own ACM certificate (optional) }
+      CertificateArn: { default: Your ACM certificate (optional) }
       VersionOverride: { default: Version }
       DatabaseInstanceClass: { default: Database instance class }
       CpuArchitecture: { default: CPU architecture }

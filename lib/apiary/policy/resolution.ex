@@ -354,7 +354,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -363,7 +363,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :locked, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below,
         name: name
@@ -372,7 +372,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :workspace, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below,
         name: name
@@ -381,7 +381,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:organisation, :target, above, below, name),
     do:
       gettext(
-        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below,
         name: name
@@ -390,7 +390,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -399,7 +399,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -408,7 +408,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :organisation, above, below, name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in %{name}'s policy.",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in %{name}'s policy.",
         above: above,
         below: below,
         name: name
@@ -417,7 +417,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :locked, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below
       )
@@ -425,7 +425,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :workspace, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below
       )
@@ -433,7 +433,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :target, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below
       )
@@ -441,7 +441,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :locked, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below
       )
@@ -449,7 +449,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :workspace, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below
       )
@@ -457,7 +457,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:workspace, :target, above, below, _name),
     do:
       gettext(
-        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below
       )
@@ -465,7 +465,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :locked, above, below, _name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in the workspace (locked).",
         above: above,
         below: below
       )
@@ -473,7 +473,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :workspace, above, below, _name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace.",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in the workspace.",
         above: above,
         below: below
       )
@@ -481,7 +481,7 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :target, above, below, _name),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the target is held to paths, and %{below} below it has a separate rule in the target.",
         above: above,
         below: below
       )

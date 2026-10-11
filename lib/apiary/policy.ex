@@ -134,7 +134,7 @@ defmodule Apiary.Policy do
   enforcement away. From the first change on, every run of the workspace takes the
   workspace's policy. The first change anywhere counts, a target's rule or a target's mode
   included: it starts serving every target of the workspace, the others the baseline. For
-  the pages: "machines use their own policy until the first change here".
+  the pages: "Machines use their local policy until the first change here."
   """
   @spec managed?(Scope.t()) :: boolean
   def managed?(%Scope{workspace: %Workspace{id: workspace_id}}),
@@ -2135,7 +2135,7 @@ defmodule Apiary.Policy do
         %{
           error
           | message:
-              gettext("In the target %{target}, which has rules of its own: %{refusal}",
+              gettext("In the policy of the target %{target}: %{refusal}",
                 target: "#{system}/#{path}",
                 refusal: error.message
               )
@@ -2166,7 +2166,7 @@ defmodule Apiary.Policy do
     Error.new(
       :unmanaged,
       gettext(
-        "Nobody has made this workspace's policy yet: its machines run under their own, and there is no version until the first change here."
+        "Nobody has made this workspace's policy yet: its machines use their local policy, and there is no version until the first change here."
       )
     )
   end

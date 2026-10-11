@@ -27,7 +27,7 @@ earlier one.
   vulnerability if a code enrols a key after its maker stopped being an owner or an admin
   of its workspace; if it enrols a second key once used (the same machine asking again
   with the same public key gets that same key back, and nothing changes); if it works
-  after it expired or was cancelled; or if it puts a key on another node than its own.
+  after it expired or was cancelled; or if it puts a key on a node other than the one the code was made for.
 - A row of one organisation is readable or writable from another: a page, a query or an
   endpoint that does not scope by the organisation and the workspace of the caller.
 - The server's signing key, `APIARY_SIGNING_SECRET`, leaves the application in any form,
@@ -38,7 +38,7 @@ earlier one.
   removed.
 - Sign-in, confirmation, password reset or an invitation link can be used by someone the
   link was not sent to.
-- A page of the console runs a script that is not the console's own: one without the
+- A page of the console runs a script the console did not ship: one without the
   request's nonce, an `on…=` attribute or a `javascript:` address, while the page's
   `Content-Security-Policy` header reaches the browser as the release sent it.
 

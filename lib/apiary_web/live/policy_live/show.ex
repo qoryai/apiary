@@ -1522,8 +1522,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span>
           <.rich text={
             rich_ngettext(
-              "%{number} with rules of their own",
-              "%{number} with rules of their own",
+              "%{number} with target rules",
+              "%{number} with target rules",
               Enum.count(@rows, &(&1.own > 0)),
               number: {:b, Format.number(Enum.count(@rows, &(&1.own > 0)))}
             )
@@ -1532,8 +1532,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <span>
           <.rich text={
             rich_ngettext(
-              "%{number} sets its own mode",
-              "%{number} set their own mode",
+              "%{number} overrides the mode",
+              "%{number} override the mode",
               Enum.count(@rows, & &1.own_mode),
               number: {:b, Format.number(Enum.count(@rows, & &1.own_mode))}
             )
@@ -1550,7 +1550,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           } />
         </span>
         <span :if={@own_only} id="targets-own-only">
-          {gettext("Showing those that set their own mode.")}
+          {gettext("Showing those that override the mode.")}
           <.link patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"} class="q-link">{gettext(
             "Show all"
           )}</.link>
@@ -1568,7 +1568,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <th role="columnheader">{gettext("Target")}</th>
               <th role="columnheader">{gettext("Mode")}</th>
               <th role="columnheader">{gettext("Policy")}</th>
-              <th role="columnheader" class="q-num">{gettext("Own rules")}</th>
+              <th role="columnheader" class="q-num">{gettext("Target rules")}</th>
               <th role="columnheader" class="q-num">{gettext("Overrides")}</th>
               <th role="columnheader" class="q-num">{gettext("Suggestions")}</th>
               <th role="columnheader">{gettext("Version")}</th>
@@ -1578,7 +1578,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <tbody>
             <tr :if={@shown == []} role="row">
               <td role="cell" colspan="8" class="!whitespace-normal text-[13px] text-faint">
-                {gettext("No target sets its own mode. Every one follows the workspace's default.")}
+                {gettext("No target overrides the mode. Every one follows the workspace's default.")}
               </td>
             </tr>
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
@@ -1601,12 +1601,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
               </td>
               <td role="cell" class="q-c-mode">
                 <span :if={row.own_mode} class="q-hot">{row.mode}</span>
-                <span :if={row.own_mode} class="q-faint">{gettext("its own")}</span>
+                <span :if={row.own_mode} class="q-faint">{gettext("overridden")}</span>
                 <span :if={!row.own_mode}>{row.mode}</span>
               </td>
               <td role="cell">
-                <span :if={row.own > 0}>{gettext("Own rules")}</span>
-                <span :if={row.own == 0 && row.own_mode}>{gettext("Own mode")}</span>
+                <span :if={row.own > 0}>{gettext("Target rules")}</span>
+                <span :if={row.own == 0 && row.own_mode}>{gettext("Mode overridden")}</span>
                 <span :if={row.own == 0 && !row.own_mode} class="q-faint">
                   {gettext("Follows the workspace")}
                 </span>
@@ -1667,7 +1667,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </div>
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
         {gettext(
-          "A target appears here once a run names it. A target with neither rules nor a mode of its own is served the workspace baseline, and so is a run that names no target."
+          "A target appears here once a run names it. A target with no rules and no mode override is served the workspace baseline, and so is a run that names no target."
         )}
       </p>
     </div>
@@ -1714,7 +1714,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <span :if={!@started}>
       {pgettext(
         "plain",
-        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
+        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
       )}
     </span>
     """
@@ -1729,7 +1729,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                                                                                                          part}
     <% end %>
     {gettext(
-      "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
+      "A target that overrides the mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
     )}
     """
   end
@@ -1909,8 +1909,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp own_words(n),
     do:
       ngettext(
-        "%{number} target sets its own mode and does not change.",
-        "%{number} targets set their own mode and do not change.",
+        "%{number} target overrides the mode and does not change.",
+        "%{number} targets override the mode and do not change.",
         n,
         number: Format.number(n)
       )

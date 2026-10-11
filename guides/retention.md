@@ -3,8 +3,7 @@
 A workspace keeps everything its runs sent until an owner or an admin says otherwise. Retention is two
 settings of the workspace, each a number of days or empty for unlimited, and a nightly job
 that deletes what is older and says what it deleted. A change of either setting is an
-entry of the organisation's audit trail, which has a retention of its own, set for the
-instance: `AUDIT_RETENTION_DAYS` for the entries, `AUDIT_ADDRESS_RETENTION_DAYS` for the
+entry of the organisation's audit trail, which has a separate retention, set for the instance: `AUDIT_RETENTION_DAYS` for the entries, `AUDIT_ADDRESS_RETENTION_DAYS` for the
 address and the client each came from ([Install and configure](install.md)).
 
 ## The two settings
@@ -76,7 +75,7 @@ random part of an hour, and prunes every workspace that has a setting.
 - With several nodes, one prunes: the job takes a Postgres advisory lock, and a workspace
   pruned in the last twelve hours is left alone by the node that wakes second.
 - Every delete is one statement over at most 2,000 rows of one run, found through an index,
-  in its own short transaction. No statement scans `events`, and none holds a lock for longer
+  in a separate short transaction. No statement scans `events`, and none holds a lock for longer
   than its batch, so the receiver keeps writing while the job runs.
 - One night prunes at most 10,000 runs of a workspace, oldest first, and the next night
   goes on. The first night after a setting is shortened is the long one.

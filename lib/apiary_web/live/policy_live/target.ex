@@ -567,23 +567,23 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
             mode.mode == before.mode and setting == "observe" ->
               gettext(
-                "%{target} observes on its own. Nothing changes today: the workspace's default is %{mode} too.",
+                "%{target} now overrides the mode: observe. Nothing changes today: the workspace's default is %{mode} too.",
                 target: name,
                 mode: mode.workspace
               )
 
             mode.mode == before.mode ->
               gettext(
-                "%{target} enforces on its own. Nothing changes today: the workspace's default is %{mode} too.",
+                "%{target} now overrides the mode: enforce. Nothing changes today: the workspace's default is %{mode} too.",
                 target: name,
                 mode: mode.workspace
               )
 
             setting == "observe" ->
-              gettext("%{target} observes on its own.", target: name)
+              gettext("%{target} now overrides the mode: observe.", target: name)
 
             true ->
-              gettext("%{target} enforces on its own.", target: name)
+              gettext("%{target} now overrides the mode: enforce.", target: name)
           end
 
         socket
@@ -922,7 +922,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           {gettext("The latest is version %{version}.", version: @missing.latest.version)}
         </span>
         <span :if={!@missing.latest}>
-          {gettext("This target has no versions of its own: it is served %{workspace}'s policy.",
+          {gettext("This target has no policy versions: it is served %{workspace}'s policy.",
             workspace: @current_scope.workspace.name
           )}
         </span>
@@ -1110,7 +1110,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     do:
       pgettext(
         "plain",
-        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
+        "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
       )
 
   defp whose_words("follow", _mode),
@@ -1119,7 +1119,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp whose_words(_setting, mode),
     do:
       gettext(
-        "The mode becomes this target's own: it stays %{mode} whatever the workspace's default becomes.",
+        "This target overrides the mode from now on: it stays %{mode} whatever the workspace's default becomes.",
         mode: mode
       )
 
@@ -1280,7 +1280,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp baseline_tip,
     do:
       gettext(
-        "The workspace's rules with no target's own: what a target without rules, or a run that names none, is served."
+        "The workspace's rules without any target rules: what a target without rules, or a run that names none, is served."
       )
 
   defp locked_denies_words(hosts),

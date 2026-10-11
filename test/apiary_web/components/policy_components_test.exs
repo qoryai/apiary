@@ -204,7 +204,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         query={@query}
         path={fn query -> "/acme/main/policy?" <> URI.encode_query(RuleList.to_params(query)) end}
         sections={RuleList.sections(@rows, @activity)}
-        default_sort="Its own first"
+        default_sort="Repository rules first"
         activity={@activity}
         source={@source}
         can_add={@can_add}
@@ -243,7 +243,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert html =~ ~s(id="policy-rules-filter-source-0") and
                html =~ ~s(href="/acme/main/policy?q=source%3Arepo")
 
-      assert html =~ ~s(aria-label="Sort: Its own first")
+      assert html =~ ~s(aria-label="Sort: Repository rules first")
       assert html =~ ~s(id="policy-rules-add" phx-click="composer_open" aria-expanded="false")
       assert text(html) =~ "1–2 of 2"
       # Its own first.
@@ -503,7 +503,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         query={@query}
         path={fn _query -> "/acme/main/policy" end}
         sections={RuleList.sections(@rows, :unavailable)}
-        default_sort="Its own first"
+        default_sort="Repository rules first"
         confirming="r2"
       >
         <:confirm :let={rule}>
@@ -725,11 +725,11 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       doc = card(html)
       assert all(doc, "#policy-mode-change, form, input, button") == []
       refute html =~ "aria-disabled"
-      assert text_of(doc, "#policy-mode-source") == "Its own"
+      assert text_of(doc, "#policy-mode-source") == "Overridden"
       assert [_] = all(doc, ".q-modecard-tile .hero-eye")
 
       assert text_of(doc, "#policy-mode-effect") ==
-               "Its own, set by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
+               "Overridden by sam today; Main enforces. What no rule names is let through and recorded; a deny rule holds, and so do Main's locked rules. Only an owner or an admin sets a mode."
 
       assert text_of(doc, "#policy-mode-owners") == "Only an owner or an admin sets a mode."
     end

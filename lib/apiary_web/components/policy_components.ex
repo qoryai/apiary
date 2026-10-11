@@ -167,8 +167,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   Where a rule comes from: three shapes, three wordings, no status hue. `label` replaces
-  the words where the same chip names a target's policy ("Own rules", "Workspace
-  baseline") or marks a change the workspace made ("workspace").
+  the words where the same chip marks a change the workspace made ("workspace").
   """
   attr :source, :atom, required: true, values: [:workspace, :target, :workspace_locked]
   attr :label, :string, default: nil
@@ -379,7 +378,7 @@ defmodule ApiaryWeb.PolicyComponents do
               id={"#{@id}-source"}
               class="badge badge-sm"
             >
-              {gettext("Its own")}
+              {gettext("Overridden")}
             </span>
           </div>
           <p id={"#{@id}-effect"} class="q-modecard-p">
@@ -580,8 +579,8 @@ defmodule ApiaryWeb.PolicyComponents do
           own:
             {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
              ngettext(
-               "The own observe of 1 of %{number} targets",
-               "The own observe of %{n} of %{number} targets",
+               "The observe override of 1 of %{number} targets",
+               "The observe override of %{n} of %{number} targets",
                n,
                n: Format.number(n),
                number: Format.number(following + length(own))
@@ -625,7 +624,7 @@ defmodule ApiaryWeb.PolicyComponents do
         )}<span :if={@above.floor}>, {gettext("enforce required")}</span><span :if={
           !@above.own_allows
         }>, {gettext(
-            "only its own hosts allowed"
+            "only hosts on its list allowed"
           )}</span>.
       </span>
       <.link :if={@link} id={"#{@id}-view"} navigate={@link.path} class="q-above-link">
@@ -665,8 +664,8 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp own_words([mode]) do
     if mode == "observe",
-      do: gettext("1 sets its own and observes"),
-      else: gettext("1 sets its own and enforces")
+      do: gettext("1 overrides it with observe"),
+      else: gettext("1 overrides it with enforce")
   end
 
   defp own_words(modes) do
@@ -676,13 +675,13 @@ defmodule ApiaryWeb.PolicyComponents do
 
     cond do
       enforce == 0 ->
-        gettext("%{number} set their own and observe", number: number)
+        gettext("%{number} override it with observe", number: number)
 
       observe == 0 ->
-        gettext("%{number} set their own and enforce", number: number)
+        gettext("%{number} override it with enforce", number: number)
 
       true ->
-        gettext("%{number} set their own: %{observe}, %{enforce}",
+        gettext("%{number} override it: %{observe}, %{enforce}",
           number: number,
           observe:
             ngettext("%{number} observes", "%{number} observe", observe,
@@ -781,14 +780,14 @@ defmodule ApiaryWeb.PolicyComponents do
   defp floor_sentence("observe", %{by: by, at: %DateTime{} = at}, name) when is_binary(by),
     do:
       rich_gettext(
-        "Its own observe, set by %{by} %{when}, is not in force: %{name} requires enforce.",
+        "Its observe override, set by %{by} %{when}, is not in force: %{name} requires enforce.",
         by: {:b, by},
         when: when_words(at),
         name: name
       )
 
   defp floor_sentence("observe", _set, name),
-    do: [gettext("Its own observe is not in force: %{name} requires enforce.", name: name)]
+    do: [gettext("Its observe override is not in force: %{name} requires enforce.", name: name)]
 
   defp floor_sentence(_setting, _set, name),
     do: [gettext("%{name} requires enforce in every workspace and target.", name: name)]
@@ -805,13 +804,13 @@ defmodule ApiaryWeb.PolicyComponents do
        when is_binary(by) do
     if default == "enforce",
       do:
-        rich_gettext("Its own, set by %{by} %{when}; %{workspace} enforces.",
+        rich_gettext("Overridden by %{by} %{when}; %{workspace} enforces.",
           by: {:b, by},
           when: when_words(at),
           workspace: workspace
         ),
       else:
-        rich_gettext("Its own, set by %{by} %{when}; %{workspace} observes.",
+        rich_gettext("Overridden by %{by} %{when}; %{workspace} observes.",
           by: {:b, by},
           when: when_words(at),
           workspace: workspace
@@ -819,10 +818,10 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp whose_sentence(_own, "enforce", workspace, _set),
-    do: [gettext("Its own; %{workspace} enforces.", workspace: workspace)]
+    do: [gettext("Overridden; %{workspace} enforces.", workspace: workspace)]
 
   defp whose_sentence(_own, _observe, workspace, _set),
-    do: [gettext("Its own; %{workspace} observes.", workspace: workspace)]
+    do: [gettext("Overridden; %{workspace} observes.", workspace: workspace)]
 
   defp when_words(at) do
     case Format.days_back(at, DateTime.utc_now()) do
@@ -2040,7 +2039,7 @@ defmodule ApiaryWeb.PolicyComponents do
     do:
       pgettext(
         "plain",
-        "The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
+        "What the runtime needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
       )
 
   defp middle(host) when byte_size(host) > 48,

@@ -90,7 +90,7 @@ defmodule ApiaryWeb.MemberLive.PasswordLinkTest do
 
     render_click(lv, "password_link", %{"membership_id" => ctx.admin_scope.membership.id})
 
-    assert render(lv) =~ "Change your own password in Account settings."
+    assert render(lv) =~ "Change your password in Account settings."
     refute has_element?(lv, "#password-link")
     assert tokens(ctx.admin) == []
     assert Repo.all(from e in Entry, where: e.action == "account.password_link") == []

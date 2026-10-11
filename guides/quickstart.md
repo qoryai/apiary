@@ -13,8 +13,8 @@ You need Docker with the `docker compose` command, and `curl`. From step 5 on yo
 
 ### 1. Download the release's files
 
-Every release attaches `compose.yaml` and `env.example`. In a directory of its own,
-download the latest release's, and rename `env.example` to `.env`:
+Every release attaches `compose.yaml` and `env.example`. In an empty directory, download the
+latest release's, and rename `env.example` to `.env`:
 
 ```sh
 mkdir qory-apiary && cd qory-apiary
@@ -92,7 +92,7 @@ Setting it up created an organisation with the name you gave, one workspace in i
 *Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
 foot of the sidebar: the workspace's on any page of the workspace, the organisation's on its
 overview, which its name in the top bar opens. As the person who set the instance up you
-are also its **instance admin**: your organisation is the instance's own, and its owners
+are also its **instance admin**: your organisation is the instance owner, and its owners
 are the instance's admins. Nobody else can sign up without an invitation
 ([Install and configure](install.md#sign-up-and-invitations)), so invite your colleagues
 from **People** in the organisation's settings. Without mail the page shows the
@@ -106,8 +106,8 @@ are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its work
 a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
 
 The people of the organisation are under **Organisation settings › People**, `/<organisation>/settings/people`, each
-at one of three levels, and every one of them reaches the workspace; the workspace's own
-**Workspace settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
+at one of three levels, and every one of them reaches the workspace; the workspace's **Workspace
+settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
 and leads owners and admins to the organisation's. An invitation is an
 email address and nothing else: the person joins as a member, and an owner changes their
 level afterwards. An **owner** and an **admin** manage the organisation's members and
@@ -123,12 +123,11 @@ security policy. A **secret**, such as a token for a forge, holds one value or s
 each named by a **value ID**; once saved, a value is never shown again, to anyone, and the
 page lists only names, value IDs and who changed each value and when. A **variable** is a
 plain value of the workspace, such as the address of a package registry. A **locked**
-variable sets aside any value of its own a repository has for the name; no page sets a
-repository's own value. Every member reads both views; owners and admins change them. A
-name beginning `QORY_` is Forager's own and is refused.
+variable sets aside every repository override of it; no page sets a repository override. Every member reads both views; owners and admins change them. A
+name beginning `QORY_` is reserved for Forager and is refused.
 <!-- /feature -->
 
-Your own preferences are under **Your settings › Preferences**, in the menu of your account: the
+Your preferences are under **Your settings › Preferences**, in the menu of your account: the
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
 organisation's. Mail to you, once the instance sends mail, is written in your language. The words
@@ -137,7 +136,7 @@ domain there is, which says repository, forge and pull request.
 
 ## 5. Add a node, then connect it
 
-A machine posts its runs with an access key of its own, on a **node** of the workspace: a
+A machine posts its runs with an access key, on a **node** of the workspace: a
 node is one permanent machine, a **node pool** a fleet of short-lived instances that share
 one key. These are the overview's first two steps, **Add a node** and **Connect it**.
 Here you connect the machine with a command: `qory` makes the key on the machine, and Qory
@@ -152,7 +151,7 @@ Apiary keeps only its public half.
    build-01 with a command** shows the command to run on the machine, with Qory Apiary's
    address and a one-time code in it. Select **Copy command**. Since `PUBLIC_URL` is a
    `localhost` address, the page also says machines can't reach it; that holds for other
-   machines, and this trial's machine is Qory Apiary's own, so the command works here.
+   machines, and this trial's machine is the one Qory Apiary runs on, so the command works here.
 3. On the machine, run the command:
 
    ```sh
@@ -222,10 +221,10 @@ version.
 ## Next
 
 <!-- feature: security -->
-- Until somebody changes the workspace's policy, runs use each machine's own policy. Read
+- Until somebody changes the workspace's policy, runs use each machine's local policy. Read
   [The security policy](security-policy.md) before the first rule: from the first change,
-  each machine's runs take the workspace's policy, narrowed by the machine's own `egress`
-  section.
+  each machine's runs take the workspace's policy, narrowed by the `egress` section of
+  the machine's Forager file.
 <!-- /feature -->
 - `qory run --local` records to files only and does not contact Qory Apiary.
 - To stop the trial: `docker compose down`. The database stays in the volume

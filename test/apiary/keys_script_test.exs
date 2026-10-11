@@ -161,7 +161,7 @@ defmodule Apiary.KeysScriptTest do
 
     assert output ==
              """
-             APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its own.
+             APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its value.
              The keys in #{keys_path(dir)} are kept; none was generated.
              """
 

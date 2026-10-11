@@ -360,7 +360,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "#rule-#{beaten.id}.q-pr-off")
 
     assert text(view, "#rule-#{beaten.id}") =~
-             "Not in force: this repository's own rule decides it"
+             "Not in force: a rule on this repository decides it"
 
     assert text(view, "#policy-rules-view-all") == "All 5"
 
@@ -406,7 +406,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     beaten = workspace_rule(scope, "telemetry.example")
 
     assert text(view, "#rule-#{beaten.id}") =~
-             "Not in force: this repository's own rule decides it"
+             "Not in force: a rule on this repository decides it"
 
     assert has_element?(
              view,
@@ -599,7 +599,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       pick_mode(view, "enforce")
 
       assert text(view, "#policy-mode-q-effect") =~
-               "The mode becomes this repository's own: it stays enforce"
+               "This repository overrides the mode from now on: it stays enforce"
 
       assert text(view, "#mode-would") =~ "Let through in this repository's runs"
       # A host the locked deny covers is denied in either mode already: enforcing this
@@ -621,15 +621,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       refute has_element?(view, "#policy-mode-form")
       assert text(view, "#policy-mode-value") == "Enforce"
-      assert text(view, "#policy-mode-source") == "Its own"
+      assert text(view, "#policy-mode-source") == "Overridden"
       assert has_element?(view, "#policy-mode .q-modecard-tile .hero-shield-exclamation")
       assert_push_event(view, "policy:focus", %{id: "policy-mode-change"})
-      assert text(view, "#flash-info") =~ "acme/shop enforces on its own. Version"
+      assert text(view, "#flash-info") =~ "acme/shop now overrides the mode: enforce. Version"
       assert text(view, "#policy-announce") =~ "This repository's mode is enforce."
       refute text(view, "#flash-info") =~ "github.example"
 
       assert text(view, "#policy-mode-effect") =~
-               "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
+               "Overridden by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
     end
 
     test "the Document view is the document in force under the card, and follows the mode in place",
@@ -701,7 +701,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#policy-mode-effect") =~
-               "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
+               "Overridden by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
       pick_mode(view, "follow")
       assert text(view, "#policy-mode-q") == "Let acme/shop follow #{scope.workspace.name}?"
@@ -769,7 +769,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == "enforce"
 
       assert text(view, "#flash-info") =~
-               "acme/shop enforces on its own. Nothing changes today: the workspace's default is enforce too."
+               "acme/shop now overrides the mode: enforce. Nothing changes today: the workspace's default is enforce too."
 
       refute text(view, "#flash-info") =~ "github.example"
 
@@ -803,7 +803,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert effect =~ "only what a deny rule names is denied in this repository's runs"
 
       assert effect =~
-               "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
+               "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
 
       refute effect =~ "other repositories do not change"
 
@@ -855,7 +855,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view = open(conn, path <> "/history")
 
       assert text(view, "#history-list") =~ "set this repository's mode to enforce"
-      assert text(view, "#history-list") =~ "Its own from now on."
+      assert text(view, "#history-list") =~ "It overrides the mode from now on."
     end
 
     test "a member reads it, and a crafted event is refused", %{
@@ -1056,7 +1056,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert_patch(view, path <> "/document?view=served")
 
     view = open(conn, path <> "/versions/1")
-    assert text(view, "#policy-page") =~ "This repository has no versions of its own"
+    assert text(view, "#policy-page") =~ "This repository has no policy versions"
   end
 
   test "a target served the baseline downloads the workspace's version in force, as served",
