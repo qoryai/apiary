@@ -183,7 +183,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
                Nodes.list_nodes(scope)
     end
 
-    test "a pool is made without its limit by one an edition keeps it from",
+    test "a pool is made with a limit of 1 by one an edition keeps its limit from",
          %{conn: conn, scope: scope} do
       # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
@@ -204,7 +204,7 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
         |> render_submit()
         |> follow_redirect(conn)
 
-      assert [%Node{kind: :pool, name: "spot-runners", instance_limit: nil}] =
+      assert [%Node{kind: :pool, name: "spot-runners", instance_limit: 1}] =
                Nodes.list_nodes(scope)
     end
 

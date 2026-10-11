@@ -150,7 +150,7 @@ defmodule Apiary.Nodes do
   create_node/2 makes a node of the scope's workspace (`node.create`, owners and
   admins) from `attrs`: its `kind`, `node` or `pool`, which is fixed from then on, its
   `name`, and a pool's `instance_limit`, empty for none, which a limit given asks of
-  `node.set_limit` too. `{:ok, node}`, `{:error, changeset}`, or `{:error, :forbidden}` for
+  `node.set_limit` too: one who may not set it makes a pool whose limit is 1. `{:ok, node}`, `{:error, changeset}`, or `{:error, :forbidden}` for
   one who may not, `{:error, :not_found}` where the workspace is out of their reach.
   """
   @spec create_node(Scope.t(), map) ::
@@ -177,7 +177,7 @@ defmodule Apiary.Nodes do
         )
 
       with :ok <- Access.check(asking, :"node.create", workspace),
-           :ok <- check_limit_set(asking, changeset, workspace),
+           {:ok, changeset} <- limit_set(asking, changeset, workspace),
            {:ok, node} <- Repo.insert(changeset),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"node.create", node, %{
@@ -281,11 +281,20 @@ defmodule Apiary.Nodes do
 
   # A new pool's limit, when one is given, asks `node.set_limit` too; a node's is 1,
   # whoever makes it.
-  defp check_limit_set(scope, changeset, workspace) do
-    if Ecto.Changeset.get_field(changeset, :kind) == :pool and
-         not is_nil(Ecto.Changeset.get_change(changeset, :instance_limit)),
-       do: Access.check(scope, :"node.set_limit", workspace),
-       else: :ok
+  # A pool's limit as it is made: what one who may set it (`node.set_limit`) gives, none
+  # when they give none; for one who may not, a limit given is refused, and the pool is
+  # made with a limit of 1, which one who may set it raises.
+  defp limit_set(scope, changeset, workspace) do
+    with :pool <- Ecto.Changeset.get_field(changeset, :kind),
+         {:error, :forbidden} <- Access.check(scope, :"node.set_limit", workspace) do
+      if is_nil(Ecto.Changeset.get_change(changeset, :instance_limit)),
+        do: {:ok, Ecto.Changeset.put_change(changeset, :instance_limit, 1)},
+        else: {:error, :forbidden}
+    else
+      :ok -> {:ok, changeset}
+      {:error, _reason} = refused -> refused
+      _node -> {:ok, changeset}
+    end
   end
 
   defp check_each(scope, actions, subject) do

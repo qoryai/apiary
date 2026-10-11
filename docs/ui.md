@@ -913,7 +913,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
   "You can't change the kind later"; then the form, a name (it takes the focus), and for a
   pool its instance limit (a whole number up to 10,000, or empty for none), left out for
-  one who may not set it (`node.set_limit`), and its foot,
+  one who may not set it (`node.set_limit`), whose pool is made with a limit of 1, and its
+  foot,
   Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). A refused
   save stays on the page, the error under its field; adding one opens its page on
   Access key with a flash, where its machine gets its key.

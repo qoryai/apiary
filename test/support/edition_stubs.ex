@@ -129,6 +129,10 @@ defmodule Apiary.EditionStubs do
       do: LocksElsewhere.level_refusal(scope, organisation, level, opts)
   end
 
+  defmodule None do
+    @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
+  end
+
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}

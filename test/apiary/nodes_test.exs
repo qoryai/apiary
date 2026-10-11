@@ -232,19 +232,35 @@ defmodule Apiary.NodesTest do
       assert [_created] = entries(pool)
     end
 
-    test "a pool is made without a limit, and not with one", %{scope: scope} do
+    test "a pool is made with a limit of 1, and not with one given", %{scope: scope} do
       assert {:error, :forbidden} =
                Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: 3})
 
       refute Repo.get_by(Node, workspace_id: scope.workspace.id, name: "ci")
 
-      assert {:ok, %Node{kind: :pool, instance_limit: nil}} =
+      assert {:ok, %Node{kind: :pool, instance_limit: 1} = pool} =
                Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: ""})
+
+      assert [%Entry{action: "node.create", after: %{"instance_limit" => 1}}] = entries(pool)
+
+      # One who may set the limit raises it.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.None)
+
+      assert {:ok, %Node{instance_limit: 20}} =
+               Nodes.update_node(scope, pool, %{instance_limit: 20})
 
       # A node's limit is 1, whoever makes it.
       assert {:ok, %Node{kind: :node, instance_limit: 1}} =
                Nodes.create_node(scope, %{kind: "node", name: "build-09", instance_limit: 4})
     end
+  end
+
+  test "one who may set a pool's limit makes it without one, as before", %{scope: scope} do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.None)
+    assert Apiary.Access.can?(scope, :"node.set_limit", scope.workspace)
+
+    assert {:ok, %Node{kind: :pool, instance_limit: nil}} =
+             Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: ""})
   end
 
   describe "deleting a node" do

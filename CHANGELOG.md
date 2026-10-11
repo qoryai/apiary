@@ -202,8 +202,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   (`node.create`, `node.edit`, `node.delete`, each in the audit trail). Setting a pool's
   limit, as it is made or after, is an action of its own, `node.set_limit`, held as
   `node.edit` is, so an edition may keep it from some who change the rest: the node's
-  Settings then show the limit disabled, and New node pool leaves it out; the entry of the
-  creation or the edit records it. Everyone in the
+  Settings then show the limit disabled, and New node pool leaves it out and makes the
+  pool with a limit of 1; the entry of the creation or the edit records it. Everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
