@@ -3,7 +3,7 @@ defmodule Apiary.AccessTest do
   # Who may take each of the core's actions is the core's rows (`Apiary.AccessRows`),
   # asked by `Apiary.AccessCase` with the rows of the edition's kit where the edition
   # changes what the core's actors may; what follows asks what the rows do not.
-  use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core
+  use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core, cast: :module
 
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures

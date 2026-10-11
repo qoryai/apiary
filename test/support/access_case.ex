@@ -41,6 +41,24 @@ defmodule Apiary.AccessCase do
   - `refusal/3`, why `actor` may not take `action` on `subject`, `:not_found` or
     `:forbidden`, where its edition decides it; nil leaves it to the others. The last
     module to answer wins; with none, it is forbidden.
+
+  `cast:` says how often the actors are made (`setup_actors/1`). `:test`, the default:
+  for each test of `describe "who may"`, in the test's own sandbox. `:module`: once, in
+  the module's `setup_all`, in one sandbox for the whole module
+  (`Apiary.DataCase.setup_module_sandbox/2`); every test of the module finds them in its
+  context, `places` and `scopes`, and runs inside a savepoint that rolls back what it
+  wrote, so the next test finds the actors as they were made. With `:module`:
+
+  - the actors are made under the module's features, every one
+    (`@moduletag with_features:`); a test tagged with other features raises, and belongs
+    in a module of its own on `:test`. The `feature_off` actor takes its feature away
+    inside the test, from the actors as made, and asks the same on either;
+  - what lives in a process is the test's own: `setup_all` runs in a process no test has
+    among its `$callers`, so an edition's stub (`Apiary.Edition.put_test_stub/1`) or
+    another entry of the process dictionary is set in each test's `setup`, never for the
+    module; the features are the whole node's and each test sets them as on `:test`;
+  - a test that commits outside the sandbox, or needs an instance as fresh as a test's
+    own sandbox gives it, stays on `:test`.
   """
 
   use ExUnit.CaseTemplate
@@ -53,8 +71,13 @@ defmodule Apiary.AccessCase do
   using opts do
     modules = Keyword.fetch!(opts, :rows)
     covers = Keyword.get(opts, :covers, :all)
+    cast = Keyword.get(opts, :cast, :test)
 
-    quote bind_quoted: [modules: modules, covers: covers] do
+    unless cast in [:test, :module] do
+      raise ArgumentError, "cast: is :test or :module, not #{inspect(cast)}"
+    end
+
+    quote bind_quoted: [modules: modules, covers: covers, cast: cast] do
       use Apiary.DataCase, async: false
 
       # The rows are asked on an instance with every feature, whatever the suite runs
@@ -68,6 +91,15 @@ defmodule Apiary.AccessCase do
       # Who may, as the modules and the edition's kit say it together.
       @access_answering Apiary.AccessCase.answering(modules)
       @access_answers Apiary.AccessCase.rows(@access_answering)
+
+      # The actors, made once for the module: each test asks inside a savepoint.
+      if cast == :module do
+        setup_all context do
+          Apiary.DataCase.setup_module_sandbox(context, fn ->
+            Apiary.AccessCase.setup_actors(@access_modules)
+          end)
+        end
+      end
 
       test "every action has a row, and every row an action" do
         assert Enum.sort(Enum.map(@access_rows, &elem(&1, 0))) ==
@@ -88,7 +120,9 @@ defmodule Apiary.AccessCase do
       end
 
       describe "who may" do
-        setup do: Apiary.AccessCase.setup_actors(@access_modules)
+        if cast == :test do
+          setup do: Apiary.AccessCase.setup_actors(@access_modules)
+        end
 
         for {action, _row} <- @access_rows, actor <- @access_actors do
           yes = @access_answers |> List.keyfind(action, 0) |> elem(1) |> Keyword.fetch!(:yes)
