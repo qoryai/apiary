@@ -882,8 +882,8 @@ A workspace's nodes and node pools are where its runs run (`ApiaryWeb.NodeLive.I
 `…Show`; the reads and changes are `Apiary.Nodes`'s). A **node** is one permanent machine,
 which runs one instance at a time; a **node pool** is a fleet of short-lived instances,
 which run up to its instance limit, or any number without one. A **gateway**, the third
-kind, is an address its nodes and pools may reach Qory Apiary through
-(`Apiary.Gateways`). The kind is chosen when one is made and never changes. A node is
+kind, is an address the runs of its nodes and pools may go through, as each chooses
+(`Apiary.Gateways`); its key enrols the gateway and registers no run. The kind is chosen when one is made and never changes. A node is
 named in a path by its public id, `nd_…` for a node, `np_…` for a pool and `ng_…` for a
 gateway. Nodes is an entry of the workspace's sidebar, in Record after
 Targets (`#nav-nodes`, for a reader of `node.read`); the list, a node's page and the New
@@ -964,7 +964,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   Make default (`Apiary.Nodes.make_default_gateway/2`, `node.edit`) for one that is not,
   which moves the mark at once with a flash; then its recent runs and About, without
   instances or an instance limit. Its Settings' General changes its name and its URL.
-  Delete gateway… is confirmed in place as a node's is; a gateway that nodes still point
+  Delete gateway… is confirmed in place as a node's is, with a gateway's own sentence;
+  a gateway that nodes still point
   to (`{:gateway_in_use, …}`) is not deleted: the confirmation folds, and under the line
   an error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
   build-01, spot-runners. Point them to another gateway or to direct, then delete it.",
@@ -974,10 +975,13 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   never named.
 - **Access key**, a node's tab. A node or a pool whose choice leads to a gateway
   (`Apiary.Gateways.chosen/1`) reads, at the top of the tab, on the command's page, Key
-  for a node and a key's Forager file, an info notice: "build-01 reaches Qory Apiary
-  through the gateway edge-01, at https://edge.example.com.", and, while the gateway holds
-  no active key, "edge-01 has no access key yet, so it isn't connected."
-  (`NodeComponents.through_gateway/1`). While the node holds no active key, owners and admins read
+  for a node and a key's Forager file, an info notice: "Runs of build-01 go through the
+  gateway edge-01, at https://edge.example.com.", and, while the gateway holds no active
+  key, "edge-01 has no active access key, so it isn't connected."; one on Default gateway
+  while no gateway is the default reads "No gateway is the default now."; a direct one
+  reads none (`NodeComponents.through_gateway/1`). The command and the Forager file are
+  the same either way: they point at Qory Apiary. A gateway's own tab has the same
+  layout in its own words: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
   "How do you want to connect build-01?", "build-01 connects to Qory with a key. Choose
   one of two ways to give it one." (a pool's: "spot-runners connects to Qory with a key;
   its instances share one. Choose one of two ways to give it one."), and

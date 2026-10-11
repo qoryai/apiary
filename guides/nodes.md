@@ -21,11 +21,11 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 
 ## Gateways
 
-A **gateway** is the third kind on **Nodes**, `edge-01` say: an address the nodes and node
-pools of the workspace reach Qory Apiary through. **New gateway** asks its name and its
-**URL**: `https://`, a host, and a port if needed, nothing more. Like a node, it opens on
-its **Access key** tab and gets its key either way. On the list it reads **Gateway**, and
-**Kind** in the Filter menu keeps the gateways alone.
+A **gateway** is a kind of its own on **Nodes**, beside the node and the node pool,
+`edge-01` say. Its key enrols the gateway and registers no run. **New gateway** asks its
+name and its **URL**: `https://`, a host, and a port if needed, nothing more. Like a node,
+it opens on its **Access key** tab and gets its key either way. On the list it reads
+**Gateway**, and **Kind** in the Filter menu keeps the gateways alone.
 
 The workspace's first gateway is its **default**, marked **Default** on the list and on
 its page. A second one moves nothing: its **Overview** shows its URL, says "Not the
@@ -35,16 +35,20 @@ change its name and its URL.
 Each node and node pool chooses its **Gateway**, as it is made and in its **Settings**,
 once the workspace has a gateway: **Default gateway**, whichever gateway is the
 workspace's default; **Direct**, through no gateway; or a gateway by name. A new one
-starts on **Default gateway**. Its **Overview**'s About says where its choice leads, and
-its **Access key** tab, the command's page and its Forager file say that it reaches Qory
-Apiary through that gateway, at its URL, and, while the gateway has no key yet, that the
-gateway isn't connected.
+starts on **Default gateway**. The choice decides where its runs go. Its **Overview**'s
+About says where its choice leads, and its **Access key** tab, the command's page and its
+Forager file say that its runs go through that gateway, at its URL, and, while the
+gateway has no active key, that the gateway isn't connected. The command and the Forager
+file are the same either way: they point at Qory Apiary.
+
+Behind a gateway, a node holds its own key, as any node does. A node pool's runners hold
+no key: the pool's key is with the run's starter, the system that starts its runs.
 
 **Delete gateway…**, in a gateway's **Settings**, is confirmed in place. A gateway that a
 node or a node pool still points to, by name or as the default, isn't deleted: the page
 says "Nodes use this gateway: build-01, spot-runners. Point them to another gateway or to
-direct, then delete it.", naming the first five of the workspace and then how many more. When the default goes and other gateways
-remain, the oldest of them becomes the default.
+direct, then delete it.", naming the first five of the workspace and then how many more.
+When the default goes and other gateways remain, the oldest of them becomes the default.
 
 ## The access key
 
@@ -294,25 +298,6 @@ Three limits stay:
 - A run whose machine's clock ran more than about 6½ minutes ahead and was then set back
   reads **Lost** until its end arrives; a little less, and it can read Lost between its
   heartbeats.
-
-## A separate gateway
-
-A gateway on a machine of its own, which the agents on other machines connect through, is
-a node of its own, like any other: add it as a node, `gw-01` say, and connect it either
-way. It holds the node's key and is the one that talks to Qory Apiary. The machines behind
-it hold no access key and need no node: their runs reach Qory Apiary through the gateway.
-
-A run through the gateway belongs to the gateway's node and instance, and its key is the
-gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
-for a program that reports no session has no host and no runtime; its page says it has no
-session, and it ends by the end the gateway reports. A session's run through the gateway
-ends with its agent, or at the gateway. Qory Apiary records what a run reports and never
-ends a run it did not start; it starts none today.
-<!-- feature: secrets -->
-
-Leave **Stored secrets** at **Not allowed** when you add a separate gateway's key. Qory
-Apiary does not check this: to it, a separate gateway's key is a node's key like any other.
-<!-- /feature -->
 
 ## Revoking a key
 

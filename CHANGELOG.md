@@ -234,7 +234,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   one: Default gateway, offered only while a default resolves, Direct, or a gateway by
   name; a new one starts on Default gateway when one resolves. A node's About says where
   its choice leads, and its Access key tab, command page, Key for a node and Forager file
-  name the gateway it reaches Qory Apiary through, with its URL. The audit log calls a
+  name the gateway its runs go through, with its URL; the command and the Forager file
+  point at Qory Apiary either way. A gateway's key enrols the gateway and registers no
+  run, and its Access key tab says so. The audit log calls a
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the organisation's own page names
   are; a workspace named Gateways gets the slug `gateways-2`.
