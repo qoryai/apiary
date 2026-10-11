@@ -8,8 +8,9 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   `ApiaryWeb.Contract.EventsController`, and the run endpoint's by
   `ApiaryWeb.Contract.RegistrationController`.
 
-  The document names the key's node or node pool, where the events go and where a run
-  registers, and lists the instance's signing key; see `ApiaryWeb.Contract.Configuration`.
+  The document names the key's node or node pool and its workspace, where the events go
+  and where a run registers, and lists the instance's signing key; see
+  `ApiaryWeb.Contract.Configuration`.
 
   The answer carries `X-Qory-Configuration`, the digest of the document as
   sent, which the gateway compares with the digest in later answers and fetches
@@ -21,7 +22,7 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
 
   def show(conn, _params) do
     access_key = conn.assigns.access_key
-    {body, digest} = Configuration.document(access_key.node)
+    {body, digest} = Configuration.document(access_key)
 
     conn
     |> put_resp_header("x-qory-configuration", digest)

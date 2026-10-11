@@ -4,6 +4,8 @@ defmodule ApiaryWeb.SettingsComponentsTest do
   import Phoenix.Component, only: [sigil_H: 2]
   import Phoenix.LiveViewTest
 
+  alias Apiary.Accounts.Scope
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryWeb.SettingsComponents
 
   # A button's words, and its words while it acts.
@@ -66,6 +68,58 @@ defmodule ApiaryWeb.SettingsComponentsTest do
         """)
 
       assert {"Yes, remove", "Removing"} = button(html, "remove-integration-confirm")
+    end
+  end
+
+  describe "the Workspaces list" do
+    # A reader the edition lets rename a workspace and not delete one, as no level of the
+    # core's edition is: the list without Delete… and without the deletion's note.
+    defp workspaces do
+      for {name, slug} <- [{"Main", "main"}, {"Staging", "staging"}] do
+        %Workspace{
+          id: Ecto.UUID.generate(),
+          name: name,
+          slug: slug,
+          inserted_at: ~U[2026-10-01 09:00:00Z]
+        }
+      end
+    end
+
+    defp list(may_delete) do
+      assigns = %{
+        scope: %Scope{organisation: %Organisation{id: Ecto.UUID.generate(), slug: "acme"}},
+        workspaces: workspaces(),
+        may_delete: may_delete
+      }
+
+      rendered_to_string(~H"""
+      <SettingsComponents.workspace_list
+        scope={@scope}
+        workspaces={@workspaces}
+        may_delete={@may_delete}
+      />
+      """)
+    end
+
+    test "offers Delete… and says what a deletion does to a reader who may delete" do
+      html = list(true)
+
+      assert html =~ ~s(href="/acme/main")
+      assert html =~ ~s(href="/acme/staging")
+      assert html =~ "Delete…"
+      assert html =~ ~s(id="workspaces-note")
+      assert html =~ "A deleted workspace is purged after"
+    end
+
+    test "lists the workspaces without Delete…, its menu or its note to one who may not delete" do
+      html = list(false)
+
+      assert html =~ ~s(href="/acme/main")
+      assert html =~ ~s(href="/acme/staging")
+      refute html =~ "Delete…"
+      refute html =~ "q-rowmenu"
+      refute html =~ ~s(id="workspaces-note")
+      refute html =~ "A deleted workspace is purged after"
     end
   end
 end

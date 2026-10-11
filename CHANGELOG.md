@@ -99,6 +99,30 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   per organisation, which in the core is the one the organisation was made with, and
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
+- A person an edition lets into an organisation without a membership is told they read it
+  and change nothing there (`Apiary.Access.reader/1`) only while the role the edition
+  gives them holds no action that changes anything, that is, none that leaves an entry in
+  the audit trail (`Apiary.Access.reads_only?/1`). One whose role there changes something
+  is told what a refusal tells anyone else. In the core no one is let in without a
+  membership, so no page says it.
+- The organisation's settings list its workspaces under Workspaces for whoever may rename
+  or delete one (`workspace.rename`, `workspace.delete`, asked of the organisation,
+  `Apiary.Organisations.lists_workspaces?/1`), owners and admins in the core. A
+  workspace's Delete…, the deletions waiting to be cancelled and the note on what a
+  deletion does are there for whoever may delete one.
+- An edition may say in its own words who may take an action
+  (`c:ApiaryWeb.Edition.who_may_sentence/2`, asked with the action and the scope, through
+  `ApiaryWeb.Access.who_may/3`), where the core's sentence names the levels, such as
+  "Only owners and admins add nodes.", and the core's sentence stands where it has none,
+  as it does in the core. It is asked for the refusals, and the notices to whoever may not
+  act, of the nodes' pages and a node's Access key tab, the workspace overview's Get the
+  command, the organisation's and the workspace's settings, People, integrations, and the
+  pages that say "Only owners and admins change this."; for People's line of what each
+  level does; for the refusal to cancel an organisation's deletion on Your organisations;
+  for the security policy's own refusals (`Apiary.Policy`); and for the policy pages'
+  refusals of a click on the mode or a lock. The policy pages' mode row and their lock and unlock hints, the lock
+  hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
+  mode and on a locked rule have no scope at hand, and keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration and reload, events and enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and
@@ -158,17 +182,48 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   recorded" for `-1` without a signal; the page announces a cancelled or lost end in the
   same words ("Run cancelled: time limit reached."); and a run whose exit said it was lost
   lists on the Overview as "Lost, stopped responding" or "Lost, end not recorded".
-- Signed requests and signed answers. Every request the gateway makes names a node's access
-  key and its instance and is signed with that key, Ed25519 (`X-Qory-Access-Key-Id`,
-  `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300 seconds of the server's
-  clock for a GET and a registration's `time`; every answer to a verified request is signed with the server's own
-  Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
-  `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
-  refusals come in the contract's order, coded: a header sent twice or an instance id
-  absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
-  server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins, 5ddac44 on
-  Forager's main.
+- Signed requests and signed answers. Every request the gateway makes names a node's
+  access key and its instance and is signed with that key, Ed25519
+  (`X-Qory-Access-Key-Id`, `X-Qory-Instance-Id`, `X-Qory-Signature-Ed25519`), within 300
+  seconds of the server's clock for a GET and a registration's `time`; every answer to a
+  verified request is signed with the server's own Ed25519 key, which every machine pins
+  as `apiary_public_key`, and sent with `Cache-Control: no-store, no-transform`, while
+  every `401` goes out unsigned. The refusals come in the contract's order, coded: a
+  header sent twice or an instance id absent or malformed is `400` `bad_request` on every
+  endpoint. Discovery names the key's node (`node_id`), its workspace (`workspaces`) and
+  the server's keys (`apiary_public_key`), so its digest differs by node and workspace.
+  The tests replay the contract's own fixtures at the commit `.forager-contract-ref` pins,
+  85ea92e on Forager's next.
+- A workspace's id in the server contract: every workspace has one, `ws_` and 16
+  characters, made when it is created, and for a workspace that was already there by the
+  migration that adds it (Migrations, below). Discovery lists it as `workspaces`, the one
+  workspace an access key may name, that of its node or node pool. Only the contract
+  names a workspace by it: the console neither shows nor uses it. With it every access
+  key's discovery digest changes once, when this is deployed, so each Forager reads
+  discovery again once.
+- Gateways, a third kind of node beside the node and the node pool: `ng_` and 16
+  characters, with an address (`url`: `https://`, or `http://` to a loopback host, a host
+  and an optional port, nothing more, at most 2048 characters) and no instance limit. A
+  gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
+  node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
+  gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
+  may serve, sorted. Each node and node pool records a choice of gateway: direct, its
+  workspace's default gateway, or a gateway it names, one that may serve its workspace,
+  checked when the choice is saved; nothing at a run's registration reads it. The choice
+  can be changed. Every node and pool there before is direct; a new one given no choice
+  starts on the default when a default gateway resolves for its workspace, and on direct
+  otherwise. A workspace's first gateway becomes its default, and only a gateway made
+  when no default resolves does so by itself, so adding a second one moves no node; a
+  person moves the mark (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only
+  when no node names it and no node on the default resolves to it; the refusal names those
+  nodes. After a deletion no node moves, and when no default resolves for the workspace any
+  more, the oldest gateway left becomes the default. Making, changing and deleting a
+  gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
+  as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
+  workspace's default gateway, where a node's choice leads, the workspaces a gateway may
+  serve and the gateways a node may name. The console does not show gateways.
+- `gateways` is a reserved workspace slug, refused as the organisation's own page names
+  are; a workspace named Gateways gets the slug `gateways-2`.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a bucket of
   their own, 50 requests a second and 100 at once, so a gateway flushing a backlog of
@@ -301,6 +356,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an
   organisation, marked first and purged after a grace period.
+- An edition may add to an audit entry's details as it is written, such as how the actor
+  reached the organisation (`c:Apiary.Edition.audit_details/3`), and say who made an entry
+  in the Audit log's Who column (`c:ApiaryWeb.Edition.activity_actor/2`); the core adds
+  nothing and says it as before.
 - Retention prunes nothing of a lost run until 7 days after it was lost, however short the
   workspace's settings, so a gateway's record sent after a shorter outage is stored.
 - A heartbeat counts by its own time, corrected by its run's clock offset, within 300
@@ -530,6 +589,28 @@ all six or none.
 `20261010190000_keep_a_registration_s_time` adds `runs.registration_time`, the `time` a
 run's registration was built at, NULL for every existing row, with a check that it is set
 only on a run that registered.
+`20261011100000_give_a_workspace_its_id` adds `workspaces.public_id`: each workspace's id,
+`ws_` and 16 characters, made for every existing workspace by the function
+`workspace_public_id()`, which is also the column's default; unique, with a check on its
+shape.
+`20261011120000_fix_the_workspace_id_function_s_search_path` sets
+`workspace_public_id()`'s `search_path` to `pg_catalog`, so the function finds
+`gen_random_uuid()` and the others it calls there alone, whatever the session's
+`search_path`; it changes no row.
+`20261011130000_make_a_gateway_a_kind_of_node` lets `nodes.kind` be `gateway`, with an
+`ng_` public id and no instance limit, widening `nodes_kind_check`,
+`nodes_public_id_check` and `nodes_instance_limit_check`; adds `nodes.url`, a gateway's
+address, required for a gateway and NULL otherwise (`nodes_url_check`), and
+`nodes.default_gateway`, false for every existing row, held to a gateway in use
+(`nodes_default_gateway_check`) and to one a workspace (`nodes_default_gateway_index`).
+Rolled back, it refuses while any gateway row is there.
+`20261011131000_let_a_node_choose_its_gateway` adds `nodes.gateway_choice` (`direct`,
+`default` or `named`), `direct` for every existing row and the column's default, and
+`nodes.gateway_id`, a reference to the named gateway's row, NULL for every existing row,
+set NULL when that row is purged while the choice stays `named`, with the check
+`nodes_gateway_choice_check`, an index, and the trigger `nodes_gateway_is_a_gateway`,
+which refuses a reference to a row that is not a gateway in use. Rolled back, every node is
+direct again.
 
 ### Upgrading
 

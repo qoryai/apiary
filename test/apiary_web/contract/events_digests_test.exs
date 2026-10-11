@@ -68,7 +68,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     assert response(conn, 202) == ""
     assert in_force(conn) == [ctx.baseline]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key.node)]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key)]
   end
 
   test "a batch that names no target, of a run that holds a digest in force, is answered that digest, no other",
@@ -181,7 +181,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert response(conn, 410) == ""
     assert in_force(conn) == [ctx.own]
 
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key.node)]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key)]
 
     assert Repo.one!(
              from d in Delivery, where: d.status == 410, select: d.run_configuration_digest
@@ -199,7 +199,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
       conn = signed_post(build_conn(), key.key_id, secret, events, run_configuration: reported)
       assert response(conn, 202) == ""
       assert in_force(conn) == []
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
     end
 
     assert Repo.aggregate(
@@ -215,7 +215,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     conn = signed_post(build_conn(), key.key_id, secret, [beat(subject, 4)])
 
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
     {:ok, %{digest: digest}} = Policy.current_configuration(scope, nil)
     assert in_force(conn) == [digest]
   end

@@ -19,6 +19,11 @@ defmodule Apiary.Organisations.Workspace do
     # Set once, at creation, by `put_slug/2`: made from the name, or as the form that
     # creates the workspace gives it; never changed after.
     field :slug, :string
+    # The workspace's id in the server contract, `ws_` and 16 characters
+    # (`Apiary.PublicId`): discovery lists it as the workspace an access key may name. Set
+    # once, by `create_changeset/2`, or by the column's default for a row written without
+    # it; never cast and never changed. Only the contract names a workspace by it.
+    field :public_id, :string, read_after_writes: true
     # The mode of the workspace's security policy; changed through
     # `Apiary.Policy.set_mode/2`.
     field :egress_mode, :string, default: "observe"
@@ -48,14 +53,18 @@ defmodule Apiary.Organisations.Workspace do
   end
 
   @doc """
-  The changeset of a new workspace: its name, as `changeset/2` checks it, and its domain,
-  one of `Apiary.Lingo.Domain.names/0`. The domain is chosen here only.
+  The changeset of a new workspace: its name, as `changeset/2` checks it, its domain, one
+  of `Apiary.Lingo.Domain.names/0`, and a fresh public id. The domain and the id are set
+  here only.
   """
   def create_changeset(workspace, attrs) do
     workspace
     |> cast(attrs, [:domain])
     |> validate_required([:domain])
     |> validate_inclusion(:domain, Apiary.Lingo.Domain.names())
+    |> put_change(:public_id, Apiary.PublicId.generate("ws"))
+    |> unique_constraint(:public_id)
+    |> check_constraint(:public_id, name: :workspaces_public_id_format)
     |> changeset(attrs)
   end
 

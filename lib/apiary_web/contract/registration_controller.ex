@@ -95,7 +95,7 @@ defmodule ApiaryWeb.Contract.RegistrationController do
     conn
     |> put_resp_header("x-qory-run-configuration", digest)
     |> put_resp_header("etag", etag)
-    |> put_resp_header("x-qory-configuration", Configuration.digest(conn.assigns.access_key.node))
+    |> put_resp_header("x-qory-configuration", Configuration.digest(conn.assigns.access_key))
     |> put_resp_content_type("application/json")
     |> send_resp(200, settings)
   end

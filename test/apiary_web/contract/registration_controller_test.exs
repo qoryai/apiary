@@ -64,7 +64,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
         assert get_resp_header(conn, "etag") == [~s("#{digest}")]
 
         assert get_resp_header(conn, "x-qory-configuration") == [
-                 Configuration.digest(ctx.key.node)
+                 Configuration.digest(ctx.key)
                ]
       end
 
@@ -107,7 +107,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
     [digest] = get_resp_header(conn, "x-qory-run-configuration")
     assert digest == Render.digest(conn.resp_body)
     assert get_resp_header(conn, "etag") == [~s("#{digest}")]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key.node)]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(ctx.key)]
     assert signed_answer?(conn)
     assert get_resp_header(conn, "cache-control") == ["no-store, no-transform"]
     assert [%RunConfiguration{version: 1, target_id: nil}] = Repo.all(RunConfiguration)

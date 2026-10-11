@@ -253,4 +253,131 @@ defmodule Apiary.SchemaConstraintsTest do
     assert %{num_rows: 1} = update!("nodes", pool.id, "instance_limit = NULL")
     assert %{num_rows: 1} = update!("nodes", pool.id, "kind = 'pool', name = 'spot-runners'")
   end
+
+  test "a gateway is ng_, has an address and no limit; only a gateway in use is a default" do
+    %{scope: scope} = sign_up_fixture()
+    gateway = gateway_fixture(scope)
+    other = gateway_fixture(scope)
+    node = node_fixture(scope)
+
+    refused("kind is fixed", fn ->
+      update!("nodes", gateway.id, "kind = 'node', public_id = 'nd_' || substr(public_id, 4)")
+    end)
+
+    refused("nodes_public_id_check", fn ->
+      update!("nodes", gateway.id, "public_id = 'np_' || substr(public_id, 4)")
+    end)
+
+    refused("nodes_public_id_check", fn ->
+      update!("nodes", node.id, "public_id = 'ng_' || substr(public_id, 4)")
+    end)
+
+    refused("nodes_instance_limit_check", fn ->
+      update!("nodes", gateway.id, "instance_limit = 1")
+    end)
+
+    for url <- [
+          nil,
+          "gateway.example",
+          "https://gateway.example/",
+          "https://a@gateway.example",
+          "https://gateway.example?x",
+          "https://gate way.example",
+          "https://" <> String.duplicate("a", 2041)
+        ] do
+      refused("nodes_url_check", fn -> update!("nodes", gateway.id, "url = $2", [url]) end)
+    end
+
+    refused("nodes_url_check", fn ->
+      update!("nodes", node.id, "url = 'https://gateway.example'")
+    end)
+
+    assert %{num_rows: 1} =
+             update!("nodes", gateway.id, "url = 'http://gateway.example:8080'")
+
+    # One default a workspace; never a node, never a deleted gateway.
+    assert gateway.default_gateway
+
+    refused("nodes_default_gateway_index", fn ->
+      update!("nodes", other.id, "default_gateway = true")
+    end)
+
+    refused("nodes_default_gateway_check", fn ->
+      update!("nodes", node.id, "default_gateway = true")
+    end)
+
+    refused("nodes_default_gateway_check", fn ->
+      update!("nodes", gateway.id, "deleted_at = now()")
+    end)
+
+    assert %{num_rows: 1} =
+             update!("nodes", gateway.id, "default_gateway = false, deleted_at = now()")
+
+    assert %{num_rows: 1} = update!("nodes", other.id, "default_gateway = true")
+  end
+
+  test "a node's choice is direct, default or a gateway in use; a gateway chooses none" do
+    %{scope: scope} = sign_up_fixture()
+    gateway = gateway_fixture(scope)
+    other = gateway_fixture(scope)
+    node = node_fixture(scope)
+    pool = pool_fixture(scope)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", node.id, "gateway_choice = 'through'")
+    end)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", node.id, "gateway_choice = 'default', gateway_id = $2", [
+        Ecto.UUID.dump!(gateway.id)
+      ])
+    end)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", gateway.id, "gateway_choice = 'default'")
+    end)
+
+    refused("nodes_gateway_choice_check", fn ->
+      update!("nodes", gateway.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(other.id)
+      ])
+    end)
+
+    # The trigger: what a node names is a gateway in use.
+    refused("a node's gateway is a gateway in use", fn ->
+      update!("nodes", node.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(pool.id)
+      ])
+    end)
+
+    assert %{num_rows: 1} =
+             update!("nodes", node.id, "gateway_choice = 'named', gateway_id = $2", [
+               Ecto.UUID.dump!(gateway.id)
+             ])
+
+    assert %{num_rows: 1} = update!("nodes", other.id, "deleted_at = now()")
+
+    refused("a node's gateway is a gateway in use", fn ->
+      update!("nodes", pool.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(other.id)
+      ])
+    end)
+
+    # An id of no row: the trigger refuses it before the foreign key would.
+    refused("nodes_gateway_is_a_gateway", fn ->
+      update!("nodes", pool.id, "gateway_choice = 'named', gateway_id = $2", [
+        Ecto.UUID.dump!(Ecto.UUID.generate())
+      ])
+    end)
+
+    # A node already naming a gateway keeps it through other changes, deleted or not.
+    assert %{num_rows: 1} =
+             update!("nodes", gateway.id, "default_gateway = false, deleted_at = now()")
+
+    assert %{num_rows: 1} = update!("nodes", node.id, "name = 'renamed'")
+
+    # Named with no gateway is a gateway that is gone; the default and direct name none.
+    assert %{num_rows: 1} = update!("nodes", node.id, "gateway_id = NULL")
+    assert %{num_rows: 1} = update!("nodes", pool.id, "gateway_choice = 'default'")
+  end
 end

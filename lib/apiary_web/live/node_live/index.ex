@@ -97,7 +97,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       |> assign(kind: kind, page_title: form_title(kind) <> " · " <> gettext("Nodes"))
     else
       socket
-      |> put_flash(:error, gettext("Only owners and admins add nodes."))
+      |> put_flash(:error, only_admins_add(socket.assigns.current_scope))
       |> push_patch(to: list_path(socket.assigns.current_scope, socket.assigns.filters))
     end
   end
@@ -274,6 +274,15 @@ defmodule ApiaryWeb.NodeLive.Index do
     end
   end
 
+  # Who may add a node, in the edition's words where it has some.
+  defp only_admins_add(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"node.create",
+        gettext("Only owners and admins add nodes.")
+      )
+
   # The membership this page was opened with no longer allows it, or is gone: one who
   # still reads the workspace is told so on the list; anyone else is sent to `/`.
   defp refused(socket) do
@@ -287,7 +296,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       Access.can?(scope, :"node.read", scope.workspace) ->
         socket
         |> assign(:may_create, false)
-        |> put_flash(:error, gettext("Only owners and admins add nodes."))
+        |> put_flash(:error, only_admins_add(scope))
         |> push_patch(to: path)
 
       true ->

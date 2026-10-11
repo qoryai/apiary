@@ -150,7 +150,8 @@ defmodule Apiary.NodesTest do
                "name" => "spot-runners",
                "kind" => "pool",
                "public_id" => pool.public_id,
-               "instance_limit" => 10
+               "instance_limit" => 10,
+               "gateway_choice" => "direct"
              }
     end
   end

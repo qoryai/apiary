@@ -126,12 +126,12 @@ defmodule ApiaryWeb.FeaturesTest do
       conn = signed_get(build_conn(), key.key_id, secret, "/.well-known/qory-configuration")
       assert conn.status == 200
       assert %{"url" => _} = Jason.decode!(conn.resp_body)["run"]
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       {_subject, events} = first_events()
       conn = signed_post(build_conn(), key.key_id, secret, events)
       assert conn.status in 200..299
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
       assert get_resp_header(conn, "x-qory-run-configuration") == []
     end
 
@@ -164,7 +164,7 @@ defmodule ApiaryWeb.FeaturesTest do
 
       conn = signed_register(build_conn(), key.key_id, secret, registration(run_id))
       assert %{"security_policy" => _} = json_response(conn, 200)
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       reload = signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id)
       assert reload.resp_body == conn.resp_body
