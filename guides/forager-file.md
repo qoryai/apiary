@@ -35,8 +35,8 @@ key written twice, is refused with a message that names the file.
 | `apiary_public_key` | The pin: Qory Apiary's public keys, a list of `alg` and `public_key`. Every answer of Qory Apiary is signed, and the gateway verifies it under these keys before it reads it. With a server and no pin, Forager does not start, `apiary_public_key_missing`. |
 
 Only `access_key_id` belongs to the machine's key. `url` and `apiary_public_key` are
-Qory Apiary's, and the instance's own: the same for every organisation, workspace, node and
-machine. The address is Qory Apiary's `PUBLIC_URL`, and its key is made from its
+Qory Apiary's, set once for the instance: the same for every organisation, workspace, node
+and machine. The address is Qory Apiary's `PUBLIC_URL`, and its key is made from its
 `APIARY_SIGNING_SECRET`.
 
 Nothing in the section is secret. The access key's secret is never in `forager.yaml`:
@@ -130,14 +130,14 @@ answers.
 
 The `server` section replaced the `webhook` section in version 0.10.0 of the command. A
 Forager file that still has a `webhook` section is refused with a message that says so, and
-`QORY_WEBHOOK_SECRET` is not read any more. A receiver of your own that is not a Qory Apiary
-is configured with the same `server` section, and implements the same contract: the
+`QORY_WEBHOOK_SECRET` is not read any more. A receiver you build yourself, in place of Qory Apiary, is
+configured with the same `server` section, and implements the same contract: the
 configuration document, the run endpoint and the events endpoint are enough.
 
 <!-- feature: security -->
 ## The `egress` section and the workspace's policy
 
-The Forager file's `egress` section, under `gateway:`, is the machine's own policy: a mode, `observe` or
+The Forager file's `egress` section, under `gateway:`, is the machine's local policy: a mode, `observe` or
 `enforce`, the hosts allowed and the hosts denied. A host in `deny` is denied in either
 mode, before `allow` is consulted; under `observe` it is the only thing denied.
 
@@ -154,7 +154,7 @@ It applies:
 - on a machine with no `server` section;
 - with `qory run --local`, which records to files only and does not contact Qory Apiary;
 - while the workspace of the access key's node has no policy yet. Qory Apiary then answers
-  each run's registration with no policy, `{"version":1}`, and the machine's own policy
+  each run's registration with no policy, `{"version":1}`, and the machine's local policy
   stands, enforcement included.
 
 From the first change of the workspace's policy in the console, Qory Apiary's run

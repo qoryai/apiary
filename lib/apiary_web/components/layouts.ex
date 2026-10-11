@@ -2437,14 +2437,14 @@ defmodule ApiaryWeb.Layouts do
   end
 
   defp own_modes_sentence([]), do: gettext("Every target follows it.")
-  defp own_modes_sentence(["observe"]), do: gettext("1 target sets its own and observes.")
-  defp own_modes_sentence(["enforce"]), do: gettext("1 target sets its own and enforces.")
+  defp own_modes_sentence(["observe"]), do: gettext("1 target overrides it with observe.")
+  defp own_modes_sentence(["enforce"]), do: gettext("1 target overrides it with enforce.")
 
   defp own_modes_sentence(modes),
     do:
       ngettext(
-        "%{number} target sets its own.",
-        "%{number} targets set their own.",
+        "%{number} target overrides it.",
+        "%{number} targets override it.",
         length(modes),
         number: Format.number(length(modes))
       )

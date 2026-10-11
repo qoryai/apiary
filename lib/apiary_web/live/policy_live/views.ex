@@ -86,7 +86,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
               {gettext("Qory Apiary serves no policy for this workspace until the first one.")}
             </span>
             <span :if={@scope == :target}>
-              {gettext("The first rule here, or a mode of its own, starts this target's history.")}
+              {gettext("The first rule here, or a mode override, starts this target's history.")}
             </span>
           <% end %>
         </p>
@@ -119,7 +119,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             "A change that leaves the document's bytes the same is kept here and makes no new version."
           )}
           <span :if={@scope == :workspace}>
-            {gettext("Changes to a target's own rules are in that target's history.")}
+            {gettext("Changes to target rules are in that target's history.")}
           </span>
           <span :if={@scope == :target}>
             {gettext(
@@ -192,7 +192,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <span class="font-sans">
               {case @v.mode_source do
                 :organisation -> gettext("required by %{name}", name: @v.mode_required_by || "?")
-                :target -> gettext("this target's own")
+                :target -> gettext("overridden on this target")
                 _workspace -> gettext("the workspace's default")
               end}
             </span>

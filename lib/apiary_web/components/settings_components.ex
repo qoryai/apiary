@@ -550,7 +550,7 @@ defmodule ApiaryWeb.SettingsComponents do
           ),
         else:
           gettext(
-            "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+            "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
           )}
     </p>
     """

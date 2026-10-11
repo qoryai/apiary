@@ -403,7 +403,7 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "names beginning QORY_ are Forager's own"
+msgid "names beginning QORY_ are reserved for Forager"
 msgstr ""
 
 #: lib/apiary/variables.ex

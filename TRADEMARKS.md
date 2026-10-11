@@ -1,8 +1,7 @@
 # Trademarks
 
 *Qory* is a trademark of 8wonders GmbH, and the one mark. Qory Apiary and the names of
-its editions ([EDITIONS.md](EDITIONS.md)) are products under that mark, not marks of their
-own. The Apache License, Version 2.0, grants no right to use it
+its editions ([EDITIONS.md](EDITIONS.md)) are products under that mark, not separate marks. The Apache License, Version 2.0, grants no right to use it
 (section 6). This page says what you may do with it without asking.
 
 ## You may
@@ -16,11 +15,11 @@ own. The Apache License, Version 2.0, grants no right to use it
 
 - Name a fork, a tool or a package Qory, or anything confusable with it, such as a
   different spelling, a prefix or a suffix.
-- Use the Qory wordmark as your own, or in a way that implies endorsement by, or
-  affiliation with, the project.
+- Use the Qory wordmark as if it were yours, or in a way that implies endorsement
+  by, or affiliation with, the project.
 - Offer Qory Apiary as a hosted service under the Qory name. Only Qory, and the operators
   Qory licenses to do so, may.
 
-A renamed fork is allowed, and so is offering it as a hosted service under its own name.
+A renamed fork is allowed, and so is offering it as a hosted service under a different name.
 Keep the NOTICE file, as the licence requires. For a use this page does not cover, open an
 issue.

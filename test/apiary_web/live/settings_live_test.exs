@@ -495,7 +495,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(
                lv,
                "#danger-zone #delete-workspace",
-               "The organisation's only workspace is not deleted on its own"
+               "The organisation's only workspace can't be deleted by itself"
              )
 
       refute has_element?(lv, "#delete-workspace-button")

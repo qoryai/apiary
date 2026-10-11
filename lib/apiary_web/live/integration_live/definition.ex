@@ -121,7 +121,7 @@ defmodule ApiaryWeb.IntegrationLive.Definition do
         measure="list"
       >
         <:subtitle>
-          {gettext("A custom API of this workspace's own")}
+          {gettext("A custom API of this workspace")}
           <span class="text-faint" aria-hidden="true">·</span>
           <span class="q-mono">{@definition.key}</span>
         </:subtitle>

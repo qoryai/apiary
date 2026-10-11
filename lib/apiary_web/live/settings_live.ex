@@ -357,7 +357,7 @@ defmodule ApiaryWeb.SettingsLive do
             ),
           else:
             gettext(
-              "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+              "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
             )}
         <:lost>{SettingsComponents.workspace_lost()}</:lost>
         <:field>
@@ -807,7 +807,7 @@ defmodule ApiaryWeb.SettingsLive do
          |> put_flash(
            :error,
            gettext(
-             "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+             "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
            )
          )
          |> load_workspaces()

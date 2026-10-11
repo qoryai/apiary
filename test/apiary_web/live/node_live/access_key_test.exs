@@ -1143,7 +1143,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       # Two equal options: when to choose it, what happens, the same four facts in the same
       # rows, and one button at the foot. No steps, no code, no variable and nothing to copy.
       assert words(lv, "#way-new_code") ==
-               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or a server of your own. You get one command to run on build-01. It carries a one-time code, not a key, which works once within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public half, and saves everything else there itself. Key made On build-01, by qory Secret Stays on build-01; it is never shown By hand Nothing Needs A terminal on build-01 Get the command"
+               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or your server. You get one command to run on build-01. It carries a one-time code, not a key, which works once within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public half, and saves everything else there itself. Key made On build-01, by qory Secret Stays on build-01; it is never shown By hand Nothing Needs A terminal on build-01 Get the command"
 
       assert has_element?(lv, "#way-generate-title", "Generate a key in the browser")
 
@@ -1213,7 +1213,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert ways(lv, "#node-ways") == {~w(code-new-button key-generate-button), []}
 
       assert words(lv, "#way-new_code") ==
-               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or a server of your own. Get the command"
+               "Connect with a command Choose it when you can open a terminal on build-01: a laptop, or your server. Get the command"
 
       assert words(lv, "#way-generate") ==
                "Generate a key in the browser Choose it when build-01 runs in a CI job, or on a machine you can't open a terminal on. Generate a key"

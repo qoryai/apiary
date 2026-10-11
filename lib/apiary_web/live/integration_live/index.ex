@@ -85,7 +85,7 @@ defmodule ApiaryWeb.IntegrationLive.Index do
       >
         <:subtitle>
           {gettext(
-            "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
+            "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every target or to the ones you choose."
           )}
         </:subtitle>
 
