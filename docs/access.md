@@ -362,8 +362,10 @@ for each other and never on each other at once:
    transaction, in a mode that conflicts with `FOR SHARE`, takes them at one point,
    before its first write, through `lock_organisations/2`: it reads the order and locks
    them in one statement, and should what `c:Apiary.Edition.places_to_lock/1` names
-   change between the read and the lock, so that two changes wait on each other and
-   Postgres refuses one, it reads the order again and locks them once more. The core
+   change between the read and the lock, so that two changes wait on each other, the
+   one whose lock Postgres refuses (`deadlock_detected`) reads the order again, which
+   sees the change, as the core's transactions run at `READ COMMITTED`, and locks them
+   once more. The core
    meets this: each change of the core that locks an organisation row in such a mode
    locks that one row alone. Then the edition's own rows for the change
    (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.

@@ -33,11 +33,8 @@ defmodule Apiary.RenewalLockTest do
     end)
   end
 
-  test "an expired invitation: refused before any lock of its allowance's row" do
-    %{scope: scope, organisation: organisation} = sign_up()
-    %{organisation: other} = sign_up()
-    Apiary.Mail.put_test_source(:none)
-
+  # An invitation the scope's organisation made, counted against `other`, expired since.
+  defp expired_invitation(scope, other) do
     {:ok, invitation} =
       Repo.transact(fn ->
         with {:ok, invitation, _token} <-
@@ -50,23 +47,55 @@ defmodule Apiary.RenewalLockTest do
         set: [expires_at: DateTime.add(DateTime.utc_now(), -1, :minute)]
       )
 
+    invitation
+  end
+
+  # The renewal, held open after its answer, and the rows free while it is held; then let go.
+  defp refused_unlocked(scope, invitation, organisations) do
     {renewal, _backend} = renewing(scope, invitation)
-    assert renewal.result == {:error, :not_found}
-
-    # Held open after the refusal: neither row was locked.
-    assert free?(other)
-    assert free?(organisation)
-
-    # The refusal rolled the held transaction back.
+    for organisation <- organisations, do: assert(free?(organisation))
     send(renewal.pid, :commit)
+    # The refusal rolled the held transaction back.
     assert {:error, :rollback} = Task.await(renewal.task)
+    renewal.result
+  end
+
+  describe "an expired invitation, refused before any lock, as it was refused under one" do
+    setup do
+      %{scope: scope, organisation: organisation} = sign_up()
+      %{organisation: other} = sign_up()
+      Apiary.Mail.put_test_source(:none)
+      %{scope: scope, organisation: organisation, other: other}
+    end
+
+    test "its allowance in use: not found", %{scope: scope} = ctx do
+      invitation = expired_invitation(scope, ctx.other)
+
+      assert refused_unlocked(scope, invitation, [ctx.other, ctx.organisation]) ==
+               {:error, :not_found}
+    end
+
+    test "its allowance out of use: forbidden", %{scope: scope} = ctx do
+      invitation = expired_invitation(scope, ctx.other)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OutOfUse)
+      Process.put(:out_of_use, [ctx.other.id])
+
+      assert refused_unlocked(scope, invitation, [ctx.other, ctx.organisation]) ==
+               {:error, :forbidden}
+    end
+
+    test "its allowance gone: forbidden", %{scope: scope} = ctx do
+      invitation = expired_invitation(scope, ctx.other)
+      {1, _} = Repo.delete_all(from o in Organisation, where: o.id == ^ctx.other.id)
+
+      assert refused_unlocked(scope, invitation, [ctx.organisation]) == {:error, :forbidden}
+    end
   end
 
   test "an invitation is pending for less time than the audit trail keeps an entry" do
     # What keeps `allowance_of/1`'s answer for a pending invitation: the entry that names
     # its allowance is not pruned while it is pending.
-    assert {:error, _reason} =
-             Apiary.Audit.parse_retention_days(Integer.to_string(Invitation.validity_days()))
+    assert Invitation.validity_days() < Apiary.Audit.retention_min_days()
   end
 
   test "an invitation counted against its own organisation: that row" do

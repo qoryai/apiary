@@ -1937,8 +1937,10 @@ defmodule Apiary.Organisations do
 
   An edition that takes more than one organisation row in one transaction, in a mode that
   conflicts with `FOR SHARE`, takes them at one point, before its first write, through
-  `lock_organisations/2`, which locks them in this order and reads it again should it
-  change before the lock. The core meets this: each change of the core that locks an
+  `lock_organisations/2`, which locks them in this order, and reads it again and locks
+  once more when Postgres refuses that caller's lock as a deadlock
+  (`deadlock_detected`); the read again sees what changed, as the core's transactions
+  run at `READ COMMITTED`. The core meets this: each change of the core that locks an
   organisation row in such a mode locks that one row alone.
   """
   @spec lock_order([%Organisation{}]) :: [Ecto.UUID.t()]
@@ -1995,11 +1997,12 @@ defmodule Apiary.Organisations do
   locks them all in one statement, in that order, under a savepoint. What
   `c:Apiary.Edition.places_to_lock/1` names may change between the read and the lock, and
   two changes that read it on either side of such a change lock in two orders and may
-  wait on each other: Postgres then refuses one of them (`deadlock_detected`). Refused
-  so, it rolls back to the savepoint, which lets go of the rows that statement locked,
-  reads the organisations again, and locks them once more, in the order read then. A
-  second refusal, or any other error of the statement, is answered as it is, once the
-  rows that statement locked are let go of, and the transaction goes on.
+  wait on each other: Postgres then refuses one of them (`deadlock_detected`). When it
+  refuses this caller's lock, it rolls back to the savepoint, which lets go of the rows
+  that statement locked, reads the organisations again, which sees what changed since,
+  as the core's transactions run at `READ COMMITTED`, and locks them once more, in the
+  order read then. A second refusal, or any other error of the statement, is answered as
+  it is, once the rows that statement locked are let go of, and the transaction goes on.
 
   `{:ok, ids}`, the organisations locked, in the order they were locked; an organisation
   no longer there is left out. `{:error, exception}` as above. Called outside a
@@ -2563,10 +2566,11 @@ defmodule Apiary.Organisations do
            # the lock below. This keeps `allowance_of/1`'s answer stable: a pending
            # invitation's latest entry that names its allowance was written when its expiry
            # was set, at most `Invitation.validity_days/0` ago, less than the shortest the
-           # audit trail keeps an entry (`@retention_min` in `Apiary.Audit`), so the prune
+           # audit trail keeps an entry (`Apiary.Audit.retention_min_days/0`), so the prune
            # has not taken it; an expired one may outlive it. Should that minimum ever be
-           # lowered below an invitation's lifetime, this stops holding.
-           true <- Invitation.pending?(found) || {:error, :not_found},
+           # lowered below an invitation's lifetime, this stops holding. An expired one is
+           # answered as under the lock, without one (`refuse_expired/1`).
+           :ok <- refuse_expired(found),
            {:ok, allowance} <- allowance_of(found),
            :ok <- lock_allowance(allowance),
            %Invitation{} = invitation <-
@@ -2600,6 +2604,19 @@ defmodule Apiary.Organisations do
   end
 
   def renew_invitation(_scope, _invitation_id, _url_fun, _opts), do: {:error, :not_found}
+
+  # `:ok` for a pending invitation. An expired one is refused as the renewal refuses it
+  # under the lock, from reads without one: `:forbidden` for an allowance gone or out of
+  # use (`allowance_of/1`, `lock_allowance/1`), `:not_found` otherwise.
+  defp refuse_expired(%Invitation{} = invitation) do
+    if Invitation.pending?(invitation) do
+      :ok
+    else
+      with {:ok, %Organisation{id: id}} <- allowance_of(invitation),
+           true <- in_use?(id) || {:error, :forbidden},
+           do: {:error, :not_found}
+    end
+  end
 
   # Asked of `Apiary.Access` here, unless the caller asked it for an action of its own.
   defp authorize_renewal(scope, nil = _action, invitation),

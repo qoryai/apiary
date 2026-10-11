@@ -384,6 +384,37 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule OutOfUse do
+    @moduledoc """
+    Holds out of use the organisations the test names
+    (`Process.put(:out_of_use, ids)` in the test's process, which the processes it starts
+    read too): `c:Apiary.Edition.active_organisations/2` leaves them out, and every other
+    organisation as the configured edition does.
+    """
+    import Ecto.Query
+
+    def active_organisations(query, binding) do
+      ids = out_of_use()
+
+      query
+      |> Apiary.Edition.module().active_organisations(binding)
+      |> where([{^binding, o}], o.id not in ^ids)
+    end
+
+    defp out_of_use do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:out_of_use)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :out_of_use}) do
+            {{:dictionary, :out_of_use}, ids} when is_list(ids) -> ids
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end
