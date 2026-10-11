@@ -278,14 +278,17 @@ heartbeat and reload, `Apiary.Runs.Sender.serves?/2`). Once it may not, it is re
 with nothing of the run told: no policy, no event, no outcome, no digest. Two things
 stay known to such a gateway, and are accepted:
 
-- **Whether the run is still sending, or has ended.** At the events endpoint the sender's
-  check comes first: a batch from another instance of the gateway than the one that
-  attached the run is `409` `wrong_gateway` while the run is still sending, and the `410`
-  `workspace_not_served` once its sending has ended (its exit arrived, it was lost after
-  its attach, or its events were pruned). At the attach, whether the run has ended is
-  asked before the serving check: an ended run is `410`, a live one `409`
-  `workspace_not_served`; there a starter's outcome ends the run too, and which outcome
-  is never told. Only a gateway that once attached the run knows its id to ask.
+- **Whether the run is still sending, has ended, or was lost.** At the events endpoint the
+  sender's check comes first: a batch from another instance of the gateway than the one
+  that attached the run is `409` `wrong_gateway` while the run is still sending, and the
+  `410` `workspace_not_served` once its sending has ended (its exit arrived, it was lost
+  after its attach, or its events were pruned). At the attach, the run key's holder is
+  answered before the serving check: an ended run is `410`; a run never attached whose
+  attach window has closed, or that was already lost, is `409` `run_key_expired`; any
+  other is `409` `workspace_not_served`. A starter's outcome ends the run there too, and
+  which outcome is never told. The gateway a run key names knows the run's id from its
+  run key, before any attach; only the gateway that attached the run is answered at the
+  events endpoint and the reload, any other `409` `wrong_gateway` and `404`.
 - **Whether the run's place is in use.** The place's check comes before the serving
   check, as it does for every key. At the events endpoint and the attach, it is `401`
   while the run's workspace or organisation is out of use, and `404` while `Apiary.Access`
