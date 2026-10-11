@@ -51,6 +51,9 @@ defmodule ApiaryWeb.Edition.Core do
   def refusal_sentence(_reason), do: nil
 
   @impl true
+  def level_refusal_sentence(_reason, _scope), do: nil
+
+  @impl true
   def settings_tabs(_scope), do: []
 
   @impl true

@@ -172,4 +172,27 @@ defmodule Apiary.InstanceAdminTest do
       assert instance_organisation() == nil
     end
   end
+
+  describe "a level the edition refuses in the instance's organisation" do
+    test "granting is refused where it refuses owner, and changes and records nothing" do
+      %{user: user} = sign_up_fixture()
+      before = Repo.aggregate(Entry, :count)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoOwner)
+
+      assert {:error, {:level_refused, :no_owner}} = Organisations.grant_instance_admin(user)
+      refute membership(user)
+      assert Repo.aggregate(Entry, :count) == before
+    end
+
+    test "revoking is refused where it refuses member, and the admin stays one" do
+      %{user: user} = sign_up_fixture()
+      {:ok, %{membership: %Membership{level: :owner}}} = Organisations.grant_instance_admin(user)
+      before = Repo.aggregate(Entry, :count)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoMember)
+
+      assert {:error, {:level_refused, :no_member}} = Organisations.revoke_instance_admin(user)
+      assert %Membership{level: :owner} = membership(user)
+      assert Repo.aggregate(Entry, :count) == before
+    end
+  end
 end

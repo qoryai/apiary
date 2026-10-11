@@ -66,8 +66,9 @@ revoking an invitation, making a new link for one (`invitation.renew`), suspendi
 activating (`member.suspend`, `member.activate`) are **actions over people**: asked of the membership they are about, whose level decides,
 or of the invitation, which is at member: an invitation is an email address and nothing
 else, and its person joins as a member, whom an owner makes an admin or an owner
-afterwards. An owner takes them on anyone, within the last-owner rule, but suspends and
-activates admins and members only, never another owner; an admin takes them on a member
+afterwards, at a level the edition does not refuse (An edition's part, below). An owner
+takes them on anyone, within the last-owner rule, but suspends and activates admins and
+members only, never another owner; an admin takes them on a member
 and on any invitation, never on an owner or an admin. Nobody suspends or activates their
 own membership, whatever their level. Asked of a workspace or the organisation, as a page
 asks whether to show a button at all, the role alone answers; the context function asks
@@ -133,6 +134,12 @@ may:
 - give the level an invitation's person joins at, or refuse the acceptance
   (`c:Apiary.Edition.accepting/3`), and add to it once the membership is made
   (`c:Apiary.Edition.accepted/4`);
+- refuse a level in an organisation, with a reason (`c:Apiary.Edition.level_refusal/4`,
+  `Apiary.Access.level_refusal/4`): an invitation, its acceptance, a change of level and
+  the release commands that grant and revoke an instance admin each refuse it, the
+  People page offers only the levels it refuses none of (`Apiary.Access.grantable_levels/1`)
+  and says a refusal in the edition's words (`c:ApiaryWeb.Edition.level_refusal_sentence/2`);
+  a membership keeps the level it holds (The lock order, below, says where it is asked);
 - refuse a deletion or a purge, and hear of each (Marked for deletion, below).
 
 ## The instance's admins
@@ -378,6 +385,14 @@ The modes keep a row that only names another out of it:
   the allowance it was counted against, locks that allowance's row the same way, then
   the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
   (`action:`) runs inside its own transaction, which may hold the allowance's row already.
+- A level given, by a change of level, an invitation, its acceptance or a release
+  command, is asked of the edition (`c:Apiary.Edition.level_refusal/4`, `lock: :share`)
+  once the change holds the organisation rows (with the owners' memberships for a change
+  of level and the release commands, the allowance's row for an invitation), and before
+  it writes the membership and holds the account or the invitation. The edition may hold
+  rows of its own `FOR SHARE` then, memberships of other organisations among them, never
+  one of the organisation the change writes: two changes of level in one organisation,
+  each by a person on the other, then never wait on each other at once.
 - An invitation's acceptance, and a sign-up with an invitation, let the edition hold the
   organisation first, more strongly if it will (`c:Apiary.Edition.accepting/3`), then hold
   it `FOR SHARE`, before the account and the invitation, so the organisation's marking,

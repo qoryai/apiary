@@ -35,12 +35,16 @@ defmodule Apiary.Edition do
     of use: `active_accounts/2`, `active_organisations/2`, `account_refusal/1`.
   - **Places**: `places/1`, the organisations a person reaches.
   - **Invitations**: `accepting/3`, `accepted/4`.
-  - **Members**: `membership_changed/5`.
+  - **Members**: `membership_changed/5`, `level_refusal/4`.
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0` and
     `features_of/3` (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
+
+  **The test seam.** A test may have a stub answer some callbacks in its own processes
+  (`put_test_stub/1`), as an edition that narrows the core would, while the configured
+  edition answers every other call.
   """
 
   alias Apiary.Accounts.{Scope, User}
@@ -239,6 +243,27 @@ defmodule Apiary.Edition do
               new :: %Membership{}
             ) :: :ok | {:error, term}
 
+  @doc """
+  Why `level` may not be given in `organisation` by `scope`, or nil when it may: the
+  edition's reason, an atom, which the pages say in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). `scope` is who gives it: the person
+  who changes a level or invites, the person who accepts an invitation, nil for a sign-up
+  with one, whose account is not made yet, and the instance for a release command. Every
+  way the core gives a level asks it (`Apiary.Access.level_refusal/4`), and a page offers
+  no level it refuses (`Apiary.Access.grantable_levels/1`). The core's answer is nil.
+
+  With `lock: :share` it is asked inside the transaction of the change, in the lock order
+  of docs/access.md: after the core holds the organisation rows `FOR SHARE`, with those
+  `c:places_to_lock/1` names (the allowance's row `FOR NO KEY UPDATE` for an invitation),
+  and, for a change of level and the release commands, the organisation's owners'
+  memberships `FOR UPDATE`; before the membership changed or made is written, and before
+  the account and the invitation are held. The edition may hold rows of its own
+  `FOR SHARE` then, memberships of another organisation among them, but never a
+  membership of `organisation`, which the change writes after. Without `lock:` a page
+  asks what to offer, and nothing is held.
+  """
+  @callback level_refusal(Scope.t() | nil, %Organisation{}, level, keyword) :: nil | atom
+
   # Deletion
 
   @doc """
@@ -327,6 +352,7 @@ defmodule Apiary.Edition do
     accepting: 3,
     accepted: 4,
     membership_changed: 5,
+    level_refusal: 4,
     deletion_refusal: 2,
     deletion_changed: 4,
     deletion_tables: 0,
@@ -370,10 +396,67 @@ defmodule Apiary.Edition do
   @spec module() :: module
   def module, do: @module
 
-  # One function per callback, which asks the configured module.
+  # One function per callback, which asks the configured module, or a test's stub that
+  # answers it (`put_test_stub/1`).
   for {name, arity} <- @callbacks do
     args = Macro.generate_arguments(arity, __MODULE__)
     @doc false
-    def unquote(name)(unquote_splicing(args)), do: @module.unquote(name)(unquote_splicing(args))
+    def unquote(name)(unquote_splicing(args)),
+      do: answering(unquote(name), unquote(arity)).unquote(name)(unquote_splicing(args))
   end
+
+  ## The test seam
+
+  @test_stub {__MODULE__, :test_stub}
+  @stubbed {__MODULE__, :stubbed}
+
+  @doc """
+  put_test_stub/1 has `stub` answer, for a test, each callback it exports, of this
+  behaviour and of `ApiaryWeb.Edition`, in the calling
+  process and the processes that have it among their `$callers` (a `Task`, a LiveView
+  under test), and in no other; the configured edition (`module/0`) answers the rest,
+  and a stub that narrows the edition's answer asks it there. Tests that set different
+  stubs run at once (`async: true`). Until a test sets one, no call looks for a stub.
+  `:ok`.
+  """
+  @spec put_test_stub(module) :: :ok
+  def put_test_stub(stub) when is_atom(stub) do
+    Code.ensure_loaded!(stub)
+    unless :persistent_term.get(@stubbed, false), do: :persistent_term.put(@stubbed, true)
+    Process.put(@test_stub, stub)
+    :ok
+  end
+
+  defp answering(name, arity), do: answering(name, arity, @module)
+
+  @doc false
+  # The module that answers `name/arity`: the test's stub that exports it, else `module`.
+  # `ApiaryWeb.Edition` asks it too, so one stub answers callbacks of both.
+  @spec answering(atom, arity, module) :: module
+  def answering(name, arity, module) do
+    with true <- :persistent_term.get(@stubbed, false),
+         stub when is_atom(stub) and not is_nil(stub) <- test_stub(),
+         true <- function_exported?(stub, name, arity) do
+      stub
+    else
+      _no_stub -> module
+    end
+  end
+
+  # The stub a test set in this process, or in the nearest of its callers that set one.
+  defp test_stub do
+    Enum.find_value([self() | Process.get(:"$callers", [])], fn
+      pid when pid == self() -> Process.get(@test_stub)
+      pid -> caller_stub(pid)
+    end)
+  end
+
+  defp caller_stub(pid) when is_pid(pid) do
+    case Process.info(pid, {:dictionary, @test_stub}) do
+      {{:dictionary, @test_stub}, stub} when is_atom(stub) and stub != :undefined -> stub
+      _unset_or_gone -> nil
+    end
+  end
+
+  defp caller_stub(_name), do: nil
 end

@@ -1110,7 +1110,8 @@ defmodule Apiary.Organisations do
     Ecto.Multi.new()
     |> Ecto.Multi.run(:level, fn repo, _changes ->
       with {:ok, level} <- Edition.accepting(repo, invitation, nil),
-           :ok <- lock_open_organisation(invitation) do
+           :ok <- lock_open_organisation(invitation),
+           :ok <- grantable_on_accept(nil, invitation, level) do
         {:ok, level}
       else
         {:error, _reason} -> no_longer_valid(user_changeset)
@@ -1542,12 +1543,15 @@ defmodule Apiary.Organisations do
 
   @doc """
   set_member_level/3 changes a person's level (`member.change_level`), which only an owner
-  may: to owner, admin or member. Demoting the organisation's last owner is refused,
-  `{:error, :last_owner}`. The edition is told, inside the transaction, once the entry is
-  written (`c:Apiary.Edition.membership_changed/5`, `:level`).
+  may: to owner, admin or member, unless the edition refuses that level there,
+  `{:error, {:level_refused, reason}}` (`Apiary.Access.level_refusal/4`). Demoting the
+  organisation's last owner is refused, `{:error, :last_owner}`. The edition is told,
+  inside the transaction, once the entry is written
+  (`c:Apiary.Edition.membership_changed/5`, `:level`).
   """
   @spec set_member_level(Scope.t(), Ecto.UUID.t(), Membership.level() | String.t()) ::
-          {:ok, %Membership{}} | {:error, :not_found | :forbidden | :last_owner | term}
+          {:ok, %Membership{}}
+          | {:error, :not_found | :forbidden | :last_owner | {:level_refused, atom} | term}
   def set_member_level(%Scope{} = scope, membership_id, level) do
     level = normalise_level(level)
 
@@ -1556,6 +1560,7 @@ defmodule Apiary.Organisations do
         with :ok <- lock_owners(scope),
              {:ok, membership} <- get_member(scope, membership_id),
              :ok <- Access.authorize(scope, :"member.change_level", membership),
+             :ok <- ensure_grantable(scope, scope.organisation, level, membership.level),
              :ok <- ensure_not_last_owner(membership, level),
              {:ok, changed} <-
                membership |> Membership.changeset(%{level: level}) |> Repo.update(),
@@ -1761,6 +1766,21 @@ defmodule Apiary.Organisations do
       membership_topic(user_id),
       {:membership_changed, %{organisation_id: organisation_id}}
     )
+  end
+
+  # Whether `scope` may give `level` in `organisation` (`Apiary.Access.level_refusal/4`),
+  # asked inside the change's transaction at the place the lock order gives it: after the
+  # organisation rows and the owners' memberships, before the membership is written and
+  # the account is held. A level a membership holds already, `held`, is not given anew.
+  defp ensure_grantable(scope, organisation, level, held \\ nil)
+
+  defp ensure_grantable(_scope, _organisation, level, level), do: :ok
+
+  defp ensure_grantable(scope, %Organisation{} = organisation, level, _held) do
+    case Access.level_refusal(scope, organisation, level, lock: :share) do
+      nil -> :ok
+      reason -> {:error, {:level_refused, reason}}
+    end
   end
 
   # A deleted account holds no membership, so an owner here is a person; the account is
@@ -1980,19 +2000,25 @@ defmodule Apiary.Organisations do
 
   `{:ok, %{membership: membership, was: level, granted?: boolean}}`, `was` the level they
   had, nil for none, and `granted?` false when nothing changed;
-  `{:error, :no_instance_organisation}` before the instance's first sign-up, and
-  `{:error, :not_found}` for an account deleted meanwhile.
+  `{:error, :no_instance_organisation}` before the instance's first sign-up,
+  `{:error, :not_found}` for an account deleted meanwhile, and
+  `{:error, {:level_refused, reason}}` where the edition refuses the level
+  (`Apiary.Access.level_refusal/4`).
   """
   @spec grant_instance_admin(%User{}, Scope.origin()) ::
           {:ok, %{membership: %Membership{}, was: Membership.level() | nil, granted?: boolean}}
-          | {:error, :no_instance_organisation | :not_found | term}
+          | {:error, :no_instance_organisation | :not_found | {:level_refused, atom} | term}
   def grant_instance_admin(%User{id: user_id}, origin \\ nil) do
     fn ->
+      admin = Access.instance_admin_level()
+
+      # The level is asked before the account is held, as the lock order has it, of the
+      # level the person holds now; the membership is read again under the account's lock.
       with {:ok, scope} <- instance_scope(origin),
            :ok <- lock_owners(scope),
+           held = instance_membership(scope, user_id),
+           :ok <- ensure_grantable(scope, scope.organisation, admin, held && held.level),
            :ok <- lock_person(user_id) do
-        admin = Access.instance_admin_level()
-
         membership = instance_membership(scope, user_id)
 
         cond do
@@ -2043,12 +2069,14 @@ defmodule Apiary.Organisations do
 
   `{:ok, membership}`; `{:error, :last_owner}` for its last owner, whose account is not
   deleted: the instance keeps an admin. `{:error, :not_owner}` for an account that is not
-  an owner of it, and `{:error, :no_instance_organisation}` before the instance's first
-  sign-up.
+  an owner of it, `{:error, :no_instance_organisation}` before the instance's first
+  sign-up, and `{:error, {:level_refused, reason}}` where the edition refuses member
+  (`Apiary.Access.level_refusal/4`).
   """
   @spec revoke_instance_admin(%User{}, Scope.origin()) ::
           {:ok, %Membership{}}
-          | {:error, :no_instance_organisation | :not_owner | :last_owner | term}
+          | {:error,
+             :no_instance_organisation | :not_owner | :last_owner | {:level_refused, atom} | term}
   def revoke_instance_admin(%User{id: user_id}, origin \\ nil) do
     fn ->
       with {:ok, scope} <- instance_scope(origin),
@@ -2056,6 +2084,7 @@ defmodule Apiary.Organisations do
            membership = instance_membership(scope, user_id),
            true <- Access.instance_admin_membership?(membership) || {:error, :not_owner},
            :ok <- ensure_not_last_owner(membership, :member),
+           :ok <- ensure_grantable(scope, scope.organisation, :member, membership.level),
            {:ok, member} <- membership |> Membership.changeset(%{level: :member}) |> Repo.update(),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"instance_admin.revoke", member, %{
@@ -2144,7 +2173,9 @@ defmodule Apiary.Organisations do
   by `url_fun.(token)`: the invitation is sent from the workspace, and grants it. An
   invitation is the address and nothing else: its person joins as a member, and an owner
   changes their level afterwards; `attrs` gives `email` and nothing else is read. An owner
-  or an admin invites; `{:error, :forbidden}` for a member.
+  or an admin invites; `{:error, :forbidden}` for a member. The edition may refuse the
+  level, member, `{:error, {:level_refused, reason}}` (`Apiary.Access.level_refusal/4`),
+  asked once the organisation's row is locked.
 
   **With mail** (`Apiary.Mail.configured?/0`) the link is emailed, `{:ok, invitation}`, and
   the inviter's account is confirmed, as signing in with a mailed link confirms it:
@@ -2193,7 +2224,8 @@ defmodule Apiary.Organisations do
              | :forbidden
              | :unconfirmed
              | :delivery_failed
-             | :delivery_failed_pending}
+             | :delivery_failed_pending
+             | {:level_refused, atom}}
   def invite_member(%Scope{} = scope, attrs, url_fun) when is_function(url_fun, 1) do
     %Scope{user: inviter, organisation: organisation, workspace: workspace} = scope
     {changeset, token} = new_invitation(scope, attrs)
@@ -2207,7 +2239,7 @@ defmodule Apiary.Organisations do
          :ok <- ensure_confirmed(inviter, mail?),
          {:ok, invitation} <-
            Repo.transact(fn ->
-             write_invitation(scope, changeset, :"member.invite", organisation)
+             write_invitation(scope, changeset, :"member.invite", organisation, :member)
            end) do
       hand_over(scope, invitation, token, url_fun, mail?)
     end
@@ -2462,10 +2494,20 @@ defmodule Apiary.Organisations do
 
   # The invitation and its entry, counted against `allowance`, inside the caller's
   # transaction.
-  defp write_invitation(%Scope{organisation: organisation} = scope, changeset, action, allowance) do
+  # `level`, the level the invitation gives as the core makes it, is asked of the edition
+  # once the allowance's row is locked (`Apiary.Access.level_refusal/4`); an edition's own
+  # invitation, nil, is asked at its acceptance, where its level is known.
+  defp write_invitation(
+         %Scope{organisation: organisation} = scope,
+         changeset,
+         action,
+         allowance,
+         level \\ nil
+       ) do
     with %Ecto.Changeset{valid?: true} = changeset <-
            refuse_existing_member(changeset, organisation),
          :ok <- lock_allowance(allowance),
+         :ok <- if(level, do: ensure_grantable(scope, organisation, level), else: :ok),
          %Ecto.Changeset{valid?: true} = changeset <-
            changeset
            |> refuse_over_daily_limit(allowance)
@@ -2820,7 +2862,8 @@ defmodule Apiary.Organisations do
   @doc """
   Accepts an invitation on behalf of a signed-in user, the scope's: a membership at the
   level the edition gives (`c:Apiary.Edition.accepting/3`), a member unless it says
-  otherwise, which it may refuse, `{:error, :invalid}`; what the edition adds once the
+  otherwise, which it may refuse, `{:error, :invalid}`, as is a level it refuses there
+  (`Apiary.Access.level_refusal/4`); what the edition adds once the
   membership exists (`c:Apiary.Edition.accepted/4`); the invitation deleted; and the audit
   entry of `invitation.accept`, by the user, in the workspace it was sent from, which
   names the membership it became. Takes the URL token or the invitation
@@ -2860,6 +2903,7 @@ defmodule Apiary.Organisations do
             # first and is seen; then the account, then the invitation.
             with {:ok, level} <- Edition.accepting(Repo, invitation, user),
                  :ok <- lock_open_organisation(invitation),
+                 :ok <- grantable_on_accept(here, invitation, level),
                  {:ok, claimed} <- lock_person_then_claim(user, invitation),
                  {:ok, membership} <-
                    Repo.insert(membership_changeset(invitation.organisation, user, level)),
@@ -2887,6 +2931,17 @@ defmodule Apiary.Organisations do
     Repo.one(from o in Organisation, where: o.id == ^id, select: o.id, lock: "FOR SHARE")
 
     if in_use?(id), do: :ok, else: {:error, :invalid}
+  end
+
+  # The level an invitation's acceptance gives, unless the edition refuses it there
+  # (`Apiary.Access.level_refusal/4`), asked of the person who accepts, nil for a sign-up,
+  # once the organisation is held and before the account is; refused as an invitation
+  # that is no longer valid is.
+  defp grantable_on_accept(scope, %Invitation{organisation: organisation}, level) do
+    case ensure_grantable(scope, organisation, level) do
+      :ok -> :ok
+      {:error, {:level_refused, _reason}} -> {:error, :invalid}
+    end
   end
 
   # The person who accepts, while their account is not deleted, held `FOR SHARE`: the

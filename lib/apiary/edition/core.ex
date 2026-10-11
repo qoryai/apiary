@@ -111,6 +111,9 @@ defmodule Apiary.Edition.Core do
   def membership_changed(_repo, _scope, _event, _old, _new), do: :ok
 
   @impl true
+  def level_refusal(_scope, _organisation, _level, _opts), do: nil
+
+  @impl true
   def deletion_refusal(_what, %Organisation{id: id}) do
     if id == Apiary.Edition.instance_organisation_id(), do: :instance_organisation
   end

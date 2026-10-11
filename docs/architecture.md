@@ -188,7 +188,8 @@ may reference, and a membership goes with its organisation and with its account.
 - An invitation is an email address and the workspace it was sent from, and nothing
   else: no level and no message. Accepting it makes a membership at member, unless the
   edition gives another level (`c:Apiary.Edition.accepting/3`); an owner changes the
-  level afterwards. The invitations a person sent stay when their level changes and when
+  level afterwards. Each is refused a level the edition refuses there
+  (`Apiary.Access.level_refusal/4`), none in the core's edition. The invitations a person sent stay when their level changes and when
   they leave or are removed, as the organisation's.
 - A change of a level, and the end of a suspension, are told to the edition inside their
   transaction, once the entry is written (`c:Apiary.Edition.membership_changed/5`).
@@ -349,7 +350,10 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
-  hear of a change of a level or the end of a suspension (`membership_changed/5`).
+  hear of a change of a level or the end of a suspension (`membership_changed/5`); refuse
+  a level in an organisation, with a reason, which every way the core gives a level asks,
+  the People page offering only the others (`level_refusal/4`), and say the refusal in
+  its own words (`c:ApiaryWeb.Edition.level_refusal_sentence/2`).
 - **Deletion**: refuse a deletion or a purge (`deletion_refusal/2`), hear of each
   marking, cancelling and purge (`deletion_changed/4`), and add tables to the purge's
   walk, purged before the core's (`deletion_tables/0`).

@@ -282,7 +282,14 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who
   reaches it and at what level under People, read there and managed in the
-  organisation's People.
+  organisation's People. An edition may refuse a level in an organisation, with a reason
+  (`c:Apiary.Edition.level_refusal/4`, `Apiary.Access.level_refusal/4`): an invitation,
+  its acceptance, a change of level and the release commands that grant and revoke an
+  instance admin each refuse it, asked in the lock order inside their transaction, and
+  People offers only the levels it refuses none of (`Apiary.Access.grantable_levels/1`)
+  and says a refusal in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). A test may have a stub answer some of
+  the edition's callbacks in its own processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an
