@@ -1447,10 +1447,12 @@ page has no breadcrumb of its own.
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
   "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
-  meta line and the rail as in the timeline's item. None names who or
-  what ended the run. Any other code is the run's starter's, shown as given with spaces
-  for underscores: "no longer needed". The quiet period reads in whole hours, else whole
-  minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
+  meta line and the rail as in the timeline's item. A run whose starter sent its outcome
+  with no state reads "the starter gave no outcome" in the meta line, the rail and the
+  preview. None names who or what ended the run. Any other code is the run's starter's,
+  shown as given with spaces for underscores: "no longer needed". The quiet period reads
+  in whole hours, else whole minutes, else seconds: 1800 seconds is "no activity for 30
+  minutes".
 - **The rail's State and Exit.** State is the state's dot and word, with "Registered only"
   under Pending for a run that registered, or "Ping only" for a run that only pinged,
   stored before the registration replaced the ping, and the end reason's words under it. Exit, on a session's run whose exit was

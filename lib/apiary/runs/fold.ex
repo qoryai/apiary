@@ -58,7 +58,13 @@ defmodule Apiary.Runs.Fold do
   lower-case letters, digits and `_`, and anything else is absent. An exit that maps to
   lost sets `lost_at` to the exit's time. A run that did not start, `dev.qory.run.refused`,
   is failed, its `reason` the refusal's code, and has no exit time; an exit decides over
-  it. Either is final: no start or heartbeat folded after it changes the state.
+  it. Either is final: no start or heartbeat folded after it changes the state. The state
+  and reason the exit means are kept as `exit_state` and `exit_reason` too, and the
+  refusal's time as `refused_at`, nil once an exit decides over it, in either order.
+
+  The run's starter's outcome (`Apiary.Runs.Outcome`), stored on the run and not folded,
+  decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
+  applies it, so its state and reason are the run's, and the exit's stay beside them.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are Forager's
   own, the record. `last_heartbeat_at` is when the heartbeat with the highest sequence
@@ -145,6 +151,8 @@ defmodule Apiary.Runs.Fold do
   # its time limit, no activity, its run credential expired, or its starter ended it.
   @cancelled_reasons ~w(timeout quiet credential_expired stopped run_ended_at_issuer)
   @streams ~w(terminal stdout stderr)
+  # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
+  @outcome_states ~w(succeeded failed cancelled)
 
   defstruct run: %{},
             latest: %{},
@@ -197,8 +205,35 @@ defmodule Apiary.Runs.Fold do
       |> Enum.reduce(acc, &event(&2, &1))
       |> count_beat()
 
-    %{acc | log_chunks: Enum.reverse(acc.log_chunks)}
+    %{acc | run: outcome(acc.run), log_chunks: Enum.reverse(acc.log_chunks)}
   end
+
+  @doc """
+  `run` with its starter's outcome applied: given an outcome (`outcome_state`, from
+  `Apiary.Runs.Outcome`), its state decides the run's (`succeeded` is completed, `failed`
+  failed, `cancelled` cancelled), its reason the run's `reason` (nil when it gave none),
+  and the run is not lost; with none, `run` as it is. What the exit said stays beside it:
+  `exit_state`, `exit_reason`, `exit_code`, `signal` and `exited_at`, and so does a
+  refusal's `refused_at`.
+
+  The last step of every fold, and what the outcome's own write and a rebuild's reset
+  apply, so the outcome decides whenever it arrives, before the exit or after it, and a
+  rebuild gives the same run.
+  """
+  @spec outcome(map()) :: map()
+  def outcome(%{outcome_state: outcome} = run) when outcome in @outcome_states do
+    Map.merge(run, %{
+      state: outcome_run_state(outcome),
+      reason: Map.get(run, :outcome_reason),
+      lost_at: nil
+    })
+  end
+
+  def outcome(run), do: run
+
+  defp outcome_run_state("succeeded"), do: "completed"
+  defp outcome_run_state("failed"), do: "failed"
+  defp outcome_run_state("cancelled"), do: "cancelled"
 
   defp event(acc, %{type: @ping, data: data} = event) do
     offset = Liveness.clock_offset(received_at(event), event.time)
@@ -357,10 +392,13 @@ defmodule Apiary.Runs.Fold do
 
       Map.merge(run, %{
         state: state,
+        exit_state: state,
         exited_at: event.time,
         exit_code: integer(data, "exit_code", -@int4..@int4),
         signal: string(data, "signal", 64),
         reason: reason,
+        exit_reason: reason,
+        refused_at: nil,
         quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8),
         lost_at: if(state == "lost", do: event.time)
@@ -368,13 +406,20 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
-  # A run that did not start is failed, with the refusal's code; an exit decides over it, in
-  # whichever order the two are folded.
+  # A run that did not start is failed, with the refusal's code, and keeps when it was
+  # refused; an exit decides over it, in whichever order the two are folded. The outcome,
+  # applied after, sets the state and reason, and leaves `refused_at`.
   defp event(acc, %{type: @refused, data: data} = event) do
     ranked(acc, event, fn run ->
       if exited?(run),
         do: run,
-        else: Map.merge(run, %{state: "failed", reason: code(data, "code"), lost_at: nil})
+        else:
+          Map.merge(run, %{
+            state: "failed",
+            reason: code(data, "code"),
+            lost_at: nil,
+            refused_at: event.time
+          })
     end)
   end
 

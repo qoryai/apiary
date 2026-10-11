@@ -14,20 +14,30 @@ defmodule ApiaryWeb.Contract.EventsController do
   one that holds a `dev.qory.ping` or a `dev.qory.run.registered`, `Apiary.Runs.Batch`)
   is `400` `invalid_request`; a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; then
-  `Apiary.Runs.Ingest`: a run whose events retention has pruned is `410`, even for a
-  delivery already recorded; any other delivery already recorded is `202` again; anything
-  else is stored and answered `202`, with nothing projected yet. A run starts by its
-  registration (`ApiaryWeb.Contract.RegistrationController`), which the instance limit
-  admits; a batch is held to no limit.
+  `Apiary.Runs.Ingest`: a run bound to another node than the key's (`Apiary.Runs.Sender`)
+  is `409` `wrong_node`, the whole batch refused and nothing of it stored; a run whose
+  events retention has pruned is `410`, even for a delivery already recorded; any other
+  delivery already recorded is `202` again; anything else is stored and answered `202`,
+  with nothing projected yet. A run starts by its registration
+  (`ApiaryWeb.Contract.RegistrationController`), which the instance limit admits; a batch
+  is held to no limit.
 
   Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202` and `410`
   carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery
   answer carries, and, for a workspace whose policy somebody has made,
   `X-Qory-Run-Configuration`, the digest of the run configuration for the run's target
   (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which is how a run
-  learns that its policy changed. A workspace nobody has given a policy is served no
-  policy: its runs' registrations are answered `{"version":1}`, the answers to their
-  batches carry no `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
+  learns that its policy changed.
+
+  A `202` has no body, but for a run whose starter has given its outcome
+  (`Apiary.Runs.Outcome`) and whose `dev.qory.run.exited` has not arrived: then its body
+  is `application/json`, `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`,
+  `reason` left out when the outcome gave none, and the answer's signature covers it as it
+  covers any body. The answer to the batch that carries the exit has none.
+
+  A workspace nobody has given a policy is served no policy: its runs' registrations are
+  answered `{"version":1}`, the answers to their batches carry no
+  `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
   reported is stored on the delivery and on the run. Errors are short JSON and never
   repeat anything sent. The body, the signature and the headers are never logged.
   """
@@ -45,13 +55,16 @@ defmodule ApiaryWeb.Contract.EventsController do
       conn
       |> put_resp_header("x-qory-configuration", Configuration.digest(access_key))
       |> put_run_configuration(result[:run_configuration_digest])
-      |> send_resp(status, "")
+      |> send_answer(status, result[:end])
     else
       :invalid_request ->
         conn |> put_status(400) |> json(%{error: "invalid_request"})
 
       {:error, :not_found} ->
         conn |> put_status(404) |> json(%{error: "not_found"})
+
+      {:error, :wrong_node} ->
+        conn |> put_status(409) |> json(%{error: "wrong_node"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})
@@ -64,6 +77,18 @@ defmodule ApiaryWeb.Contract.EventsController do
     do: put_resp_header(conn, "x-qory-run-configuration", digest)
 
   defp put_run_configuration(conn, _digest), do: conn
+
+  # The run's end, on a 2xx while the run has one; an empty body otherwise, as always.
+  defp send_answer(conn, status, %{state: state} = run_end) when status in 200..299 do
+    members = [{"state", state}] ++ if(run_end.reason, do: [{"reason", run_end.reason}], else: [])
+    body = Jason.encode!(%{"end" => Jason.OrderedObject.new(members)})
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(status, body)
+  end
+
+  defp send_answer(conn, status, _run_end), do: send_resp(conn, status, "")
 
   defp batch(raw_body) do
     case Batch.parse(raw_body) do

@@ -37,6 +37,7 @@ defmodule Apiary.Runs.FoldTest do
     policy_digest: nil,
     run_configuration_digest: nil,
     lost_at: nil,
+    refused_at: nil,
     cost_usd: nil,
     terminal_cols: nil,
     terminal_rows: nil
@@ -1442,6 +1443,52 @@ defmodule Apiary.Runs.FoldTest do
       end
     end
 
+    test "keeps when the run was refused, until an exit decides over it, in either order" do
+      refused = event(2, "run.refused", %{"code" => "image_unknown"})
+      exit = exited(18, %{"state" => "cancelled", "reason" => "no_longer_needed"})
+
+      assert Fold.fold(@run, [refused]).run.refused_at == at(2)
+
+      for events <- [[refused, exit], [exit, refused]] do
+        assert Fold.fold(@run, events).run.refused_at == nil
+
+        {run, _latest} =
+          Enum.reduce(events, {@run, %{}}, fn event, {run, latest} ->
+            %{run: run, latest: latest} = Fold.fold(run, [event], latest)
+            {run, latest}
+          end)
+
+        assert run.refused_at == nil
+      end
+    end
+
+    test "the starter's outcome sets the state of a refused run and keeps its refusal" do
+      refused = event(2, "run.refused", %{"code" => "image_unknown"})
+
+      for {outcome, state} <- [
+            {"succeeded", "completed"},
+            {"failed", "failed"},
+            {"cancelled", "cancelled"}
+          ] do
+        given = Map.merge(@run, %{outcome_state: outcome, outcome_reason: nil})
+
+        # The outcome there before the refusal is folded, and given after it.
+        before = Fold.fold(given, [refused]).run
+
+        later =
+          Fold.fold(@run, [refused]).run
+          |> Map.merge(%{outcome_state: outcome, outcome_reason: nil})
+          |> Fold.outcome()
+
+        for run <- [before, later] do
+          assert {run.state, run.reason, run.refused_at, run.exited_at} ==
+                   {state, nil, at(2), nil}
+
+          refute Apiary.Runs.Run.refused?(run)
+        end
+      end
+    end
+
     test "ranks: the refusal with the highest sequence decides" do
       assert Fold.ranks("dev.qory.run.refused") == ["dev.qory.run.refused"]
 
@@ -1453,6 +1500,70 @@ defmodule Apiary.Runs.FoldTest do
 
       assert run.reason == "image_unknown"
     end
+  end
+
+  describe "the starter's outcome" do
+    # Stored on the run, not folded: the fold applies it after every pass.
+    defp given(state, reason),
+      do: Map.merge(@run, %{outcome_state: state, outcome_reason: reason})
+
+    test "decides the state and reason in any order, the exit's facts kept beside it" do
+      started = event(2, "run.started", %{"opened_by" => "session"})
+      beat = event(3, "run.heartbeat", %{"elapsed_seconds" => 1})
+
+      exited =
+        event(18, "run.exited", %{"state" => "failed", "exit_code" => 1, "reason" => "oom"})
+
+      events = [started, beat, exited]
+      run = given("succeeded", "all_checks_passed")
+
+      # All at once, and one at a time in every order: the same run.
+      whole = Fold.fold(run, events).run
+
+      for order <- permutations(events) do
+        stepped =
+          Enum.reduce(order, {run, %{}}, fn event, {run, latest} ->
+            %{run: run, latest: latest} = Fold.fold(run, [event], latest)
+            {run, latest}
+          end)
+          |> elem(0)
+
+        assert Map.take(stepped, ~w(state reason exit_state exit_reason exit_code lost_at)a) ==
+                 Map.take(whole, ~w(state reason exit_state exit_reason exit_code lost_at)a)
+      end
+
+      assert {whole.state, whole.reason} == {"completed", "all_checks_passed"}
+      assert {whole.exit_state, whole.exit_reason, whole.exit_code} == {"failed", "oom", 1}
+    end
+
+    test "maps its states, gives no reason when it gave none, and is never lost" do
+      lost = event(18, "run.exited", %{"state" => "failed", "reason" => "session_lost"})
+
+      for {state, run_state} <- [
+            {"succeeded", "completed"},
+            {"failed", "failed"},
+            {"cancelled", "cancelled"}
+          ] do
+        run = Fold.fold(given(state, nil), [lost]).run
+        assert {run.state, run.reason, run.lost_at} == {run_state, nil, nil}
+        assert run.exit_state == "lost"
+      end
+    end
+
+    test "with none, the exit decides as before, and the exit's state is kept" do
+      exited = event(18, "run.exited", %{"state" => "succeeded", "exit_code" => 0})
+      run = Fold.fold(@run, [exited]).run
+
+      assert {run.state, run.exit_state, run.reason, run.exit_reason} ==
+               {"completed", "completed", nil, nil}
+
+      assert Fold.outcome(@run) == @run
+    end
+
+    defp permutations([]), do: [[]]
+
+    defp permutations(list),
+      do: for(item <- list, rest <- permutations(list -- [item]), do: [item | rest])
   end
 
   describe "dev.qory.session.result" do

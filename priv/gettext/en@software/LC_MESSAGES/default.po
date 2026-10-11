@@ -3373,6 +3373,31 @@ msgstr ""
 msgid "Cancelled the organisation's deletion"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime ended with %{signal}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime exited %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime has not exited yet"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said; the runtime's exit was not recorded"
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Cancelled."
@@ -5060,6 +5085,31 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Failed with exit %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime ended with %{signal}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime exited %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime has not exited yet"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said; the runtime's exit was not recorded"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -10560,6 +10610,31 @@ msgstr ""
 msgid "Subjects"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime ended with %{signal}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime exited %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime has not exited yet"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said; the runtime's exit was not recorded"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Suggestions"
@@ -14044,6 +14119,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "the starter gave no outcome"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

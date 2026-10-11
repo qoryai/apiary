@@ -238,10 +238,10 @@ The answers, in order; the first that applies is the answer:
 | `400` | the body is not a registration, or breaks a rule | `{"error":"invalid_request","names":["<member>"]}`, `"body"` for a member the contract does not name or a body that is no object |
 | `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
 | `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
-| `200` | a repeat: the same bytes again, under the same access key | the answer the registration was given |
+| `200` | a repeat: the same bytes again, under any active key of the node that registered the run | the answer the registration was given |
 | `410` | retention has pruned the run's events | empty |
 | `409` | a new instance beyond its node's instance limit; the node counts the start refused | `{"error":"instance_limit"}` |
-| `409` | the run id is taken: registered with other bytes or under another access key, or holding events that came without a registration | `{"error":"run_id_used"}` |
+| `409` | the run id is taken: registered with other bytes or by another node, or holding events that came without a registration | `{"error":"run_id_used"}` |
 | `503` | the run configuration could not be read, or the run could not be stored | `{"error":"unavailable"}` |
 | `200` | registered | the run configuration |
 
@@ -304,12 +304,12 @@ configuration in force now for the labels the run registered with.
 | `200` | the workspace has a policy | the run configuration |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | the run is not one this access key registered: an unknown run id, a run another key registered, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `404` | the run is not one this key's node registered: an unknown run id, a run another node registered, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
 | `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
-The reload is answered only to the access key that registered the run, and only by the
-labels it registered with; a run whose events retention has pruned is reloaded all the
+The reload is answered only to the active keys of the node that registered the run, and
+only by the labels it registered with; a run whose events retention has pruned is reloaded all the
 same. To the gateway any
 answer but `200` is a reload that failed: the policy in force stays, and it tries again on
 the next answer. The endpoint never answers `304`.
@@ -319,6 +319,52 @@ A reload on a workspace with no policy, or a policy removed mid-run, answers `40
 policy removed mid-run never loosens a run that's already started, and the next run gets
 the new state when it registers.
 <!-- /feature -->
+
+### A run's outcome: `POST /v1/runs/<run_id>/outcome`
+
+A signed POST, `Content-Type: application/json`, from the run's starter: how the run went,
+in its own words. Any active key of the node or node pool the run is bound to may send it
+(Who may send for a run, below). The body:
+
+```json
+{"version": 1, "state": "succeeded", "reason": "all_checks_passed", "time": "2026-10-11T12:30:00Z"}
+```
+
+`version` is `1`, and `time`, when the body was built, in UTC to the whole second, is
+required. `state` is `succeeded`, `failed` or `cancelled`; left out, the outcome is
+`cancelled` with the reason `stopped`. `reason` is an open code, a lower-case letter and
+then up to 63 lower-case letters, digits and `_`; one that is not, or that is one of
+Forager's own reasons, is dropped, and the outcome kept without it.
+
+The answers, in order; the first that applies is the answer:
+
+| Status | When | Body |
+|---|---|---|
+| `413` | the body is over 4 KiB, or cannot be read | `{"error":"payload_too_large"}` |
+| `415` | the media type is not `application/json` | `{"error":"unsupported_media_type"}` |
+| `400` | a header the signature depends on is sent twice | `{"error":"bad_request"}` |
+| `401` | any failure of authentication | `{"error":"unauthorized"}` |
+| `429` | the key's rate for registrations is spent, which outcomes share; with `Retry-After` | `{"error":"rate_limited"}` |
+| `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | the body is not an outcome, or breaks a rule | `{"error":"invalid_request","names":["<member>"]}` |
+| `401` | `time` is more than 300 seconds from the server's clock | `{"error":"unauthorized"}` |
+| `404` | the key may not post (`run.post_events`) | `{"error":"not_found"}` |
+| `200` | a repeat: the same outcome again, the same state and reason after the rules above, whatever its bytes or `time`, under any active key of the run's node; nothing changes | `{"version":1}` |
+| `404` | the workspace holds no run of this id, the run is another node's, or retention has pruned its events | `{"error":"not_found"}` |
+| `409` | the run was given another outcome, another state or reason: each run gets one | `{"error":"outcome_given"}` |
+| `503` | the outcome could not be stored | `{"error":"unavailable"}` |
+| `200` | stored | `{"version":1}` |
+
+Every answer after the first `401` is signed, but the `401` for a `time` outside the
+window, and the `200` carries
+`X-Qory-Configuration`. The outcome sets the run's state and reason whenever it arrives,
+before the run's `dev.qory.run.exited` or after it: `succeeded` is Completed, `failed`
+Failed and `cancelled` Cancelled. What the exit said, its exit code, its signal and
+Forager's reason, stays on record beside it, and the run page says both when they differ:
+"Succeeded, as its starter said; the runtime exited 1". Until the run's
+`dev.qory.run.exited` arrives, each signed `2xx` to its batches carries `end` with the
+outcome's state and reason (Events, below).
 
 ### Events: `POST /v1/events`
 
@@ -335,9 +381,11 @@ this order, and the first refusal that applies is the answer:
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit, or holds `dev.qory.ping` or `dev.qory.run.registered` | `{"error":"invalid_request"}` |
+| `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
+| `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
-| `202` | stored | empty |
+| `202` | stored | empty, or the run's end (below) |
 
 To the gateway a `2xx` means accepted, `410` means send nothing more for this run, and anything
 else is retried with backoff until the run ends.
@@ -350,6 +398,16 @@ else is retried with backoff until the run ends.
   A run opens with its registration, never with an event: a batch that holds
   `dev.qory.ping` is refused, and so is one that holds `dev.qory.run.registered`, which
   stays in the gateway's own record.
+- **Who may send for a run.** A run is bound to the node or node pool whose key
+  registered it, or whose key's batch opened it. Its batches, its heartbeats among them,
+  its reloads, a repeat of its registration and its outcome are taken from that node's
+  active keys alone, so a second key of the node, while one is replaced, keeps the run
+  going. A batch of another node's run is `409 wrong_node`, and a reload of one `404`.
+- **The end.** Once the run's starter has given its outcome, every `2xx` to the run's
+  batches carries it, `application/json`, until the run's `dev.qory.run.exited` arrives:
+  `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, `reason` left out when the
+  outcome gave none. The answer to the batch that carries the exit has none. The answer's
+  signature covers the body, as it covers every body.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again, or `410` for a run retention has
   pruned, and nothing is stored.

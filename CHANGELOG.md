@@ -124,7 +124,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
   mode and on a locked rule have no scope at hand, and keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
-  revision 1: discovery, a run's registration and reload, events and enrolment): the
+  revision 1: discovery, a run's registration, reload and outcome, events and enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and
   how the run ended.
 - A run's registration. A run opens with a signed `POST /v1/runs`, whose body holds its
@@ -133,15 +133,37 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   in `names`; the answer is its run configuration, `{"version":1}` where the workspace
   serves no policy, always with `X-Qory-Run-Configuration`, an `ETag` and
   `X-Qory-Configuration`. The same bytes
-  sent again under the same access key get the same answer; the run id under another key,
-  or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
+  sent again under any active key of the node that registered the run get the same answer;
+  the run id from another node, or with other bytes, is `409` `run_id_used`; a run whose events retention pruned is
   `410`; a run configuration that cannot be read is `503`, never no policy. No run is
   stored on any refusal. `GET /v1/runs/<run_id>` reloads a run's configuration for the
-  access key that registered it, by its registration's labels, and is `404` for any other
-  key, for a run its batches created, and where the workspace serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
+  active keys of the node that registered it, by its registration's labels, and is `404`
+  for a key of any other node, for a run its batches created, and where the workspace serves no policy. Discovery's `run` section is always there, `…/v1/runs`. A batch that
   holds `dev.qory.ping` or `dev.qory.run.registered` is `400` `invalid_request`: a
   Forager that opens its runs with a ping starts none, so Forager and Qory Apiary are run
   from the same release.
+- A run's outcome, from its starter. `POST /v1/runs/<run_id>/outcome`, signed by any
+  active key of the run's node, says how the run went:
+  `{"version":1, "state":"succeeded", "reason":"all_checks_passed", "time":"…"}`. The state
+  is `succeeded`, `failed` or `cancelled`, and none is `cancelled` with the reason
+  `stopped`; a reason that is not a code, or is one of Forager's own, is dropped and the
+  outcome kept; a `time` more than 300 seconds from the server's clock is `401`. The
+  outcome sets the run's state and reason whenever it arrives, before the run's exit or
+  after it, and the exit's code, signal and reason stay on record beside it. Each run gets
+  one: the same state and reason again, whatever the bytes or the `time`, get the same
+  answer, `200` `{"version":1}`, and change nothing; another state or reason is `409`
+  `outcome_given`. A run of another node, one the workspace does not hold, and one whose
+  events retention pruned are `404` `not_found`. Where the outcome's state differs from
+  what the run's exit said, the run page says both, for example "Succeeded, as its starter
+  said; the runtime exited 1". A run a gateway opened, with no runtime of its own, and a
+  run refused at its start say the outcome's state alone: "Succeeded, as its starter
+  said". An outcome sent with no state reads "the starter gave no outcome" after the
+  state.
+- The end of a run, in the answers to its batches. Once a run's starter has given its
+  outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
+  carries `end` with the outcome's state and reason, as `application/json`,
+  `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, under the answer's
+  signature. Every other answer to a batch has an empty body, as before.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. The runs list's Runtime column says "no session". Its page says how it ended in
   words after its state, as every run's does; its Terminal tab is the terminal, empty,
@@ -524,6 +546,16 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   inline, in an `on…=` attribute or as a `javascript:` address, is refused by the
   browser. A reverse proxy must pass the header on, neither stripping nor replacing it.
 
+### Changed
+
+- A run takes its batches, heartbeats among them, its reloads and its repeated
+  registration from the active keys of one node: the node or node pool whose key
+  registered it, or whose key's batch opened it. Before, any active key of the workspace
+  could post events to any of its runs. A second key of the same node, as while a key is
+  replaced, keeps the run going; a batch from a key of another node is a signed `409`
+  `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
+  `404`.
+
 ### Migrations
 
 The baseline, on an empty database, creates the schema an instance has, whatever its
@@ -611,6 +643,18 @@ set NULL when that row is purged while the choice stays `named`, with the check
 `nodes_gateway_choice_check`, an index, and the trigger `nodes_gateway_is_a_gateway`,
 which refuses a reference to a row that is not a gateway in use. Rolled back, every node is
 direct again.
+`20261011140000_record_a_run_s_outcome` adds a run's outcome, `runs.outcome_state`,
+`outcome_reason`, `outcome_time`, `outcome_received_at` and `outcome_digest` (32 bytes),
+and what its exit said, `runs.exit_state` and `exit_reason`, all NULL for every existing
+row, with a check that a run holds the outcome whole or not at all and one on the exit's
+state, both added NOT VALID, so neither scans the table under a lock that blocks writes.
+`exit_state` and `exit_reason` are filled as a run's exit is folded, and for an earlier
+run by a rebuild (`mix apiary.rebuild`). `20261011140100_validate_a_run_s_outcome_checks`
+validates the two checks.
+`20261011160000_keep_when_a_run_was_refused` adds `runs.refused_at`, the time of a run's
+`dev.qory.run.refused` while no exit decides over it, with no check, NULL for every
+existing row. Existing rows need no backfill: the column changes only what a run given an
+outcome says, and a rebuild (`mix apiary.rebuild`) fills it for any run refused before.
 
 ### Upgrading
 

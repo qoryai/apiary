@@ -17,14 +17,14 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   seconds from the server's clock is `401`, unsigned, as a GET's stale timestamp is; then
   `Apiary.Runs.Registration.register/3`: a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; the same bytes again under
-  the same key are given the same answer; a run whose events retention has pruned is
+  any active key of the node that registered the run are given the same answer; a run whose events retention has pruned is
   `410`, with no body; an instance beyond its node's limit is `409` `instance_limit`; a
   run id the workspace already holds otherwise is `409` `run_id_used`; else the run is
   stored and answered `200`.
 
-  **A reload** is answered only for a run the same access key registered
-  (`Apiary.Runs.Registration.fetch/2`); anything else is `404`, a run its batches created
-  among them, and so is a workspace that
+  **A reload** is answered only for a run the key's own node registered, under any of its
+  active keys (`Apiary.Runs.Registration.fetch/2`, `Apiary.Runs.Sender`); anything else is
+  `404`, a run another node registered and a run its batches created among them, and so is a workspace that
   serves no run configuration: a policy removed mid-run never loosens a run already
   started.
 

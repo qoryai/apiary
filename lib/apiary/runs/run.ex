@@ -124,6 +124,31 @@ defmodule Apiary.Runs.Run do
     field :registration_answer_digest, :string
     field :registration_time, :utc_datetime_usec
 
+    # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
+    # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
+    # `time` its body was built at, on the starter's clock; when this server took it; and
+    # the SHA-256 of the body's bytes. A repeat, the same state and reason again, changes
+    # none of them. All
+    # nil for a run that was given none. Not folded: a rebuild keeps them, and the fold
+    # reads them, so the outcome decides `state` and `reason` whenever it arrives
+    # (`Apiary.Runs.Fold`).
+    field :outcome_state, :string
+    field :outcome_reason, :string
+    field :outcome_time, :utc_datetime_usec
+    field :outcome_received_at, :utc_datetime_usec
+    field :outcome_digest, :binary
+
+    # What the run's `dev.qory.run.exited` said, folded and kept beside an outcome, which
+    # decides `state` and `reason` once there is one: the state the exit means
+    # (`Apiary.Runs.Fold.exit_state/2`) and Forager's reason. Nil until an exit is folded.
+    field :exit_state, :string
+    field :exit_reason, :string
+
+    # When the run's `dev.qory.run.refused` said it did not start, folded, and nil once an
+    # exit decides over it, in whichever order the two are folded. The outcome leaves it as
+    # it is: a run refused and then given an outcome still never started.
+    field :refused_at, :utc_datetime_usec
+
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
     has_many :connections, Apiary.Runs.Connection
@@ -184,11 +209,34 @@ defmodule Apiary.Runs.Run do
   @doc """
   Whether the run was refused at its start and never started: failed with no exit time, as
   the fold stores a `dev.qory.run.refused` (`Apiary.Runs.Fold`), its `reason` the refusal's
-  code, if it gave one. An exit decides over a refusal, so a run with an exit time is not.
+  code, if it gave one. An exit decides over a refusal, so a run with an exit time is not,
+  and so does its starter's outcome, so a run given one is not either.
   """
   @spec refused?(t() | map()) :: boolean()
-  def refused?(%{state: "failed", exited_at: nil}), do: true
+  def refused?(%{state: "failed", exited_at: nil} = run),
+    do: is_nil(Map.get(run, :outcome_state))
+
   def refused?(_run), do: false
+
+  @doc """
+  Whether the run's state is its starter's outcome and says something other than its exit
+  did: given an outcome, and either no exit folded yet, or one whose state differs
+  (`exit_state`). A run whose outcome agrees with its exit reads as the exit alone, and so
+  does one whose exit was folded before `exit_state` was kept, which has none.
+  """
+  @spec outcome_differs?(t() | map()) :: boolean()
+  def outcome_differs?(%{outcome_state: outcome} = run) when is_binary(outcome) do
+    case Map.get(run, :exited_at) do
+      nil ->
+        true
+
+      _exited_at ->
+        exit_state = Map.get(run, :exit_state)
+        not is_nil(exit_state) and exit_state != Map.get(run, :state)
+    end
+  end
+
+  def outcome_differs?(_run), do: false
 
   @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
   @spec no_session?(t() | map()) :: boolean()

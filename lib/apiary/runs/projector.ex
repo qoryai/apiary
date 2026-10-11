@@ -50,7 +50,7 @@ defmodule Apiary.Runs.Projector do
     state forager_version contract_version opened_by runtime runtime_version command args
     dir interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
-    target_system target_path started_at exited_at exit_code
+    target_system target_path started_at exited_at exit_code exit_state exit_reason refused_at
     signal reason quiet_seconds duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
     clock_offset_ms
     policy_digest run_configuration_digest lost_at cost_usd
@@ -163,11 +163,18 @@ defmodule Apiary.Runs.Projector do
     Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
 
     blank = Map.take(%Run{}, @rebuilt_fields)
+    # The starter's outcome is not folded: it decides the state the run starts again from,
+    # as it decides it after every pass (`Apiary.Runs.Fold.outcome/1`).
+    blank =
+      Map.merge(
+        blank,
+        Fold.outcome(%{current | state: "pending", reason: nil, lost_at: nil})
+        |> Map.take([:state, :reason, :lost_at])
+      )
 
     current
     |> Ecto.Changeset.change(blank)
     |> Ecto.Changeset.change(
-      state: "pending",
       projected_sequence: Run.projected_from(current),
       target_id: nil,
       denied_count: 0

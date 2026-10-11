@@ -299,13 +299,14 @@ defmodule Apiary.Runs.RegistrationTest do
       assert node_of(key).instance_limit_refused == 0
     end
 
-    test "the run id with any other bytes, or under another key, is used",
+    test "the run id with any other bytes, or by another node, is used",
          %{scope: scope, key: key} do
       body = body()
-      assert {:ok, _} = register(key, body)
+      assert {:ok, %{run: run}} = register(key, body)
 
-      # Other labels; the same labels at another time; the same bytes under another key of
-      # the same node, and under a key of another node.
+      # Other labels; the same labels at another time; the same bytes under a key of
+      # another node. The same bytes under another key of the same node are a repeat: a key
+      # replaced while the run waits.
       other_labels = Map.put(body, "labels", %{"forge" => "git.example.com"})
       later = Map.put(body, "time", now_z(1))
       %{access_key: same_node} = contract_key_fixture(scope, node: node_of(key))
@@ -313,7 +314,9 @@ defmodule Apiary.Runs.RegistrationTest do
 
       assert register(key, other_labels) == {:error, :run_id_used}
       assert register(key, later) == {:error, :run_id_used}
-      assert register(same_node, body) == {:error, :run_id_used}
+      assert register(same_node, later) == {:error, :run_id_used}
+      assert {:ok, %{run: again, repeated: true}} = register(same_node, body)
+      assert again.id == run.id
       assert register(other_node, body, "i_other") == {:error, :run_id_used}
       assert length(runs()) == 1
     end
@@ -671,7 +674,7 @@ defmodule Apiary.Runs.RegistrationTest do
     end
 
     @tag needs: :security
-    test "is the configuration in force for the run's registration labels, for its own key alone",
+    test "is the configuration in force for the run's registration labels, for its own node alone",
          %{scope: scope, key: key} do
       shop = target_fixture(scope, "git.example.com", "acme/shop")
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
@@ -697,15 +700,17 @@ defmodule Apiary.Runs.RegistrationTest do
 
       assert digest == own.digest
 
-      # Another key of the same node, a key of another node, and another workspace's key
-      # find no such run.
+      # Another key of the same node reads the same: a key replaced while the run is live.
       %{access_key: same_node} = contract_key_fixture(scope, node: node_of(key))
+      assert {:ok, %{digest: ^digest}} = Registration.fetch(same_node, run.run_id)
+
+      # A key of another node, and another workspace's key, find no such run.
       %{access_key: other_node} = contract_key_fixture(scope)
       %{scope: other} = sign_up_fixture()
       {:ok, _} = Policy.allow(other, nil, %{host: "api.example"})
       %{access_key: other_workspace} = contract_key_fixture(other)
 
-      for other_key <- [same_node, other_node, other_workspace] do
+      for other_key <- [other_node, other_workspace] do
         assert Registration.fetch(other_key, run.run_id) == {:error, :not_found}
       end
     end
