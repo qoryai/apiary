@@ -2040,12 +2040,12 @@ defmodule ApiaryWeb.RunComponents do
   The preview of a run beside the runs list, from 1920 px: one pane with a rule at its
   left and no card, the run's state and its title, a line of what it ran on, when it
   started and for how long, its denials, and the last lines of its log as plain text in the
-  terminal's dark box, the one box in it; Open run leads to its page. `preview` is nil while
-  it loads.
+  terminal's dark box, the one box in it, for a reader who may read the log
+  (`run.read_log`, `log?`); Open run leads to its page. `preview` is nil while it loads.
   """
   attr :id, :string, required: true
   attr :scope, :map, required: true
-  attr :preview, :map, default: nil, doc: "%{run:, lines:, denials:, quiet:}"
+  attr :preview, :map, default: nil, doc: "%{run:, log?:, lines:, denials:, quiet:}"
   attr :shared, :any, default: nil
 
   def run_preview(assigns) do
@@ -2138,7 +2138,7 @@ defmodule ApiaryWeb.RunComponents do
             {cost_words(@preview.run.cost_usd)}
           </dd>
         </dl>
-        <div class="q-pv-term">
+        <div :if={@preview.log?} class="q-pv-term">
           <div class="q-pv-bar">
             <span class="flex-1">
               {if @preview.run.state in Apiary.Runs.Run.alive_states(),
