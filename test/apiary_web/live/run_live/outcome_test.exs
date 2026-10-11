@@ -198,24 +198,88 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
     end
   end
 
-  test "an outcome sent with no state reads the starter gave no outcome", %{
+  test "an outcome sent with no state says no sentence, only the starter gave no outcome", %{
     conn: conn,
     scope: scope
   } do
-    started = {1, "run.started", started_data()}
+    session = {1, "run.started", started_data()}
+    gateway = {1, "run.started", gateway_started_data()}
 
-    for exit <- [
-          [],
-          [{2, "run.exited", %{"state" => "failed", "exit_code" => 1}}],
-          [{2, "run.exited", %{"state" => "cancelled", "reason" => "stopped"}}]
+    for events <- [
+          [session],
+          [session, {2, "run.exited", %{"state" => "failed", "exit_code" => 1}}],
+          [session, {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0}}],
+          [session, {2, "run.exited", %{"state" => "failed", "signal" => "SIGKILL"}}],
+          [session, {2, "run.exited", %{"state" => "cancelled", "reason" => "stopped"}}],
+          [gateway],
+          [gateway, {2, "run.exited", %{"reason" => "quiet", "quiet_seconds" => 60}}],
+          [{2, "run.refused", %{"code" => "image_unknown"}}]
         ] do
-      run = projected(scope, [started | exit], given("cancelled", "stopped"))
+      run = projected(scope, events, given("cancelled", "stopped"))
       assert %Run{state: "cancelled", reason: "stopped"} = run
+      assert RunComponents.outcome_sentence(run) == nil
       assert RunComponents.reason_words(run) == "the starter gave no outcome"
 
-      {:ok, lv, _html} = page(conn, scope, run)
+      alive = render_component(&RunComponents.alive/1, state: run.state, run: run)
+      refute alive =~ "as its starter said"
+      assert alive =~ "Cancelled"
+
+      {:ok, lv, html} = page(conn, scope, run)
+      refute html =~ "as its starter said"
+      refute has_element?(lv, "#run-outcome")
+      assert has_element?(lv, "#run-meta #run-state", "Cancelled")
       assert has_element?(lv, "#run-reason", "the starter gave no outcome")
       assert has_element?(lv, "#rail-reason", "the starter gave no outcome")
+    end
+  end
+
+  test "an outcome sent with no state is announced as a cancelled run", %{
+    conn: conn,
+    scope: scope
+  } do
+    run = projected(scope, [{1, "run.started", started_data()}], %{})
+    assert %Run{state: "running"} = run
+    {:ok, lv, _html} = page(conn, scope, run)
+
+    run =
+      run
+      |> Ecto.Changeset.change(
+        Map.merge(given("cancelled", "stopped"), %{state: "cancelled", reason: "stopped"})
+      )
+      |> Apiary.Repo.update!()
+
+    Apiary.Runs.broadcast_changed(run)
+    html = render(lv)
+
+    assert render(element(lv, "#run-announcer")) =~
+             "Run cancelled: the starter gave no outcome."
+
+    refute html =~ "as its starter said"
+    assert has_element?(lv, "#run-reason", "the starter gave no outcome")
+  end
+
+  test "every other outcome keeps its sentence" do
+    exited = %{opened_by: "session", exit_state: "lost", exited_at: DateTime.utc_now()}
+
+    for {outcome, reason, state, word} <- [
+          {"succeeded", nil, "completed", "Succeeded"},
+          {"failed", "checks_failed", "failed", "Failed"},
+          {"cancelled", nil, "cancelled", "Cancelled"},
+          {"cancelled", "no_longer_needed", "cancelled", "Cancelled"}
+        ] do
+      run =
+        Map.merge(exited, %{
+          state: state,
+          outcome_state: outcome,
+          outcome_reason: reason,
+          exit_code: 1
+        })
+
+      assert RunComponents.outcome_sentence(run) ==
+               "#{word}, as its starter said; the runtime exited 1"
+
+      assert RunComponents.outcome_sentence(%{run | opened_by: "gateway"}) ==
+               "#{word}, as its starter said"
     end
   end
 

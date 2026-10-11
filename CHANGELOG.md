@@ -157,8 +157,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   what the run's exit said, the run page says both, for example "Succeeded, as its starter
   said; the runtime exited 1". A run a gateway opened, with no runtime of its own, and a
   run refused at its start say the outcome's state alone: "Succeeded, as its starter
-  said". An outcome sent with no state reads "the starter gave no outcome" after the
-  state.
+  said". A run whose starter sent its outcome with no state says no such sentence: it
+  reads as any cancelled run, "Cancelled", with "the starter gave no outcome" after it.
 - The end of a run, in the answers to its batches. Once a run's starter has given its
   outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
   carries `end` with the outcome's state and reason, as `application/json`,

@@ -880,9 +880,14 @@ defmodule ApiaryWeb.RunComponents do
   runtime's exit was not recorded". A run a gateway opened, with no session
   (`Apiary.Runs.Run.no_session?/1`), has no runtime of its own, and a run refused at its
   start (`refused_at`) never started one: each says the outcome's state alone, "Succeeded,
-  as its starter said". Nil for any other run, which reads as it always has.
+  as its starter said". Nil for an outcome sent with no state, stored as cancelled with the
+  reason `stopped`: the starter said no state, and the run reads as any cancelled run, its
+  reason "the starter gave no outcome" (`reason_words/1`). Nil for any other run, which
+  reads as it always has.
   """
   @spec outcome_sentence(map() | nil) :: String.t() | nil
+  def outcome_sentence(%{outcome_state: "cancelled", outcome_reason: "stopped"}), do: nil
+
   def outcome_sentence(%{outcome_state: state} = run) when is_binary(state) do
     if Run.outcome_differs?(run), do: outcome_sentence(state, runtime_exit(run))
   end
