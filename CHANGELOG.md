@@ -193,9 +193,13 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   attached, the run's batches, heartbeats and reloads are the gateway's alone, under any
   of its active keys, from the instance that attached it, and a batch from any other key,
   or from another instance, is a signed `409` `wrong_gateway`, a reload `404`; a
-  gateway's batch never opens a run. A run attached before its instance was kept takes
-  the instance of the next attach, batch or heartbeat its gateway sends for it, and holds
-  to it from then on. Its outcome stays its node's. The run is held to the
+  gateway's batch never opens a run. Once the run's exit has arrived, it was lost after
+  its attach, or its events were pruned, a batch or heartbeat from any instance of the
+  gateway is answered as the attaching instance's would be, a resend deduplicated and a
+  pruned run `410`; an outcome alone leaves the run to its attaching instance until its
+  exit arrives, and reloads stay that instance's. A run attached before its instance was
+  kept takes the instance of the next attach, batch or heartbeat its gateway sends for it
+  before its sending ends, and holds to it from then on. Its outcome stays its node's. The run is held to the
   interval its attach announced, from its attach, and a run its gateway never attaches is
   lost at the end of its window. The console does not show a run's gateway or its attach.
 - A run through a gateway belongs to the node that registered it and its instance, never

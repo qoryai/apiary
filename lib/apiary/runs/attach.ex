@@ -59,7 +59,10 @@ defmodule Apiary.Runs.Attach do
   The instance is the attach's signed `X-Qory-Instance-Id`, given in `meta`. It is stored
   on the run beside the attach's answer (`runs.attach_instance_id`), and from then on the
   run's batches, heartbeats and reloads are taken from that instance alone
-  (`Apiary.Runs.Sender`).
+  (`Apiary.Runs.Sender`), until the run's sending ends: once its exit arrived, it was lost
+  after its attach, or its events were pruned, a batch from any instance of the gateway
+  is answered as the attaching instance's would be. Its reloads stay that instance's. The
+  attach itself is held to the answers above, an outcome's end included.
 
   The answer is the run configuration in force for the run's target, read under the
   run's own place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
@@ -72,8 +75,9 @@ defmodule Apiary.Runs.Attach do
   the run it would attach, or the attach finds the gateway deleted.
 
   No run is changed on any refusal. Once the run is attached, the batches, heartbeats and
-  reloads of the gateway's attaching instance are taken for it, and nobody else's
-  (`Apiary.Runs.Sender`).
+  reloads of the gateway's attaching instance are taken for it, and nobody else's, but for
+  a resend from another instance of the gateway once the run's sending has ended
+  (`Apiary.Runs.Sender.sending_ended?/1`).
   """
 
   import Ecto.Query, warn: false
