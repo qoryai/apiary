@@ -22,6 +22,12 @@ defmodule Apiary.Runs.Ingest do
   instance id it claimed (`Apiary.Nodes.placement/2`), both fixed from then on, and held
   to no limit; each delivery records its instance id too.
 
+  **Who may send.** A run's batches, its heartbeats among them, are taken only from the
+  active keys of the node or node pool it is bound to (`Apiary.Runs.Sender`): the node
+  whose key registered it, or whose key's batch opened it. A batch of a run of another
+  node is refused whole, `{:error, :wrong_node}`, and nothing of it is stored: a batch is
+  one run's, every event's subject the same.
+
   Nothing of the request's headers but the versions, the instance id and the run
   configuration digest is stored, and nothing of an event is logged: the insert of the
   events is kept out of the query log.
@@ -36,7 +42,7 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Accounts.Scope
   alias Apiary.Policy.Serving
   alias Apiary.Repo
-  alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
+  alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run, Sender}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @log "dev.qory.run.log"
@@ -66,9 +72,9 @@ defmodule Apiary.Runs.Ingest do
   the workspace serves a run configuration (nil when that could not be read) and
   `run_configuration_digest` is the digest in force for the run's target, for the
   answer's headers (nil for a workspace that is not managed, and when it could not be
-  read). `{:error, :unavailable}` when the batch could not be stored,
-  `{:error, :not_found}` when the key may not post (`run.post_events` in
-  `Apiary.Access`).
+  read). `{:error, :unavailable}` when the batch could not be stored, `{:error, :not_found}` when
+  the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
+  when the run is another node's (`Apiary.Runs.Sender`), with nothing stored.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -77,7 +83,7 @@ defmodule Apiary.Runs.Ingest do
   no configuration of its own and the baseline's is read after it.
   """
   @spec ingest(AccessKey.t(), Batch.t(), meta) ::
-          {:ok, map} | {:error, :unavailable | :not_found}
+          {:ok, map} | {:error, :unavailable | :not_found | :wrong_node}
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
@@ -123,7 +129,7 @@ defmodule Apiary.Runs.Ingest do
   # names the exception's module and nothing else: a Postgres message can
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
-    Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
+    Repo.transact(fn -> store(access_key, batch, meta, delivery_id, now) end)
   rescue
     exception ->
       Logger.error("a delivery could not be stored: #{inspect(exception.__struct__)}")
@@ -134,13 +140,18 @@ defmodule Apiary.Runs.Ingest do
     run = upsert_run(access_key, batch, meta, now)
 
     cond do
+      # Another node's run: refused whole, before anything of the batch is recorded, and
+      # the transaction rolls back.
+      not Sender.may_send?(run, access_key) ->
+        {:error, :wrong_node}
+
       # Retention deleted the run's events, and with them what a replay would be
       # deduplicated against: the workspace wants nothing more of this run.
       not is_nil(run.events_pruned_at) ->
-        gone(access_key, batch, meta, delivery_id, now)
+        {:ok, gone(access_key, batch, meta, delivery_id, now)}
 
       not new_delivery?(access_key, batch, meta, delivery_id, now) ->
-        %{result(202, run) | repeated: true}
+        {:ok, %{result(202, run) | repeated: true}}
 
       true ->
         {batch, pruned} = without_pruned_log(run, batch)
@@ -148,12 +159,13 @@ defmodule Apiary.Runs.Ingest do
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
-        %{
-          result(202, run)
-          | inserted: inserted,
-            duplicates: duplicates + pruned,
-            conflicts: conflicts
-        }
+        {:ok,
+         %{
+           result(202, run)
+           | inserted: inserted,
+             duplicates: duplicates + pruned,
+             conflicts: conflicts
+         }}
     end
   end
 

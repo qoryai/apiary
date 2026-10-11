@@ -32,15 +32,16 @@ defmodule Apiary.Runs.Registration do
   `register/3` stores the run. A key `Apiary.Access` does not let post (`run.post_events`)
   is `{:error, :not_found}`. Then, when several answers apply, the first of these is given:
 
-    1. a repeat: a run of this id that registered with the same bytes under the same access
-       key is given the answer it was given (`registration_answer_digest`), nothing stored
+    1. a repeat: a run of this id that registered with the same bytes, under any active
+       key of the node or node pool that registered it (`Apiary.Runs.Sender`), so a key
+       replaced while the run waits is answered too, is given the answer it was given (`registration_answer_digest`), nothing stored
        or admitted again. Once that configuration is no longer stored (its target was
        deleted), the repeat is given the configuration in force now for its labels;
     2. a run of this id whose events retention has pruned is `{:error, :gone}`;
     3. an instance beyond its node's limit (`Apiary.Nodes.admit/4`) is
        `{:error, :instance_limit}`, the refusal counted on the node;
-    4. any other run of this id, registered with other bytes or under another access key,
-       or created by its events without a registration, is `{:error, :run_id_used}`;
+    4. any other run of this id, registered with other bytes or by another node, or
+       created by its events without a registration, is `{:error, :run_id_used}`;
     5. a managed workspace whose run configuration cannot be read
        (`Apiary.Policy.Serving.fetch/2`) is `{:error, :unavailable}`: never a run without
        its policy;
@@ -60,7 +61,7 @@ defmodule Apiary.Runs.Registration do
   kept on the run, so a repeat is given the same answer.
 
   `fetch/2` is the reload: the run configuration in force for a run, read by its
-  registration's labels, for the access key that registered it alone.
+  registration's labels, for the active keys of the node that registered it alone.
 
   The run keeps its registration's `time` (`registration_time`), on the gateway's clock,
   from which the fold takes the clock offset of a run a gateway opened
@@ -76,7 +77,7 @@ defmodule Apiary.Runs.Registration do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Policy.{Render, RunConfiguration, Serving}
-  alias Apiary.Runs.{About, Batch, Run}
+  alias Apiary.Runs.{About, Batch, Run, Sender}
 
   # The body's members, by the names the contract gives them.
   @version "version"
@@ -264,7 +265,7 @@ defmodule Apiary.Runs.Registration do
   @doc """
   Registers the run of `registration` for the key (an access key, or its scope), in the
   order the moduledoc gives. `{:ok, answer}` with `run`, the run's row, `repeated`, whether
-  it had registered with the same bytes under the same key before, and the run
+  it had registered with the same bytes under a key of the same node before, and the run
   configuration it is given (`t:settings/0`). `{:error, reason}` with `:not_found`,
   `:gone`, `:instance_limit`, `:run_id_used` or `:unavailable`.
   """
@@ -326,9 +327,10 @@ defmodule Apiary.Runs.Registration do
   defp held(%Run{events_pruned_at: %DateTime{}}), do: {:error, :gone}
   defp held(%Run{} = run), do: {:ok, {:used, run}}
 
-  # The same bytes under the same access key: Forager's retry of the registration it sent.
+  # The same bytes under a key of the node that registered the run: Forager's retry of the
+  # registration it sent, under the key it holds now.
   defp repeat?(%Run{} = run, access_key, digest),
-    do: run.registration_digest == digest and run.access_key_id == access_key.id
+    do: run.registration_digest == digest and Sender.may_send?(run, access_key)
 
   # A repeat is given the answer the registration was given, as `answered/2` reads it,
   # nothing stored or admitted.
@@ -434,7 +436,7 @@ defmodule Apiary.Runs.Registration do
 
   # Two registrations of one run may arrive at once: the insert that loses waits for the
   # one that wins and inserts nothing, and the read after it sees the row, locked for the
-  # rest of the transaction. The loser is a repeat when its bytes and key are the
+  # rest of the transaction. The loser is a repeat when its bytes and node are the
   # winner's, and the run id is used otherwise, which rolls back.
   defp insert(access_key, registration, meta, digest, settings, now) do
     {inserted, _rows} =
@@ -519,7 +521,7 @@ defmodule Apiary.Runs.Registration do
   registered with.
 
   `{:error, :not_found}` for a run id the key's workspace does not hold, a run another
-  access key registered, a run that never registered (its batches created it), and a
+  node registered (`Apiary.Runs.Sender`), a run that never registered (its batches created it), and a
   workspace that serves no run configuration: nobody has made its policy, the
   `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`. That
   last is never the document of no policy, which would take the policy in force off a run
@@ -557,12 +559,11 @@ defmodule Apiary.Runs.Registration do
     _exception -> {:error, :unavailable}
   end
 
-  # Who may reload a run: the access key that registered it, and no other. A run its
-  # batches created, which never registered, and a run whose key is gone are reloaded by
-  # none.
-  defp reload_allowed?(%AccessKey{id: id}, %Run{access_key_id: id, registered_at: %DateTime{}})
-       when is_binary(id),
-       do: true
+  # Who may reload a run: an active key of the node that registered it, and no other. A run
+  # its batches created, which never registered, and a run whose node is gone are reloaded
+  # by none.
+  defp reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run),
+    do: Sender.may_send?(run, access_key)
 
   defp reload_allowed?(_access_key, _run), do: false
 

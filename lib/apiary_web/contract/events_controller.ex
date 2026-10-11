@@ -14,20 +14,24 @@ defmodule ApiaryWeb.Contract.EventsController do
   one that holds a `dev.qory.ping` or a `dev.qory.run.registered`, `Apiary.Runs.Batch`)
   is `400` `invalid_request`; a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; then
-  `Apiary.Runs.Ingest`: a run whose events retention has pruned is `410`, even for a
-  delivery already recorded; any other delivery already recorded is `202` again; anything
-  else is stored and answered `202`, with nothing projected yet. A run starts by its
-  registration (`ApiaryWeb.Contract.RegistrationController`), which the instance limit
-  admits; a batch is held to no limit.
+  `Apiary.Runs.Ingest`: a run bound to another node than the key's (`Apiary.Runs.Sender`)
+  is `409` `wrong_node`, the whole batch refused and nothing of it stored; a run whose
+  events retention has pruned is `410`, even for a delivery already recorded; any other
+  delivery already recorded is `202` again; anything else is stored and answered `202`,
+  with nothing projected yet. A run starts by its registration
+  (`ApiaryWeb.Contract.RegistrationController`), which the instance limit admits; a batch
+  is held to no limit.
 
   Every answer is signed (`ApiaryWeb.Contract.SignedAnswer`). Every `202` and `410`
   carries the digests in force: `X-Qory-Configuration`, the digest the key's discovery
   answer carries, and, for a workspace whose policy somebody has made,
   `X-Qory-Run-Configuration`, the digest of the run configuration for the run's target
   (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which is how a run
-  learns that its policy changed. A workspace nobody has given a policy is served no
-  policy: its runs' registrations are answered `{"version":1}`, the answers to their
-  batches carry no `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
+  learns that its policy changed.
+
+  A workspace nobody has given a policy is served no policy: its runs' registrations are
+  answered `{"version":1}`, the answers to their batches carry no
+  `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
   reported is stored on the delivery and on the run. Errors are short JSON and never
   repeat anything sent. The body, the signature and the headers are never logged.
   """
@@ -52,6 +56,9 @@ defmodule ApiaryWeb.Contract.EventsController do
 
       {:error, :not_found} ->
         conn |> put_status(404) |> json(%{error: "not_found"})
+
+      {:error, :wrong_node} ->
+        conn |> put_status(409) |> json(%{error: "wrong_node"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})

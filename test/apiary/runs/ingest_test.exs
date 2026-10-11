@@ -63,8 +63,9 @@ defmodule Apiary.Runs.IngestTest do
     assert [%Delivery{event_count: 1, inserted_count: 1}] = Repo.all(Delivery)
   end
 
+  # The other key is of the same node: a run takes batches from its own node's keys alone.
   test "the same delivery id under another key is another delivery", %{scope: scope, key: key} do
-    %{access_key: other} = access_key_fixture(scope)
+    %{access_key: other} = access_key_fixture(scope, node: key.node)
     {subject, [started]} = first_events()
     meta = %{contract_version: 1, delivery_id: Ecto.UUID.generate()}
 
@@ -73,7 +74,8 @@ defmodule Apiary.Runs.IngestTest do
   end
 
   test "the run keeps the key that first delivered it", %{scope: scope, key: key} do
-    %{access_key: other} = access_key_fixture(scope)
+    # A second key of the same node, as a key replaced while the run is live is.
+    %{access_key: other} = access_key_fixture(scope, node: key.node)
     {subject, [started]} = first_events()
 
     assert {:ok, %{run: %Run{id: id}}} = Ingest.ingest(key, batch!([beat(subject)]), @meta)
