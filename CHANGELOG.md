@@ -296,8 +296,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   one: Default gateway, offered only while a default resolves, Direct, or a gateway by
   name; a new one starts on Default gateway when one resolves. A node's About says where
   its choice leads, and its Access key tab, command page, Key for a node and Forager file
-  name the gateway its runs go through, with its URL; the command and the Forager file
-  point at Qory Apiary either way. A gateway's key enrols the gateway and registers no
+  name the gateway its runs go through, with its URL. The command and the Forager file
+  point at Qory Apiary through that gateway: the command, on its page and in the
+  overview's first-run box, carries `--via` and the gateway's URL, with a line under it
+  that a gateway whose certificate a private certificate authority signed needs
+  `--via-ca-file`, and the Forager file's lines carry `via` and its `url`
+  (`Apiary.AccessKeys.via_lines/1`), each "Point qory at Qory Apiary" step naming the
+  gateway. A gateway relays the enrolment unchanged, from its address, which the
+  enrolment's per-address limit counts for every machine behind it.
+  A gateway's key enrols the gateway and registers no
   run, and its Access key tab says so. The audit log calls a
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the names of the organisation's

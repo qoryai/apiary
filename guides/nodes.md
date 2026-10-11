@@ -39,7 +39,8 @@ starts on **Default gateway**. The choice decides where its runs go. Its **Overv
 About says where its choice leads, and its **Access key** tab, the command's page and its
 Forager file say that its runs go through that gateway, at its URL, and, while the
 gateway has no active key, that the gateway isn't connected. The command and the Forager
-file are the same either way: they point at Qory Apiary.
+file point at Qory Apiary, through that gateway: the command carries `--via` and the
+gateway's URL, and the Forager file a `via` line ([Behind a gateway](#behind-a-gateway)).
 
 Behind a gateway, a node holds its key, as any node does, and a node pool's runners
 hold none: the pool's key is with the run's starter, the system that starts its runs.
@@ -116,7 +117,10 @@ there; qory refuses a key ID or a public key set twice. With a generated key, se
 where the machine runs qory." Then four numbered steps:
 
 1. **Point qory at Qory Apiary.** In the Forager file, with **Copy lines**. It is required:
-   without it, `qory` ignores the three variables below.
+   without it, `qory` ignores the three variables below. Behind a gateway it reads **Point
+   qory at Qory Apiary, through edge-01.**, the lines carry `via` and its `url`, and it
+   adds "via sends every request to Qory Apiary through edge-01."; a pool's adds "A
+   starter that reaches Qory Apiary directly can leave via out."
 2. **Set Qory Apiary's public key.** `QORY_APIARY_PUBLIC_KEY`, a plain setting, with
    **Copy**. The same for every machine connected to this Qory Apiary.
 3. **Set the key's ID.** `QORY_ACCESS_KEY_ID`, a plain setting: with one active key, its
@@ -167,6 +171,43 @@ Qory Apiary's computer can reach, such as `http://localhost:4100`, the page says
 "Machines can't reach this address." and asks you to set `PUBLIC_URL` to the address
 machines use.
 
+#### Behind a gateway
+
+A node or a node pool whose choice leads to a gateway, `edge-01` at
+`https://edge.example.com` say, enrols through that gateway, on the command's page and in
+the overview's first-run box alike. The page says "The command connects build-01 by
+itself, through the gateway edge-01: …", and the command carries `--via` and the
+gateway's URL, before Qory Apiary's address:
+
+```sh
+qory access-key enrol --via https://edge.example.com https://apiary.example.com qec_…
+```
+
+`qory` sends the enrolment to the gateway, which passes it to Qory Apiary unchanged and
+passes Qory Apiary's signed answer back unchanged: the answer is signed for the machine's
+proof, so the gateway can't alter it. So a machine that reaches Qory Apiary only through
+the gateway is connected all the same. `qory` writes the gateway's address into the
+Forager file as `gateway.server.via.url`, beside the other lines, and sends every request
+to Qory Apiary through it.
+
+`qory` checks the gateway's certificate against the machine's system certificate
+authorities. Under the command, the page says "If edge-01's certificate is signed by a
+private certificate authority, add --via-ca-file and that authority's PEM file."
+`--via-certificate-sha256`, the SHA-256 of the gateway certificate's public key in
+standard base64, accepts only a certificate with that key, its chain still checked. Both
+go on the machine: Qory Apiary keeps neither.
+
+A pool's starter that reaches Qory Apiary only through the gateway enrols with `--print`
+and `--via` together, and its `forager.yaml` then needs `gateway.server.via.url` beside
+`gateway.server.url`. A starter that reaches Qory Apiary directly can leave `via` out.
+
+Qory Apiary counts enrolments per address, 1 a second and 10 at once, and an enrolment
+through a gateway comes from the gateway's address. So every machine behind one gateway
+shares that gateway's limit, and enrolling many machines at once through one gateway may
+need a retry. Past the limit the answer is an unsigned `429`: `qory` keeps the key it
+made, and the same command, run again within the code's 15 minutes, retries with it. The
+audit log records the gateway's address for the key's arrival.
+
 ### The Forager file
 
 **Forager file**, on an active key's card, opens the page **Forager file for build-01**:
@@ -176,10 +217,11 @@ description below). What it shows depends on how the key came:
 - A key connected with a command: the `server` lines the command wrote to
   `~/.config/qory/forager.yaml`, each marked whose it is: `url` (`# Qory Apiary`),
   `access_key_id` (`# this key`) and `apiary_public_key` (`# Qory Apiary's public key`).
-  Only the key ID is the key's; the address and the public key are Qory Apiary's, the
-  same for every machine connected to it. The page says the key's secret is on the
-  machine, in `~/.config/qory/access-key-secret`, where the command saved it. It has
-  never been on a screen.
+  Behind a gateway, the lines end with `via` and its `url`, marked `# the gateway
+  edge-01`. Only the key ID is the key's; the address and the public key are Qory
+  Apiary's, the same for every machine connected to it. The page says the key's secret
+  is on the machine, in `~/.config/qory/access-key-secret`, where the command saved it.
+  It has never been on a screen.
 - A generated key: "What build-01 needs, besides the secret. Nothing here is secret." Four
   numbered steps. **Keep the secret in a secret store**: it was shown once, when the key
   was generated, and belongs in `QORY_ACCESS_KEY_SECRET` in the secret store of the
@@ -187,7 +229,8 @@ description below). What it shows depends on how the key came:
   the key's ID**, `QORY_ACCESS_KEY_ID`, as a plain setting. **Set Qory Apiary's public
   key**, `QORY_APIARY_PUBLIC_KEY`, as a plain setting: the same for every machine
   connected to this Qory Apiary. **Point qory at Qory Apiary**: the lines the Forager
-  file needs, `gateway.server.url`.
+  file needs, `gateway.server.url`, and, behind a gateway, `gateway.server.via.url`,
+  under **Point qory at Qory Apiary, through edge-01.**
 
 ### For a CI
 
@@ -235,6 +278,11 @@ A fleet of short-lived CI runners is a node pool with one key.
         server:
           url: https://apiary.example.com
       ```
+
+      Behind a gateway, the step is **Point qory at Qory Apiary, through edge-01.**, its
+      lines end with `via:` and `url: https://edge.example.com`, and it adds "via sends
+      every request to Qory Apiary through edge-01." and, for a pool, "A starter that
+      reaches Qory Apiary directly can leave via out."
 
    Only the secret is shown once: it was made in your browser, Qory Apiary never received
    it, and it can't be shown again. Copy it into the secret store before you select
