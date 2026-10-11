@@ -260,8 +260,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   attached, not lost or ended, and within its attach window); the refusal names those
   nodes and runs. A run's registration or attach that meets the gateway's deletion
   waits for it, and is then refused as for a deleted gateway (`gateway_not_serving`,
-  `workspace_not_served`). After a deletion no node moves, and when no default resolves for the workspace any
-  more, the oldest gateway left becomes the default. Making, changing and deleting a
+  `workspace_not_served`). After a deletion no node moves, and when no default resolves
+  for the workspace any more, the oldest gateway left becomes the default. Making, changing and deleting a
   gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
   as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
   workspace's default gateway, where a node's choice leads, the workspaces a gateway may

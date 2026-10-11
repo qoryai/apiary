@@ -32,9 +32,9 @@ defmodule Apiary.Nodes do
   default resolves for its workspace becomes its default; `make_default_gateway/2` moves
   the mark. A gateway is deleted only when nothing points to it and no run through it is
   live or waiting (`Apiary.Gateways.delete_blockers/1`), and the deletion then marks the
-  oldest gateway left as the default when none resolves any more. Each of these takes the workspace's
-  gateway lock first (`Apiary.Gateways.lock/1`), and a mark that moves leaves an entry of
-  `node.edit` for each gateway it moved on or off.
+  oldest gateway left as the default when none resolves any more. Each of these takes the
+  workspace's gateway lock first (`Apiary.Gateways.lock/1`), and a mark that moves leaves
+  an entry of `node.edit` for each gateway it moved on or off.
 
   **Instances.** An instance is what Forager, under a node's access key, reports itself as
   (`Apiary.Nodes.Instance`): a claim, for display, the audit and the instance limit, never
@@ -336,9 +336,10 @@ defmodule Apiary.Nodes do
   waiting: otherwise `{:error, {:gateway_in_use, blockers}}`, which names the nodes and
   the runs (`Apiary.Gateways.delete_blockers/1`), and nothing changes. The runs are read
   with the gateway's row held `FOR UPDATE`, so a registration through it or an attach by
-  it that commits first is among them, and one that commits after finds it deleted. A deleted gateway loses its default mark; when no default resolves
-  any more for a workspace it served and gateways remain that may serve it, the oldest
-  of them at its level becomes the default, with its entry of `node.edit`. No node moves.
+  it that commits first is among them, and one that commits after finds it deleted. A
+  deleted gateway loses its default mark; when no default resolves any more for a
+  workspace it served and gateways remain that may serve it, the oldest of them at its
+  level becomes the default, with its entry of `node.edit`. No node moves.
   `{:error, changeset}` when the database refuses that mark, and nothing changes.
   """
   @spec delete_node(Scope.t(), Node.t()) ::

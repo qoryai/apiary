@@ -35,9 +35,9 @@ defmodule Apiary.Gateways do
   moves (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only when nothing
   points to it and no run goes through it (`delete_blockers/1`): no node names it, no node
   on `:default` resolves to it now, and no run through it is live or waiting. After a
-  deletion no node moves; when no default
-  resolves for a workspace any more and gateways remain that may serve it, the oldest of
-  them at the deleted gateway's level becomes the default (`oldest_at/2`).
+  deletion no node moves; when no default resolves for a workspace any more and gateways
+  remain that may serve it, the oldest of them at the deleted gateway's level becomes the
+  default (`oldest_at/2`).
 
   **The runs that hold a gateway.** A run goes through the gateway its registration
   resolved to (`gateway_id` of `Apiary.Runs.Run`), and holds it while it is:
@@ -51,8 +51,9 @@ defmodule Apiary.Gateways do
     now).
 
   These are the rules by which an attach finds a run ended or its window closed
-  (`Apiary.Runs.Attach`): a run that is neither live nor waiting can never be attached or
-  sent through the gateway again.
+  (`Apiary.Runs.Attach`). A lost run holds nothing, though a later heartbeat through the
+  gateway would bring it back while the gateway is in use; a deletion revokes the
+  gateway's keys, so nothing arrives through it after.
 
   **The lock.** The gateways of a workspace, their default mark and the choices of its
   nodes change under one lock per workspace (`lock/1`), taken first in the transaction,
