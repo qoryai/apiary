@@ -330,14 +330,15 @@ defmodule Apiary.ContractFixtures do
   @doc """
   A signed GET of `target`, a path with its query exactly as it is sent, as the gateway
   sends it: under `key_id`, signed with the Ed25519 `seed`, from the instance
-  `instance_id/0`, with `X-Qory-Contract-Version: 1`. Options: `:timestamp` (nil for
+  `instance_id/0`, with `X-Qory-Contract-Version: 1`. Options: `:timestamp` (the
+  contract's clock now, `ApiaryWeb.Contract.SignedRequest.now/0`, by default; nil for
   none, signed as an empty line), `:signature`, `:instance_id` (nil for none),
   `:contract_version` (nil for none, a list for each of its values), `:user_agent`,
   `:headers` (sent beside the others).
   """
   def signed_get(conn, key_id, seed, target, opts \\ []) do
     timestamp =
-      case Keyword.get(opts, :timestamp, System.os_time(:second)) do
+      case Keyword.get_lazy(opts, :timestamp, &ApiaryWeb.Contract.SignedRequest.now/0) do
         nil -> nil
         timestamp -> to_string(timestamp)
       end

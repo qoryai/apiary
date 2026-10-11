@@ -24,7 +24,7 @@ services:
   # The host the session asks for: a page over TLS, on the node's network and nowhere
   # else, under a name no resolver outside this job knows.
   upstream:
-    image: public.ecr.aws/docker/library/nginx:1.29-alpine
+    image: ghcr.io/qoryai/ci-images:nginx-1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
     volumes:
       - "./upstream/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
       - "${E2E_WORK:?}/tls:/etc/nginx/tls:ro"
