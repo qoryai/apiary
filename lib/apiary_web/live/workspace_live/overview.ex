@@ -1670,7 +1670,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     target = keyless_target(scope, counts, keys)
     may_key? = &Apiary.Access.can?(scope, &1, target)
-    through = target && Gateways.chosen(target)
+    # The gateway the target's choice leads to, its organisation loaded for the notice.
+    through = target && target |> Gateways.chosen() |> Apiary.Repo.preload(:organisation)
 
     %{
       nodes: counts.node + counts.pool,

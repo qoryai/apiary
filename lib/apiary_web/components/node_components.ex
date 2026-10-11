@@ -8,15 +8,16 @@ defmodule ApiaryWeb.NodeComponents do
   Access key tab's command page and the workspace overview's first-run box: the command
   (`enrol_command/3`), and the notice that machines can't reach a loopback address
   (`unreachable_server/1`). And what a node that chose a gateway is told wherever it is
-  told how to connect: the gateway its runs go through, at its URL (`through_gateway/1`),
-  and, under the command that enrols through it, the flag for a gateway whose certificate
-  a private authority signed (`via_ca_line/1`).
+  told how to connect: the gateway its runs go through, at its URL (`through_gateway/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
   ("3 of 10 running", "3 running"). One that runs nothing says when an instance of it was
   last seen, or, with no instance left, when one of its keys was last used, ticking in the
   browser (`seen_at/1`), or "Never seen".
+
+  Under the command that enrols through a gateway, both places say which flag a gateway
+  whose certificate a private authority signed needs (`via_ca_line/1`).
   """
   use ApiaryWeb, :html
 
