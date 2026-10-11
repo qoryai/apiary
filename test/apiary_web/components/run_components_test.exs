@@ -678,7 +678,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "the wall's own refusals, in either mode" do
       assert text(row(%{last_decision: "denied", last_rule: "wall:own-address"})) =~
-               "The wall refuses the machine's address, in either mode."
+               "The wall refuses link-local addresses and the machine's addresses, in either mode."
 
       assert text(
                row(%{
@@ -687,6 +687,78 @@ defmodule ApiaryWeb.RunComponentsTest do
                  last_path_rule: "wall:ambiguous-path"
                })
              ) =~ "The path can be read two ways. The wall denies it in either mode."
+    end
+
+    @host_form "The wall refuses a host that is neither a name nor an address in canonical form,"
+    @own_address "The wall refuses link-local addresses and the machine's addresses,"
+
+    defp wall_inline(host, rule \\ "wall:host-form") do
+      assigns = %{
+        event: %{
+          host: host,
+          port: 443,
+          method: "CONNECT",
+          decision: "denied",
+          rule: rule,
+          mode: "observe",
+          outcome: "refused",
+          at: ~U[2026-09-20 14:02:20.300Z]
+        }
+      }
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="e-hf" connection={@event} variant="inline" />
+      """)
+    end
+
+    test "the wall's refusals of a host's form and of the machine's addresses, bold inline" do
+      for {host, rule, bold} <- [
+            {"Files.CDN.example.", "wall:host-form", @host_form},
+            {"169.254.169.254", "wall:own-address", @own_address}
+          ] do
+        html = wall_inline(host, rule)
+        why = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-why")
+
+        assert text(LazyHTML.to_html(why)) == "Denied. #{bold} in either mode."
+        assert why |> LazyHTML.query("b") |> Enum.map(&LazyHTML.text/1) == ["Denied.", bold]
+
+        refute text(html) =~ "Rule #{rule}"
+        refute text(html) =~ "No rule matches"
+      end
+    end
+
+    test "the wall's refusals of a host's form and of the machine's addresses: the titles" do
+      for {host, rule, bold} <- [
+            {"Files.CDN.example.", "wall:host-form", @host_form},
+            {"169.254.169.254", "wall:own-address", @own_address}
+          ] do
+        html =
+          row(%{host: host, last_decision: "denied", last_rule: rule, last_mode: "enforce"})
+
+        assert html
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query(".q-why-l")
+               |> LazyHTML.attribute("title") == ["#{bold} in either mode."]
+
+        assert text(html) =~ "#{bold} in either mode."
+        refute text(html) =~ "Rule #{rule}"
+      end
+    end
+
+    test "a host the wall refused for its form is shown as sent and escaped as any host" do
+      host = "<script>alert(1)</script>\u202Eexample.\u202C" <> String.duplicate("A", 300)
+
+      for html <- [
+            wall_inline(host),
+            row(%{host: host, last_decision: "denied", last_rule: "wall:host-form"})
+          ] do
+        refute html =~ "<script>"
+        assert html =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
+        # As sent, its bidirectional characters, case and length with it, and as text, as
+        # any host is; the reason's words stay the same.
+        assert text(html) =~ host
+        assert text(html) =~ "#{@host_form} in either mode."
+      end
     end
 
     test "allowed by a rule, a path rule and a credential" do

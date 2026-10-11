@@ -11981,7 +11981,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "The wall refuses the machine's address,"
+msgid "The wall refuses a host that is neither a name nor an address in canonical form,"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The wall refuses link-local addresses and the machine's addresses,"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
