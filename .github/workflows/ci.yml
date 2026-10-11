@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, next, fg116/ci-build-cache]
+    branches: [main, next]
   pull_request:
 
 # A newer push to a pull request cancels its run in progress. A push to next or main is a
