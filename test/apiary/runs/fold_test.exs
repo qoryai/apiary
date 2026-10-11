@@ -36,6 +36,7 @@ defmodule Apiary.Runs.FoldTest do
     policy_digest: nil,
     run_configuration_digest: nil,
     lost_at: nil,
+    refused_at: nil,
     cost_usd: nil,
     terminal_cols: nil,
     terminal_rows: nil
@@ -1355,6 +1356,52 @@ defmodule Apiary.Runs.FoldTest do
           end)
 
         assert {run.state, run.reason} == {"cancelled", "no_longer_needed"}
+      end
+    end
+
+    test "keeps when the run was refused, until an exit decides over it, in either order" do
+      refused = event(2, "run.refused", %{"code" => "image_unknown"})
+      exit = exited(18, %{"state" => "cancelled", "reason" => "no_longer_needed"})
+
+      assert Fold.fold(@run, [refused]).run.refused_at == at(2)
+
+      for events <- [[refused, exit], [exit, refused]] do
+        assert Fold.fold(@run, events).run.refused_at == nil
+
+        {run, _latest} =
+          Enum.reduce(events, {@run, %{}}, fn event, {run, latest} ->
+            %{run: run, latest: latest} = Fold.fold(run, [event], latest)
+            {run, latest}
+          end)
+
+        assert run.refused_at == nil
+      end
+    end
+
+    test "the starter's outcome sets the state of a refused run and keeps its refusal" do
+      refused = event(2, "run.refused", %{"code" => "image_unknown"})
+
+      for {outcome, state} <- [
+            {"succeeded", "completed"},
+            {"failed", "failed"},
+            {"cancelled", "cancelled"}
+          ] do
+        given = Map.merge(@run, %{outcome_state: outcome, outcome_reason: nil})
+
+        # The outcome there before the refusal is folded, and given after it.
+        before = Fold.fold(given, [refused]).run
+
+        later =
+          Fold.fold(@run, [refused]).run
+          |> Map.merge(%{outcome_state: outcome, outcome_reason: nil})
+          |> Fold.outcome()
+
+        for run <- [before, later] do
+          assert {run.state, run.reason, run.refused_at, run.exited_at} ==
+                   {state, nil, at(2), nil}
+
+          refute Apiary.Runs.Run.refused?(run)
+        end
       end
     end
 

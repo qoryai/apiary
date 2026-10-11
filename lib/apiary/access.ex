@@ -171,8 +171,15 @@ defmodule Apiary.Access do
       "make a node or a node pool, whose kind is fixed from then on",
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node, and change a node pool's instance limit",
-      roles: @admins
+    Action.new(:"node.edit", "rename a node or a node pool", roles: @admins),
+    Action.new(
+      :"node.set_limit",
+      "set a node pool's instance limit, as it is made or after",
+      roles: @admins,
+      audited:
+        {:not,
+         "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
+           "node.edit, records it with what else the change made"}
     ),
     Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
     Action.new(
@@ -427,6 +434,15 @@ defmodule Apiary.Access do
   no role of the core has it: the context function checks the sign-up or the token, and
   asks nothing here; whoever runs a release command controls the instance already. A
   sign-up's `organisation.create` is one: the account does not exist yet.
+
+  ## The levels a person may be given
+
+  Beside the role an action over people needs, the level it gives must be one the edition
+  does not refuse there (`level_refusal/4`, `c:Apiary.Edition.level_refusal/4`): the
+  core's edition refuses none. An invitation, its acceptance, a change of level and the
+  release commands that grant and revoke an instance admin each ask it, and a level it
+  refuses is refused, with the edition's reason; a page offers only the levels it refuses
+  none of (`grantable_levels/1`).
 
   ## Reach
 
@@ -738,6 +754,39 @@ defmodule Apiary.Access do
   @spec acts_on?(role | nil, Membership.level()) :: boolean
   def acts_on?(role, level), do: level in Map.get(@acts_on, role, [])
 
+  @doc """
+  level_refusal/4 is why `level` may not be given in `organisation` by `scope`, or nil
+  when it may: the edition's answer (`c:Apiary.Edition.level_refusal/4`), nil always in
+  the core's. Every way a level is given asks it, beside whatever role the action needs:
+  an invitation, at member, the level its person joins at (`member.invite`); its
+  acceptance, at the level the edition gives (`invitation.accept`,
+  `c:Apiary.Edition.accepting/3`); a change of level (`member.change_level`); and the
+  release commands' `instance_admin.grant` and `instance_admin.revoke`. Each asks it with
+  `lock: :share` inside its transaction, at the place in the lock order the callback
+  names. A level a membership has already is not given anew, and is not asked.
+  """
+  @spec level_refusal(Scope.t() | nil, %Organisation{}, Membership.level(), keyword) ::
+          nil | atom
+  def level_refusal(scope, %Organisation{} = organisation, level, opts \\ []),
+    do: Edition.level_refusal(scope, organisation, level, opts)
+
+  @doc """
+  grantable_levels/1 is the levels the scope's person may give in the scope's
+  organisation, those `level_refusal/4` refuses none of, in the order of
+  `Apiary.Organisations.Membership.levels/0`, as the scope carries it: what a page offers.
+  Every level in the core's edition; none for a scope without an organisation.
+  """
+  @spec grantable_levels(Scope.t() | nil) :: [Membership.level()]
+  def grantable_levels(%Scope{organisation: %Organisation{} = organisation} = scope),
+    do:
+      for(
+        level <- Membership.levels(),
+        is_nil(level_refusal(scope, organisation, level)),
+        do: level
+      )
+
+  def grantable_levels(_scope), do: []
+
   ## The answer
 
   @doc """
@@ -875,8 +924,8 @@ defmodule Apiary.Access do
   def reload(%Scope{user: %User{id: user_id}, organisation: %Organisation{}} = scope, opts) do
     lock? = opts[:lock] == :share
 
-    # The lock order (docs/access.md, The lock order): the organisation rows first, then
-    # the membership, then what the edition holds, then the account.
+    # The lock order (docs/access.md, The lock order): the organisation rows, with the
+    # edition's own (`lock_places/1`), first, then the membership, then the account.
     if lock?, do: lock_places(scope)
 
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
@@ -911,15 +960,31 @@ defmodule Apiary.Access do
   rows of the lock order (docs/access.md). A change that must not happen under such a
   write locks these rows for update, and waits for the write, or comes first and is
   seen; a row that only names the organisation takes `FOR KEY SHARE`, which does not
-  wait. `reload/2` with `lock: :share` takes them first; a write that locks a row of its
-  own before it asks, as the security policy's locks its workspace, calls this first.
-  `:ok`.
+  wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
+  `{:places, scope}`), before any workspace, membership or account. `reload/2` with
+  `lock: :share` takes them first; a write that locks a row of its own before it asks, as
+  the security policy's locks its workspace, calls this first. `:ok`.
   """
   @spec lock_places(Scope.t()) :: :ok
-  def lock_places(%Scope{organisation: %Organisation{id: id}}) do
+  def lock_places(%Scope{} = scope) do
+    case lock_organisations(scope) do
+      :ok -> Edition.lock_rows({:places, scope})
+      :gone -> :ok
+    end
+  end
+
+  def lock_places(_scope), do: :ok
+
+  @doc """
+  lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
+  edition nothing: for a change whose one point asks the edition itself
+  (`Apiary.Organisations.lock_people/1`). `:ok`, or `:gone` for an organisation deleted.
+  """
+  @spec lock_organisations(Scope.t()) :: :ok | :gone
+  def lock_organisations(%Scope{organisation: %Organisation{id: id}}) do
     case Repo.one(from o in Organisation, where: o.id == ^id, lock: "FOR SHARE") do
       nil ->
-        :ok
+        :gone
 
       %Organisation{} = now ->
         for other <- Edition.places_to_lock(now), other != id do
@@ -930,7 +995,7 @@ defmodule Apiary.Access do
     end
   end
 
-  def lock_places(_scope), do: :ok
+  def lock_organisations(_scope), do: :gone
 
   # The person's account `FOR SHARE`, the lock order's last row, and whether it is still
   # in use: not deleted, and active as the edition says. A deletion of the account, or the

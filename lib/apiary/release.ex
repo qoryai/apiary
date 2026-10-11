@@ -446,10 +446,12 @@ defmodule Apiary.Release do
 
   @doc """
   refusal/1 is what a refusal says on the terminal of whoever runs the instance: an atom's
-  name, and nothing of a changeset or an exception, which may hold an email address.
+  name, the edition's reason for a level it refused (`Apiary.Access.level_refusal/4`),
+  and nothing of a changeset or an exception, which may hold an email address.
   """
   @spec refusal(term) :: String.t()
   def refusal(reason) when is_atom(reason), do: Atom.to_string(reason)
+  def refusal({:level_refused, reason}) when is_atom(reason), do: Atom.to_string(reason)
   def refusal(_reason), do: "the database refused the change"
 
   # Outside the running application nobody listens to what a change announces, but the

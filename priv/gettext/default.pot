@@ -3370,6 +3370,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Cancelled, as its starter said; the runtime ended with %{signal}"
 msgstr ""
 
@@ -5075,6 +5080,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Failed with exit %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10587,6 +10597,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Succeeded, as its starter said; the runtime ended with %{signal}"
 msgstr ""
 
@@ -12941,6 +12956,12 @@ msgid "You can switch back at any time."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "You can't change the instance limit."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You can't change the kind later."
 msgstr ""
@@ -14068,6 +14089,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "the starter gave no outcome"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

@@ -156,7 +156,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `outcome_given`. A run of another node, one the workspace does not hold, and one whose
   events retention pruned are `404` `not_found`. Where the outcome's state differs from
   what the run's exit said, the run page says both, for example "Succeeded, as its starter
-  said; the runtime exited 1".
+  said; the runtime exited 1". A run refused at its start says the outcome's state alone:
+  "Succeeded, as its starter said". A run whose starter sent its outcome with no state says no such sentence: it
+  reads as any cancelled run, "Cancelled", with "the starter gave no outcome" after it.
 - The end of a run, in the answers to its batches. Once a run's starter has given its
   outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
   carries `end` with the outcome's state and reason, as `application/json`,
@@ -189,8 +191,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
   interval its attach announced, from its attach, and a run its gateway never attaches is
   lost at the end of its window. The console does not show a run's gateway or its attach.
-- A run through a separate gateway belongs to the gateway's node and instance, and its
-  Host is the agent's machine.
+- A run through a gateway belongs to the node that registered it and its instance, never
+  to the gateway, and its Host is the machine the runtime ran on.
 - Qory Apiary records what a run reports and never ends a run it did not start; it starts
   none today. No run offers Close, on its page or as a lost run on the Overview, and a run
   has no Closed state. The events endpoint answers `410` only to a run whose events
@@ -298,7 +300,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   machine that runs one instance at a time, a node pool a fleet of short-lived instances
   up to its instance limit, or any number without one; the kind is fixed when one is
   made. Owners and admins add them, rename them, change a pool's limit and delete them
-  (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
+  (`node.create`, `node.edit`, `node.delete`, each in the audit trail). Setting a pool's
+  limit, as it is made or after, is an action of its own, `node.set_limit`, held as
+  `node.edit` is, so an edition may keep it from some who change the rest: the node's
+  Settings then show the limit disabled, and New node pool leaves it out and makes the
+  pool with a limit of 1; the entry of the creation or the edit records it. Everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
@@ -381,7 +387,19 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who
   reaches it and at what level under People, read there and managed in the
-  organisation's People.
+  organisation's People. An edition may refuse a level in an organisation, with a reason
+  (`c:Apiary.Edition.level_refusal/4`, `Apiary.Access.level_refusal/4`): an invitation,
+  its acceptance, a change of level and the release commands that grant and revoke an
+  instance admin each refuse it, asked in the lock order inside their transaction, and
+  People offers only the levels it refuses none of (`Apiary.Access.grantable_levels/1`)
+  and says a refusal in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An edition locks its own rows for a
+  change at one point, right after the organisation rows and before any membership
+  (`c:Apiary.Edition.lock_rows/1`), in every change of people and every write that must
+  stay allowed. Several organisations are locked in one order,
+  `Apiary.Organisations.lock_order/1`, which an edition must use whenever it locks the
+  rows of more than one. A test may have a stub answer some of the edition's callbacks in its own
+  processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an
@@ -697,6 +715,10 @@ VALID), and `20261011150600_validate_a_run_key_s_signature_check` validates it.
 `runs_registration_time_check`, and re-creates `runs_attach_check` without `attach_time`,
 NOT VALID; `20261011150800_validate_a_run_s_attach_check` validates it. Rolled back, the
 columns and their checks come back, empty but `attach_time`, which takes `attached_at`.
+`20261011160000_keep_when_a_run_was_refused` adds `runs.refused_at`, the time of a run's
+`dev.qory.run.refused` while no exit decides over it, with no check, NULL for every
+existing row. Existing rows need no backfill: the column changes only what a run given an
+outcome says, and a rebuild (`mix apiary.rebuild`) fills it for any run refused before.
 
 ### Upgrading
 

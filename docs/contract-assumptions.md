@@ -580,11 +580,12 @@ size, the wall and the image where they apply; the run's `dev.qory.run.exited` c
 a signed `400` `invalid_request` (`Apiary.Runs.Batch`). A start that leaves `opened_by`
 out is read as a session's.
 
-A run through a separate gateway belongs to the gateway's node, instance and key, since
-the gateway is the node toward the server: it registers the run and delivers every event
-of the run under its own access key. The machines behind it hold no access key. For a
-session's run through it, `host` is the agent's machine, the one the runtime runs on, so
-the run's Node is the gateway's and its Host the agent's machine.
+A run through a gateway belongs to the node that registered it, with that node's instance
+and key: a gateway is a kind of node of its own, whose key is refused at registration
+(`gateway_key`), and no gateway opens a run. The gateway that attached the run delivers its
+events under the gateway's own keys (`Apiary.Runs.Sender`), and the run's workspace, node
+and instance stay the registration's. `host` is the machine the runtime runs on, so the
+run's Node is the node that registered it and its Host that machine.
 
 ## How a run ends
 
@@ -630,7 +631,9 @@ The fold maps an exit to a state by the first rule that applies
 A run whose `dev.qory.run.refused` reaches Qory Apiary did not start: it is Failed, with the
 refusal's `code` as its reason and no exit time, and says "did not start" and the code
 ("did not start: image_unknown"). An exit decides over the refusal, in whichever order the
-two are folded; no start or heartbeat folded after either changes the state.
+two are folded; no start or heartbeat folded after either changes the state. The refusal's
+time is kept as `refused_at`, nil once an exit decides over it; the starter's outcome
+leaves it as it is.
 
 Forager's own codes, and the words Qory Apiary says for each
 (`ApiaryWeb.RunComponents.reason_words/1`):
@@ -677,6 +680,8 @@ passed", `checks_failed` beside Failed "checks failed", `no_longer_needed` besid
 The words stand after the state in the run page's meta line, under State in its Details
 rail, in its timeline's last item, after the state in the runs list's preview, and in what
 the page announces when a run is cancelled or ends Lost ([ui.md](ui.md), The run page).
+The timeline's last item says the exit's own reason: for a run given an outcome, whose
+reason is the outcome's, it can differ from the others.
 
 A session's run carries `exit_code`: the runtime's exit status, with `signal` when one
 killed it, and `-1` with `gateway_lost` and in every exit the gateway writes for it, which
@@ -698,7 +703,12 @@ not lost (`Apiary.Runs.Fold.outcome/1`). The exit's own state and reason are kep
 as `exit_state` and `exit_reason`, with its exit code and signal. A rebuild gives the same
 run, since the fold applies the outcome after every pass and a rebuild's reset starts from
 it. Where the outcome's state differs from the exit's, the run page says both: "Succeeded,
-as its starter said; the runtime exited 1".
+as its starter said; the runtime exited 1". A run refused at its start (`refused_at`)
+never started a runtime: it says the outcome's state alone, "Succeeded, as its starter
+said". An outcome sent with no state,
+stored as Cancelled with the reason `stopped`, has no such sentence: the run reads as any
+Cancelled run, with the words "the starter gave no outcome"; Forager's own `stopped`, with
+no outcome, keeps "stopped, no outcome given".
 
 Qory Apiary records what a run reports and starts no run. Once a run's starter has given
 its outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its
@@ -722,8 +732,9 @@ counts by its own `time`, corrected by the run's clock offset (the smallest arri
 contract's liveness for the server says; a run's first heartbeat with no offset before it
 counts at its arrival. Only the server's clock is compared.
 
-Every event of a run reaches the server from one gateway, the node toward the server: a
-session's heartbeats through it. So `lost`
+Every event of a run reaches the server from one gateway: Forager's gateway on the node,
+under the node's own keys, for a run that goes directly, or the gateway that attached it,
+for a run through a gateway; a session's heartbeats come through it. So `lost`
 means the gateway sent nothing recent for the run. A session that falls silent is the
 gateway's to notice, and it ends the run `failed` with `session_lost`, an exit the server
 reads as Lost, and final (How a run ends). The lost-run check's `lost` is not final: a

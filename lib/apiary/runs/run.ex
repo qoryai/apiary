@@ -140,15 +140,19 @@ defmodule Apiary.Runs.Run do
     field :exit_state, :string
     field :exit_reason, :string
 
+    # When the run's `dev.qory.run.refused` said it did not start, folded, and nil once an
+    # exit decides over it, in whichever order the two are folded. The outcome leaves it as
+    # it is: a run refused and then given an outcome still never started.
+    field :refused_at, :utc_datetime_usec
+
     # A run that goes through a gateway (`Apiary.Runs.Registration`, `Apiary.Runs.Attach`):
     # the gateway its node's choice resolved to at its registration, nil should the
     # gateway's row be purged; the exact bytes of its run key's payload and its signature,
     # so a repeat is given the same run key, when the run key was made and the end of its
     # attach window; and, once the gateway attached it, when, the heartbeat interval it
-    # announced, which
-    # the run is held to, and the digest of the run configuration it was given, which a
-    # repeat of the attach is given again. All nil for a direct run. Not folded: a rebuild
-    # keeps them.
+    # announced, which the run is held to, and the digest of the run configuration it was
+    # given, which a repeat of the attach is given again. All nil for a direct run. Not
+    # folded: a rebuild keeps them.
     belongs_to :gateway, Apiary.Nodes.Node
     field :run_key_payload, :binary
     field :run_key_signature, :binary

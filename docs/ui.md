@@ -913,7 +913,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   `Nodes / New node` (Nodes a link back to the list), the page's heading
   (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
   "You can't change the kind later"; then the form, a name (it takes the focus), and for a
-  pool its instance limit (a whole number up to 10,000, or empty for none), and its foot,
+  pool its instance limit (a whole number up to 10,000, or empty for none), left out for
+  one who may not set it (`node.set_limit`), whose pool is made with a limit of 1, and its
+  foot,
   Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). A refused
   save stays on the page, the error under its field; adding one opens its page on
   Access key with a flash, where its machine gets its key.
@@ -932,7 +934,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   each saying so while nothing has reported, then About (kind, id, instance limit, who
   made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`), its few
   sections listed in the page, never as a second column (Settings, A node's): General,
-  whose danger zone's Delete node… (Delete node pool… for a pool) expands its
+  whose pool's limit is disabled, with "You can't change the instance limit." under it,
+  for one who changes the node but may not set its limit (`node.set_limit`), and whose
+  danger zone's Delete node… (Delete node pool… for a pool) expands its
   confirmation in place (Settings, The danger zone) at `/nodes/:node_id/settings/delete`:
   what is lost, then Delete build-01? with Yes, delete and Cancel, no field to type, Cancel
   taking the focus.
@@ -1435,17 +1439,22 @@ page has no breadcrumb of its own.
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
-  the meta line, under State in the rail, in the timeline's last item and in the runs
-  list's preview ([contract-assumptions.md](contract-assumptions.md), How a run ends):
+  the meta line, under State in the rail and in the runs list's preview, and in the
+  timeline's last item too unless the run was given an outcome: that item says the exit's
+  own reason, and the others the outcome's
+  ([contract-assumptions.md](contract-assumptions.md), How a run ends):
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
   check whether the run may go on: unreadable answer", and for a run that did not start
   "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
-  meta line and the rail as in the timeline's item. None names who or
-  what ended the run. Any other code is the run's starter's, shown as given with spaces
-  for underscores: "no longer needed". The quiet period reads in whole hours, else whole
-  minutes, else seconds: 1800 seconds is "no activity for 30 minutes".
+  meta line and the rail as in the timeline's item. A run whose starter sent its outcome
+  with no state reads "the starter gave no outcome" in the meta line, the rail and the
+  preview, after the state's word "Cancelled", with no "as its starter said" sentence.
+  None names who or what ended the run. Any other code is the run's starter's,
+  shown as given with spaces for underscores: "no longer needed". The quiet period reads
+  in whole hours, else whole minutes, else seconds: 1800 seconds is "no activity for 30
+  minutes".
 - **The rail's State and Exit.** State is the state's dot and word, with "Registered only"
   under Pending for a run that registered, or "Ping only" for a run that only pinged,
   stored before the registration replaced the ping, and the end reason's words under it. Exit, on a session's run whose exit was
@@ -1466,8 +1475,8 @@ page has no breadcrumb of its own.
   No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
   when a quiet run is heard again. A state stored under an older name is said as its new
   state.
-- **A run through a separate gateway** looks as any run: its Node is the gateway's,
-  and its Host the agent's machine.
+- **A run through a gateway** looks as any run: its Node is the node that registered it,
+  and its Host the machine the runtime ran on.
 
 ## The terminal
 
