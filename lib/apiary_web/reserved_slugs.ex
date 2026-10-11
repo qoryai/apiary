@@ -11,7 +11,8 @@ defmodule ApiaryWeb.ReservedSlugs do
   pages (`/:org/settings`, `/:org/audit-log`). `organisation/0` and `workspace/0` name
   them.
 
-  The core reserves only the paths it serves. An edition reserves the paths it adds, and
+  The core reserves the paths it serves, and `gateways` among the organisation's pages,
+  which no workspace slug may take. An edition reserves the paths it adds, and
   settles for itself a slug an instance of the core gave out before the edition took the
   instance over. The test (`ApiaryWeb.ReservedSlugsCase`) fails when a route of the router the endpoint
   dispatches to, a static path or a socket of the endpoint takes a segment these lists do
@@ -36,8 +37,9 @@ defmodule ApiaryWeb.ReservedSlugs do
   )
 
   # The organisation's own pages, the second segment of `/:org/…`, the palette's answers
-  # there and the switcher's link to the organisation (`-`).
-  @organisation_pages ~w(- activity audit-log jump members settings)
+  # there and the switcher's link to the organisation (`-`), and `gateways`, kept for the
+  # organisation's gateways.
+  @organisation_pages ~w(- activity audit-log gateways jump members settings)
 
   @doc """
   organisation/0 lists the names no organisation slug may be: the core's and the
