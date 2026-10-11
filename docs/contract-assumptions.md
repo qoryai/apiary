@@ -176,9 +176,9 @@ batch opened it (`runs.node_id`). Its batches, a heartbeat's among them, are tak
 that node's active keys alone, whichever of them signs, so a second key of the node, while
 one is replaced, keeps the run going (`Apiary.Runs.Sender`). The binding is to the node,
 never to the key that registered it: once that key is revoked it verifies under no key,
-`401`, and the node's other active key carries the run on. A key of another node or node
-pool of the workspace, a gateway's included, is `409 wrong_node` for a batch and `404` for
-a reload or an outcome.
+`401`, and a second active key of the node carries the run on. A key of another node or
+node pool of the workspace, a gateway's included, is `409 wrong_node` for a batch and
+`404` for a reload or an outcome.
 
 A run through a gateway (The run endpoint, below) takes its batches from the active keys
 of the gateway that attached it (`runs.gateway_id`, once `attached_at` is set), signed
