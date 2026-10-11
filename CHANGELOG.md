@@ -522,7 +522,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   filled in. `ApiaryWeb.PolicyComponents.rule_form/1` draws the form; `rule_list/1` takes
   the section's header (`title`, `count`, `add_path`, `edit_path`), and
   `rule_composer/1` and `rule_list/1`'s `composer` slot stay for callers that have not
-  moved.
+  moved. On a page with the form, a Remove that `ApiaryWeb.PolicyLive.Common` answers gives
+  the focus to Add rule, never to a composer the page does not draw.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's built-in bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.

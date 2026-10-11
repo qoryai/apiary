@@ -778,16 +778,26 @@ defmodule ApiaryWeb.PolicyLive.Common do
     scope = socket.assigns.current_scope
     writer = socket.assigns.writer
 
+    # The focus goes to adding a rule: the composer's host, or Add rule on a page with the
+    # rule form, which draws no composer.
     with {:ok, rule} <- writer.get.(scope, id),
          {:ok, rule} <- writer.remove.(scope, rule) do
+      socket =
+        wrote(
+          socket,
+          nil,
+          gettext("The rule %{host} is removed.", host: Rule.subject(rule)),
+          gettext("Rule removed.")
+        )
+
       {:halt,
-       socket
-       |> wrote(
-         nil,
-         gettext("The rule %{host} is removed.", host: Rule.subject(rule)),
-         gettext("Rule removed.")
-       )
-       |> focus("policy-composer-host")}
+       focus(
+         socket,
+         if(socket.assigns.form_id == "policy-composer",
+           do: "policy-composer-host",
+           else: add_rule_id(socket)
+         )
+       )}
     else
       {:error, error} -> {:halt, refused(socket, error)}
     end
@@ -1047,6 +1057,17 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   def focus(socket, id), do: push_event(socket, "policy:focus", %{id: id})
+
+  @doc """
+  The id of adding a rule on a page with the rule form, where the focus goes when what it
+  was on leaves the page: Add rule in the list's header, `"policy-rules-add"`, or on the
+  workspace's page with no rule of its own and no level above, which shows no list, its
+  first rule, `"policy-first-rule"`.
+  """
+  def add_rule_id(%{assigns: %{holder: nil, own: [], effective: %{above: nil}}}),
+    do: "policy-first-rule"
+
+  def add_rule_id(_socket), do: "policy-rules-add"
 
   @doc """
   After a patch between a version (or the Document view) and its export (Export, Done),

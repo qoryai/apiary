@@ -2,7 +2,9 @@ defmodule ApiaryWeb.PolicyLive.ComposerTest.Page do
   @moduledoc false
   # A page that has not moved to the New rule and Edit rule pages, as an edition's may
   # still be: the composer in the list's `composer` slot, opened by Add rule in the search's
-  # bar, the rows' Edit paths, and `Common` with its default form, "policy-composer".
+  # bar, the rows' Edit paths, and `Common` with its default form, "policy-composer". With
+  # `"form" => "policy-rule"` in its session, a page that has moved, drawing Add rule as a
+  # link and no composer, whose rows' events `Common` answers (as an edition's writer page).
   use ApiaryWeb, :live_view
 
   import ApiaryWeb.PolicyComponents, only: [rule_list: 1, rule_composer: 1]
@@ -11,11 +13,13 @@ defmodule ApiaryWeb.PolicyLive.ComposerTest.Page do
   alias ApiaryWeb.PolicyLive.{Common, RuleList}
 
   @impl true
-  def mount(_params, %{"scope" => scope}, socket) do
+  def mount(_params, %{"scope" => scope} = session, socket) do
+    form = Map.get(session, "form", "policy-composer")
+
     {:ok,
      socket
      |> assign(current_scope: scope, composer_open: false, list_query: %RuleList{})
-     |> Common.mount(nil)
+     |> Common.mount(nil, form: form)
      |> assign(reload: &load/1)
      |> load()}
   end
@@ -52,6 +56,8 @@ defmodule ApiaryWeb.PolicyLive.ComposerTest.Page do
       path={&Common.list_path(@base, &1)}
       sections={[]}
       default_sort="Locked first"
+      title={if @form_id == "policy-rule", do: "Network access"}
+      add_path={if @form_id == "policy-rule", do: Common.new_rule_path(assigns)}
       can_add
       adding={@composer_open}
     >
@@ -92,8 +98,10 @@ defmodule ApiaryWeb.PolicyLive.ComposerTest do
     :ok
   end
 
-  defp open(conn, scope) do
-    {:ok, view, _html} = live_isolated(conn, Page, session: %{"scope" => scope})
+  defp open(conn, scope, session \\ %{}) do
+    {:ok, view, _html} =
+      live_isolated(conn, Page, session: Map.put(session, "scope", scope))
+
     view
   end
 
@@ -204,5 +212,34 @@ defmodule ApiaryWeb.PolicyLive.ComposerTest do
     assert text(view, "#policy-write-error") =~ "held to paths"
     assert has_element?(view, "#policy-composer")
     refute rule(scope, "files.cdn.example")
+  end
+
+  test "Remove gives the focus to the composer's host", %{conn: conn, scope: scope} do
+    {:ok, _} = Policy.allow(scope, nil, %{host: "a.example"})
+    {:ok, _} = Policy.allow(scope, nil, %{host: "b.example"})
+    view = open(conn, scope)
+
+    view
+    |> element("#rule-#{rule(scope, "a.example").id}-menu button", "Remove")
+    |> render_click()
+
+    refute rule(scope, "a.example")
+    assert_push_event(view, "policy:focus", %{id: "policy-composer-host"})
+  end
+
+  test "on a page with the rule form, Remove gives the focus to Add rule, the composer drawn nowhere",
+       %{conn: conn, scope: scope} do
+    {:ok, _} = Policy.allow(scope, nil, %{host: "a.example"})
+    {:ok, _} = Policy.allow(scope, nil, %{host: "b.example"})
+    view = open(conn, scope, %{"form" => "policy-rule"})
+    assert has_element?(view, "#policy-rules-head a#policy-rules-add")
+
+    view
+    |> element("#rule-#{rule(scope, "a.example").id}-menu button", "Remove")
+    |> render_click()
+
+    refute rule(scope, "a.example")
+    assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
+    refute has_element?(view, "#policy-composer-host")
   end
 end

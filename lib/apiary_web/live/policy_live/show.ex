@@ -769,7 +769,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             gettext("Rule removed.")
           )
 
-        Common.focus(socket, if(next, do: "rule-#{next.id}-menu-button", else: add_rule(socket)))
+        Common.focus(
+          socket,
+          if(next, do: "rule-#{next.id}-menu-button", else: Common.add_rule_id(socket))
+        )
 
       {:error, error} ->
         Common.refused(socket, error)
@@ -781,20 +784,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp focus_row(socket, host, part \\ "menu-button") do
     case Enum.find(Common.listing(socket.assigns).rows, &(&1.own and &1.host == host)) do
       %{id: id} -> Common.focus(socket, "rule-#{id}-#{part}")
-      nil -> Common.focus(socket, add_rule(socket))
+      nil -> Common.focus(socket, Common.add_rule_id(socket))
     end
   end
 
   # A row's ⋯ menu is drawn for the page's own rule the reader may change, and for a rule
   # written elsewhere that has a page to change it on (`rule_line/1`).
   defp menu?(row), do: (row.own and row.can_change) or (not row.own and row.view != nil)
-
-  # Adding a rule: Add rule in the section's header, or the first rule of a page with none,
-  # which shows no list (`rules_tab/1`'s `empty?`).
-  defp add_rule(%{assigns: %{own: [], effective: %{above: nil}}}),
-    do: "policy-first-rule"
-
-  defp add_rule(_socket), do: "policy-rules-add"
 
   # A pick of the mode's choices: what enforce would deny is read when it is picked over
   # observe, and kept while it stays picked.

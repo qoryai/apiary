@@ -800,6 +800,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute rule(scope, "*.paste.example")
     end
 
+    test "removing the last row the list shows gives the focus to Add rule",
+         %{conn: conn, scope: scope} do
+      view = open(conn, scope, "/policy?q=api")
+      assert hosts(view) == ["api.example"]
+
+      view
+      |> element("#rule-#{rule(scope, "api.example").id}-menu button", "Remove")
+      |> render_click()
+
+      refute rule(scope, "api.example")
+      assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
+    end
+
     test "Edit opens the rule's page, its paths in the field", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       id = rule(scope, "api.example").id

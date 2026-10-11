@@ -664,7 +664,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp focus_host(socket, host) do
     case Enum.find(Common.listing(socket.assigns).rows, &(&1.host == host)) do
       %{id: id} -> Common.focus(socket, "rule-#{id}-menu-button")
-      nil -> Common.focus(socket, "policy-rules-add")
+      nil -> Common.focus(socket, Common.add_rule_id(socket))
     end
   end
 
