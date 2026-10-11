@@ -267,14 +267,18 @@ defmodule ApiaryWeb.Edition do
 
   @doc """
   Where the level above the workspace's policy is read and changed, for the scope's
-  reader: its `path`, and `can_change`, whether the reader may change it there; nil where
-  the edition keeps no such level, or the reader may not read it. The core's pages draw
-  the level's rows and lines from `Apiary.Policy.Effective`'s `above` and link here. A
-  link that asks the level to allow a host carries the host as `allow` and, as `back`, the
-  path of the workspace's page it was followed from (its overview, its Network access or
-  a target's, as filtered), for the level's page to offer the way back once it is done.
+  reader: its `path`; `can_change`, whether the reader may change it there; and
+  `new_rule_path`, the full path of the level's New rule page, such as
+  `/acme/policy/rules/new`, or nil where it has none. Nil where the edition keeps no such
+  level, or the reader may not read it. The core's pages draw the level's rows and lines
+  from `Apiary.Policy.Effective`'s `above` and link here. A link that asks the level to
+  allow a host leads to `new_rule_path`, with the host as `host` and, as `back`, the path
+  of the workspace's page it was followed from (its overview, its Network access or a
+  target's, as filtered), for the level's page to offer the way back once it is done; a
+  nil `new_rule_path` leaves that link out.
   """
-  @callback above_policy_link(Scope.t()) :: %{path: String.t(), can_change: boolean} | nil
+  @callback above_policy_link(Scope.t()) ::
+              %{path: String.t(), can_change: boolean, new_rule_path: String.t() | nil} | nil
 
   @doc """
   The names the edition's own paths take beyond the core's: first segments of the

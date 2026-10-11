@@ -316,6 +316,16 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
+msgid "%{host} is allowed for every workspace on %{paths}. Saving changes its paths to %{new_paths}."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is allowed for every workspace. Adding this deny replaces that rule."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
 msgid "%{host} is allowed for the workspace on %{paths}. Saving changes its paths to %{new_paths}."
 msgstr ""
 
@@ -355,6 +365,21 @@ msgstr "%{host} is allowed for this repository. Adding this deny replaces that r
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
+msgid "%{host} is already allowed for every workspace, by %{by} on %{at}."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is already allowed for every workspace, since %{at}."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is already allowed for every workspace."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
 msgid "%{host} is already allowed for the workspace, by %{by} on %{at}."
 msgstr ""
 
@@ -382,6 +407,21 @@ msgstr "%{host} is already allowed for this repository, since %{at}."
 #, elixir-autogen, elixir-format
 msgid "%{host} is already allowed for this target."
 msgstr "%{host} is already allowed for this repository."
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is already denied for every workspace, by %{by} on %{at}."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is already denied for every workspace, since %{at}."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is already denied for every workspace."
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
@@ -429,6 +469,11 @@ msgstr ""
 msgid "%{host} is denied for %{target}."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is denied for every workspace. Adding this allow replaces that rule."
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/rules.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -455,6 +500,11 @@ msgstr "%{host} is denied for this repository."
 #, elixir-autogen, elixir-format
 msgid "%{host} is denied for this target. Adding this allow replaces that rule."
 msgstr "%{host} is denied for this repository. Adding this allow replaces that rule."
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} is held to %{paths} for every workspace. Name the paths it should have, or choose Every path to open them all."
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
@@ -1728,6 +1778,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{rule}, on every path."
 msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}. It holds in every workspace and target, and no rule of theirs can allow it."
+msgstr "%{rule}. It holds in every workspace and repository, and no rule of theirs can allow it."
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
