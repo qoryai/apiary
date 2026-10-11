@@ -291,10 +291,12 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   end
 
   describe "known-answers/discovery.json" do
-    test "names the fixture node and lists the server's key" do
+    test "names the fixture node and its workspace, and lists the server's key" do
       discovery = known_answers!("discovery")
 
       assert discovery["node_id"] =~ ~r/\And_[a-z0-9]{16}\z/
+      assert [workspace_id] = discovery["workspaces"]
+      assert Apiary.PublicId.valid?("ws", workspace_id)
 
       assert discovery["apiary_public_key"] == [
                %{
@@ -302,6 +304,30 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
                  "public_key" => Ed25519.encode(fixture_key!("signing_key").public_key)
                }
              ]
+    end
+
+    test "Qory Apiary's own document for the fixture node, workspace, URL and key is the body, and its signed answer the known answer" do
+      %{"node_id" => node_id, "workspaces" => [workspace_id], "apiary_public_key" => keys} =
+        known_answers!("discovery")
+
+      body =
+        ApiaryWeb.Contract.Configuration.encode(%{
+          node_id: node_id,
+          workspace_id: workspace_id,
+          url: "https://qory.example",
+          apiary_public_key: keys
+        })
+
+      %{"answers" => [answer | _]} = known_answers!("signatures")
+      assert body == body(answer["body"])
+      assert byte_size(body) == answer["body_length"]
+
+      ["qory-answer-ed25519-v1", "200", request_signature | _] = answer["lines"]
+      digest = ApiaryWeb.Contract.Configuration.digest(body)
+      message = SignedMessage.answer(200, request_signature, body, digest, nil)
+
+      assert message == Enum.join(answer["lines"], "\n")
+      assert sign(message, fixture_key!("signing_key")) == answer["signature"]
     end
   end
 

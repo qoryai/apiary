@@ -43,7 +43,7 @@ defmodule ApiaryWeb.Contract.EventsController do
     with {:ok, batch} <- batch(conn.assigns.raw_body),
          {:ok, %{status: status} = result} <- Ingest.ingest(access_key, batch, meta(conn)) do
       conn
-      |> put_resp_header("x-qory-configuration", Configuration.digest(access_key.node))
+      |> put_resp_header("x-qory-configuration", Configuration.digest(access_key))
       |> put_run_configuration(result[:run_configuration_digest])
       |> send_resp(status, "")
     else
