@@ -139,4 +139,22 @@ defmodule ApiaryWeb.PolicyLive.CommonOptionsTest do
                "It holds in every workspace and repository, and no rule of theirs can allow it."
     end
   end
+
+  describe "edit_paths on a page with the rule form" do
+    test "leads to the rule's Edit rule page", %{scope: scope} do
+      {:ok, held} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*"]})
+      socket = socket(scope)
+
+      assert {:halt, led} = Common.handle_event("edit_paths", %{"id" => held.id}, socket)
+      assert patched(led) == workspace_path(scope, "/policy/rules/#{held.id}/edit")
+      # No composer is opened behind the page.
+      refute led.assigns[:composer_open]
+
+      # A crafted id that is no id leads nowhere.
+      for bad <- [%{}, %{"id" => 7}, %{"id" => String.duplicate("a", 65)}] do
+        assert {:halt, kept} = Common.handle_event("edit_paths", bad, socket)
+        assert patched(kept) == nil
+      end
+    end
+  end
 end
