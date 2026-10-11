@@ -13,8 +13,12 @@ defmodule Apiary.Runs.Sender do
     * any other run: the node or node pool it is bound to, `runs.node_id`, the node whose
       key registered it or whose key's batch opened it, fixed from then on.
 
-  A key of any other node may not, whatever its workspace, and a run whose node or gateway
-  is gone takes nothing from anyone. A refused batch is refused with `refusal/1`'s code.
+  A key of any other node may not, whatever its workspace. The node that sends is the one
+  whose keys must still verify: a direct run whose node is deleted takes nothing, since no
+  key of a deleted node verifies, and nor does a run through a gateway whose gateway is
+  deleted or purged; a run through a gateway whose registering node is deleted still
+  takes the batches, heartbeats and reloads of the gateway that attached it. A refused
+  batch is refused with `refusal/1`'s code.
 
   **The repeat of a registration and the outcome** (`registered_by?/2`:
   `Apiary.Runs.Registration`, `Apiary.Runs.Outcome`) are taken from the active keys of the
@@ -46,16 +50,16 @@ defmodule Apiary.Runs.Sender do
   gateway that attached it, for a run through a gateway; a key of the run's own node,
   for any other.
   """
-  @spec may_send?(Run.t() | map, AccessKey.t()) :: boolean
-  def may_send?(%{run_key_payload: payload} = run, %AccessKey{node_id: node_id})
+  @spec may_send?(Run.t(), AccessKey.t()) :: boolean
+  def may_send?(%Run{run_key_payload: payload} = run, %AccessKey{node_id: node_id})
       when is_binary(payload) do
     case run do
-      %{gateway_id: ^node_id, attached_at: %DateTime{}} when is_binary(node_id) -> true
+      %Run{gateway_id: ^node_id, attached_at: %DateTime{}} when is_binary(node_id) -> true
       _run -> false
     end
   end
 
-  def may_send?(%{node_id: node_id}, %AccessKey{node_id: node_id}) when is_binary(node_id),
+  def may_send?(%Run{node_id: node_id}, %AccessKey{node_id: node_id}) when is_binary(node_id),
     do: true
 
   def may_send?(_run, _access_key), do: false
