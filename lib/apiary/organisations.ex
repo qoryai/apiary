@@ -1844,8 +1844,9 @@ defmodule Apiary.Organisations do
   `lock: true`, for a caller inside a transaction that deletes the account, first holds
   every organisation the user is a member of, in one pass in the lock order: those they
   own `FOR SHARE`, the rest `FOR KEY SHARE`, which waits only for a change that takes the
-  organisation `FOR UPDATE`, as its purge does. Then the edition's rows for the deletion
-  (`c:Apiary.Edition.lock_rows/1`, `{:account, user_id}`), then it locks the owners'
+  organisation `FOR UPDATE`, as its purge does. Then the edition's rows for the deletion,
+  of those organisations alone (`c:Apiary.Edition.lock_rows/1`, `{:account, user_id,
+  organisation_ids}`, the ids held, in the order held), then it locks the owners'
   memberships of the organisations the user owns, in the order of their ids, as a change
   of a level locks them (`lock_owners/1`): a concurrent demotion or removal of another
   owner waits, and what was counted stays true until the caller commits.
@@ -1866,16 +1867,20 @@ defmodule Apiary.Organisations do
       member_of =
         from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id
 
-      for id <-
-            Repo.all(from o in Organisation, where: o.id in subquery(member_of)) |> lock_order() do
-        query = from o in Organisation, where: o.id == ^id, select: o.id
+      held =
+        for id <-
+              Repo.all(from o in Organisation, where: o.id in subquery(member_of))
+              |> lock_order(),
+            query = from(o in Organisation, where: o.id == ^id, select: o.id),
+            held =
+              if(MapSet.member?(owns, id),
+                do: Repo.one(lock(query, "FOR SHARE")),
+                else: Repo.one(lock(query, "FOR KEY SHARE"))
+              ),
+            not is_nil(held),
+            do: held
 
-        if MapSet.member?(owns, id),
-          do: Repo.one(lock(query, "FOR SHARE")),
-          else: Repo.one(lock(query, "FOR KEY SHARE"))
-      end
-
-      :ok = Edition.lock_rows({:account, user_id})
+      :ok = Edition.lock_rows({:account, user_id, held})
 
       Repo.all(
         from m in Membership,

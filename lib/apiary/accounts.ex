@@ -279,13 +279,15 @@ defmodule Apiary.Accounts do
 
   defp delete(%User{id: id}, actor) do
     Repo.transact(fn ->
-      # The lock order (docs/access.md): the organisations the person owns, the edition's
-      # rows for the deletion and the organisations' owners
-      # (`Organisations.sole_owned_organisations/2` with `lock: true`), then the
-      # person's memberships, then the account, `FOR NO KEY UPDATE`: an invitation's
-      # acceptance, which holds the account `FOR SHARE`, waits for it, and one that came
-      # first is waited for; a row that only names the account, which takes its key share,
-      # does not, so the person's own changes in another tab do not deadlock with it.
+      # The lock order (docs/access.md): every organisation the person is a member of, in
+      # the order of the lock order, those they own `FOR SHARE` and the rest
+      # `FOR KEY SHARE`, then the edition's rows for the deletion and the owners of the
+      # organisations they own (`Organisations.sole_owned_organisations/2` with
+      # `lock: true`), then the person's memberships, then the account,
+      # `FOR NO KEY UPDATE`: an invitation's acceptance, which holds the account
+      # `FOR SHARE`, waits for it, and one that came first is waited for; a row that only
+      # names the account, which takes its key share, does not, so the person's own
+      # changes in another tab do not deadlock with it.
       sole_owned = Organisations.sole_owned_organisations(%User{id: id}, lock: true)
       :ok = Organisations.lock_memberships(%User{id: id})
 

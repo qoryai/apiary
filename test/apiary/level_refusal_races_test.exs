@@ -6,11 +6,12 @@ defmodule Apiary.LevelRefusalRacesTest do
   # in two whose owners change each other's level; two changes of people in one
   # organisation whose edition row a write holds shared; an account's deletion beside
   # changes of level in two of its organisations, beside the edition's own change that
-  # holds one of them `FOR UPDATE`, beside an acceptance that does, and beside the
-  # organisation's purge. Stubs that break the order make crossed changes of level a
-  # deadlock: one that takes a row when asked for the level and another once the
-  # membership is written, and one that holds a membership of another organisation. That
-  # is why the order forbids both. Each side runs on a connection of its own, outside the
+  # holds one of them `FOR UPDATE`, beside an acceptance that does, beside the
+  # organisation's purge, and beside the edition's own change in an organisation the
+  # account joined while the deletion stood, which it holds none of. Stubs that break the
+  # order make crossed changes of level a deadlock: one that takes a row when asked for the
+  # level and another once the membership is written, and one that holds a membership of
+  # another organisation. That is why the order forbids both. Each side runs on a connection of its own, outside the
   # SQL sandbox; not async, as what these tests commit is visible to every other test
   # while they run, and they delete it again before they end.
   use ExUnit.Case, async: false
@@ -264,6 +265,63 @@ defmodule Apiary.LevelRefusalRacesTest do
 
     assert [{:ok, _deleted}, {:ok, :purged}] = answers
     refute Repo.get(Organisation, organisation.id)
+  end
+
+  test "an organisation the account joins while its deletion stands is not the edition's to hold" do
+    :ok = Apiary.Edition.put_test_stub(EditionStubs.PausesAroundAccount)
+    %{scope: owner} = sign_up()
+    deleting = member(owner, :admin)
+    %{scope: other_owner, organisation: joined} = sign_up()
+
+    %{token: token} =
+      Apiary.OrganisationsFixtures.invitation_fixture(other_owner, %{
+        "email" => deleting.user.email
+      })
+
+    Process.put(:level_refusal_rendezvous, true)
+
+    deletion =
+      start(fn -> deadlock_as_answer(fn -> Accounts.delete_user(deleting.scope) end) end)
+
+    assert_receive {:level_refusal_held, pid}, 5_000
+
+    # The person joins another organisation once the deletion has held theirs, before it
+    # takes its rows: the organisation is not among those it held.
+    Process.delete(:level_refusal_rendezvous)
+    acceptance = start(fn -> Organisations.accept_invitation(deleting.user, token) end)
+    assert {:ok, %Membership{}} = Task.await(acceptance.task, 10_000)
+    Process.put(:level_refusal_rendezvous, true)
+
+    send(pid, :level_refusal_go)
+    assert_receive {:level_refusal_held, ^pid}, 5_000
+
+    # A change of the edition's own in the organisation joined, `FOR UPDATE` then its row
+    # of it, which the deletion took none of: it does not wait on the deletion.
+    changed =
+      start(fn ->
+        deadlock_as_answer(fn ->
+          Repo.transact(fn ->
+            Repo.one(
+              from o in Organisation,
+                where: o.id == ^joined.id,
+                select: o.id,
+                lock: "FOR UPDATE"
+            )
+
+            Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+              "apiary-edition-stub:organisation:#{joined.id}"
+            ])
+
+            {:ok, :changed}
+          end)
+        end)
+      end)
+
+    assert {:ok, :changed} = Task.await(changed.task, 10_000)
+
+    send(pid, :level_refusal_go)
+    assert {:ok, _deleted} = Task.await(deletion.task, 10_000)
+    refute Repo.exists?(from m in Membership, where: m.user_id == ^deleting.user.id)
   end
 
   test "an edition that takes a row later in the change makes crossed demotions a deadlock" do

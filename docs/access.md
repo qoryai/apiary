@@ -333,7 +333,8 @@ for each other and never on each other at once:
 
 1. **Organisation rows**: the organisation's own, then the organisations an edition
    holds with it (`c:Apiary.Edition.places_to_lock/1`). Several organisations, as an
-   account's deletion locks the organisations it owns
+   account's deletion holds every organisation the account is a member of, those it owns
+   `FOR SHARE` and the rest `FOR KEY SHARE`
    (`Apiary.Organisations.sole_owned_organisations/2` with `lock: true`), are locked
    first those the edition holds another organisation with, then the rest, each in the
    order of their ids, so an organisation always comes before the ones it holds; with the
@@ -373,10 +374,12 @@ then, and locks nothing more. The core asks it:
   sign-up with it, `scope` nil for the sign-up. There the edition takes, all at once in
   its fixed order, every row it would take at `{:places, scope}` for that scope, in at
   least the same mode, and its rows of the organisation's people;
-- `{:account, user_id}` in an account's deletion, once every organisation the account is
-  a member of is held, in one pass in the order above, those it owns `FOR SHARE` and the
-  rest `FOR KEY SHARE`, and before their owners and the person's memberships: the rows of
-  every organisation the account is a member of.
+- `{:account, user_id, organisation_ids}` in an account's deletion, once every
+  organisation the account is a member of is held, in one pass in the order above, those
+  it owns `FOR SHARE` and the rest `FOR KEY SHARE`, and before their owners and the
+  person's memberships: `organisation_ids` are the organisations held, and the edition
+  takes rows of those organisations only, none of one the account joins after they were
+  read.
 
 A repeat of `{:places, scope}` later in the same change, after its point, must take no new
 row and no stronger mode: the edition answers it with rows it holds already, in the mode

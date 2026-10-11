@@ -77,15 +77,13 @@ defmodule Apiary.EditionStubs do
     edition's, so its rows are transaction-level advisory locks: a write's asker, shared
     (`{:places, scope}`); a change of people's asker, shared, as at `{:places, scope}`,
     and the organisation whose people change, exclusive (`{:people, scope,
-    organisation}`); every organisation of a deleted account, exclusive
-    (`{:account, user_id}`). Each is held as a row would be until the change ends. A
-    change of people pauses just before its point (`Apiary.EditionStubs.rendezvous/0`), a
-    write just after.
+    organisation}`); each organisation the core holds for a deleted account, exclusive
+    (`{:account, user_id, organisation_ids}`). Each is held as a row would be until the
+    change ends. A change of people pauses just before its point
+    (`Apiary.EditionStubs.rendezvous/0`), a write just after.
     """
-    import Ecto.Query
-
     alias Apiary.Accounts.{Scope, User}
-    alias Apiary.Organisations.{Membership, Organisation}
+    alias Apiary.Organisations.Organisation
 
     def lock_rows({:places, scope}) do
       :ok = take(asker(scope))
@@ -97,14 +95,8 @@ defmodule Apiary.EditionStubs do
       take([{:organisation, id, :exclusive} | asker(scope)])
     end
 
-    def lock_rows({:account, user_id}) do
-      ids =
-        Apiary.Repo.all(
-          from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id
-        )
-
-      take(Enum.map(ids, &{:organisation, &1, :exclusive}))
-    end
+    def lock_rows({:account, _user_id, organisation_ids}),
+      do: take(Enum.map(organisation_ids, &{:organisation, &1, :exclusive}))
 
     def lock_rows(_about), do: :ok
 
@@ -133,7 +125,22 @@ defmodule Apiary.EditionStubs do
     Takes its rows as `LocksItsRows` does, and pauses an account's deletion once it holds
     them (`Apiary.EditionStubs.rendezvous/0`).
     """
-    def lock_rows({:account, _user_id} = about) do
+    def lock_rows({:account, _user_id, _organisation_ids} = about) do
+      :ok = LocksItsRows.lock_rows(about)
+      :ok = Apiary.EditionStubs.rendezvous()
+    end
+
+    def lock_rows(about), do: LocksItsRows.lock_rows(about)
+  end
+
+  defmodule PausesAroundAccount do
+    @moduledoc """
+    Takes its rows as `LocksItsRows` does, and pauses an account's deletion twice at
+    `{:account, user_id, organisation_ids}`: before it takes its rows, and once it holds
+    them (`Apiary.EditionStubs.rendezvous/0`).
+    """
+    def lock_rows({:account, _user_id, _organisation_ids} = about) do
+      :ok = Apiary.EditionStubs.rendezvous()
       :ok = LocksItsRows.lock_rows(about)
       :ok = Apiary.EditionStubs.rendezvous()
     end
@@ -224,11 +231,13 @@ defmodule Apiary.EditionStubs do
   defmodule RecordsLockRows do
     @moduledoc """
     Says each time the core asks the edition to lock its rows (`c:Apiary.Edition.lock_rows/1`)
-    to the process that asks, `{:lock_rows, about}`, `about` the point's name, and answers
-    as the configured edition does.
+    to the process that asks, `{:lock_rows, point}`, the point's name, and
+    `{:lock_rows_about, about}`, what it was asked, and answers as the configured edition
+    does.
     """
     def lock_rows(about) do
       send(self(), {:lock_rows, elem(about, 0)})
+      send(self(), {:lock_rows_about, about})
       Apiary.Edition.module().lock_rows(about)
     end
   end

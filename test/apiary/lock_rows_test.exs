@@ -18,6 +18,7 @@ defmodule Apiary.LockRowsTest do
   # The points asked since the last call, in order.
   defp points(acc \\ []) do
     receive do
+      {:lock_rows_about, _about} -> points(acc)
       {:lock_rows, point} -> points([point | acc])
     after
       0 -> Enum.reverse(acc)
@@ -41,7 +42,11 @@ defmodule Apiary.LockRowsTest do
 
       before = held.()
 
-      for about <- [{:places, scope}, {:people, scope, organisation}, {:account, user.id}] do
+      for about <- [
+            {:places, scope},
+            {:people, scope, organisation},
+            {:account, user.id, [organisation.id]}
+          ] do
         assert Apiary.Edition.Core.lock_rows(about) == :ok
       end
 
@@ -124,7 +129,7 @@ defmodule Apiary.LockRowsTest do
     end
   end
 
-  test "an account's deletion asks {:account} once, for every organisation it is in" do
+  test "an account's deletion asks {:account} once, with every organisation it holds" do
     %{scope: owner} = sign_up_fixture()
     %{scope: elsewhere} = sign_up_fixture()
     %{user: user} = member_fixture(owner, :admin)
@@ -132,6 +137,9 @@ defmodule Apiary.LockRowsTest do
     recording()
 
     assert {:ok, _deleted} = Accounts.delete_user(%Scope{user: user})
+    assert_received {:lock_rows_about, {:account, user_id, held}}
+    assert user_id == user.id
+    assert Enum.sort(held) == Enum.sort([owner.organisation.id, elsewhere.organisation.id])
     assert points() == [:account]
   end
 end

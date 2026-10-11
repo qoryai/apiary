@@ -65,13 +65,14 @@ defmodule Apiary.Edition do
   @typedoc """
   What a change asks the edition to lock its rows for (`c:lock_rows/1`): `{:places, scope}`,
   a write that must stay allowed for the scope's person; `{:people, scope, organisation}`, a
-  change of the organisation's people, `scope` nil for a sign-up; `{:account, user_id}`,
-  the deletion of an account, with every membership it holds.
+  change of the organisation's people, `scope` nil for a sign-up;
+  `{:account, user_id, organisation_ids}`, the deletion of an account, with the
+  organisations the core holds for it.
   """
   @type lock_about ::
           {:places, Scope.t()}
           | {:people, Scope.t() | nil, %Organisation{}}
-          | {:account, Ecto.UUID.t()}
+          | {:account, Ecto.UUID.t(), [Ecto.UUID.t()]}
 
   # Limits and sign-up
 
@@ -215,10 +216,13 @@ defmodule Apiary.Edition do
     sign-up. Here the edition takes, all at once in its fixed order, every row it would
     take at `{:places, scope}` for that scope, in at least the same mode, and its rows of
     the organisation's people;
-  - `{:account, user_id}` in an account's deletion, once every organisation the account
-    is a member of is held, those it owns `FOR SHARE` and the rest `FOR KEY SHARE`, and
-    before their owners and the person's memberships: the rows of every organisation the
-    account is a member of, at this one point.
+  - `{:account, user_id, organisation_ids}` in an account's deletion, once every
+    organisation the account is a member of is held, those it owns `FOR SHARE` and the
+    rest `FOR KEY SHARE`, and before their owners and the person's memberships:
+    `organisation_ids` are the organisations the core holds, in the order it took them,
+    and the edition takes rows of those organisations only, at this one point. An
+    organisation the account joins after they were read is not among them, and the
+    edition takes none of its rows.
 
   A repeat of `{:places, scope}` later in the same change, after its point, must take no
   new row and no stronger mode: the edition answers it with rows it holds already, in the
