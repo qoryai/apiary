@@ -367,6 +367,8 @@ defmodule Apiary.Features do
   # The features of an access key's organisation and workspace.
   defp of_key(%AccessKey{organisation_id: organisation_id, workspace_id: workspace_id}) do
     case Repo.get(Organisation, organisation_id) do
+      # The key of a gateway that lives at its organisation has no workspace.
+      %Organisation{} = organisation when is_nil(workspace_id) -> of(organisation)
       %Organisation{} = organisation -> of(organisation, %Workspace{id: workspace_id})
       nil -> []
     end

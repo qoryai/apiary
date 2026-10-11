@@ -337,7 +337,7 @@ defmodule Apiary.GatewaysTest do
 
       assert {:error, changeset} = Nodes.update_node(scope, node, %{gateway_choice: "default"})
 
-      assert %{gateway_choice: ["has no default gateway in this workspace"]} =
+      assert %{gateway_choice: ["has no default gateway"]} =
                errors_on(changeset)
 
       gateway_fixture(scope)

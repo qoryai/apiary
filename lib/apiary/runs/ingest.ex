@@ -129,7 +129,7 @@ defmodule Apiary.Runs.Ingest do
 
   # A key's scope is never refused a role here; what can refuse it is a feature that is off.
   defp may_post(scope) do
-    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+    case Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end
@@ -254,13 +254,21 @@ defmodule Apiary.Runs.Ingest do
   # finds its workspace's run, or opens it.
   defp held(%AccessKey{node: %Nodes.Node{kind: :gateway}} = access_key, batch, _meta, _now) do
     Repo.one(Sender.run_query(access_key, batch.subject, lock: true)) ||
-      Repo.one(
-        from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
-      )
+      own_run(access_key, batch)
   end
 
   defp held(access_key, batch, meta, now), do: upsert_run(access_key, batch, meta, now)
+
+  # A run of the gateway key's own workspace, none for a key with no workspace, an
+  # organisation-level gateway's.
+  defp own_run(%AccessKey{workspace_id: nil}, _batch), do: nil
+
+  defp own_run(access_key, batch) do
+    Repo.one(
+      from r in Run,
+        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
+    )
+  end
 
   # The run's own organisation and workspace, for a run through a gateway, whose key may
   # be of another place: out of use is refused as a key of it would be, and a feature that

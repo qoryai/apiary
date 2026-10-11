@@ -397,7 +397,7 @@ defmodule Apiary.Runs.Registration do
 
   # A key's scope is never refused a role here; what can refuse it is a feature that is off.
   defp may_post(scope) do
-    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+    case Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end
@@ -405,6 +405,10 @@ defmodule Apiary.Runs.Registration do
 
   # The run of this id the workspace holds already, as it decides the answer: none, a
   # repeat, or a run whose id is used.
+  # A key with no workspace, an organisation-level gateway's, holds no run of its own: its
+  # registration is refused as a gateway's key's (`route/2`).
+  defp held(%AccessKey{workspace_id: nil}, _registration, _digest), do: {:ok, nil}
+
   defp held(access_key, registration, digest) do
     run =
       Repo.one(

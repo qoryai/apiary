@@ -411,7 +411,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       html =
         render_submit(lv, "create", %{"node" => %{"name" => "build-01", "gateway" => "default"}})
 
-      assert html =~ "has no default gateway in this workspace"
+      assert html =~ "has no default gateway"
       assert Nodes.list_nodes(scope, %{kind: :node}) == []
     end
 

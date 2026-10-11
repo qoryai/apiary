@@ -85,14 +85,35 @@ defmodule Apiary.Accounts.Scope do
 
   @doc """
   The scope of the gateway at the server contract: the access key it signed with, verified,
-  and the key's workspace. The key must carry its workspace loaded, as a verified key does
-  (`Apiary.AccessKeys.fetch_for_verification/1`); a caller holding one without it preloads
-  it first (`Apiary.Runs.Ingest.ingest/3` and `Apiary.Policy.Serving.managed?/1` do).
+  and the key's workspace, or none for the key of a gateway that lives at an organisation
+  (`Apiary.Gateways`), whose place is its organisation. The key must carry its workspace
+  loaded, as a verified key does (`Apiary.AccessKeys.fetch_for_verification/1`); a caller
+  holding one without it preloads it first (`Apiary.Runs.Ingest.ingest/3` and
+  `Apiary.Policy.Serving.managed?/1` do).
   """
   @spec for_access_key(AccessKey.t()) :: t
   def for_access_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
     %__MODULE__{access_key: access_key, workspace: workspace}
   end
+
+  def for_access_key(%AccessKey{workspace_id: nil, workspace: nil} = access_key) do
+    %__MODULE__{access_key: access_key, workspace: nil}
+  end
+
+  @doc """
+  key_place/1 is what the place of an access key's scope is asked as, a subject of
+  `Apiary.Access`: the key's workspace, or, for a key with none, its organisation, which
+  the key carries loaded (`Apiary.AccessKeys.fetch_for_verification/1`), or a struct with
+  its id alone.
+  """
+  @spec key_place(t) :: %Workspace{} | %Organisation{}
+  def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
+
+  def key_place(%__MODULE__{access_key: %AccessKey{organisation: %Organisation{} = organisation}}),
+    do: organisation
+
+  def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: organisation_id}}),
+    do: %Organisation{id: organisation_id}
 
   @doc """
   The scope of the instance acting on its own, in `organisation` and, when given,
