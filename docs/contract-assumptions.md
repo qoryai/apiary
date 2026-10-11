@@ -102,7 +102,7 @@ public id of the key's node, node pool or gateway (`ng_`). For a node or a node 
 `workspaces` holds exactly one id, the public id of the workspace it belongs to
 (`workspaces.public_id`, `ws_` and 16 characters, `Apiary.Organisations.Workspace`); for a
 gateway, the ids of the workspaces it may serve, sorted, at least one
-(`Apiary.Gateways.serves/1`): in this release, the workspace it belongs to. Discovery has no
+(`Apiary.Gateways.serves/1`): the workspace it belongs to. Discovery has no
 member naming the kind: the prefix of `node_id` says it. The `events` URL is the events endpoint below,
 and the `run` URL the run endpoint after it, with no trailing slash, no query and no
 fragment: a reload appends `/` and the run's id. `apiary_public_key` lists the

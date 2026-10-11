@@ -3,8 +3,8 @@ defmodule Apiary.Nodes do
   Nodes holds a workspace's nodes and node pools (`Apiary.Nodes.Node`), the places its
   runs run: a **node** is one permanent machine, which runs one instance at a time; a
   **node pool** is a fleet of short-lived instances, which run up to its instance limit,
-  or any number when it has none. It holds its **gateways** too, the third kind, through
-  which the runs of the others may reach Qory Apiary (`Apiary.Gateways`). The kind is
+  or any number when it has none. It holds its **gateways** too, the third kind, which
+  the others may record as their choice of gateway (`Apiary.Gateways`). The kind is
   chosen when one is made and never changes.
 
   Every function a page calls takes an `Apiary.Accounts.Scope` with a workspace first and
@@ -25,8 +25,9 @@ defmodule Apiary.Nodes do
   changed; a deletion's time; the instance a clearing cleared.
 
   **Gateways.** A gateway is made, changed and deleted as a node is, under the same
-  actions. A node's or a pool's choice of gateway is saved with it, `:direct` unless it
-  says otherwise: `:named` must name one of `Apiary.Gateways.gateway_choices/1`, and
+  actions. A node's or a pool's choice of gateway is saved with it; given none, a new
+  one starts on `:default` when a default resolves for the workspace, and on `:direct`
+  otherwise. `:named` must name one of `Apiary.Gateways.gateway_choices/1`, and
   `:default` needs a default that resolves for the workspace. A gateway made when no
   default resolves for its workspace becomes its default; `make_default_gateway/2` moves
   the mark. A gateway is deleted only when nothing points to it
@@ -164,8 +165,9 @@ defmodule Apiary.Nodes do
   create_node/2 makes a node of the scope's workspace (`node.create`, owners and
   admins) from `attrs`: its `kind`, `node`, `pool` or `gateway`, which is fixed from then
   on, its `name`, a pool's `instance_limit`, empty for none, a gateway's `url`, and a
-  node's or a pool's `gateway_choice` (`direct` unless given; `named` with its
-  `gateway_id`). A gateway made when no default gateway resolves for the workspace is
+  node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A node or a pool
+  given no choice starts on `default` when a default gateway resolves for the workspace,
+  and on `direct` otherwise. A gateway made when no default gateway resolves for the workspace is
   made its default. `{:ok, node}`, `{:error, changeset}`, or `{:error, :forbidden}` for
   one who may not, `{:error, :not_found}` where the workspace is out of their reach.
   """
@@ -189,6 +191,7 @@ defmodule Apiary.Nodes do
                created_by_id: user.id
              }
              |> Node.create_changeset(attrs)
+             |> put_first_choice(attrs, workspace)
              |> validate_gateway(scope)
              |> Repo.insert(),
            {:ok, node} <- default_if_none(node, workspace),
@@ -197,6 +200,16 @@ defmodule Apiary.Nodes do
         {:ok, node}
       end
     end)
+  end
+
+  # A new node or pool given no choice: the default when one resolves, else direct.
+  defp put_first_choice(changeset, attrs, workspace) do
+    given? = Map.has_key?(attrs, :gateway_choice) or Map.has_key?(attrs, "gateway_choice")
+
+    if Ecto.Changeset.get_field(changeset, :kind) in Node.kinds() and not given? and
+         Gateways.default_gateway_for(workspace) != nil,
+       do: Ecto.Changeset.put_change(changeset, :gateway_choice, :default),
+       else: changeset
   end
 
   # What the entry of a new node records of it.
@@ -213,7 +226,7 @@ defmodule Apiary.Nodes do
   defp default_if_none(%Node{kind: :gateway} = gateway, workspace) do
     if Gateways.default_gateway_for(workspace),
       do: {:ok, gateway},
-      else: gateway |> Ecto.Changeset.change(default_gateway: true) |> Repo.update()
+      else: gateway |> Node.default_changeset(true) |> Repo.update()
   end
 
   defp default_if_none(node, _workspace), do: {:ok, node}
@@ -255,8 +268,7 @@ defmodule Apiary.Nodes do
   @doc """
   update_node/3 renames `node`, and changes a pool's instance limit, a gateway's `url`, or
   a node's or a pool's choice of gateway (`node.edit`, owners and admins), from `attrs`;
-  its kind stays. Lowering a pool's limit stops none of its instances, and a new choice
-  applies to the registrations after it. `{:ok, node}`, `{:error, changeset}`,
+  its kind stays. Lowering a pool's limit stops none of its instances. `{:ok, node}`, `{:error, changeset}`,
   `{:error, :forbidden}`, or `{:error, :not_found}` for a node that is deleted or not the
   workspace's.
   """
@@ -275,13 +287,14 @@ defmodule Apiary.Nodes do
   @doc """
   make_default_gateway/2 marks `gateway` as its workspace's default gateway (`node.edit`,
   owners and admins), and takes the mark off the gateway that held it, each change with
-  its entry. The nodes on `:default` go through it from their next registration.
-  `{:ok, gateway}`, unchanged when it was the default already; `{:error, :forbidden}`; or
+  its entry. The nodes on `:default` resolve to it from then on (`Apiary.Gateways.resolve/1`).
+  `{:ok, gateway}`, unchanged when it was the default already; `{:error, changeset}` when
+  the database refuses the mark; `{:error, :forbidden}`; or
   `{:error, :not_found}` for a gateway that is deleted, not the workspace's, or a node
   that is not a gateway.
   """
   @spec make_default_gateway(Scope.t(), Node.t()) ::
-          {:ok, Node.t()} | {:error, Access.reason()}
+          {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
   def make_default_gateway(%Scope{} = scope, %Node{} = gateway) do
     gateway_mutate(scope, :"node.edit", gateway, fn
       %Node{kind: :gateway, default_gateway: true} = current ->
@@ -305,7 +318,7 @@ defmodule Apiary.Nodes do
 
   defp set_default(scope, gateway, default?) do
     with {:ok, updated} <-
-           gateway |> Ecto.Changeset.change(default_gateway: default?) |> Repo.update(),
+           gateway |> Node.default_changeset(default?) |> Repo.update(),
          :ok <- record_edit(scope, gateway, updated) do
       {:ok, updated}
     end
@@ -414,8 +427,9 @@ defmodule Apiary.Nodes do
     end)
   end
 
-  # The entry of an edit, when it changed the name or the limit; an edit that changed
-  # nothing has nothing to record.
+  # The entry of an edit, when it changed the name, the limit, a gateway's address or
+  # default mark, or a node's choice of gateway; an edit that changed nothing has nothing
+  # to record.
   defp record_edit(scope, old, new) do
     case Audit.changed(old, new, [
            :name,

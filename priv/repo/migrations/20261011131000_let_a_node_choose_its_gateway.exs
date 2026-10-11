@@ -1,11 +1,12 @@
 defmodule Apiary.Repo.Migrations.LetANodeChooseItsGateway do
   use Ecto.Migration
 
-  # How a node or a node pool reaches Qory Apiary (`Apiary.Gateways.resolve/1`):
-  # `gateway_choice` is `direct`, `default` (the default gateway of its workspace, resolved
-  # at each registration) or `named`, with the named gateway in `gateway_id`. Every row
-  # that is there when the column is added is `direct`, which is what every node does
-  # today, and so is a row written without one. A gateway itself is always `direct`.
+  # A node's or a node pool's recorded choice of gateway, which
+  # `Apiary.Gateways.resolve/1` answers for: `gateway_choice` is `direct`, `default` (the
+  # default gateway of its workspace) or `named`, with the named gateway in `gateway_id`.
+  # Every row that is there when the column is added is `direct`, and so is a row written
+  # without one. A gateway itself is always `direct`. Nothing at a run's registration reads
+  # the choice.
   #
   # `gateway_id` is a plain reference to the gateway's own row, not the composite key a
   # node's other references use: whether a gateway may serve the node's workspace is the
@@ -16,8 +17,9 @@ defmodule Apiary.Repo.Migrations.LetANodeChooseItsGateway do
   # When the gateway's row itself goes, with the purge of its workspace or organisation, the
   # reference is set NULL and the choice stays `named`: the purge is never held up by
   # another workspace's or organisation's nodes that name the gateway, and such a node does
-  # not quietly become direct. It names a gateway that is gone, and its registrations are
-  # refused until someone chooses again. The check lets `gateway_id` be NULL under `named`
+  # not quietly become direct. It names a gateway that is gone, which
+  # `Apiary.Gateways.resolve/1` answers as `gateway_not_serving`, until someone chooses
+  # again. The check lets `gateway_id` be NULL under `named`
   # for that; the application requires a gateway when the choice is made.
   #
   # nodes is a small table, so the checks are made and validated at once.

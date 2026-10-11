@@ -179,7 +179,7 @@ defmodule Apiary.GatewaysTest do
       refute reload(first).default_gateway
       assert Gateways.default_gateway_for(scope.workspace).id == second.id
 
-      # The nodes on the default go through the new one from their next registration.
+      # The nodes on the default resolve to the new one.
       assert {:gateway, %Node{id: id}} = Gateways.resolve(reload(pool))
       assert id == second.id
 
@@ -214,9 +214,59 @@ defmodule Apiary.GatewaysTest do
   end
 
   describe "a node's choice" do
-    test "is direct unless it says otherwise", %{scope: scope} do
+    test "a new node or pool starts on the default when one resolves, else direct",
+         %{scope: scope} do
       assert node_fixture(scope).gateway_choice == :direct
       assert pool_fixture(scope).gateway_choice == :direct
+
+      gateway_fixture(scope)
+      assert node_fixture(scope).gateway_choice == :default
+      assert pool_fixture(scope).gateway_choice == :default
+
+      # In a workspace no default resolves for, direct.
+      %{scope: there} = other_workspace(scope)
+      assert node_fixture(there).gateway_choice == :direct
+      assert pool_fixture(there).gateway_choice == :direct
+
+      assert [entry] = entries(node_fixture(scope))
+      assert entry.after["gateway_choice"] == "default"
+    end
+
+    test "a choice given at creation wins", %{scope: scope} do
+      gateway = gateway_fixture(scope)
+
+      assert node_fixture(scope, gateway_choice: "direct").gateway_choice == :direct
+
+      assert {:ok, %Node{gateway_choice: :direct}} =
+               Nodes.create_node(scope, %{
+                 "kind" => "pool",
+                 "name" => "ci",
+                 "gateway_choice" => "direct"
+               })
+
+      named = pool_fixture(scope, gateway_choice: "named", gateway_id: gateway.id)
+      assert {named.gateway_choice, named.gateway_id} == {:named, gateway.id}
+    end
+
+    test "the database's refusals come back as errors, not raised", %{scope: scope} do
+      first = gateway_fixture(scope)
+      second = gateway_fixture(scope)
+      pool = pool_fixture(scope, gateway_choice: "direct")
+
+      # Past the checks of `Apiary.Nodes`: the database refuses, the changeset says so.
+      assert {:error, changeset} = second |> Node.default_changeset(true) |> Repo.update()
+      assert %{default_gateway: [_]} = errors_on(changeset)
+
+      assert {:error, changeset} = pool |> Node.default_changeset(true) |> Repo.update()
+      assert %{default_gateway: [_]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               pool
+               |> Node.changeset(%{gateway_choice: "named", gateway_id: pool.id})
+               |> Repo.update()
+
+      assert %{gateway_id: [_]} = errors_on(changeset)
+      assert reload(first).default_gateway
     end
 
     test "names a gateway it may use, and records it", %{scope: scope} do
@@ -287,7 +337,7 @@ defmodule Apiary.GatewaysTest do
 
     test "changes, and the change is in the trail; direct drops the gateway", %{scope: scope} do
       gateway = gateway_fixture(scope)
-      node = node_fixture(scope)
+      node = node_fixture(scope, gateway_choice: "direct")
 
       {:ok, named} =
         Nodes.update_node(scope, node, %{gateway_choice: "named", gateway_id: gateway.id})
@@ -322,7 +372,7 @@ defmodule Apiary.GatewaysTest do
   describe "resolve/1" do
     test "direct", %{scope: scope} do
       keyed_gateway(scope)
-      assert Gateways.resolve(node_fixture(scope)) == :direct
+      assert Gateways.resolve(node_fixture(scope, gateway_choice: "direct")) == :direct
     end
 
     test "a named gateway, while it may serve and has a key", %{scope: scope} do
@@ -405,10 +455,10 @@ defmodule Apiary.GatewaysTest do
 
       assert Gateways.may_serve?(gateway, scope.workspace)
       refute Gateways.may_serve?(gateway, workspace)
-      refute Gateways.may_serve?(node_fixture(scope), scope.workspace)
+      refute Gateways.may_serve?(node_fixture(scope, gateway_choice: "direct"), scope.workspace)
 
       assert Enum.map(Gateways.serves(gateway), & &1.id) == [scope.workspace.id]
-      assert Gateways.serves(node_fixture(scope)) == []
+      assert Gateways.serves(node_fixture(scope, gateway_choice: "direct")) == []
 
       {:ok, deleted} = Nodes.delete_node(scope, gateway)
       refute Gateways.may_serve?(deleted, scope.workspace)

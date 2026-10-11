@@ -1,25 +1,26 @@
 defmodule Apiary.Gateways do
   @moduledoc """
-  Gateways answers where a gateway stands and which gateway a node's or a node pool's runs
-  go through.
+  Gateways answers where a gateway stands, and which gateway a node's or a node pool's
+  recorded choice resolves to.
 
   A **gateway** is a node of kind `:gateway` (`Apiary.Nodes.Node`, `ng_…`): it holds an
-  access key of its own, enrols as a node does, and runs nothing itself. It lives at a
-  **level**, the place it belongs to and serves everything below. In this release every
-  gateway lives at a workspace's level and serves that workspace alone; the functions here
-  take the levels most specific first (`levels/1`), so a gateway of a wider level answers
-  through them unchanged.
+  access key of its own and enrols as a node does. It belongs to a workspace, its
+  **level** (`level/1`), and may serve that workspace alone. The functions take a
+  workspace's levels most specific first (`levels/1`): the workspace's, then its
+  organisation's, which holds no gateway, so `default_at/2` and `oldest_at/2` answer nil
+  for it.
 
-  A node or a node pool **chooses** how its runs reach Qory Apiary (`gateway_choice`):
-  `:direct`; `:default`, the default gateway of its workspace as it resolves at each
-  registration; or `:named`, one gateway it names (`gateway_id`). A change of choice, or
-  of a default, applies to the registrations after it.
+  A node or a node pool records a **choice** (`gateway_choice`): `:direct`; `:default`,
+  its workspace's default gateway; or `:named`, one gateway it names (`gateway_id`). The
+  choice is checked when it is saved (`Apiary.Nodes`), and `resolve/1` answers where it
+  leads from the records as they are when it is asked. Nothing at a run's registration
+  reads it.
 
   - `may_serve?/2` says whether a gateway may serve a workspace: a gateway of the
     workspace's level, in use.
   - `default_gateway_for/1` is the workspace's default gateway: the default of the most
     specific level that has one, or none.
-  - `resolve/1` is where a node's next run goes: directly, through a gateway, or nowhere,
+  - `resolve/1` is where a node's choice leads now: directly, to a gateway, or nowhere,
     with the reason.
   - `serves/1` is the workspaces a gateway may serve, the list its discovery document names.
   - `gateway_choices/1` is the gateways a node of a workspace may name.
@@ -52,18 +53,18 @@ defmodule Apiary.Gateways do
   alias Apiary.Organisations.{Organisation, Workspace}
 
   @typedoc """
-  A level a gateway may live at, most specific first: a workspace, or an organisation.
+  A level of a workspace (`levels/1`): the workspace itself, or its organisation.
   """
   @type level :: {:workspace, Ecto.UUID.t()} | {:organisation, Ecto.UUID.t()}
 
   @typedoc """
-  Where a node's next run goes (`resolve/1`): directly, through a gateway, or nowhere:
+  Where a node's choice leads (`resolve/1`): directly, to a gateway, or nowhere:
 
   - `:no_default_gateway`: the node chose the default, and none resolves for its workspace;
   - `:gateway_not_serving`: the gateway it names may no longer serve its workspace, is
     deleted, or is gone;
   - `:gateway_without_key`: the gateway it goes through has no active access key;
-  - `:gateway_key`: the node is a gateway, which goes through none.
+  - `:gateway_key`: the node is a gateway, which chooses none.
   """
   @type resolution ::
           :direct
@@ -80,8 +81,8 @@ defmodule Apiary.Gateways do
   ## Levels
 
   @doc """
-  levels/1 is the levels a gateway serving `workspace` may live at, most specific first:
-  the workspace's, then its organisation's.
+  levels/1 is the levels of `workspace` whose default its nodes resolve to, most specific
+  first: the workspace's, then its organisation's.
   """
   @spec levels(%Workspace{}) :: [level, ...]
   def levels(%Workspace{id: id, organisation_id: organisation_id}),
@@ -111,7 +112,7 @@ defmodule Apiary.Gateways do
 
   @doc """
   may_serve?/2 says whether `gateway` may serve `workspace`: a gateway in use, at the
-  workspace's level. Asked when a node's choice is saved and when a run registers.
+  workspace's level. Asked when a node's choice is saved and by `resolve/1`.
   """
   @spec may_serve?(Node.t(), %Workspace{}) :: boolean
   def may_serve?(
@@ -178,7 +179,7 @@ defmodule Apiary.Gateways do
     |> Repo.one()
   end
 
-  # No gateway lives at an organisation's level in this release.
+  # An organisation holds no gateway of its own.
   def default_at({:organisation, _organisation_id}, %Workspace{}), do: nil
 
   @doc """
@@ -201,11 +202,10 @@ defmodule Apiary.Gateways do
   ## Resolution
 
   @doc """
-  resolve/1 is where the next run of `node` goes, from the node's record as it is now
+  resolve/1 is where the choice of `node` leads, from the records as they are now
   (`t:resolution/0`): `:direct`; `{:gateway, gateway}`, the gateway it names or its
   workspace's default, when that gateway may serve the node's workspace and has an active
-  access key; or `{:error, reason}`. A gateway's own key registers no run through another
-  (`:gateway_key`).
+  access key; or `{:error, reason}`. A gateway chooses none (`:gateway_key`).
   """
   @spec resolve(Node.t()) :: resolution
   def resolve(%Node{kind: :gateway}), do: {:error, :gateway_key}

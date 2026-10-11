@@ -183,11 +183,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
   node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
   gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
-  may serve, sorted. Each node and node pool chooses how its runs reach Qory Apiary:
-  directly, through its workspace's default gateway, or through a gateway it names, one
-  that may serve its workspace; the choice can be changed, applies to the registrations
-  after it, and is direct for every node and pool there before and for a new one unless it
-  says otherwise. A workspace's first gateway becomes its default, and only a gateway made
+  may serve, sorted. Each node and node pool records a choice of gateway: direct, its
+  workspace's default gateway, or a gateway it names, one that may serve its workspace,
+  checked when the choice is saved; nothing at a run's registration reads it. The choice
+  can be changed. Every node and pool there before is direct; a new one given no choice
+  starts on the default when a default gateway resolves for its workspace, and on direct
+  otherwise. A workspace's first gateway becomes its default, and only a gateway made
   when no default resolves does so by itself, so adding a second one moves no node; a
   person moves the mark (`Apiary.Nodes.make_default_gateway/2`). A gateway is deleted only
   when no node names it and no node on the default resolves to it; the refusal names those
@@ -195,8 +196,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   more, the oldest gateway left becomes the default. Making, changing and deleting a
   gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
   as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
-  workspace's default gateway, where a node's next run goes, the workspaces a gateway may
-  serve and the gateways a node may name. Nothing in the console shows gateways yet.
+  workspace's default gateway, where a node's choice leads, the workspaces a gateway may
+  serve and the gateways a node may name. The console does not show gateways.
 - `gateways` is a reserved workspace slug, refused as the organisation's own page names
   are; a workspace named Gateways gets the slug `gateways-2`.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past

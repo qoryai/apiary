@@ -4,11 +4,11 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
   `configuration.schema.json` of Forager's contract at the commit in
   `.forager-contract-ref`.
 
-  A node's and a pool's documents validate. The contract at the pin knows no gateway yet:
-  its schema takes a node id of `nd_` or `np_` alone. So the gateway's document is held to
-  fail that schema for its `ng_` node id and nothing else; once the pin moves to a contract
-  that knows a gateway, the assertion below fails, and the gateway's document is
-  validated as the others are.
+  A node's and a pool's documents validate. The contract at the pin knows no gateway: its
+  schema takes a node id of `nd_` or `np_` alone. So the gateway's document is held to
+  fail that schema for its `ng_` node id and nothing else. A pin whose contract knows a
+  gateway's id fails the assertion below, and the gateway's document is then validated as
+  the others are.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -39,8 +39,7 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
     gateway = document(scope, gateway_fixture(scope))
     assert "ng_" <> id = gateway["node_id"]
 
-    # To validate as the others do once the pinned contract knows a gateway's id.
-    assert {:error, _not_yet} = ContractSchema.validate(schema(), gateway)
+    assert {:error, _unknown_prefix} = ContractSchema.validate(schema(), gateway)
     assert :ok = ContractSchema.validate(schema(), %{gateway | "node_id" => "np_" <> id})
   end
 end

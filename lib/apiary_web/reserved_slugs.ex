@@ -37,8 +37,8 @@ defmodule ApiaryWeb.ReservedSlugs do
   )
 
   # The organisation's own pages, the second segment of `/:org/…`, the palette's answers
-  # there and the switcher's link to the organisation (`-`), and `gateways`, kept for the
-  # organisation's gateways.
+  # there and the switcher's link to the organisation (`-`); `gateways` is reserved as a
+  # workspace slug too.
   @organisation_pages ~w(- activity audit-log gateways jump members settings)
 
   @doc """

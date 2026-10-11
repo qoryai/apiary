@@ -3,8 +3,8 @@ defmodule Apiary.Nodes.Node do
   A node of a workspace: a place that runs, or a gateway. Its `kind` is `:node`, one
   permanent machine that runs one instance at a time, `:pool`, a fleet of short-lived
   instances that run up to its `instance_limit`, or any number when the limit is nil, or
-  `:gateway`, which runs nothing itself and through which the runs of other nodes reach
-  Qory Apiary (`Apiary.Gateways`). The kind is chosen when the node is made
+  `:gateway`, which a node or a pool may record as its choice of gateway
+  (`Apiary.Gateways`). The kind is chosen when the node is made
   (`create_changeset/2`) and never changes: `changeset/2` does not cast it, and the
   database refuses an update that changes it.
 
@@ -15,10 +15,11 @@ defmodule Apiary.Nodes.Node do
 
   A gateway has an address, `url` (`validate_url/1`), no instance limit, and may be its
   workspace's default gateway (`default_gateway`, which `Apiary.Nodes` sets, never a
-  changeset). A node or a pool has neither, and chooses how its runs reach Qory Apiary
+  changeset). A node or a pool has neither, and records a choice of gateway
   (`gateway_choice`, `t:choice/0`): `:direct`, `:default`, its workspace's default
-  gateway, or `:named`, the gateway `gateway_id` names. A new one is `:direct` unless it
-  says otherwise. A choice of `:named` whose `gateway_id` is nil names a gateway that is
+  gateway, or `:named`, the gateway `gateway_id` names. The field's default is `:direct`;
+  `Apiary.Nodes.create_node/2` starts a new one on `:default` when a default gateway
+  resolves for its workspace, unless it is given a choice. A choice of `:named` whose `gateway_id` is nil names a gateway that is
   gone, purged with its workspace or organisation.
 
   A node is deleted softly: `deleted_at` and `deleted_by_id` are set
@@ -41,8 +42,8 @@ defmodule Apiary.Nodes.Node do
   @type kind :: :node | :pool | :gateway
 
   @typedoc """
-  How a node or a pool reaches Qory Apiary: directly, through its workspace's default
-  gateway, or through the gateway it names.
+  A node's or a pool's choice of gateway: direct, its workspace's default gateway, or the
+  gateway it names.
   """
   @type choice :: :direct | :default | :named
 
@@ -90,7 +91,7 @@ defmodule Apiary.Nodes.Node do
   @spec all_kinds() :: [kind]
   def all_kinds, do: @all_kinds
 
-  @doc "choices/0 is how a node or a pool may reach Qory Apiary (`t:choice/0`)."
+  @doc "choices/0 is the choices of gateway a node or a pool may record (`t:choice/0`)."
   @spec choices() :: [choice]
   def choices, do: @choices
 
@@ -143,6 +144,23 @@ defmodule Apiary.Nodes.Node do
     |> put_limit(attrs)
     |> put_url(attrs)
     |> put_choice(attrs)
+    |> check_constraint(:url, name: :nodes_url_check)
+    |> check_constraint(:gateway_choice, name: :nodes_gateway_choice_check)
+    |> check_constraint(:gateway_id, name: :nodes_gateway_is_a_gateway)
+    |> foreign_key_constraint(:gateway_id, name: :nodes_gateway_id_fkey)
+  end
+
+  @doc """
+  default_changeset/2 marks `gateway` as its workspace's default gateway, or takes the
+  mark off. The database holds a workspace to one default, a gateway in use: a mark it
+  refuses is an error on `default_gateway`.
+  """
+  @spec default_changeset(t, boolean) :: Ecto.Changeset.t()
+  def default_changeset(%__MODULE__{} = gateway, default?) when is_boolean(default?) do
+    gateway
+    |> change(default_gateway: default?)
+    |> unique_constraint(:default_gateway, name: :nodes_default_gateway_index)
+    |> check_constraint(:default_gateway, name: :nodes_default_gateway_check)
   end
 
   # A node runs one instance at a time; a pool runs up to its limit, or any number.
