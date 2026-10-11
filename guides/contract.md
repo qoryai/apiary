@@ -224,6 +224,30 @@ most 16, each value at most 256 bytes, and `about`, what the run is about as
 the contract does not name, or one that breaks its rule, is `400 invalid_request`. A
 `time` more than 300 seconds from the server's clock is `401`.
 
+**Through a gateway.** Each node and node pool records a choice of gateway: directly, its
+workspace's default gateway, or a gateway it names. The server resolves that choice at
+every registration, as the records are then, and never reads it from the body. A node that
+goes directly sends the body above. A node whose choice leads to a gateway sends the body
+without `forager_version`, `contract_version`, `interval_seconds` and `events`, which the
+gateway sends when it attaches the run (A run's attach, below), and may ask for an attach
+window:
+
+```json
+{"version": 1,
+ "run_id": "0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d",
+ "labels": {"repository": "acme/shop"},
+ "about": {"title": "Fix the failing build"},
+ "attach_seconds": 600,
+ "time": "2026-10-11T12:00:00Z"}
+```
+
+`attach_seconds` is how long the run may wait for its gateway, an integer from 1. Left
+out, the window is 600 seconds; above 3600 it is 3600. Both are settings of the server
+(`config :apiary, Apiary.Runs.Registration`, `attach_seconds` and `max_attach_seconds`).
+A body with some of the four members and not all, or with them and `attach_seconds`, is
+`400 invalid_request`. `labels` and `about` are given back to the gateway at the attach,
+and select no policy.
+
 The answers, in order; the first that applies is the answer:
 
 | Status | When | Body |
@@ -240,13 +264,20 @@ The answers, in order; the first that applies is the answer:
 | `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: the same bytes again, under any active key of the node that registered the run | the answer the registration was given |
 | `410` | retention has pruned the run's events | empty |
+| `409` | the key is a gateway's: a gateway registers no run | `{"error":"gateway_key"}` |
+| `409` | the body has the shape for a gateway, and the node goes directly | `{"error":"node_is_direct"}` |
+| `409` | the body has the direct shape, and the node's choice leads to a gateway | `{"error":"node_uses_gateway"}` |
+| `409` | the node uses its workspace's default gateway, and the workspace has none | `{"error":"no_default_gateway"}` |
+| `409` | the gateway the node names may no longer serve the node's workspace | `{"error":"gateway_not_serving"}` |
+| `409` | the gateway has no active access key, so it could attach no run | `{"error":"gateway_without_key"}` |
 | `409` | a new instance beyond its node's instance limit; the node counts the start refused | `{"error":"instance_limit"}` |
 | `409` | the run id is taken: registered with other bytes or by another node, or holding events that came without a registration | `{"error":"run_id_used"}` |
-| `503` | the run configuration could not be read, or the run could not be stored | `{"error":"unavailable"}` |
-| `200` | registered | the run configuration |
+| `503` | the run configuration could not be read, no run key could be made, or the run could not be stored | `{"error":"unavailable"}` |
+| `200` | registered | the run configuration, or for a run through a gateway its run key |
 
 No run is stored on any refusal. A node runs one instance at a time, and a node pool up to
-its instance limit: an instance counts while one of its runs is live.
+its instance limit: an instance counts while one of its runs is live. The gateway's
+refusals come before the limit, so a run that could go nowhere never takes an instance.
 
 The gateway builds the body once and sends the same bytes on every try, `time` included.
 It tries up to 3 times as a run opens, 1 second and then 2 seconds after the try before
@@ -265,7 +296,9 @@ The run is stored `pending`, on the key's node and the instance the request clai
 the labels, `about` and heartbeat interval of its registration. Its `run.started` moves it
 to running. It is found lost when nothing is heard of it for three of the intervals it
 registered with, 90 seconds at Forager's 30. The labels name what the run works on;
-`about` is for display and never selects a policy.
+`about` is for display and never selects a policy. A run through a gateway is measured
+from its attach, by the interval the attach announced; one its gateway never attaches is
+lost when its attach window ends.
 
 <!-- feature: security -->
 For a workspace whose policy somebody has made, the body is the workspace's run
@@ -292,6 +325,41 @@ When the policy has deny rules its `egress` carries `deny` after `allow`, the ho
 gateway denies first and in either mode; without any, the section is as above.
 <!-- /feature -->
 
+### A run through a gateway: the run key
+
+The `200` to a registration through a gateway carries no run configuration: the node that
+registered the run never sees its policy. Its body is the run's id and its run key:
+
+```json
+{"version":1,"run_id":"0192f0c1-7d4e-7a2b-8c3d-4e5f6a7b8c9d","run_key":"qrk_…"}
+```
+
+with `X-Qory-Configuration`, and neither `X-Qory-Run-Configuration` nor `ETag`. A repeat
+is given the same run key. The run is stored `pending` on the node and the instance of
+the registration, as a direct run is, with the gateway its choice resolved to.
+
+A run key is one string: `qrk_`, the payload in base64url without padding, `.`, and the
+signature in base64url without padding, at most 2048 characters. The payload is the JSON
+the server signed, with these members in this order:
+
+| Member | What it holds |
+|---|---|
+| `version` | `1` |
+| `signer` | the fingerprint of the server's signing key, as an enrolment code names keys |
+| `run_id` | the run's id |
+| `workspace` | the run's workspace, `ws_…` |
+| `node_id` | the node or node pool that registered the run, `nd_…` or `np_…` |
+| `gateway` | the gateway the node's choice resolved to, `ng_…` |
+| `gateway_url` | the gateway's address, `https://`, a host and an optional port |
+| `gateway_public_key` | the gateway's active keys, one or two, oldest first, each `{"alg":"ed25519","public_key":"…"}` |
+| `instance_id` | the instance id the registration was signed from |
+| `issued`, `attach_by` | when the run key was made, and the end of its attach window: UTC, whole seconds |
+
+The signature is Ed25519 under the server's signing key, over `qory-run-key-ed25519-v1`,
+a line feed, and the payload's bytes. A gateway whose address is `http://`, which only a
+loopback host may have, can be named by no run key: a registration that resolves to it is
+`503`.
+
 ### The reload: `GET /v1/runs/<run_id>`
 
 A signed GET, with `X-Qory-Timestamp`: the run endpoint, a slash and the run's id. The
@@ -304,12 +372,13 @@ configuration in force now for the labels the run registered with.
 | `200` | the workspace has a policy | the run configuration |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | the run is not one this key's node registered: an unknown run id, a run another node registered, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `404` | the run is not one this key's node registered, or, through a gateway, attached: an unknown run id, a run another node registered, a run through a gateway not yet attached, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
 | `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
-The reload is answered only to the active keys of the node that registered the run, and
-only by the labels it registered with; a run whose events retention has pruned is reloaded all the
+The reload is answered only to the active keys of the node that registered the run, or,
+for a run through a gateway, of the gateway that attached it, and only by the labels it
+registered with; a run whose events retention has pruned is reloaded all the
 same. To the gateway any
 answer but `200` is a reload that failed: the policy in force stays, and it tries again on
 the next answer. The endpoint never answers `304`.
@@ -320,11 +389,68 @@ policy removed mid-run never loosens a run that's already started, and the next 
 the new state when it registers.
 <!-- /feature -->
 
+### A run's attach: `POST /v1/runs/<run_id>/attach`
+
+A signed POST, `Content-Type: application/json`, under the gateway's own access key: the
+gateway a run key names takes the run on. The body, every member required:
+
+```json
+{"version": 1, "run_key": "qrk_…", "interval_seconds": 30, "events": ["*"],
+ "forager_version": "0.7.0", "contract_version": 1, "time": "2026-10-11T12:00:05Z"}
+```
+
+`run_key` is the run's run key; `interval_seconds`, from 1 to 300, `events`,
+`forager_version` and `contract_version` are what the gateway announces for the run, as a
+direct registration does; `time` is when the gateway built the body, in UTC to the whole
+second. A member the contract does not name, or one that breaks its rule, is
+`400 invalid_request`, and a `time` more than 300 seconds from the server's clock `401`.
+
+The answers, after the refusals every signed request gets (`413` at 64 KiB, `415`, a
+header sent twice, `401`, `429` from the run endpoint's bucket, the instance id, the
+contract version, the body, the `time`); the first that applies is the answer:
+
+| Status | When | Body |
+|---|---|---|
+| `409` | the key is not a gateway's | `{"error":"not_a_gateway"}` |
+| `400` | the run key does not verify, its run id is not the path's, or it is not the run key the run was given | `{"error":"run_key_invalid"}` |
+| `401` | the run's workspace or organisation is out of use, as a key of it would be | `{"error":"unauthorized"}` |
+| `404` | the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
+| `200` | a repeat: the gateway that attached the run, under any of its active keys, attaching it again while the run is live | the answer it was given |
+| `410` | the run has ended: its exit arrived, its starter gave its outcome, it was lost after its attach, or retention pruned its events; or its record is gone | empty |
+| `409` | the attach window has closed and the run was never attached | `{"error":"run_key_expired"}` |
+| `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
+| `409` | the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
+| `409` | another gateway attached the run | `{"error":"run_attached"}` |
+| `503` | the run configuration could not be read, or the attach could not be stored | `{"error":"unavailable"}` |
+| `200` | attached | the run configuration, with the registration's labels and `about` |
+
+A repeat is the same gateway's, whatever the bytes, so a gateway that restarted, or
+replaced its key, takes its run on again. The run key names the gateway the run was
+registered for, so no other gateway attaches the run: `run_attached` is never reached
+before `wrong_gateway`.
+
+The `200` carries `X-Qory-Run-Configuration`, `ETag` and `X-Qory-Configuration`. Its body
+is the run configuration a direct registration of the run would get, read under the run's
+own workspace, with the registration's `labels` and `about` added as its last members,
+each left out when the registration had none:
+
+```json
+{"version":1,"labels":{"repository":"acme/shop"},"about":{"title":"Fix the failing build"}}
+```
+
+The digest is the run configuration's, the one a reload and the run's batches are
+answered with. The run keeps when it was attached, the attach's `time`, its interval,
+which the run is held to from then on, and Forager's versions.
+
+After the attach, the run's batches, heartbeats and reloads are taken from the gateway's
+active keys alone (Events, below). The run's workspace, node and instance stay the
+registration's, whatever the gateway's key is.
+
 ### A run's outcome: `POST /v1/runs/<run_id>/outcome`
 
 A signed POST, `Content-Type: application/json`, from the run's starter: how the run went,
-in its own words. Any active key of the node or node pool the run is bound to may send it
-(Who may send for a run, below). The body:
+in its own words. Any active key of the node or node pool the run is bound to may send it,
+for a run through a gateway too (Who may send for a run, below). The body:
 
 ```json
 {"version": 1, "state": "succeeded", "reason": "all_checks_passed", "time": "2026-10-11T12:30:00Z"}
@@ -383,6 +509,7 @@ this order, and the first refusal that applies is the answer:
 | `400` | the body is not a batch, is over a limit, or holds `dev.qory.ping` or `dev.qory.run.registered` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
+| `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's end (below) |
@@ -403,6 +530,14 @@ else is retried with backoff until the run ends.
   its reloads, a repeat of its registration and its outcome are taken from that node's
   active keys alone, so a second key of the node, while one is replaced, keeps the run
   going. A batch of another node's run is `409 wrong_node`, and a reload of one `404`.
+  For a run through a gateway, the batches, heartbeats and reloads are the gateway's that
+  attached it, under any of its active keys, and nobody's before the attach: anyone
+  else's batch, the registering node's included, is `409 wrong_gateway`, and a reload
+  `404`. Its registration's repeat and its outcome stay the registering node's. A
+  gateway's batch never opens a run: one for a run it did not attach is
+  `409 wrong_gateway`, and nothing is stored. What is read for the run, its run
+  configuration and its features, is read under the run's own workspace, and a batch is
+  refused `401` when the run's workspace or organisation is out of use.
 - **The end.** Once the run's starter has given its outcome, every `2xx` to the run's
   batches carries it, `application/json`, until the run's `dev.qory.run.exited` arrives:
   `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, `reason` left out when the

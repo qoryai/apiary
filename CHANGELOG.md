@@ -124,7 +124,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   hint of a connection's Allow or Deny panel, and the workspace overview's hints on the
   mode and on a locked rule have no scope at hand, and keep the core's words.
 - The record of every run, reported by Forager over the server contract (version 1,
-  revision 1: discovery, a run's registration, reload and outcome, events and enrolment): the
+  revision 1: discovery, a run's registration, attach, reload and outcome, events and
+  enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and
   how the run ended.
 - A run's registration. A run opens with a signed `POST /v1/runs`, whose body holds its
@@ -160,6 +161,33 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   carries `end` with the outcome's state and reason, as `application/json`,
   `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, under the answer's
   signature. Every other answer to a batch has an empty body, as before.
+- A run through a gateway. A run's registration resolves its node's choice of gateway as
+  the records are then. A node that goes directly registers as before; a node whose
+  choice leads to a gateway registers without `forager_version`, `contract_version`,
+  `interval_seconds` and `events`, and may ask for an attach window, `attach_seconds`
+  (600 seconds unless asked, at most 3600: `config :apiary, Apiary.Runs.Registration`,
+  `attach_seconds` and `max_attach_seconds`). Its answer is no run configuration but the
+  run's id and a run key, `{"version":1,"run_id":"…","run_key":"qrk_…"}`, with neither
+  `X-Qory-Run-Configuration` nor `ETag`. A run key (`Apiary.Runs.RunKey`) is `qrk_`, a
+  payload and its Ed25519 signature under the instance's signing key, at most 2048
+  characters; the payload names the run, its workspace, the node that registered it, the
+  gateway with its `https` address and active public keys, the instance, when it was made
+  and the end of its attach window. Before the instance limit, a registration is a signed
+  `409`: `gateway_key` from a gateway's own key, `node_is_direct` and `node_uses_gateway`
+  for a body whose shape does not match the node's choice, `no_default_gateway`,
+  `gateway_not_serving` and `gateway_without_key` for a choice that leads nowhere. A
+  gateway attaches the run with a signed `POST /v1/runs/<run_id>/attach` under its own
+  key, with the run key and what a direct registration announces
+  (`Apiary.Runs.Attach`); the answer is the run's run configuration, read under the run's
+  own workspace, with the registration's `labels` and `about`. Its refusals, in order:
+  `409` `not_a_gateway`, `400` `run_key_invalid`, the same gateway attaching the live run
+  again is given the same answer, `410` for a run that has ended, then `409`
+  `run_key_expired`, `wrong_gateway`, `workspace_not_served` and `run_attached`. Once
+  attached, the run's batches, heartbeats and reloads are the gateway's alone, under any
+  of its active keys, and a batch from any other key is a signed `409` `wrong_gateway`;
+  a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
+  interval its attach announced, from its attach, and a run its gateway never attaches is
+  lost at the end of its window. The console does not show it.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. The runs list's Runtime column says "no session". Its page says how it ended in
   words after its state, as every run's does; its Terminal tab is the terminal, empty,
@@ -227,8 +255,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
   may serve, sorted. Each node and node pool records a choice of gateway: direct, its
   workspace's default gateway, or a gateway it names, one that may serve its workspace,
-  checked when the choice is saved; nothing at a run's registration reads it. The choice
-  can be changed. Every node and pool there before is direct; a new one given no choice
+  checked when the choice is saved, and resolved again at each run's registration (a run
+  through a gateway, below). The choice can be changed. Every node and pool there before is direct; a new one given no choice
   starts on the default when a default gateway resolves for its workspace, and on direct
   otherwise. A workspace's first gateway becomes its default, and only a gateway made
   when no default resolves does so by itself, so adding a second one moves no node; a
@@ -536,7 +564,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   could post events to any of its runs. A second key of the same node, as while a key is
   replaced, keeps the run going; a batch from a key of another node is a signed `409`
   `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
-  `404`.
+  `404`. A run through a gateway takes them from the gateway that attached it instead,
+  and its repeated registration and its outcome from the node that registered it.
+- `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
+  `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
+  and its organisation are in use, as a key's verification does.
 
 ### Migrations
 
@@ -633,6 +665,18 @@ state, both added NOT VALID, so neither scans the table under a lock that blocks
 `exit_state` and `exit_reason` are filled as a run's exit is folded, and for an earlier
 run by a rebuild (`mix apiary.rebuild`). `20261011140100_validate_a_run_s_outcome_checks`
 validates the two checks.
+`20261011150000_let_a_run_go_through_a_gateway` adds what a run through a gateway keeps:
+`runs.gateway_id`, a reference to the gateway's row, set NULL when that row is purged;
+`run_key_payload`, the run key's payload, at most 2048 bytes; `run_key_issued_at`,
+`attach_by`, `attached_at`, `attach_time`, `attach_interval_seconds` (1 to 300) and
+`attach_answer_digest`; all NULL for every existing row. It lets a run that registered
+through a gateway have no interval and no answer digest, widening
+`runs_registration_check`, and adds `runs_run_key_check` and `runs_attach_check`, each
+holding its columns whole or not at all; the three checks and the reference are added NOT
+VALID, so none scans the table under a lock that blocks writes. Rolled back, it refuses
+while any run went through a gateway. `20261011150100_validate_a_run_s_gateway_checks`
+validates them. `20261011150200_index_a_gateway_s_runs` adds a unique index on a run
+through a gateway's gateway and run id, built concurrently.
 
 ### Upgrading
 
