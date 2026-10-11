@@ -155,6 +155,23 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert Nodes.list_nodes(scope) == []
     end
 
+    test "shows the URL's error for a host that is no DNS name and no IP address", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
+
+      html =
+        lv
+        |> form("#new-node-form",
+          node: %{name: "edge-01", url: "https://edge.example.com;rm$IFS-rf$IFS~"}
+        )
+        |> render_submit()
+
+      assert html =~ "must be a scheme and a host, with a port if needed, and nothing more"
+      assert Nodes.list_nodes(scope) == []
+    end
+
     test "a gateway is made, the workspace's first its default, and opens on its Access key tab",
          %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))

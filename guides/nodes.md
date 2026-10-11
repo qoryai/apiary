@@ -23,7 +23,9 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 
 A **gateway** is a separate kind on **Nodes**, beside the node and the node pool,
 `edge-01` say. Its key enrols the gateway and registers no run. **New gateway** asks its
-name and its **URL**: `https://`, a host, and a port if needed, nothing more. Like a node,
+name and its **URL**: `https://`, a host, and a port if needed, nothing more. The host is
+a DNS name, such as `edge.example.com`, an IPv4 address, such as `10.0.0.5`, or an IPv6
+address in brackets, such as `[2001:db8::1]`; a port is 1 to 65535. Like a node,
 it opens on its **Access key** tab and gets its key either way. On the list it reads
 **Gateway**, and **Kind** in the Filter menu keeps the gateways alone.
 
