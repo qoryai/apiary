@@ -621,6 +621,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
+- Texts no longer use "own" where it was unclear; they name the thing meant.
 
 ### Removed
 
