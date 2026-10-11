@@ -47,17 +47,63 @@ defmodule Apiary.EditionStubs do
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
   end
 
-  defmodule LocksElsewhere do
+  @doc """
+  rendezvous/0 pauses a change once the edition holds its rows, while the test that
+  started it asks so (`Process.put(:level_refusal_rendezvous, true)` in the test's
+  process): it says `{:level_refusal_held, pid}` to the test and waits for
+  `:level_refusal_go`, so two changes hold their rows at once before either goes on.
+  """
+  def rendezvous do
+    with [caller | _] when is_pid(caller) <- Process.get(:"$callers", []),
+         {{:dictionary, _key}, true} <-
+           Process.info(caller, {:dictionary, :level_refusal_rendezvous}) do
+      send(caller, {:level_refusal_held, self()})
+
+      receive do
+        :level_refusal_go -> :ok
+      after
+        5_000 -> :ok
+      end
+    end
+  end
+
+  defmodule LocksItsOwn do
     @moduledoc """
-    Refuses no level, and, asked inside a change (`lock: :share`), holds the asker's
-    memberships in their other organisations `FOR SHARE`, as an edition that reads a
-    person's place in another organisation does: the place the core asks it, in the lock
-    order, keeps two changes from waiting on each other at once.
+    Refuses no level, and, asked inside a change (`lock: :share`), holds a row of its own
+    `FOR SHARE`, as the lock order lets an edition (`c:Apiary.Edition.level_refusal/4`):
+    the core has no table of the edition's, so its row is a transaction-level advisory
+    lock, shared, keyed by the person who asks, which is held as a row would be until the
+    change ends.
+    """
+    alias Apiary.Accounts.{Scope, User}
+
+    def level_refusal(%Scope{user: %User{id: user_id}} = scope, organisation, level, opts) do
+      if opts[:lock] == :share do
+        Apiary.Repo.query!(
+          "SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))",
+          ["apiary-edition-stub:" <> user_id]
+        )
+
+        Apiary.EditionStubs.rendezvous()
+      end
+
+      Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
+    end
+
+    def level_refusal(scope, organisation, level, opts),
+      do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
+  end
+
+  defmodule LocksAMembership do
+    @moduledoc """
+    Breaks the lock order: asked inside a change (`lock: :share`), it holds the asker's
+    memberships in their other organisations `FOR SHARE`, which the order forbids an
+    edition (`c:Apiary.Edition.level_refusal/4`). A test shows the deadlock it makes.
     """
     import Ecto.Query
 
     alias Apiary.Accounts.{Scope, User}
-    alias Apiary.Organisations.Membership
+    alias Apiary.Organisations.{Membership, Organisation}
 
     def level_refusal(
           %Scope{user: %User{id: user_id}} = scope,
@@ -74,7 +120,7 @@ defmodule Apiary.EditionStubs do
             lock: "FOR SHARE"
         )
 
-        rendezvous()
+        Apiary.EditionStubs.rendezvous()
       end
 
       Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
@@ -82,34 +128,13 @@ defmodule Apiary.EditionStubs do
 
     def level_refusal(scope, organisation, level, opts),
       do: Apiary.Edition.module().level_refusal(scope, organisation, level, opts)
-
-    @doc """
-    rendezvous/0 pauses a change once it holds its rows, while the test that started it
-    asks so (`Process.put(:level_refusal_rendezvous, true)` in the test's process): it
-    says `{:level_refusal_held, pid}` to the test and waits for `:level_refusal_go`, so
-    two changes hold their rows at once before either goes on.
-    """
-    def rendezvous do
-      with [caller | _] when is_pid(caller) <- Process.get(:"$callers", []),
-           {{:dictionary, _key}, true} <-
-             Process.info(caller, {:dictionary, :level_refusal_rendezvous}) do
-        send(caller, {:level_refusal_held, self()})
-
-        receive do
-          :level_refusal_go -> :ok
-        after
-          5_000 -> :ok
-        end
-      end
-    end
   end
 
   defmodule AdminsChangeLevels do
     @moduledoc """
     An admin changes the levels of admins and members (`member.change_level`), as an
-    edition that lets admins manage both may, and the levels are asked as
-    `LocksElsewhere` asks them, holding the asker's memberships in their other
-    organisations.
+    edition that lets admins manage both may, and the levels are asked as `LocksItsOwn`
+    asks them, holding a row of its own.
     """
     alias Apiary.Access
     alias Apiary.Organisations.Membership
@@ -126,7 +151,7 @@ defmodule Apiary.EditionStubs do
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
 
     def level_refusal(scope, organisation, level, opts),
-      do: LocksElsewhere.level_refusal(scope, organisation, level, opts)
+      do: LocksItsOwn.level_refusal(scope, organisation, level, opts)
   end
 
   defmodule None do

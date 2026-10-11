@@ -389,13 +389,21 @@ The modes keep a row that only names another out of it:
   the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
   (`action:`) runs inside its own transaction, which may hold the allowance's row already.
 - A level given, by a change of level, an invitation, its acceptance or a release
-  command, is asked of the edition (`c:Apiary.Edition.level_refusal/4`, `lock: :share`)
-  once the change holds the organisation rows (with the owners' memberships for a change
-  of level and the release commands, the allowance's row for an invitation), and before
-  it writes the membership and holds the account or the invitation. The edition may hold
-  rows of its own `FOR SHARE` then, memberships of other organisations among them, never
-  one of the organisation the change writes: two changes of level in one organisation,
-  each by a person on the other, then never wait on each other at once.
+  command, is asked of the edition (`c:Apiary.Edition.level_refusal/4`, `lock: :share`),
+  in an order by class of row: first the core's rows of the organisation (the
+  organisation rows `FOR SHARE`, the allowance's row for an invitation, the owners'
+  memberships `FOR UPDATE` for a change of level and the release commands), then the
+  edition's own rows, then the membership the change writes, and after it the account and
+  the invitation an acceptance holds. The edition locks only rows of its own there, never
+  a membership and never another row of the core's. A fact it needs to stay true while
+  the change runs it holds `FOR SHARE` on its own row, and each path of its own that
+  changes the fact holds that row `FOR UPDATE` from inside the core's transaction, through
+  the core's callbacks, after the core's rows too. So the edition's rows add no cycle to
+  the core's order: a change may wait on another that holds the same rows, until that one
+  ends. A membership of another organisation held there would add one: two changes of
+  level in two organisations, each by a person on the other, would each hold their
+  owners, then wait on the membership the other writes, and one of them fails as a
+  deadlock.
 - An invitation's acceptance, and a sign-up with an invitation, let the edition hold the
   organisation first, more strongly if it will (`c:Apiary.Edition.accepting/3`), then hold
   it `FOR SHARE`, before the account and the invitation, so the organisation's marking,

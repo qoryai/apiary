@@ -253,14 +253,24 @@ defmodule Apiary.Edition do
   no level it refuses (`Apiary.Access.grantable_levels/1`). The core's answer is nil.
 
   With `lock: :share` it is asked inside the transaction of the change, in the lock order
-  of docs/access.md: after the core holds the organisation rows `FOR SHARE`, with those
-  `c:places_to_lock/1` names (the allowance's row `FOR NO KEY UPDATE` for an invitation),
-  and, for a change of level and the release commands, the organisation's owners'
-  memberships `FOR UPDATE`; before the membership changed or made is written, and before
-  the account and the invitation are held. The edition may hold rows of its own
-  `FOR SHARE` then, memberships of another organisation among them, but never a
-  membership of `organisation`, which the change writes after. Without `lock:` a page
-  asks what to offer, and nothing is held.
+  of docs/access.md, which goes by class of row:
+
+  1. the core's rows of `organisation`: the organisation rows `FOR SHARE`, with those
+     `c:places_to_lock/1` names, the allowance's row `FOR NO KEY UPDATE` for an
+     invitation, and the owners' memberships `FOR UPDATE` for a change of level and the
+     release commands;
+  2. then the edition's own rows, which this callback may lock;
+  3. then the membership the change writes, and after it the account and the
+     invitation an acceptance holds.
+
+  The edition locks only rows of its own here: never a membership, of `organisation` or
+  of any other, and never another row of the core's. Where it needs a fact to stay true
+  while the change runs, it holds its own row of that fact `FOR SHARE`, and every path of
+  its own that changes the fact holds the same row `FOR UPDATE` from inside the core's
+  transaction, through the core's callbacks, so after the core's rows of class 1 too. A
+  membership of another organisation held here waits on that organisation's own changes
+  of level, which hold their class 1 first: two such changes, each by a person on the
+  other, deadlock. Without `lock:` a page asks what to offer, and nothing is held.
   """
   @callback level_refusal(Scope.t() | nil, %Organisation{}, level, keyword) :: nil | atom
 
