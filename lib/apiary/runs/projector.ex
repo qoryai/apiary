@@ -299,8 +299,8 @@ defmodule Apiary.Runs.Projector do
         fold_module().fold(
           %{run | workspace: workspace},
           events,
-          latest(id, events),
-          projected(id, events)
+          latest(run, events),
+          projected(run, events)
         )
 
       run =
@@ -374,12 +374,13 @@ defmodule Apiary.Runs.Projector do
 
   # The highest sequence already projected in each rank this pass's events compete in.
   # Most passes hold logs and egress only and ask nothing. One that asks walks the run's
-  # sequence index backwards to the last such event: a heartbeat back, for a heartbeat.
-  defp latest(id, events) do
+  # sequence index backwards to the last such event: a heartbeat back, for a heartbeat,
+  # of the instance whose heartbeats count (`Apiary.Runs.Fold.liveness_instance/1`).
+  defp latest(%Run{} = run, events) do
     ranks =
       events |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.flat_map(&Fold.ranks/1) |> Enum.uniq()
 
-    for rank <- ranks, sequence = last_projected(id, Fold.rank_types(rank)), into: %{} do
+    for rank <- ranks, sequence = last_projected(run, rank), into: %{} do
       {rank, sequence}
     end
   end
@@ -388,18 +389,31 @@ defmodule Apiary.Runs.Projector do
   # only for a pass that holds a heartbeat, which can lower the run's clock offset: the
   # time and arrival of its heartbeat with the highest sequence, which a lower offset
   # counts again.
-  defp projected(id, events) do
-    %{beat: if(Enum.any?(events, &(&1.type == @heartbeat)), do: last_beat(id))}
+  defp projected(run, events) do
+    %{beat: if(Enum.any?(events, &(&1.type == @heartbeat)), do: last_beat(run))}
   end
 
-  defp last_beat(id) do
+  defp last_beat(%Run{id: id} = run) do
     Repo.one(
-      from e in Event,
+      from e in counted(run),
         where: e.run_id == ^id and e.type == @heartbeat and not is_nil(e.projected_at),
         order_by: [desc: e.sequence],
         limit: 1,
         select: %{time: e.time, received_at: e.received_at}
     )
+  end
+
+  # The events whose heartbeats count towards the run's liveness: every one, but for a run
+  # through a gateway whose attaching instance is known, whose heartbeats count from that
+  # instance and from every event stored with no instance id alone.
+  defp counted(run) do
+    case Fold.liveness_instance(run) do
+      nil ->
+        Event
+
+      instance_id ->
+        from e in Event, where: is_nil(e.instance_id) or e.instance_id == ^instance_id
+    end
   end
 
   # One `UPDATE` by the key's id, which changes nothing when the key holds a later one.
@@ -421,9 +435,12 @@ defmodule Apiary.Runs.Projector do
     :ok
   end
 
-  defp last_projected(id, types) do
+  defp last_projected(%Run{id: id} = run, rank) do
+    types = Fold.rank_types(rank)
+    events = if rank == @heartbeat, do: counted(run), else: Event
+
     Repo.one(
-      from e in Event,
+      from e in events,
         where: e.run_id == ^id and e.type in ^types and not is_nil(e.projected_at),
         order_by: [desc: e.sequence],
         limit: 1,
