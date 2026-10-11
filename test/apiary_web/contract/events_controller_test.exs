@@ -49,7 +49,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
       assert response(conn, 202) == ""
 
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       run = run!(scope, subject)
       assert run.organisation_id == scope.organisation.id
@@ -380,7 +380,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       conn = signed_post(build_conn(), key.key_id, secret, [started])
       assert response(conn, 410) == ""
 
-      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key.node)]
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(key)]
 
       run = run!(scope, subject)
       assert run.state == pruned.state
