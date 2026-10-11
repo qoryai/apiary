@@ -62,11 +62,35 @@ Every list of rules is read the same way, however long it grows: views **All**,
 holds the chosen filters as words (`seen:no`, `paths:held`, `by:dana`; on a repository's
 tab `source:repo` or the workspace's slug); one **Filter** menu (Source where there is more
 than one, Paths, Seen in 14 days, Added by); **Sort** (the list's own order, Host, Most
-used, Recently added); **Add rule**, which opens the composer line over the list; and
-pages of 50. Every choice is in the address, so a filtered view can be linked. A rule is
-one line: allow or deny, the host, its paths, its use in the last 14 days, who added it
-and when, a lock when it is locked, and a ⋯ menu (Edit paths, Change to deny or allow,
-Lock or Unlock for an owner, Remove).
+used, Recently added); and pages of 50. Every choice is in the address, so a filtered view
+can be linked. A rule is one line: allow or deny, the host, its paths, its use in the last
+14 days, who added it and when, a lock when it is locked, and a ⋯ menu (Edit, Change to
+deny or allow, Lock or Unlock for an owner, Remove).
+
+### Adding a rule
+
+**Add rule**, in the header of the Network access section, opens the **New rule** page
+(`…/policy/rules/new`, a repository's `…/-/policy/rules/new`); the top bar's **New** offers
+it too, as **Network access rule**. The page asks:
+
+1. **What should runs do?** **Allow** lets runs connect to the host, and is needed under
+   enforce, where a host no rule allows is denied. **Deny** stops runs connecting to it, in
+   observe and in enforce.
+2. **Host**: the name runs connect to, in lower case, without `https://` or a port; start
+   it with `*.` to cover every host below a domain, such as `*.example.com`.
+3. **Paths**, optional, for an allow: left empty, every path is allowed; separate paths
+   with spaces, and end one with `*` for everything below it, such as `/v1/*`. A deny covers
+   every path of the host.
+
+Under **What this rule does** the page reads the rule back in plain words as it is typed,
+or says what an allow or a deny of the same host already there would become. An error is
+said under its field, often with the repair as a link; pressing **Add rule** with an error
+moves to the field at fault. A pasted list of hosts is added one at a time. The rule is
+saved back to the list, marked as new, with the version it made.
+
+**Edit** in a rule's ⋯ menu opens the **Edit rule** page: the same form with the rule in it,
+its host kept. To rule on another host, add a new rule. On a repository's Policy tab, a
+declared host's **Allow with paths…** opens New rule with the host filled in.
 
 A repository's Policy tab is its effective policy on the same list, every rule with its
 **Source**: **This repository** or the workspace, by its name. Its own rules come first
@@ -120,7 +144,8 @@ to do instead. Nothing is ever rendered that allows more than the page shows.
   the path list of whichever entry it finds first, and the order is not fixed. A name held
   to paths under a suffix that is free of paths is fine.
 - **A rule outside the grammar**: a URL, a port, capitals, a `*` anywhere but the lead. The
-  composer checks a rule as it is typed and reads it back in words before it can be saved.
+  New rule page checks a rule as it is typed and reads it back in words before it can be
+  saved.
 - **A change whose rendered document the contract's schema refuses.** Nothing is changed,
   and the version in force stays in force.
 - **A change over a limit**, see [Limits](#limits).
@@ -314,7 +339,8 @@ Until somebody has made the workspace's policy:
 - a reload of a run's configuration answers `404`;
 - every machine runs under the `egress` section of its own Forager file, in its own mode,
   enforcement included;
-- the policy page says: "Runs use each machine's own policy until the first change here."
+- the policy page says: "Runs use each machine's local policy until the first change in
+  this workspace."
 
 The first rule or the first change of mode, the workspace's or a repository's, is the
 moment the workspace's policy applies:
