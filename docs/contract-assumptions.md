@@ -597,6 +597,8 @@ passed", `checks_failed` beside Failed "checks failed", `no_longer_needed` besid
 The words stand after the state in the run page's meta line, under State in its Details
 rail, in its timeline's last item, after the state in the runs list's preview, and in what
 the page announces when a run is cancelled or ends Lost ([ui.md](ui.md), The run page).
+The timeline's last item says the exit's own reason: for a run given an outcome, whose
+reason is the outcome's, it can differ from the others.
 
 A session's run carries `exit_code`: the runtime's exit status, with `signal` when one
 killed it, and `-1` with `gateway_lost` and in every exit the gateway writes for it, which
@@ -620,8 +622,9 @@ it. Where the outcome's state differs from the exit's, the run page says both: "
 as its starter said; the runtime exited 1". A run a gateway opened has no runtime of its
 own, and a run refused at its start (`refused_at`) never started one: each says the
 outcome's state alone, "Succeeded, as its starter said". An outcome sent with no state,
-stored as Cancelled with the reason `stopped`, has the words "the starter gave no outcome";
-Forager's own `stopped`, with no outcome, keeps "stopped, no outcome given".
+stored as Cancelled with the reason `stopped`, has no such sentence: the run reads as any
+Cancelled run, with the words "the starter gave no outcome"; Forager's own `stopped`, with
+no outcome, keeps "stopped, no outcome given".
 
 Qory Apiary records what a run reports and starts no run. Once a run's starter has given
 its outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its

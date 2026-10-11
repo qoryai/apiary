@@ -1440,8 +1440,10 @@ page has no breadcrumb of its own.
   connection line with a plain glyph and no row tint, the prompt as quoted text with a
   rule.
 - **The end reason** is one line of words (`RunComponents.reason_words/1`), the same in
-  the meta line, under State in the rail, in the timeline's last item and in the runs
-  list's preview ([contract-assumptions.md](contract-assumptions.md), How a run ends):
+  the meta line, under State in the rail and in the runs list's preview, and in the
+  timeline's last item too unless the run was given an outcome: that item says the exit's
+  own reason, and the others the outcome's
+  ([contract-assumptions.md](contract-assumptions.md), How a run ends):
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer", "couldn't
@@ -1449,7 +1451,8 @@ page has no breadcrumb of its own.
   "did not start" with the refusal's code in mono ("did not start: image_unknown"), in the
   meta line and the rail as in the timeline's item. A run whose starter sent its outcome
   with no state reads "the starter gave no outcome" in the meta line, the rail and the
-  preview. None names who or what ended the run. Any other code is the run's starter's,
+  preview, after the state's word "Cancelled", with no "as its starter said" sentence.
+  None names who or what ended the run. Any other code is the run's starter's,
   shown as given with spaces for underscores: "no longer needed". The quiet period reads
   in whole hours, else whole minutes, else seconds: 1800 seconds is "no activity for 30
   minutes".
