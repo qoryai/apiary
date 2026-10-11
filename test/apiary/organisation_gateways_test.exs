@@ -417,6 +417,99 @@ defmodule Apiary.OrganisationGatewaysTest do
     end
   end
 
+  describe "a gateway of an organisation out of use" do
+    # The other organisation's gateway serves the scope's workspaces; the other
+    # organisation is then held out of use, neither deleted nor marked.
+    setup %{scope: scope} do
+      %{scope: other} = sign_up_fixture()
+      %{gateway: gateway, key: gateway_key} = keyed(other)
+      serves_across([{other.organisation.id, scope.organisation.id}])
+      %{access_key: key} = contract_key_fixture(scope)
+      %{other: other, gateway: gateway, gateway_key: gateway_key, key: key}
+    end
+
+    defp out_of_use(%{organisation: organisation}),
+      do: EditionStubs.ServesAcross.out_of_use([organisation.id])
+
+    defp attach(gateway_key, run, run_key) do
+      {:ok, body} = Attach.parse(attach_body(run_key))
+      Attach.attach(gateway_key, run.run_id, body, %{instance_id: instance_id()})
+    end
+
+    defp post(gateway_key, run) do
+      {_subject, [started]} = first_events(run.run_id)
+      {:ok, batch} = Batch.parse(Jason.encode!([started]))
+      Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()})
+    end
+
+    test "its key verifies and carries a run of a workspace it serves, end to end",
+         %{other: other, gateway: gateway, gateway_key: gateway_key, key: key} do
+      out_of_use(other)
+      assert {:ok, verified} = AccessKeys.fetch_for_verification(gateway_key.key_id)
+      assert verified.node.id == gateway.id
+      assert AccessKeys.active_key?(gateway)
+
+      {:ok, %{run: run, run_key: run_key}} =
+        register_run(key, gateway_registration(), instance_id())
+
+      assert run.gateway_id == gateway.id
+      assert {:ok, %{run: %Run{attached_at: %DateTime{}}}} = attach(verified, run, run_key)
+      assert {:ok, %{status: 202, inserted: 1}} = post(verified, run)
+
+      # The run's reload is answered to it: the workspace serves no run configuration
+      # here, so not found, as for any gateway.
+      assert Apiary.Runs.Registration.fetch(verified, run.run_id, instance_id()) ==
+               {:error, :not_found}
+    end
+
+    test "its key acts for no run of its own organisation's workspaces",
+         %{other: other, gateway: gateway, gateway_key: gateway_key} do
+      %{access_key: own_key} = contract_key_fixture(other)
+      assert Gateways.chosen(own_key.node).id == gateway.id
+
+      {:ok, %{run: attached, run_key: attached_key}} =
+        register_run(own_key, gateway_registration(), instance_id())
+
+      {:ok, %{run: waiting, run_key: waiting_key}} =
+        register_run(own_key, gateway_registration(), instance_id())
+
+      assert {:ok, _} = attach(gateway_key, attached, attached_key)
+
+      out_of_use(other)
+      {:ok, verified} = AccessKeys.fetch_for_verification(gateway_key.key_id)
+
+      assert attach(verified, waiting, waiting_key) == {:error, :unauthorized}
+      assert {:error, :unauthorized} = post(verified, attached)
+      assert Repo.get!(Run, attached.id).event_count == 0
+
+      assert Apiary.Runs.Registration.fetch(verified, attached.run_id, instance_id()) ==
+               {:error, :not_found}
+
+      # The node of its own organisation's workspace is out of use: its key fails.
+      assert AccessKeys.fetch_for_verification(own_key.key_id) == :error
+    end
+
+    test "a node or a node pool of an organisation out of use is not verified", %{
+      scope: scope,
+      key: key
+    } do
+      EditionStubs.ServesAcross.out_of_use([scope.organisation.id])
+      assert AccessKeys.fetch_for_verification(key.key_id) == :error
+    end
+
+    test "its key is refused once its organisation is marked for deletion",
+         %{other: other, gateway: gateway, gateway_key: gateway_key, key: key} do
+      {:ok, _} = Apiary.Deletion.delete_organisation(other, other.organisation.slug)
+
+      assert AccessKeys.fetch_for_verification(gateway_key.key_id) == :error
+      refute AccessKeys.active_key?(gateway)
+
+      # A registration through it finds it without a key.
+      assert {:error, :gateway_without_key} =
+               register_run(key, gateway_registration(), instance_id())
+    end
+  end
+
   describe "deleting one" do
     test "refused while a node of any workspace of the organisation names it or defaults to it",
          %{scope: scope} do

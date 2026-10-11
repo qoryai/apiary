@@ -771,9 +771,16 @@ defmodule Apiary.Runs.Registration do
   # and gives a run whose attaching instance is not known yet none. A run its batches
   # created, which never registered, and a run whose node is gone are reloaded by none.
   defp reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run, instance_id),
-    do: Sender.may_send?(run, access_key, instance_id)
+    do: Sender.may_send?(run, access_key, instance_id) and place_in_use?(run)
 
   defp reload_allowed?(_access_key, _run, _instance_id), do: false
+
+  # A run through a gateway is held to its own place, which may not be the gateway key's:
+  # out of use, it is reloaded by none.
+  defp place_in_use?(run),
+    do:
+      not Run.through_gateway?(run) or
+        AccessKeys.place_in_use?(run.organisation_id, run.workspace_id)
 
   # A reload where the workspace serves no run configuration (nobody has made its policy,
   # the `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`)

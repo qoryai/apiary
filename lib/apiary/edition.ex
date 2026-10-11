@@ -312,10 +312,11 @@ defmodule Apiary.Edition do
     organisation out of use: the core never skips a level for that, so the defaults, the
     choices, the automatic default and the default after a deletion keep it, and a
     suspension never moves a node on Default to another gateway. Use is checked where
-    it matters, at the server contract: a key of an organisation out of use fails its
-    verification (`Apiary.AccessKeys.fetch_for_verification/1`), so a gateway of one has
-    no active key (`Apiary.AccessKeys.active_key?/1`), and a run's own place is checked
-    at attach and ingest (`Apiary.AccessKeys.place_in_use?/2`);
+    it matters, at the server contract: a gateway's key is verified while its
+    organisation is out of use (`Apiary.AccessKeys.fetch_for_verification/1`), and a
+    run's own place is checked at its attach, its batches and its reload
+    (`Apiary.AccessKeys.place_in_use?/2`), so the gateway keeps carrying the runs of the
+    other organisations it serves and none of its own organisation's;
   - it is the reverse of `served_organisations/1`: X is among
     `serving_organisations(Y)` exactly when Y is among `served_organisations(X)`.
   """

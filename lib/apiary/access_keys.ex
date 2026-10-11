@@ -95,10 +95,13 @@ defmodule Apiary.AccessKeys do
   `:error` for a key id the workspace does not hold or has revoked, for a key of a deleted
   node, for a key of a workspace or an organisation marked for deletion
   (`Apiary.Deletion`), which answers as a revoked key does until its deletion is
-  cancelled, and for a key of an organisation
+  cancelled, and for a key of a node or a node pool of an organisation
   the edition stopped (`c:Apiary.Edition.active_organisations/2`), which answers so until it
   is in use again: a key is a workspace's, not a person's, so a suspended membership or an
-  account out of use leaves the keys working.
+  account out of use leaves the keys working. A gateway's key is verified while its
+  organisation is out of use, and acts for a run only while the run's own place is in use
+  (`place_in_use?/2`): it keeps carrying the runs of the other organisations it serves,
+  and none of its own organisation's.
 
   Its integrity code is checked first: a row that does not match it, changed outside the
   application, is `{:error, :integrity}`, with a line in the log.
@@ -128,8 +131,9 @@ defmodule Apiary.AccessKeys do
   @doc """
   active_key?/1 says whether `node` holds an active access key now: a key
   `fetch_for_verification/1` would answer with, not revoked, of a node in use, of a
-  workspace and an organisation in use (`c:Apiary.Edition.active_organisations/2`), whose
-  integrity code holds. A gateway without one can serve no run.
+  workspace and an organisation neither marked for deletion nor, for a node or a node
+  pool, out of use (`c:Apiary.Edition.active_organisations/2`), whose integrity code
+  holds. A gateway without one can serve no run.
   """
   @spec active_key?(Node.t()) :: boolean
   def active_key?(%Node{} = node), do: active_keys(node) != []
@@ -151,9 +155,10 @@ defmodule Apiary.AccessKeys do
   @doc """
   place_in_use?/2 says whether a key of `workspace_id`, of `organisation_id`, could be
   verified as far as its place goes: the workspace and the organisation neither marked
-  for deletion nor out of use (`c:Apiary.Edition.active_organisations/2`), the check every
-  key's verification makes. A run through a gateway is held to it for its own place, which
-  may not be the gateway key's.
+  for deletion nor out of use (`c:Apiary.Edition.active_organisations/2`), the check the
+  verification of a node's or a node pool's key makes. A run through a gateway is held to
+  it for its own place, which may not be the gateway key's: at its attach, its batches
+  and its reload.
   """
   @spec place_in_use?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean
   def place_in_use?(organisation_id, workspace_id) do
@@ -169,19 +174,26 @@ defmodule Apiary.AccessKeys do
 
   # The keys a request could be verified under, with their workspace and node: not
   # revoked, of a node in use, of a workspace and an organisation neither marked for
-  # deletion nor out of use.
+  # deletion nor, for a node or a node pool, out of use. A gateway's key is verified while
+  # its organisation is out of use: a gateway may serve the workspaces of other
+  # organisations, whose runs it keeps carrying. For each run, its own place is checked
+  # (`place_in_use?/2`), so it acts for none of its own organisation's while that is out
+  # of use.
   defp verifiable_query do
+    in_use =
+      from(o in Organisation, as: :organisation, select: o.id)
+      |> Apiary.Edition.active_organisations(:organisation)
+
     from(k in AccessKey,
       left_join: w in assoc(k, :workspace),
       join: o in assoc(k, :organisation),
-      as: :organisation,
       join: n in assoc(k, :node),
       where: is_nil(k.revoked_at),
       where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
       where: is_nil(n.deleted_at),
+      where: n.kind == :gateway or o.id in subquery(in_use),
       preload: [workspace: w, node: n, organisation: o]
     )
-    |> Apiary.Edition.active_organisations(:organisation)
   end
 
   # The key id is public; nothing of the row is in the line but the organisation and
