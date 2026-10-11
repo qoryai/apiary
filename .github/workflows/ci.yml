@@ -36,16 +36,24 @@ jobs:
       # The job's own cache, apart from the tests': the dependencies, the dev and prod
       # builds the checks and the assets compile, and the Tailwind binary. Not esbuild's:
       # its file carries no version, so a cached one would outlive a change of version.
+      #
+      # A push saves the build under its own commit, and a run restores the newest saved
+      # under the same mise.toml and mix.lock, else the newest of all, so the compiler
+      # recompiles only what changed since. A fresh checkout's files are all newer than the
+      # restored build: Mix compares a newer file's contents with the digest in its
+      # manifest, and recompiles it only when they differ.
       - name: Restore dependencies and build
-        uses: actions/cache@v6
+        id: restore
+        uses: actions/cache/restore@v6
         with:
           path: |
             deps
             _build/dev
             _build/prod
             _build/tailwind-*
-          key: mix-checks-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          key: mix-checks-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}-${{ github.sha }}
           restore-keys: |
+            mix-checks-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}-
             mix-checks-${{ runner.os }}-
 
       - name: Fetch dependencies
@@ -75,6 +83,18 @@ jobs:
         env:
           MIX_ENV: prod
         run: mix assets.deploy
+
+      # Only a push, to next or main, saves: a pull request's run restores but saves nothing.
+      - name: Save dependencies and build
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            deps
+            _build/dev
+            _build/prod
+            _build/tailwind-*
+          key: ${{ steps.restore.outputs.cache-primary-key }}
 
       # The AWS template, deploy/aws/apiary.yaml: cfn-lint, at the version pinned here, in
       # a virtual environment of its own; scripts/aws-template-check.py reads the template
@@ -227,7 +247,8 @@ jobs:
 
       # The legs compile the same build, as QORY_FEATURES is read when the suite runs and
       # not when it compiles: each restores the tests' cache, and "every feature" alone
-      # saves it, so no leg's save races another's.
+      # saves it, so no leg's save races another's. As the checks' cache, it is saved under
+      # the commit by a push alone, and the newest is restored.
       - name: Restore dependencies and build
         id: restore
         uses: actions/cache/restore@v6
@@ -235,8 +256,9 @@ jobs:
           path: |
             deps
             _build/test
-          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}-${{ github.sha }}
           restore-keys: |
+            mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}-
             mix-test-${{ runner.os }}-
 
       - name: Fetch dependencies
@@ -254,7 +276,7 @@ jobs:
         run: mix test
 
       - name: Save dependencies and build
-        if: matrix.features == '' && steps.restore.outputs.cache-hit != 'true'
+        if: github.event_name == 'push' && matrix.features == '' && steps.restore.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: |
@@ -379,8 +401,9 @@ jobs:
           path: |
             deps
             _build/test
-          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          key: mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}-${{ github.sha }}
           restore-keys: |
+            mix-test-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}-
             mix-test-${{ runner.os }}-
 
       - name: Fetch dependencies
