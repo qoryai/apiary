@@ -405,7 +405,7 @@ defmodule Apiary.Runs.Projector do
 
   # The events whose heartbeats count towards the run's liveness: every one, but for a run
   # through a gateway whose attaching instance is known, whose heartbeats count from that
-  # instance alone, and from none kept before an event's instance was.
+  # instance and from every event stored with no instance id alone.
   defp counted(run) do
     case Fold.liveness_instance(run) do
       nil ->

@@ -17,8 +17,8 @@ defmodule Apiary.Runs.Sender do
       attach, or its events were pruned), a batch or heartbeat from any instance of the
       gateway, under any of its keys, is answered as the attaching instance's would be,
       a resend deduplicated; its reloads stay the attaching instance's. After a loss,
-      only the attaching instance's heartbeat makes the run live again
-      (`Apiary.Runs.Fold.liveness_instance/1`);
+      only the attaching instance's heartbeat makes the run live again, once that
+      instance is known (`Apiary.Runs.Fold.liveness_instance/1`);
     * any other run: the node or node pool it is bound to, `runs.node_id`, the node whose
       key registered it or whose key's batch opened it, fixed from then on.
 

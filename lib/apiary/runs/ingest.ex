@@ -35,8 +35,8 @@ defmodule Apiary.Runs.Ingest do
   instance of the gateway is answered as the attaching instance's would be: a resend is
   deduplicated, and a run whose events were pruned is answered 410. Each event is stored
   with the instance id of the request that delivered it (`events.instance_id`), and after
-  a loss, only the attaching instance's heartbeat makes the run live again
-  (`Apiary.Runs.Fold`). A run attached before
+  a loss, only the attaching instance's heartbeat makes the run live again, once that
+  instance is known (`Apiary.Runs.Fold`). A run attached before
   its instance was known takes the instance of the first batch its gateway sends while
   its sending has not ended, under the run's row lock.
 

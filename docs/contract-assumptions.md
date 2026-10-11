@@ -195,7 +195,7 @@ instance of the gateway that attached it, under any of its active keys, as from 
 attaching instance: once the run's `dev.qory.run.exited` arrived, it was lost after its
 attach, or its events were pruned (`Apiary.Runs.Sender.sending_ended?/1`), a resend from
 any of them is deduplicated, only the attaching instance's heartbeat makes a lost run live
-again (Liveness, below), a run whose events were pruned is `410` to each, and none of
+again once that instance is known (Liveness, below), a run whose events were pruned is `410` to each, and none of
 them gives the run its instance. Another gateway node is still `409 wrong_gateway`, and a
 reload stays the attaching instance's.
 

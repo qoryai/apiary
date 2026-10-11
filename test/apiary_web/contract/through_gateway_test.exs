@@ -933,6 +933,69 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert {run.state, run.lost_at} == {"running", nil}
     end
 
+    # A heartbeat at `sequence`, `seconds` after the run's first ones by its own clock,
+    # saying `elapsed` seconds.
+    defp beat_at(run_id, sequence, seconds, elapsed) do
+      time = ~U[2026-09-16 12:00:00.000Z] |> DateTime.add(seconds) |> DateTime.to_iso8601()
+
+      wire_event(run_id, sequence, "run.heartbeat", %{"elapsed_seconds" => elapsed}, time: time)
+    end
+
+    defp projected_liveness(run),
+      do: Map.take(run, [:last_heartbeat_at, :clock_offset_ms, :elapsed_seconds])
+
+    test "another instance's heartbeat at a higher sequence keeps no lower one of the attaching instance from making the run live",
+         ctx do
+      {run_id, lost} = lost_after_beats(ctx)
+
+      conn = deliver(ctx.gateway_key, [beat_at(run_id, 9, 0, 270)], instance_id: @other_instance)
+      assert response(conn, 202) == ""
+      assert liveness(run(run_id)) == liveness(lost)
+
+      # Below the other instance's sequence, above the attaching instance's last.
+      assert response(deliver(ctx.gateway_key, [beat_at(run_id, 5, 0, 150)]), 202) == ""
+      run = run(run_id)
+      assert {run.state, run.lost_at, run.elapsed_seconds} == {"running", nil, 150}
+
+      assert {:ok, rebuilt} = Apiary.Runs.Projector.rebuild(run)
+      assert liveness(rebuilt) == liveness(run)
+      assert projected_liveness(rebuilt) == projected_liveness(run)
+    end
+
+    test "a lower clock offset counts the attaching instance's last heartbeat again, never another instance's",
+         ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      assert response(deliver(ctx.gateway_key, [started, beat_at(run_id, 4, 0, 30)]), 202) == ""
+
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [state: "lost", lost_at: now()]
+      )
+
+      # Another instance's heartbeat, a minute later by its clock, projected and counted for
+      # nothing.
+      conn = deliver(ctx.gateway_key, [beat_at(run_id, 9, 60, 90)], instance_id: @other_instance)
+      assert response(conn, 202) == ""
+      before = run(run_id)
+
+      # An earlier heartbeat of the attaching instance, dated two minutes after its last: it
+      # lowers the run's clock offset, and the last heartbeat is counted again by it, the
+      # attaching instance's at sequence 4.
+      assert response(deliver(ctx.gateway_key, [beat_at(run_id, 3, 120, 60)]), 202) == ""
+      run = run(run_id)
+      assert run.clock_offset_ms < before.clock_offset_ms
+      assert run.elapsed_seconds == 30
+
+      four = Repo.one!(from e in Event, where: e.run_id == ^run.id and e.sequence == 4)
+
+      assert run.last_heartbeat_at ==
+               Apiary.Runs.Liveness.heard_at(four.received_at, four.time, run.clock_offset_ms)
+
+      # A rebuild, which folds every stored event at once, gives the same.
+      assert {:ok, rebuilt} = Apiary.Runs.Projector.rebuild(run)
+      assert projected_liveness(rebuilt) == projected_liveness(run)
+    end
+
     test "an exit after the loss is final: no heartbeat after it makes the run live", ctx do
       {run_id, _lost} = lost_after_beats(ctx)
 

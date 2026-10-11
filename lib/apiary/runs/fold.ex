@@ -90,7 +90,8 @@ defmodule Apiary.Runs.Fold do
   event stored before its instance was kept counts, and so does every event of a run
   whose attaching instance is not known, and of a direct run. The instance ids are stored
   with the events and the run's attaching instance, once known, does not change, so a
-  rebuild folds the same.
+  rebuild folds the same, except heartbeats another instance sent before a run attached
+  with none took its instance, which a rebuild no longer counts.
   """
 
   alias Apiary.Runs.{About, Liveness}

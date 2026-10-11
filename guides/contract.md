@@ -300,7 +300,8 @@ registered with, 90 seconds at Forager's 30. The labels name what the run works 
 from its attach, by the interval the attach announced; one its gateway never attaches is
 lost when its attach window ends. After a loss, only the attaching instance's heartbeat
 makes the run live again: another instance's heartbeat is stored and answered, and the
-run stays lost.
+run stays lost. A run attached before its attaching instance was kept, whose instance is
+not known yet, is made live again by any instance's heartbeat.
 
 <!-- feature: security -->
 For a workspace whose policy somebody has made, the body is the workspace's run
@@ -548,7 +549,8 @@ else is retried with backoff until the run ends.
   be: a resend is deduplicated, and a run whose events were pruned is `410`. An outcome
   alone does not end this: until the exit arrives, another instance is still
   `409 wrong_gateway`. Reloads stay the attaching instance's. After a loss, only the
-  attaching instance's heartbeat makes the run live again. Its registration's repeat and
+  attaching instance's heartbeat makes the run live again, or any instance's while the
+  attaching instance is not known yet. Its registration's repeat and
   its outcome stay the registering node's. A gateway's batch never opens a run: one for a run
   it did not attach is `409 wrong_gateway`, and nothing is stored. What is read for the
   run, its run configuration and its features, is read under the run's own workspace, and

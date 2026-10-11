@@ -201,7 +201,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   kept takes the instance of the next attach, batch or heartbeat its gateway sends for it
   before its sending ends, and holds to it from then on. After a loss, only the attaching
   instance's heartbeat makes the run live again: another instance's heartbeat is stored
-  and answered, and the run stays lost. Its outcome stays its node's. The run is held to
+  and answered, and the run stays lost. A run whose attaching instance is not known yet
+  is made live again by any instance's heartbeat. Its outcome stays its node's. The run is held to
   the interval its attach announced, from its attach, and a run its gateway never
   attaches is lost at the end of its window. The console does not show a run's gateway or its attach.
 - A run through a gateway belongs to the node that registered it and its instance, never
