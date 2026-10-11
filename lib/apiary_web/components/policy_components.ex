@@ -165,8 +165,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   Where a rule comes from: three shapes, three wordings, no status hue. `label` replaces
-  the words where the same chip names a target's policy ("Target rules", "Workspace
-  baseline") or marks a change the workspace made ("workspace").
+  the words where the same chip marks a change the workspace made ("workspace").
   """
   attr :source, :atom, required: true, values: [:workspace, :target, :workspace_locked]
   attr :label, :string, default: nil
