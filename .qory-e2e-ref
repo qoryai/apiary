@@ -3,4 +3,4 @@
 # request with the node's Ed25519 access key, verifies every answer under the pin, and
 # keeps each run's record in its state directory on the node, outside the checkout. Its
 # Forager refuses a discovery without `workspaces`.
-58c0122819a83e77bb3b2b5ada998eefe1497111
+d2b144eabdc23a2bf97c9d60c502d573ec15ba50
