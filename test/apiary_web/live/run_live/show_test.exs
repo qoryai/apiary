@@ -1920,6 +1920,46 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
+  describe "a connection's host" do
+    test "is isolated in the timeline, its groups and the connections tab, so a bidi override reorders nothing",
+         %{conn: conn, scope: scope} do
+      host = "evil\u202Elpmaxe.<script>"
+      escaped = "evil\u202Elpmaxe.&lt;script&gt;"
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.egress", egress_data(%{"host" => host, "rule" => ""})},
+          {3, "run.egress", egress_data(%{"host" => host, "rule" => ""})},
+          {4, "run.egress",
+           egress_data(%{
+             "host" => host,
+             "decision" => "denied",
+             "outcome" => "refused",
+             "rule" => ""
+           })},
+          {5, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      # Two allowed connections to the host read as one group, the denied one as a row.
+      assert has_element?(lv, "#e-2-group .q-cx-sum .q-dest > bdi", host)
+      assert has_element?(lv, "#e-2-cx-3 .q-dest > bdi", host)
+      assert has_element?(lv, "#e-4 .q-dest > bdi", host)
+      assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-port\">:443</span>"
+      refute html =~ "elpmaxe.<script>"
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
+
+      assert has_element?(lv, ".q-cx-h > bdi", host)
+      assert html =~ "<bdi>#{escaped}</bdi><span class=\"q-cx-p\">:443</span>"
+      refute html =~ "elpmaxe.<script>"
+    end
+  end
+
   describe "a run with tools" do
     test "the timeline groups a tool's allowed calls under its name and lists the tools", %{
       conn: conn,

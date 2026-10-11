@@ -678,7 +678,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "the wall's own refusals, in either mode" do
       assert text(row(%{last_decision: "denied", last_rule: "wall:own-address"})) =~
-               "The wall refuses the machine's address, in either mode."
+               "The wall refuses link-local addresses and the machine's addresses, in either mode."
 
       assert text(
                row(%{
@@ -687,6 +687,78 @@ defmodule ApiaryWeb.RunComponentsTest do
                  last_path_rule: "wall:ambiguous-path"
                })
              ) =~ "The path can be read two ways. The wall denies it in either mode."
+    end
+
+    @host_form "The wall refuses a host that is neither a name nor an address in canonical form,"
+    @own_address "The wall refuses link-local addresses and the machine's addresses,"
+
+    defp wall_inline(host, rule \\ "wall:host-form") do
+      assigns = %{
+        event: %{
+          host: host,
+          port: 443,
+          method: "CONNECT",
+          decision: "denied",
+          rule: rule,
+          mode: "observe",
+          outcome: "refused",
+          at: ~U[2026-09-20 14:02:20.300Z]
+        }
+      }
+
+      rendered_to_string(~H"""
+      <RunComponents.connection_row id="e-hf" connection={@event} variant="inline" />
+      """)
+    end
+
+    test "the wall's refusals of a host's form and of the machine's addresses, bold inline" do
+      for {host, rule, bold} <- [
+            {"Files.CDN.example.", "wall:host-form", @host_form},
+            {"169.254.169.254", "wall:own-address", @own_address}
+          ] do
+        html = wall_inline(host, rule)
+        why = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-why")
+
+        assert text(LazyHTML.to_html(why)) == "Denied. #{bold} in either mode."
+        assert why |> LazyHTML.query("b") |> Enum.map(&LazyHTML.text/1) == ["Denied.", bold]
+
+        refute text(html) =~ "Rule #{rule}"
+        refute text(html) =~ "No rule matches"
+      end
+    end
+
+    test "the wall's refusals of a host's form and of the machine's addresses: the titles" do
+      for {host, rule, bold} <- [
+            {"Files.CDN.example.", "wall:host-form", @host_form},
+            {"169.254.169.254", "wall:own-address", @own_address}
+          ] do
+        html =
+          row(%{host: host, last_decision: "denied", last_rule: rule, last_mode: "enforce"})
+
+        assert html
+               |> LazyHTML.from_fragment()
+               |> LazyHTML.query(".q-why-l")
+               |> LazyHTML.attribute("title") == ["#{bold} in either mode."]
+
+        assert text(html) =~ "#{bold} in either mode."
+        refute text(html) =~ "Rule #{rule}"
+      end
+    end
+
+    test "a host the wall refused for its form is shown as sent and escaped as any host" do
+      host = "<script>alert(1)</script>\u202Eexample.\u202C" <> String.duplicate("A", 300)
+
+      for html <- [
+            wall_inline(host),
+            row(%{host: host, last_decision: "denied", last_rule: "wall:host-form"})
+          ] do
+        refute html =~ "<script>"
+        assert html =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
+        # As sent, its bidirectional characters, case and length with it, and as text, as
+        # any host is; the reason's words stay the same.
+        assert text(html) =~ host
+        assert text(html) =~ "#{@host_form} in either mode."
+      end
     end
 
     test "allowed by a rule, a path rule and a credential" do
@@ -1334,6 +1406,164 @@ defmodule ApiaryWeb.RunComponentsTest do
       refute doc |> LazyHTML.query("#cx-1-copy [aria-live]") |> Enum.any?()
       # Without security too: it is the record's host, not a rule.
       refute doc |> LazyHTML.query(".q-cx-acts") |> Enum.any?()
+    end
+  end
+
+  describe "a connection's host is isolated, so a bidi character reorders nothing" do
+    # A right-to-left override in Forager's string, and markup that must stay text.
+    @host "evil\u202Elpmaxe.<script>"
+    @escaped "evil\u202Elpmaxe.&lt;script&gt;"
+
+    defp bidi_row(variant, connection \\ %{}) do
+      base = %{
+        id: "c1",
+        host: @host,
+        port: 443,
+        path: "",
+        method: "CONNECT",
+        attempts: 1,
+        allowed: 0,
+        denied: 1,
+        last_decision: "denied",
+        last_rule: "",
+        last_outcome: "refused",
+        last_mode: "enforce",
+        last_seen_at: ~U[2026-09-20 14:02:21Z]
+      }
+
+      assigns = %{c: Map.merge(base, connection), variant: variant}
+
+      if variant == "inline" do
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="cx-1" connection={@c} variant="inline" />
+        """)
+      else
+        rendered_to_string(~H"""
+        <table>
+          <tbody>
+            <RunComponents.connection_row id="cx-1" connection={@c} variant={@variant} />
+          </tbody>
+        </table>
+        """)
+      end
+    end
+
+    defp isolated(html, selector) do
+      html
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(selector)
+      |> Enum.map(&LazyHTML.text/1)
+    end
+
+    test "in a row of a run's and of the workspace's Network access" do
+      for variant <- ~w(table workspace),
+          connection <- [%{}, %{path: "/v1/<b>", request_method: "GET"}] do
+        html = bidi_row(variant, connection)
+        assert isolated(html, ".q-cx-h > bdi") == [@host], variant
+        assert html =~ "<bdi>#{@escaped}</bdi><span class=\"q-cx-p\">:443</span>", variant
+        refute html =~ "<script>", variant
+      end
+    end
+
+    test "in the timeline's row, a tool invocation's too" do
+      html = bidi_row("inline")
+      assert isolated(html, ".q-dest > bdi") == [@host]
+      assert html =~ "<bdi>#{@escaped}</bdi><span class=\"text-faint\">:443</span>"
+      refute html =~ "<script>"
+
+      html =
+        bidi_row("inline", %{
+          last_decision: "allowed",
+          last_rule: "files.tools.internal",
+          last_outcome: "connected",
+          last_tool: "files",
+          path: "/media/a.png",
+          request_method: "PUT"
+        })
+
+      assert isolated(html, ".q-dest-tool .q-on > bdi") == [@host]
+      assert html =~ "<span class=\"q-on\"><bdi>#{@escaped}</bdi>:443</span>"
+      refute html =~ "<script>"
+    end
+
+    test "a host cut long right after an unclosed override keeps it inside the isolate" do
+      # 18 letters, the override as the 19th character: the cut keeps 19 and the ellipsis.
+      long = String.duplicate("a", 18) <> "\u202E" <> String.duplicate("b", 30) <> ".<script>"
+      cut = RunComponents.middle(long, 40)
+      assert String.ends_with?(String.slice(long, 0, 19), "\u202E")
+      assert cut =~ "\u202E…"
+
+      panel = %{
+        anchor: "a-allow",
+        host: long,
+        action: :allow,
+        refusal: %{
+          rule_option: :locked_deny,
+          rule: "*.paste.example",
+          locked_by: nil,
+          locked_at: nil,
+          owner: true,
+          rule_path: "/p"
+        }
+      }
+
+      html = render_component(&RunComponents.rule_panel/1, panel: panel)
+      assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [cut]
+      # The isolate closes before the rest of the sentence, so the override reaches nothing.
+      assert html =~ ~r|<bdi>a{18}\x{202E}…b*\.&lt;script&gt;</bdi></span>|u
+
+      assert isolated(html, "#rule-panel-title")
+             |> hd()
+             |> String.trim()
+             |> String.ends_with?("stays denied")
+
+      refute html =~ "<script>"
+
+      html = bidi_row("workspace", %{host: long})
+      assert isolated(html, ".q-cx-h > bdi") == [long]
+      assert html =~ "</bdi><span class=\"q-cx-p\">:443</span>"
+    end
+
+    test "in the title of each rule panel" do
+      panels = [
+        %{anchor: "a-allow", host: @host, action: :allow, elsewhere: %{name: "Main", path: "/m"}},
+        %{
+          anchor: "a-allow",
+          host: @host,
+          action: :allow,
+          refusal: %{
+            rule_option: :locked_deny,
+            rule: "*.paste.example",
+            locked_by: nil,
+            locked_at: nil,
+            owner: true,
+            rule_path: "/p"
+          }
+        },
+        %{
+          anchor: "a-allow",
+          action: :allow,
+          host: @host,
+          path: "",
+          page: :workspace,
+          level: :workspace,
+          target: nil,
+          targets: [],
+          choice: nil,
+          what: nil,
+          workspace: "Shop",
+          interval: 30,
+          consequence: %{},
+          error: nil
+        }
+      ]
+
+      for panel <- panels do
+        html = render_component(&RunComponents.rule_panel/1, panel: panel)
+        assert isolated(html, "#rule-panel-title .q-rp-host > bdi") == [@host], inspect(panel)
+        assert html =~ "<bdi>#{@escaped}</bdi>"
+        refute html =~ "<script>"
+      end
     end
   end
 end

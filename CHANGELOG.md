@@ -683,6 +683,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
+- A connection the wall refused for the form of its host says so in words: "The wall
+  refuses a host that is neither a name nor an address in canonical form, in either
+  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+  names link-local addresses: "The wall refuses link-local addresses and the machine's
+  addresses, in either mode.", and so does the Policy page's hint for a rule written as an
+  address.
 - A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
   address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
   name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
@@ -726,6 +732,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The runs list's preview shows a run's last log lines, and its Full log link, only to a
   reader who may read the log (`run.read_log`), as the run page's Terminal tab does.
   Before, it read and showed them to anyone who could read the runs.
+- A connection's host is isolated wherever it shows, so a right-to-left character in it
+  reorders nothing around it.
 
 ### Migrations
 

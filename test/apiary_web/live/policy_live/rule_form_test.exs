@@ -318,7 +318,7 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       type(view, %{host: "10.0.0.12:443", paths: ""})
 
       assert read(view, "#policy-rule-host-error") ==
-               "An address is written like a host, digits and dots only: 10.0.0.12. The wall refuses the machine's address whatever the policy says."
+               "An address is written like a host, digits and dots only: 10.0.0.12. The wall refuses link-local addresses and the machine's addresses whatever the policy says."
 
       # The host is right and a path is not: the error under Paths, Paths focused on Add.
       type(view, %{host: "api.example", paths: "/v1?x=1"})

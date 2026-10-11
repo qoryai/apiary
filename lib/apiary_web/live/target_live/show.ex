@@ -686,7 +686,7 @@ defmodule ApiaryWeb.TargetLive.Show do
               title={"#{row.host}:#{row.port}#{row.path}"}
             >
               <.icon name="hero-no-symbol-micro" class="size-3.5 text-faint" />
-              <span class="q-tgt-dn-dest">{row.host}<span class="text-faint">:{row.port}</span><span
+              <span class="q-tgt-dn-dest"><bdi>{row.host}</bdi><span class="text-faint">:{row.port}</span><span
                 :if={row.path not in [nil, ""]}
                 class="text-muted"
               >{row.path}</span></span>

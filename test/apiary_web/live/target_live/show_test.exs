@@ -178,6 +178,24 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute has_element?(view, "#nav-targets[aria-current=page]")
   end
 
+  test "a denied host is isolated, so a bidi override reorders nothing",
+       %{conn: conn, scope: scope} do
+    host = "evil\u202Elpmaxe.<script>"
+
+    started_run(scope, repo("github.example", "acme/billing"),
+      egress: [%{"decision" => "denied", "outcome" => "refused", "host" => host}]
+    )
+
+    view = open(conn, workspace_path(scope, "/targets/acme/billing"))
+
+    assert has_element?(view, "#target-denied .q-tgt-dn-dest > bdi", host)
+
+    assert render(view) =~
+             "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"text-faint\">:443"
+
+    refute render(view) =~ "elpmaxe.<script>"
+  end
+
   test "a path no other target has: the address is the path alone, and the lists are narrowed to it",
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/billing"),

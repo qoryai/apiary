@@ -1405,6 +1405,41 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a denied host is isolated, a tool's too, so a bidi override reorders nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      host = "evil\u202Elpmaxe.<script>"
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => host, "decision" => "denied", "rule" => ""},
+          tool_invocation_data(%{
+            "host" => host,
+            "path_rule" => "",
+            "decision" => "denied",
+            "outcome" => "refused"
+          })
+        ]
+      )
+
+      view = open(conn, scope)
+      selector = "#attention-list li[data-kind=denied]"
+
+      assert has_element?(view, "#{selector} .q-host:not(.q-dest-tool) > bdi", host)
+      assert has_element?(view, "#{selector} .q-dest-tool .q-port > bdi", host)
+      html = render(view)
+
+      assert html =~
+               "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi><span class=\"q-port\">:443</span>"
+
+      assert html =~
+               "<span class=\"q-port\"><bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443</span>"
+
+      refute html =~ "elpmaxe.<script>"
+    end
+
+    @tag needs: :security
     test "allow a denied destination here: the panel in place, the rule, the struck row", %{
       conn: conn,
       scope: scope

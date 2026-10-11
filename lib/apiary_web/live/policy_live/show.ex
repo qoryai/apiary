@@ -1771,10 +1771,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <.tool_mark name={destination.tool} /><span
               :if={destination.path}
               class="text-muted"
-            >{destination.path}</span><span class="text-faint">{destination.host}</span>
+            >{destination.path}</span><span class="text-faint"><bdi>{destination.host}</bdi></span>
           </span>
           <span :if={!destination[:tool]} class="q-dest">
-            {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
+            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
