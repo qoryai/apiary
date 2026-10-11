@@ -1924,10 +1924,21 @@ defmodule Apiary.Organisations do
     )
   end
 
-  # Several organisations in the lock order (docs/access.md): those the edition holds
-  # another organisation after (`c:Apiary.Edition.places_to_lock/1`) first, so each comes
-  # before the ones it holds, then the rest, each in the order of their ids.
-  defp lock_order(organisations) do
+  @doc """
+  lock_order/1 is the order in which several organisations are locked (docs/access.md):
+  an account's deletion holds them in it (`sole_owned_organisations/2` with
+  `lock: true`), and an edition must use it whenever it locks the rows of more than one
+  organisation. First those after which the edition holds another organisation
+  (`c:Apiary.Edition.places_to_lock/1` names more than the organisation's own id), then
+  the rest, each in the order of their ids, so an organisation that holds others comes
+  before those that hold none. With the core's edition, it is the order of their ids.
+
+  It takes the organisations, as `%Organisation{}` structs, and returns their ids in the
+  order to lock them, one for each organisation given. It is pure: it locks nothing, and
+  asks the edition only `c:Apiary.Edition.places_to_lock/1`, once for each organisation.
+  """
+  @spec lock_order([%Organisation{}]) :: [Ecto.UUID.t()]
+  def lock_order(organisations) do
     organisations
     |> Enum.sort_by(&{match?([_own], Edition.places_to_lock(&1)), &1.id})
     |> Enum.map(& &1.id)

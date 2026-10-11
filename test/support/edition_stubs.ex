@@ -301,6 +301,23 @@ defmodule Apiary.EditionStubs do
     def lock_rows(about), do: LocksItsRows.lock_rows(about)
   end
 
+  defmodule HoldsOthers do
+    @moduledoc """
+    Holds other organisations after some (`c:Apiary.Edition.places_to_lock/1`): an
+    organisation the test names (`Process.put(:places_held, %{id => other_ids})` in the
+    test's process) is locked with those after its own id; every other one as the
+    configured edition locks it.
+    """
+    alias Apiary.Organisations.Organisation
+
+    def places_to_lock(%Organisation{id: id} = organisation) do
+      case Process.get(:places_held, %{}) do
+        %{^id => others} -> [id | others]
+        _held -> Apiary.Edition.module().places_to_lock(organisation)
+      end
+    end
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end

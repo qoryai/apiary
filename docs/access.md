@@ -350,11 +350,13 @@ for each other and never on each other at once:
    holds with it (`c:Apiary.Edition.places_to_lock/1`). Several organisations, as an
    account's deletion holds every organisation the account is a member of, those it owns
    `FOR SHARE` and the rest `FOR KEY SHARE`
-   (`Apiary.Organisations.sole_owned_organisations/2` with `lock: true`), are locked
-   first those the edition holds another organisation with, then the rest, each in the
-   order of their ids, so an organisation always comes before the ones it holds; with the
-   core's edition, in the order of their ids. Then the edition's own rows for the change
-   (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
+   (`Apiary.Organisations.sole_owned_organisations/2` with `lock: true`), are locked in
+   the order of `Apiary.Organisations.lock_order/1`, the function an edition calls for the
+   order of several organisations whenever it locks the rows of more than one: first
+   those the edition holds another organisation with, then the rest, each in the order of
+   their ids, so an organisation that holds others comes before those that hold none;
+   with the core's edition, in the order of their ids. Then the edition's own rows for the
+   change (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
 2. **Workspace rows**, in the order of their ids where a change takes several, as a write
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
