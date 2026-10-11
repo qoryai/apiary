@@ -357,8 +357,14 @@ for each other and never on each other at once:
    their ids, so an organisation that holds others comes before those that hold none;
    with the core's edition, in the order of their ids. The organisations an edition names
    besides an organisation's own hold none of their own, which makes this one order that
-   every change agrees on. Then the edition's own rows for the change
-   (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
+   every change agrees on. An edition that takes more than one organisation row in one
+   transaction, in a mode that conflicts with `FOR SHARE`, takes them at one point, in
+   the order of `lock_order/1`, before its first write; and only rows of organisations
+   whose classification, what `c:Apiary.Edition.places_to_lock/1` names for them, cannot
+   change while it holds them, or while it holds what a change of their classification
+   waits for. The core meets this: each change of the core that locks an organisation
+   row in such a mode locks that one row alone. Then the edition's own rows for the
+   change (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
 2. **Workspace rows**, in the order of their ids where a change takes several, as a write
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does

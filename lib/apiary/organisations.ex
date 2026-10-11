@@ -1938,6 +1938,14 @@ defmodule Apiary.Organisations do
   edition only `c:Apiary.Edition.places_to_lock/1`, once for each organisation. The
   core's edition answers that without reading; an edition may read there, but must lock
   nothing, since its locks belong to `c:Apiary.Edition.lock_rows/1`.
+
+  An edition that takes more than one organisation row in one transaction, in a mode that
+  conflicts with `FOR SHARE`, takes them at one point, in this order, before its first
+  write; and only rows of organisations whose classification, what
+  `c:Apiary.Edition.places_to_lock/1` names for them, cannot change while it holds them,
+  or while it holds what a change of their classification waits for. The core meets
+  this: each change of the core that locks an organisation row in such a mode locks that
+  one row alone.
   """
   @spec lock_order([%Organisation{}]) :: [Ecto.UUID.t()]
   def lock_order(organisations) do
