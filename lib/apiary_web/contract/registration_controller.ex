@@ -23,8 +23,11 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   stored and answered `200`.
 
   **A reload** is answered only for a run the key's own node registered, under any of its
-  active keys (`Apiary.Runs.Registration.fetch/2`, `Apiary.Runs.Sender`); anything else is
-  `404`, a run another node registered and a run its batches created among them, and so is a workspace that
+  active keys, or, for a run through a gateway, to the instance of the gateway that
+  attached it, under any of the gateway's active keys (`Apiary.Runs.Registration.fetch/3`,
+  `Apiary.Runs.Sender`); anything else is `404`, a run another node registered, a run
+  another instance of the gateway attached and a run its batches created among them, and
+  so is a workspace that
   serves no run configuration: a policy removed mid-run never loosens a run already
   started.
 
@@ -92,7 +95,7 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   end
 
   def show(conn, %{"run_id" => run_id}) do
-    case Registration.fetch(conn.assigns.access_key, run_id) do
+    case Registration.fetch(conn.assigns.access_key, run_id, conn.assigns.instance_id) do
       {:ok, answer} -> answer(conn, answer)
       {:error, :not_found} -> conn |> put_status(404) |> json(%{error: "not_found"})
       {:error, _reason} -> unavailable(conn)

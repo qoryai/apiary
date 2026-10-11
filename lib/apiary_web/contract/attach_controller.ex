@@ -16,10 +16,13 @@ defmodule ApiaryWeb.Contract.AttachController do
   is not a gateway's is `409` `not_a_gateway`; a run key that does not verify, or whose
   run id is not the path's, is `400` `run_key_invalid`; a run whose workspace or
   organisation is out of use is `401`, unsigned, as a key of it would be; a workspace
-  `Apiary.Access` does not let post (`run.post_events`) is `404`; the same gateway
+  `Apiary.Access` does not let post (`run.post_events`) is `404`; the same gateway node
+  and the same instance id (`X-Qory-Instance-Id`), under any of the node's active keys,
   attaching the same live run again is given the same answer; a run that has ended is
   `410`, with no body; then `409` `run_key_expired`, `wrong_gateway`,
-  `workspace_not_served` and `run_attached`; else the run is attached.
+  `workspace_not_served` and `run_attached`, which another gateway node, or another
+  instance of this one, is given for a live run it did not attach; else the run is
+  attached, and its instance id kept with it.
 
   The answer is `200`, `application/json`, the run configuration's bytes with the
   registration's `labels` and `about` after them, with `X-Qory-Run-Configuration:
@@ -100,5 +103,9 @@ defmodule ApiaryWeb.Contract.AttachController do
     if Attach.fresh?(attach, now), do: :ok, else: :unauthorized
   end
 
-  defp meta(conn), do: %{forager_version: SignedRequest.forager_version(conn)}
+  defp meta(conn),
+    do: %{
+      forager_version: SignedRequest.forager_version(conn),
+      instance_id: conn.assigns.instance_id
+    }
 end

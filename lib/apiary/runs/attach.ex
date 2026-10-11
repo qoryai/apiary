@@ -24,10 +24,14 @@ defmodule Apiary.Runs.Attach do
        verification (`Apiary.AccessKeys.place_in_use?/2`), is `{:error, :unauthorized}`,
        and a run whose workspace `Apiary.Access` does not let post (`run.post_events`) is
        `{:error, :not_found}`;
-    4. a repeat: the same gateway, under any of its active keys, attaching the same run
-       again while the run is live, is given the answer it was given, nothing stored
-       again. A repeat is the gateway's and the run's, not the body's bytes, so a gateway
-       that restarted, or replaced its key, takes its run on again;
+    4. a repeat: the same gateway node and the same instance id, under any of the node's
+       active keys, attaching the same run again while the run is live, is given the
+       answer it was given, nothing stored again. A repeat is the gateway's, its
+       instance's and the run's, not the body's bytes, so a gateway that restarted, or
+       replaced its key, takes its run on again: a restarted gateway keeps its instance
+       id. A run attached before its instance id was kept has none, and the first
+       instance of its gateway that attaches it again is given the answer and becomes its
+       attaching instance;
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
        ended it, it was lost after its attach, or its events were pruned. So is a run
        whose record is gone;
@@ -39,15 +43,23 @@ defmodule Apiary.Runs.Attach do
     8. a gateway that may not serve the run's workspace (`Apiary.Gateways.may_serve?/2`),
        or that is deleted or gone, read `FOR SHARE` once the run's row is held, is
        `{:error, :workspace_not_served}`;
-    9. a run another gateway attached is `{:error, :run_attached}`;
+    9. a run another gateway node attached, or another instance of this one, is
+       `{:error, :run_attached}`;
     10. a workspace whose run configuration cannot be read is `{:error, :unavailable}`;
     11. else the run is attached: when, its heartbeat interval, which
         the run is held to from then on (`Apiary.Runs.Liveness`), Forager's version and the
-        contract's, and the digest of the run configuration it is given.
+        contract's, the digest of the run configuration it is given, and the instance id
+        the attach was signed with.
 
-  Since the gateway that attaches is the one the run key names, and a repeat is that
-  gateway's, the ninth answer is never reached by a request that passes the seventh; it
-  stands so that no order of the checks lets a second gateway take a run on.
+  Since the gateway that attaches is the one the run key names, another gateway node
+  never reaches the ninth answer once it passes the seventh; another instance of the
+  gateway does, and is refused there. It stands so that no order of the checks lets a
+  second gateway, or a second instance of one, take a run on.
+
+  The instance is the attach's signed `X-Qory-Instance-Id`, given in `meta`. It is stored
+  on the run beside the attach's answer (`runs.attach_instance_id`), and from then on the
+  run's batches, heartbeats and reloads are taken from that instance alone
+  (`Apiary.Runs.Sender`).
 
   The answer is the run configuration in force for the run's target, read under the
   run's own place (`Apiary.Runs.Sender.place_key/2`), never the gateway's: its bytes, with
@@ -59,8 +71,9 @@ defmodule Apiary.Runs.Attach do
   deletion holds it (`Apiary.Gateways`), and the clock after it: a deletion either finds
   the run it would attach, or the attach finds the gateway deleted.
 
-  No run is changed on any refusal. Once the run is attached, the gateway's batches,
-  heartbeats and reloads are taken for it, and nobody else's (`Apiary.Runs.Sender`).
+  No run is changed on any refusal. Once the run is attached, the batches, heartbeats and
+  reloads of the gateway's attaching instance are taken for it, and nobody else's
+  (`Apiary.Runs.Sender`).
   """
 
   import Ecto.Query, warn: false
@@ -70,7 +83,7 @@ defmodule Apiary.Runs.Attach do
   alias Apiary.{Access, AccessKeys, Gateways, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Nodes.Node
+  alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Batch, Registration, Run, RunKey, Sender}
 
@@ -202,7 +215,8 @@ defmodule Apiary.Runs.Attach do
   @doc """
   Attaches the run `run_id` for the gateway's key (an access key, or its scope), in the
   order the moduledoc gives. `meta` is what the request said beside its body:
-  `forager_version`, as its headers named it, nil when they did not. `{:ok, answer}`
+  `forager_version`, as its headers named it, and `instance_id`, the instance id it was
+  signed with, each nil when not given. `{:ok, answer}`
   (`t:answer/0`), or `{:error, reason}`.
   """
   @spec attach(AccessKey.t() | Scope.t(), term, t, map) ::
@@ -298,8 +312,8 @@ defmodule Apiary.Runs.Attach do
       now = DateTime.utc_now()
 
       cond do
-        repeat?(run, gateway) ->
-          repeat(access_key, run)
+        repeat?(run, gateway, meta[:instance_id]) ->
+          repeat(access_key, run, meta[:instance_id])
 
         ended?(run) ->
           {:error, :gone}
@@ -329,11 +343,12 @@ defmodule Apiary.Runs.Attach do
 
   defp expired?(_run, _now), do: false
 
-  # The gateway that attached the run, under any of its keys, while the run is live.
-  defp repeat?(%Run{attached_at: %DateTime{}, gateway_id: id} = run, %Node{id: id}),
-    do: not ended?(run)
+  # The gateway that attached the run, under any of its keys, and the instance that
+  # attached it, or any of its instances while that is not known, while the run is live.
+  defp repeat?(%Run{attached_at: %DateTime{}, gateway_id: id} = run, %Node{id: id}, instance_id),
+    do: not ended?(run) and Sender.attaching_instance?(run, instance_id)
 
-  defp repeat?(_run, _gateway), do: false
+  defp repeat?(_run, _gateway, _instance_id), do: false
 
   # Its exit arrived, its starter's outcome ended it, or it was lost after its attach; or
   # retention pruned its events, and the workspace wants nothing more of it.
@@ -342,10 +357,20 @@ defmodule Apiary.Runs.Attach do
       not is_nil(run.events_pruned_at) or (run.state == "lost" and not is_nil(run.attached_at))
   end
 
-  defp repeat(access_key, run) do
-    with {:ok, settings} <-
+  # A run attached before its instance was known takes this one's, under the run's row
+  # lock: the attach that wrote it first holds the run.
+  defp repeat(access_key, run, instance_id) do
+    with {:ok, run} <- taken(run, instance_id),
+         {:ok, settings} <-
            Registration.answered(Sender.place_key(run, access_key), run, run.attach_answer_digest),
          do: {:ok, answer(run, settings, true)}
+  end
+
+  defp taken(run, instance_id) do
+    case Sender.take_instance(run, instance_id) do
+      {:ok, run} -> {:ok, run}
+      {:error, :other_instance} -> {:error, :run_attached}
+    end
   end
 
   defp take(access_key, run, attach, meta, now) do
@@ -357,6 +382,7 @@ defmodule Apiary.Runs.Attach do
           attached_at: now,
           attach_interval_seconds: attach.interval_seconds,
           attach_answer_digest: settings.digest,
+          attach_instance_id: kept_instance(meta[:instance_id]),
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),
           contract_version: attach.contract_version,
           updated_at: now
@@ -366,6 +392,11 @@ defmodule Apiary.Runs.Attach do
       {:ok, answer(run, settings, false)}
     end
   end
+
+  # The instance id the request was signed with, when it can be kept; nil otherwise, so the
+  # run's next request from its gateway gives it one.
+  defp kept_instance(instance_id),
+    do: if(Instance.instance_id?(instance_id), do: instance_id)
 
   # As the fold keeps Forager's version: at most 255 bytes, cut on a character boundary.
   defp kept_version(version) when byte_size(version) <= 255, do: version

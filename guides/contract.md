@@ -372,15 +372,15 @@ configuration in force now for the labels the run registered with.
 | `200` | the workspace has a policy | the run configuration |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included; or the instance id is absent or outside its pattern, or a header the signature depends on is sent twice | `{"error":"unsupported_contract_version","supported":[1]}`, `{"error":"bad_request"}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | the run is not one this key's node registered, or, through a gateway, attached: an unknown run id, a run another node registered, a run through a gateway not yet attached, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
+| `404` | the run is not one this key's node registered, or, through a gateway, attached from this instance: an unknown run id, a run another node registered, a run through a gateway not yet attached, or a run its batches created without a registration; or the workspace serves no run configuration | `{"error":"not_found"}` |
 | `429` | the key's rate for registrations is spent, which reloads share; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
 The reload is answered only to the active keys of the node that registered the run, or,
-for a run through a gateway, of the gateway that attached it, and only by the labels it
-registered with; a run whose events retention has pruned is reloaded all the
-same. To the gateway any
-answer but `200` is a reload that failed: the policy in force stays, and it tries again on
+for a run through a gateway, of the gateway and the instance that attached it, and only by
+the labels it registered with; a run whose events retention has pruned is reloaded all the
+same. To the gateway any answer but `200` is a reload that failed: the policy in force
+stays, and it tries again on
 the next answer. The endpoint never answers `304`.
 
 <!-- feature: security -->
@@ -415,19 +415,23 @@ contract version, the body, the `time`); the first that applies is the answer:
 | `400` | the run key does not verify, its run id is not the path's, or it is not the run key the run was given | `{"error":"run_key_invalid"}` |
 | `401` | the run's workspace or organisation is out of use, as a key of it would be | `{"error":"unauthorized"}` |
 | `404` | the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
-| `200` | a repeat: the gateway that attached the run, under any of its active keys, attaching it again while the run is live | the answer it was given |
+| `200` | a repeat: the gateway node and the instance that attached the run, under any of the node's active keys, attaching it again while the run is live | the answer it was given |
 | `410` | the run has ended: its exit arrived, its starter gave its outcome, it was lost after its attach, or retention pruned its events; or its record is gone | empty |
 | `409` | the run was never attached and its attach window has closed: past `attach_by`, or the run already found lost | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
-| `409` | another gateway attached the run | `{"error":"run_attached"}` |
+| `409` | another gateway node attached the run, or another instance of this one, while the run is live | `{"error":"run_attached"}` |
 | `503` | the run configuration could not be read, or the attach could not be stored | `{"error":"unavailable"}` |
 | `200` | attached | the run configuration, with the registration's labels and `about` |
 
-A repeat is the same gateway's, whatever the bytes, so a gateway that restarted, or
-replaced its key, takes its run on again. The run key names the gateway the run was
-registered for, so no other gateway attaches the run: `run_attached` is never reached
-before `wrong_gateway`.
+A repeat is the same gateway node's and the same instance's, the instance id the attach
+was signed with (`X-Qory-Instance-Id`), whatever the bytes, so a gateway that restarted,
+or replaced its key, takes its run on again: a restarted gateway keeps its instance id.
+Another instance of the same gateway is `run_attached` while the run is live. A run
+attached before Qory Apiary kept the attaching instance has none: the first instance of
+its gateway that attaches it again, or sends a batch or a heartbeat for it, holds it from
+then on. The run key names the gateway the run was registered for, so no other gateway
+node attaches the run: it is refused `wrong_gateway` before `run_attached`.
 
 The `200` carries `X-Qory-Run-Configuration`, `ETag` and `X-Qory-Configuration`. Its body
 is the run configuration a direct registration of the run would get, read under the run's
@@ -509,7 +513,7 @@ this order, and the first refusal that applies is the answer:
 | `400` | the body is not a batch, is over a limit, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
-| `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
+| `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and its own workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
@@ -533,11 +537,12 @@ else is retried with backoff until the run ends.
   active keys alone, so a second key of the node, while one is replaced, keeps the run
   going. A batch of another node's run is `409 wrong_node`, and a reload of one `404`.
   For a run through a gateway, the batches, heartbeats and reloads are the gateway's that
-  attached it, under any of its active keys, and nobody's before the attach: anyone
-  else's batch, the registering node's included, is `409 wrong_gateway`, and a reload
-  `404`. Its registration's repeat and its outcome stay the registering node's. A
-  gateway's batch never opens a run: one for a run it did not attach is
-  `409 wrong_gateway`, and nothing is stored. What is read for the run, its run
+  attached it, under any of its active keys, from the instance that attached it
+  (`X-Qory-Instance-Id`), and nobody's before the attach: anyone else's batch, the
+  registering node's and another instance of the gateway's included, is
+  `409 wrong_gateway`, and a reload `404`. Its registration's repeat and its outcome
+  stay the registering node's. A gateway's batch never opens a run: one for a run it did
+  not attach is `409 wrong_gateway`, and nothing is stored. What is read for the run, its run
   configuration and its features, is read under the run's own workspace, and a batch is
   refused `401` when the run's workspace or organisation is out of use.
 - **The end.** Once the run's starter has given its outcome, every `2xx` to the run's

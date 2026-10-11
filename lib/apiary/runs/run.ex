@@ -150,9 +150,11 @@ defmodule Apiary.Runs.Run do
     # gateway's row be purged; the exact bytes of its run key's payload and its signature,
     # so a repeat is given the same run key, when the run key was made and the end of its
     # attach window; and, once the gateway attached it, when, the heartbeat interval it
-    # announced, which the run is held to, and the digest of the run configuration it was
-    # given, which a repeat of the attach is given again. All nil for a direct run. Not
-    # folded: a rebuild keeps them.
+    # announced, which the run is held to, the digest of the run configuration it was
+    # given, which a repeat of the attach is given again, and the instance id of the
+    # gateway that attached it, the one instance that may attach it again and send for it
+    # (`Apiary.Runs.Sender`), nil until it is known. All nil for a direct run. Not folded: a
+    # rebuild keeps them.
     belongs_to :gateway, Apiary.Nodes.Node
     field :run_key_payload, :binary
     field :run_key_signature, :binary
@@ -161,6 +163,7 @@ defmodule Apiary.Runs.Run do
     field :attached_at, :utc_datetime_usec
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
+    field :attach_instance_id, :string
 
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk

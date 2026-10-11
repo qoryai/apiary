@@ -183,12 +183,19 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   key, with the run key and what a direct registration announces
   (`Apiary.Runs.Attach`); the answer is the run's run configuration, read under the run's
   own workspace, with the registration's `labels` and `about`. Its refusals, in order:
-  `409` `not_a_gateway`, `400` `run_key_invalid`, the same gateway attaching the live run
-  again is given the same answer, `410` for a run that has ended, then `409`
-  `run_key_expired`, `wrong_gateway`, `workspace_not_served` and `run_attached`. Once
+  `409` `not_a_gateway`, `400` `run_key_invalid`, the same gateway node and the same
+  instance id attaching the live run again, under any of the node's active keys, is given
+  the same answer, `410` for a run that has ended, then `409` `run_key_expired`,
+  `wrong_gateway`, `workspace_not_served` and `run_attached`, which another gateway node,
+  or another instance of the same one, is given for a live run. The run keeps the instance
+  id the attach was signed with (`X-Qory-Instance-Id`), so one instance of the gateway
+  takes the run on; a gateway that restarts keeps its instance id, and its run. Once
   attached, the run's batches, heartbeats and reloads are the gateway's alone, under any
-  of its active keys, and a batch from any other key is a signed `409` `wrong_gateway`;
-  a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
+  of its active keys, from the instance that attached it, and a batch from any other key,
+  or from another instance, is a signed `409` `wrong_gateway`, a reload `404`; a
+  gateway's batch never opens a run. A run attached before its instance was kept takes
+  the instance of the next attach, batch or heartbeat its gateway sends for it, and holds
+  to it from then on. Its outcome stays its node's. The run is held to the
   interval its attach announced, from its attach, and a run its gateway never attaches is
   lost at the end of its window. The console does not show a run's gateway or its attach.
 - A run through a gateway belongs to the node that registered it and its instance, never
@@ -603,7 +610,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   replaced, keeps the run going; a batch from a key of another node is a signed `409`
   `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
   `404`. A run through a gateway takes them from the gateway that attached it instead,
-  and its repeated registration and its outcome from the node that registered it.
+  from the instance that attached it, and its repeated registration and its outcome from
+  the node that registered it.
 - `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
@@ -741,6 +749,12 @@ columns and their checks come back, empty but `attach_time`, which takes `attach
 `dev.qory.run.refused` while no exit decides over it, with no check, NULL for every
 existing row. Existing rows need no backfill: the column changes only what a run given an
 outcome says, and a rebuild (`mix apiary.rebuild`) fills it for any run refused before.
+`20261011160100_keep_a_run_s_attaching_instance` adds `runs.attach_instance_id`, the
+instance id a run's attach was signed with, NULL for every existing row, held to a run
+that is attached and to 1 to 128 characters (`runs_attach_instance_id_check`, NOT VALID),
+and `20261011160200_validate_a_run_s_attaching_instance_check` validates it. Nothing is
+backfilled: a run attached with none takes the instance of the next attach, batch or
+heartbeat its gateway sends for it.
 
 ### Upgrading
 

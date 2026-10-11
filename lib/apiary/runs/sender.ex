@@ -2,14 +2,17 @@ defmodule Apiary.Runs.Sender do
   @moduledoc """
   Who may send for a run, and under whose place what is sent for it is read.
 
-  **Batches, heartbeats and reloads** (`may_send?/2`: `Apiary.Runs.Ingest`,
-  `Apiary.Runs.Registration.fetch/2`) are taken from the active keys of one node alone, so
+  **Batches, heartbeats and reloads** (`may_send?/3`: `Apiary.Runs.Ingest`,
+  `Apiary.Runs.Registration.fetch/3`) are taken from the active keys of one node alone, so
   a key replaced while the run is live keeps it going:
 
     * a run that goes through a gateway (`Apiary.Runs.Run.through_gateway?/1`): the
       gateway that attached it, `runs.gateway_id` once `attached_at` is set, under any of
-      its keys. Before the attach nobody sends for it, the node or node pool that
-      registered it included, and after it no key but the gateway's, theirs included;
+      its keys, and from the instance that attached it, `runs.attach_instance_id`, the
+      instance id its signed requests carry. Before the attach nobody sends for it, the
+      node or node pool that registered it included, and after it no key but the
+      gateway's, theirs included, and no other instance of the gateway. A gateway that
+      restarts keeps its instance id, and so its run;
     * any other run: the node or node pool it is bound to, `runs.node_id`, the node whose
       key registered it or whose key's batch opened it, fixed from then on.
 
@@ -19,6 +22,13 @@ defmodule Apiary.Runs.Sender do
   deleted or purged; a run through a gateway whose registering node is deleted still
   takes the batches, heartbeats and reloads of the gateway that attached it. A refused
   batch is refused with `refusal/1`'s code.
+
+  **The attaching instance** (`take_instance/2`). A run attached before its instance id
+  was kept has none: until one is known, any instance of the gateway sends for it, and
+  the next attach, batch or heartbeat the gateway sends for it gives the run its instance
+  id, which holds from then on; a reload reads, and gives it none. The id is written
+  under the run's row lock, and only while the run has none, so of two instances whose
+  first requests meet, one is the attaching instance and the other is refused.
 
   **The repeat of a registration and the outcome** (`registered_by?/2`:
   `Apiary.Runs.Registration`, `Apiary.Runs.Outcome`) are taken from the active keys of the
@@ -40,7 +50,7 @@ defmodule Apiary.Runs.Sender do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Nodes.Node
+  alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs.Run
@@ -65,7 +75,68 @@ defmodule Apiary.Runs.Sender do
   def may_send?(_run, _access_key), do: false
 
   @doc """
-  The code a batch `may_send?/2` refuses is refused with: `:wrong_gateway` for a run
+  Whether `access_key`, from the instance `instance_id`, may send batches, heartbeats and
+  reloads for `run`: `may_send?/2`, and for a run through a gateway the instance that
+  attached it too (`attaching_instance?/2`).
+  """
+  @spec may_send?(Run.t(), AccessKey.t(), String.t() | nil) :: boolean
+  def may_send?(%Run{} = run, %AccessKey{} = access_key, instance_id),
+    do: may_send?(run, access_key) and attaching_instance?(run, instance_id)
+
+  @doc """
+  Whether `instance_id` is the instance that attached `run`: true for a run through a
+  gateway whose attaching instance is not known yet, and for a direct run, which no
+  instance holds.
+  """
+  @spec attaching_instance?(Run.t(), String.t() | nil) :: boolean
+  def attaching_instance?(%Run{run_key_payload: payload, attach_instance_id: stored}, instance_id)
+      when is_binary(payload),
+      do: is_nil(stored) or stored === instance_id
+
+  def attaching_instance?(%Run{}, _instance_id), do: true
+
+  @doc """
+  Gives `run`, attached through a gateway, the instance id `instance_id` as its attaching
+  instance when it has none yet: called under the run's row lock, by the attach and the
+  batch that `may_send?/3` let through. The write is conditional on the run having none,
+  so of two first requests from different instances one is the attaching instance, and
+  the other is `{:error, :other_instance}`. `{:ok, run}` with the run as it is then; a
+  run that has its instance, a direct run, and a request with no instance id that can be
+  kept are given back as they are.
+  """
+  @spec take_instance(Run.t(), String.t() | nil) :: {:ok, Run.t()} | {:error, :other_instance}
+  def take_instance(
+        %Run{attach_instance_id: nil, attached_at: %DateTime{}, run_key_payload: payload} = run,
+        instance_id
+      )
+      when is_binary(payload) do
+    if Instance.instance_id?(instance_id) do
+      query =
+        from r in Run,
+          where: r.id == ^run.id and is_nil(r.attach_instance_id) and not is_nil(r.attached_at)
+
+      case Repo.update_all(query, set: [attach_instance_id: instance_id]) do
+        {1, _rows} -> {:ok, %{run | attach_instance_id: instance_id}}
+        {0, _rows} -> taken(run, instance_id)
+      end
+    else
+      {:ok, run}
+    end
+  end
+
+  def take_instance(%Run{} = run, _instance_id), do: {:ok, run}
+
+  # Another request wrote the run's instance first: it holds the run, unless it was this
+  # same instance's.
+  defp taken(run, instance_id) do
+    case Repo.one(from r in Run, where: r.id == ^run.id, select: r.attach_instance_id) do
+      ^instance_id -> {:ok, %{run | attach_instance_id: instance_id}}
+      _other -> {:error, :other_instance}
+    end
+  end
+
+  @doc """
+  The code a batch `may_send?/3` refuses is refused with: `:wrong_gateway` for a run
   through a gateway, `:wrong_node` for any other.
   """
   @spec refusal(Run.t() | map) :: :wrong_gateway | :wrong_node
