@@ -356,9 +356,9 @@ the server signed, with these members in this order:
 | `issued`, `attach_by` | when the run key was made, and the end of its attach window: UTC, whole seconds |
 
 The signature is Ed25519 under the server's signing key, over `qory-run-key-ed25519-v1`,
-a line feed, and the payload's bytes. A gateway whose address is `http://`, which only a
-loopback host may have, can be named by no run key: a registration that resolves to it is
-`503`.
+a line feed, and the payload's bytes. A gateway's address is always `https://`. A
+registration whose run key would be longer than 2048 characters, for a gateway's very long
+address, is `503`.
 
 ### The reload: `GET /v1/runs/<run_id>`
 
@@ -417,7 +417,7 @@ contract version, the body, the `time`); the first that applies is the answer:
 | `404` | the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: the gateway that attached the run, under any of its active keys, attaching it again while the run is live | the answer it was given |
 | `410` | the run has ended: its exit arrived, its starter gave its outcome, it was lost after its attach, or retention pruned its events; or its record is gone | empty |
-| `409` | the attach window has closed and the run was never attached | `{"error":"run_key_expired"}` |
+| `409` | the run was never attached and its attach window has closed: past `attach_by`, or the run already found lost | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace | `{"error":"workspace_not_served"}` |
 | `409` | another gateway attached the run | `{"error":"run_attached"}` |
@@ -510,6 +510,8 @@ this order, and the first refusal that applies is the answer:
 | `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
+| `401` | the run goes through a gateway and its own workspace or organisation is out of use | `{"error":"unauthorized"}` |
+| `404` | the run goes through a gateway and its own workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's end (below) |

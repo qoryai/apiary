@@ -157,6 +157,7 @@ first refusal that applies is the answer:
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
+| `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's `end` (below) |
@@ -396,16 +397,17 @@ members, in order: `version` 1, `signer` (the signing key's fingerprint), `run_i
 (`ng_`), `gateway_url` (the gateway's `https` origin), `gateway_public_key` (the gateway's
 active keys, at most two, oldest first, each `{"alg":"ed25519","public_key":…}`),
 `instance_id` (the registration's), `issued` and `attach_by` (UTC, whole seconds;
-`attach_by` is `issued` and the window granted). A gateway whose address is `http://` to
-a loopback host can be named by no run key, and a registration that resolves to it is
-`503`, logged as "no run key could be made for a run through a gateway: invalid".
+`attach_by` is `issued` and the window granted). A gateway's address is always
+`https://` (`Apiary.Nodes.Node.validate_url/1`, `nodes_url_check`). A run key that cannot
+be made, one that would be longer than 2048 characters for a very long address, say, is
+`503`, logged as "no run key could be made for a run through a gateway: too_long".
 
 The run is stored as a direct one is, on the registering key's node and instance, but
 with no interval, no answer digest and no Forager version unless `User-Agent` names one,
-and with the gateway (`gateway_id`), the payload's exact bytes (`run_key_payload`), when
-it was made (`run_key_issued_at`) and the end of its window (`attach_by`). A repeat is
-given the same run key: the stored payload, signed again, which Ed25519 signs the same
-way every time. A run id is unique per workspace, and per gateway among the runs that go
+and with the gateway (`gateway_id`), the payload's exact bytes (`run_key_payload`) and
+its signature (`run_key_signature`), when it was made (`run_key_issued_at`) and the end of
+its window (`attach_by`). A repeat is given the same run key, byte for byte, from the
+stored payload and signature, whatever key the instance signs under by then. A run id is unique per workspace, and per gateway among the runs that go
 through it.
 
 **The attach.** `POST /v1/runs/<run_id>/attach`, signed by the gateway's own key,
@@ -424,7 +426,7 @@ from the server's clock `401`, unsigned. Then, the first that applies:
 | `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: the gateway that attached the run, under any of its active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
 | `410` | the run has ended: an exit, an outcome, lost after its attach, or its events pruned; or its record is gone | empty |
-| `409` | never attached, and past `attach_by` | `{"error":"run_key_expired"}` |
+| `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
 | `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
 | `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
 | `409` | another gateway attached the run | `{"error":"run_attached"}` |

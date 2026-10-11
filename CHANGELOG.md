@@ -187,7 +187,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   of its active keys, and a batch from any other key is a signed `409` `wrong_gateway`;
   a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
   interval its attach announced, from its attach, and a run its gateway never attaches is
-  lost at the end of its window. The console does not show it.
+  lost at the end of its window. The console does not show a run's gateway or its attach.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. The runs list's Runtime column says "no session". Its page says how it ended in
   words after its state, as every run's does; its Terminal tab is the terminal, empty,
@@ -248,7 +248,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   key's discovery digest changes once, when this is deployed, so each Forager reads
   discovery again once.
 - Gateways, a third kind of node beside the node and the node pool: `ng_` and 16
-  characters, with an address (`url`: `https://`, or `http://` to a loopback host, a host
+  characters, with an address (`url`: `https://`, a host
   and an optional port, nothing more, at most 2048 characters) and no instance limit. A
   gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
   node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
@@ -677,6 +677,14 @@ VALID, so none scans the table under a lock that blocks writes. Rolled back, it 
 while any run went through a gateway. `20261011150100_validate_a_run_s_gateway_checks`
 validates them. `20261011150200_index_a_gateway_s_runs` adds a unique index on a run
 through a gateway's gateway and run id, built concurrently.
+`20261011150300_hold_a_gateway_s_address_to_https` holds `nodes.url` to `https://`
+(`nodes_url_check`, re-created NOT VALID), and
+`20261011150400_validate_a_gateway_s_address_check` validates it: a gateway recorded at an
+`http://` address must be given an `https://` one first. Rolled back, `http://` is
+allowed again. `20261011150500_keep_a_run_key_s_signature` adds
+`runs.run_key_signature`, the 64-byte signature of a run's run key, NULL for every
+existing row, held to a run that has a payload (`runs_run_key_signature_check`, NOT
+VALID), and `20261011150600_validate_a_run_key_s_signature_check` validates it.
 
 ### Upgrading
 
