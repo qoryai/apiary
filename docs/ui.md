@@ -483,7 +483,7 @@ name or the latest change.
   variables / New secret` (and `Secrets and variables / New variable`), the section
   leading back to the tab the page was opened from, with its query.
 - **The targets of a variable** are a page of the section too, to read
-  (`/settings/variables/:id/targets`, "Repositories that set NODE_ENV"): each with its own
+  (`/settings/variables/:id/targets`, "Targets that set NODE_ENV"): each with its own
   value or its value set aside by the lock, found by their path past ten, and Back to the
   variables at its foot. Its row's count of them in the list leads there.
 - **Deletions confirm in place**, on the row they act on (No modals, above): Delete
