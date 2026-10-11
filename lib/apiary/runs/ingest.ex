@@ -33,7 +33,10 @@ defmodule Apiary.Runs.Ingest do
   run's sending has ended (`Apiary.Runs.Sender.sending_ended?/1`: its exit arrived, it was
   lost after its attach, or its events were pruned). From then on a batch from any
   instance of the gateway is answered as the attaching instance's would be: a resend is
-  deduplicated, and a run whose events were pruned is answered 410. A run attached before
+  deduplicated, and a run whose events were pruned is answered 410. Each event is stored
+  with the instance id of the request that delivered it (`events.instance_id`), and after
+  a loss, only the attaching instance's heartbeat makes the run live again
+  (`Apiary.Runs.Fold`). A run attached before
   its instance was known takes the instance of the first batch its gateway sends while
   its sending has not ended, under the run's row lock.
 
@@ -198,7 +201,8 @@ defmodule Apiary.Runs.Ingest do
 
       true ->
         {stored_batch, pruned} = without_pruned_log(run, batch)
-        {inserted, duplicates, conflicts} = insert_events(run, stored_batch, now)
+        instance_id = placement(access_key, meta).instance_id
+        {inserted, duplicates, conflicts} = insert_events(run, stored_batch, instance_id, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
@@ -361,7 +365,7 @@ defmodule Apiary.Runs.Ingest do
     )
   end
 
-  defp insert_events(run, batch, now) do
+  defp insert_events(run, batch, instance_id, now) do
     rows =
       Enum.map(batch.events, fn event ->
         %{
@@ -374,7 +378,8 @@ defmodule Apiary.Runs.Ingest do
           type: event.type,
           time: event.time,
           data: event.data,
-          received_at: now
+          received_at: now,
+          instance_id: instance_id
         }
       end)
 

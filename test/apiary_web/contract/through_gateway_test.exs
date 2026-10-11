@@ -859,6 +859,120 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
     end
   end
 
+  describe "after a loss, the run's liveness" do
+    # A run through the gateway, started and beating from its attaching instance, then
+    # marked lost: its id, and the run as it stood when it was lost.
+    defp lost_after_beats(ctx) do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      assert response(deliver(ctx.gateway_key, [started, beat(run_id, 3)]), 202) == ""
+      assert run(run_id).state == "running"
+
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [state: "lost", lost_at: now()]
+      )
+
+      {run_id, run(run_id)}
+    end
+
+    defp liveness(run),
+      do: Map.take(run, [:state, :lost_at, :last_heartbeat_at, :elapsed_seconds])
+
+    # A heartbeat a minute after the run's first ones, by its own clock: one that would move
+    # the run's last heartbeat and its elapsed time, were it counted.
+    defp later_beat(run_id, sequence) do
+      wire_event(run_id, sequence, "run.heartbeat", %{"elapsed_seconds" => 90},
+        time: "2026-09-16T12:01:00.000Z"
+      )
+    end
+
+    test "another instance's fresh heartbeat is stored and answered, and the run stays lost",
+         ctx do
+      {run_id, lost} = lost_after_beats(ctx)
+      %{access_key: second, secret: secret} = contract_key_fixture(ctx.scope, node: ctx.gateway)
+
+      conn = deliver({second, secret}, [later_beat(run_id, 4)], instance_id: @other_instance)
+      assert response(conn, 202) == ""
+      assert signed_answer?(conn)
+
+      run = run(run_id)
+      assert run.event_count == 3
+      assert liveness(run) == liveness(lost)
+
+      assert Repo.one!(
+               from e in Event,
+                 where: e.run_id == ^run.id and e.sequence == 4,
+                 select: e.instance_id
+             ) == @other_instance
+
+      # Folded again from the stored events, its heartbeat still counts for nothing: the
+      # run's last heartbeat stays the attaching instance's.
+      assert {:ok, rebuilt} = Apiary.Runs.Projector.rebuild(run)
+      assert rebuilt.last_heartbeat_at == lost.last_heartbeat_at
+      assert rebuilt.elapsed_seconds == lost.elapsed_seconds
+    end
+
+    test "the attaching instance's fresh heartbeat makes it live again", ctx do
+      {run_id, _lost} = lost_after_beats(ctx)
+
+      assert response(deliver(ctx.gateway_key, [beat(run_id, 4)]), 202) == ""
+      run = run(run_id)
+      assert {run.state, run.lost_at} == {"running", nil}
+    end
+
+    test "another instance's heartbeat, then the attaching instance's, makes it live again",
+         ctx do
+      {run_id, lost} = lost_after_beats(ctx)
+
+      conn = deliver(ctx.gateway_key, [later_beat(run_id, 4)], instance_id: @other_instance)
+      assert response(conn, 202) == ""
+      assert liveness(run(run_id)) == liveness(lost)
+
+      assert response(deliver(ctx.gateway_key, [beat(run_id, 5)]), 202) == ""
+      run = run(run_id)
+      assert {run.state, run.lost_at} == {"running", nil}
+    end
+
+    test "an exit after the loss is final: no heartbeat after it makes the run live", ctx do
+      {run_id, _lost} = lost_after_beats(ctx)
+
+      exited =
+        wire_event(run_id, 4, "run.exited", %{
+          "state" => "succeeded",
+          "exit_code" => 0,
+          "duration_ms" => 9
+        })
+
+      assert response(deliver(ctx.gateway_key, [exited], instance_id: @other_instance), 202) ==
+               ""
+
+      assert run(run_id).state == "completed"
+
+      for instance <- [instance_id(), @other_instance] do
+        conn = deliver(ctx.gateway_key, [beat(run_id, 5)], instance_id: instance)
+        assert response(conn, 202) == ""
+      end
+
+      assert run(run_id).state == "completed"
+    end
+
+    test "a run with no instance kept takes any instance's heartbeat, as before", ctx do
+      {run_id, _lost} = lost_after_beats(ctx)
+      without_instance(run_id)
+
+      assert response(
+               deliver(ctx.gateway_key, [beat(run_id, 4)], instance_id: @other_instance),
+               202
+             ) ==
+               ""
+
+      run = run(run_id)
+      assert {run.state, run.lost_at} == {"running", nil}
+      # Lost, its sending had ended, so the heartbeat gave it no instance.
+      assert run.attach_instance_id == nil
+    end
+  end
+
   describe "a run attached before its instance was kept" do
     test "takes the instance of the next attach, and refuses any other from then on", ctx do
       {run_id, run_key} = registered(ctx)

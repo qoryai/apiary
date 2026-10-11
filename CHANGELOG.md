@@ -199,9 +199,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   pruned run `410`; an outcome alone leaves the run to its attaching instance until its
   exit arrives, and reloads stay that instance's. A run attached before its instance was
   kept takes the instance of the next attach, batch or heartbeat its gateway sends for it
-  before its sending ends, and holds to it from then on. Its outcome stays its node's. The run is held to the
-  interval its attach announced, from its attach, and a run its gateway never attaches is
-  lost at the end of its window. The console does not show a run's gateway or its attach.
+  before its sending ends, and holds to it from then on. After a loss, only the attaching
+  instance's heartbeat makes the run live again: another instance's heartbeat is stored
+  and answered, and the run stays lost. Its outcome stays its node's. The run is held to
+  the interval its attach announced, from its attach, and a run its gateway never
+  attaches is lost at the end of its window. The console does not show a run's gateway or its attach.
 - A run through a gateway belongs to the node that registered it and its instance, never
   to the gateway, and its Host is the machine the runtime ran on.
 - Qory Apiary records what a run reports and never ends a run it did not start; it starts
@@ -758,7 +760,11 @@ instance id a run's attach was signed with, NULL for every existing row, held to
 that is attached and to 1 to 128 characters (`runs_attach_instance_id_check`, NOT VALID),
 and `20261011160200_validate_a_run_s_attaching_instance_check` validates it. Nothing is
 backfilled: a run attached with none takes the instance of the next attach, batch or
-heartbeat its gateway sends for it.
+heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_event` adds
+`events.instance_id`, the instance id of the request that delivered the event, NULL for
+every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
+and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
+backfilled: an event with none counts towards its run's liveness as it did.
 
 ### Upgrading
 

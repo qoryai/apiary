@@ -81,6 +81,16 @@ defmodule Apiary.Runs.Fold do
   by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
   an earlier heartbeat delivered after it across a clock set back between the two. The
   next lost-run check settles it.
+
+  A run through a gateway counts the starts and heartbeats of the instance that attached
+  it alone (`liveness_instance/1`), by the instance id each event was delivered with
+  (`events.instance_id`): after a loss, only the attaching instance's heartbeat makes the
+  run live again. Another instance's heartbeat is folded into nothing, neither the last
+  heartbeat, nor the offset, nor the elapsed time, and its start revives nothing. An
+  event stored before its instance was kept counts, and so does every event of a run
+  whose attaching instance is not known, and of a direct run. The instance ids are stored
+  with the events and the run's attaching instance, once known, does not change, so a
+  rebuild folds the same.
   """
 
   alias Apiary.Runs.{About, Liveness}
@@ -255,7 +265,7 @@ defmodule Apiary.Runs.Fold do
         started_at: event.time
       })
       |> Map.merge(about(data))
-      |> started_state()
+      |> started_state(event)
     end)
   end
 
@@ -271,29 +281,10 @@ defmodule Apiary.Runs.Fold do
 
   # Ordered by sequence, timed by its own time within the run's clock offset: see the
   # moduledoc. Every heartbeat lowers the offset; the one with the highest sequence decides
-  # the rest, and is counted once the pass is folded (`count_beat/1`).
-  defp event(acc, %{type: @heartbeat, data: data, sequence: sequence} = event) do
-    received_at = received_at(event)
-    acc = put_offset(acc, Liveness.clock_offset(received_at, event.time))
-
-    if sequence > Map.get(acc.latest, @heartbeat, 0) do
-      run =
-        Map.merge(acc.run, %{
-          elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
-          heartbeat_interval_seconds: integer(data, "interval_seconds", 1..@max_interval)
-        })
-
-      %{
-        acc
-        | run: run,
-          latest: Map.put(acc.latest, @heartbeat, sequence),
-          beat: %{time: event.time, received_at: received_at},
-          recount: true,
-          beaten: true
-      }
-    else
-      acc
-    end
+  # the rest, and is counted once the pass is folded (`count_beat/1`). A heartbeat from
+  # another instance than the one that attached the run is folded into nothing.
+  defp event(acc, %{type: @heartbeat} = event) do
+    if attaching_instance?(acc.run, event), do: heartbeat(acc, event), else: acc
   end
 
   # A resize that is not a size is nothing: the run keeps the size it had.
@@ -475,8 +466,29 @@ defmodule Apiary.Runs.Fold do
   def exit_state(_state, reason) when reason in @lost_reasons, do: "lost"
   def exit_state(_state, _reason), do: "failed"
 
-  defp started_state(run) do
-    if ended?(run), do: run, else: %{run | state: "running", lost_at: nil}
+  # A start revives the run as a heartbeat does, from the attaching instance alone.
+  defp started_state(run, event) do
+    if ended?(run) or not attaching_instance?(run, event),
+      do: run,
+      else: %{run | state: "running", lost_at: nil}
+  end
+
+  @doc """
+  The instance whose starts and heartbeats count towards `run`'s liveness: the instance
+  that attached it (`attach_instance_id`), for a run through a gateway that has one; nil
+  for any other run, whose events count from whoever sent them.
+  """
+  @spec liveness_instance(map()) :: String.t() | nil
+  def liveness_instance(run) do
+    if Map.get(run, :run_key_payload), do: Map.get(run, :attach_instance_id)
+  end
+
+  # An event stored before its instance was kept, with none, counts as it did.
+  defp attaching_instance?(run, event) do
+    case liveness_instance(run) do
+      nil -> true
+      instance_id -> Map.get(event, :instance_id) in [nil, instance_id]
+    end
   end
 
   # A run whose exit or refusal said how it ended. A run Apiary marked lost by its own
@@ -532,6 +544,30 @@ defmodule Apiary.Runs.Fold do
       {cols, rows}
     else
       _ -> nil
+    end
+  end
+
+  defp heartbeat(acc, %{data: data, sequence: sequence} = event) do
+    received_at = received_at(event)
+    acc = put_offset(acc, Liveness.clock_offset(received_at, event.time))
+
+    if sequence > Map.get(acc.latest, @heartbeat, 0) do
+      run =
+        Map.merge(acc.run, %{
+          elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
+          heartbeat_interval_seconds: integer(data, "interval_seconds", 1..@max_interval)
+        })
+
+      %{
+        acc
+        | run: run,
+          latest: Map.put(acc.latest, @heartbeat, sequence),
+          beat: %{time: event.time, received_at: received_at},
+          recount: true,
+          beaten: true
+      }
+    else
+      acc
     end
   end
 

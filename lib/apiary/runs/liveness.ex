@@ -48,7 +48,9 @@ defmodule Apiary.Runs.Liveness do
   its instance limit do, so that running means exactly "not yet lost". The fold revives a
   lost or pending run on a heartbeat by the running rule (`heard_within?/3`), judged at
   the heartbeat's arrival, so it revives no run that the check would mark lost at that
-  moment.
+  moment. For a run through a gateway, after a loss, only the attaching instance's
+  heartbeat makes the run live again (`Apiary.Runs.Fold`): another instance's is stored,
+  and changes nothing of the run's liveness.
 
   The process ticks every `:interval` milliseconds (15 s) and is not started when
   `config :apiary, Apiary.Runs.Liveness, enabled: false`; tests call `check/1`.

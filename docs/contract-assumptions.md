@@ -194,7 +194,8 @@ delivery is recorded in the run's workspace. Events after the run's end are take
 instance of the gateway that attached it, under any of its active keys, as from the
 attaching instance: once the run's `dev.qory.run.exited` arrived, it was lost after its
 attach, or its events were pruned (`Apiary.Runs.Sender.sending_ended?/1`), a resend from
-any of them is deduplicated, a run whose events were pruned is `410` to each, and none of
+any of them is deduplicated, only the attaching instance's heartbeat makes a lost run live
+again (Liveness, below), a run whose events were pruned is `410` to each, and none of
 them gives the run its instance. Another gateway node is still `409 wrong_gateway`, and a
 reload stays the attaching instance's.
 
@@ -755,7 +756,15 @@ means the gateway sent nothing recent for the run. A session that falls silent i
 gateway's to notice, and it ends the run `failed` with `session_lost`, an exit the server
 reads as Lost, and final (How a run ends). The lost-run check's `lost` is not final: a
 later heartbeat that counts within three intervals of its arrival brings the run back,
-and the run's `dev.qory.run.exited` decides its state by How a run ends. An exit `failed`
+and the run's `dev.qory.run.exited` decides its state by How a run ends. For a run
+through a gateway, after a loss, only the attaching instance's heartbeat makes the run
+live again: each event is stored with the instance id of the request that delivered it
+(`events.instance_id`), and the fold counts the starts and heartbeats of the instance
+that attached the run alone (`Apiary.Runs.Fold.liveness_instance/1`). Another instance's
+heartbeat is stored and answered, and moves neither the run's state, nor `lost_at`, nor
+its last heartbeat, and a rebuild folds it the same. An event stored before its instance
+was kept, and every event of a run whose attaching instance is not known, count as any
+heartbeat does. An exit `failed`
 with `gateway_lost`, sent later with the run's record, or with `session_lost` keeps the
 run Lost, now final, with `lost_at` the exit's time; any other exit sets the state it maps
 to.
