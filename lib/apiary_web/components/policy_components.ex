@@ -598,7 +598,7 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, default: "policy-above"
   attr :above, :any, required: true, doc: "the `Apiary.Policy.Above`, or nil"
-  attr :link, :any, default: nil, doc: "`%{path:, can_change:}` or nil"
+  attr :link, :any, default: nil, doc: "`%{path:, can_change:, new_rule_path:}` or nil"
 
   def above_line(%{above: nil} = assigns), do: ~H""
   def above_line(%{above: %Above{policy: false}} = assigns), do: ~H""

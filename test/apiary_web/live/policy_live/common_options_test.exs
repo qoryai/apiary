@@ -150,8 +150,15 @@ defmodule ApiaryWeb.PolicyLive.CommonOptionsTest do
       # No composer is opened behind the page.
       refute led.assigns[:composer_open]
 
-      # A crafted id that is no id leads nowhere.
-      for bad <- [%{}, %{"id" => 7}, %{"id" => String.duplicate("a", 65)}] do
+      # A crafted id that is no rule's id leads nowhere, and the page stays up.
+      for bad <- [
+            %{},
+            %{"id" => 7},
+            %{"id" => String.duplicate("a", 65)},
+            %{"id" => "a/b"},
+            %{"id" => "../x"},
+            %{"id" => "x?y=1"}
+          ] do
         assert {:halt, kept} = Common.handle_event("edit_paths", bad, socket)
         assert patched(kept) == nil
       end

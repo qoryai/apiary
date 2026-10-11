@@ -748,13 +748,19 @@ defmodule ApiaryWeb.PolicyLive.Common do
   # The rows' menu of a page whose rules are the writer's alone: a page that lists more
   # than one holder's rules answers these before asking here. On a page with the rule
   # form, which draws no composer, Edit is a page: the old event is led to the rule's
-  # Edit rule page.
-  def handle_event("edit_paths", %{"id" => id}, %{assigns: %{form_id: "policy-rule"}} = socket)
-      when is_binary(id) and byte_size(id) <= 64,
-      do: {:halt, push_patch(socket, to: edit_rule_path(socket, id))}
+  # Edit rule page. Only a rule's id is led there; anything else is dropped.
+  def handle_event("edit_paths", params, %{assigns: %{form_id: "policy-rule"}} = socket) do
+    case params do
+      %{"id" => id} when is_binary(id) ->
+        case Ecto.UUID.cast(id) do
+          {:ok, id} -> {:halt, push_patch(socket, to: edit_rule_path(socket, id))}
+          :error -> {:halt, socket}
+        end
 
-  def handle_event("edit_paths", _params, %{assigns: %{form_id: "policy-rule"}} = socket),
-    do: {:halt, socket}
+      _no_id ->
+        {:halt, socket}
+    end
+  end
 
   def handle_event("edit_paths", %{"id" => id}, socket) do
     case socket.assigns.writer.get.(socket.assigns.current_scope, id) do
