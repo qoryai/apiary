@@ -329,6 +329,10 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert get_resp_header(again, "x-qory-run-configuration") ==
                get_resp_header(first, "x-qory-run-configuration")
 
+      assert [digest] = get_resp_header(again, "x-qory-run-configuration")
+      assert get_resp_header(again, "etag") == [~s("#{digest}")]
+      assert get_resp_header(again, "etag") == get_resp_header(first, "etag")
+
       run = run(run_id)
       assert run.attached_at == attached_at
       assert run.attach_interval_seconds == 30
@@ -609,6 +613,9 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert again.status == 200
       assert signed_answer?(again)
       assert again.resp_body == first.resp_body
+      assert [digest] = get_resp_header(again, "x-qory-run-configuration")
+      assert get_resp_header(again, "etag") == [~s("#{digest}")]
+      assert get_resp_header(again, "etag") == get_resp_header(first, "etag")
       assert run(run_id).attach_instance_id == instance_id()
     end
 
