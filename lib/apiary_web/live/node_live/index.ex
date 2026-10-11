@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.NodeLive.Index do
   @moduledoc """
   The workspace's nodes, node pools and gateways, `/:org/:workspace/nodes`, the places
-  its runs run and the gateways they may reach Qory Apiary through, on the list pattern
+  its runs run and the gateways they may go through, on the list pattern
   (`docs/ui.md`, Lists): one line a node, its name the title with its public id beside
   it, and Default beside the workspace's default gateway, its kind in words for a pool
   and a gateway, its state
@@ -733,7 +733,9 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   defp form_sentence(:gateway),
     do:
-      gettext("An address the nodes and node pools of this workspace reach Qory Apiary through.")
+      gettext(
+        "An address the runs of this workspace's nodes and node pools go through, as each chooses."
+      )
 
   defp name_placeholder(:node), do: "build-01"
   defp name_placeholder(:pool), do: "spot-runners"

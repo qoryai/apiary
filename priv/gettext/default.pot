@@ -250,7 +250,7 @@ msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{gateway} has no access key yet, so it isn't connected."
+msgid "%{gateway} has no active access key, so it isn't connected."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -576,6 +576,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "%{name} connects to Qory with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "%{name} connects to Qory with a key; its instances share one. Choose one of two ways to give it one."
 msgstr ""
 
@@ -597,6 +602,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} holds two keys already. Revoke one before you add another."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} holds two keys, the most a gateway can. Revoke the one it no longer uses to add another."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -709,6 +719,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, it isn't deleted. This cannot be undone."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone."
 msgstr ""
 
@@ -718,14 +733,14 @@ msgctxt "plain"
 msgid "%{name} now applies to %{target}."
 msgstr ""
 
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} reaches Qory Apiary through the gateway %{gateway}, at %{url}."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} requires enforce in every workspace and target."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} signs every request with its key, which enrols this gateway and registers no run. Qory Apiary keeps only the public half."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -3089,7 +3104,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "An address the nodes and node pools of this workspace reach Qory Apiary through."
+msgid "An address the runs of this workspace's nodes and node pools go through, as each chooses."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -4211,11 +4226,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Default gateway"
-msgstr ""
-
-#: lib/apiary_web/components/node_components.ex
-#, elixir-autogen, elixir-format
-msgid "Default gateway goes through %{name}, this workspace's default. Direct goes through no gateway."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -5607,7 +5617,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Gateway: nodes and node pools reach Qory Apiary through it."
+msgid "Gateway: the runs of nodes and node pools that choose it go through it."
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
@@ -6239,7 +6249,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It leaves this workspace's nodes, its access keys are revoked and its name is free again. A gateway that nodes still point to isn't deleted."
+msgid "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to isn't deleted."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -7631,6 +7641,7 @@ msgstr ""
 msgid "No entries yet"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No gateway is the default now."
@@ -8086,11 +8097,6 @@ msgstr ""
 msgid "Nodes"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Nodes and node pools on Default gateway go through the default."
-msgstr ""
-
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nodes use this gateway: %{nodes}. Point them to another gateway or to direct, then delete it."
@@ -8462,6 +8468,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "On %{reported}; %{in_force} in force"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "On Default gateway, runs go through %{name}, this workspace's default. On Direct, they go through no gateway."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -9950,6 +9961,16 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs are going through this gateway: %{runs}. Delete it once they end."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of %{name} go through the gateway %{gateway}, at %{url}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of nodes and node pools on Default gateway go through the default."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -12174,6 +12195,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "To choose its targets, change where it applies under %{settings}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "To move %{name} to a new key, add it the same way as the first, or the other way, then revoke the old one once the new one is in use. A gateway holds two keys at most."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

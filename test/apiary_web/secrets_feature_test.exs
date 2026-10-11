@@ -112,8 +112,7 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     {"install.md", "### Integrations"},
     {"install.md", "INTEGRATION_URL_SOURCES"},
     {"backup.md", "loses every stored secret value"},
-    {"nodes.md", "Stored secrets"},
-    {"nodes.md", "when you add a separate gateway's key"}
+    {"nodes.md", "Stored secrets"}
   ]
 
   describe "off, as QORY_FEATURES unset, all or all-… leaves it" do

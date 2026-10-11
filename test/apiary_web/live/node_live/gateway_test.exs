@@ -497,19 +497,24 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
 
       assert text(lv, "#node-gateway") =~
-               "build-01 reaches Qory Apiary through the gateway edge-01, at https://edge.example.com."
+               "Runs of build-01 go through the gateway edge-01, at https://edge.example.com."
 
       assert has_element?(
                lv,
                "#node-gateway-unconnected",
-               "edge-01 has no access key yet, so it isn't connected."
+               "edge-01 has no active access key, so it isn't connected."
              )
 
       lv |> element("#code-new-button") |> render_click()
       assert_patch(lv, node_path(scope, node, "/access-key/new-code"))
 
       assert text(lv, "#code-issued-gateway") =~
-               "through the gateway edge-01, at https://edge.example.com."
+               "Runs of build-01 go through the gateway edge-01, at https://edge.example.com."
+
+      # The command is the same as for a node that goes direct: it points at Qory Apiary.
+      command = text(lv, "#code-issued-command")
+      assert command =~ ~r/\Aqory access-key enrol #{Regex.escape(ApiaryWeb.Endpoint.url())} qec_/
+      refute command =~ "edge.example.com"
 
       # Once the gateway holds a key, it is connected.
       node_key_fixture(scope, gateway)
@@ -530,7 +535,40 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         live(conn, node_path(scope, pool, "/access-key/keys/#{key.key_id}/forager-file"))
 
       assert text(lv, "#key-forager-file-gateway") =~
-               "spot-runners reaches Qory Apiary through the gateway edge-01, at https://gateway.example."
+               "Runs of spot-runners go through the gateway edge-01, at https://gateway.example."
+    end
+
+    test "say the gateway isn't connected while its only key is revoked", %{
+      conn: conn,
+      scope: scope
+    } do
+      gateway = gateway_fixture(scope, name: "edge-01")
+      %{access_key: key} = node_key_fixture(scope, gateway)
+      {:ok, _} = Apiary.AccessKeys.revoke_access_key(scope, key)
+      node = node_fixture(scope, name: "build-01")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
+
+      assert has_element?(
+               lv,
+               "#node-gateway-unconnected",
+               "edge-01 has no active access key, so it isn't connected."
+             )
+    end
+
+    test "name no gateway on Default gateway while none is the default", %{
+      conn: conn,
+      scope: scope
+    } do
+      gateway = gateway_fixture(scope, name: "edge-01")
+      node = node_fixture(scope, name: "build-01")
+      assert node.gateway_choice == :default
+      Repo.update_all(from(n in Node, where: n.id == ^gateway.id), set: [default_gateway: false])
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
+
+      assert text(lv, "#node-gateway") == "No gateway is the default now."
+      refute has_element?(lv, "#node-gateway-unconnected")
     end
 
     test "say nothing of a gateway for a node that goes direct", %{conn: conn, scope: scope} do
@@ -539,6 +577,61 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
 
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
       refute has_element?(lv, "#node-gateway")
+    end
+  end
+
+  describe "a gateway's own words" do
+    test "its kind, its form and its Access key tab say what its key does", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-gateway"))
+
+      assert render(lv) =~
+               "An address the runs of this workspace&#39;s nodes and node pools go through, as each chooses."
+
+      gateway = gateway_fixture(scope, name: "edge-01")
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway))
+
+      assert render(lv) =~
+               "Gateway: the runs of nodes and node pools that choose it go through it."
+
+      assert text(lv, "#gateway-default") =~
+               "Runs of nodes and node pools on Default gateway go through the default."
+
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/access-key"))
+
+      assert text(lv, "#node-connect-intro") ==
+               "edge-01 connects to Qory with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one."
+
+      refute has_element?(lv, "#node-gateway")
+
+      node_key_fixture(scope, gateway)
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/access-key"))
+
+      assert text(lv, "#node-keys-intro") ==
+               "edge-01 signs every request with its key, which enrols this gateway and registers no run. Qory Apiary keeps only the public half."
+
+      assert text(lv, "#node-add-intro") =~ "A gateway holds two keys at most."
+
+      node_key_fixture(scope, gateway)
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/access-key"))
+
+      assert text(lv, "#node-add-full") ==
+               "edge-01 holds two keys, the most a gateway can. Revoke the one it no longer uses to add another."
+    end
+
+    test "its deletion is confirmed in a gateway's own sentence", %{conn: conn, scope: scope} do
+      gateway = gateway_fixture(scope, name: "edge-01")
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings/delete"))
+
+      assert text(lv, "#delete-node-form .q-danger-lost") ==
+               "edge-01 leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, it isn't deleted. This cannot be undone."
+
+      refute text(lv, "#delete-node-form") =~ "Its runs stay in the record."
+
+      assert text(lv, "#delete-node") =~
+               "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to isn't deleted."
     end
   end
 

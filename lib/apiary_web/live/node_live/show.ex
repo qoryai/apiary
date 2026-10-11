@@ -861,7 +861,7 @@ defmodule ApiaryWeb.NodeLive.Show do
               do: gettext("This workspace's default gateway."),
               else: gettext("Not the default.")}
             <span class="text-muted">
-              {gettext("Nodes and node pools on Default gateway go through the default.")}
+              {gettext("Runs of nodes and node pools on Default gateway go through the default.")}
             </span>
           </span>
           <span :if={@may_edit and not @node.default_gateway}>
@@ -1173,17 +1173,24 @@ defmodule ApiaryWeb.NodeLive.Show do
         {if @node.kind == :gateway,
           do:
             gettext(
-              "It leaves this workspace's nodes, its access keys are revoked and its name is free again. A gateway that nodes still point to isn't deleted."
+              "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to isn't deleted."
             ),
           else:
             gettext(
               "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
             )}
         <:lost>
-          {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
-            name: @node.name
-          )}
+          {if @node.kind == :gateway,
+            do:
+              gettext(
+                "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, it isn't deleted. This cannot be undone.",
+                name: @node.name
+              ),
+            else:
+              gettext(
+                "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. Its runs stay in the record. This cannot be undone.",
+                name: @node.name
+              )}
         </:lost>
       </SettingsComponents.danger_action>
       <.delete_refused :if={@delete_refused} words={@delete_refused} />
@@ -1213,7 +1220,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp kind_sentence(:node), do: gettext("Node: one permanent machine.")
 
   defp kind_sentence(:gateway),
-    do: gettext("Gateway: nodes and node pools reach Qory Apiary through it.")
+    do: gettext("Gateway: the runs of nodes and node pools that choose it go through it.")
 
   defp kind_sentence(:pool),
     do: gettext("Node pool: short-lived instances that share one access key.")

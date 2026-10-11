@@ -234,7 +234,7 @@ defmodule Apiary.Gateways do
   the gateway it names, when that gateway may serve the node's workspace, or its
   workspace's default gateway; nil for a node that goes direct, a choice that leads to
   no gateway, and a gateway. Unlike `resolve/1`, it asks nothing of the gateway's access
-  key: a gateway not yet connected is still the one the node goes through.
+  key: a gateway not yet connected is still the one the node's runs go through.
   """
   @spec chosen(Node.t()) :: Node.t() | nil
   def chosen(%Node{kind: :gateway}), do: nil

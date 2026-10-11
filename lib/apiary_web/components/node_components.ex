@@ -7,9 +7,8 @@ defmodule ApiaryWeb.NodeComponents do
   what the two places that give a person the command that connects a machine share, the
   Access key tab's command page and the workspace overview's first-run box: the command
   (`enrol_command/3`), and the notice that machines can't reach a loopback address
-  (`unreachable_server/1`). And what a node behind a gateway is told wherever it is told
-  how to connect: the gateway it reaches Qory Apiary through, at its URL
-  (`through_gateway/1`).
+  (`unreachable_server/1`). And what a node that chose a gateway is told wherever it is
+  told how to connect: the gateway its runs go through, at its URL (`through_gateway/1`).
 
   A node's state is never Online or Offline. A Node says "Running" while its instance
   runs; a pool says how many of its instances run, against its limit when it has one
@@ -228,35 +227,47 @@ defmodule ApiaryWeb.NodeComponents do
   end
 
   @doc """
-  through_gateway/1 is what a node's enrol instructions say when its choice of gateway
-  leads to one (`Apiary.Gateways.chosen/1`): the node reaches Qory Apiary through that
+  through_gateway/1 is what a node's enrol instructions say of its choice of gateway
+  (`Apiary.Gateways.chosen/1`), as the choice leads now: that its runs go through that
   gateway, named with its URL, and, while the gateway holds no active access key, that it
-  isn't connected yet. Nothing for a node that goes direct, or whose choice leads to no
-  gateway.
+  isn't connected; for a node on Default gateway while no gateway is the default, only
+  that. The enrol command and the Forager file are the same either way: they point at Qory
+  Apiary. Nothing for a node that goes direct, a gateway, or a node whose named gateway is
+  gone.
   """
   attr :id, :string, required: true
   attr :node, Node, required: true
-  attr :gateway, :any, required: true, doc: "the gateway the node goes through, or nil"
+  attr :gateway, :any, required: true, doc: "the gateway the node's runs go through, or nil"
   attr :connected, :boolean, required: true, doc: "whether the gateway holds an active key"
 
   def through_gateway(assigns) do
+    assigns =
+      assign(assigns,
+        no_default:
+          is_nil(assigns.gateway) and assigns.node.kind != :gateway and
+            assigns.node.gateway_choice == :default
+      )
+
     ~H"""
     <div :if={@gateway} id={@id}>
       <.notice kind={:info}>
         <.rich text={
           rich_gettext(
-            "%{name} reaches Qory Apiary through the gateway %{gateway}, at %{url}.",
+            "Runs of %{name} go through the gateway %{gateway}, at %{url}.",
             name: @node.name,
             gateway: @gateway.name,
             url: {:m, @gateway.url}
           )
         } />
         <span :if={!@connected} id={"#{@id}-unconnected"}>
-          {gettext("%{gateway} has no access key yet, so it isn't connected.",
+          {gettext("%{gateway} has no active access key, so it isn't connected.",
             gateway: @gateway.name
           )}
         </span>
       </.notice>
+    </div>
+    <div :if={@no_default} id={@id}>
+      <.notice kind={:info}>{gettext("No gateway is the default now.")}</.notice>
     </div>
     """
   end
@@ -324,7 +335,7 @@ defmodule ApiaryWeb.NodeComponents do
       hint={
         @default &&
           gettext(
-            "Default gateway goes through %{name}, this workspace's default. Direct goes through no gateway.",
+            "On Default gateway, runs go through %{name}, this workspace's default. On Direct, they go through no gateway.",
             name: @default.name
           )
       }
