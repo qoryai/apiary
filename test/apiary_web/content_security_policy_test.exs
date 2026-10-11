@@ -452,6 +452,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       String.contains?(path, "/settings/integrations/definitions/") -> p.definition_id
       String.ends_with?(path, "/settings/integrations/:id/version") -> p.integration_id
       String.contains?(path, "/settings/integrations/") -> p.runtime_id
+      String.ends_with?(path, "/policy/rules/:id/edit") -> p.rule_id
       true -> nil
     end
   end
@@ -535,7 +536,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   # it, whose pages answer as paths that do not exist.
   defp security_params(scope, target) do
     if Features.on?(:security) do
-      {:ok, _rule} = Policy.allow(scope, nil, %{host: "registry.example"})
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
 
       {:ok, secret} =
         Secrets.create_secret(scope, %{name: "FORGE_TOKEN", value: "x", value_id: "main-app"})
@@ -576,6 +577,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
         })
 
       %{
+        rule_id: rule.id,
         secret_id: secret.public_id,
         single_secret_id: single.public_id,
         value_id: "bot-app",
@@ -588,6 +590,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       }
     else
       %{
+        rule_id: Ecto.UUID.generate(),
         secret_id: "sec_none",
         single_secret_id: "sec_none",
         value_id: "none",

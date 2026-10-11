@@ -1,23 +1,32 @@
 defmodule ApiaryWeb.PolicyLive.Reading do
   @moduledoc """
-  The reading line of the rule composer: a rule is read back in plain words before it is
-  saved, and what cannot be said is refused in a sentence that names the reason and the
-  ways out.
+  The reading of a host rule, on the New rule and Edit rule pages
+  (`ApiaryWeb.PolicyComponents.rule_form/1`) and in the line of the composer kept for
+  callers that have not moved (`ApiaryWeb.PolicyComponents.rule_composer/1`): a rule is
+  read back in plain words before it is saved, and what cannot be said is refused in a
+  sentence that names the reason and the ways out.
 
   Pure: the form and the rules already on the page in, a reading out. No query runs per
   keystroke. The domain checks everything again at the write; this is where a person finds
   out what `*.` means before saving, not where the policy is enforced.
 
-  A reading is `%{kind:, text:, fix:, acts:, invalid:, button:}`:
+  A reading is `%{kind:, text:, fix:, acts:, invalid:, button:, errors:, preview:}`:
 
-    * `kind`: `:hint`, `:ok`, `:note`, `:error` or `:refusal`; the button is on for `:ok`
+    * `kind`: `:hint`, `:ok`, `:note`, `:error` or `:refusal`; a rule is saved on `:ok`
       and `:note`;
     * `text`: rich text, a list of binaries, `{:b, rich}`, `{:m, mono text}` and
       `{:code, chip text}`, rendered by `ApiaryWeb.RichText.rich/1` (always escaped);
     * `fix`: `nil` or `{label, event, values}`, the repair offered as a link;
     * `acts`: more links of the same shape, under a refusal;
     * `invalid`: the fields that take `aria-invalid`;
-    * `button`: nil, or the word the submit button takes ("Replace with deny").
+    * `button`: nil, or the word the submit button takes ("Replace with deny");
+    * `errors`: what the form says under its fields, `[{field, text, fix}]` in the
+      fields' order, `field` being `:host` or `:paths`;
+    * `preview`: what the form's "What this rule does" says, `{kind, text}` with `kind`
+      `:idle`, `:ok` or `:note`; nil under a refusal, which the form shows in its place.
+
+  The line of the composer shows `text`, `fix` and `acts`; the form shows `errors`,
+  `preview` and, for a refusal, `text` and `acts`.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -27,15 +36,43 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.Format
 
-  @doc "The reading of an empty composer: what a rule is, before anything is typed."
-  def hint, do: reading(:hint, hint_text())
+  @doc "The reading of an empty form: what a rule is, before anything is typed."
+  def hint, do: reading(:hint, host_hint(), preview: {:idle, type_a_host()})
 
-  defp hint_text do
-    rich_gettext(
-      "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in a separate field, separated by spaces.",
-      suffix: {:code, "*."}
+  @doc """
+  The reading of a form sent with no host: the error under Host. Never disabled, the form's
+  button says what is missing once it is pressed.
+  """
+  def empty_host do
+    text = rich_gettext("Enter a host, such as %{example}.", example: {:m, "api.example.com"})
+
+    reading(:error, text,
+      invalid: [:host],
+      errors: [{:host, text, nil}],
+      preview: {:idle, type_a_host()}
     )
   end
+
+  @doc "The help under the form's Host field."
+  def host_hint do
+    rich_gettext(
+      "The name runs connect to, in lower case, without %{scheme} or a port. Start it with %{suffix} to cover every host below a domain, such as %{example}.",
+      scheme: {:m, "https://"},
+      suffix: {:code, "*."},
+      example: {:m, "*.example.com"}
+    )
+  end
+
+  @doc "The help under the form's Paths field."
+  def paths_hint do
+    rich_gettext(
+      "Leave it empty to allow every path. Separate paths with spaces; end one with %{star} for everything below it, such as %{example}.",
+      star: {:code, "*"},
+      example: {:m, "/v1/*"}
+    )
+  end
+
+  defp type_a_host, do: [gettext("Type a host to see the rule in plain words before you add it.")]
 
   @doc """
   Reads a host rule.
@@ -48,7 +85,8 @@ defmodule ApiaryWeb.PolicyLive.Reading do
       `host`, `paths`, `locked`, and `by`, `at` when the page knows them;
     * `entries`: the entries of the effective policy (`Apiary.Policy.Entry`);
     * `owner`: whether the reader may change a locked rule;
-    * `locked_by`: `%{host => %{by:, at:}}`, who locked what, when the page knows.
+    * `locked_by`: `%{host => %{by:, at:}}`, who locked what, when the page knows;
+    * `editing`: true on the Edit rule page, where the same rule again has nothing to save.
   """
   def host_rule(form, context) do
     action = if form["action"] == "deny", do: "deny", else: "allow"
@@ -58,13 +96,17 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
     cond do
       host == "" ->
-        reading(:hint, hint_text())
+        hint()
 
       not Grammar.host?(host) ->
         bad_host(host, paths)
 
       Enum.any?(paths, &(not Grammar.path?(&1))) ->
-        reading(:error, bad_path(), invalid: [:paths])
+        reading(:error, bad_path(),
+          invalid: [:paths],
+          errors: [{:paths, bad_path(), nil}],
+          preview: {:idle, fix_the_paths()}
+        )
 
       true ->
         said(action, host, paths, every, context)
@@ -77,60 +119,55 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
   ## Not in the grammar
 
+  # The host's sentence, and the paths' after it where they are wrong too: one line in the
+  # composer, each under its own field on the form.
   defp bad_host(host, paths) do
-    path_too = if Enum.any?(paths, &(not Grammar.path?(&1))), do: [" " | bad_path()], else: []
-    invalid = if path_too == [], do: [:host], else: [:host, :paths]
+    path_bad? = Enum.any?(paths, &(not Grammar.path?(&1)))
+    {text, fix} = host_error(host)
+
+    reading(:error, text ++ if(path_bad?, do: [" " | bad_path()], else: []),
+      invalid: if(path_bad?, do: [:host, :paths], else: [:host]),
+      fix: fix,
+      errors: [{:host, text, fix}] ++ if(path_bad?, do: [{:paths, bad_path(), nil}], else: []),
+      preview: {:idle, [gettext("Fix the host to see the rule in plain words.")]}
+    )
+  end
+
+  defp host_error(host) do
     rest = String.replace_prefix(host, "*.", "")
 
     cond do
       String.contains?(rest, "*") ->
-        reading(
-          :error,
-          rich_gettext(
-            "%{suffix} may only lead a host: %{example} matches every host below %{domain}.",
-            suffix: {:code, "*."},
-            example: {:m, "*.example"},
-            domain: {:m, "example"}
-          ) ++ path_too,
-          invalid: invalid
-        )
+        {rich_gettext(
+           "%{suffix} may only lead a host: %{example} matches every host below %{domain}.",
+           suffix: {:code, "*."},
+           example: {:m, "*.example"},
+           domain: {:m, "example"}
+         ), nil}
 
       address?(host) ->
-        reading(
-          :error,
-          rich_gettext(
-            "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says.",
-            address: {:m, "10.0.0.12"}
-          ) ++ path_too,
-          invalid: invalid
-        )
+        {rich_gettext(
+           "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says.",
+           address: {:m, "10.0.0.12"}
+         ), nil}
 
       Regex.match?(~r/\A[a-z0-9._-]+\z/, host) ->
-        reading(
-          :error,
-          [
-            gettext(
-              "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
-            )
-            | path_too
-          ],
-          invalid: invalid
-        )
+        {[
+           gettext(
+             "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
+           )
+         ], nil}
 
       true ->
-        reading(
-          :error,
-          [
-            gettext(
-              "A rule names a host and nothing else: lower case, no scheme, no port, no path."
-            )
-            | path_too
-          ],
-          invalid: invalid,
-          fix: repair(host)
-        )
+        {[
+           gettext(
+             "A rule names a host and nothing else: lower case, no scheme, no port, no path."
+           )
+         ], repair(host)}
     end
   end
+
+  defp fix_the_paths, do: [gettext("Fix the paths to see the rule in plain words.")]
 
   defp bad_path do
     rich_gettext(
@@ -163,7 +200,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
               do: gettext("Use %{host} with the path %{path}", host: host, path: path),
               else: gettext("Use %{host}", host: host)
 
-          {label, "composer_use", %{"host" => host, "paths" => path || ""}}
+          {label, "rule_use", %{"host" => host, "paths" => path || ""}}
         end
 
       _ ->
@@ -184,16 +221,30 @@ defmodule ApiaryWeb.PolicyLive.Reading do
       locked = locked_above(action, host, context) ->
         locked_refusal(locked, action, context)
 
+      existing && existing.action == action && same_paths?(existing.paths, paths, every) &&
+          context[:editing] ->
+        nothing = [gettext("Nothing to save: the rule is as it was.")]
+        reading(:error, nothing, preview: {:idle, nothing})
+
       existing && existing.action == action && same_paths?(existing.paths, paths, every) ->
-        reading(
-          :error,
-          already(action, context.scope, {:m, host}, existing),
+        text = already(action, context.scope, {:m, host}, existing)
+        fix = {gettext("Show it"), "show_rule", %{"host" => host}}
+
+        reading(:error, text,
           invalid: [:host],
-          fix: {gettext("Show it"), "show_rule", %{"host" => host}}
+          fix: fix,
+          errors: [{:host, text, fix}],
+          preview:
+            {:idle,
+             [
+               gettext(
+                 "Nothing new: this rule is already in the list. To change its paths, edit it from its row."
+               )
+             ]}
         )
 
       existing && existing.action != action ->
-        reading(:note, replaces(existing.action, context.scope, {:m, host}),
+        note(replaces(existing.action, context.scope, {:m, host}),
           button:
             if(action == "deny",
               do: gettext("Replace with deny"),
@@ -202,16 +253,18 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         )
 
       existing && is_list(existing.paths) && paths == [] && !every ->
-        reading(
-          :error,
-          held(context.scope, {:m, host}, path_chips(existing.paths)),
+        text = held(context.scope, {:m, host}, path_chips(existing.paths))
+        fix = {gettext("Every path"), "rule_every", %{}}
+
+        reading(:error, text,
           invalid: [:paths],
-          fix: {gettext("Every path"), "composer_every", %{}}
+          fix: fix,
+          errors: [{:paths, text, fix}],
+          preview: {:idle, fix_the_paths()}
         )
 
       existing ->
-        reading(
-          :note,
+        note(
           change_paths(
             context.scope,
             {:m, host},
@@ -222,11 +275,10 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         )
 
       over = context.scope == :target && workspace_opposite(action, host, context) ->
-        reading(:note, overrides(over.action, {:m, host}))
+        note(overrides(over.action, {:m, host}))
 
       cover = action == "allow" && covering_allow(host, context) ->
-        reading(
-          :note,
+        note(
           rich_gettext(
             "Already allowed by %{suffix}. Adding it changes nothing today and keeps the host allowed if the suffix rule is removed.",
             suffix: {:code, cover}
@@ -234,9 +286,14 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         )
 
       true ->
-        reading(:ok, reads_as(action, host, paths, context))
+        text = reads_as(action, host, paths, context)
+        reading(:ok, text, preview: {:ok, text})
     end
   end
+
+  # A note is said in the form's preview, and saves as the button says.
+  defp note(text, opts \\ []),
+    do: reading(:note, text, Keyword.put(opts, :preview, {:note, text}))
 
   defp same_paths?(nil, [], _every), do: true
   defp same_paths?(nil, _paths, _every), do: false
@@ -374,12 +431,12 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   defp reads_as("allow", host, paths, _context) do
     case paths do
       [] ->
-        rich_gettext("Reads as: %{rule}, on every path.", rule: {:b, subject("allow", host)}) ++
+        rich_gettext("%{rule}, on every path.", rule: {:b, subject("allow", host)}) ++
           not_itself(host)
 
       paths ->
         rich_gettext(
-          "Reads as: %{rule}: %{paths}. Behind a wall the proxy reads requests to this host to check the path.",
+          "%{rule}: %{paths}. Behind a wall the proxy reads requests to this host to check the path.",
           rule: {:b, allow_on_paths(host, length(paths))},
           paths: describe_paths(paths)
         )
@@ -392,17 +449,17 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     lead =
       case {Grammar.wildcard?(host), context.scope} do
         {true, _scope} ->
-          rich_gettext("Reads as: %{rule}, and every allow rule it covers.", rule: rule)
+          rich_gettext("%{rule}, and every allow rule it covers.", rule: rule)
 
         {false, :workspace} ->
           rich_gettext(
-            "Reads as: %{rule}. It takes the host out of what the workspace allows; a target can still allow it unless you lock this rule.",
+            "%{rule}. It takes the host out of what the workspace allows; a target can still allow it unless you lock this rule.",
             rule: rule
           )
 
         {false, :target} ->
           rich_gettext(
-            "Reads as: %{rule}. It takes the host out of what this target is allowed; other targets are not touched.",
+            "%{rule}. It takes the host out of what this target is allowed; other targets are not touched.",
             rule: rule
           )
       end
@@ -428,20 +485,20 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   end
 
   defp subject("allow", "*." <> suffix),
-    do: rich_gettext("allow every host below %{suffix}", suffix: {:m, suffix})
+    do: rich_gettext("Allow every host below %{suffix}", suffix: {:m, suffix})
 
-  defp subject("allow", host), do: rich_gettext("allow %{host}", host: {:m, host})
+  defp subject("allow", host), do: rich_gettext("Allow %{host}", host: {:m, host})
 
   defp subject("deny", "*." <> suffix),
-    do: rich_gettext("deny every host below %{suffix}", suffix: {:m, suffix})
+    do: rich_gettext("Deny every host below %{suffix}", suffix: {:m, suffix})
 
-  defp subject("deny", host), do: rich_gettext("deny %{host}", host: {:m, host})
+  defp subject("deny", host), do: rich_gettext("Deny %{host}", host: {:m, host})
 
   defp allow_on_paths("*." <> suffix, n),
     do:
       rich_ngettext(
-        "allow every host below %{suffix} on %{number} path",
-        "allow every host below %{suffix} on %{number} paths",
+        "Allow every host below %{suffix} on %{number} path",
+        "Allow every host below %{suffix} on %{number} paths",
         n,
         suffix: {:m, suffix},
         number: Format.number(n)
@@ -449,7 +506,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
   defp allow_on_paths(host, n),
     do:
-      rich_ngettext("allow %{host} on %{number} path", "allow %{host} on %{number} paths", n,
+      rich_ngettext("Allow %{host} on %{number} path", "Allow %{host} on %{number} paths", n,
         host: {:m, host},
         number: Format.number(n)
       )
@@ -589,14 +646,16 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
   defp refusal(text, acts), do: reading(:refusal, text, acts: acts, invalid: [:host])
 
-  defp reading(kind, text, opts \\ []) do
+  defp reading(kind, text, opts) do
     %{
       kind: kind,
       text: text,
       fix: opts[:fix],
       acts: opts[:acts] || [],
       invalid: opts[:invalid] || [],
-      button: opts[:button]
+      button: opts[:button],
+      errors: opts[:errors] || [],
+      preview: opts[:preview]
     }
   end
 end

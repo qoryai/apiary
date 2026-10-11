@@ -242,6 +242,8 @@ defmodule ApiaryWeb.TargetLive.Show do
   defp policy_action(["document"]), do: {:ok, {:policy, :document, %{}}}
   defp policy_action(["versions", n]), do: {:ok, {:policy, :version, %{"n" => n}}}
   defp policy_action(["versions", n, "export"]), do: {:ok, {:policy, :export, %{"n" => n}}}
+  defp policy_action(["rules", "new"]), do: {:ok, {:policy, :new_rule, %{}}}
+  defp policy_action(["rules", id, "edit"]), do: {:ok, {:policy, :edit_rule, %{"id" => id}}}
   defp policy_action(_rest), do: :error
 
   defp mount_tab(socket, {:overview}) do
@@ -484,8 +486,16 @@ defmodule ApiaryWeb.TargetLive.Show do
         {gettext("Version %{version}", version: @v.configuration.version)}
       </:crumb>
       <:crumb :if={@tab == :policy && @action == :export && @v}>{gettext("Export")}</:crumb>
+      <%!-- The rule form, a page of the Policy tab: back to the tab's list as it was left. --%>
+      <:crumb :if={rule_form?(assigns)} patch={PolicyLive.Common.cancel_path(assigns)}>
+        {gettext("Policy")}
+      </:crumb>
+      <:crumb :if={rule_form?(assigns)}>
+        {if @action == :new_rule, do: gettext("New rule"), else: gettext("Edit rule")}
+      </:crumb>
 
       <.target_header
+        :if={!rule_form?(assigns)}
         target={@target}
         shared={@shared}
         pinned={@pinned}
@@ -493,7 +503,12 @@ defmodule ApiaryWeb.TargetLive.Show do
         security={@security}
       />
 
-      <.page_tabs id="target-tabs" label={gettext("Target")} current={@tab}>
+      <.page_tabs
+        :if={!rule_form?(assigns)}
+        id="target-tabs"
+        label={gettext("Target")}
+        current={@tab}
+      >
         <:tab
           key={:overview}
           navigate={page_path(@current_scope, @target, @shared, [])}
@@ -791,6 +806,14 @@ defmodule ApiaryWeb.TargetLive.Show do
   end
 
   ## Words and paths
+
+  # The Policy tab's New rule or Edit rule page: a form alone, without the target's header
+  # and tabs.
+  defp rule_form?(%{tab: :policy, action: action, loaded: true})
+       when action in [:new_rule, :edit_rule],
+       do: true
+
+  defp rule_form?(_assigns), do: false
 
   defp page_path(scope, target, shared, rest),
     do: target_path(scope, target.system, target.path, rest, shared)

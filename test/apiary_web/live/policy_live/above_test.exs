@@ -198,7 +198,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
 
       render_hook(view, "remove_confirm", %{})
       assert length(Policy.list_rules(scope, nil)) == 3
-      refute has_element?(view, "#policy-composer")
+      # Edit of the level's rule opens no form: the page stays on the list.
+      refute has_element?(view, "#policy-rule-form")
+      assert has_element?(view, "#policy-rules")
       assert Process.alive?(view.pid)
     end
 

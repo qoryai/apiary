@@ -1592,6 +1592,11 @@ msgstr ""
 msgid "%{own} override the mode: %{observe} observe, %{enforce} enforce."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{page} · Policy · %{workspace} · %{organisation}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{path} exactly"
@@ -1676,6 +1681,31 @@ msgstr "%{rule} is locked. No repository can override it."
 #, elixir-autogen, elixir-format
 msgid "%{rule} is unlocked. A target can override it again."
 msgstr "%{rule} is unlocked. A repository can override it again."
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}, and every allow rule it covers."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}, on every path."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}. It takes the host out of what the workspace allows; a target can still allow it unless you lock this rule."
+msgstr "%{rule}. It takes the host out of what the workspace allows; a repository can still allow it unless you lock this rule."
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}. It takes the host out of what this target is allowed; other targets are not touched."
+msgstr "%{rule}. It takes the host out of what this repository is allowed; other repositories are not touched."
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "%{rule}: %{paths}. Behind a wall the proxy reads requests to this host to check the path."
+msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
@@ -1871,6 +1901,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{version} has been in force since %{time}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "%{via} sends every request to Qory Apiary through %{gateway}."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -2135,6 +2170,11 @@ msgstr ""
 msgid "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "A deny covers every path of the host."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "A deny holds in either mode."
@@ -2171,11 +2211,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A gateway that is gone"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in a separate field, separated by spaces."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -2374,6 +2409,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "A software workspace"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "A starter that reaches Qory Apiary directly can leave %{via} out."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -2744,6 +2784,11 @@ msgstr ""
 msgid "Add target"
 msgstr "Add repository"
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add target rule"
+msgstr "Add repository rule"
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Network access page, one row at a time."
@@ -2909,6 +2954,7 @@ msgid "Allow"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Allow %{host}"
 msgstr ""
@@ -2928,6 +2974,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Allow %{host} in %{name}'s policy"
 msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Allow %{host} on %{number} path"
+msgid_plural "Allow %{host} on %{number} paths"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
@@ -2955,6 +3008,18 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "Allow both here"
 msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Allow every host below %{suffix}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Allow every host below %{suffix} on %{number} path"
+msgid_plural "Allow every host below %{suffix} on %{number} paths"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -3542,6 +3607,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Change version"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Change what the runs of %{target} may do with %{host}. The host stays; to rule on another host, add a new rule."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Change what this workspace's runs may do with %{host}. The host stays; to rule on another host, add a new rule."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -4599,6 +4674,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/common.ex
+#: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Deny %{host}"
 msgstr ""
@@ -4611,6 +4687,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Deny added:"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Deny every host below %{suffix}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -4795,6 +4876,7 @@ msgstr ""
 msgid "Each part of a host is 1 to 63 letters, digits or dashes, and does not start or end with a dash."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Edit"
@@ -4825,9 +4907,26 @@ msgstr ""
 msgid "Edit paths"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Edit rule"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Edit rule · %{title}"
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Edit the name and note of %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Edit the rule for %{host}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -4971,6 +5070,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "key"
 msgid "Enter"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Enter a host, such as %{example}."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
@@ -5403,6 +5507,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Fit the recorded columns to the width"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Fix the host to see the rule in plain words."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Fix the paths to see the rule in plain words."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -5945,6 +6059,11 @@ msgstr ""
 msgid "If %{email} has an account, a log-in link is on its way. It works for 15 minutes."
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -6364,6 +6483,11 @@ msgstr ""
 msgid "It stops working at once. A machine that runs it after this is refused."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "It takes effect within a heartbeat, about 30 s."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "It takes no such settings: %{names}."
@@ -6773,6 +6897,11 @@ msgstr ""
 msgid "Leave full screen"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Leave it empty to allow every path. Separate paths with spaces; end one with %{star} for everything below it, such as %{example}."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Leave…"
@@ -6792,6 +6921,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Let %{target} follow %{workspace}?"
 msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Let the runs of %{target} reach a host, or stop them reaching it. A target rule applies to this target only and overrides %{workspace}'s rule for the same host, unless that rule is locked."
+msgstr "Let the runs of %{target} reach a host, or stop them reaching it. A repository rule applies to this repository only and overrides %{workspace}'s rule for the same host, unless that rule is locked."
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Let this workspace's runs reach a host, or stop them reaching it. A workspace rule applies to every target of %{workspace}; a target rule may override it unless it is locked."
+msgstr "Let this workspace's runs reach a host, or stop them reaching it. A workspace rule applies to every repository of %{workspace}; a repository rule may override it unless it is locked."
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
@@ -7410,6 +7549,11 @@ msgstr ""
 msgid "Network access page"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Network access rule"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Network access rules in force for %{target}"
@@ -7496,6 +7640,18 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "New password"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "New rule"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "New rule · %{title}"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7670,7 +7826,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "No host rules yet. Add the first above."
+msgid "No host rules yet. Add the first with Add rule."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -8341,6 +8497,11 @@ msgstr ""
 msgid "Nothing matches “%{text}”."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing new: this rule is already in the list. To change its paths, edit it from its row."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing to enforce yet."
@@ -8354,6 +8515,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing to filter by yet"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing to save: the rule is as it was."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8760,6 +8926,11 @@ msgstr ""
 msgid "Open version %{version}"
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Optional"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Optional. Log-in links keep working either way."
@@ -9053,6 +9224,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "Point qory at Qory Apiary, through %{gateway}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "Point qory at Qory Apiary."
 msgstr ""
 
@@ -9310,31 +9486,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Reading the record"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "Reads as: %{rule}, and every allow rule it covers."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "Reads as: %{rule}, on every path."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "Reads as: %{rule}. It takes the host out of what the workspace allows; a target can still allow it unless you lock this rule."
-msgstr "Reads as: %{rule}. It takes the host out of what the workspace allows; a repository can still allow it unless you lock this rule."
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "Reads as: %{rule}. It takes the host out of what this target is allowed; other targets are not touched."
-msgstr "Reads as: %{rule}. It takes the host out of what this repository is allowed; other repositories are not touched."
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "Reads as: %{rule}: %{paths}. Behind a wall the proxy reads requests to this host to check the path."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -9981,6 +10132,16 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs are going through this gateway: %{runs}. Delete it once they end."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs may connect to the host. Needed under enforce, where a host no rule allows is denied."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs may not connect to the host, in observe and in enforce."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -11128,6 +11289,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 msgstr ""
 
@@ -11268,6 +11434,16 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "The host is listed with no path: every request to it is denied under enforce."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "The hosts the runs of %{target} may reach, and those they may not."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The hosts this workspace's runs may reach, and those they may not."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -11423,6 +11599,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The name of this workspace, where its pages are, and its type."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "The name runs connect to, in lower case, without %{scheme} or a port. Start it with %{suffix} to cover every host below a domain, such as %{example}."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -12348,6 +12529,11 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "Type a host to see the rule in plain words before you add it."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Type the organisation's slug, %{slug}, to confirm"
@@ -12743,6 +12929,11 @@ msgstr ""
 msgid "What no rule names is let through and recorded; a deny rule holds."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "What should runs do?"
+msgstr ""
+
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format
 msgid "What that page showed is no longer part of %{organisation}."
@@ -12767,6 +12958,11 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "What the workspaces are doing could not be read. Reload the page to try again."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "What this rule does"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -13140,6 +13336,11 @@ msgstr ""
 msgid "You can read this organisation, and change nothing here."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "You can read this policy but not change it."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "You can switch back at any time."
@@ -13366,30 +13567,6 @@ msgstr ""
 msgid "all allowed"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "allow %{host}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "allow %{host} on %{number} path"
-msgid_plural "allow %{host} on %{number} paths"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "allow every host below %{suffix}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "allow every host below %{suffix} on %{number} path"
-msgid_plural "allow every host below %{suffix} on %{number} paths"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "allowed"
@@ -13437,6 +13614,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "api.example or *.internal.example"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "api.example.com"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -13553,16 +13735,6 @@ msgid "denies %{number} host"
 msgid_plural "denies %{number} hosts"
 msgstr[0] ""
 msgstr[1] ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "deny %{host}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "deny every host below %{suffix}"
-msgstr ""
 
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
@@ -13848,6 +14020,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "max %{max}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "mcp.acme.example"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex

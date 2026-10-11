@@ -1701,7 +1701,10 @@ defmodule ApiaryWeb.OverviewComponents do
   (`may_key`) how, with the two ways as rows, its kind's own first and primary (a node:
   Get the command; a pool: Generate a key). Get the command makes the command in place
   (the caller's `get_command` event): `command`, once got, is shown in the panel, with
-  Copy, until when it works, and that the box waits for the machine. Anyone else reads who
+  Copy, until when it works, and that the box waits for the machine; for a target whose
+  choice leads to a gateway (`through`), the notice that its runs go through it above the
+  command, which carries `--via` and the gateway's URL, and the line on a private
+  certificate authority under it, as on the command's page. Anyone else reads who
   connects it. `landed` is the first run while the page is open; the box leaves at the
   next navigation.
   """
@@ -1733,6 +1736,15 @@ defmodule ApiaryWeb.OverviewComponents do
       "the command got for `target`, shown once: `%{code: fun, expires_at: at}`, the code in a function, or nil"
 
   attr :server, :string, required: true, doc: "this server's address, for the command"
+
+  attr :through, :any,
+    default: nil,
+    doc: "the gateway `target`'s choice leads to (`Apiary.Gateways.chosen/1`), or nil"
+
+  attr :through_connected, :boolean,
+    default: false,
+    doc: "whether `through` holds an active access key"
+
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
 
   def onboarding(assigns) do
@@ -1913,12 +1925,26 @@ defmodule ApiaryWeb.OverviewComponents do
               {gettext("What you run on %{node}", node: @target.name)}
             </span>
             <ApiaryWeb.NodeComponents.unreachable_server id={"#{@id}-unreachable"} url={@server} />
+            <%!-- The gateway the command goes through, if any: a node on Default gateway
+                 while none is the default reads nothing here. --%>
+            <ApiaryWeb.NodeComponents.through_gateway
+              :if={@through}
+              id={"#{@id}-gateway"}
+              node={@target}
+              gateway={@through}
+              connected={@through_connected}
+            />
             <.code_block
               id={"#{@id}-command"}
-              code={ApiaryWeb.NodeComponents.enrol_command(@server, @command.code.())}
+              code={
+                ApiaryWeb.NodeComponents.enrol_command(@server, @command.code.(),
+                  via: @through && @through.url
+                )
+              }
               copy_label={gettext("Copy command")}
               wrap
             />
+            <ApiaryWeb.NodeComponents.via_ca_line id={"#{@id}-via-ca"} gateway={@through} />
             <p id={"#{@id}-works"} class="text-[13px]/5 text-muted">
               {gettext("It works once, until %{time}. This is the only time it is shown.",
                 time: Format.time(@command.expires_at)

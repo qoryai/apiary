@@ -283,7 +283,10 @@ defmodule ApiaryWeb.Storybook.Foundations.Icons do
         sections={@sections}
         default_sort="Locked first"
         activity={@activity}
-        can_add
+        title="Network access"
+        count={@listing.total}
+        add_path="/acme/shop/policy/rules/new"
+        edit_path={&"/acme/shop/policy/rules/#{&1}/edit"}
         can_lock
       />
     </div>

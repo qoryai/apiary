@@ -5,15 +5,18 @@
 //   "policy:fields" {fields}   values the server put into a field that may have focus,
 //                              which a patch alone would leave as the reader typed it
 //   "policy:rule" {host}     scroll to the rule ?rule= points at
-//   keys, while no field has focus:  a  the composer's host field, Add rule while it is shut
+//   keys, while no field has focus:  a  Add rule, the link to the New rule page (the
+//                                       composer's host field where a page still has one)
 //                                    ?  shows or hides the list of keys, a panel in the
 //                                       page (#policy-keys), never an overlay; Escape and
 //                                       its Close hide it
 //   Escape, with the focus in the mode's choices (#policy-mode-form), closes them
 //   (`mode_cancel`): an Escape elsewhere, the palette's or a search's, leaves them open
 //
-// RuleComposer, on the composer's form: a pasted list of hosts, one per line, goes to the
-// server as a list, which fills the composer with the first and queues the rest.
+// RuleComposer, on the rule form (and on the composer kept for pages that still have one):
+// a pasted list of hosts, one per line, goes to the server as a list, which fills Host with
+// the first and queues the rest. The event is the form's data-paste, rule_paste; the
+// composer's, composer_paste.
 //
 // ChangeRow, on a change's <details>: the URL decides what is open, so the native toggle
 // is held back and the summary's click only patches.
@@ -124,7 +127,8 @@ export const RuleComposer = {
       const hosts = text.split(/[\r\n]+/).map(line => line.trim()).filter(Boolean)
       if (hosts.length < 2) return
       e.preventDefault()
-      this.pushEvent("composer_paste", {hosts: hosts.slice(0, 50).map(host => host.slice(0, 300))})
+      const event = this.el.dataset.paste || "composer_paste"
+      this.pushEvent(event, {hosts: hosts.slice(0, 50).map(host => host.slice(0, 300))})
     }
     this.el.addEventListener("paste", this.onPaste)
   },

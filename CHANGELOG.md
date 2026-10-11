@@ -296,8 +296,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   one: Default gateway, offered only while a default resolves, Direct, or a gateway by
   name; a new one starts on Default gateway when one resolves. A node's About says where
   its choice leads, and its Access key tab, command page, Key for a node and Forager file
-  name the gateway its runs go through, with its URL; the command and the Forager file
-  point at Qory Apiary either way. A gateway's key enrols the gateway and registers no
+  name the gateway its runs go through, with its URL. The command and the Forager file
+  point at Qory Apiary through that gateway: the command, on its page and in the
+  overview's first-run box, carries `--via` and the gateway's URL, with a line under it
+  that a gateway whose certificate a private certificate authority signed needs
+  `--via-ca-file`, and the Forager file's lines carry `via` and its `url`
+  (`Apiary.AccessKeys.via_lines/1`), each "Point qory at Qory Apiary" step naming the
+  gateway. A gateway relays the enrolment unchanged, from its address, which the
+  enrolment's per-address limit counts for every machine behind it.
+  A gateway's key enrols the gateway and registers no
   run, and its Access key tab says so. The audit log calls a
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the names of the organisation's
@@ -497,12 +504,25 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   to it. The page was called Connections; its old paths send on to the new ones.
 - The policy's rules on the same list pattern, however long the list grows: views (All,
   Allowed, Denied, Locked) with their counts, "Find a host" with `seen:`, `paths:` and
-  `by:` as tokens, one Filter menu, Sort, Add rule opening the composer over the list, and
-  pages of 50, every choice in the address. A repository's Policy tab is its effective
+  `by:` as tokens, one Filter menu and Sort, and pages of 50, every choice in the address;
+  Add rule is the one primary button of the Network access section's header. A repository's Policy tab is its effective
   policy on that list, each rule with its source: the repository's rules first, changed there; the
   workspace's read there and changed on the workspace's page, which their menu leads to;
   what is not in force struck through, saying why. Its mode is one line: Follow the
   workspace, Observe or Enforce, and whose the mode is.
+- A host rule is added and changed on a page, New rule
+  (`/:org/:workspace/policy/rules/new`, a repository's `…/-/policy/rules/new`) and Edit
+  rule (`…/policy/rules/:id/edit`), from Add rule, a row's Edit and the top bar's New
+  (Network access rule). The page asks what runs should do first, Allow or Deny, each
+  saying what it does; then Host and Paths, each with its help; and reads the rule back
+  under "What this rule does" as it is typed. An error is said under its field with its
+  repair as a link, and Add rule, never off, moves to the first field at fault. A pasted
+  list of hosts is added one at a time. A save goes back to the list as it was left, the
+  new rule marked. A declared host's Allow with paths… opens the page with the host
+  filled in. `ApiaryWeb.PolicyComponents.rule_form/1` draws the form; `rule_list/1` takes
+  the section's header (`title`, `count`, `add_path`, `edit_path`), and
+  `rule_composer/1` and `rule_list/1`'s `composer` slot stay for callers that have not
+  moved.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's built-in bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
