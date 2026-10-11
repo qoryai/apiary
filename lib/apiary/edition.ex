@@ -184,12 +184,12 @@ defmodule Apiary.Edition do
   `Apiary.Access.lock_places/1` asks it without a lock and takes what it names in one
   statement, then asks it again of the organisation held `FOR SHARE`. Should the two
   answers differ by an organisation not taken, the change lets go of what it took and
-  takes the fresh set in one statement, and asks again, three attempts in all, so it
-  may be asked that many times; past them the change raises. Several organisations are
-  locked in the order of
-  `Apiary.Organisations.lock_order/1`, which asks this callback, without a lock: those
-  it names another organisation for first, then the rest, each in the order of their
-  ids.
+  takes the fresh set in one statement, and asks again, three attempts in all: so
+  `lock_places/1` asks it once without a lock and once on each attempt, up to four
+  times, beside what `Apiary.Organisations.lock_order/1` asks; past them the change
+  raises. Several organisations are locked in the order of `lock_order/1`, which asks
+  this callback, without a lock: those it names another organisation for first, then
+  the rest, each in the order of their ids.
 
   The organisations it names besides the organisation's own hold none of their own: for
   each of them, this callback names that organisation alone. This is what makes
