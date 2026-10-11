@@ -775,10 +775,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       )
 
     ~H"""
-    <span :if={@targets == []} id={@id} class="q-faint">{gettext("None of their own")}</span>
+    <span :if={@targets == []} id={@id} class="q-faint">{gettext("No overrides")}</span>
     <.link :if={@targets != []} id={@id} patch={@path} class="hover:underline">
       <span :if={@own > 0}>
-        {ngettext("%{number} target sets its own", "%{number} targets set their own", @own,
+        {ngettext("%{number} target overrides it", "%{number} targets override it", @own,
           number: Format.number(@own)
         )}
       </span>
@@ -1070,7 +1070,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       <.input
         field={@form[:locked]}
         type="checkbox"
-        label={gettext("Locked: a target may not set its own value")}
+        label={gettext("Locked: no target may override it")}
       />
       <.page_form_foot
         id="variable-save"
@@ -1131,7 +1131,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       label={gettext("Find a target")}
       change="find_target"
     />
-    <p :if={@all == []} class="text-muted">{gettext("No target sets its own value.")}</p>
+    <p :if={@all == []} class="text-muted">{gettext("No target overrides this variable.")}</p>
     <.table
       :if={@all != []}
       id="variable-targets"
@@ -1157,7 +1157,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       </:col>
       <:col :let={%{state: state}} label={gettext("Its value")}>
         {if state == :own,
-          do: gettext("Its own value"),
+          do: gettext("Overrides the workspace's value"),
           else: gettext("Its value set aside by the lock")}
       </:col>
     </.table>
@@ -1228,7 +1228,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_sentence(%{act: :variable_targets, variable: variable}),
     do:
       gettext(
-        "The targets that set their own value of %{name}, and those whose own value its lock sets aside.",
+        "The targets that override %{name}, and those whose override its lock sets aside.",
         name: variable.name
       )
 
@@ -1335,7 +1335,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       cancel={@cancel}
     >
       {gettext(
-        "The workspace's value of %{name} is deleted. A target that sets its own keeps it. This cannot be undone.",
+        "The workspace's value of %{name} is deleted. A target that overrides it keeps its override. This cannot be undone.",
         name: @variable.name
       )}
       <.refusal_line id="variable-refused" refusal={@refusal} />
@@ -1364,13 +1364,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Lock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("While %{name} is locked, a target may not set its own value.",
+      {gettext("While %{name} is locked, no target may override it.",
         name: @variable.name
       )}
       <span :if={@own > 0} id="lock-targets">
         {ngettext(
-          "%{number} target sets its own now: the lock sets it aside while it holds.",
-          "%{number} targets set their own now: the lock sets them aside while it holds.",
+          "%{number} target overrides it now: the lock sets the override aside while it holds.",
+          "%{number} targets override it now: the lock sets their overrides aside while it holds.",
           @own,
           number: Format.number(@own)
         )}
@@ -1399,11 +1399,11 @@ defmodule ApiaryWeb.SecretLive.Index do
       question={gettext("Unlock %{name}?", name: @variable.name)}
       cancel={@cancel}
     >
-      {gettext("A target's own value of %{name} applies again.", name: @variable.name)}
+      {gettext("Target overrides of %{name} apply again.", name: @variable.name)}
       <span :if={@ignored > 0} id="unlock-targets">
         {ngettext(
-          "%{number} target set its own: the lock no longer sets it aside.",
-          "%{number} targets set their own: the lock no longer sets them aside.",
+          "%{number} target overrides it: the lock no longer sets the override aside.",
+          "%{number} targets override it: the lock no longer sets their overrides aside.",
           @ignored,
           number: Format.number(@ignored)
         )}
@@ -2301,8 +2301,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     if own > 0,
       do:
         ngettext(
-          "%{name} is locked: %{number} target that sets its own is set aside by the lock.",
-          "%{name} is locked: %{number} targets that set their own are set aside by the lock.",
+          "%{name} is locked: %{number} target override is set aside.",
+          "%{name} is locked: %{number} target overrides are set aside.",
           own,
           name: name,
           number: Format.number(own)
@@ -2316,8 +2316,8 @@ defmodule ApiaryWeb.SecretLive.Index do
     if ignored > 0,
       do:
         ngettext(
-          "%{name} is unlocked: %{number} target that sets its own is no longer set aside.",
-          "%{name} is unlocked: %{number} targets that set their own are no longer set aside.",
+          "%{name} is unlocked: %{number} target override applies again.",
+          "%{name} is unlocked: %{number} target overrides apply again.",
           ignored,
           name: name,
           number: Format.number(ignored)

@@ -2054,7 +2054,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp deny_consequence(%{source: :target}) do
     %{
       target: gettext("Replaces this target's allow rule."),
-      workspace: gettext("This target's own allow rule still holds here.")
+      workspace: gettext("An allow rule on this target still holds here.")
     }
   end
 
@@ -2114,7 +2114,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     own =
       if level == :workspace and panel.own_rule,
-        do: gettext("This target's own rule still decides here.")
+        do: gettext("A rule on this target still decides here.")
 
     reach =
       if fetched?(socket) or not alive?(socket.assigns.run),

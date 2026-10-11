@@ -278,7 +278,7 @@ if config_env() == :prod do
   if :crypto.hash_equals(signing_seed, encryption_secret) do
     raise """
     environment variable APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET.
-    It is a secret of its own, generated apart. Generate one with: openssl rand -base64 32
+    It must be a separate secret. Generate one with: openssl rand -base64 32
     """
   end
 

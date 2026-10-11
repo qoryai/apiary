@@ -508,7 +508,7 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{reason: :conflict, message: message}} =
                Policy.allow(scope, nil, %{host: "*.example", paths: ["/b"]})
 
-      assert message =~ "In the repository github.example/acme/site"
+      assert message =~ "In the policy of the repository github.example/acme/site"
       assert [] = Policy.list_rules(scope, nil)
     end
   end

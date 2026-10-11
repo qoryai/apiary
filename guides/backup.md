@@ -54,7 +54,7 @@ URL, give it to `pg_dump` as `PGPASSWORD`.
 pg_dump --format=custom --no-owner --file=qory.dump "postgres://USER:PASS@HOST/DATABASE"
 ```
 
-A managed Postgres with its own snapshots and point-in-time recovery does the same job. Test
+A managed Postgres with built-in snapshots and point-in-time recovery does the same job. Test
 its restore the same way.
 
 ### How often
@@ -168,7 +168,7 @@ against the check value it recorded at its first start, and the log says
 `APIARY_ENCRYPTION_SECRET` back and it starts, and every key verifies again.
 
 Everything else survives: accounts, organisations, workspaces and memberships, runs,
-events, logs, connections, and the access keys' own rows with their labels and key ids.
+events, logs, connections, and the access keys' rows, with their labels and key ids.
 <!-- feature: security -->
 So does the security policy, with its versions and history.
 <!-- /feature -->
@@ -183,7 +183,7 @@ The same holds once a stored secret exists.
 
 It is the seed of the key the instance signs its answers to gateways with, and every machine
 pins that key's public half. It encrypts nothing and keys nothing in the database, and it is
-not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, on its own.
+not derived from `APIARY_ENCRYPTION_SECRET`: each is lost, or kept, separately.
 
 **Losing or changing `APIARY_SIGNING_SECRET` means pinning every machine again.** The
 instance does not start with another key than the one it recorded at its first start or
@@ -218,7 +218,7 @@ are taken, restore the newest dump on another machine:
 3. Restore as under "The compose installation" above, the keys first.
 4. `curl http://localhost:4100/health` answers `200`. The restored instance is set up
    already, so its log has no set-up link.
-5. Log in at `http://localhost:4100/users/log-in` with your own address: without mail,
+5. Log in at `http://localhost:4100/users/log-in` with your email address: without mail,
    with your password; with mail, with the log-in link the email brings, or with your
    password if your account has one. Without mail and without your password, this prints
    a one-time link that sets your account's password, which works for an hour:

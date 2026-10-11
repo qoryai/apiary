@@ -485,7 +485,7 @@ defmodule Apiary.Variables do
         refuse(
           changeset,
           :name,
-          dgettext_noop("errors", "names beginning QORY_ are Forager's own")
+          dgettext_noop("errors", "names beginning QORY_ are reserved for Forager")
         )
 
       locked_above?(above, scope, target_id, name) ->

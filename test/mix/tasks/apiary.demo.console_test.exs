@@ -314,7 +314,7 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
       assert Console.refusal(:test, true, "apiary_test", env) == nil
 
       assert Console.refusal(:test, false, "apiary_test", env) =~
-               "the test environment's database, apiary_test, is the tests' own"
+               "the test environment's database, apiary_test, belongs to the tests"
     end
   end
 

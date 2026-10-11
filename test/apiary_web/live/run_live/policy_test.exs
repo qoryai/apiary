@@ -999,7 +999,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute has_element?(view, "#rule-panel-what-set")
 
       assert text(view, "#rule-panel-own-rule") ==
-               "This repository's own rule still decides here."
+               "A rule on this repository still decides here."
 
       assert text(view, "#rule-panel-submit") == "Allow for the workspace"
 
@@ -1010,7 +1010,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       html = render(view)
       assert html =~ "api.pathed.example is allowed for the workspace."
-      assert html =~ "This repository&#39;s own rule still decides here."
+      assert html =~ "A rule on this repository still decides here."
 
       # and the row is not said to be answered: for this target the path is still not allowed
       refute has_element?(view, "#cx-#{id}-after")

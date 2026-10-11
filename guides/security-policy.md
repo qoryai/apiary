@@ -10,10 +10,10 @@ which apply it to the runs they start and to the runs already in flight. In the 
 >
 > Installing or upgrading the server changes no machine's policy. Until somebody makes the
 > workspace's policy, by the first rule or the first change of mode, the server answers
-> every run's registration with no policy, `{"version":1}`, and every machine keeps the
-> `egress` section of its own Forager file, enforcement included. From the first change,
-> every machine of the workspace applies the workspace's policy narrowed by its own
-> `egress` section: a run enforces when either side enforces, a host is allowed only where
+> every run's registration with no policy, `{"version":1}`, and every machine keeps its
+> local policy, the `egress` section of its Forager file, enforcement included. From the first change,
+> every machine of the workspace applies the workspace's policy narrowed by its local
+> policy: a run enforces when either side enforces, a host is allowed only where
 > both sides allow it, and what either side denies is denied. Read [The first change](#the-first-change) before
 > you make it.
 
@@ -46,7 +46,7 @@ The workspace has a baseline of rules, on `/:org/:workspace/policy`: the hosts a
 in its **Network access** section. What the runs
 reached, and what decided it, is the **Network access** page beside **Policy** in the
 sidebar, `/:org/:workspace/network`, where each row can allow or deny its host; the
-section links to it, and its rules link back. A repository has rules of its own on top,
+section links to it, and its rules link back. A repository can add rules on top,
 on the **Policy** tab of the repository's page,
 `/:org/:workspace/targets/:forge/:path/-/policy` (the old address,
 `/:org/:workspace/policy/targets/:id` and what followed it, sends on there); the list of
@@ -54,27 +54,27 @@ repositories and their policy is `/:org/:workspace/policy/targets`. A repository
 there once a run names it, by the `forge` and `repository` labels Forager takes from the
 checkout's origin remote ([The Forager file's `server` section](forager-file.md)).
 
-A repository without rules of its own is served the workspace baseline, and so is a run
+A repository with no rules and no mode override is served the workspace baseline, and so is a run
 that names no repository.
 
 Every list of rules is read the same way, however long it grows: views **All**,
 **Allowed**, **Denied** and **Locked** with their counts; a field that finds a host and
 holds the chosen filters as words (`seen:no`, `paths:held`, `by:dana`; on a repository's
 tab `source:repo` or the workspace's slug); one **Filter** menu (Source where there is more
-than one, Paths, Seen in 14 days, Added by); **Sort** (the list's own order, Host, Most
-used, Recently added); **Add rule**, which opens the composer line over the list; and
+than one, Paths, Seen in 14 days, Added by); **Sort** (the default order, Host, Most used,
+Recently added); **Add rule**, which opens the composer line over the list; and
 pages of 50. Every choice is in the address, so a filtered view can be linked. A rule is
 one line: allow or deny, the host, its paths, its use in the last 14 days, who added it
 and when, a lock when it is locked, and a ⋯ menu (Edit paths, Change to deny or allow,
 Lock or Unlock for an owner, Remove).
 
 A repository's Policy tab is its effective policy on the same list, every rule with its
-**Source**: **This repository** or the workspace, by its name. Its own rules come first
-and are changed there; the workspace's are read there and changed on the workspace's
+**Source**: **This repository** or the workspace, by its name. Repository rules come first and
+are changed there; the workspace's are read there and changed on the workspace's
 policy page, which their menu leads to (**View in Main's policy**). A rule that is not in
-force, the repository's own under a locked rule of the workspace, or the workspace's that
-the repository's own decides, stays in the list, struck through, and says why. A
-repository overrides the workspace's rule for a host by adding its own rule for it, the
+force, a repository rule under a locked workspace rule, or a workspace rule that a
+repository rule overrides, stays in the list, struck through, and says why. A
+repository overrides the workspace's rule for a host by adding a rule for it, the
 other way round; removing that rule gives the workspace's back.
 
 ## How rules resolve
@@ -92,7 +92,7 @@ action and its paths.
 3. Then an unlocked rule of the workspace.
 
 So where the two meet on a host, the repository wins, unless the workspace's rule is
-locked. Where the level above the workspace allows only its own hosts, an allow of the
+locked. Where the level above the workspace allows only the hosts on its list, an allow of the
 workspace or of a repository is listed, struck, and not in force; denies still apply.
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
@@ -100,8 +100,8 @@ A deny of a `*.` suffix also removes every allow entry it covers, `*.example` co
 an allowed `*.` suffix stands beside it: `*.example` allowed and `tracker.example` denied
 reaches `api.example` and denies `tracker.example`, since the gateway decides deny first.
 
-One shape has no form on the wire: a `*.` deny of the workspace with a repository's own
-allow below it, where the repository wins by precedence. The allow is rendered, the deny
+One shape has no form on the wire: a `*.` deny of the workspace with a repository allow
+rule below it, where the repository wins by precedence. The allow is rendered, the deny
 still takes out the workspace's allow entries below it, but it is not written to the
 document's deny list, since that would deny the repository's host too. Under enforce the
 other hosts below the suffix are denied by having no allow; under observe they are let
@@ -147,14 +147,14 @@ it saves it.
   rule, a run reaches nothing.
 
 A workspace starts in observe. Only an owner or an admin changes the mode, in either
-direction, and each change is confirmed. A wall's own refusals, the machine's own address
-say, hold in either mode. Where the level above the workspace requires enforce, the mode
+direction, and each change is confirmed. The wall's built-in refusals, such as the machine's
+address, hold in either mode. Where the level above the workspace requires enforce, the mode
 is enforce in the workspace and in every repository, the workspace's and the
-repositories' choices are fixed and say who requires it, and a repository's own observe is kept but not
+repositories' choices are fixed and say who requires it, and a repository's observe override is kept but not
 in force.
 
 The workspace's mode is a default. A repository follows it until an owner or an admin
-gives the repository a mode of its own, on the repository's Policy tab: **Follow** the workspace, by its name, **Observe** or **Enforce**,
+overrides it on the repository's Policy tab: **Follow** the workspace, by its name, **Observe** or **Enforce**,
 with what is in effect and where it comes from. A change of the workspace's mode reaches
 the repositories that follow it and leaves the others as they are. The mode and the rules
 are apart: a repository in enforce under a workspace in observe is held to its effective
@@ -170,7 +170,7 @@ page says the same as a fact: how many attempts to how many destinations had no 
 
 ## Versions
 
-Every change renders the baseline and every repository with rules of its own, in the same
+Every change renders the baseline and every repository that has rules or a mode override, in the same
 transaction, as canonical JSON: members in a fixed order, no whitespace, `allow` and `deny`
 sorted with names before `*.` suffixes. Each render is validated against the contract's schemas before
 it is stored.
@@ -184,8 +184,7 @@ it is stored.
 - **History**, `/:org/:workspace/policy/history` and
   `/:org/:workspace/targets/:forge/:path/-/policy/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
-  in rules and in document lines. Changes to a repository's own rules are in that
-  repository's history. The history is the policy's part of the organisation's audit
+  in rules and in document lines. Changes to repository rules are in that repository's history. The history is the policy's part of the organisation's audit
   trail, and is kept as long as the trail: 90 days unless the instance says otherwise
   (`AUDIT_RETENTION_DAYS`, [Install and configure](install.md)). The versions are kept
   whatever their age.
@@ -220,7 +219,7 @@ Forager can give a run **tools**: programs on Forager's machine that serve hosts
 machine defines them; the run's policy selects among them by name. A run configuration
 could carry that selection, but this server never sends one: the workspace's policy has no
 tools. So a run has tools only when it runs under its
-machine's own policy, the one in its [Forager file](forager-file.md), and only such runs
+machine's local policy, the one in its [Forager file](forager-file.md), and only such runs
 report tool invocations.
 
 The gateway hands a request to a host a tool serves to that tool when the rules let
@@ -276,7 +275,7 @@ policy of that version as text, with **Download**:
 
 - the `egress` section for the machine's Forager file, which says a mode, the hosts
   allowed, the hosts denied and nothing else;
-- when the policy has paths, a policy file in the contract's own format,
+- when the policy has paths, a policy file in the contract's format,
   given to one run with `qory run --policy <file>`. It narrows the Forager file's section and
   never widens it, so the two are exported together and agree.
 
@@ -312,33 +311,33 @@ Until somebody has made the workspace's policy:
 
 - the server answers every run's registration with no policy, `{"version":1}`;
 - a reload of a run's configuration answers `404`;
-- every machine runs under the `egress` section of its own Forager file, in its own mode,
+- every machine runs under its local policy, the `egress` section of its Forager file, in that section's mode,
   enforcement included;
-- the policy page says: "Runs use each machine's own policy until the first change here."
+- the repository's Policy tab says: "Runs use each machine's local policy until the first change in this workspace."
 
 The first rule or the first change of mode, the workspace's or a repository's, is the
 moment the workspace's policy applies:
 
 - to every machine under the workspace's access keys, and to the runs in flight, which
   reload within a heartbeat;
-- narrowed by each machine's own `egress` section, which only takes away: a run enforces
+- narrowed by each machine's local policy, which only takes away: a run enforces
   when either side enforces, a host is allowed only where both sides allow it (a side in
   observe allows every host), and the deny rules are both sides' together;
 - in the mode the workspace is in, which is observe until an owner or an admin sets it,
-  unless the machine enforces. A machine that enforced a list of its own stays in
-  enforce after the first change: while the workspace observes, its runs reach the hosts
-  of its own list, less what a deny rule of the workspace names.
+  unless the machine enforces. A machine whose local policy enforced stays in enforce after the
+  first change: while the workspace observes, its runs reach the hosts on its local
+  list, less what a deny rule of the workspace names.
 
 So before the first change:
 
-1. Collect what the machines' own lists say, the `gateway.egress.allow` of every Forager file.
+1. Collect what the machines' local lists say, the `gateway.egress.allow` of every Forager file.
 2. Say all of it in the workspace. The first rule you add already applies, so add the
    rest straight after it; where both sides enforce, a run reaches only the hosts both
    allow.
 3. When the rules are complete, an owner or an admin switches to enforce. The confirmation lists what
    would start being denied, from the record.
 
-To keep one machine on its own policy, start its runs with `qory run --local`: the run is
+To keep one machine on its local policy, start its runs with `qory run --local`: the run is
 recorded to files only, under the machine's policy, and the server is not contacted, so
 that run does not appear in the console.
 

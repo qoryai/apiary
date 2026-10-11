@@ -179,10 +179,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "h2", "Qory Apiary serves no policy yet")
 
       assert text(view, "#policy-unmanaged") =~
-               "Until the first change here, every machine of this workspace runs under its own policy"
+               "Until the first change here, every machine of this workspace runs under its local policy"
 
       assert text(view, "#policy-unmanaged") =~
-               "renders version 1, and from then on each machine applies it, narrowed by its own."
+               "renders version 1, and from then on each machine applies it, narrowed by its local policy."
 
       refute has_element?(view, "#policy-version-pill-copy")
       assert text(view, "#policy-version-pill") == "No version yet"
@@ -1245,7 +1245,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope)
 
       assert text(view, "#policy-mode-effect") =~
-               "Followed by 1 of 2 repositories; 1 sets its own and enforces"
+               "Followed by 1 of 2 repositories; 1 overrides it with enforce"
 
       assert has_element?(
                view,
@@ -1256,7 +1256,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(
                view,
-               "#nav-policy-mode[title=\"The workspace's default mode is observe. 1 repository sets its own and enforces.\"]"
+               "#nav-policy-mode[title=\"The workspace's default mode is observe. 1 repository overrides it with enforce.\"]"
              )
     end
 
@@ -1275,14 +1275,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       pick_mode(view, "enforce")
 
       assert text(view, "#policy-mode-q-effect") =~
-               "1 repository sets its own mode and does not change."
+               "1 repository overrides the mode and does not change."
     end
 
     test "the targets list has a Mode column, and ?mode=own keeps those with their own",
          %{conn: conn, docs: docs, scope: scope} do
       view = open(conn, scope, "/policy/targets")
-      assert text(view, "#targets-summary") =~ "1 sets its own mode"
-      assert text(view, "#target-#{docs.id} .q-c-mode") == "enforce its own"
+      assert text(view, "#targets-summary") =~ "1 overrides the mode"
+      assert text(view, "#target-#{docs.id} .q-c-mode") == "enforce overridden"
       assert text(view, "#policy-targets") =~ "observe Follows the workspace"
 
       view = open(conn, scope, "/policy/targets?mode=own")
@@ -1294,7 +1294,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
              |> LazyHTML.query(".q-target-row")
              |> Enum.count() == 1
 
-      assert text(view, "#targets-own-only") =~ "Showing those that set their own mode."
+      assert text(view, "#targets-own-only") =~ "Showing those that override the mode."
     end
   end
 
@@ -1317,8 +1317,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope, "/policy/targets")
 
       assert text(view, "#targets-summary") =~ "2 repositories have posted runs"
-      assert text(view, "#targets-summary") =~ "1 with rules of their own"
-      assert text(view, "#target-#{target.id}") =~ "Own rules"
+      assert text(view, "#targets-summary") =~ "1 with repository rules"
+      assert text(view, "#target-#{target.id}") =~ "Repository rules"
       assert text(view, "#target-#{target.id}") =~ "v1"
       # Whose version each row shows, and no bare 0 where nothing is to review.
       refute text(view, "#target-#{target.id} .q-c-version") =~ "baseline"

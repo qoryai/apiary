@@ -678,7 +678,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "the wall's own refusals, in either mode" do
       assert text(row(%{last_decision: "denied", last_rule: "wall:own-address"})) =~
-               "The wall refuses the machine's own address, in either mode."
+               "The wall refuses the machine's address, in either mode."
 
       assert text(
                row(%{

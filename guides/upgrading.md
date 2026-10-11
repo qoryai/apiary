@@ -7,7 +7,7 @@ goes wrong.
 ## What a restart does
 
 1. The release boots, connects to Postgres and runs every migration not yet recorded in
-   `schema_migrations`, in order, each in its own transaction. The endpoint does not start
+   `schema_migrations`, in order, each in a separate transaction. The endpoint does not start
    until they are done; a migration that fails stops the boot and the process exits
    non-zero, the migrations before it applied and the failed one rolled back.
 2. Two instances starting at once do not race: Ecto's migrator takes a lock on
@@ -46,10 +46,10 @@ possible:
   by a release after the one that stopped reading it. So the previous release runs on the
   new schema, and going back one release is starting it again
   ([Rolling back](#rolling-back)). For that reason a release does not refuse a schema newer
-  than its own.
+  than the one it ships.
 - **No data rewrite inside a schema migration**, but the backfill of a column or a table
   that replaces another, which fills the new one in the migration that adds it.
-  Any other backfill that touches many rows runs in batches, either as its own migration
+  Any other backfill that touches many rows runs in batches, either as a separate migration
   that commits per batch or as a task the changelog names, never in the same transaction
   as a `CREATE INDEX` on a large table.
 - **Indexes on large tables are created concurrently** (`create index ... concurrently`,
@@ -103,7 +103,7 @@ A boot the key check stops says which key in the same log
 ([Install and configure](install.md), The keys generated at first start): put that key's
 value back, and it starts.
 
-A migration the changelog says is long can be run on its own: set `MIGRATE_ON_BOOT=false`
+A migration the changelog says is long can be run separately: set `MIGRATE_ON_BOOT=false`
 in `.env`, run it in a one-off container, `docker compose run --rm apiary bin/migrate`, and
 start the release once it is done.
 

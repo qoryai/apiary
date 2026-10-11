@@ -1491,7 +1491,7 @@ defmodule ApiaryWeb.OverviewComponents do
           <% end %>
         </div>
         <div :if={@security? && @policy && !@policy_failed?} id="overview-own" class="q-gr">
-          <span class="q-gr-k">{gettext("Own rules")}</span>
+          <span class="q-gr-k">{gettext("Target rules")}</span>
           <span class="q-gr-v">
             {ngettext("%{number} target", "%{number} targets", @policy.with_rules,
               number: Format.number(@policy.with_rules)
@@ -1542,7 +1542,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp mode_word(mode), do: mode
 
   defp policy_detail(%{summary: %{managed?: false}}),
-    do: gettext("Machines use their own policy until the first change here.")
+    do: gettext("Machines use their local policy until the first change here.")
 
   defp policy_detail(%{version: %{rendered_at: at}} = policy) do
     [
@@ -1601,7 +1601,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp own_detail(_scope, %{own: own}) do
     observe = Enum.count(own, &(&1.own_mode == "observe"))
 
-    gettext("%{own} set a mode of their own: %{observe} observe, %{enforce} enforce.",
+    gettext("%{own} override the mode: %{observe} observe, %{enforce} enforce.",
       own:
         ngettext("%{number} target", "%{number} targets", length(own),
           number: Format.number(length(own))
