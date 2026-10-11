@@ -242,4 +242,18 @@ defmodule ApiaryWeb.PolicyLive.ComposerTest do
     assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
     refute has_element?(view, "#policy-composer-host")
   end
+
+  test "on a page with the rule form, removing the last rule gives the focus to Add rule",
+       %{conn: conn, scope: scope} do
+    {:ok, _} = Policy.allow(scope, nil, %{host: "a.example"})
+    view = open(conn, scope, %{"form" => "policy-rule"})
+
+    view
+    |> element("#rule-#{rule(scope, "a.example").id}-menu button", "Remove")
+    |> render_click()
+
+    assert Policy.list_rules(scope, nil) == []
+    assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
+    assert has_element?(view, "#policy-rules-head a#policy-rules-add")
+  end
 end
