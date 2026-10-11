@@ -575,7 +575,7 @@ views (`PolicyComponents.mode_card/1`); a version opened from the History (the o
 force too) and the export, which state their own mode, have none. It states the mode in
 force: a honey tile with the mode's icon (a lock where a level above requires enforce),
 "Mode: Enforce" as its heading, whose it is as a badge (Workspace default; Follows the
-workspace, by its name, or Its own; Required by the level), one sentence of what the mode
+workspace, by its name, or Overridden; Required by the level), one sentence of what the mode
 does and who follows it, and on the workspace's the record of the last 14 days with its
 link. A member sees the card with no Change mode and the line that says who may.
 The Document tab (`…/policy/document`, a target's `…/-/policy/document`) is the document
@@ -990,7 +990,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   columns, the labels faint: Key made, Secret, By hand, Needs), a waiting command where
   it is the command's, and one button at the foot (`mt-auto`), so the buttons line up.
   No steps, no code, no variable and no Copy. **Connect with a command**: "Choose it when
-  you can open a terminal on build-01: a laptop, or a server of your own.", "You get one
+  you can open a terminal on build-01: a laptop, or your server.", "You get one
   command to run on build-01. It carries a one-time code, not a key, which works once
   within 15 minutes. qory makes the key on build-01, sends Qory Apiary only its public
   half, and saves everything else there itself.", Key made "On build-01, by qory", Secret

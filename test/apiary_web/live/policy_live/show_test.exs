@@ -170,7 +170,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   end
 
   describe "a workspace nobody has changed" do
-    test "says machines use their own policy, with no pill, no document and no mode word",
+    test "says machines use their local policy, with no pill, no document and no mode word",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
