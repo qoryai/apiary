@@ -6,8 +6,9 @@
 # so an upload by hand types the version under Version.
 # [test copy]
 # For a test before a release, an upload by hand names an image under Test image instead.
-# The parts between these markers, and each line that ends with one, are in the test copy
-# alone: scripts/aws-template-release.py --copy release leaves them out of a release's copy.
+# In the repository's template, comment markers set the test parts apart:
+# scripts/aws-template-release.py --copy release leaves them out of a release's copy, and
+# --copy test keeps them.
 # [/test copy]
 #
 # Upgrade with the console's Update and the new release's template, or with
