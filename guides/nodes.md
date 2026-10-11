@@ -7,8 +7,8 @@ organisation do all of it; everyone in the workspace reads the nodes and their k
 
 ## Nodes and node pools
 
-**Nodes**, in the workspace's sidebar, lists them, with **New node** and **New node
-pool**.
+**Nodes**, in the workspace's sidebar, lists them, with **New node**, **New node
+pool** and **New gateway**.
 
 - A **node** is one permanent machine, `build-01` say. It runs one instance at a time.
 - A **node pool** is a fleet of short-lived instances that share one key, such as the
@@ -18,6 +18,33 @@ pool**.
 The kind is fixed when one is made. A new node opens on its **Access key** tab, where its
 machine gets its key. Its **Overview** shows its instance, or a pool's running instances,
 and its recent runs; its **Settings** change its name and a pool's limit, and delete it.
+
+## Gateways
+
+A **gateway** is the third kind on **Nodes**, `edge-01` say: an address the nodes and node
+pools of the workspace reach Qory Apiary through. **New gateway** asks its name and its
+**URL**: `https://`, a host, and a port if needed, nothing more. Like a node, it opens on
+its **Access key** tab and gets its key either way. On the list it reads **Gateway**, and
+**Kind** in the Filter menu keeps the gateways alone.
+
+The workspace's first gateway is its **default**, marked **Default** on the list and on
+its page. A second one moves nothing: its **Overview** shows its URL, says "Not the
+default.", and offers **Make default**, which moves the mark to it. Its **Settings**
+change its name and its URL.
+
+Each node and node pool chooses its **Gateway**, as it is made and in its **Settings**,
+once the workspace has a gateway: **Default gateway**, whichever gateway is the
+workspace's default; **Direct**, through no gateway; or a gateway by name. A new one
+starts on **Default gateway**. Its **Overview**'s About says where its choice leads, and
+its **Access key** tab, the command's page and its Forager file say that it reaches Qory
+Apiary through that gateway, at its URL, and, while the gateway has no key yet, that the
+gateway isn't connected.
+
+**Delete gateway…**, in a gateway's **Settings**, is confirmed in place. A gateway that a
+node or a node pool still points to, by name or as the default, isn't deleted: the page
+says "Nodes use this gateway: build-01, spot-runners. Point them to another gateway or to
+direct, then delete it.", naming the first five of the workspace and then how many more. When the default goes and other gateways
+remain, the oldest of them becomes the default.
 
 ## The access key
 

@@ -221,7 +221,21 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
   as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
   workspace's default gateway, where a node's choice leads, the workspaces a gateway may
-  serve and the gateways a node may name. The console does not show gateways.
+  serve and the gateways a node may name, and `Apiary.Gateways.chosen/1` the gateway a
+  node's choice names now, with a key or not. On the console, Nodes lists gateways, with
+  their kind, Gateway, the default's mark, Default, and Kind's Gateway in the Filter menu.
+  New gateway (`/nodes/new-gateway`) asks a name and a URL, with the URL's errors under
+  its field, and opens the gateway's Access key tab as a new node's does. A gateway's
+  Overview shows its URL and whether it is the default, with Make default; its Settings
+  change its name and URL; its deletion is confirmed in place, and refused while nodes
+  point to it: "Nodes use this gateway: …", the first five of the workspace by name, then
+  "and N more", which counts the rest and any of other workspaces.
+  New node, New node pool and a node's Settings choose its Gateway once the workspace has
+  one: Default gateway, offered only while a default resolves, Direct, or a gateway by
+  name; a new one starts on Default gateway when one resolves. A node's About says where
+  its choice leads, and its Access key tab, command page, Key for a node and Forager file
+  name the gateway it reaches Qory Apiary through, with its URL. The audit log calls a
+  gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the organisation's own page names
   are; a workspace named Gateways gets the slug `gateways-2`.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
