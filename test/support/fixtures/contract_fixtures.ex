@@ -43,12 +43,13 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`),
-  held under its published id on `node`, active, as a receiver under test holds it.
+  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`, or
+  `"gateway_key"` on a gateway), held under its published id on `node`, active, as a receiver under test holds it.
   Written straight into the table, past the key checks, which refuse every fixture key:
   test support only.
   """
-  def fixture_access_key!(%Scope{user: user}, node, "access_key" = name) do
+  def fixture_access_key!(%Scope{user: user}, node, name)
+      when name in ~w(access_key gateway_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
     %{public_key: public_key} = fixture_key!(name)
     now = DateTime.utc_now()
@@ -379,21 +380,22 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   known_answers!/1 decodes `fixtures/known-answers/<name>.json`: `"keys"`,
-  `"signatures"`, `"discovery"` or `"small-order"`.
+  `"signatures"`, `"discovery"`, `"small-order"` or `"through-gateway"`.
   """
-  def known_answers!(name) when name in ~w(keys signatures discovery small-order),
-    do: contract_json!("known-answers/#{name}.json")
+  def known_answers!(name)
+      when name in ~w(keys signatures discovery small-order through-gateway),
+      do: contract_json!("known-answers/#{name}.json")
 
   @doc """
   fixture_key!/1 is one of the contract's fixture keys of `known-answers/keys.json`
-  (`"access_key"`, `"signing_key"`, `"next_signing_key"`), with
+  (`"access_key"`, `"gateway_key"`, `"signing_key"`, `"next_signing_key"`), with
   its raw `:seed`, its raw `:public_key` derived from the seed and checked against the
   published one, and the published `:fingerprint`, plus `:access_key_id` and
   `:instance_id` where the file gives them. Test support only: every instance refuses
   these keys.
   """
   def fixture_key!(name)
-      when name in ~w(access_key signing_key next_signing_key) do
+      when name in ~w(access_key gateway_key signing_key next_signing_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
 
     encoded_seed =

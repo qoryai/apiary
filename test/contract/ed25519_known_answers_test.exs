@@ -66,13 +66,13 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
   end
 
   describe "known-answers/keys.json" do
-    test "lists the fixture access key and the server's two keys, and no longer the second access key" do
+    test "lists the fixture access key, the gateway key and the server's two keys, and no longer the second access key" do
       assert known_answers!("keys") |> Map.keys() |> Enum.sort() ==
-               ~w(access_key next_signing_key signing_key)
+               ~w(access_key gateway_key next_signing_key signing_key)
     end
 
     test "each key's seed gives its public key and its fingerprint" do
-      for name <- ~w(access_key signing_key next_signing_key) do
+      for name <- ~w(access_key gateway_key signing_key next_signing_key) do
         key = fixture_key!(name)
         assert Ed25519.fingerprint(key.public_key) == key.fingerprint, name
       end
@@ -82,6 +82,7 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
       for {name, range} <- [
             {"access_key", 1..32},
             {"signing_key", 65..96},
+            {"gateway_key", 97..128},
             {"next_signing_key", 161..192}
           ] do
         assert fixture_key!(name).seed == :binary.list_to_bin(Enum.to_list(range)), name
@@ -92,10 +93,12 @@ defmodule Apiary.Contract.Ed25519KnownAnswersTest do
 
       assert access_key.instance_id ==
                "i_" <> Ed25519.encode(:binary.list_to_bin(Enum.to_list(129..144)))
+
+      assert fixture_key!("gateway_key").access_key_id == "ak_f1xt0re00000000g"
     end
 
-    test "the access key and the server's two keys are refused as fixtures, and the second access key the README names" do
-      for name <- ~w(access_key signing_key next_signing_key) do
+    test "the access key, the gateway key and the server's two keys are refused as fixtures, and the second access key the README names" do
+      for name <- ~w(access_key gateway_key signing_key next_signing_key) do
         assert Ed25519.check_public_key(fixture_key!(name).public_key) == {:error, :fixture},
                name
       end
