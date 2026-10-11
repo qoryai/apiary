@@ -345,7 +345,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   renders every workspace again through `Apiary.Policy.rerender_in/3`, inside the
   edition's transaction, each holder whose bytes change getting an `above_changed`
   change. The web side names where
-  the level is read and changed (`above_policy_link/1`). A level with variables and no
+  the level is read and changed, and its New rule page (`above_policy_link/1`). A level with variables and no
   policy says `policy: false`: the policy, its record and its pages take it as nil, and
   only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse

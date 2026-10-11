@@ -163,6 +163,39 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     assert text(pending) == "Not allowed"
   end
 
+  describe "rule_form" do
+    defp rule_form(scope) do
+      render_component(&PolicyComponents.rule_form/1,
+        id: "policy-rule",
+        title: "New rule",
+        form:
+          to_form(%{"action" => "allow", "host" => "", "paths" => "", "every" => "false"},
+            as: :rule
+          ),
+        scope: scope,
+        cancel: "/acme/policy"
+      )
+    end
+
+    defp button(html) do
+      html
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query("#policy-rule-add")
+      |> LazyHTML.text()
+      |> String.trim()
+    end
+
+    test "its button reads Add rule for the workspace and a level above it, Add target rule for a target" do
+      assert button(rule_form(:workspace)) == "Add rule"
+      assert button(rule_form(:organisation)) == "Add rule"
+
+      Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
+        assert button(rule_form(:target)) == "Add target rule"
+        assert button(rule_form(:organisation)) == "Add rule"
+      end)
+    end
+  end
+
   describe "the list of rules" do
     @at ~U[2026-09-09 10:00:00.000000Z]
     @own %{key: "repo", label: "This repository", rank: 0}
