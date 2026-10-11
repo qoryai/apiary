@@ -109,8 +109,10 @@ defmodule Apiary.Accounts.Scope do
   @spec key_place(t) :: %Workspace{} | %Organisation{}
   def key_place(%__MODULE__{workspace: %Workspace{} = workspace}), do: workspace
 
-  def key_place(%__MODULE__{access_key: %AccessKey{organisation: %Organisation{} = organisation}}),
-    do: organisation
+  def key_place(%__MODULE__{
+        access_key: %AccessKey{organisation: %Organisation{} = organisation}
+      }),
+      do: organisation
 
   def key_place(%__MODULE__{access_key: %AccessKey{organisation_id: organisation_id}}),
     do: %Organisation{id: organisation_id}

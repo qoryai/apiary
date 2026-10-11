@@ -54,7 +54,9 @@ defmodule Apiary.Repo.Migrations.LetAGatewayLiveAtAnOrganisation do
 
     # access_key_enrolment_codes
     execute "ALTER TABLE access_key_enrolment_codes ALTER COLUMN workspace_id DROP NOT NULL"
+
     execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_workspace_id_fkey"
+
     execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_node_id_fkey"
 
     execute """
@@ -200,7 +202,9 @@ defmodule Apiary.Repo.Migrations.LetAGatewayLiveAtAnOrganisation do
     drop index(:access_key_enrolment_codes, [:id, :organisation_id])
 
     execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_node_organisation_fkey"
+
     execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_node_id_fkey"
+
     execute "ALTER TABLE access_key_enrolment_codes DROP CONSTRAINT access_key_enrolment_codes_workspace_id_fkey"
 
     execute """
