@@ -223,6 +223,30 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     end
   end
 
+  test "a denial to a host longer than 255 bytes is a row with the host cut, and no rule from it",
+       %{conn: conn, scope: scope} do
+    long = String.duplicate("abcdefgh.", 33) <> "example"
+    cut = String.duplicate("abcdefgh.", 28) <> "…"
+
+    run =
+      started_run(scope, shop(),
+        egress: [Map.put(@denied, "host", long), Map.put(@denied, "host", long)]
+      )
+
+    assert run.denied_count == 2
+
+    view = open(conn, scope)
+    row = dst(cut)
+
+    assert text(view, "#connections-view-denied") == "Denied 1"
+    assert text(view, "##{row} .q-dest") == "#{cut} :443"
+    assert text(view, "##{row}") =~ "0 / 2 0 allowed, 2 denied"
+    refute has_element?(view, "##{row}-allow")
+    refute has_element?(view, "##{row}-deny")
+
+    if security?(), do: assert(text(view, "##{row}") =~ "No rule can name this host")
+  end
+
   describe "destinations across runs (C2, C3)" do
     setup %{scope: scope} do
       %{

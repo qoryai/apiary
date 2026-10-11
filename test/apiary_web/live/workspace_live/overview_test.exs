@@ -1544,6 +1544,38 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
       assert has_element?(view, "##{item}-done", "Allowed for the workspace")
     end
+
+    @tag needs: :security
+    test "a denied host longer than 255 bytes is listed with the host cut, and makes no rule", %{
+      conn: conn,
+      scope: scope
+    } do
+      long = String.duplicate("abcdefgh.", 33) <> "example"
+      cut = String.duplicate("abcdefgh.", 28) <> "…"
+
+      run =
+        started_run(scope, shop(),
+          egress: [%{"host" => long, "decision" => "denied", "rule" => ""}]
+        )
+
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      view = open(conn, scope)
+
+      [item] =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> LazyHTML.attribute("id")
+
+      assert text(view, "##{item}") =~ cut
+
+      view |> element("##{item}-act") |> render_click()
+      view |> element("#rule-panel form") |> render_submit()
+
+      assert text(view, "#rule-panel-error") =~ "This host cannot be named in a policy"
+      assert Policy.list_rules(scope, target) == []
+      assert Policy.list_rules(scope, nil) == []
+    end
   end
 
   describe "live" do

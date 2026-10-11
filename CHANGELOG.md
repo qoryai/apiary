@@ -655,6 +655,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
   scheme and a host, with a port if needed, and nothing more", by
   `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- A connection whose host is longer than 255 bytes keeps the host's first 252 bytes, cut
+  on a character boundary, followed by "…", and no rule can be made from it. Before, the
+  host was cut to 255 bytes with no mark, and the cut could read as another host name.
 
 ### Removed
 

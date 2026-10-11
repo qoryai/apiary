@@ -981,9 +981,87 @@ defmodule Apiary.Runs.FoldTest do
         ])
 
       assert [{{host, 443, cut}, %{attempts: 1}}] = Map.to_list(connections)
-      assert byte_size(host) == 255
+      assert host == String.duplicate("h", 252) <> "…"
       assert byte_size(cut) <= 1024
       assert String.valid?(cut)
+    end
+
+    test "a host longer than 255 bytes is kept, cut to 252 bytes and marked with …" do
+      long = String.duplicate("abcdefgh.", 33) <> "example"
+      assert byte_size(long) == 304
+
+      %{connections: connections} =
+        Fold.fold(@run, [egress(6, %{"host" => long, "decision" => "denied", "rule" => ""})])
+
+      assert [{{host, 443, ""}, %{attempts: 1, allowed: 0, denied: 1}}] =
+               Map.to_list(connections)
+
+      assert host == binary_part(long, 0, 252) <> "…"
+      assert byte_size(host) == 255
+      assert String.ends_with?(host, "…")
+    end
+
+    test "a host of 255 bytes is kept whole, and one of 256 is cut" do
+      exact = String.duplicate("a", 255)
+      over = String.duplicate("b", 256)
+
+      %{connections: connections} =
+        Fold.fold(@run, [egress(6, %{"host" => exact}), egress(7, %{"host" => over})])
+
+      assert connections |> Map.keys() |> Enum.sort() == [
+               {exact, 443, ""},
+               {String.duplicate("b", 252) <> "…", 443, ""}
+             ]
+    end
+
+    test "a long host is cut on a character boundary" do
+      # 301 bytes: the 252nd byte is the first half of an "é", which the cut leaves out.
+      long = "a" <> String.duplicate("é", 150)
+
+      %{connections: connections} = Fold.fold(@run, [egress(6, %{"host" => long})])
+
+      assert [{host, 443, ""}] = Map.keys(connections)
+      assert String.valid?(host)
+      assert host == "a" <> String.duplicate("é", 125) <> "…"
+      assert byte_size(host) == 254
+    end
+
+    test "two long hosts that share the first 252 bytes fold into one row" do
+      prefix = String.duplicate("p", 252)
+      cut = prefix <> "…"
+
+      %{connections: connections} =
+        Fold.fold(@run, [
+          egress(6, %{"host" => prefix <> ".one.example", "decision" => "denied", "rule" => ""}),
+          egress(7, %{"host" => prefix <> ".two.example"}),
+          egress(8, %{"host" => prefix <> ".two.example", "port" => 8443})
+        ])
+
+      assert %{
+               {^cut, 443, ""} => %{
+                 attempts: 2,
+                 allowed: 1,
+                 denied: 1,
+                 last_sequence: 7
+               },
+               {^cut, 8443, ""} => %{attempts: 1}
+             } = connections
+
+      assert map_size(connections) == 2
+    end
+
+    test "a host that is not a string, or a long one that is not UTF-8, is not a connection" do
+      invalid = String.duplicate("a", 100) <> <<0xFF>> <> String.duplicate("a", 200)
+
+      %{connections: connections} =
+        Fold.fold(@run, [
+          egress(6, %{"host" => invalid}),
+          egress(7, %{"host" => <<0xFF, 0xFE>> <> String.duplicate("a", 300)}),
+          egress(8, %{"host" => nil}),
+          egress(9, %{"host" => 7})
+        ])
+
+      assert connections == %{}
     end
 
     test "a tool invocation is a connection that names its tool and what the tool answered" do
