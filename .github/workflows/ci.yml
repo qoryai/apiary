@@ -39,10 +39,11 @@ jobs:
       #
       # A push saves the build under its own commit, and a run restores the newest saved
       # under the same mise.toml and mix.lock, else the newest of all, so the compiler
-      # recompiles only what changed since. A fresh checkout's files are all newer than the
-      # restored build: Mix compares a newer file's contents with the digest in its
-      # manifest, and recompiles it only when they differ. A directory has no digest, and
-      # takes a time made from its contents instead.
+      # recompiles only what changed since, except in the Gettext check, whose
+      # `compile --force-elixir` recompiles everything. A fresh checkout's files are all
+      # newer than the restored build: Mix compares a newer file's contents with the digest
+      # in its manifest, and recompiles it only when they differ. A directory has no digest,
+      # and takes a time made from its contents instead.
       - name: Give the directories times from their contents
         run: scripts/directory-mtimes.sh
 

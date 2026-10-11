@@ -18,10 +18,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-git ls-tree -r -d -z --format='%(objectname) %(path)' HEAD |
+# The default -z output keeps a path as it is; a --format would quote one with a quote,
+# a backslash, a newline or a character that is not ASCII.
+git ls-tree -r -d -z HEAD |
 	perl -0 -ne '
 		chomp;
-		my ($tree, $path) = split / /, $_, 2;
+		my ($meta, $path) = split /\t/, $_, 2;
+		my $tree = (split / /, $meta)[2];
 		my $time = hex(substr($tree, 0, 8)) % 1_000_000_000;
 		utime $time, $time, $path or die "$path: $!\n";
 	'
