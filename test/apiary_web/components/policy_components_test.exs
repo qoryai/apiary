@@ -253,6 +253,86 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       refute render_list([row(%{})], source: false) =~ "Source"
     end
 
+    # The list as the core's pages draw it: a section with its header, Add rule a link to
+    # the New rule page and a row's Edit a link to its Edit rule page.
+    defp paged_list(assigns) do
+      ~H"""
+      <PolicyComponents.rule_list
+        id="policy-rules"
+        label="Rules"
+        listing={@listing}
+        query={%RuleList{}}
+        path={fn _query -> "/acme/main/policy" end}
+        sections={[]}
+        default_sort="Locked first"
+        title="Network access"
+        heading_id="policy-hosts-h"
+        count={@count}
+        add_path={@add_path}
+        edit_path={@edit_path}
+      >
+        <:link><a id="policy-reached" href="/acme/main/network">See what the runs reached</a></:link>
+        <:description>The hosts this workspace's runs may reach, and those they may not.</:description>
+      </PolicyComponents.rule_list>
+      """
+    end
+
+    defp paged(rows, opts) do
+      rendered_to_string(
+        paged_list(%{
+          listing: RuleList.list(rows, %RuleList{}, :unavailable),
+          count: length(rows),
+          add_path: opts[:add_path],
+          edit_path: opts[:edit_path]
+        })
+      )
+    end
+
+    test "with add_path, Add rule is the header's one primary button, and Edit a row's link" do
+      rows = [own(%{paths: ["/v1/*"]}), own(%{id: "r2", host: "mcp.example", action: "deny"})]
+
+      html =
+        paged(rows,
+          add_path: "/acme/main/policy/rules/new",
+          edit_path: &"/acme/main/policy/rules/#{&1}/edit"
+        )
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert LazyHTML.text(LazyHTML.query(doc, "#policy-rules-head h2#policy-hosts-h")) =~
+               "Network access"
+
+      assert LazyHTML.text(LazyHTML.query(doc, "#policy-rules-head #policy-rules-count")) =~
+               "2 rules"
+
+      assert Enum.count(LazyHTML.query(doc, "#policy-rules-head #policy-reached")) == 1
+
+      assert Enum.count(
+               LazyHTML.query(
+                 doc,
+                 "#policy-rules-head a#policy-rules-add.btn-primary[href='/acme/main/policy/rules/new']"
+               )
+             ) == 1
+
+      assert text(html) =~ "The hosts this workspace's runs may reach, and those they may not."
+
+      # The bar holds Find, Filter and Sort; Add rule is not in it, and no composer opens.
+      refute html =~ "composer_open"
+      assert Enum.count(LazyHTML.query(doc, "#policy-rules-add")) == 1
+
+      # Edit, for an allow and for a deny, a link to the rule's page.
+      assert html =~ ~s(href="/acme/main/policy/rules/r1/edit")
+      assert html =~ ~s(href="/acme/main/policy/rules/r2/edit")
+      assert Enum.count(LazyHTML.query(doc, "a#rule-r1-edit")) == 1
+      assert text(html) =~ "Edit Change to deny Remove"
+      refute text(html) =~ "Edit paths"
+
+      # A reader, with no add_path: the header, and no Add rule.
+      reader = paged(rows, add_path: nil, edit_path: nil)
+      assert reader =~ ~s(id="policy-hosts-h")
+      refute reader =~ ~s(id="policy-rules-add")
+    end
+
     defp narrowed_list(assigns) do
       ~H"""
       <PolicyComponents.rule_list

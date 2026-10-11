@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.PolicyLive.Common do
   @moduledoc """
   What the workspace's policy page and a target's share: the rows of a rules table built
-  from `Apiary.Policy`, the composer's state and its events, the history, the version and
-  the export of a holder, and the words of a change.
+  from `Apiary.Policy`, the rule form's state and its events (the New rule and Edit rule
+  pages, and the composer kept for callers that have not moved to them), the history, the
+  version and the export of a holder, and the words of a change.
 
   A holder is `nil` for the workspace's baseline or an `Apiary.Runs.Target`. Everything is
   read through `Apiary.Policy`; nothing here touches a schema's table.
@@ -13,9 +14,17 @@ defmodule ApiaryWeb.PolicyLive.Common do
   level's name and nothing else of it.
 
   A page that lists rules of another holder than the workspace's or a target's gives
-  `mount/3` a `writer`, the functions its composer and its rows' menu write with
+  `mount/3` a `writer`, the functions its form and its rows' menu write with
   (`policy_writer/0` is the core's, `Apiary.Policy`'s), and leaves the events
   `edit_paths`, `change_action` and `remove` to `handle_event/3` here.
+
+  The rule form is a page (`ApiaryWeb.PolicyComponents.rule_form/1`, its id
+  `"policy-rule"`): the page opens it with `new_rule/2` or `edit_rule/2`, and its events
+  are `rule_validate`, `rule_save`, `rule_paste`, `rule_use` and `rule_every`. A save goes
+  back to the list as it was left (the page's `list_query`), at `?rule=` of the rule
+  written, while no pasted host is left to add. A page that still draws the composer
+  (`ApiaryWeb.PolicyComponents.rule_composer/1`, id `"policy-composer"`) mounts with
+  `form: "policy-composer"` and keeps its `composer_*` events.
   """
   use ApiaryWeb, :verified_routes
   use Gettext, backend: ApiaryWeb.Gettext
@@ -43,8 +52,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
   rules with (`t:writer/0`), the core's policy by default; `base`, the path of the page's
   list of rules, the holder's policy page by default; `shared`, whether a target holder's
   path is shared by another target of the workspace, read once
-  (`Apiary.Targets.shared?/2`) when the page does not say. The holder is named and
-  addressed by it (`holder_name/1`, `base/3`), its system said only where it is shared.
+  (`Apiary.Targets.shared?/2`) when the page does not say; `form`, the id of the page's
+  rule form, `"policy-rule"` (`ApiaryWeb.PolicyComponents.rule_form/1`) or
+  `"policy-composer"` (`ApiaryWeb.PolicyComponents.rule_composer/1`, the default, for a
+  page that has not moved to the form). The holder is named and addressed by it
+  (`holder_name/1`, `base/3`), its system said only where it is shared.
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
@@ -65,6 +77,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
       dialog: nil,
       mode_pick: nil,
       queue: [],
+      form_id: Keyword.get(opts, :form, "policy-composer"),
+      rule_edit: nil,
       reload_pending: false,
       touched: MapSet.new(),
       now: DateTime.utc_now()
@@ -500,7 +514,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
         own: own_for_reading(socket),
         entries: socket.assigns.effective.entries,
         owner: may?(socket, :"security_policy.lock"),
-        locked_by: socket.assigns[:locks] || %{}
+        locked_by: socket.assigns[:locks] || %{},
+        editing: socket.assigns[:rule_edit] != nil
       })
 
     assign(socket,
@@ -541,9 +556,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   defp fields(_params, _names), do: %{}
 
-  @doc "The shared events of the composer. Returns `{:halt, socket}` when it handled the event, `:cont` otherwise."
-  def handle_event("composer_change", params, socket) when is_map(params) do
-    params = fields(params["rule"], ~w(host paths))
+  @doc "The shared events of the rule form and the composer. Returns `{:halt, socket}` when it handled the event, `:cont` otherwise."
+  def handle_event(event, params, socket)
+      when event in ~w(rule_validate composer_change) and is_map(params) do
+    # The form's action is a radio, sent with the fields; the composer's, a button of its own.
+    params = fields(params["rule"], ~w(host paths action))
+
+    params =
+      if params["action"] in [nil, "allow", "deny"],
+        do: params,
+        else: Map.delete(params, "action")
 
     # Typing a host again takes back an "every path" asked for another host.
     params =
@@ -559,7 +581,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
     {:halt, socket |> read(%{"action" => action}) |> focus("policy-composer-host")}
   end
 
-  def handle_event("composer_use", params, socket) when is_map(params) do
+  # A repair ("Use api.example with the path /v1"): the fields it fills, the focus on the
+  # field it filled last.
+  def handle_event(event, params, socket)
+      when event in ~w(rule_use composer_use) and is_map(params) do
     values = params |> fields(~w(host paths action)) |> Map.put("every", "false")
 
     values =
@@ -567,22 +592,24 @@ defmodule ApiaryWeb.PolicyLive.Common do
         do: values,
         else: Map.delete(values, "action")
 
-    field =
-      if params["focus"] == "paths", do: "policy-composer-paths", else: "policy-composer-host"
+    form = socket.assigns.form_id
+    field = if params["focus"] == "paths", do: "#{form}-paths", else: "#{form}-host"
 
     {:halt,
      socket |> assign(:composer_open, true) |> read(values) |> set_fields() |> focus(field)}
   end
 
-  def handle_event("composer_every", _params, socket) do
-    {:halt,
-     socket
-     |> read(%{"every" => "true", "paths" => ""})
-     |> set_fields()
-     |> focus("policy-composer-add")}
+  # Every path, asked for in so many words: on the form the focus goes to Paths, the field
+  # it emptied; in the composer, to its button.
+  def handle_event(event, _params, socket) when event in ~w(rule_every composer_every) do
+    form = socket.assigns.form_id
+    to = if form == "policy-composer", do: "#{form}-add", else: "#{form}-paths"
+
+    {:halt, socket |> read(%{"every" => "true", "paths" => ""}) |> set_fields() |> focus(to)}
   end
 
-  def handle_event("composer_paste", %{"hosts" => hosts}, socket) when is_list(hosts) do
+  def handle_event(event, %{"hosts" => hosts}, socket)
+      when event in ~w(rule_paste composer_paste) and is_list(hosts) do
     hosts =
       hosts
       |> Enum.filter(&is_binary/1)
@@ -601,6 +628,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
          |> assign(:queue, rest)
          |> read(%{"host" => first, "every" => "false"})
          |> set_fields()}
+    end
+  end
+
+  # The form's button is never off: a form that cannot be saved says why under the field
+  # that is wrong, and the focus goes to that field.
+  def handle_event("rule_save", _params, socket) do
+    socket = read(socket, %{})
+    %{reading: reading, composer_params: params} = socket.assigns
+
+    cond do
+      String.trim(params["host"] || "") == "" ->
+        {:halt,
+         socket
+         |> assign(:reading, Reading.empty_host())
+         |> focus("#{socket.assigns.form_id}-host")}
+
+      reading.kind in [:ok, :note] ->
+        {:halt, save_rule(socket)}
+
+      true ->
+        {:halt, focus(socket, first_wrong(socket))}
     end
   end
 
@@ -731,6 +779,110 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def handle_event(_event, _params, _socket), do: :cont
 
+  # The first field of the form the reading finds wrong; under a refusal, or where nothing
+  # names a field (an edit with nothing to save), the action picked, the form's first.
+  defp first_wrong(socket) do
+    form = socket.assigns.form_id
+    reading = socket.assigns.reading
+    edit? = socket.assigns.rule_edit != nil
+
+    case Enum.map(reading.errors, &elem(&1, 0)) ++ reading.invalid do
+      [:host | _] when not edit? -> "#{form}-host"
+      fields -> if :paths in fields, do: "#{form}-paths", else: action_id(socket)
+    end
+  end
+
+  defp action_id(socket),
+    do: "#{socket.assigns.form_id}-#{socket.assigns.composer_params["action"] || "allow"}"
+
+  @doc """
+  Opens the New rule page (`ApiaryWeb.PolicyComponents.rule_form/1`): the form empty,
+  Allow picked, or filled from the address, `?action=deny&host=…&paths=…`, read at once.
+  The focus goes to the action picked, or to Paths with `focus=paths`. A reader who may not
+  change the policy is sent back to the list (`refuse_form/1`).
+  """
+  def new_rule(socket, params) do
+    if may?(socket, :"security_policy.edit") do
+      values = params |> fields(~w(action host paths)) |> Map.put("every", "false")
+
+      values =
+        if values["action"] in ["allow", "deny"],
+          do: values,
+          else: Map.delete(values, "action")
+
+      socket =
+        socket
+        |> assign(queue: [], rule_edit: nil, write_error: nil, composer_open: false)
+        |> reset_composer(values)
+        |> then(&if(String.trim(values["host"] || "") != "", do: read(&1, %{}), else: &1))
+        |> set_fields()
+
+      if params["focus"] == "paths" and socket.assigns.composer_params["action"] != "deny",
+        do: focus(socket, "#{socket.assigns.form_id}-paths"),
+        else: focus(socket, action_id(socket))
+    else
+      refuse_form(socket)
+    end
+  end
+
+  @doc """
+  Opens the Edit rule page of the rule `id`, a host rule of the page's holder: the form
+  filled with it, its host shown and kept. A rule that is gone sends the reader back to the
+  list with the domain's sentence, one of another holder back to the list; a reader who
+  may not change the policy is sent back to it too (`refuse_form/1`).
+  """
+  def edit_rule(socket, id) do
+    holder_id = socket.assigns.holder && socket.assigns.holder.id
+
+    with true <- may?(socket, :"security_policy.edit") || :refused,
+         true <- is_binary(id) and byte_size(id) <= 64,
+         {:ok, %{kind: "host"} = rule} <-
+           socket.assigns.writer.get.(socket.assigns.current_scope, id),
+         true <- Map.get(rule, :target_id) == holder_id do
+      socket
+      |> assign(queue: [], rule_edit: rule, write_error: nil, composer_open: false)
+      |> reset_composer(%{
+        "action" => rule.action,
+        "host" => rule.host,
+        "paths" => Enum.join(rule.paths || [], " ")
+      })
+      |> read(%{})
+      |> set_fields()
+      |> then(&focus(&1, action_id(&1)))
+    else
+      :refused ->
+        refuse_form(socket)
+
+      {:error, %Policy.Error{message: message}} ->
+        socket
+        |> put_flash(:error, message)
+        |> push_patch(to: list_path(socket, socket.assigns.list_query))
+
+      _another_holders ->
+        push_patch(socket, to: list_path(socket, socket.assigns.list_query))
+    end
+  end
+
+  @doc "A reader who may not change the policy, on a form's address: back to the list, told why."
+  def refuse_form(socket) do
+    socket
+    |> put_flash(:error, gettext("You can read this policy but not change it."))
+    |> push_patch(to: list_path(socket, socket.assigns.list_query))
+  end
+
+  @doc "Where the rule form's Cancel leads: the list as the reader left it."
+  def cancel_path(socket_or_assigns)
+  def cancel_path(%{assigns: assigns}), do: cancel_path(assigns)
+  def cancel_path(%{base: base, list_query: query}), do: list_path(base, query)
+
+  @doc "Where the list's Add rule leads: the holder's New rule page."
+  def new_rule_path(%{assigns: assigns}), do: new_rule_path(assigns)
+  def new_rule_path(%{base: base}), do: base <> "/rules/new"
+
+  @doc "Where a rule's Edit leads: the holder's Edit rule page."
+  def edit_rule_path(%{assigns: assigns}, id), do: edit_rule_path(assigns, id)
+  def edit_rule_path(%{base: base}, id), do: "#{base}/rules/#{id}/edit"
+
   defp save_rule(socket) do
     %{"action" => action, "host" => host, "paths" => paths, "every" => every} =
       socket.assigns.composer_params
@@ -763,13 +915,31 @@ defmodule ApiaryWeb.PolicyLive.Common do
             [] -> {%{}, []}
           end
 
-        socket
-        |> assign(:queue, queue)
-        |> reset_composer(Map.put(next, "action", action))
-        |> wrote(rule, rule_written(socket, action, host), gettext("Rule added."))
-        |> then(&if(next == %{}, do: &1, else: read(&1, %{})))
-        |> set_fields()
-        |> focus("policy-composer-host")
+        socket =
+          socket
+          |> assign(:queue, queue)
+          |> reset_composer(Map.put(next, "action", action))
+          |> wrote(rule, rule_written(socket, action, host), gettext("Rule added."))
+          |> then(&if(next == %{}, do: &1, else: read(&1, %{})))
+          |> set_fields()
+
+        cond do
+          socket.assigns.form_id == "policy-composer" or next != %{} ->
+            focus(socket, "#{socket.assigns.form_id}-host")
+
+          # The form's last host is written: back to the list as it was left, on the page
+          # that holds the rule, its row marked and its menu focused.
+          true ->
+            socket
+            |> assign(rule_edit: nil)
+            |> focus("rule-#{rule.id}-menu-button")
+            |> push_patch(
+              to:
+                list_path(socket, socket.assigns.list_query, %{
+                  "rule" => Map.get(rule, :host) || host
+                })
+            )
+        end
 
       {:error, error} ->
         refused(socket, error)
@@ -829,7 +999,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         is_nil(before_holder) and is_binary(holder) and not is_nil(before) ->
           " " <>
             gettext(
-              "Version %{version} of this target's own policy; until now it was served the workspace's.",
+              "Version %{version} of this target's policy; until now it was served the workspace's.",
               version: version
             )
 
@@ -882,12 +1052,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   """
   def set_fields(socket) do
     composer = socket.assigns.composer_params
+    form = socket.assigns.form_id
 
     push_event(socket, "policy:fields", %{
       fields: %{
-        "policy-composer-host" => composer["host"],
-        "policy-composer-paths" =>
-          if(composer["action"] == "deny", do: "", else: composer["paths"])
+        "#{form}-host" => composer["host"],
+        "#{form}-paths" => if(composer["action"] == "deny", do: "", else: composer["paths"])
       }
     })
   end

@@ -90,9 +90,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     |> Enum.map(&(LazyHTML.text(&1) |> String.trim()))
   end
 
-  # The composer opens from Add rule: a test that types into it opens it first.
+  # The New rule page opens from Add rule, a patch: a test that types into it opens it first.
   defp compose(view) do
-    if has_element?(view, "#policy-rules-add[aria-expanded=false]") do
+    unless has_element?(view, "#policy-rule-form") do
       view |> element("#policy-rules-add") |> render_click()
     end
 
@@ -101,8 +101,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   defp type(view, params) do
     compose(view)
-    view |> form("#policy-composer", rule: params) |> render_change()
+    view |> form("#policy-rule-form", rule: params) |> render_change()
   end
+
+  defp add(view), do: view |> form("#policy-rule-form") |> render_submit()
 
   # The mode's choices: Change mode opens them, where they are shut; a pick only selects.
   defp pick_mode(view, setting) do
@@ -272,7 +274,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view = open(conn, path)
 
     assert has_element?(view, "h1", "acme/shop")
-    assert text(view, "#policy-no-own") =~ "This repository has no rules of its own."
+    assert text(view, "#policy-no-own") =~ "This repository has no rules."
 
     assert text(view, "#policy-no-own") =~
              "It is served #{scope.workspace.name}'s policy, version"
@@ -290,7 +292,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
              "registry.example"
            ]
 
-    assert has_element?(view, "#policy-rules-sort-button[aria-label='Sort: Its own first']")
+    assert has_element?(
+             view,
+             "#policy-rules-sort-button[aria-label='Sort: Repository rules first']"
+           )
 
     # Every rule is the workspace's: its source says so, its menu leads to it there, and
     # nothing changes it here.
@@ -312,7 +317,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "#policy-credentials")
 
     assert text(view, "#policy-hosts-note") =~
-             "Its own rules come first and are changed here; #{scope.workspace.name}'s follow"
+             "Repository rules come first and are changed here; #{scope.workspace.name}'s follow"
 
     # The target's page holds the tab, beside Overview: its runs and its network access
     # are the workspace's lists, narrowed to it, not tabs of its page.
@@ -326,19 +331,19 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
        %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
 
-    view |> compose() |> element("#policy-composer button", "Deny") |> render_click()
-    type(view, %{host: "gitlab.example"})
+    type(view, %{action: "deny", host: "gitlab.example"})
 
-    assert text(view, "#policy-composer-reads") =~
+    assert text(view, "#policy-rule-reads") =~
              "gitlab.example is allowed for the workspace. This rule denies it for this repository; other repositories keep it."
 
-    view |> form("#policy-composer") |> render_submit()
+    add(view)
+    assert_patch(view, path <> "?rule=gitlab.example")
 
     rule = own(scope, target, "gitlab.example")
     assert rule.action == "deny"
 
     assert text(view, "#flash-info") =~
-             "gitlab.example is denied for acme/shop. Version 1 of this repository's own policy; until now it was served the workspace's."
+             "gitlab.example is denied for acme/shop. Version 1 of this repository's policy; until now it was served the workspace's."
 
     # Its own comes first, with its source and its menu; the workspace's allow stays in
     # the list, struck, and says why.
@@ -347,6 +352,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#rule-#{rule.id}") =~ "New in v1"
     assert has_element?(view, "#rule-#{rule.id}-menu button", "Change to allow")
     assert has_element?(view, "#rule-#{rule.id}-menu button", "Remove")
+    assert has_element?(view, "#rule-#{rule.id}-menu a", "Edit")
     refute has_element?(view, "#rule-#{rule.id}-menu button", "Edit paths")
     refute has_element?(view, "#policy-no-own")
 
@@ -390,10 +396,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view = open(conn, path)
     type(view, %{host: "telemetry.example", paths: ""})
 
-    assert text(view, "#policy-composer-reads") =~
+    assert text(view, "#policy-rule-reads") =~
              "telemetry.example is denied for the workspace. This rule allows it for this repository; other repositories keep the deny."
 
-    view |> form("#policy-composer") |> render_submit()
+    add(view)
 
     rule = own(scope, target, "telemetry.example")
     assert rule.action == "allow"
@@ -402,7 +408,12 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#rule-#{beaten.id}") =~
              "Not in force: this repository's own rule decides it"
 
-    assert has_element?(view, "#rule-#{rule.id}-menu button", "Edit paths")
+    assert has_element?(
+             view,
+             "#rule-#{rule.id}-edit[href='#{path}/rules/#{rule.id}/edit']",
+             "Edit"
+           )
+
     assert has_element?(view, "#rule-#{rule.id}-menu button", "Change to deny")
     assert has_element?(view, "#rule-#{rule.id}-menu button", "Remove")
     refute has_element?(view, "#rule-#{rule.id}-menu button", "Lock")
@@ -438,7 +449,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     # Its menu holds only Remove: there is nothing to change while the lock holds.
     refute has_element?(view, "#rule-#{held.id}-menu button", "Change to deny")
-    refute has_element?(view, "#rule-#{held.id}-menu button", "Edit paths")
+    refute has_element?(view, "#rule-#{held.id}-edit")
     assert text(view, "#rule-#{workspace_rule(scope, "*.paste.example").id}-lock") == "Locked"
 
     view |> element("#rule-#{held.id}-menu button", "Remove") |> render_click()
@@ -446,30 +457,27 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#flash-info") =~ "The rule *.paste.example is removed."
   end
 
-  test "the composer adds for the target, and a locked workspace rule refuses it",
+  test "the New rule page adds for the target, and a locked workspace rule refuses it",
        %{conn: conn, scope: scope, target: target, path: path} do
     view = compose(open(conn, path))
-    assert text(view, "#policy-composer-add") == "Add for this repository"
+    assert_patch(view, path <> "/rules/new")
+    assert text(view, "#policy-rule-add") == "Add repository rule"
 
-    view
-    |> form("#policy-composer", rule: %{host: "bin.paste.example", paths: ""})
-    |> render_change()
+    type(view, %{host: "bin.paste.example", paths: ""})
 
-    assert has_element?(view, "#policy-composer-reads[role=alert]")
+    assert has_element?(view, "#policy-rule-refusal[role=alert]")
 
-    assert text(view, "#policy-composer-reads") =~
+    assert text(view, "#policy-rule-refusal") =~
              "A locked workspace rule denies *.paste.example ."
 
-    assert text(view, "#policy-composer-reads") =~
+    assert text(view, "#policy-rule-refusal") =~
              "You can change or unlock it on the workspace's policy page."
 
-    assert has_element?(view, "#policy-composer-add[disabled]")
+    add(view)
+    refute own(scope, target, "bin.paste.example")
 
-    view
-    |> form("#policy-composer", rule: %{host: "mcp.acme.example", paths: "/mcp/*"})
-    |> render_change()
-
-    view |> form("#policy-composer") |> render_submit()
+    type(view, %{host: "mcp.acme.example", paths: "/mcp/*"})
+    add(view)
 
     assert own(scope, target, "mcp.acme.example").paths == ["/mcp/*"]
     assert Enum.all?(Policy.list_rules(scope, nil), &(&1.host != "mcp.acme.example"))
@@ -479,38 +487,34 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
        %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example", locked: true})
-    view = compose(open(conn, path))
+    view = open(conn, path)
 
-    view |> element("#policy-composer button", "Deny") |> render_click()
-    view |> form("#policy-composer", rule: %{host: "files.cdn.example"}) |> render_change()
+    type(view, %{action: "deny", host: "files.cdn.example"})
 
-    assert text(view, "#policy-composer-reads") =~
+    assert text(view, "#policy-rule-reads") =~
              "*.cdn.example still allows the other hosts below it."
 
-    refute has_element?(view, "#policy-composer-add[disabled]")
-    view |> form("#policy-composer") |> render_submit()
+    add(view)
 
     assert "files.cdn.example" in Policy.effective(scope, target).deny
     assert has_element?(view, "#policy-rules .q-host", "files.cdn.example")
 
-    view |> element("#policy-composer button", "Deny") |> render_click()
-    view |> form("#policy-composer", rule: %{host: "tax.internal.example"}) |> render_change()
+    type(view, %{action: "deny", host: "tax.internal.example"})
 
-    assert text(view, "#policy-composer-reads") =~
+    assert text(view, "#policy-rule-refusal") =~
              "A locked workspace rule allows *.internal.example"
 
-    assert has_element?(view, "#policy-composer-add[disabled]")
+    add(view)
+    refute own(scope, target, "tax.internal.example")
   end
 
   test "a member is told only an owner changes the lock", %{scope: scope, path: path} do
     %{user: member} = member_fixture(scope, :member)
     view = compose(open(log_in_user(build_conn(), member), path))
 
-    view
-    |> form("#policy-composer", rule: %{host: "bin.paste.example", paths: ""})
-    |> render_change()
+    type(view, %{host: "bin.paste.example", paths: ""})
 
-    assert text(view, "#policy-composer-reads") =~ "Only an owner can change or unlock it."
+    assert text(view, "#policy-rule-refusal") =~ "Only an owner can change or unlock it."
   end
 
   describe "the target's mode" do
@@ -934,8 +938,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view = open(conn, path)
       refute has_element?(view, "#policy-suggestions-all")
       other = PolicyComponents.suggestion_id("downloads.runtime.example")
-      view |> element("##{other}-menu button", "Allow with paths") |> render_click()
-      assert has_element?(view, "#policy-composer-host[value='downloads.runtime.example']")
+      view |> element("##{other}-paths", "Allow with paths") |> render_click()
+
+      assert_patch(
+        view,
+        path <>
+          "/rules/new?" <> "focus=paths&host=downloads.runtime.example"
+      )
+
+      assert has_element?(view, "#policy-rule-host[value='downloads.runtime.example']")
       refute own(scope, target, "downloads.runtime.example")
     end
 

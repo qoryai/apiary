@@ -47,25 +47,39 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
         Map.merge(%{kind: :host, action: :allow, source: :workspace}, Map.new(attrs))
       )
 
-  test "empty is the hint" do
-    assert %{kind: :hint} = read(%{"host" => "  "})
-    assert flat(Reading.hint().text) =~ "No scheme, no port."
+  test "empty is the hint, and the form's preview asks for a host" do
+    assert %{kind: :hint, preview: {:idle, idle}} = read(%{"host" => "  "})
+    assert flat(idle) == "Type a host to see the rule in plain words before you add it."
+
+    assert flat(Reading.hint().text) ==
+             "The name runs connect to, in lower case, without https:// or a port. Start it with *. to cover every host below a domain, such as *.example.com."
+
+    assert flat(Reading.paths_hint()) ==
+             "Leave it empty to allow every path. Separate paths with spaces; end one with * for everything below it, such as /v1/*."
+
+    # Sent with no host, the error is said under Host.
+    assert %{kind: :error, invalid: [:host], errors: [{:host, text, nil}]} = Reading.empty_host()
+    assert flat(text) == "Enter a host, such as api.example.com."
   end
 
   test "reads back a host, a suffix, paths and a deny" do
     assert flat(read(%{"host" => "api.example"}).text) ==
-             "Reads as: allow api.example, on every path."
+             "Allow api.example, on every path."
 
     assert flat(read(%{"host" => "*.internal.example"}).text) ==
-             "Reads as: allow every host below internal.example, on every path. It does not allow internal.example itself."
+             "Allow every host below internal.example, on every path. It does not allow internal.example itself."
 
     assert flat(read(%{"host" => "api.example", "paths" => "/v1/*  /health"}).text) =~
-             "allow api.example on 2 paths: everything below /v1/, and /health exactly."
+             "Allow api.example on 2 paths: everything below /v1/, and /health exactly."
 
     assert flat(read(%{"host" => "*.paste.example", "action" => "deny"}).text) ==
-             "Reads as: deny every host below paste.example, and every allow rule it covers. It is denied in either mode, observe too."
+             "Deny every host below paste.example, and every allow rule it covers. It is denied in either mode, observe too."
 
-    assert %{kind: :ok, invalid: [], button: nil} = read(%{"host" => "api.example"})
+    # The form's "What this rule does" is the same sentence.
+    assert %{kind: :ok, invalid: [], button: nil, errors: [], preview: {:ok, text}} =
+             reading = read(%{"host" => "api.example"})
+
+    assert text == reading.text
   end
 
   test "a deny never reads paths" do
@@ -78,18 +92,28 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              kind: :error,
              invalid: [:host],
              fix:
-               {"Use api.example with the path /v1/messages", "composer_use",
-                %{"host" => "api.example", "paths" => "/v1/messages"}}
-           } =
-             read(%{"host" => "https://API.Example:443/v1/messages"})
+               {"Use api.example with the path /v1/messages", "rule_use",
+                %{"host" => "api.example", "paths" => "/v1/messages"}} = fix,
+             errors: [{:host, _text, fix}],
+             preview: {:idle, idle}
+           } = read(%{"host" => "https://API.Example:443/v1/messages"})
+
+    assert flat(idle) == "Fix the host to see the rule in plain words."
 
     assert %{fix: {"Use api.example", _, _}} = read(%{"host" => "API.example"})
     assert %{kind: :error, fix: nil} = read(%{"host" => "exa mple"})
     assert flat(read(%{"host" => "*"}).text) =~ "may only lead a host"
     assert flat(read(%{"host" => "a_b.example"}).text) =~ "Each part of a host"
     assert flat(read(%{"host" => "[::1]:80"}).text) =~ "An address is written like a host"
-    assert %{kind: :error, invalid: [:paths]} = read(%{"host" => "api.example", "paths" => "v1"})
-    assert %{invalid: [:host, :paths]} = read(%{"host" => "a.*.example", "paths" => "/a?b"})
+
+    assert %{kind: :error, invalid: [:paths], errors: [{:paths, _, nil}], preview: {:idle, idle}} =
+             read(%{"host" => "api.example", "paths" => "v1"})
+
+    assert flat(idle) == "Fix the paths to see the rule in plain words."
+
+    # Both wrong: each is said under its own field, the host's first.
+    assert %{invalid: [:host, :paths], errors: [{:host, _, _}, {:paths, _, _}]} =
+             read(%{"host" => "a.*.example", "paths" => "/a?b"})
   end
 
   test "the same rule again, the opposite rule, other paths" do
@@ -102,10 +126,21 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert flat(reading.text) ==
              "registry.example is already allowed for the workspace, by beekeeper on 2 Sep."
 
-    assert %{kind: :note, button: "Replace with deny"} =
+    assert [{:host, _, {"Show it", _, _}}] = reading.errors
+
+    assert flat(elem(reading.preview, 1)) ==
+             "Nothing new: this rule is already in the list. To change its paths, edit it from its row."
+
+    # On the Edit rule page the same rule is nothing to save, and no error under a field.
+    assert %{kind: :error, errors: [], preview: {:idle, nothing}} =
+             read(%{"host" => "registry.example"}, Map.put(context, :editing, true))
+
+    assert flat(nothing) == "Nothing to save: the rule is as it was."
+
+    assert %{kind: :note, button: "Replace with deny", preview: {:note, _}} =
              read(%{"host" => "registry.example", "action" => "deny"}, context)
 
-    assert %{kind: :error, fix: {"Every path", "composer_every", _}} =
+    assert %{kind: :error, fix: {"Every path", "rule_every", _}, errors: [{:paths, _, _}]} =
              read(%{"host" => "api.example"}, context)
 
     assert %{kind: :note, button: "Change paths"} =
@@ -128,7 +163,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              reading = read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
 
     assert flat(reading.text) ==
-             "Reads as: deny files.cdn.example. It takes the host out of what the workspace allows; a repository can still allow it unless you lock this rule. It is denied in either mode, observe too. *.cdn.example still allows the other hosts below it."
+             "Deny files.cdn.example. It takes the host out of what the workspace allows; a repository can still allow it unless you lock this rule. It is denied in either mode, observe too. *.cdn.example still allows the other hosts below it."
 
     # A narrower suffix under a broader one is said the same way.
     assert %{kind: :ok} =
@@ -194,5 +229,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              reading = read(%{"host" => "github.example", "action" => "deny"}, context)
 
     assert flat(reading.text) == "Only an owner can lock, unlock or change a locked rule."
+    # A refusal takes the preview's place on the form.
+    assert reading.preview == nil
   end
 end
