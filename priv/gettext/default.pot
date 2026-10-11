@@ -571,17 +571,17 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "%{name} connects to Qory Apiary with a key. Choose one of two ways to give it one."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "%{name} connects to Qory Apiary with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} connects to Qory with a key. Choose one of two ways to give it one."
-msgstr ""
-
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} connects to Qory with a key; its instances share one. Choose one of two ways to give it one."
+msgid "%{name} connects to Qory Apiary with a key; its instances share one. Choose one of two ways to give it one."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/show.ex

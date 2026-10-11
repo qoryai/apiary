@@ -982,9 +982,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   reads none (`NodeComponents.through_gateway/1`). The command and the Forager file are
   the same either way: they point at Qory Apiary. A gateway's own tab has the same
   layout in its own words: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
-  "How do you want to connect build-01?", "build-01 connects to Qory with a key. Choose
-  one of two ways to give it one." (a pool's: "spot-runners connects to Qory with a key;
-  its instances share one. Choose one of two ways to give it one."), and
+  "How do you want to connect build-01?", "build-01 connects to Qory Apiary with a key.
+  Choose one of two ways to give it one." (a pool's: "spot-runners connects to Qory Apiary
+  with a key; its instances share one. Choose one of two ways to give it one."), and
   two options of equal weight, side by side from `md`, stacked below it, of one height
   (`items-stretch`), each its icon and title, "Choose it when …" in the body colour, what
   happens in two muted sentences, then the same four facts in the same rows (a `dl` of two

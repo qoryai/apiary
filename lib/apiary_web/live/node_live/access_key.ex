@@ -1047,7 +1047,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp connect_intro(%Node{kind: :pool, name: name}),
     do:
       gettext(
-        "%{name} connects to Qory with a key; its instances share one. Choose one of two ways to give it one.",
+        "%{name} connects to Qory Apiary with a key; its instances share one. Choose one of two ways to give it one.",
         name: name
       )
 
@@ -1061,7 +1061,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp connect_intro(%Node{name: name}),
     do:
       gettext(
-        "%{name} connects to Qory with a key. Choose one of two ways to give it one.",
+        "%{name} connects to Qory Apiary with a key. Choose one of two ways to give it one.",
         name: name
       )
 
