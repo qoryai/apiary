@@ -1126,8 +1126,6 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp members_path(socket),
     do: ~p"/#{socket.assigns.current_scope.organisation}/settings/people"
 
-  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
-  # A membership that is gone has sent the page to `/` by then.
   # A level the edition refused to give here, said in its words
   # (`c:ApiaryWeb.Edition.level_refusal_sentence/2`), or the page's own; the page shows
   # the levels and the invitations as they are now.
@@ -1138,6 +1136,8 @@ defmodule ApiaryWeb.MemberLive.Index do
     if socket.redirected, do: socket, else: push_patch(socket, to: members_path(socket))
   end
 
+  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
+  # A membership that is gone has sent the page to `/` by then.
   defp unauthorized(socket) do
     socket =
       socket

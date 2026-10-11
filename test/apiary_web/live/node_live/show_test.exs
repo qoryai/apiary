@@ -234,7 +234,10 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       # Sent all the same, as the page never sends it.
       render_hook(lv, "save", %{"node" => %{"name" => "ci-runners", "instance_limit" => "9"}})
-      assert render(lv) =~ "You can&#39;t change the instance limit."
+
+      assert lv |> element("#flash-group") |> render() =~
+               "You can&#39;t change the instance limit."
+
       assert has_element?(lv, "#node-save")
       assert %Node{name: "ci-runners", instance_limit: 5} = Repo.get!(Node, pool.id)
     end
