@@ -131,7 +131,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `outcome_given`. A run of another node, one the workspace does not hold, and one whose
   events retention pruned are `404` `not_found`. Where the outcome's state differs from
   what the run's exit said, the run page says both, for example "Succeeded, as its starter
-  said; the runtime exited 1".
+  said; the runtime exited 1". A run a gateway opened, with no runtime of its own, says
+  the outcome's state alone: "Succeeded, as its starter said".
 - The end of a run, in the answers to its batches. Once a run's starter has given its
   outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
   carries `end` with the outcome's state and reason, as `application/json`,

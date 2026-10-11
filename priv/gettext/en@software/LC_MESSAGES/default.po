@@ -3375,6 +3375,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Cancelled, as its starter said"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Cancelled, as its starter said; the runtime ended with %{signal}"
 msgstr ""
 
@@ -5080,6 +5085,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Failed with exit %{code}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Failed, as its starter said"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -10598,6 +10608,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Subjects"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded, as its starter said"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

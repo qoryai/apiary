@@ -871,7 +871,10 @@ defmodule ApiaryWeb.RunComponents do
   did. "Succeeded, as its starter said; the runtime exited 1"; with a signal, "Failed, as
   its starter said; the runtime ended with SIGKILL"; before any exit, "Cancelled, as its
   starter said; the runtime has not exited yet"; an exit with no code of its own, "...; the
-  runtime's exit was not recorded". Nil for any other run, which reads as it always has.
+  runtime's exit was not recorded". A run a gateway opened, with no session
+  (`Apiary.Runs.Run.no_session?/1`), has no runtime of its own, and says the outcome's state
+  alone: "Succeeded, as its starter said". Nil for any other run, which reads as it always
+  has.
   """
   @spec outcome_sentence(map() | nil) :: String.t() | nil
   def outcome_sentence(%{outcome_state: state} = run) when is_binary(state) do
@@ -880,16 +883,25 @@ defmodule ApiaryWeb.RunComponents do
 
   def outcome_sentence(_run), do: nil
 
-  # What the runtime did, as the outcome's sentence says it.
-  defp runtime_exit(%{exited_at: nil}), do: :running
+  # What the runtime did, as the outcome's sentence says it; nothing for a run with no
+  # runtime of its own.
+  defp runtime_exit(run) do
+    if Run.no_session?(run), do: :no_runtime, else: exit_of(run)
+  end
 
-  defp runtime_exit(%{signal: signal}) when is_binary(signal) and signal != "",
+  defp exit_of(%{exited_at: nil}), do: :running
+
+  defp exit_of(%{signal: signal}) when is_binary(signal) and signal != "",
     do: {:signal, signal}
 
-  defp runtime_exit(%{exit_code: code}) when is_integer(code) and code != -1,
+  defp exit_of(%{exit_code: code}) when is_integer(code) and code != -1,
     do: {:code, code}
 
-  defp runtime_exit(_run), do: :not_recorded
+  defp exit_of(_run), do: :not_recorded
+
+  defp outcome_sentence("succeeded", :no_runtime), do: gettext("Succeeded, as its starter said")
+  defp outcome_sentence("failed", :no_runtime), do: gettext("Failed, as its starter said")
+  defp outcome_sentence("cancelled", :no_runtime), do: gettext("Cancelled, as its starter said")
 
   defp outcome_sentence("succeeded", {:code, code}),
     do: gettext("Succeeded, as its starter said; the runtime exited %{code}", code: code)
