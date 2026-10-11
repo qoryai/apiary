@@ -398,9 +398,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   (`c:Apiary.Edition.lock_rows/1`), in every change of people and every write that must
   stay allowed. Several organisations are locked in one order,
   `Apiary.Organisations.lock_order/1`, which an edition must use whenever it locks the
-  rows of more than one, and in one statement, `Apiary.Organisations.lock_organisations/2`,
-  which reads the order again and locks once more when Postgres refuses its lock as a
-  deadlock.
+  rows of more than one, and `Apiary.Organisations.lock_organisations/2`, through which
+  every change that locks more than one organisation row takes them, in any mode, so
+  what it holds in the end was taken in one statement, and which reads the order again
+  and locks once more when Postgres refuses its lock as a deadlock.
   A test may have a stub answer some of the edition's callbacks in its own
   processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
