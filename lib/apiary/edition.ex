@@ -29,13 +29,13 @@ defmodule Apiary.Edition do
   - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
     security policy.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
-    `reload/2`, `places_to_lock/1`, `every_workspace_levels/0`, `reaches_workspace?/3`,
-    `reached_workspaces/2`.
+    `reload/2`, `places_to_lock/1`, `lock_rows/1`, `every_workspace_levels/0`,
+    `reaches_workspace?/3`, `reached_workspaces/2`.
   - **In use**, refinements of the queries that must leave out what the edition holds out
     of use: `active_accounts/2`, `active_organisations/2`, `account_refusal/1`.
   - **Places**: `places/1`, the organisations a person reaches.
   - **Invitations**: `accepting/3`, `accepted/4`.
-  - **Members**: `membership_changed/5`.
+  - **Members**: `membership_changed/5`, `level_refusal/4`.
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
   - **Audit trail** (`Apiary.Audit`): `audit_details/3`, what the edition adds to an
     entry's details as it is written.
@@ -43,6 +43,10 @@ defmodule Apiary.Edition do
     `features_of/3` (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
+
+  **The test seam.** A test may have a stub answer some callbacks in its own processes
+  (`put_test_stub/1`), as an edition that narrows the core would, while the configured
+  edition answers every other call.
   """
 
   alias Apiary.Accounts.{Scope, User}
@@ -59,6 +63,18 @@ defmodule Apiary.Edition do
 
   @typedoc "What a deletion or purge is about."
   @type deletion_subject :: %Organisation{} | %Workspace{}
+
+  @typedoc """
+  What a change asks the edition to lock its rows for (`c:lock_rows/1`): `{:places, scope}`,
+  a write that must stay allowed for the scope's person; `{:people, scope, organisation}`, a
+  change of the organisation's people, `scope` nil for a sign-up;
+  `{:account, user_id, organisation_ids}`, the deletion of an account, with the
+  organisations the core holds for it.
+  """
+  @type lock_about ::
+          {:places, Scope.t()}
+          | {:people, Scope.t() | nil, %Organisation{}}
+          | {:account, Ecto.UUID.t(), [Ecto.UUID.t()]}
 
   # Limits and sign-up
 
@@ -157,16 +173,70 @@ defmodule Apiary.Edition do
   @doc """
   Reads again what the edition put on the scope, after `Apiary.Access.reload/2` has read
   the membership and the marks and taken their locks, and before it holds the account;
-  with `lock: :share` it holds what it reads `FOR SHARE`.
+  with `lock: :share` its own rows are held already (`c:lock_rows/1`, `{:places, scope}`),
+  and it locks nothing.
   """
   @callback reload(Scope.t(), keyword) :: Scope.t()
 
   @doc """
   The organisations a write that must stay allowed holds `FOR SHARE`, in the lock order:
   the organisation's own id first. Given the organisation as the database has it now,
-  held `FOR SHARE` already (`Apiary.Access.lock_places/1`).
+  held `FOR SHARE` already (`Apiary.Access.lock_places/1`). Several organisations are
+  locked in the order of `Apiary.Organisations.lock_order/1`, which asks this callback:
+  those it names another organisation for first, then the rest, each in the order of
+  their ids.
   """
   @callback places_to_lock(%Organisation{}) :: [Ecto.UUID.t()]
+
+  @doc """
+  Locks the edition's own rows for a change, inside its transaction: an edition takes all
+  its own rows for a change here, at one point before the change's first write, in its
+  own fixed order and in the strongest mode the change needs, and none later in that
+  change; otherwise two changes can wait on each other. The rule is the change's, not a
+  callback's: what the edition reads or writes of its own later in the change
+  (`c:reload/2`, `c:level_refusal/4`, `c:membership_changed/5`, `c:accepted/4`) it holds
+  from here. The core's answer is `:ok`, and it locks nothing.
+
+  The lock order, by class of row (docs/access.md):
+
+  1. the organisation rows, then this callback's rows; where the edition locks rows of
+     more than one organisation, it takes them in the order of
+     `Apiary.Organisations.lock_order/1`, the function it calls for the order of several
+     organisations;
+  2. then the workspaces, the owners' memberships and the other memberships;
+  3. then the account and the invitation.
+
+  The edition never locks a membership or any other row of the core's here. Each change
+  has one point, where it is asked once:
+
+  - `{:places, scope}` at the end of `Apiary.Access.lock_places/1`, in a write that must
+    stay allowed, once the scope's organisation rows are held and before the membership
+    `Apiary.Access.reload/2` holds. The rows it takes for a scope must not depend on the
+    scope's workspace: a write may ask it more than once in one change, with the same
+    organisation, as the security policy's writes do, before and after their workspaces'
+    rows and writes and once for each workspace of a request;
+  - `{:people, scope, organisation}` in every change of the organisation's people, once
+    its organisation rows are held and before the owners' memberships
+    (`Apiary.Organisations.lock_people/1`, which asks no `{:places, scope}` before it): a
+    change of level, a removal or leaving, a suspension, an activation, and the release
+    commands that grant and revoke an instance admin; and once an invitation's
+    organisation is held, in its acceptance and in a sign-up with one, `scope` nil for the
+    sign-up. Here the edition takes, all at once in its fixed order, every row it would
+    take at `{:places, scope}` for that scope, in at least the same mode, and its rows of
+    the organisation's people;
+  - `{:account, user_id, organisation_ids}` in an account's deletion, once every
+    organisation the account is a member of is held, those it owns `FOR SHARE` and the
+    rest `FOR KEY SHARE`, and before their owners and the person's memberships:
+    `organisation_ids` are the organisations the core holds, in the order it took them,
+    and the edition takes rows of those organisations only, at this one point. An
+    organisation the account joins after they were read is not among them, and the
+    edition takes none of its rows.
+
+  A repeat of `{:places, scope}` later in the same change, after its point, must take no
+  new row and no stronger mode: the edition answers it with rows it holds already, in the
+  mode it holds them.
+  """
+  @callback lock_rows(lock_about) :: :ok
 
   @doc "The levels that reach every workspace of their organisation."
   @callback every_workspace_levels() :: [level]
@@ -232,6 +302,7 @@ defmodule Apiary.Edition do
   entry is written: `:level`, its level changed (`member.change_level`, or a release
   command's `instance_admin.revoke`); `:activated`, its suspension ended
   (`member.activate`). `scope` is whoever changed it. An error rolls the change back.
+  The edition's rows are held already (`c:lock_rows/1`), and it locks nothing here.
   """
   @callback membership_changed(
               Ecto.Repo.t(),
@@ -240,6 +311,24 @@ defmodule Apiary.Edition do
               old :: %Membership{},
               new :: %Membership{}
             ) :: :ok | {:error, term}
+
+  @doc """
+  Why `level` may not be given in `organisation` by `scope`, or nil when it may: the
+  edition's reason, an atom, which the pages say in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). `scope` is who gives it: the person
+  who changes a level or invites, the person who accepts an invitation, nil for a sign-up
+  with one, whose account is not made yet, and the instance for a release command. Every
+  way the core gives a level asks it (`Apiary.Access.level_refusal/4`), and a page offers
+  no level it refuses (`Apiary.Access.grantable_levels/1`). The core's answer is nil.
+
+  With `lock: :share` it is asked inside the transaction of the change, before the
+  membership is written: in a change of level, an invitation's acceptance, a sign-up with
+  one and the release commands, once the edition's rows are held already
+  (`c:lock_rows/1`). It reads, and locks nothing here. An invitation, which writes no
+  membership, asks it once the allowance's row is held, with none of the edition's rows
+  held. Without `lock:` a page asks what to offer, and nothing is held.
+  """
+  @callback level_refusal(Scope.t() | nil, %Organisation{}, level, keyword) :: nil | atom
 
   # Deletion
 
@@ -344,6 +433,7 @@ defmodule Apiary.Edition do
     role: 1,
     reload: 2,
     places_to_lock: 1,
+    lock_rows: 1,
     every_workspace_levels: 0,
     reaches_workspace?: 3,
     reached_workspaces: 2,
@@ -354,6 +444,7 @@ defmodule Apiary.Edition do
     accepting: 3,
     accepted: 4,
     membership_changed: 5,
+    level_refusal: 4,
     deletion_refusal: 2,
     deletion_changed: 4,
     audit_details: 3,
@@ -398,10 +489,67 @@ defmodule Apiary.Edition do
   @spec module() :: module
   def module, do: @module
 
-  # One function per callback, which asks the configured module.
+  # One function per callback, which asks the configured module, or a test's stub that
+  # answers it (`put_test_stub/1`).
   for {name, arity} <- @callbacks do
     args = Macro.generate_arguments(arity, __MODULE__)
     @doc false
-    def unquote(name)(unquote_splicing(args)), do: @module.unquote(name)(unquote_splicing(args))
+    def unquote(name)(unquote_splicing(args)),
+      do: answering(unquote(name), unquote(arity)).unquote(name)(unquote_splicing(args))
   end
+
+  ## The test seam
+
+  @test_stub {__MODULE__, :test_stub}
+  @stubbed {__MODULE__, :stubbed}
+
+  @doc """
+  put_test_stub/1 has `stub` answer, for a test, each callback it exports, of this
+  behaviour and of `ApiaryWeb.Edition`, in the calling
+  process and the processes that have it among their `$callers` (a `Task`, a LiveView
+  under test), and in no other; the configured edition (`module/0`) answers the rest,
+  and a stub that narrows the edition's answer asks it there. Tests that set different
+  stubs run at once (`async: true`). Until a test sets one, no call looks for a stub.
+  `:ok`.
+  """
+  @spec put_test_stub(module) :: :ok
+  def put_test_stub(stub) when is_atom(stub) do
+    Code.ensure_loaded!(stub)
+    unless :persistent_term.get(@stubbed, false), do: :persistent_term.put(@stubbed, true)
+    Process.put(@test_stub, stub)
+    :ok
+  end
+
+  defp answering(name, arity), do: answering(name, arity, @module)
+
+  @doc false
+  # The module that answers `name/arity`: the test's stub that exports it, else `module`.
+  # `ApiaryWeb.Edition` asks it too, so one stub answers callbacks of both.
+  @spec answering(atom, arity, module) :: module
+  def answering(name, arity, module) do
+    with true <- :persistent_term.get(@stubbed, false),
+         stub when is_atom(stub) and not is_nil(stub) <- test_stub(),
+         true <- function_exported?(stub, name, arity) do
+      stub
+    else
+      _no_stub -> module
+    end
+  end
+
+  # The stub a test set in this process, or in the nearest of its callers that set one.
+  defp test_stub do
+    Enum.find_value([self() | Process.get(:"$callers", [])], fn
+      pid when pid == self() -> Process.get(@test_stub)
+      pid -> caller_stub(pid)
+    end)
+  end
+
+  defp caller_stub(pid) when is_pid(pid) do
+    case Process.info(pid, {:dictionary, @test_stub}) do
+      {{:dictionary, @test_stub}, stub} when is_atom(stub) and stub != :undefined -> stub
+      _unset_or_gone -> nil
+    end
+  end
+
+  defp caller_stub(_name), do: nil
 end

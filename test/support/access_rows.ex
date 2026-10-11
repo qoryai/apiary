@@ -73,6 +73,7 @@ defmodule Apiary.AccessRows do
       {:"node.read", yes: @owners ++ [:member, :admin, :feature_off]},
       {:"node.create", yes: @owners ++ [:admin, :feature_off]},
       {:"node.edit", yes: @owners ++ [:admin, :feature_off]},
+      {:"node.set_limit", yes: @owners ++ [:admin, :feature_off]},
       {:"node.delete", yes: @owners ++ [:admin, :feature_off]},
       {:"node.clear_instance", yes: @owners ++ [:admin, :feature_off]},
       {:"run.read", yes: @owners ++ [:member, :admin]},

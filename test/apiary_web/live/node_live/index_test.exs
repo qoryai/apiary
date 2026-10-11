@@ -183,6 +183,31 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
                Nodes.list_nodes(scope)
     end
 
+    test "a pool is made with a limit of 1 by one an edition keeps its limit from",
+         %{conn: conn, scope: scope} do
+      # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`).
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new-pool"))
+
+      refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
+
+      # Sent all the same, as the page never sends it.
+      html =
+        render_hook(lv, "create", %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}})
+
+      assert html =~ "You can&#39;t change the instance limit."
+      assert Nodes.list_nodes(scope) == []
+
+      {:ok, _show, _html} =
+        lv
+        |> form("#new-node-form", node: %{name: "spot-runners"})
+        |> render_submit()
+        |> follow_redirect(conn)
+
+      assert [%Node{kind: :pool, name: "spot-runners", instance_limit: 1}] =
+               Nodes.list_nodes(scope)
+    end
+
     test "a name in use is refused on the page", %{conn: conn, scope: scope} do
       node_fixture(scope, name: "build-01")
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new"))

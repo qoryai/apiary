@@ -182,9 +182,10 @@ defmodule ApiaryWeb.RunComponents do
   "time limit reached", "no activity for 30 minutes", "permission to run expired",
   "stopped, no outcome given", "interrupted", "stopped responding", "end not recorded",
   "events refused", "couldn't check whether the run may go on: no answer". A reason stored
-  under its earlier name reads as the new one. Any other code is the one the run's starter
-  gave, shown as given with spaces for underscores: `no_longer_needed` reads "no longer
-  needed".
+  under its earlier name reads as the new one. A run whose starter sent its outcome with
+  no state, stored as cancelled and `stopped`, reads "the starter gave no outcome". Any
+  other code is the one the run's starter gave, shown as given with spaces for
+  underscores: `no_longer_needed` reads "no longer needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one: "did not start: image_unknown".
@@ -208,6 +209,11 @@ defmodule ApiaryWeb.RunComponents do
       code -> gettext("did not start: %{code}", code: code)
     end
   end
+
+  # An outcome its starter sent with no state, stored as cancelled with the reason `stopped`
+  # (`Apiary.Runs.Outcome`), which no starter may give itself.
+  defp given_words(%{outcome_state: "cancelled", outcome_reason: "stopped"}),
+    do: gettext("the starter gave no outcome")
 
   # The starter's end under the earlier name came with no outcome, whatever the state the
   # exit said.
@@ -871,25 +877,42 @@ defmodule ApiaryWeb.RunComponents do
   did. "Succeeded, as its starter said; the runtime exited 1"; with a signal, "Failed, as
   its starter said; the runtime ended with SIGKILL"; before any exit, "Cancelled, as its
   starter said; the runtime has not exited yet"; an exit with no code of its own, "...; the
-  runtime's exit was not recorded". Nil for any other run, which reads as it always has.
+  runtime's exit was not recorded". A run refused at its start (`refused_at`) never
+  started a runtime: it says the outcome's state alone, "Succeeded, as its starter said". Nil for an outcome sent with no state, stored as cancelled with the
+  reason `stopped`: the starter said no state, and the run reads as any cancelled run, its
+  reason "the starter gave no outcome" (`reason_words/1`). Nil for any other run, which
+  reads as it always has.
   """
   @spec outcome_sentence(map() | nil) :: String.t() | nil
+  def outcome_sentence(%{outcome_state: "cancelled", outcome_reason: "stopped"}), do: nil
+
   def outcome_sentence(%{outcome_state: state} = run) when is_binary(state) do
     if Run.outcome_differs?(run), do: outcome_sentence(state, runtime_exit(run))
   end
 
   def outcome_sentence(_run), do: nil
 
-  # What the runtime did, as the outcome's sentence says it.
-  defp runtime_exit(%{exited_at: nil}), do: :running
+  # What the runtime did, as the outcome's sentence says it; nothing for a run refused at
+  # its start, which never started one.
+  defp runtime_exit(run) do
+    if not is_nil(Map.get(run, :refused_at)),
+      do: :no_runtime,
+      else: exit_of(run)
+  end
 
-  defp runtime_exit(%{signal: signal}) when is_binary(signal) and signal != "",
+  defp exit_of(%{exited_at: nil}), do: :running
+
+  defp exit_of(%{signal: signal}) when is_binary(signal) and signal != "",
     do: {:signal, signal}
 
-  defp runtime_exit(%{exit_code: code}) when is_integer(code) and code != -1,
+  defp exit_of(%{exit_code: code}) when is_integer(code) and code != -1,
     do: {:code, code}
 
-  defp runtime_exit(_run), do: :not_recorded
+  defp exit_of(_run), do: :not_recorded
+
+  defp outcome_sentence("succeeded", :no_runtime), do: gettext("Succeeded, as its starter said")
+  defp outcome_sentence("failed", :no_runtime), do: gettext("Failed, as its starter said")
+  defp outcome_sentence("cancelled", :no_runtime), do: gettext("Cancelled, as its starter said")
 
   defp outcome_sentence("succeeded", {:code, code}),
     do: gettext("Succeeded, as its starter said; the runtime exited %{code}", code: code)

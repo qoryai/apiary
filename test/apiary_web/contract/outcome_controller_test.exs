@@ -432,6 +432,54 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
     end
   end
 
+  describe "a run refused at its start" do
+    # Registered, refused, and given an outcome, in either order: it never started, and
+    # its outcome says the state alone.
+    defp registered({key, secret}) do
+      run_id = Ecto.UUID.generate()
+      body = Jason.encode!(registration(run_id))
+      assert signed_register(build_conn(), key.key_id, secret, body).status == 200
+      run_id
+    end
+
+    defp refuse(holder, run_id) do
+      refused = wire_event(run_id, 2, "run.refused", %{"code" => "image_unknown"})
+      assert deliver(holder, [refused]).status in [200, 202]
+    end
+
+    test "keeps its refusal under the outcome, in either order and after a rebuild", ctx do
+      for {outcome, state, word} <- [
+            {"succeeded", "completed", "Succeeded"},
+            {"failed", "failed", "Failed"},
+            {"cancelled", "cancelled", "Cancelled"}
+          ],
+          order <- [:refused_first, :outcome_first] do
+        run_id = registered(ctx.key)
+        body = outcome(%{"state" => outcome, "reason" => nil})
+
+        if order == :refused_first, do: refuse(ctx.key, run_id)
+        assert response(give(ctx.key, run_id, body), 200) == @answer
+        if order == :outcome_first, do: refuse(ctx.key, run_id)
+
+        before = run(run_id)
+        assert %Run{state: ^state, reason: nil, exited_at: nil} = before
+        assert %DateTime{} = before.refused_at
+        refute Run.refused?(before)
+        sentence = "#{word}, as its starter said"
+        assert ApiaryWeb.RunComponents.outcome_sentence(before) == sentence, "#{order}"
+
+        assert {:ok, _run} = Projector.rebuild(before)
+        rebuilt = run(run_id)
+
+        for field <- ~w(state reason refused_at exited_at outcome_state)a do
+          assert Map.fetch!(rebuilt, field) == Map.fetch!(before, field), "#{field}"
+        end
+
+        assert ApiaryWeb.RunComponents.outcome_sentence(rebuilt) == sentence
+      end
+    end
+  end
+
   describe "a rebuild" do
     test "gives the run the outcome's state again, from the events and the outcome", ctx do
       exit = exited(ctx.run_id, 3, %{"state" => "failed", "exit_code" => 1, "reason" => "oom"})
