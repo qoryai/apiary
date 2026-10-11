@@ -59,7 +59,8 @@ defmodule Apiary.Runs.Fold do
   lost sets `lost_at` to the exit's time. A run that did not start, `dev.qory.run.refused`,
   is failed, its `reason` the refusal's code, and has no exit time; an exit decides over
   it. Either is final: no start or heartbeat folded after it changes the state. The state
-  and reason the exit means are kept as `exit_state` and `exit_reason` too.
+  and reason the exit means are kept as `exit_state` and `exit_reason` too, and the
+  refusal's time as `refused_at`, nil once an exit decides over it, in either order.
 
   The run's starter's outcome (`Apiary.Runs.Outcome`), stored on the run and not folded,
   decides over all of them whenever it arrives (`outcome/1`): the last step of every fold
@@ -212,7 +213,8 @@ defmodule Apiary.Runs.Fold do
   `Apiary.Runs.Outcome`), its state decides the run's (`succeeded` is completed, `failed`
   failed, `cancelled` cancelled), its reason the run's `reason` (nil when it gave none),
   and the run is not lost; with none, `run` as it is. What the exit said stays beside it:
-  `exit_state`, `exit_reason`, `exit_code`, `signal` and `exited_at`.
+  `exit_state`, `exit_reason`, `exit_code`, `signal` and `exited_at`, and so does a
+  refusal's `refused_at`.
 
   The last step of every fold, and what the outcome's own write and a rebuild's reset
   apply, so the outcome decides whenever it arrives, before the exit or after it, and a
@@ -396,6 +398,7 @@ defmodule Apiary.Runs.Fold do
         signal: string(data, "signal", 64),
         reason: reason,
         exit_reason: reason,
+        refused_at: nil,
         quiet_seconds: integer(data, "quiet_seconds", 1..@int4),
         duration_ms: integer(data, "duration_ms", 0..@int8),
         lost_at: if(state == "lost", do: event.time)
@@ -403,13 +406,20 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
-  # A run that did not start is failed, with the refusal's code; an exit decides over it, in
-  # whichever order the two are folded.
+  # A run that did not start is failed, with the refusal's code, and keeps when it was
+  # refused; an exit decides over it, in whichever order the two are folded. The outcome,
+  # applied after, sets the state and reason, and leaves `refused_at`.
   defp event(acc, %{type: @refused, data: data} = event) do
     ranked(acc, event, fn run ->
       if exited?(run),
         do: run,
-        else: Map.merge(run, %{state: "failed", reason: code(data, "code"), lost_at: nil})
+        else:
+          Map.merge(run, %{
+            state: "failed",
+            reason: code(data, "code"),
+            lost_at: nil,
+            refused_at: event.time
+          })
     end)
   end
 

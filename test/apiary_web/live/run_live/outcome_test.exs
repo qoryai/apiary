@@ -160,6 +160,87 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
     end
   end
 
+  test "a run refused at its start says the starter's state alone, in every state" do
+    for {outcome, state, word} <- [
+          {"succeeded", "completed", "Succeeded"},
+          {"failed", "failed", "Failed"},
+          {"cancelled", "cancelled", "Cancelled"}
+        ] do
+      run = %{
+        opened_by: nil,
+        state: state,
+        outcome_state: outcome,
+        exited_at: nil,
+        refused_at: DateTime.utc_now()
+      }
+
+      assert RunComponents.outcome_sentence(run) == "#{word}, as its starter said"
+    end
+  end
+
+  test "the header of a refused run given an outcome says the starter's state alone", %{
+    conn: conn,
+    scope: scope
+  } do
+    for {outcome, word} <- [
+          {"succeeded", "Succeeded"},
+          {"failed", "Failed"},
+          {"cancelled", "Cancelled"}
+        ] do
+      run =
+        projected(scope, [{2, "run.refused", %{"code" => "image_unknown"}}], given(outcome))
+
+      assert %DateTime{} = run.refused_at
+
+      {:ok, lv, _html} = page(conn, scope, run)
+      assert render(element(lv, "#run-meta #run-outcome")) =~ ">#{word}, as its starter said<"
+      refute has_element?(lv, "#run-meta", "the runtime")
+    end
+  end
+
+  test "an outcome sent with no state reads the starter gave no outcome", %{
+    conn: conn,
+    scope: scope
+  } do
+    started = {1, "run.started", started_data()}
+
+    for exit <- [
+          [],
+          [{2, "run.exited", %{"state" => "failed", "exit_code" => 1}}],
+          [{2, "run.exited", %{"state" => "cancelled", "reason" => "stopped"}}]
+        ] do
+      run = projected(scope, [started | exit], given("cancelled", "stopped"))
+      assert %Run{state: "cancelled", reason: "stopped"} = run
+      assert RunComponents.reason_words(run) == "the starter gave no outcome"
+
+      {:ok, lv, _html} = page(conn, scope, run)
+      assert has_element?(lv, "#run-reason", "the starter gave no outcome")
+      assert has_element?(lv, "#rail-reason", "the starter gave no outcome")
+    end
+  end
+
+  test "the starter's end with no outcome still reads stopped, no outcome given", %{
+    conn: conn,
+    scope: scope
+  } do
+    started = {1, "run.started", started_data()}
+
+    for exit <- [
+          %{"state" => "cancelled", "reason" => "stopped"},
+          %{"reason" => "stopped"},
+          %{"state" => "failed", "reason" => "run_ended_at_issuer"},
+          %{"reason" => "run_ended_at_issuer"}
+        ] do
+      run = projected(scope, [started, {2, "run.exited", exit}], %{})
+      assert %Run{state: "cancelled", outcome_state: nil} = run
+      assert RunComponents.reason_words(run) == "stopped, no outcome given"
+
+      {:ok, lv, _html} = page(conn, scope, run)
+      assert has_element?(lv, "#run-reason", "stopped, no outcome given")
+      refute has_element?(lv, "#run-meta", "the starter gave no outcome")
+    end
+  end
+
   test "an exit folded before its state was kept reads as the exit alone", %{
     conn: conn,
     scope: scope

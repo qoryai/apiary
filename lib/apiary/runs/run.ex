@@ -144,6 +144,11 @@ defmodule Apiary.Runs.Run do
     field :exit_state, :string
     field :exit_reason, :string
 
+    # When the run's `dev.qory.run.refused` said it did not start, folded, and nil once an
+    # exit decides over it, in whichever order the two are folded. The outcome leaves it as
+    # it is: a run refused and then given an outcome still never started.
+    field :refused_at, :utc_datetime_usec
+
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
     has_many :connections, Apiary.Runs.Connection

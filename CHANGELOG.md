@@ -131,8 +131,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `outcome_given`. A run of another node, one the workspace does not hold, and one whose
   events retention pruned are `404` `not_found`. Where the outcome's state differs from
   what the run's exit said, the run page says both, for example "Succeeded, as its starter
-  said; the runtime exited 1". A run a gateway opened, with no runtime of its own, says
-  the outcome's state alone: "Succeeded, as its starter said".
+  said; the runtime exited 1". A run a gateway opened, with no runtime of its own, and a
+  run refused at its start say the outcome's state alone: "Succeeded, as its starter
+  said". An outcome sent with no state reads "the starter gave no outcome" after the
+  state.
 - The end of a run, in the answers to its batches. Once a run's starter has given its
   outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
   carries `end` with the outcome's state and reason, as `application/json`,
@@ -570,6 +572,10 @@ state, both added NOT VALID, so neither scans the table under a lock that blocks
 `exit_state` and `exit_reason` are filled as a run's exit is folded, and for an earlier
 run by a rebuild (`mix apiary.rebuild`). `20261011140100_validate_a_run_s_outcome_checks`
 validates the two checks.
+`20261011160000_keep_when_a_run_was_refused` adds `runs.refused_at`, the time of a run's
+`dev.qory.run.refused` while no exit decides over it, with no check, NULL for every
+existing row. Existing rows need no backfill: the column changes only what a run given an
+outcome says, and a rebuild (`mix apiary.rebuild`) fills it for any run refused before.
 
 ### Upgrading
 

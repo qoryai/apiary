@@ -549,7 +549,9 @@ The fold maps an exit to a state by the first rule that applies, whoever opened 
 A run whose `dev.qory.run.refused` reaches Qory Apiary did not start: it is Failed, with the
 refusal's `code` as its reason and no exit time, and says "did not start" and the code
 ("did not start: image_unknown"). An exit decides over the refusal, in whichever order the
-two are folded; no start or heartbeat folded after either changes the state.
+two are folded; no start or heartbeat folded after either changes the state. The refusal's
+time is kept as `refused_at`, nil once an exit decides over it; the starter's outcome
+leaves it as it is.
 
 Forager's own codes, and the words Qory Apiary says for each
 (`ApiaryWeb.RunComponents.reason_words/1`):
@@ -613,7 +615,10 @@ as `exit_state` and `exit_reason`, with its exit code and signal. A rebuild give
 run, since the fold applies the outcome after every pass and a rebuild's reset starts from
 it. Where the outcome's state differs from the exit's, the run page says both: "Succeeded,
 as its starter said; the runtime exited 1". A run a gateway opened has no runtime of its
-own, and says the outcome's state alone: "Succeeded, as its starter said".
+own, and a run refused at its start (`refused_at`) never started one: each says the
+outcome's state alone, "Succeeded, as its starter said". An outcome sent with no state,
+stored as Cancelled with the reason `stopped`, has the words "the starter gave no outcome";
+Forager's own `stopped`, with no outcome, keeps "stopped, no outcome given".
 
 Qory Apiary records what a run reports and starts no run. Once a run's starter has given
 its outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its
