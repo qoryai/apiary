@@ -370,7 +370,12 @@ defmodule Apiary.NodesTest do
       assert Nodes.list_nodes(scope, %{q: "%"}) == []
       assert Nodes.list_nodes(scope, %{q: "spot", kind: :node}) == []
 
-      assert Nodes.count_nodes(scope) == %{node: 2, pool: 1}
+      assert Nodes.count_nodes(scope) == %{node: 2, pool: 1, gateway: 0}
+
+      gateway = gateway_fixture(scope, name: "edge-01")
+      assert [%{id: gateway_id}] = Nodes.list_nodes(scope, %{kind: :gateway})
+      assert gateway_id == gateway.id
+      assert Nodes.count_nodes(scope) == %{node: 2, pool: 1, gateway: 1}
     end
   end
 end

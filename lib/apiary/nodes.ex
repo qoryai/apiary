@@ -9,7 +9,7 @@ defmodule Apiary.Nodes do
 
   Every function a page calls takes an `Apiary.Accounts.Scope` with a workspace first and
   reads or changes only that workspace's nodes, in its organisation: a node of another
-  workspace is not found. A node is named by its public id (`nd_…` or `np_…`), the id its
+  workspace is not found. A node is named by its public id (`nd_…`, `np_…` or `ng_…`), the id its
   page's path carries. A deleted node is gone from every read here. The receiving side's
   functions (`seen/3`, `placement/2`, `check_instance_limit/3`, `admit/4`) take the node
   a verified access key names instead, and the retention job's (`prune_instances/1`)
@@ -88,7 +88,7 @@ defmodule Apiary.Nodes do
         like = "%" <> escape_like(String.trim(q)) <> "%"
         where(query, [n], ilike(n.name, ^like) or ilike(n.public_id, ^like))
 
-      {:kind, kind}, query when kind in [:node, :pool] ->
+      {:kind, kind}, query when kind in [:node, :pool, :gateway] ->
         where(query, [n], n.kind == ^kind)
 
       _other, query ->
@@ -100,9 +100,13 @@ defmodule Apiary.Nodes do
 
   @doc """
   count_nodes/1 is how many nodes in use the workspace has, by kind:
-  `%{node: n, pool: n}`.
+  `%{node: n, pool: n, gateway: n}`.
   """
-  @spec count_nodes(Scope.t()) :: %{node: non_neg_integer, pool: non_neg_integer}
+  @spec count_nodes(Scope.t()) :: %{
+          node: non_neg_integer,
+          pool: non_neg_integer,
+          gateway: non_neg_integer
+        }
   def count_nodes(%Scope{} = scope) do
     counts =
       scope
@@ -112,7 +116,11 @@ defmodule Apiary.Nodes do
       |> Repo.all()
       |> Map.new()
 
-    %{node: Map.get(counts, :node, 0), pool: Map.get(counts, :pool, 0)}
+    %{
+      node: Map.get(counts, :node, 0),
+      pool: Map.get(counts, :pool, 0),
+      gateway: Map.get(counts, :gateway, 0)
+    }
   end
 
   @doc """
@@ -145,11 +153,12 @@ defmodule Apiary.Nodes do
 
   @doc """
   new_node/1 is a node of `kind` not yet made, for the form that makes one: a node's
-  limit is 1, a pool's none.
+  limit is 1, a pool's and a gateway's none.
   """
   @spec new_node(Node.kind()) :: Node.t()
   def new_node(:node), do: %Node{kind: :node, instance_limit: 1}
   def new_node(:pool), do: %Node{kind: :pool, instance_limit: nil}
+  def new_node(:gateway), do: %Node{kind: :gateway, instance_limit: nil}
 
   @doc """
   change_new_node/2 is the changeset of `node`, from `new_node/1`, made with `attrs`, for

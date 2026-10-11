@@ -448,6 +448,40 @@ defmodule Apiary.GatewaysTest do
     end
   end
 
+  describe "chosen/1" do
+    test "the gateway a node names, or the default, with a key or not", %{scope: scope} do
+      default = gateway_fixture(scope, name: "edge-01")
+      other = gateway_fixture(scope, name: "edge-02")
+      named = pool_fixture(scope, gateway_choice: "named", gateway_id: other.id)
+      on_default = node_fixture(scope, gateway_choice: "default")
+
+      refute AccessKeys.active_key?(default)
+      assert %Node{id: id} = Gateways.chosen(named)
+      assert id == other.id
+      assert %Node{id: id} = Gateways.chosen(on_default)
+      assert id == default.id
+    end
+
+    test "none for a node that goes direct, a gateway, or a choice that leads nowhere", %{
+      scope: scope
+    } do
+      gateway = gateway_fixture(scope)
+      direct = node_fixture(scope, gateway_choice: "direct")
+      pool = pool_fixture(scope, gateway_choice: "named", gateway_id: gateway.id)
+
+      assert Gateways.chosen(direct) == nil
+      assert Gateways.chosen(gateway) == nil
+      assert Gateways.chosen(%{pool | gateway_id: nil}) == nil
+
+      %{workspace: workspace} = other_workspace(scope)
+      assert Gateways.chosen(%{pool | workspace_id: workspace.id, workspace: workspace}) == nil
+
+      on_default = node_fixture(scope, gateway_choice: "default")
+      Repo.update_all(from(n in Node, where: n.id == ^gateway.id), set: [default_gateway: false])
+      assert Gateways.chosen(on_default) == nil
+    end
+  end
+
   describe "where a gateway stands" do
     test "it may serve its own workspace alone", %{scope: scope} do
       gateway = gateway_fixture(scope)
