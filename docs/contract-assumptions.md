@@ -368,10 +368,13 @@ an exit's reason (How a run ends), and one that breaks it, or is one of Forager'
 codes, is dropped, the outcome kept. `time` is held to 300 seconds of the server's clock,
 outside of which the answer is `401`, unsigned. A member the contract does not name is
 `400 invalid_request` with `"body"`. After the refusals every signed request gets, and the
-body's: a key `Apiary.Access` does not let post is `404`; the same bytes again, by their
-SHA-256, under any active key of the run's node are `200` again, nothing stored; a run id
-the workspace does not hold, a run of another node and a run whose events retention has
-pruned are `404 {"error":"not_found"}`; a run that was given another outcome is
+body's: a key `Apiary.Access` does not let post is `404`; the same outcome again under any
+active key of the run's node is `200` again, nothing stored or changed: the same state and
+reason as stored, after the rules above, whatever the bytes, so a new `time`, a reason the
+rules drop and no state at all (cancelled, `stopped`) are the same outcome, and the first
+outcome's `time`, arrival and digest stay; a run id the workspace does not hold, a run of
+another node and a run whose events retention has pruned are `404 {"error":"not_found"}`;
+a run that was given another outcome, another state or reason, is
 `409 {"error":"outcome_given"}`; else the outcome is stored on the run, under the run's
 projection lock, and the answer is `200 {"version":1}` with `X-Qory-Configuration`. The
 outcome is not folded: a rebuild keeps it, and the fold applies it after every pass, so it

@@ -198,15 +198,84 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
     end
   end
 
+  describe "the same state and reason again, in other bytes" do
+    # What the row holds of an outcome: none of it changes on a repeat.
+    defp held(run_id) do
+      run_id
+      |> run()
+      |> Map.take(~w(state reason outcome_state outcome_reason outcome_time
+                     outcome_received_at outcome_digest updated_at)a)
+    end
+
+    test "with a new time is the stored 200, under either key of the node, the row unchanged",
+         ctx do
+      assert response(give(ctx.key, ctx.run_id, outcome()), 200) == @answer
+      first = held(ctx.run_id)
+
+      for {holder, offset} <- [{ctx.key, 1}, {ctx.second, 2}, {ctx.second, -3}] do
+        conn = give(holder, ctx.run_id, outcome(%{"time" => now_z(offset)}))
+        assert response(conn, 200) == @answer
+        assert signed_answer?(conn)
+      end
+
+      assert held(ctx.run_id) == first
+    end
+
+    test "with a reason the rules drop is the same as one with none", ctx do
+      assert response(give(ctx.key, ctx.run_id, outcome(%{"reason" => nil})), 200) == @answer
+      first = held(ctx.run_id)
+
+      for reason <- ["timeout", "Not A Code", 42] do
+        body = outcome(%{"reason" => reason, "time" => now_z(1)})
+        assert response(give(ctx.second, ctx.run_id, body), 200) == @answer
+      end
+
+      assert held(ctx.run_id) == first
+      assert %{outcome_state: "succeeded", outcome_reason: nil} = first
+    end
+
+    test "with no state, twice at different times, is the stored 200", ctx do
+      body = outcome(%{"state" => nil, "reason" => nil})
+      assert response(give(ctx.key, ctx.run_id, body), 200) == @answer
+      first = held(ctx.run_id)
+      assert %{state: "cancelled", reason: "stopped"} = first
+
+      # A reason beside no state counts for nothing either.
+      again = outcome(%{"state" => nil, "reason" => "no_longer_needed", "time" => now_z(5)})
+      assert response(give(ctx.second, ctx.run_id, again), 200) == @answer
+      assert held(ctx.run_id) == first
+
+      # Given cancelled with stopped in so many words: a reason the rules drop, so not
+      # the same outcome as cancelled with stopped.
+      named = outcome(%{"state" => "cancelled", "reason" => "stopped", "time" => now_z(6)})
+      assert json_response(give(ctx.key, ctx.run_id, named), 409) == %{"error" => "outcome_given"}
+    end
+
+    test "from another node's key is still 404", ctx do
+      assert response(give(ctx.key, ctx.run_id, outcome()), 200) == @answer
+      conn = give(ctx.other, ctx.run_id, outcome(%{"time" => now_z(1)}))
+      assert json_response(conn, 404) == %{"error" => "not_found"}
+    end
+
+    test "outside the time window is 401, unsigned", ctx do
+      assert response(give(ctx.key, ctx.run_id, outcome()), 200) == @answer
+      conn = give(ctx.key, ctx.run_id, outcome(%{"time" => now_z(301)}))
+      assert json_response(conn, 401) == @unauthorized
+      assert unsigned_answer?(conn)
+    end
+  end
+
   describe "a different second outcome" do
     test "is 409 outcome_given, signed, and changes nothing", ctx do
       assert response(give(ctx.key, ctx.run_id, outcome()), 200) == @answer
 
       for body <- [
             outcome(%{"state" => "failed"}),
+            # The same state with another reason, or with none.
             outcome(%{"reason" => "another_reason"}),
-            # The same state and reason, built at another second: other bytes.
-            outcome(%{"time" => now_z(1)})
+            outcome(%{"reason" => nil}),
+            # No state: cancelled, stopped.
+            outcome(%{"state" => nil})
           ] do
         conn = give(ctx.second, ctx.run_id, body)
         assert json_response(conn, 409) == %{"error" => "outcome_given"}

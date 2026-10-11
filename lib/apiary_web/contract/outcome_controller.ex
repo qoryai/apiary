@@ -13,11 +13,12 @@ defmodule ApiaryWeb.Contract.OutcomeController do
   Then, in order: a body the contract refuses is `400` `invalid_request`, with the member
   that refused it in `names`; a `time` more than 300 seconds from the server's clock is
   `401`, unsigned, as a registration's is; then `Apiary.Runs.Outcome.give/4`: a key
-  `Apiary.Access` does not let post (`run.post_events`) is `404`; the same bytes again under
-  any active key of the run's node are given the same answer; a run the key's workspace
-  does not hold, a run of another node, and a run whose events retention has pruned are
-  `404`; a run that was given another outcome is `409` `outcome_given`; else the outcome is
-  stored, and the run's state is the outcome's.
+  `Apiary.Access` does not let post (`run.post_events`) is `404`; the same outcome again,
+  the same state and reason whatever its bytes, under any active key of the run's node is
+  given the same answer; a run the key's workspace does not hold, a run of another node,
+  and a run whose events retention has pruned are `404`; a run that was given another
+  outcome, another state or reason, is `409` `outcome_given`; else the outcome is stored,
+  and the run's state is the outcome's.
 
   The answer is `200`, `application/json`, `{"version":1}`, with `X-Qory-Configuration`.
   When the outcome cannot be stored, the answer is `503`. Errors are short JSON and never
