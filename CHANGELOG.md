@@ -559,7 +559,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   filled in. `ApiaryWeb.PolicyComponents.rule_form/1` draws the form; `rule_list/1` takes
   the section's header (`title`, `count`, `add_path`, `edit_path`), and
   `rule_composer/1` and `rule_list/1`'s `composer` slot stay for callers that have not
-  moved.
+  moved. On a page with the form, a Remove that `ApiaryWeb.PolicyLive.Common` answers gives
+  the focus to Add rule, never to a composer the page does not draw.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's built-in bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
@@ -682,6 +683,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
+- A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
+  address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
+  name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
+  nor ending with `-`, the last not all digits, 253 characters at most, with an optional
+  trailing dot. Before, the host could hold any character a URI's host allows, `;`, `$`,
+  `(`, `)`, `'`, `&`, `*`, `!`, `=`, `+`, `,`, `~` and `_` among them, and the port could
+  be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
+  scheme and a host, with a port if needed, and nothing more", by
+  `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
 
 ### Removed
 
@@ -849,6 +859,14 @@ a workspace is there.
 `20261011160650_fix_a_node_s_place` adds the trigger `nodes_place_fixed`, which refuses a
 change of `nodes.workspace_id`, as `nodes_kind_fixed` refuses a change of kind: a node's
 keys, codes and instances stay at its place. Nothing is backfilled.
+`20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds the
+host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
+and its port to 1 to 65535 without a leading zero (`nodes_url_check`, re-created NOT
+VALID), and
+`20261011160800_validate_a_gateway_s_host_check` validates it. Nothing is backfilled: the
+validation fails while any gateway, deleted ones included, has a URL outside the check,
+and its error names those gateways; give each a URL the check holds, then migrate again.
+Rolled back, the host may hold any character a URI's host allows again.
 
 ### Upgrading
 

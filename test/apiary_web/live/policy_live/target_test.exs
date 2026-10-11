@@ -457,6 +457,17 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#flash-info") =~ "The rule *.paste.example is removed."
   end
 
+  test "removing a rule of its own the list then leaves out gives the focus to Add rule",
+       %{conn: conn, scope: scope, target: target, path: path} do
+    {:ok, rule} = Policy.allow(scope, target, %{host: "own.example"})
+    view = open(conn, path)
+
+    view |> element("#rule-#{rule.id}-menu button", "Remove") |> render_click()
+    refute own(scope, target, "own.example")
+    refute has_element?(view, "#rule-#{rule.id}")
+    assert_push_event(view, "policy:focus", %{id: "policy-rules-add"})
+  end
+
   test "the New rule page adds for the target, and a locked workspace rule refuses it",
        %{conn: conn, scope: scope, target: target, path: path} do
     view = compose(open(conn, path))

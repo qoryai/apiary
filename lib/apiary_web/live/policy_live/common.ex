@@ -778,16 +778,26 @@ defmodule ApiaryWeb.PolicyLive.Common do
     scope = socket.assigns.current_scope
     writer = socket.assigns.writer
 
+    # The focus goes to adding a rule: the composer's host, or on a page with the rule form,
+    # which draws no composer, Add rule in the list's header (drawn while `add_path` is set).
     with {:ok, rule} <- writer.get.(scope, id),
          {:ok, rule} <- writer.remove.(scope, rule) do
+      socket =
+        wrote(
+          socket,
+          nil,
+          gettext("The rule %{host} is removed.", host: Rule.subject(rule)),
+          gettext("Rule removed.")
+        )
+
       {:halt,
-       socket
-       |> wrote(
-         nil,
-         gettext("The rule %{host} is removed.", host: Rule.subject(rule)),
-         gettext("Rule removed.")
-       )
-       |> focus("policy-composer-host")}
+       focus(
+         socket,
+         if(socket.assigns.form_id == "policy-composer",
+           do: "policy-composer-host",
+           else: "policy-rules-add"
+         )
+       )}
     else
       {:error, error} -> {:halt, refused(socket, error)}
     end

@@ -208,9 +208,9 @@ defmodule ApiaryWeb.NodeComponents do
   shell_word/1 is `value` as one word of a POSIX shell command, its characters taken
   literally: as it is when every character is a letter, a digit or one of `. _ ~ : / -`
   and it starts with no `~`, which a shell expands there; else in single quotes, each
-  `'` in it written `'\\''`. A gateway's URL may carry characters a shell acts on, such as
-  `;`, `$` or `&`, and `[` and `]` of an IPv6 host are a pattern to some shells; quoted,
-  none of them does anything. A plain URL and an enrolment code are unchanged.
+  `'` in it written `'\\''`. A gateway's URL holds no character a shell acts on except
+  `[` and `]` of an IPv6 host, which some shells read as a pattern, so such a URL is shown
+  in single quotes. A plain URL and an enrolment code are unchanged.
   """
   @spec shell_word(String.t()) :: String.t()
   def shell_word(value) when is_binary(value) do

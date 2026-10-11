@@ -357,14 +357,15 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       conn: conn,
       scope: scope
     } do
-      url = "https://edge.example.com;echo$IFS-ran"
+      # The brackets of an IPv6 host are a pattern to some shells.
+      url = "https://[2001:db8::1]:8443"
       gateway_fixture(scope, name: "edge-01", url: url)
       node_fixture(scope, %{name: "build-01"})
       view = open(conn, scope)
       view |> element("#onboarding-enrol") |> render_click()
 
       assert text(view, "#onboarding-command") =~
-               ~r/\Aqory access-key enrol --via '#{Regex.escape(url)}' #{Regex.escape(ApiaryWeb.Endpoint.url())} qec_/
+               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(ApiaryWeb.Endpoint.url())} qec_/
     end
 
     test "for a node that goes direct, the command carries no --via and no gateway line", %{
