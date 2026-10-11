@@ -267,11 +267,15 @@ defmodule Apiary.Gateways do
   @doc """
   delete_blockers/1 is what stops `gateway` from being deleted (`t:blockers/0`): the nodes
   in use that name it, and those on `:default` whose default resolves to it now, by name;
-  and the runs through it that are live or waiting now (see the moduledoc), in the order
-  they registered, then by run id. Nothing stops it when there are none.
+  and the runs through it that are live or waiting as of `now`, the clock unless given
+  (see the moduledoc), in the order they registered, then by run id. Nothing stops it
+  when there are none.
   """
-  @spec delete_blockers(Node.t()) :: blockers
-  def delete_blockers(%Node{kind: :gateway, id: id} = gateway) do
+  @spec delete_blockers(Node.t(), DateTime.t()) :: blockers
+  def delete_blockers(
+        %Node{kind: :gateway, id: id} = gateway,
+        %DateTime{} = now \\ DateTime.utc_now()
+      ) do
     defaulting =
       for workspace <- serves(gateway),
           match?(%Node{id: ^id}, default_gateway_for(workspace)),
@@ -287,7 +291,7 @@ defmodule Apiary.Gateways do
       )
       |> Repo.all()
 
-    %{nodes: nodes, runs: holding_runs(id, DateTime.utc_now())}
+    %{nodes: nodes, runs: holding_runs(id, now)}
   end
 
   # The runs through the gateway that are live or waiting as of `now`: not ended and not

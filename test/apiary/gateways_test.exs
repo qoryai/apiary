@@ -620,6 +620,8 @@ defmodule Apiary.GatewaysTest do
 
     defp ids(runs), do: Enum.map(runs, & &1.id)
 
+    defp reload_run(run), do: Repo.get!(Run, run.id)
+
     test "refused while a run it attached is live, naming the run", %{scope: scope} do
       through = through(scope)
       run = attach(through, register(through))
@@ -678,10 +680,27 @@ defmodule Apiary.GatewaysTest do
 
       {cancelled_old_name, _run_key} = register(through)
       set(cancelled_old_name, state: "timed_out")
+      # Refused at its start: failed, with no exit and no outcome, as the fold stores it.
+      refused = attach(through, register(through))
+      set(refused, state: "failed")
 
       :ok = go_direct(scope, through)
       assert Gateways.delete_blockers(through.gateway) == %{nodes: [], runs: []}
       assert {:ok, _deleted} = Nodes.delete_node(scope, through.gateway)
+    end
+
+    test "a run waits to the end of its attach window, that instant included",
+         %{scope: scope} do
+      through = through(scope)
+      {run, _run_key} = register(through)
+      :ok = go_direct(scope, through)
+      attach_by = reload_run(run).attach_by
+
+      assert %{runs: [%Run{id: id}]} = Gateways.delete_blockers(through.gateway, attach_by)
+      assert id == run.id
+
+      after_it = DateTime.add(attach_by, 1, :microsecond)
+      assert Gateways.delete_blockers(through.gateway, after_it) == %{nodes: [], runs: []}
     end
 
     test "a run through another gateway does not hold it", %{scope: scope} do
