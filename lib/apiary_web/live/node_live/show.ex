@@ -1173,7 +1173,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         {if @node.kind == :gateway,
           do:
             gettext(
-              "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to isn't deleted."
+              "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted."
             ),
           else:
             gettext(
@@ -1183,7 +1183,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           {if @node.kind == :gateway,
             do:
               gettext(
-                "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, it isn't deleted. This cannot be undone.",
+                "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone.",
                 name: @node.name
               ),
             else:

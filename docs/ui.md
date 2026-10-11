@@ -965,7 +965,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   instances or an instance limit. Its Settings' General changes its name and its URL.
   Delete gateway… is confirmed in place as a node's is, with a gateway's own sentence;
   a gateway that nodes still point
-  to (`{:gateway_in_use, …}`) is not deleted: the confirmation folds, and under the line
+  to, or that runs still go through (`{:gateway_in_use, …}`), is not deleted: the confirmation folds, and under the line
   an error notice says why (`NodeComponents.in_use_words/2`): "Nodes use this gateway:
   build-01, spot-runners. Point them to another gateway or to direct, then delete it.",
   and for runs going through it, where the refusal names any, "Runs are going through

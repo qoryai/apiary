@@ -48,6 +48,9 @@ hold none: the pool's key is with the run's starter, the system that starts its 
 node or a node pool still points to, by name or as the default, isn't deleted: the page
 says "Nodes use this gateway: build-01, spot-runners. Point them to another gateway or to
 direct, then delete it.", naming the first five of the workspace and then how many more.
+Nor is one that runs still go through, live or waiting for the gateway to attach them:
+the page says "Runs are going through this gateway:", the first five by run id and then
+how many more, and "Delete it once they end."; both in one sentence when both hold.
 When the default goes and other gateways remain, the oldest of them becomes the default.
 
 ## The access key

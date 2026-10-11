@@ -719,7 +719,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, it isn't deleted. This cannot be undone."
+msgid "%{name} leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -6294,7 +6294,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to isn't deleted."
+msgid "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex

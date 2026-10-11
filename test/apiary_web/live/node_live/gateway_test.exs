@@ -626,12 +626,101 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings/delete"))
 
       assert text(lv, "#delete-node-form .q-danger-lost") ==
-               "edge-01 leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, it isn't deleted. This cannot be undone."
+               "edge-01 leaves this workspace's gateways at once, and its name is free again. Its access keys are revoked, and a command not yet run is cancelled. While nodes or node pools point to it, or runs still go through it, it isn't deleted. This cannot be undone."
 
       refute text(lv, "#delete-node-form") =~ "Its runs stay in the record."
 
       assert text(lv, "#delete-node") =~
-               "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to isn't deleted."
+               "It leaves this workspace's gateways, its access keys are revoked and its name is free again. A gateway that nodes or node pools still point to, or that runs still go through, isn't deleted."
+    end
+  end
+
+  describe "a gateway runs go through" do
+    import Apiary.ContractFixtures
+
+    alias Apiary.Runs.Run
+
+    # A gateway with a key, and a node of the workspace that names it, with a key of its
+    # own, through which runs register.
+    defp through(scope) do
+      %{access_key: gateway_key} =
+        contract_key_fixture(scope, node: gateway_fixture(scope, name: "edge-01"))
+
+      gateway = Repo.get!(Node, gateway_key.node_id)
+
+      node =
+        node_fixture(scope, name: "build-01", gateway_choice: "named", gateway_id: gateway.id)
+
+      %{access_key: node_key} = contract_key_fixture(scope, node: node)
+      %{gateway: gateway, node: node, node_key: node_key}
+    end
+
+    # Registers runs through the gateway with these ids, all at one time, so they are
+    # named in the order of their run ids.
+    defp register(%{node_key: key}, run_ids) do
+      ids =
+        for run_id <- run_ids do
+          {:ok, %{run: run}} = register_run(key, gateway_registration(run_id), instance_id())
+          run.id
+        end
+
+      Repo.update_all(from(r in Run, where: r.id in ^ids),
+        set: [registered_at: DateTime.utc_now()]
+      )
+    end
+
+    # The node goes directly from now on; the runs it registered keep their gateway.
+    defp go_direct(scope, %{node: node}) do
+      {:ok, _} = Nodes.update_node(scope, Repo.get!(Node, node.id), %{gateway_choice: "direct"})
+      :ok
+    end
+
+    defp run_id(n), do: "00000000-0000-4000-8000-00000000000#{n}"
+
+    # Deletes the gateway on its page, refused: the gateway stays, and the refusal's words.
+    defp refused(conn, scope, gateway) do
+      {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/settings/delete"))
+      lv |> form("#delete-node-form") |> render_submit()
+      assert_patch(lv, node_path(scope, gateway, "/settings"))
+      refute has_element?(lv, "#delete-node-form")
+      assert Repo.get!(Node, gateway.id).deleted_at == nil
+      text(lv, "#delete-node-refused")
+    end
+
+    test "is not deleted while runs go through it, which are named by run id", %{
+      conn: conn,
+      scope: scope
+    } do
+      through = through(scope)
+      register(through, [run_id(1)])
+      :ok = go_direct(scope, through)
+
+      assert refused(conn, scope, through.gateway) ==
+               "Runs are going through this gateway: #{run_id(1)}. Delete it once they end."
+    end
+
+    test "is not deleted while nodes point to it and runs go through it, both named", %{
+      conn: conn,
+      scope: scope
+    } do
+      through = through(scope)
+      register(through, [run_id(1), run_id(2)])
+
+      assert refused(conn, scope, through.gateway) ==
+               "Nodes use this gateway: build-01. Runs are going through it: " <>
+                 "#{run_id(1)}, #{run_id(2)}. " <>
+                 "Delete it once the nodes point elsewhere and the runs end."
+    end
+
+    test "names the first five runs, then and N more", %{conn: conn, scope: scope} do
+      through = through(scope)
+      register(through, Enum.map(1..7, &run_id/1))
+      :ok = go_direct(scope, through)
+
+      assert refused(conn, scope, through.gateway) ==
+               "Runs are going through this gateway: " <>
+                 Enum.map_join(1..5, ", ", &run_id/1) <>
+                 " and 2 more. Delete it once they end."
     end
   end
 
