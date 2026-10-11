@@ -63,6 +63,23 @@ defmodule Apiary.LockOrganisationsRacesTest do
     on_exit(fn -> :telemetry.detach(handler) end)
   end
 
+  # Each lock statement of lock_organisations/2, said to the test as `{:statement, pid}`.
+  defp report_statements do
+    handler = "lock-organisations-statements-#{System.unique_integer()}"
+    test = self()
+
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, %{query: query}, _config ->
+        if query =~ "WITH ORDINALITY", do: send(test, {:statement, self()})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+  end
+
   # lock_organisations/2 in a transaction of its own, which then reads once more, so a
   # transaction it left unusable would fail.
   defp locking(ids, mode) do
@@ -243,6 +260,58 @@ defmodule Apiary.LockOrganisationsRacesTest do
       assert {:ok, :ok} = Task.await(write.task)
       assert_received {:retried, pid} when pid == write.task.pid
       refute_received {:retried, _pid}
+    end
+  end
+
+  describe "a write's organisation rows, what the edition names changed before the lock" do
+    test "it lets go of the stale set and holds the fresh one, taken in one statement" do
+      classifying()
+      %{scope: scope, organisation: %{id: x}} = sign_up()
+      [stale, fresh] = organisations(2)
+      :ok = report_statements()
+
+      # The write reads, without a lock, that x names `stale`; asked after, it names
+      # `fresh`, as if that changed between the read and the lock.
+      Classifies.answers(x, [[stale], [fresh]])
+      {held, _backend} = hold(fn -> Apiary.Access.lock_organisations(scope) end)
+      assert held.result == :ok
+
+      # The stale one is let go of; x and the fresh one are held, FOR SHARE.
+      assert free?(stale, "FOR NO KEY UPDATE")
+      refute free?(x, "FOR NO KEY UPDATE")
+      refute free?(fresh, "FOR NO KEY UPDATE")
+      assert free?(fresh, "FOR SHARE")
+
+      # Two attempts, each one statement: the stale set, let go of, then the fresh one.
+      assert_received {:statement, pid} when pid == held.pid
+      assert_received {:statement, ^pid}
+      refute_received {:statement, _pid}
+      commit(held)
+    end
+
+    test "what the edition names changes on every attempt: it gives up after three" do
+      classifying()
+      %{scope: scope, organisation: %{id: x}} = sign_up()
+      Classifies.shifting(x)
+      :ok = report_statements()
+
+      {held, _backend} =
+        hold(fn ->
+          try do
+            Apiary.Access.lock_organisations(scope)
+          rescue
+            error in RuntimeError -> {:raised, error.message}
+          end
+        end)
+
+      assert {:raised, message} = held.result
+      assert message =~ "changed on each of 3 attempts"
+
+      # Three statements, and nothing held after: the transaction goes on, and commits.
+      for _attempt <- 1..3, do: assert_received({:statement, _pid})
+      refute_received {:statement, _pid}
+      assert free?(x, "FOR UPDATE")
+      commit(held)
     end
   end
 end

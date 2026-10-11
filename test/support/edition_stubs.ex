@@ -343,7 +343,9 @@ defmodule Apiary.EditionStubs do
     classification changes between a read and a lock: `start/0` makes the table,
     `holds/2` says what an organisation names besides its own id, and `pause_at/1` the
     calls, counted from the first, after whose answer is read the change pauses until the
-    test lets it go (`{:classified, pid}` to the test, `:go` back). Every other
+    test lets it go (`{:classified, pid}` to the test, `:go` back); `answers/2` has an
+    organisation name, each time it is asked, the next of the lists given, then the last
+    one again; `shifting/1` has it name another each time, one that is not there. Every other
     organisation names itself alone, as the core's edition does.
     """
     alias Apiary.Organisations.Organisation
@@ -358,12 +360,17 @@ defmodule Apiary.EditionStubs do
 
     def holds(id, others), do: :ets.insert(@table, {{:holds, id}, others})
     def pause_at(calls), do: :ets.insert(@table, {:pause_at, calls})
+    def shifting(id), do: :ets.insert(@table, {{:shifting, id}, true})
+    def answers(id, others), do: :ets.insert(@table, {{:answers, id}, others})
 
     def places_to_lock(%Organisation{id: id}) do
       answer =
-        case :ets.lookup(@table, {:holds, id}) do
-          [{_key, others}] -> [id | others]
-          [] -> [id]
+        case {:ets.lookup(@table, {:shifting, id}), :ets.lookup(@table, {:answers, id}),
+              :ets.lookup(@table, {:holds, id})} do
+          {[_shifting], _answers, _holds} -> [id, Ecto.UUID.generate()]
+          {[], [{_key, answers}], _holds} -> [id | next_answer(id, answers)]
+          {[], [], [{_key, others}]} -> [id | others]
+          {[], [], []} -> [id]
         end
 
       call = :ets.update_counter(@table, :calls, 1)
@@ -381,6 +388,13 @@ defmodule Apiary.EditionStubs do
       end
 
       answer
+    end
+
+    defp next_answer(_id, [last]), do: last
+
+    defp next_answer(id, [next | rest]) do
+      :ets.insert(@table, {{:answers, id}, rest})
+      next
     end
   end
 

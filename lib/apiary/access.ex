@@ -9,6 +9,8 @@ defmodule Apiary.Access do
   alias Apiary.Repo
 
   @owners [:owner]
+  # How many times `lock_organisations/1` takes the organisation rows before it gives up.
+  @place_attempts 3
   @admins [:owner, :admin]
   @members [:owner, :admin, :member]
   @read "a read changes nothing"
@@ -956,11 +958,11 @@ defmodule Apiary.Access do
   @doc """
   lock_places/1 holds the scope's organisation `FOR SHARE`, with the other organisations
   the edition holds with it (`c:Apiary.Edition.places_to_lock/1`), as
-  `lock_organisations/1` holds them, for a caller inside a transaction that must stay allowed while it is written: the first
-  rows of the lock order (docs/access.md). A change that must not happen under such a
-  write locks these rows for update, and waits for the write, or comes first and is
-  seen; a row that only names the organisation takes `FOR KEY SHARE`, which does not
-  wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
+  `lock_organisations/1` holds them, for a caller inside a transaction that must stay
+  allowed while it is written: the first rows of the lock order (docs/access.md). A
+  change that must not happen under such a write locks these rows for update, and waits
+  for the write, or comes first and is seen; a row that only names the organisation
+  takes `FOR KEY SHARE`, which does not wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
   `{:places, scope}`), before any workspace, membership or account. `reload/2` with
   `lock: :share` takes them first; a write that locks a row of its own before it asks, as
   the security policy's locks its workspace, calls this first. `:ok`.
@@ -978,40 +980,82 @@ defmodule Apiary.Access do
   @doc """
   lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
   edition for no rows of its own: for a change whose one point asks the edition itself
-  (`Apiary.Organisations.lock_people/1`). The scope's organisation, read as it is now,
-  and those `c:Apiary.Edition.places_to_lock/1` names for it, `FOR SHARE`, in one
-  statement (`Apiary.Organisations.lock_organisations/2`); then, the organisation held,
-  `places_to_lock/1` is asked again of it as it is now, and any organisation it names
-  that is not held yet is taken after, the same way. `:ok`, or `:gone` for an
-  organisation deleted. Should Postgres refuse the lock twice as a deadlock, it raises.
+  (`Apiary.Organisations.lock_people/1`). The scope's organisation, read as it is now
+  without a lock, and those `c:Apiary.Edition.places_to_lock/1` names for it, are taken
+  `FOR SHARE` in one statement (`Apiary.Organisations.lock_organisations/2`), under a
+  savepoint of its own. Then `places_to_lock/1` is asked again of the organisation held:
+  should it name one not taken, it lets go of what it took, rolling back to the
+  savepoint, and takes the fresh set in one statement again, at most
+  #{@place_attempts} times in all; so what it holds at the end was taken in one statement.
+
+  `:ok`; `:gone` for an organisation deleted, holding none of them. It raises, holding
+  none of them and the transaction usable, should Postgres refuse the lock twice as a
+  deadlock, or should what the edition names change on every attempt.
   """
   @spec lock_organisations(Scope.t()) :: :ok | :gone
   def lock_organisations(%Scope{organisation: %Organisation{id: id}}) do
-    with %Organisation{} = seen <- Repo.get(Organisation, id) || :gone,
-         held = hold_places(Edition.places_to_lock(seen)),
-         true <- id in held || :gone,
-         %Organisation{} = now <- Repo.get(Organisation, id) || :gone do
-      # Read again under its lock, the organisation's places are as they stay until the
-      # change ends; one taken since the first read is held after it, as the lock order
-      # has the organisations it names.
-      case Edition.places_to_lock(now) -- held do
-        [] ->
-          :ok
+    case Repo.get(Organisation, id) do
+      nil ->
+        :gone
 
-        missing ->
-          _held = hold_places(missing)
-          :ok
-      end
+      %Organisation{} = seen ->
+        Repo.query!("SAVEPOINT apiary_lock_places")
+        take_places(id, Edition.places_to_lock(seen), @place_attempts)
     end
   end
 
   def lock_organisations(_scope), do: :gone
 
-  # The organisations `ids`, `FOR SHARE`, in the lock order: those held.
+  # One attempt: the organisations `ids`, `FOR SHARE`, in one statement, under the
+  # savepoint; then what the edition names for the organisation, asked again of it held.
+  # A fresh set means a change of what it names committed between the read and the lock,
+  # and each attempt after needs another such change in its own short window, so a few
+  # attempts are enough; past them it gives up rather than wait on a change that keeps
+  # coming.
+  defp take_places(id, ids, attempts) do
+    held = hold_places(ids)
+
+    case id in held && Repo.get(Organisation, id) do
+      %Organisation{} = now ->
+        fresh = Edition.places_to_lock(now)
+
+        cond do
+          fresh -- ids == [] ->
+            Repo.query!("RELEASE SAVEPOINT apiary_lock_places")
+            :ok
+
+          attempts > 1 ->
+            Repo.query!("ROLLBACK TO SAVEPOINT apiary_lock_places")
+            take_places(id, fresh, attempts - 1)
+
+          true ->
+            let_go_of_places()
+
+            raise "what the edition holds with organisation #{id} changed on each of " <>
+                    "#{@place_attempts} attempts to lock it"
+        end
+
+      _gone ->
+        let_go_of_places()
+        :gone
+    end
+  end
+
+  defp let_go_of_places do
+    Repo.query!("ROLLBACK TO SAVEPOINT apiary_lock_places")
+    Repo.query!("RELEASE SAVEPOINT apiary_lock_places")
+  end
+
+  # The organisations `ids`, `FOR SHARE`, in the lock order: those held. A refusal lets go
+  # of what the attempts took before it raises.
   defp hold_places(ids) do
     case Apiary.Organisations.lock_organisations(ids, :share) do
-      {:ok, held} -> held
-      {:error, error} -> raise error
+      {:ok, held} ->
+        held
+
+      {:error, error} ->
+        let_go_of_places()
+        raise error
     end
   end
 

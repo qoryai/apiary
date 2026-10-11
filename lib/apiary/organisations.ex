@@ -1936,8 +1936,9 @@ defmodule Apiary.Organisations do
   nothing, since its locks belong to `c:Apiary.Edition.lock_rows/1`.
 
   Every change that locks more than one organisation row in one transaction, in any
-  mode, the core's and an edition's, takes them through `lock_organisations/2`, which
-  locks them in this order, and reads it again and locks once more when Postgres refuses
+  mode, the core's and an edition's, takes them through `lock_organisations/2`, so what
+  it holds in the end was taken in one statement; that locks them in this order, and
+  reads it again and locks once more when Postgres refuses
   that caller's lock as a deadlock (`deadlock_detected`); the read again sees what
   changed, as the core's transactions run at `READ COMMITTED`. A change that takes more
   than one in a mode that conflicts with `FOR SHARE` takes them at one point, before its
@@ -1997,7 +1998,9 @@ defmodule Apiary.Organisations do
   lock_organisations/2 locks the rows of the organisations `organisation_ids`, those still
   there, in the order of `lock_order/1`, for a caller inside a transaction: every change
   that locks more than one organisation row, in any mode, takes them through it, at its
-  change's one point for the organisation rows. `mode` is the
+  change's one point for the organisation rows, so what it holds in the end was taken in
+  one statement; one that finds it took a stale set lets go of it, under a savepoint of
+  its own, and calls this again (`Apiary.Access.lock_organisations/1`). `mode` is the
   mode of every row, or a function of an organisation's id that answers the mode of its
   row: `:key_share`, `:share`, `:no_key_update` or `:update`, for `FOR KEY SHARE`,
   `FOR SHARE`, `FOR NO KEY UPDATE` and `FOR UPDATE`.
