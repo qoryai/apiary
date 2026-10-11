@@ -49,7 +49,7 @@ it calls; a LiveView test finds elements by the ids the template sets, not by th
 the page.
 
 One row is outside the sandbox on purpose: the instance's own organisation
-(`c:Apiary.Edition.instance_organisation_id/0`). `test/test_helper.exs` commits it before
+(`c:Apiary.Edition.instance_organisation_id/0`). `Apiary.TestSetup.start!/1` commits it before
 the sandbox takes over, with its confirmed admin, through the instance's set-up
 (`Apiary.Setup.set_up/3`, in `Apiary.OrganisationsFixtures.ensure_instance_organisation!/0`),
 and every run finds it again; the set-up's row of `instance_settings` is deleted after
@@ -60,6 +60,17 @@ back before it ends. A sweep over every organisation or workspace visits it too.
 A test module whose tests write through it, inviting into it, changing or suspending its
 people, or anything else that locks its row or its owners' memberships, is not async: two sandboxes would each lock that one committed row, with rows
 of their own, and deadlock each other.
+
+A suite starts with `Apiary.TestSetup.start!/1`: the core's from `test/test_helper.exs`,
+an edition's from its own, each giving the tags it leaves out beside the ones `start!/1`
+leaves out itself.
+
+A template that makes many people and places for each of many tests may make them once
+for its module (`cast: :module` of `Apiary.AccessCase` and `ApiaryWeb.RefusalsCase`, on
+`Apiary.DataCase.setup_module_sandbox/2`): one sandbox for the module, and each test
+inside a savepoint of it, rolled back as it ends. What lives in a process, an edition's
+stub among it, is set in each test's own `setup`; a test under other features than the
+module's, or one that commits outside the sandbox, stays on `cast: :test`.
 
 A test of two changes racing each other runs outside the sandbox, on connections of its
 own that commit (`Apiary.Races` in `test/support/races.ex`): it is `async: false`,
@@ -94,7 +105,7 @@ one on Forager's `next` branch, pinned by its id. The end to end job builds qory
 Forager at `.forager-e2e-ref`, pinned apart.
 
 The tests tagged `:load` measure the receiver for long and outside the sandbox, and the
-suite leaves them out (`test/test_helper.exs`). The one of a gateway's backlog flushed
+suite leaves them out (`Apiary.TestSetup.start!/1`). The one of a gateway's backlog flushed
 after an outage runs with `QORY_FEATURES` unset:
 `mix test --only load test/apiary_web/contract/backlog_load_test.exs`.
 

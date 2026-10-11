@@ -6,7 +6,7 @@ defmodule Apiary.OrganisationsFixtures do
   since the core's allows one.
 
   The suite's instance is set up before any test runs (`ensure_instance_organisation!/0`,
-  from `test/test_helper.exs`), so a sign-up in a test is a later one.
+  from `Apiary.TestSetup.start!/1`), so a sign-up in a test is a later one.
   """
 
   import Ecto.Query

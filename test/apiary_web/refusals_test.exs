@@ -10,5 +10,5 @@ defmodule ApiaryWeb.RefusalsTest do
   # Not async, as no test of the case is: an edition's rows may write through the
   # instance's own organisation, committed once outside the sandbox, whose row and owners
   # they lock (docs/conventions.md, Tests).
-  use ApiaryWeb.RefusalsCase, rows: [ApiaryWeb.RefusalsRows], covers: :core
+  use ApiaryWeb.RefusalsCase, rows: [ApiaryWeb.RefusalsRows], covers: :core, cast: :module
 end

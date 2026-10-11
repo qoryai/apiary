@@ -696,6 +696,43 @@ defmodule Apiary.Runs.FoldTest do
       assert run.lost_at == nil
     end
 
+    test "through a gateway, only the attaching instance's beat or start revives a lost run" do
+      lost =
+        Map.merge(@run, %{
+          state: "lost",
+          lost_at: at(100),
+          last_heartbeat_at: at(10),
+          run_key_payload: "{}",
+          attach_instance_id: "i_attaching"
+        })
+
+      latest = %{"dev.qory.run.heartbeat" => 4}
+      other = fn event -> Map.put(event, :instance_id, "i_other") end
+
+      # Another instance's beat or start changes nothing of the run's liveness: no revive,
+      # no heartbeat, no offset, so a refold of it gives the same.
+      for events <- [[other.(heartbeat(7, 120))], [other.(started(8))]] do
+        %{run: run, beat: beat} = Fold.fold(lost, events, latest)
+        assert {run.state, run.lost_at, run.last_heartbeat_at} == {"lost", at(100), at(10)}
+        assert Map.get(run, :clock_offset_ms) == Map.get(lost, :clock_offset_ms)
+        assert beat == nil
+      end
+
+      # The attaching instance's beat revives it, after another's or alone, and so does one
+      # stored before its instance was kept.
+      for events <- [
+            [other.(heartbeat(7, 120)), Map.put(heartbeat(8, 150), :instance_id, "i_attaching")],
+            [heartbeat(7, 120)]
+          ] do
+        assert %{state: "running", lost_at: nil} = Fold.fold(lost, events, latest).run
+      end
+
+      # A run with no instance kept, and a direct run, take any instance's beat.
+      for run <- [%{lost | attach_instance_id: nil}, Map.delete(lost, :run_key_payload)] do
+        assert Fold.fold(run, [other.(heartbeat(7, 120))], latest).run.state == "running"
+      end
+    end
+
     test "a beat revives by the registration's interval, before its own" do
       # The run's beats arrive 100 s after their time; this one 550 s after, so it counts as
       # heard at 407 s (its time, the offset and the tolerance), 150 s before its arrival:
