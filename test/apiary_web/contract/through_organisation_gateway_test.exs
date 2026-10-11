@@ -225,6 +225,8 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
   end
 
   describe "a gateway that may no longer serve a run's workspace" do
+    # The reload answers a policy, which the security feature gives.
+    @describetag needs: :security
     setup :serving_another
 
     setup ctx do
