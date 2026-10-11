@@ -321,6 +321,77 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(again, "#onboarding-enrol")
     end
 
+    test "for a node behind the default gateway, the command goes through it, under its notice",
+         %{conn: conn, scope: scope} do
+      gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      node_fixture(scope, %{name: "build-01"})
+      view = open(conn, scope)
+      server = ApiaryWeb.Endpoint.url()
+
+      view |> element("#onboarding-enrol") |> render_click()
+
+      assert [
+               "qory",
+               "access-key",
+               "enrol",
+               "--via",
+               "https://edge.example.com",
+               ^server,
+               _code
+             ] = view |> text("#onboarding-command") |> String.split(" ")
+
+      assert text(view, "#onboarding-gateway") ==
+               "Runs of build-01 go through the gateway edge-01, at https://edge.example.com. edge-01 has no active access key, so it isn't connected."
+
+      assert text(view, "#onboarding-via-ca") ==
+               "If edge-01's certificate is signed by a private certificate authority, add --via-ca-file and that authority's PEM file."
+
+      # The notice above the command, the line under it.
+      html = view |> element("#onboarding-panel") |> render()
+      [before, after_command] = String.split(html, ~s(id="onboarding-command"), parts: 2)
+      assert before =~ ~s(id="onboarding-gateway")
+      assert after_command =~ ~s(id="onboarding-via-ca")
+    end
+
+    test "for a node that goes direct, the command carries no --via and no gateway line", %{
+      conn: conn,
+      scope: scope
+    } do
+      gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      node_fixture(scope, %{name: "build-01", gateway_choice: "direct"})
+      view = open(conn, scope)
+      server = ApiaryWeb.Endpoint.url()
+
+      view |> element("#onboarding-enrol") |> render_click()
+
+      assert ["qory", "access-key", "enrol", ^server, _code] =
+               view |> text("#onboarding-command") |> String.split(" ")
+
+      refute has_element?(view, "#onboarding-gateway")
+      refute has_element?(view, "#onboarding-via-ca")
+    end
+
+    test "for a node on Default gateway while none is the default, the command is as for a direct one",
+         %{conn: conn, scope: scope} do
+      gateway = gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      node = node_fixture(scope, %{name: "build-01"})
+      assert node.gateway_choice == :default
+
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^gateway.id),
+        set: [default_gateway: false]
+      )
+
+      view = open(conn, scope)
+      server = ApiaryWeb.Endpoint.url()
+      view |> element("#onboarding-enrol") |> render_click()
+
+      assert ["qory", "access-key", "enrol", ^server, _code] =
+               view |> text("#onboarding-command") |> String.split(" ")
+
+      refute has_element?(view, "#onboarding-gateway")
+      refute has_element?(view, "#onboarding-via-ca")
+    end
+
     test "the machine running the command moves the box on, and the command is gone", %{
       conn: conn,
       scope: scope

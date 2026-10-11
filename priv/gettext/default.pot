@@ -1873,6 +1873,11 @@ msgstr ""
 msgid "%{version} has been in force since %{time}."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "%{via} sends every request to Qory Apiary through %{gateway}."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "%{what}: %{from} → %{to}"
@@ -2374,6 +2379,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "A software workspace"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "A starter that reaches Qory Apiary directly can leave %{via} out."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -5945,6 +5955,11 @@ msgstr ""
 msgid "If %{email} has an account, a log-in link is on its way. It works for 15 minutes."
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "If you did not ask for this change, ignore this email."
@@ -9053,6 +9068,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "Point qory at Qory Apiary, through %{gateway}."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "Point qory at Qory Apiary."
 msgstr ""
 
@@ -11124,6 +11144,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "The change was not made: the run configuration it renders is over 1 MiB, more than the gateway reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex

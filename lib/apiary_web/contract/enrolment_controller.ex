@@ -42,6 +42,10 @@ defmodule ApiaryWeb.Contract.EnrolmentController do
     12. `201`, signed, with the access key id, its node and its kind, `stored_secrets`
         and the instance's keys: the key is active.
 
+  An enrolment a gateway relays arrives unchanged, from the gateway's address, and is
+  answered as any other: step 4 counts the gateway's address, one limit for every machine
+  behind it, not raised for a gateway (`docs/contract-assumptions.md`).
+
   The order of 8 to 12 is `Apiary.AccessKeys.enrol/2`'s. A signed answer is signed by
   `ApiaryWeb.Contract.SignedAnswer.put_enrolment/3`: `X-Qory-Signature-Ed25519`, the
   instance's signature of the enrolment answer string

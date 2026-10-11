@@ -835,6 +835,21 @@ defmodule Apiary.NodeAccessKeysTest do
                  Apiary.SigningKey.apiary_public_key()
                )
     end
+
+    test "the via lines sit under server: as the server's lines do, the gateway's URL in them" do
+      %{url: url} = AccessKeys.server_lines("https://apiary.example", @pin)
+
+      assert AccessKeys.via_lines("https://edge.example.com") == [
+               "  via:",
+               "    url: https://edge.example.com"
+             ]
+
+      # `via:` at the depth of `url:`, a `url:` one step under it.
+      [via, via_url] = AccessKeys.via_lines("https://edge.example.com")
+      indent = &(String.length(&1) - String.length(String.trim_leading(&1)))
+      assert indent.(via) == indent.(url)
+      assert indent.(via_url) == indent.(url) + 2
+    end
   end
 
   describe "a key enrolled is announced" do

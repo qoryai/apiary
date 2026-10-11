@@ -2,6 +2,7 @@ defmodule ApiaryWeb.Contract.EnrolmentRateLimitTest do
   # The limits come from the application environment, which every test shares.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Apiary.AccessKeysFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
@@ -284,6 +285,65 @@ defmodule ApiaryWeb.Contract.EnrolmentRateLimitTest do
       end
 
       assert enrol(body(code, pair)).status == 201
+    end
+  end
+
+  # A gateway relays an enrolment byte for byte and strips the fields that name the machine
+  # behind it, so the request arrives unchanged, from the gateway's address alone.
+  describe "an enrolment a gateway relays" do
+    setup do
+      %{scope: scope} = sign_up_fixture()
+      gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
+      %{scope: scope}
+    end
+
+    test "is the same signed 201 as a direct one, and its entry records the gateway's address",
+         %{scope: scope} do
+      limits(rate: 1000, burst: 100_000)
+      node = node_fixture(scope, %{name: "build-01"})
+      assert Apiary.Gateways.chosen(node).name == "edge-01"
+      %{code: code} = code(scope, node)
+      pair = ed25519_key_pair()
+      body = body(code, pair)
+
+      conn = enrol({192, 0, 2, 60}, body)
+      assert conn.status == 201
+      assert signed?(conn, body)
+      assert %{"node_id" => node_id, "node_kind" => "node"} = Jason.decode!(conn.resp_body)
+      assert node_id == node.public_id
+
+      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
+
+      assert [entry] =
+               Repo.all(
+                 from e in Entry,
+                   where: e.subject_kind == "access_key" and e.subject_id == ^key.id
+               )
+
+      assert entry.remote_ip == "192.0.2.60"
+    end
+
+    test "shares the gateway's address's limit with every machine behind it", %{scope: scope} do
+      limits(rate: 0, burst: 10, code_rate: 1000, code_burst: 1000)
+      gateway = {192, 0, 2, 61}
+
+      requests =
+        for name <- ["build-01", "build-02"] do
+          %{code: code} = code(scope, node_fixture(scope, %{name: name}))
+          body(code, ed25519_key_pair())
+        end
+
+      # Ten at once from the gateway's address, five for each machine: the first enrols,
+      # the repeats answer the same.
+      for _ <- 1..5, body <- requests, do: assert(enrol(gateway, body).status == 201)
+
+      conn = enrol(gateway, hd(requests))
+      assert conn.status == 429
+      assert Jason.decode!(conn.resp_body) == %{"error" => "rate_limited"}
+      assert get_resp_header(conn, "x-qory-signature-ed25519") == []
+
+      # A machine that reaches Qory Apiary directly counts against its address.
+      assert enrol({192, 0, 2, 62}, List.last(requests)).status == 201
     end
   end
 end
