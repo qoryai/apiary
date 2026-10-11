@@ -57,6 +57,16 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
     })
   end
 
+  defp built("answer-gateway.json") do
+    Enrolment.answer_body(%{
+      access_key_id: "ak_f1xt0re00000000g",
+      node_id: "ng_f1xt0re000000000",
+      node_kind: :gateway,
+      stored_secrets: false,
+      apiary_public_key: server_keys(:one)
+    })
+  end
+
   defp built("refusal-key-invalid.json"),
     do: Enrolment.refusal_body(:key_invalid, server_keys(:one))
 
@@ -75,6 +85,8 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
   @answers ~w(answer.json refusal-key-invalid.json refusal-key-limit.json
               refusal-rate-limited.json refusal-key-invalid-rotation.json
               refusal-key-limit-rotation.json)
+  # A gateway's answer, which no known answer signs.
+  @gateway_answers ~w(answer-gateway.json)
 
   defp schema, do: ContractSchema.schema!(contract_dir(), "enrolment.schema.json")
 
@@ -86,7 +98,7 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
       |> Enum.map(&Path.basename/1)
       |> Enum.sort()
 
-    assert names == Enum.sort(@requests ++ @answers)
+    assert names == Enum.sort(@requests ++ @answers ++ @gateway_answers)
   end
 
   describe "the requests" do
@@ -171,17 +183,27 @@ defmodule Apiary.Contract.EnrolmentFixturesTest do
 
   describe "the answers" do
     test "each is the body the builders make, byte for byte, and validates" do
-      for name <- @answers do
-        assert built(name) == contract_file!("enrolment/" <> name), name
+      for name <- @answers ++ @gateway_answers do
+        # The gateway's fixture ends in a line feed, which no answer body has.
+        assert built(name) == String.trim_trailing(contract_file!("enrolment/" <> name), "\n"),
+               name
+
         assert ContractSchema.validate(schema(), Jason.decode!(built(name))) == :ok, name
       end
     end
 
     test "the invalid answers are refused by the schema, and are no body the builders make" do
-      for name <- ~w(enrolment-answer-no-node-id.json enrolment-refusal-no-key.json) do
+      for name <-
+            ~w(enrolment-answer-no-node-id.json enrolment-refusal-no-key.json
+               enrolment-answer-gateway-kind-of-a-node.json) do
         json = contract_json!("invalid/" <> name)
         assert {:error, _} = ContractSchema.validate(schema(), json), name
-        refute contract_file!("invalid/" <> name) in Enum.map(@answers, &built/1), name
+
+        refute contract_file!("invalid/" <> name) in Enum.map(
+                 @answers ++ @gateway_answers,
+                 &built/1
+               ),
+               name
       end
     end
 

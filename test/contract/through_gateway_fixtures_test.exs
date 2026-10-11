@@ -17,7 +17,9 @@ defmodule Apiary.Contract.ThroughGatewayFixturesTest do
   alias Apiary.Contract.{Ed25519, SignedMessage}
   alias Apiary.ContractSchema
   alias Apiary.Runs.{Attach, Outcome, Registration, RunKey}
+  alias Apiary.Policy.Render
   alias Apiary.SigningKey
+  alias ApiaryWeb.Contract.Configuration
 
   @moduletag :contract
 
@@ -101,6 +103,20 @@ defmodule Apiary.Contract.ThroughGatewayFixturesTest do
         assert message == Enum.join(answer["lines"], "\n")
         assert sign(message, fixture_key!("signing_key").seed) == answer["signature"]
       end
+    end
+
+    test "the attach answer is this server's: its bytes, its run configuration's digest and the gateway's discovery digest" do
+      %{"answers" => [_registration, attach, _outcome]} = known_answers!("through-gateway")
+      file = &contract_file!("known-answers/" <> &1)
+      registration = Jason.decode!(file.("registration-gateway.json"))
+      run_configuration = String.trim(file.("attach-run-configuration.json"))
+
+      assert Attach.answer_body(run_configuration, registration["labels"], registration["about"]) ==
+               file.("attach-answer.json")
+
+      [_tag, "200", _request, _hash, configuration, run_digest] = attach["lines"]
+      assert configuration == Configuration.digest(String.trim(file.("discovery-gateway.json")))
+      assert run_digest == Render.digest(run_configuration)
     end
 
     test "its bodies pass their schemas, and this server reads the requests" do
