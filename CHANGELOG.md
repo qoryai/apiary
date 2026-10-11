@@ -683,6 +683,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
+- A connection the wall refused for the form of its host says so in words: "The wall
+  refuses a host that is neither a name nor an address in canonical form, in either
+  mode." Before, it read "Rule wall:host-form". The row for the machine's addresses also
+  names link-local addresses: "The wall refuses link-local addresses and the machine's
+  addresses, in either mode.", and so does the Policy page's hint for a rule written as an
+  address.
 - A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
   address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
   name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
@@ -692,6 +698,21 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
   scheme and a host, with a port if needed, and nothing more", by
   `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- A host rule takes an address only as four numbers from 0 to 255 with dots between them
+  and no leading zeros, such as `10.0.0.12`. A host whose last part is a number (all
+  digits, or `0x` and hex digits) is an address; before, `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1`, `10.0.0.256` and `*.0.0.1` were taken as host names, and the
+  gateway refuses a whole document holding one. They are now refused by the rule form ("An
+  address is four numbers from 0 to 255 with dots between them and no leading zeros, such
+  as 10.0.0.12.", or for `*.` before an address "*. leads a host name, never an address."),
+  by every rule write (the rule's changeset, `Apiary.Policy.Grammar.host?/1`) and by
+  requested changes, and a rendered document is held to the same grammar before it is
+  stored. A rule stored before is kept, not in force, and left out of every rendered
+  document; its row says "Not in force" and offers Remove alone, and a requested removal
+  still removes it. A connection to an address matches a rule only when it names the
+  address in that form and the rule is the same: an address in another form, an IPv6
+  address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
+  a connection reads as not allowed.
 
 ### Removed
 

@@ -189,6 +189,28 @@ defmodule Apiary.Policy.ActivityTest do
       assert {:ok, [%{tool: "files", denied: 1}]} = Policy.denied_destinations(scope, since())
     end
 
+    test "an address in another form than a.b.c.d is covered by no rule" do
+      %{scope: scope} = sign_up_fixture()
+
+      started_run(scope, @site,
+        egress: [
+          allowed("10.0.0.12"),
+          allowed("10.0.0.012"),
+          allowed("167772172"),
+          allowed("0xa.0.0.12"),
+          allowed("::ffff:10.0.0.12"),
+          allowed("[::ffff:10.0.0.12]")
+        ]
+      )
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "10.0.0.12"})
+
+      assert {:ok, uncovered} = Policy.uncovered(scope, since())
+
+      assert uncovered |> Enum.map(& &1.host) |> Enum.sort() ==
+               Enum.sort(~w(10.0.0.012 167772172 0xa.0.0.12 ::ffff:10.0.0.12 [::ffff:10.0.0.12]))
+    end
+
     test "a destination without a tool names none" do
       %{scope: scope} = sign_up_fixture()
       started_run(scope, @site, egress: [allowed("api.example")])

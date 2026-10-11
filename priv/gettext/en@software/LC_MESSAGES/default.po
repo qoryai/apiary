@@ -1806,6 +1806,11 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
+msgid "%{suffix} leads a host name, never an address."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
 msgid "%{suffix} may only lead a host: %{example} matches every host below %{domain}."
 msgstr ""
 
@@ -3204,7 +3209,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
-msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says."
+msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as %{address}."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/reading.ex
+#, elixir-autogen, elixir-format
+msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/gateways.ex
@@ -8465,6 +8475,11 @@ msgstr ""
 msgid "Not in force: a rule on this target decides it"
 msgstr "Not in force: a rule on this repository decides it"
 
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not locked"
@@ -12097,7 +12112,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "The wall refuses the machine's address,"
+msgid "The wall refuses a host that is neither a name nor an address in canonical form,"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The wall refuses link-local addresses and the machine's addresses,"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

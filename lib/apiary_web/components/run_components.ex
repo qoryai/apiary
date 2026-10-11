@@ -2794,7 +2794,18 @@ defmodule ApiaryWeb.RunComponents do
     main =
       case reason_kind(c) do
         :own_address ->
-          [gettext("The wall refuses the machine's address,"), gettext("in either mode.")]
+          [
+            gettext("The wall refuses link-local addresses and the machine's addresses,"),
+            gettext("in either mode.")
+          ]
+
+        :host_form ->
+          [
+            gettext(
+              "The wall refuses a host that is neither a name nor an address in canonical form,"
+            ),
+            gettext("in either mode.")
+          ]
 
         :ambiguous_path ->
           [
@@ -2938,7 +2949,13 @@ defmodule ApiaryWeb.RunComponents do
     <b :if={@variant == "inline" && @c.decision == "denied"}>{gettext("Denied.")}</b>
     <%= case @kind do %>
       <% :own_address -> %>
-        <b>{gettext("The wall refuses the machine's address,")}</b> {gettext("in either mode.")}
+        <b>{gettext("The wall refuses link-local addresses and the machine's addresses,")}</b> {gettext(
+          "in either mode."
+        )}
+      <% :host_form -> %>
+        <b>{gettext(
+          "The wall refuses a host that is neither a name nor an address in canonical form,"
+        )}</b> {gettext("in either mode.")}
       <% :ambiguous_path -> %>
         <b>{gettext("The path can be read two ways.")}</b> {gettext(
           "The wall denies it in either mode."
@@ -2987,6 +3004,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp reason_kind(%{decision: "denied", rule: "wall:own-address"}), do: :own_address
+  defp reason_kind(%{decision: "denied", rule: "wall:host-form"}), do: :host_form
   defp reason_kind(%{decision: "denied", path_rule: "wall:ambiguous-path"}), do: :ambiguous_path
   defp reason_kind(%{decision: "denied", rule: nil}), do: :denied_no_rule
 

@@ -147,7 +147,19 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
       address?(host) ->
         {rich_gettext(
-           "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says.",
+           "An address is written like a host, digits and dots only: %{address}. The wall refuses link-local addresses and the machine's addresses whatever the policy says.",
+           address: {:m, "10.0.0.12"}
+         ), nil}
+
+      # An address takes no `*.`: there is nothing below it.
+      String.starts_with?(host, "*.") and Grammar.ends_in_number?(String.downcase(rest)) ->
+        {rich_gettext("%{suffix} leads a host name, never an address.", suffix: {:code, "*."}),
+         nil}
+
+      # An address in a form other than `a.b.c.d`, which the gateway refuses.
+      Grammar.ends_in_number?(String.downcase(host)) ->
+        {rich_gettext(
+           "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as %{address}.",
            address: {:m, "10.0.0.12"}
          ), nil}
 

@@ -14,7 +14,8 @@ defmodule Apiary.Policy.Entry do
     * `overrides`: the entries this one beat, likewise;
     * `reason`: why it is not in force when nothing beat it: `:only_above_allows`, a host
       allow of the workspace or of a target where the level above allows only its own
-      hosts; nil otherwise.
+      hosts; `:out_of_grammar`, a rule stored before the grammar refused its host (an
+      address in a form other than `a.b.c.d`), which no document holds; nil otherwise.
   """
 
   @type t :: %__MODULE__{}
