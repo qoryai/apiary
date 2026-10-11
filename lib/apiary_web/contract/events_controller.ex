@@ -15,11 +15,13 @@ defmodule ApiaryWeb.Contract.EventsController do
   is `400` `invalid_request`; a key `Apiary.Access` does not let post
   (`run.post_events`) is `404`, as a path that does not exist; then
   `Apiary.Runs.Ingest`: a run bound to another node than the key's (`Apiary.Runs.Sender`)
-  is `409` `wrong_node`, the whole batch refused and nothing of it stored; a run whose
-  events retention has pruned is `410`, even for a delivery already recorded; any other
-  delivery already recorded is `202` again; a run behind a gateway that may no longer
-  serve its workspace (`Apiary.Runs.Sender.serves?/2`) is `410` `workspace_not_served`,
-  nothing of the batch stored; anything else is stored and answered `202`, with nothing
+  is `409` `wrong_node`, or `wrong_gateway` for a run behind a gateway, the whole batch
+  refused and nothing of it stored; a run behind a gateway that may no longer serve its
+  workspace (`Apiary.Runs.Sender.serves?/2`, decided as at the attach) is `410`
+  `workspace_not_served`, with no digest, nothing of the batch stored, a delivery
+  already recorded included; a run whose events retention has pruned is `410`, even for
+  a delivery already recorded; any other delivery already recorded is `202` again;
+  anything else is stored and answered `202`, with nothing
   projected yet. A run starts by its registration
   (`ApiaryWeb.Contract.RegistrationController`), which the instance limit admits; a batch
   is held to no limit.

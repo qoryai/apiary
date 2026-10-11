@@ -95,10 +95,11 @@ defmodule Apiary.Runs.Ingest do
   the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
   when the run is another node's, and `{:error, :wrong_gateway}` when the run goes
   through a gateway and the batch is not from the gateway that attached it and its
-  attaching instance (`Apiary.Runs.Sender`), with nothing stored. A new delivery for a
-  run through a gateway that may no longer serve the run's workspace
-  (`Apiary.Runs.Sender.serves?/2`, asked under the run's lock, after the sender and the
-  delivery id) is `{:error, :workspace_not_served}`, with nothing stored.
+  attaching instance (`Apiary.Runs.Sender`), with nothing stored. Then, for a run through
+  a gateway that may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`,
+  asked under the run's lock), `{:error, :workspace_not_served}`, with nothing stored and
+  nothing of the run told: before the pruned run's answer and before a delivery id
+  recorded before is answered again.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -200,6 +201,12 @@ defmodule Apiary.Runs.Ingest do
       (refused = place_refusal(run, access_key)) != :ok ->
         refused
 
+      # The gateway may no longer serve the run's workspace, decided as at the attach:
+      # refused whole, before the delivery id is read or recorded, so it is told nothing of
+      # the run, not even of a delivery accepted before (fails closed).
+      not Sender.serves?(run, access_key) ->
+        {:error, :workspace_not_served}
+
       # Retention deleted the run's events, and with them what a replay would be
       # deduplicated against: the workspace wants nothing more of this run.
       not is_nil(run.events_pruned_at) ->
@@ -207,11 +214,6 @@ defmodule Apiary.Runs.Ingest do
 
       not new_delivery?(access_key, run, batch, meta, delivery_id, now) ->
         {:ok, %{result(202, run) | repeated: true, end: run_end(run, batch)}}
-
-      # The gateway may no longer serve the run's workspace: refused whole, and the
-      # delivery just recorded rolls back with the transaction.
-      not Sender.serves?(run, access_key) ->
-        {:error, :workspace_not_served}
 
       true ->
         {stored_batch, pruned} = without_pruned_log(run, batch)

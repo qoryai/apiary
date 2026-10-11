@@ -385,9 +385,10 @@ configuration in force now for the labels the run registered with.
 The reload is answered only to the active keys of the node that registered the run, or,
 for a run through a gateway, of the gateway and the instance that attached it, and only by
 the labels it registered with; a run whose events retention has pruned is reloaded all the
-same. To the gateway any answer but `200` is a reload that failed: the policy in force
-stays, and it tries again on
-the next answer. The endpoint never answers `304`.
+same. For a run behind a gateway that may no longer serve the run's workspace, the `410`
+`workspace_not_served` comes before the `404` of a workspace that serves no run
+configuration. To the gateway any answer but `200` is a reload that failed: the policy in
+force stays, and it tries again on the next answer. The endpoint never answers `304`.
 
 <!-- feature: security -->
 A reload on a workspace with no policy, or a policy removed mid-run, answers `404`. A
@@ -523,8 +524,8 @@ this order, and the first refusal that applies is the answer:
 | `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and the run's workspace or organisation is out of use | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and the run's workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
+| `410` | the run goes through a gateway and the gateway that attached it may no longer serve the run's workspace, decided as at the attach: before deduplication, a delivery already recorded included; no digest header, and nothing of the batch is stored | `{"error":"workspace_not_served"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
-| `410` | the run goes through a gateway that may no longer serve the run's workspace, and the delivery is a new one (one already recorded is `202` again): nothing of the batch is stored | `{"error":"workspace_not_served"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's end (below) |
 
@@ -570,7 +571,9 @@ else is retried with backoff until the run ends.
   signature covers the body, as it covers every body.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again, or `410` for a run retention has
-  pruned, and nothing is stored.
+  pruned, and nothing is stored. For a run behind a gateway that may no longer serve its
+  workspace, the `410` `workspace_not_served` comes first, a delivery recorded before
+  included.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
   The events are projected into the run, its connections and its log after the answer, in
   order of `sequence`, never of arrival.

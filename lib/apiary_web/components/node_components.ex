@@ -363,7 +363,8 @@ defmodule ApiaryWeb.NodeComponents do
   resolves for the workspace, or the node is on it already, which keeping asks nothing
   of); Direct; and each gateway the node may name, by name (`Apiary.Gateways.gateway_choices/1`,
   by level). Where the gateways are of more than one level, they are grouped by it: "This
-  workspace", then each organisation by its name, the node's first. It shows the errors
+  workspace", then the node's organisation, then each organisation that serves it in the
+  order their defaults resolve (`Apiary.Gateways.levels/1`), each named. It shows the errors
   `Apiary.Nodes` gives `gateway_choice` and `gateway_id` once the form was sent.
   `choice_params/1` turns what it sends into those two fields.
   """

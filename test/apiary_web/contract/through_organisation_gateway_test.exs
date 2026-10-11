@@ -225,17 +225,13 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
   end
 
   describe "a gateway that may no longer serve a run's workspace" do
-    # The reload answers a policy, which the security feature gives.
-    @describetag needs: :security
     setup :serving_another
-
-    setup ctx do
-      {:ok, _rule} = Apiary.Policy.allow(ctx.elsewhere, nil, %{host: "api.example"})
-      :ok
-    end
 
     defp reload({key, secret}, run_id),
       do: signed_get(build_conn(), key.key_id, secret, "/v1/runs/" <> run_id)
+
+    defp deliver_as({key, secret}, events, delivery),
+      do: signed_post(build_conn(), key.key_id, secret, events, delivery: delivery)
 
     # A run of the scope's organisation's node, registered through the other
     # organisation's gateway and attached by it.
@@ -252,15 +248,23 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
        Repo.aggregate(from(d in Apiary.Runs.Delivery, where: d.run_id == ^run_id), :count)}
     end
 
-    # Each refusal, signed, and nothing of the batch stored.
-    defp refused(ctx, {run_id, run_key}) do
-      {_subject, [started]} = first_events(run_id)
-      before = stored(run_id)
-
-      conn = deliver(ctx.gateway_key, [started])
+    # The batch refused: signed, no digest, and nothing of it stored.
+    defp batch_refused(conn, run_id, before) do
       assert json_response(conn, 410) == %{"error" => "workspace_not_served"}
       assert signed_answer?(conn)
+      assert get_resp_header(conn, "x-qory-configuration") == []
+      assert get_resp_header(conn, "x-qory-run-configuration") == []
       assert stored(run_id) == before
+    end
+
+    # Each refusal, signed, and nothing of the batch stored: a new delivery, and one
+    # accepted before the gateway stopped serving the workspace, sent again.
+    defp refused(ctx, {run_id, run_key}, {accepted, events}) do
+      {_subject, [_started, next]} = first_events_and_next(run_id)
+      before = stored(run_id)
+
+      batch_refused(deliver(ctx.gateway_key, [next]), run_id, before)
+      batch_refused(deliver_as(ctx.gateway_key, events, accepted), run_id, before)
 
       conn = reload(ctx.gateway_key, run_id)
       assert json_response(conn, 410) == %{"error" => "workspace_not_served"}
@@ -272,6 +276,19 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       assert signed_answer?(conn)
     end
 
+    # A delivery accepted while the gateway serves the workspace: its id and its events.
+    defp accepted(ctx, run_id) do
+      {_subject, [started]} = first_events(run_id)
+      delivery = Ecto.UUID.generate()
+      assert response(deliver_as(ctx.gateway_key, [started], delivery), 202) == ""
+      {delivery, [started]}
+    end
+
+    defp first_events_and_next(run_id) do
+      {subject, [started]} = first_events(run_id)
+      {subject, [started, wire_event(run_id, 2, "run.heartbeat")]}
+    end
+
     # With the relation back, a new run registers and is attached.
     defp served_again(ctx) do
       EditionStubs.ServesAcross.switch(:on)
@@ -281,40 +298,84 @@ defmodule ApiaryWeb.Contract.ThroughOrganisationGatewayTest do
       assert response(deliver(ctx.gateway_key, [started]), 202) == ""
     end
 
-    test "is served while the relation holds", ctx do
+    test "is served while the relation holds, a delivery sent again answered as before", ctx do
       {run_id, run_key} = attached(ctx)
-      {_subject, [started]} = first_events(run_id)
-
-      assert response(deliver(ctx.gateway_key, [started]), 202) == ""
+      {delivery, events} = accepted(ctx, run_id)
       assert stored(run_id) == {1, 1}
-      assert reload(ctx.gateway_key, run_id).status == 200
+
+      conn = deliver_as(ctx.gateway_key, events, delivery)
+      assert response(conn, 202) == ""
+      assert get_resp_header(conn, "x-qory-configuration") != []
+      assert stored(run_id) == {1, 1}
+
       assert attach(ctx.gateway_key, run_id, attach_body(run_key)).status == 200
     end
 
-    test "is refused once the relation is withdrawn", ctx do
-      run = attached(ctx)
+    @tag needs: :security
+    test "is given the run's policy at its reload while the relation holds", ctx do
+      {:ok, _rule} = Apiary.Policy.allow(ctx.elsewhere, nil, %{host: "api.example"})
+      {run_id, _run_key} = attached(ctx)
+      assert reload(ctx.gateway_key, run_id).status == 200
+    end
+
+    @tag needs: :security
+    test "is given no policy at its reload once the relation is withdrawn", ctx do
+      {:ok, _rule} = Apiary.Policy.allow(ctx.elsewhere, nil, %{host: "api.example"})
+      {run_id, _run_key} = attached(ctx)
       EditionStubs.ServesAcross.put([])
-      refused(ctx, run)
+
+      conn = reload(ctx.gateway_key, run_id)
+      assert json_response(conn, 410) == %{"error" => "workspace_not_served"}
+      assert get_resp_header(conn, "x-qory-run-configuration") == []
+    end
+
+    test "is refused once the relation is withdrawn", ctx do
+      {run_id, _run_key} = run = attached(ctx)
+      delivery = accepted(ctx, run_id)
+      EditionStubs.ServesAcross.put([])
+      refused(ctx, run, delivery)
       served_again(ctx)
     end
 
     test "is refused while the edition's serving is off", ctx do
-      run = attached(ctx)
+      {run_id, _run_key} = run = attached(ctx)
+      delivery = accepted(ctx, run_id)
       EditionStubs.ServesAcross.switch(:off)
-      refused(ctx, run)
+      refused(ctx, run, delivery)
       served_again(ctx)
     end
 
     test "is refused once the run's organisation leaves, while it serves others", ctx do
       %{scope: another} = sign_up_fixture()
-      run = attached(ctx)
+      {run_id, _run_key} = run = attached(ctx)
+      delivery = accepted(ctx, run_id)
 
       EditionStubs.ServesAcross.put([
         {ctx.operator.organisation.id, another.organisation.id}
       ])
 
-      refused(ctx, run)
+      refused(ctx, run, delivery)
       served_again(ctx)
+    end
+
+    test "a run whose events were pruned is refused alike, and no delivery is recorded", ctx do
+      {run_id, _run_key} = attached(ctx)
+      {delivery, events} = accepted(ctx, run_id)
+
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [events_pruned_at: DateTime.utc_now()]
+      )
+
+      # While served, a new delivery to it is a 410 that records the delivery.
+      {_subject, [_started, next]} = first_events_and_next(run_id)
+      assert response(deliver(ctx.gateway_key, [next]), 410) == ""
+      {_events, deliveries} = stored(run_id)
+      assert deliveries == 2
+
+      EditionStubs.ServesAcross.put([])
+      before = stored(run_id)
+      batch_refused(deliver(ctx.gateway_key, [next]), run_id, before)
+      batch_refused(deliver_as(ctx.gateway_key, events, delivery), run_id, before)
     end
   end
 end

@@ -327,8 +327,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   run's workspace is in use, the gateway may serve it, and either the gateway's
   organisation is in use or the run is another organisation's. A gateway acts for a run
   only while it may serve the run's workspace, asked again at each batch, heartbeat,
-  reload and repeated attach: once it may not, a new batch or heartbeat is a signed `410`
-  `workspace_not_served` with nothing of it stored, a reload the same `410` with no
+  reload and repeated attach: once it may not, a batch or heartbeat, one accepted before
+  and sent again included, is a signed `410` `workspace_not_served` with no digest and
+  nothing of it stored, before deduplication and before a pruned run's answer, a reload the same `410` with no
   policy, and a repeated attach a signed `409` `workspace_not_served`; the run goes lost
   by liveness. A workspace's gateway's key is held to its organisation's use as any
   node's is. The console offers an

@@ -162,8 +162,8 @@ first refusal that applies is the answer:
 | `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
+| `410` | the run goes through a gateway and the gateway that attached it may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`, `Apiary.Gateways.may_serve?/2`), decided as at the attach; before deduplication, so a delivery already recorded is refused too; no digest header, nothing of the batch, the delivery included, is stored, and the run goes lost by liveness | `{"error":"workspace_not_served"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
-| `410` | a new delivery for a run through a gateway that may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`, `Apiary.Gateways.may_serve?/2`), after the checks above and a delivery already recorded, which is `202` again; nothing of the batch, the delivery included, is stored, and the run goes lost by liveness | `{"error":"workspace_not_served"}` |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's `end` (below) |
 
@@ -260,7 +260,9 @@ What is stored, in one transaction, before the answer:
 - the delivery: the key, the instance id, `X-Qory-Delivery`, the subject, how many events it held, how many were
   new, the status answered, and the batch's `X-Qory-Run-Configuration` when it had the shape
   of a digest. A delivery id the key has delivered before is answered `202` again, or `410`
-  for a run retention has pruned, and nothing is stored;
+  for a run retention has pruned, and nothing is stored; a run behind a gateway that may no
+  longer serve its workspace is refused `410` `workspace_not_served` before this, a
+  delivery recorded before included;
 - on the run: the count of events, when the last one was received, and the last
   `X-Qory-Run-Configuration` that had the shape `sha256=` and 64 lowercase hex digits.
 
@@ -482,7 +484,7 @@ without a registration, even for the key they came with, and a `run_id` that is 
 run registered with, and no others, with the headers above. A run whose events retention
 has pruned is reloaded all the same: `200`, never `410`. A run through a gateway that may no
 longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`) is `410`
-`{"error":"workspace_not_served"}`, never its policy. A reload on a workspace with no policy, or a
+`{"error":"workspace_not_served"}`, never its policy, before any `404` below. A reload on a workspace with no policy, or a
 policy removed mid-run, answers `404`. A policy removed mid-run never loosens a run that's
 already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
