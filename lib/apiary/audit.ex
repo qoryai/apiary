@@ -705,6 +705,13 @@ defmodule Apiary.Audit do
   end
 
   @doc """
+  retention_min_days/0 is the fewest days the trail keeps an entry, the least
+  `AUDIT_RETENTION_DAYS` takes (`parse_retention_days/1`): #{@retention_min}.
+  """
+  @spec retention_min_days() :: pos_integer
+  def retention_min_days, do: @retention_min
+
+  @doc """
   parse_retention_days/1 reads a value of `AUDIT_RETENTION_DAYS`: `{:ok, days}`, a whole
   number of days from #{@retention_min} to the edition's ceiling
   (`c:Apiary.Edition.audit_retention_max_days/0`, 90 in the core), or

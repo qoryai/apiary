@@ -351,20 +351,24 @@ for each other and never on each other at once:
    account's deletion holds every organisation the account is a member of, those it owns
    `FOR SHARE` and the rest `FOR KEY SHARE`
    (`Apiary.Organisations.sole_owned_organisations/2` with `lock: true`), are locked in
-   the order of `Apiary.Organisations.lock_order/1`, the function an edition calls for the
+   one statement (`Apiary.Organisations.lock_organisations/2`) in the order of
+   `Apiary.Organisations.lock_order/1`, the function an edition calls for the
    order of several organisations whenever it locks the rows of more than one: first
    those the edition holds another organisation with, then the rest, each in the order of
    their ids, so an organisation that holds others comes before those that hold none;
    with the core's edition, in the order of their ids. The organisations an edition names
    besides an organisation's own hold none of their own, which makes this one order that
    every change agrees on. An edition that takes more than one organisation row in one
-   transaction, in a mode that conflicts with `FOR SHARE`, takes them at one point, in
-   the order of `lock_order/1`, before its first write; and only rows of organisations
-   whose classification, what `c:Apiary.Edition.places_to_lock/1` names for them, cannot
-   change while it holds them, or while it holds what a change of their classification
-   waits for. The core meets this: each change of the core that locks an organisation
-   row in such a mode locks that one row alone. Then the edition's own rows for the
-   change (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
+   transaction, in a mode that conflicts with `FOR SHARE`, takes them at one point,
+   before its first write, through `lock_organisations/2`: it reads the order and locks
+   them in one statement, and should what `c:Apiary.Edition.places_to_lock/1` names
+   change between the read and the lock, so that two changes wait on each other, the
+   one whose lock Postgres refuses (`deadlock_detected`) reads the order again, which
+   sees the change, as the core's transactions run at `READ COMMITTED`, and locks them
+   once more. The core
+   meets this: each change of the core that locks an organisation row in such a mode
+   locks that one row alone. Then the edition's own rows for the change
+   (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
 2. **Workspace rows**, in the order of their ids where a change takes several, as a write
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
@@ -449,7 +453,8 @@ The modes keep a row that only names another out of it:
   `member.invite`, or the one an edition's invitation names
   (`Apiary.Organisations.insert_invitation/3`). A new link for a pending invitation
   (`Apiary.Organisations.renew_invitation/4`) reads the invitation without a lock to find
-  the allowance it was counted against, locks that allowance's row the same way, then
+  the allowance it was counted against (`Apiary.Organisations.allowance_of/1`, which an
+  edition asks for the row it will lock), locks that allowance's row the same way, then
   the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
   (`action:`) runs inside its own transaction, which may hold the allowance's row already.
 - A level given, by a change of level, an invitation, its acceptance or a release

@@ -2,11 +2,11 @@ defmodule Apiary.LockOrderTest do
   @moduledoc """
   The order in which several organisations are locked
   (`Apiary.Organisations.lock_order/1`): those after which the edition holds another
-  organisation first, then the rest, each in the order of their ids. The test checks out
-  no database connection, so a read or a lock would fail it: the organisations here are
-  structs alone.
+  organisation first, then the rest, each in the order of their ids. The edition may read
+  in `c:Apiary.Edition.places_to_lock/1`, so the test has a connection of its own in the
+  SQL sandbox; each test says which edition answers, so it holds under every edition.
   """
-  use ExUnit.Case, async: true
+  use Apiary.DataCase, async: true
 
   alias Apiary.Organisations
   alias Apiary.Organisations.Organisation
@@ -16,10 +16,19 @@ defmodule Apiary.LockOrderTest do
 
   defp ids(organisations), do: organisations |> Enum.map(& &1.id) |> Enum.sort()
 
-  test "with the core's edition, the order of their ids" do
+  test "with the core's edition (Apiary.Edition.Core), the order of their ids" do
+    :ok = Apiary.Edition.put_test_stub(Apiary.Edition.Core)
     given = organisations(5)
 
     assert Organisations.lock_order(Enum.shuffle(given)) == ids(given)
+  end
+
+  test "with an edition that reads in places_to_lock/1, the order it answers" do
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ReadsPlaces)
+    given = organisations(3)
+
+    assert Organisations.lock_order(Enum.shuffle(given)) == ids(given)
+    for id <- ids(given), do: assert_received({:places_read, ^id})
   end
 
   test "those the edition holds another organisation after come first, each part by id" do

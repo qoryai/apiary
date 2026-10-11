@@ -207,7 +207,8 @@ defmodule Apiary.Edition do
   1. the organisation rows, then this callback's rows; where the edition locks rows of
      more than one organisation, it takes them in the order of
      `Apiary.Organisations.lock_order/1`, the function it calls for the order of several
-     organisations;
+     organisations, and, in a mode that conflicts with `FOR SHARE`, through
+     `Apiary.Organisations.lock_organisations/2`;
   2. then the workspaces, the owners' memberships and the other memberships;
   3. then the account and the invitation.
 

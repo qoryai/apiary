@@ -228,6 +228,33 @@ defmodule Apiary.CopiedInvitationsTest do
       assert first.organisation_id == scope.organisation.id
     end
 
+    test "allowance_of/1 is the organisation the invitation was counted against",
+         %{scope: scope} do
+      %{scope: other} = mailed(&sign_up_fixture/0)
+
+      {:ok, own, {:link, _url}} =
+        Organisations.invite_member(scope, %{"email" => "erin@example.com"}, url_fun())
+
+      {elsewhere, _token} = insert!(scope, "dana@example.com", other.organisation)
+
+      assert {:ok, %Organisation{id: id}} = Organisations.allowance_of(own)
+      assert id == scope.organisation.id
+      assert {:ok, %Organisation{id: id}} = Organisations.allowance_of(elsewhere)
+      assert id == other.organisation.id
+
+      # A renewal names the same one, and it stays the answer.
+      assert {:ok, _renewed, {:link, _url}} =
+               Organisations.renew_invitation(scope, elsewhere.id, url_fun())
+
+      assert {:ok, %Organisation{id: id}} = Organisations.allowance_of(elsewhere)
+      assert id == other.organisation.id
+
+      # With no entry left that names one, the invitation's own organisation.
+      Repo.delete_all(from e in Entry, where: e.subject_id == ^elsewhere.id)
+      assert {:ok, %Organisation{id: id}} = Organisations.allowance_of(elsewhere)
+      assert id == scope.organisation.id
+    end
+
     test "renew_invitation/3 refuses a member, another organisation's invitation, and one no longer pending",
          %{scope: scope} do
       %{invitation: invitation, token: token} = invitation_fixture(scope)
