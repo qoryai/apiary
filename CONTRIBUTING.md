@@ -80,8 +80,8 @@ export APIARY_IMAGE=apiary APIARY_VERSION=dev
 {"status":"ok","database":"ok","version":"0.1.0","revision":null}
 ```
 
-`revision` is the commit the image was built from: `null` here, since a `docker build` of
-your own names none. From the set-up link on, go on as the
+`revision` is the commit the image was built from: `null` here, since a local `docker build`
+names none. From the set-up link on, go on as the
 [quickstart](guides/quickstart.md) does from its step 4, with the `export` set.
 
 ## Development

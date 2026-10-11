@@ -38,7 +38,7 @@ page is the reference for an installation that stays.
   link an instance admin makes ([Mail](#mail)). With `SMTP_RELAY` set, people log in with
   a link sent by email, or with a password, and are invited by email.
 
-Download the two files into a directory of their own, and rename `env.example` to `.env`:
+Download the two files into an empty directory, and rename `env.example` to `.env`:
 
 ```sh
 curl -fLO https://github.com/qoryai/apiary/releases/latest/download/compose.yaml
@@ -86,7 +86,7 @@ that is not one of them. What the client wrote to the left of that is never read
 client cannot choose the address recorded. Name only the proxies that set the header
 themselves, and leave it unset when nothing is in front of the release: a proxy the
 release trusts is believed about every address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
-since it would believe any client about its own address. A hop's port is left out.
+since it would believe whatever address a request claims. A hop's port is left out.
 Behind a proxy the release does not trust, every client counts as the proxy, and they
 share its limits on signing in.
 
@@ -123,8 +123,8 @@ A line written while Qory Apiary works for an organisation carries its id as
 page under `/:org/…` and its reads, a gateway's request, the projection of a run's events,
 a background job, and the line that says a job failed, was cancelled or was discarded. A
 line written for a signed-in person carries their id as `metadata.user_id`: every page
-they open, and a job their action enqueued. A person's own pages, their account settings
-and their organisations page, carry `user_id` and no organisation or workspace. A gateway's
+they open, and a job their action enqueued. A person's pages outside any organisation, their
+account settings and their organisations page, carry `user_id` and no organisation or workspace. A gateway's
 request is an access key's and carries no `user_id`.
 
 The ids are never a name, a slug or an email address, so a search by any of them finds
@@ -175,7 +175,7 @@ postgres://USER:PASS@HOST:5432/DATABASE?sslmode=verify-full
 
 | `sslmode` | The connection |
 |---|---|
-| none | Not encrypted, unless Ecto's own `ssl=true` asks for TLS, checked against the system's CAs. |
+| none | Not encrypted, unless Ecto's `ssl=true` option asks for TLS, checked against the system's CAs. |
 | `disable` | Not encrypted. |
 | `verify-full` | Encrypted; the server's certificate and host name are checked, against the system's CAs, or against the file `sslrootcert=/path/to/ca.pem` names. `sslrootcert=system` is the system's CAs. |
 | `require` | Encrypted; the server's certificate is not checked, with or without `sslrootcert`. Said once at boot, as a warning. |
@@ -211,14 +211,14 @@ environment variable DATABASE_URL names sslrootcert=/certs/ca.pem, which cannot 
 
 With `compose.yaml` the service `keys` generates the three at first start, with
 `DATABASE_PASSWORD` ([The keys generated at first start](#the-keys-generated-at-first-start)).
-Set one in `.env` only for a value of your own, such as one restored from a backup: a
+Set one in `.env` only for a value you choose, such as one restored from a backup: a
 value set in the environment always wins. A variable left blank counts as not set.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required; with `compose.yaml`, generated at first start | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
 | `APIARY_ENCRYPTION_SECRET` | required; with `compose.yaml`, generated at first start | Keys the integrity codes of stored rows, access keys among them. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. It must never change once an access key exists, or no access key verifies. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
-| `APIARY_SIGNING_SECRET` | required; with `compose.yaml`, generated at first start | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A value of its own, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
+| `APIARY_SIGNING_SECRET` | required; with `compose.yaml`, generated at first start | The seed of the Ed25519 key the instance signs its answers to gateways with; every machine pins its public key. Exactly 32 bytes, in base64 (44 characters) or in hex (64 characters, either case): `openssl rand -base64 32`. A separate value, never derived from `APIARY_ENCRYPTION_SECRET` and never the same. There is no fallback, and the boot refuses the same value as `APIARY_ENCRYPTION_SECRET`, the fixture seeds Forager's contract publishes and the development and test seeds this repository publishes. Changing it, or losing it, means pinning every machine again. Keep it with `APIARY_ENCRYPTION_SECRET` ([Backup and restore](backup.md)). |
 | `APIARY_ACCEPT_SIGNING_FINGERPRINT` | none | Empty, except to change the signing key on purpose: the fingerprint the key check names as the new key's, which the next boot records as the instance's ([The keys generated at first start](#the-keys-generated-at-first-start)). Any other value changes nothing. A fingerprint is public, not a secret. |
 <!-- feature: secrets -->
 
@@ -258,7 +258,7 @@ Generate one with: openssl rand -base64 32
 
 ```text
 environment variable APIARY_SIGNING_SECRET is the same value as APIARY_ENCRYPTION_SECRET.
-It is a secret of its own, generated apart. Generate one with: openssl rand -base64 32
+It must be a separate secret. Generate one with: openssl rand -base64 32
 ```
 
 ```text
@@ -282,7 +282,7 @@ owned by `nobody`. For each name:
   keep it;
 - held by the file: it is kept, never changed;
 - else: it is generated with `openssl`, `SECRET_KEY_BASE` from 48 random bytes, each of the
-  two 32-byte keys from 32 bytes of its own, in base64, and the database password from 24
+  two 32-byte keys from a separate 32 random bytes, in base64, and the database password from 24
   bytes, in hex.
 
 It also writes the database password to `/var/lib/apiary/keys/postgres-password`, mode
@@ -306,7 +306,7 @@ APIARY_SIGNING_SECRET is set in the environment: not generated, not kept here.
 ```
 
 ```text
-APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its own.
+APIARY_SIGNING_SECRET is set in the environment, which wins; the file keeps its value.
 ```
 
 When it cannot write, it exits non-zero, and nothing that depends on it starts:
@@ -327,7 +327,7 @@ generates new keys against the old database, and the key check below stops it.
 
 **The key check at boot.** At its first boot the instance records a check value of
 `APIARY_ENCRYPTION_SECRET`, which tells nothing of the secret, and the fingerprint of its
-signing key, in its own row of `instance_settings`. At every boot, once the migrations
+signing key, in a row of `instance_settings`. At every boot, once the migrations
 have run and before it serves, it compares both with the keys it runs with; before it
 records the check value on a database that already holds data, the oldest row made under
 an `APIARY_ENCRYPTION_SECRET` must have been made under this one, so a wrong secret is
@@ -373,7 +373,7 @@ changes once an access key exists.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `PUBLIC_URL` | required | The address people and machines use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because Forager refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. Forager accepts plain `http` only to an address of its own machine, so for other machines the public URL is `https`. |
+| `PUBLIC_URL` | required | The address people and machines use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because Forager refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. Forager accepts plain `http` only to an address of the machine it runs on, so for other machines the public URL is `https`. |
 | `PHX_HOST` | none | Read only when `PUBLIC_URL` is not set: the public address is then `https://` and this host. `.env.example` does not list it; set `PUBLIC_URL`. |
 | `PORT` | `4100` | The port the release listens on inside the container. An integer. `compose.yaml` publishes 4100, on `127.0.0.1`, so change both or neither. |
 | `PHX_SERVER` | set by `bin/server` | Any value makes the release serve HTTP. `bin/server` sets it; whoever starts `bin/apiary start` directly sets it too. |
@@ -527,7 +527,7 @@ whole database schema whatever its features, so nothing is migrated.
 
 Every change made to what an organisation holds leaves an entry in its audit trail, which
 its owners and admins read on its Audit log page, `/:org/audit-log`, in the organisation's sidebar: who made it (a person, an access
-key, or Qory Apiary itself for its own scheduled work), when, from which address and client, and
+key, or Qory Apiary itself, for its scheduled jobs), when, from which address and client, and
 what it changed. An entry never holds a secret, nor a person's name or email address: it
 names a person by their account, and the page looks the address up when it shows it.
 <!-- feature: security -->
@@ -539,7 +539,7 @@ Once a day, at 02:40 UTC, a job deletes every organisation's entries older than
 are personal data, kept no longer than the entry and for less if you choose: the same job
 clears them from the entries older than `AUDIT_ADDRESS_RETENTION_DAYS`, 90 days unless
 set, and leaves the rest of each entry for the trail's period. The clearing writes no
-entry of its own; a deletion's entry says how many it cleared beside. A value outside the
+separate entry; a deletion's entry says how many it cleared beside. A value outside the
 bounds stops the boot:
 
 ```text
@@ -600,7 +600,7 @@ address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
 A new instance is set up with its **set-up link**
 ([Set up a new instance](#set-up-a-new-instance)): the person who opens it creates the
 instance's organisation, with its workspace **Main**, and is its owner. The instance has
-that one organisation and that one workspace. The organisation is the instance's own, and
+that one organisation and that one workspace. The organisation is the instance owner, and
 its owners are the instance's **instance admins**
 ([The instance admins](#the-instance-admins)); to everyone in it, it is an organisation
 like any other. Until the link is used nobody signs up: the sign-up and log-in pages say
@@ -656,7 +656,7 @@ Leave it unset for 30 days, or set it, for example:
 DELETION_GRACE_DAYS=14
 ```
 
-A person deletes their own account on **Account settings**; it is deleted at once, and its
+A person deletes their account on **Account settings**; it is deleted at once, and its
 row stays without the address, the password or the preferences, so what the person did
 keeps naming them, as "Former member". Invitations are deleted when they are accepted,
 and 30 days after they expired. One command, for whoever runs the instance with a shell on
@@ -688,7 +688,7 @@ not expire before, and it works once: after it, any set-up link says "This Qory 
 already set up." and leads to the log-in page. Anyone who can read the log can use the
 link before you do, so open it as soon as the instance is up. On an instance that is set
 up, a restored one included, a start writes no such line. The address in the link is the
-instance's own (`PUBLIC_URL`).
+instance's address (`PUBLIC_URL`).
 
 ### The instance admins
 

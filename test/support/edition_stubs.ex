@@ -555,4 +555,10 @@ defmodule Apiary.EditionStubs do
     defdelegate check(scope, action, subject), to: NoLimit
     defdelegate who_may_sentence(about, scope), to: GatewaysWorded
   end
+
+  defmodule NoLog do
+    @moduledoc "Nobody reads a run's log (`run.read_log`), whoever asks."
+    def check(_scope, :"run.read_log", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
 end

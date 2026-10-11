@@ -834,8 +834,8 @@ defmodule ApiaryWeb.TargetLive.Show do
     end
   end
 
-  defp own_mode_words("observe"), do: gettext("observes on its own")
-  defp own_mode_words("enforce"), do: gettext("enforces on its own")
+  defp own_mode_words("observe"), do: gettext("overrides the mode: observe")
+  defp own_mode_words("enforce"), do: gettext("overrides the mode: enforce")
 
   defp about_value(%{ok?: true, result: about}, key), do: Map.get(about, key)
   defp about_value(_about, _key), do: nil

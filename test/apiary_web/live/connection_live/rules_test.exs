@@ -415,13 +415,13 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, "button##{d}-deny.q-act-i")
       view |> element("##{d}-deny") |> render_click()
       view |> form("#rule-panel-form", %{"for" => "workspace"}) |> render_change()
-      assert text(view, "#rule-panel") =~ "A repository's own allow rule still holds there."
+      assert text(view, "#rule-panel") =~ "A repository's allow rule still holds there."
 
       assert text(view, "#rule-panel-own-rule") ==
-               "A repository's own rule for this host still decides there."
+               "A repository rule for this host still decides there."
 
       view |> form("#rule-panel-form") |> render_submit()
-      assert render(view) =~ "A repository&#39;s own rule for this host still decides there."
+      assert render(view) =~ "A repository rule for this host still decides there."
 
       # the baseline's deny is not the answer to this row: the target still allows it
       assert "extra.example" in Policy.effective(scope, github).allow
@@ -435,7 +435,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       |> form("#rule-panel-form", %{"for" => "target", "target" => github.id})
       |> render_change()
 
-      assert text(view, "#rule-panel") =~ "Replaces the repository's own rule for the host."
+      assert text(view, "#rule-panel") =~ "Replaces the repository's rule for the host."
       view |> form("#rule-panel-form") |> render_submit()
       refute "extra.example" in Policy.effective(scope, github).allow
     end

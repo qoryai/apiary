@@ -609,8 +609,8 @@ defmodule ApiaryWeb.TargetLive.Index do
   defp mode_options,
     do: [
       follows: gettext("Follows the workspace"),
-      observes: gettext("Observes on its own"),
-      enforces: gettext("Enforces on its own")
+      observes: gettext("Overridden: observe"),
+      enforces: gettext("Overridden: enforce")
     ]
 
   defp own_mode("observe"), do: gettext("observes")

@@ -931,7 +931,7 @@ defmodule ApiaryWeb.MemberLive.Index do
             {:noreply,
              socket
              |> assign(:password_link, nil)
-             |> put_flash(:error, gettext("Change your own password in Account settings."))}
+             |> put_flash(:error, gettext("Change your password in Account settings."))}
 
           # The sign-in is not recent: signed in again first, as the Mail page asks.
           {:error, :sudo} ->

@@ -269,7 +269,7 @@ defmodule Apiary.Access do
     ),
     Action.new(
       :"connection.write",
-      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's own service definitions",
+      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's service definitions",
       feature: :security,
       roles: @admins
     ),

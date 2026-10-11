@@ -318,7 +318,7 @@ defmodule Apiary.Policy.ResolutionTest do
                )
 
       assert message =~ "*.example in the workspace is held to paths"
-      assert message =~ "git.example below it has a rule of its own in Eight Wonders's policy"
+      assert message =~ "git.example below it has a separate rule in Eight Wonders's policy"
     end
 
     test "its own suffix held to paths above its own name allow is refused, naming it twice" do

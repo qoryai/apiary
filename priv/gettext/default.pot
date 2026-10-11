@@ -20,82 +20,82 @@ msgstr[1] ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in %{name}'s policy."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the target."
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the target."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace (locked)."
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the workspace (locked)."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace."
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in the workspace."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the target is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgid "%{above} in the target is held to paths, and %{below} below it has a separate rule in %{name}'s policy."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the target."
+msgid "%{above} in the target is held to paths, and %{below} below it has a separate rule in the target."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace (locked)."
+msgid "%{above} in the target is held to paths, and %{below} below it has a separate rule in the workspace (locked)."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace."
+msgid "%{above} in the target is held to paths, and %{below} below it has a separate rule in the workspace."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in %{name}'s policy."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the target."
+msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the target."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace (locked)."
+msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the workspace (locked)."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace."
+msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a separate rule in the workspace."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgid "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in %{name}'s policy."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the target."
+msgid "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the target."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace (locked)."
+msgid "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the workspace (locked)."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
-msgid "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace."
+msgid "%{above} in the workspace is held to paths, and %{below} below it has a separate rule in the workspace."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -561,12 +561,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} allows only its own hosts"
+msgid "%{name} allows only the hosts on its list"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?"
+msgid "%{name} allows only the hosts on its list, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -674,8 +674,8 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} is locked: %{number} target that sets its own is set aside by the lock."
-msgid_plural "%{name} is locked: %{number} targets that set their own are set aside by the lock."
+msgid "%{name} is locked: %{number} target override is set aside."
+msgid_plural "%{name} is locked: %{number} target overrides are set aside."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -713,8 +713,8 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} is unlocked: %{number} target that sets its own is no longer set aside."
-msgid_plural "%{name} is unlocked: %{number} targets that set their own are no longer set aside."
+msgid "%{name} is unlocked: %{number} target override applies again."
+msgid_plural "%{name} is unlocked: %{number} target overrides apply again."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -794,7 +794,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s own may only narrow them. A deny holds in either mode."
+msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s rules may only narrow them. A deny holds in either mode."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -1269,6 +1269,28 @@ msgid_plural "%{number} other rules: unchanged"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} override it with enforce"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} override it with observe"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} override it: %{observe}, %{enforce}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} overrides the mode"
+msgid_plural "%{number} override the mode"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} owner"
@@ -1397,28 +1419,6 @@ msgid_plural "%{number} selected"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} set their own and enforce"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} set their own and observe"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} set their own: %{observe}, %{enforce}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} sets its own mode"
-msgid_plural "%{number} set their own mode"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} start was refused at the instance limit; the last"
@@ -1458,8 +1458,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} target has a rule of its own on this host; it then has nothing to override and is kept."
-msgid_plural "%{number} targets have a rule of their own on this host; it then has nothing to override and is kept."
+msgid "%{number} target has a rule on this host; it then has nothing to override and is kept."
+msgid_plural "%{number} targets have a rule on this host; it then has nothing to override and is kept."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1477,6 +1477,41 @@ msgid_plural "%{number} targets match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target overrides it"
+msgid_plural "%{number} targets override it"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target overrides it now: the lock sets the override aside while it holds."
+msgid_plural "%{number} targets override it now: the lock sets their overrides aside while it holds."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target overrides it."
+msgid_plural "%{number} targets override it."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target overrides it: the lock no longer sets the override aside."
+msgid_plural "%{number} targets override it: the lock no longer sets their overrides aside."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target overrides the mode and does not change."
+msgid_plural "%{number} targets override the mode and do not change."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} target rule stops being in force"
@@ -1488,41 +1523,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} target set aside by the lock"
 msgid_plural "%{number} targets set aside by the lock"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} target set its own: the lock no longer sets it aside."
-msgid_plural "%{number} targets set their own: the lock no longer sets them aside."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} target sets its own"
-msgid_plural "%{number} targets set their own"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} target sets its own mode and does not change."
-msgid_plural "%{number} targets set their own mode and do not change."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} target sets its own now: the lock sets it aside while it holds."
-msgid_plural "%{number} targets set their own now: the lock sets them aside while it holds."
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} target sets its own."
-msgid_plural "%{number} targets set their own."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1585,15 +1585,15 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} with rules of their own"
-msgid_plural "%{number} with rules of their own"
+msgid "%{number} with suggestions"
+msgid_plural "%{number} with suggestions"
 msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} with suggestions"
-msgid_plural "%{number} with suggestions"
+msgid "%{number} with target rules"
+msgid_plural "%{number} with target rules"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1626,7 +1626,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{own} set a mode of their own: %{observe} observe, %{enforce} enforce."
+msgid "%{own} override the mode: %{observe} observe, %{enforce} enforce."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -1789,16 +1789,6 @@ msgstr ""
 msgid "%{targets} · %{mode}"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "%{target} enforces on its own."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "%{target} enforces on its own. Nothing changes today: the workspace's default is %{mode} too."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{target} enforces; the rest follow the workspace."
@@ -1811,12 +1801,22 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "%{target} observes on its own."
+msgid "%{target} now overrides the mode: enforce."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "%{target} observes on its own. Nothing changes today: the workspace's default is %{mode} too."
+msgid "%{target} now overrides the mode: enforce. Nothing changes today: the workspace's default is %{mode} too."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "%{target} now overrides the mode: observe."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "%{target} now overrides the mode: observe. Nothing changes today: the workspace's default is %{mode} too."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -2079,22 +2079,22 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
-msgid "1 sets its own and enforces"
+msgid "1 overrides it with enforce"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
-msgid "1 sets its own and observes"
+msgid "1 overrides it with observe"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "1 target sets its own and enforces."
+msgid "1 target overrides it with enforce."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "1 target sets its own and observes."
+msgid "1 target overrides it with observe."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -2149,7 +2149,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
-msgid "A custom API of this workspace's own"
+msgid "A custom API of this workspace"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/definition.ex
@@ -2212,7 +2212,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
-msgid "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces."
+msgid "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in a separate field, separated by spaces."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -2341,6 +2341,12 @@ msgstr ""
 msgid "A rule names a host and nothing else: lower case, no scheme, no port, no path."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A rule on this target still decides here."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "A run"
@@ -2424,7 +2430,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "A target appears here once a run names it. A target with neither rules nor a mode of its own is served the workspace baseline, and so is a run that names no target."
+msgid "A target appears here once a run names it. A target with no rules and no mode override is served the workspace baseline, and so is a run that names no target."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -2432,31 +2438,26 @@ msgstr ""
 msgid "A target is listed here once a run of this workspace names it."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
+msgid "A target rule for this host still decides there."
 msgstr ""
 
-#: lib/apiary/policy.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "A target's mode is observe, enforce, or the workspace's."
+msgid "A target that overrides the mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "A target's own allow rule still holds there."
+msgid "A target's allow rule still holds there."
 msgstr ""
 
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
-msgid "A target's own rule for this host still decides there."
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "A target's own value of %{name} applies again."
+msgid "A target's mode is observe, enforce, or the workspace's."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -2808,7 +2809,7 @@ msgstr ""
 
 #: lib/apiary_web/controllers/page_html/home.html.heex
 #, elixir-autogen, elixir-format
-msgid "Add your machines as nodes, connect each with a key of its own, and every run they make lands here."
+msgid "Add your machines as nodes, connect each with a separate key, and every run they make lands here."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3138,7 +3139,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
-msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's own address whatever the policy says."
+msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/gateways.ex
@@ -3149,6 +3150,11 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "An address the runs of this workspace's nodes and node pools go through, as each chooses."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "An allow rule on this target still holds here."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -3164,7 +3170,7 @@ msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
-msgid "An instance is what Forager, run with this node's key, reports itself as, and anyone with the key can report any instance: a machine you want to cut off on its own needs a node of its own."
+msgid "An instance is what Forager, run with this node's key, reports itself as, and anyone with the key can report any instance: to cut off one machine alone, give it a separate node."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3589,7 +3595,7 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Change your own password in Account settings."
+msgid "Change your password in Account settings."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -3685,7 +3691,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
-msgid "Changes to a target's own rules are in that target's history."
+msgid "Changes to target rules are in that target's history."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -3770,7 +3776,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Choose it when you can open a terminal on %{name}: a laptop, or a server of your own."
+msgid "Choose it when you can open a terminal on %{name}: a laptop, or your server."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -5007,11 +5013,6 @@ msgstr ""
 msgid "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
 msgstr ""
 
-#: lib/apiary_web/live/target_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Enforces on its own"
-msgstr ""
-
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Enter"
@@ -6079,15 +6080,15 @@ msgstr ""
 msgid "In the last 14 days it denied %{attempts} to %{destinations}."
 msgstr ""
 
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "In the policy of the target %{target}: %{refusal}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "In the secret store of the system that runs %{name}, such as your CI's."
-msgstr ""
-
-#: lib/apiary/policy.ex
-#, elixir-autogen, elixir-format
-msgid "In the target %{target}, which has rules of its own: %{refusal}"
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -6251,16 +6252,6 @@ msgstr ""
 msgid "It does not allow %{suffix} itself."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "It enforced on its own."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "It enforced on its own. The workspace's default is the same, so the document did not change."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "It follows %{workspace}, which enforces."
@@ -6269,6 +6260,26 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "It follows %{workspace}, which observes."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "It had overridden the mode with enforce."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "It had overridden the mode with enforce. The workspace's default is the same, so the document did not change."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "It had overridden the mode with observe."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "It had overridden the mode with observe. The workspace's default is the same, so the document did not change."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -6398,12 +6409,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "It observed on its own."
+msgid "It overrides the mode from now on. It followed the workspace's default."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "It observed on its own. The workspace's default is the same, so the document did not change."
+msgid "It overrides the mode from now on. The workspace's default is the same, so the document did not change."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -6470,74 +6481,19 @@ msgstr ""
 msgid "Its key arrived at %{time} and is active."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its observe override is not in force: %{name} requires enforce."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its observe override, set by %{by} %{when}, is not in force: %{name} requires enforce."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Its own first"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Its own from now on. It followed the workspace's default."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Its own from now on. The workspace's default is the same, so the document did not change."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own observe is not in force: %{name} requires enforce."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own observe, set by %{by} %{when}, is not in force: %{name} requires enforce."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Its own rules come first and are changed here; %{workspace}'s follow and are changed on %{workspace}'s policy page. %{workspace}'s locked rules hold in every target, in either mode."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Its own rules come first; %{name}'s and %{workspace}'s follow and are changed where they live. %{name}'s rules hold in every workspace and target, in either mode."
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Its own value"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own, set by %{by} %{when}; %{workspace} enforces."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own, set by %{by} %{when}; %{workspace} observes."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own; %{workspace} enforces."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Its own; %{workspace} observes."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -7068,7 +7024,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Locked: a target may not set its own value"
+msgid "Locked: no target may override it"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -7212,7 +7168,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Machines use their own policy until the first change here."
+msgid "Machines use their local policy until the first change here."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -7390,6 +7346,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Mode %{mode}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Mode overridden"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -7880,6 +7841,11 @@ msgstr ""
 msgid "No output yet"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No overrides"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No pending invitations."
@@ -8069,19 +8035,19 @@ msgstr ""
 msgid "No target matches."
 msgstr ""
 
-#: lib/apiary_web/live/target_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "No target ran this week"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "No target sets its own mode. Every one follows the workspace's default."
+msgid "No target overrides the mode. Every one follows the workspace's default."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "No target sets its own value."
+msgid "No target overrides this variable."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target ran this week"
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -8154,7 +8120,7 @@ msgstr ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
-msgid "Nobody has made this workspace's policy yet: its machines run under their own, and there is no version until the first change here."
+msgid "Nobody has made this workspace's policy yet: its machines use their local policy, and there is no version until the first change here."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex
@@ -8254,11 +8220,6 @@ msgstr ""
 msgid "None is running. An instance shows here only while it runs; the last was seen"
 msgstr ""
 
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "None of their own"
-msgstr ""
-
 #: lib/apiary_web/controllers/error_html.ex
 #, elixir-autogen, elixir-format
 msgid "Not Found"
@@ -8310,7 +8271,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "Not in force here: this target's own %{host} denies it"
+msgid "Not in force here: this target's %{host} rule denies it"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -8325,7 +8286,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "Not in force: %{name} allows only its own hosts"
+msgid "Not in force: %{name} allows only the hosts on its list"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -8345,7 +8306,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "Not in force: this target's own rule decides it"
+msgid "Not in force: a rule on this target decides it"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -8546,11 +8507,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Observe this target"
-msgstr ""
-
-#: lib/apiary_web/live/target_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Observes on its own"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
@@ -8986,9 +8942,49 @@ msgstr ""
 msgid "Outside APIs"
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden by %{by} %{when}; %{workspace} enforces."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden by %{by} %{when}; %{workspace} observes."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden: enforce"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden: observe"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden; %{workspace} enforces."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Overridden; %{workspace} observes."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Overrides"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Overrides the workspace's value"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -8999,17 +8995,6 @@ msgstr ""
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Overview"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Own mode"
-msgstr ""
-
-#: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Own rules"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -9359,7 +9344,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary does not prune runs on its own: a workspace's retention takes effect when the pruning job is run by hand."
+msgid "Qory Apiary does not prune runs automatically: a workspace's retention takes effect when the pruning job is run by hand."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -9374,7 +9359,7 @@ msgstr ""
 
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary prunes each workspace's runs as its own retention says (Workspace settings › Runs)."
+msgid "Qory Apiary prunes each workspace's runs as that workspace's retention says (Workspace settings › Runs)."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -9744,7 +9729,7 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "Replaces the target's own rule for the host."
+msgid "Replaces the target's rule for the host."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -10126,7 +10111,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use each machine's own policy until the first change in this workspace."
+msgid "Runs use each machine's local policy until the first change in this workspace."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -10681,7 +10666,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Showing those that set their own mode."
+msgid "Showing those that override the mode."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -10995,9 +10980,35 @@ msgstr ""
 msgid "Target"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Target overrides of %{name} apply again."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Target policy"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Target rules"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Target rules come first and are changed here; %{workspace}'s follow and are changed on %{workspace}'s policy page. %{workspace}'s locked rules hold in every target, in either mode."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Target rules come first; %{name}'s and %{workspace}'s follow and are changed where they live. %{name}'s rules hold in every workspace and target, in either mode."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Target rules first"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -11183,7 +11194,7 @@ msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every target or to the ones you choose."
+msgid "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every target or to the ones you choose."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -11320,12 +11331,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "The first rule added here, or a mode of its own, gives it a policy of its own, numbered from version 1."
+msgid "The first rule added here, or a mode override, gives it a separate policy, numbered from version 1."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
-msgid "The first rule here, or a mode of its own, starts this target's history."
+msgid "The first rule here, or a mode override, starts this target's history."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -11512,11 +11523,6 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "The mode becomes this target's own: it stays %{mode} whatever the workspace's default becomes."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
 msgid "The mode follows the workspace's default from now on, and changes when it does."
 msgstr ""
 
@@ -11545,6 +11551,13 @@ msgstr ""
 msgid "The node's name, its kind and how many instances may run at once."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "The observe override of 1 of %{number} targets"
+msgid_plural "The observe override of %{n} of %{number} targets"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -11554,7 +11567,7 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+msgid "The organisation's only workspace can't be deleted by itself: delete the organisation instead."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -11576,13 +11589,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The outcome is that of the last attempt across the runs shown."
 msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "The own observe of 1 of %{number} targets"
-msgid_plural "The own observe of %{n} of %{number} targets"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
@@ -11791,12 +11797,6 @@ msgstr ""
 msgid "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgctxt "plain"
-msgid "The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The same for every machine connected to this Qory Apiary."
@@ -11856,7 +11856,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The targets that set their own value of %{name}, and those whose own value its lock sets aside."
+msgid "The targets that override %{name}, and those whose override its lock sets aside."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -11916,7 +11916,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "The wall refuses the machine's own address,"
+msgid "The wall refuses the machine's address,"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -11966,12 +11966,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace's rules with no target's own: what a target without rules, or a run that names none, is served."
+msgid "The workspace's rules without any target rules: what a target without rules, or a run that names none, is served."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace's value of %{name} is deleted. A target that sets its own keeps it. This cannot be undone."
+msgid "The workspace's value of %{name} is deleted. A target that overrides it keeps its override. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -12121,7 +12121,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its own."
+msgid "This is the workspace's first change: it renders version 1, and from then on each machine applies it, narrowed by its local policy."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -12192,7 +12192,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "This rule is locked: it holds against every target, and removing it lets their own rules decide again."
+msgid "This rule is locked: it holds against every target, and removing it lets target rules decide again."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -12274,28 +12274,22 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "This target has no rules of its own."
+msgid "This target has no policy versions: it is served %{workspace}'s policy."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "This target has no versions of its own: it is served %{workspace}'s policy."
+msgid "This target has no rules."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "This target overrides the mode from now on: it stays %{mode} whatever the workspace's default becomes."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "This target's mode is %{mode}."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This target's own allow rule still holds here."
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "This target's own rule still decides here."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -12559,7 +12553,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its own. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
+msgid "Until the first change here, every machine of this workspace runs under its local policy, the one in its Forager file. The first rule you add, or a mode you set, renders version 1, and from then on each machine applies it, narrowed by its local policy. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -12703,7 +12697,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
-msgid "Version %{version} of this target's own policy; until now it was served the workspace's."
+msgid "Version %{version} of this target's policy; until now it was served the workspace's."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -12723,7 +12717,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own."
+msgid "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its local policy."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -12886,6 +12880,12 @@ msgstr ""
 msgid "What the runs of this workspace may reach through the gateway."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "What the runtime needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "What the workspaces are doing could not be read. Reload the page to try again."
@@ -12948,7 +12948,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "While %{name} is locked, a target may not set its own value."
+msgid "While %{name} is locked, no target may override it."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -13762,11 +13762,6 @@ msgstr ""
 msgid "enforces"
 msgstr ""
 
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "enforces on its own"
-msgstr ""
-
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "error"
@@ -13916,11 +13911,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "is taken out of the paths in force for the host."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "its own"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -14170,11 +14160,6 @@ msgstr ""
 msgid "observes"
 msgstr ""
 
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "observes on its own"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -14212,7 +14197,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
-msgid "only its own hosts allowed"
+msgid "only hosts on its list allowed"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -14233,6 +14218,26 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "open or close the item"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "overridden"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/views.ex
+#, elixir-autogen, elixir-format
+msgid "overridden on this target"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "overrides the mode: enforce"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "overrides the mode: observe"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -14451,11 +14456,6 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/rules.ex
 #, elixir-autogen, elixir-format
 msgid "the workspace's policy"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/views.ex
-#, elixir-autogen, elixir-format
-msgid "this target's own"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

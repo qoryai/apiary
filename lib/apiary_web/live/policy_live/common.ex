@@ -365,7 +365,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def off_words(%{in_force: true}, _workspace, _above), do: nil
 
   def off_words(%{reason: :only_above_allows}, _workspace, above),
-    do: gettext("Not in force: %{name} allows only its own hosts", name: above || "?")
+    do: gettext("Not in force: %{name} allows only the hosts on its list", name: above || "?")
 
   def off_words(%{overridden_by: %{source: :organisation, action: :deny} = winner}, _ws, above),
     do:
@@ -386,7 +386,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         )
 
   def off_words(%{source: :workspace, overridden_by: %{source: :target}}, _workspace, _above),
-    do: gettext("Not in force: this target's own rule decides it")
+    do: gettext("Not in force: a rule on this target decides it")
 
   # The rule that wins is named by its own source: a target's own deny is the target's,
   # never the workspace's, which a reader would look for there and not find.
@@ -395,7 +395,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         _workspace,
         _above
       ),
-      do: gettext("Not in force here: this target's own %{host} denies it", host: winner.host)
+      do: gettext("Not in force here: this target's %{host} rule denies it", host: winner.host)
 
   def off_words(
         %{source: :organisation, overridden_by: %{action: :deny} = winner},
@@ -829,7 +829,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         is_nil(before_holder) and is_binary(holder) and not is_nil(before) ->
           " " <>
             gettext(
-              "Version %{version} of this target's own policy; until now it was served the workspace's.",
+              "Version %{version} of this target's policy; until now it was served the workspace's.",
               version: version
             )
 
@@ -1404,27 +1404,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
     case {change.before["mode"], change.after["mode"], made} do
       {"inherit", _to, nil} ->
         gettext(
-          "Its own from now on. The workspace's default is the same, so the document did not change."
+          "It overrides the mode from now on. The workspace's default is the same, so the document did not change."
         )
 
       {"inherit", _to, _made} ->
-        gettext("Its own from now on. It followed the workspace's default.")
+        gettext("It overrides the mode from now on. It followed the workspace's default.")
 
       {"observe", "inherit", nil} ->
         gettext(
-          "It observed on its own. The workspace's default is the same, so the document did not change."
+          "It had overridden the mode with observe. The workspace's default is the same, so the document did not change."
         )
 
       {"enforce", "inherit", nil} ->
         gettext(
-          "It enforced on its own. The workspace's default is the same, so the document did not change."
+          "It had overridden the mode with enforce. The workspace's default is the same, so the document did not change."
         )
 
       {"observe", "inherit", _made} ->
-        gettext("It observed on its own.")
+        gettext("It had overridden the mode with observe.")
 
       {"enforce", "inherit", _made} ->
-        gettext("It enforced on its own.")
+        gettext("It had overridden the mode with enforce.")
 
       _ ->
         nil

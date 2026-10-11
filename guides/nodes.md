@@ -1,7 +1,7 @@
 # Nodes and their keys
 
-A machine posts its runs to a workspace with an access key of its own, and every access key
-belongs to a node of the workspace. This page says what a node is, the two ways a node
+A machine posts its runs to a workspace with an access key, and every access key belongs to a
+node of the workspace. This page says what a node is, the two ways a node
 gets its key, and what to do when a key has to go. The owners and admins of the
 organisation do all of it; everyone in the workspace reads the nodes and their keys.
 
@@ -21,7 +21,7 @@ and its recent runs; its **Settings** change its name and a pool's limit, and de
 
 ## Gateways
 
-A **gateway** is a kind of its own on **Nodes**, beside the node and the node pool,
+A **gateway** is a separate kind on **Nodes**, beside the node and the node pool,
 `edge-01` say. Its key enrols the gateway and registers no run. **New gateway** asks its
 name and its **URL**: `https://`, a host, and a port if needed, nothing more. Like a node,
 it opens on its **Access key** tab and gets its key either way. On the list it reads
@@ -41,7 +41,7 @@ Forager file say that its runs go through that gateway, at its URL, and, while t
 gateway has no active key, that the gateway isn't connected. The command and the Forager
 file are the same either way: they point at Qory Apiary.
 
-Behind a gateway, a node holds its own key, as any node does, and a node pool's runners
+Behind a gateway, a node holds its key, as any node does, and a node pool's runners
 hold none: the pool's key is with the run's starter, the system that starts its runs.
 
 **Delete gateway…**, in a gateway's **Settings**, is confirmed in place. A gateway that a
@@ -56,13 +56,13 @@ When the default goes and other gateways remain, the oldest of them becomes the 
 
 ## The access key
 
-A machine signs every request with its own key, an Ed25519 key. Made by `qory` on the
+A machine signs every request with its key, an Ed25519 key. Made by `qory` on the
 machine, its secret stays there, in `~/.config/qory/access-key-secret`; made in a browser,
 it goes into a CI's secret store. Qory Apiary keeps only the public half, so nothing Qory
 Apiary holds can sign for the machine. Every answer of Qory Apiary is signed too, with
-Qory Apiary's own key, which the machine pins as `apiary_public_key` and checks every
-answer under. Qory Apiary's key and its address are the instance's own, the same for every
-organisation, workspace and node: the address is its `PUBLIC_URL`, and the key is made
+Qory Apiary's key, which the machine pins as `apiary_public_key` and checks every
+answer under. Qory Apiary's key and its address are set once for the instance, the same
+for every organisation, workspace and node: the address is its `PUBLIC_URL`, and the key is made
 from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the node's key.
 
 A key is active from the moment it arrives until it is revoked. A node holds two keys at a
@@ -80,7 +80,7 @@ to give it one." The two ways are two options side by side, each saying when to 
 it, what happens, and the same four facts, with one button:
 
 - **Connect with a command**: "Choose it when you can open a terminal on build-01: a
-  laptop, or a server of your own." You get one command to run on build-01. It carries a
+  laptop, or your server." You get one command to run on build-01. It carries a
   one-time code, not a key, which works once within 15 minutes. `qory` makes the key on
   build-01, sends Qory Apiary only its public half, and saves everything else there
   itself. Key made: on build-01, by `qory`. Secret: stays on build-01; it is never shown.
@@ -163,7 +163,7 @@ workspace: once they are not, a machine that runs it is refused, and an owner or
 gets a new command.
 
 The command carries Qory Apiary's address, its `PUBLIC_URL`. When that is an address only
-Qory Apiary's own computer reaches, such as `http://localhost:4100`, the page says
+Qory Apiary's computer can reach, such as `http://localhost:4100`, the page says
 "Machines can't reach this address." and asks you to set `PUBLIC_URL` to the address
 machines use.
 
@@ -191,7 +191,7 @@ description below). What it shows depends on how the key came:
 
 ### For a CI
 
-A CI keeps the key in its own settings rather than in a machine's files. **Generate a key
+A CI keeps the key in its settings rather than in a machine's files. **Generate a key
 in the browser** is the way for it, and a pool's **Access key** tab lists it first.
 `qory access-key enrol` takes `--print` too: it keeps nothing on the machine and prints
 the settings, one `NAME=value` line each.
@@ -285,7 +285,7 @@ by when it was recorded, not when it arrived, so the catch-up shows what happene
 - An access key's **Last heartbeat** is when its newest heartbeat was recorded, allowing 5
   minutes for the machine's clock, and never later than it arrived.
 - A new run opens during a catch-up, on a node or pool the catching-up runs had filled
-  too: old heartbeats hold no instance's place. Its registration has a rate of its own,
+  too: old heartbeats hold no instance's place. Its registration has a separate rate limit,
   which a catch-up never spends.
 - Every event is kept, however late it arrives, while its run is: retention keeps a lost
   run for 7 days after it was lost, however short its settings

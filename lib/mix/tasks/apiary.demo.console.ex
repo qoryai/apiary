@@ -170,7 +170,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
   def refusal(:test, true, _database, _env), do: nil
 
   def refusal(:test, false, database, _env),
-    do: refused("the test environment's database, #{database}, is the tests' own")
+    do: refused("the test environment's database, #{database}, belongs to the tests")
 
   def refusal(_mix_env, _tests?, database, env) do
     named = env["APIARY_DEV_DATABASE"]
@@ -201,7 +201,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
 
   defp refused(reason) do
     """
-    mix apiary.demo.console fills only a database of its own: #{reason}.
+    mix apiary.demo.console fills only a demo database: #{reason}.
     Run it in development, with DATABASE_URL unset and APIARY_DEV_DATABASE naming a
     database with "demo" in its name:
 

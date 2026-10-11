@@ -10,7 +10,7 @@ being one. Every variable named here is described in [Install and configure](ins
   scheme, for example `https://qory.example`. Terminate TLS at a reverse proxy in front of
   the release's port and have it send `X-Forwarded-Proto: https`; without the header every
   request is redirected to the `https` address again. Forager refuses a `gateway.server.url` over
-  plain `http` unless it is an address of its own machine, and one with a path, so serve
+  plain `http` unless it is an address of the machine Forager runs on, and one with a path, so serve
   the instance at the root of its host name.
 - **Mail, or none.** Mail is optional. Without it the instance sends no email: people log
   in with a password, whoever invites copies the invitation's link and sends it, and a
@@ -21,7 +21,7 @@ being one. Every variable named here is described in [Install and configure](ins
   **Instance settings › Mail** instead.
 - **The three keys, kept.** With `compose.yaml` the service `keys` generates
   `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET` and `APIARY_SIGNING_SECRET` at first
-  start, each on its own, into the volume `keys`. Copy them out once
+  start, each separately, into the volume `keys`. Copy them out once
   ([Backup and restore](backup.md#the-keys)) and store the copy where the database backups
   are stored, not only in the volume, which `docker compose down --volumes` deletes.
   `APIARY_ENCRYPTION_SECRET` never changes once an access key exists: without it, no
@@ -91,8 +91,8 @@ being one. Every variable named here is described in [Install and configure](ins
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
 - **The security headers.** Every page carries a `Content-Security-Policy` that lets only
-  the console's own scripts run. The proxy must pass it on as it is: not strip it, not
-  replace it with one of its own, and not add a second.
+  the console's scripts run. The proxy must pass it on as it is: not strip it, not
+  replace it with another, and not add a second.
 
 ## Upgrades
 

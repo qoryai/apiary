@@ -26,10 +26,10 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
   end
 
   # The section without the line that names Qory Apiary: the subtitle's "Not Qory
-  # Apiary's own settings."
+  # Apiary's settings."
   defp without_qory_lines(section) do
     section
-    |> String.replace("Not Qory Apiary&#39;s own settings.", "")
+    |> String.replace("Not Qory Apiary&#39;s settings.", "")
   end
 
   defp lv_section(html) do
@@ -485,7 +485,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       section = lv |> element("#settings-section-integrations") |> render()
 
       # Qory Apiary is named in the subtitle, and nowhere else.
-      assert section =~ "Not Qory Apiary&#39;s own settings."
+      assert section =~ "Not Qory Apiary&#39;s settings."
       assert section =~ "A run receives only its security policy."
       refute without_qory_lines(section) =~ "Qory"
     end
@@ -498,7 +498,7 @@ defmodule ApiaryWeb.IntegrationLive.IndexTest do
       assert has_element?(
                lv,
                "#settings-section-integrations header",
-               "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's own settings. Each applies to every repository or to the ones you choose."
+               "The agents, outside APIs and programs this workspace sets up, each with its settings. Not Qory Apiary's settings. Each applies to every repository or to the ones you choose."
              )
 
       assert page_title(lv) =~

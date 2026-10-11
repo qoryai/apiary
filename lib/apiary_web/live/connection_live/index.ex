@@ -765,7 +765,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
       own =
         if level == :workspace and panel.own_rule,
-          do: gettext("A target's own rule for this host still decides there.")
+          do: gettext("A target rule for this host still decides there.")
 
       sentences = [
         Rules.toast(rule, panel.action, panel.host, panel.path, where),
@@ -1363,13 +1363,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
-      do: gettext("Replaces the target's own rule for the host."),
+      do: gettext("Replaces the target's rule for the host."),
       else: gettext("Disables the workspace's allow rule there. Other targets keep it.")
   end
 
   defp workspace_consequence(baseline, host, own?) do
     cond do
-      own? -> gettext("A target's own allow rule still holds there.")
+      own? -> gettext("A target's allow rule still holds there.")
       Rules.seen(baseline, host) != [] -> gettext("Replaces the workspace's allow rule.")
       true -> nil
     end

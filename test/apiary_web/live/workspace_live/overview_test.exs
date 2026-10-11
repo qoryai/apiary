@@ -855,7 +855,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#overview-policy-version") == "observe"
 
       assert text(view, "#overview-policy-mode") ==
-               "Machines use their own policy until the first change here."
+               "Machines use their local policy until the first change here."
 
       assert has_element?(
                view,

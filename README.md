@@ -16,10 +16,10 @@ console you read. Open source, so you can check all of that.
 ## Run it
 
 You need Docker with `docker compose`, and `curl`. Nothing is cloned or built: Qory Apiary
-runs from the image a release publishes, `ghcr.io/qoryai/apiary`, with its own Postgres,
+runs from the image a release publishes, `ghcr.io/qoryai/apiary`, with a bundled Postgres,
 on port 4100 of `127.0.0.1`.
 
-In a directory of its own, download the latest release's `compose.yaml` and `env.example`,
+In an empty directory, download the latest release's `compose.yaml` and `env.example`,
 rename `env.example` to `.env`, and start it:
 
 ```sh

@@ -32,7 +32,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
   defp hint_text do
     rich_gettext(
-      "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces.",
+      "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in a separate field, separated by spaces.",
       suffix: {:code, "*."}
     )
   end
@@ -99,7 +99,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         reading(
           :error,
           rich_gettext(
-            "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's own address whatever the policy says.",
+            "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's address whatever the policy says.",
             address: {:m, "10.0.0.12"}
           ) ++ path_too,
           invalid: invalid
