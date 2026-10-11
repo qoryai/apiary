@@ -151,9 +151,10 @@ first refusal that applies is the answer:
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, is over a limit below, or holds `dev.qory.ping` or `dev.qory.run.registered` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
+| `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
-| `202` | stored | empty |
+| `202` | stored | empty, or the run's `end` (below) |
 
 Every answer after the `401` is signed.
 
@@ -163,6 +164,19 @@ workspace's discovery answer carries, and, for a workspace whose policy somebody
 run registered with (see "Assumed" for a run that did not register). A workspace without a
 policy of its own is never answered the second. No other status carries it. No error body
 repeats anything that was sent.
+
+A run is bound to one node: the node or node pool whose key registered it, or whose key's
+batch opened it (`runs.node_id`). Its batches, a heartbeat's among them, are taken from
+that node's active keys alone, whichever of them signs, so a second key of the node, while
+one is replaced, keeps the run going (`Apiary.Runs.Sender`).
+
+Once the run's starter has given its outcome (The run endpoint, below), every `2xx` to the
+run's batches has a body, `application/json`,
+`{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, `reason` left out when the
+outcome gave none, until the run's `dev.qory.run.exited` arrives: in the batch, or among
+the events the run holds. The answer to the batch that carries the exit, and to every
+batch after, has an empty body, as every answer had before. The answer signature's line 4,
+the SHA-256 of the body as sent, covers it.
 
 A batch is a non-empty JSON array of at most 1000 objects (the gateway cuts a batch at a
 hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev.qory.`),
@@ -257,10 +271,10 @@ the body, the `time`), the first of these that applies is the answer:
 | Status | When | Body |
 |---|---|---|
 | `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
-| `200` | a repeat: a run of this id that registered with the same bytes, by their SHA-256, under the same access key is given the answer it was given, and nothing is stored or admitted again | the run configuration |
+| `200` | a repeat: a run of this id that registered with the same bytes, by their SHA-256, under any active key of the node that registered it is given the answer it was given, and nothing is stored or admitted again | the run configuration |
 | `410` | a run of this id whose events retention has pruned | empty |
 | `409` | a new instance beyond its node's instance limit (`Apiary.Nodes.admit/4`); the refusal is counted on the node | `{"error":"instance_limit"}` |
-| `409` | any other run of this id: registered with other bytes, or under another access key even with the same bytes, or created by events that came without a registration | `{"error":"run_id_used"}` |
+| `409` | any other run of this id: registered with other bytes, or by another node even with the same bytes, or created by events that came without a registration | `{"error":"run_id_used"}` |
 | `503` | a managed workspace whose run configuration cannot be read, or a run that cannot be stored: never a run without its policy | `{"error":"unavailable"}` |
 | `200` | the run is stored | the run configuration |
 
@@ -333,9 +347,9 @@ registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
-to the access key that registered the run: a run id the key's workspace does not hold, a
-run another access key registered, a run its batches created without a registration, even
-for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
+to the active keys of the node that registered the run (`Apiary.Runs.Sender`): a run id the
+key's workspace does not hold, a run another node registered, a run its batches created
+without a registration, even for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
 `{"error":"not_found"}`. Its `200` is the run configuration in force now for the labels the
 run registered with, and no others, with the headers above. A run whose events retention
 has pruned is reloaded all the same: `200`, never `410`. A reload on a workspace with no policy, or a
@@ -344,6 +358,25 @@ already started, and the next run gets the new state when it registers. When the
 configuration cannot be read the answer is `503 {"error":"unavailable"}`. To the gateway,
 any answer but `200` is a reload that failed: the policy in force stays, and it is tried
 again on the next answer.
+
+**The outcome.** `POST /v1/runs/<run_id>/outcome`, signed, `application/json`, its body
+read raw up to 4 KiB (`ApiaryWeb.Contract.RawBody`), is how a run's starter says how the
+run went (`Apiary.Runs.Outcome`, `ApiaryWeb.Contract.OutcomeController`):
+`{"version":1, "state"?, "reason"?, "time"}`. `state` is `succeeded`, `failed` or
+`cancelled`, and none is `cancelled` with the reason `stopped`. `reason` follows the rule of
+an exit's reason (How a run ends), and one that breaks it, or is one of Forager's reserved
+codes, is dropped, the outcome kept. `time` is held to 300 seconds of the server's clock,
+outside of which the answer is `401`, unsigned. A member the contract does not name is
+`400 invalid_request` with `"body"`. After the refusals every signed request gets, and the
+body's: a key `Apiary.Access` does not let post is `404`; the same bytes again, by their
+SHA-256, under any active key of the run's node are `200` again, nothing stored; a run id
+the workspace does not hold, a run of another node and a run whose events retention has
+pruned are `404 {"error":"not_found"}`; a run that was given another outcome is
+`409 {"error":"outcome_given"}`; else the outcome is stored on the run, under the run's
+projection lock, and the answer is `200 {"version":1}` with `X-Qory-Configuration`. The
+outcome is not folded: a rebuild keeps it, and the fold applies it after every pass, so it
+decides the run's state and reason whenever it arrives (How a run ends). An outcome spends
+a token of the run endpoint's bucket of the key's rate, as a registration does.
 
 **The rate.** A registration and a reload spend a token of the key's rate for the run
 endpoint, a bucket of its own, apart from the events endpoint's, so a gateway flushing a
@@ -569,9 +602,19 @@ The column `runs.state` also accepts the names a release before this one stored:
 (`Apiary.Runs.Run.old_states/0`, `current_state/1`). Every family, count, filter, word and
 mark reads a row stored under one of them as its new state.
 
-Qory Apiary records what a run reports and never ends a run it did not start; it starts
-none today. A run a gateway opened ends by its own `dev.qory.run.exited`, and a session's
-run by its runtime's exit or at the gateway.
+A run's starter may give its outcome (The run endpoint). It is stored on the run, not
+folded, and it sets the run's state and reason whenever it arrives, before the exit or
+after it: `succeeded` is Completed, `failed` Failed, `cancelled` Cancelled, and the run is
+not lost (`Apiary.Runs.Fold.outcome/1`). The exit's own state and reason are kept beside it
+as `exit_state` and `exit_reason`, with its exit code and signal. A rebuild gives the same
+run, since the fold applies the outcome after every pass and a rebuild's reset starts from
+it. Where the outcome's state differs from the exit's, the run page says both: "Succeeded,
+as its starter said; the runtime exited 1".
+
+Qory Apiary records what a run reports and starts no run. It ends a run only by passing on
+its starter's outcome, as `end` in the answers to the run's batches, for the gateway to
+end it. A run a gateway opened ends by its own `dev.qory.run.exited`, and a session's run
+by its runtime's exit or at the gateway.
 
 ## Liveness
 

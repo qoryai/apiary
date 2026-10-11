@@ -4,7 +4,6 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
-  import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
   alias Apiary.Runs.{Projector, Run}
