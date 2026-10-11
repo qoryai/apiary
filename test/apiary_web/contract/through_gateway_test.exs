@@ -413,6 +413,21 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert run(run_id).attached_at == nil
     end
 
+    test "by a gateway whose row is gone is refused, and the run stays unattached", ctx do
+      {run_id, run_key} = registered(ctx)
+
+      # The gateway as it would be had its row been purged after its key was verified: the
+      # run's reference to it is cleared with it, so the run names another gateway.
+      {key, _secret} = ctx.gateway_key
+      Repo.delete_all(from k in Apiary.AccessKeys.AccessKey, where: k.node_id == ^key.node_id)
+      Repo.delete_all(from n in Node, where: n.id == ^key.node_id)
+      {:ok, body} = Attach.parse(attach_body(run_key))
+
+      assert run(run_id).gateway_id == nil
+      assert Attach.attach(key, run_id, body, %{}) == {:error, :wrong_gateway}
+      assert run(run_id).attached_at == nil
+    end
+
     test "with a body the contract refuses is 400 invalid_request, and a stale time 401", ctx do
       {run_id, run_key} = registered(ctx)
 

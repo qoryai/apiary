@@ -37,7 +37,7 @@ defmodule Apiary.Runs.Attach do
        person's clearing of its instance leaves it;
     7. a run key that names another gateway is `{:error, :wrong_gateway}`;
     8. a gateway that may not serve the run's workspace (`Apiary.Gateways.may_serve?/2`),
-       or that is deleted, read `FOR SHARE` once the run's row is held, is
+       or that is deleted or gone, read `FOR SHARE` once the run's row is held, is
        `{:error, :workspace_not_served}`;
     9. a run another gateway attached is `{:error, :run_attached}`;
     10. a workspace whose run configuration cannot be read is `{:error, :unavailable}`;
@@ -293,10 +293,8 @@ defmodule Apiary.Runs.Attach do
       Runs.Projector.lock(id)
       run = Repo.one!(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
-      gateway =
-        Repo.one(from n in Node, where: n.id == ^access_key.node_id, lock: "FOR SHARE") ||
-          access_key.node
-
+      # Nil once the gateway's row is gone: it may serve nothing.
+      gateway = Repo.one(from n in Node, where: n.id == ^access_key.node_id, lock: "FOR SHARE")
       now = DateTime.utc_now()
 
       cond do
@@ -309,7 +307,7 @@ defmodule Apiary.Runs.Attach do
         expired?(run, now) ->
           {:error, :run_key_expired}
 
-        grant.gateway != gateway.public_id or run.gateway_id != gateway.id ->
+        grant.gateway != access_key.node.public_id or run.gateway_id != access_key.node_id ->
           {:error, :wrong_gateway}
 
         not Gateways.may_serve?(gateway, workspace) ->
