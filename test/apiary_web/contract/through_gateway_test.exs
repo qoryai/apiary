@@ -641,8 +641,10 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       {_subject, events} = first_events(run_id_attached)
       {:ok, batch} = events |> Jason.encode!() |> Batch.parse()
 
-      # Out of use as the edition puts an organisation out of use: marked for deletion here.
-      :ok = Apiary.EditionKit.module().hide_instance_organisation(ctx.scope.organisation.id)
+      # Out of use as an edition puts an organisation out of use: its
+      # `c:Apiary.Edition.active_organisations/2` leaves it out, under any edition.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OutOfUse)
+      Process.put(:out_of_use, [ctx.scope.organisation.id])
 
       # Over the wire the gateway's own key, of the same organisation, no longer verifies.
       conn = attach(ctx.gateway_key, run_id, attach_body(run_key))
@@ -652,7 +654,8 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert json_response(conn, 401) == %{"error" => "unauthorized"}
       assert unsigned_answer?(conn)
 
-      # And the run's own place is refused whatever the key: the key verified before the mark.
+      # And the run's own place is refused whatever the key: the key verified before it went
+      # out of use.
       assert Attach.attach(gateway_key, run_id, body, %{}) == {:error, :unauthorized}
 
       assert Ingest.ingest(gateway_key, batch, %{contract_version: 1, instance_id: instance_id()}) ==
