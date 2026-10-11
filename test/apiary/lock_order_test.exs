@@ -49,4 +49,17 @@ defmodule Apiary.LockOrderTest do
     assert Organisations.lock_order(given) == [one.id]
     assert Organisations.lock_order([]) == []
   end
+
+  test "lock_organisations/2 takes each mode, and an empty set" do
+    :ok = Apiary.Edition.put_test_stub(Apiary.Edition.Core)
+    %{organisation: %Organisation{id: id}} = Apiary.OrganisationsFixtures.sign_up_fixture()
+
+    for mode <- [:key_share, :share, :no_key_update, :update] do
+      assert {:ok, {:ok, [^id]}} =
+               Repo.transaction(fn -> Organisations.lock_organisations([id], mode) end)
+    end
+
+    assert {:ok, {:ok, []}} =
+             Repo.transaction(fn -> Organisations.lock_organisations([], :share) end)
+  end
 end

@@ -40,6 +40,29 @@ defmodule Apiary.LockOrganisationsRacesTest do
     end
   end
 
+  defp key_share!(id) do
+    Repo.query!("SELECT id FROM organisations WHERE id = $1 FOR KEY SHARE", [dump(id)])
+    :ok
+  end
+
+  # Each retry of lock_organisations/2, said to the test as `{:retried, pid}`.
+  defp report_retries do
+    handler = "lock-organisations-retries-#{System.unique_integer()}"
+    test = self()
+
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, %{query: query}, _config ->
+        if query =~ "ROLLBACK TO SAVEPOINT apiary_lock_organisations",
+          do: send(test, {:retried, self()})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+  end
+
   # lock_organisations/2 in a transaction of its own, which then reads once more, so a
   # transaction it left unusable would fail.
   defp locking(ids, mode) do
@@ -183,6 +206,43 @@ defmodule Apiary.LockOrganisationsRacesTest do
       # The second refusal, answered; the rows it locked let go, its transaction usable.
       assert {:ok, {:error, %Postgrex.Error{postgres: %{code: :deadlock_detected}}}} =
                Task.await(locker.task)
+    end
+  end
+
+  describe "a write's organisation rows, FOR SHARE, against a change in a stale order" do
+    test "the write is refused once as a deadlock, reads again and holds them" do
+      classifying()
+      %{scope: scope, organisation: %{id: x}} = sign_up()
+      %{organisation: %{id: y}} = sign_up()
+      :ok = report_retries()
+
+      # The change reads that y names x, and so locks y first; it pauses once it has.
+      Classifies.holds(y, [x])
+      Classifies.pause_at([2])
+      change = locking([x, y], :update)
+      assert_receive {:classified, reader}, 10_000
+
+      # Changed meanwhile: x names y now, and the write takes x first, then y.
+      Classifies.holds(y, [])
+      Classifies.holds(x, [y])
+
+      # A row that only names x holds it FOR KEY SHARE: the change, y locked, waits on it
+      # for x; the write's FOR SHARE of x does not.
+      {names, names_backend} = hold(fn -> key_share!(x) end)
+      send(reader, :go)
+      await_blocked(change.backend, names_backend)
+
+      write = start(fn -> Repo.transaction(fn -> Apiary.Access.lock_organisations(scope) end) end)
+      await_waited(write.backend, change.backend)
+
+      # Let go, the change waits on the write's x, and the write on the change's y: Postgres
+      # refuses the write, which has waited longer, and it reads again.
+      commit(names)
+
+      assert {:ok, {:ok, [^y, ^x]}} = Task.await(change.task)
+      assert {:ok, :ok} = Task.await(write.task)
+      assert_received {:retried, pid} when pid == write.task.pid
+      refute_received {:retried, _pid}
     end
   end
 end

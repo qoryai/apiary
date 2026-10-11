@@ -954,9 +954,9 @@ defmodule Apiary.Access do
   def reload(nil, _opts), do: nil
 
   @doc """
-  lock_places/1 holds the scope's organisation `FOR SHARE`, reading it as it is now, then
-  the other organisations the edition holds with it (`c:Apiary.Edition.places_to_lock/1`),
-  for a caller inside a transaction that must stay allowed while it is written: the first
+  lock_places/1 holds the scope's organisation `FOR SHARE`, with the other organisations
+  the edition holds with it (`c:Apiary.Edition.places_to_lock/1`), as
+  `lock_organisations/1` holds them, for a caller inside a transaction that must stay allowed while it is written: the first
   rows of the lock order (docs/access.md). A change that must not happen under such a
   write locks these rows for update, and waits for the write, or comes first and is
   seen; a row that only names the organisation takes `FOR KEY SHARE`, which does not
@@ -977,25 +977,43 @@ defmodule Apiary.Access do
 
   @doc """
   lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
-  edition nothing: for a change whose one point asks the edition itself
-  (`Apiary.Organisations.lock_people/1`). `:ok`, or `:gone` for an organisation deleted.
+  edition for no rows of its own: for a change whose one point asks the edition itself
+  (`Apiary.Organisations.lock_people/1`). The scope's organisation, read as it is now,
+  and those `c:Apiary.Edition.places_to_lock/1` names for it, `FOR SHARE`, in one
+  statement (`Apiary.Organisations.lock_organisations/2`); then, the organisation held,
+  `places_to_lock/1` is asked again of it as it is now, and any organisation it names
+  that is not held yet is taken after, the same way. `:ok`, or `:gone` for an
+  organisation deleted. Should Postgres refuse the lock twice as a deadlock, it raises.
   """
   @spec lock_organisations(Scope.t()) :: :ok | :gone
   def lock_organisations(%Scope{organisation: %Organisation{id: id}}) do
-    case Repo.one(from o in Organisation, where: o.id == ^id, lock: "FOR SHARE") do
-      nil ->
-        :gone
+    with %Organisation{} = seen <- Repo.get(Organisation, id) || :gone,
+         held = hold_places(Edition.places_to_lock(seen)),
+         true <- id in held || :gone,
+         %Organisation{} = now <- Repo.get(Organisation, id) || :gone do
+      # Read again under its lock, the organisation's places are as they stay until the
+      # change ends; one taken since the first read is held after it, as the lock order
+      # has the organisations it names.
+      case Edition.places_to_lock(now) -- held do
+        [] ->
+          :ok
 
-      %Organisation{} = now ->
-        for other <- Edition.places_to_lock(now), other != id do
-          Repo.one(from o in Organisation, where: o.id == ^other, select: o.id, lock: "FOR SHARE")
-        end
-
-        :ok
+        missing ->
+          _held = hold_places(missing)
+          :ok
+      end
     end
   end
 
   def lock_organisations(_scope), do: :gone
+
+  # The organisations `ids`, `FOR SHARE`, in the lock order: those held.
+  defp hold_places(ids) do
+    case Apiary.Organisations.lock_organisations(ids, :share) do
+      {:ok, held} -> held
+      {:error, error} -> raise error
+    end
+  end
 
   # The person's account `FOR SHARE`, the lock order's last row, and whether it is still
   # in use: not deleted, and active as the edition says. A deletion of the account, or the

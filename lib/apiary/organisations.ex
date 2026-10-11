@@ -1935,13 +1935,14 @@ defmodule Apiary.Organisations do
   core's edition answers that without reading; an edition may read there, but must lock
   nothing, since its locks belong to `c:Apiary.Edition.lock_rows/1`.
 
-  An edition that takes more than one organisation row in one transaction, in a mode that
-  conflicts with `FOR SHARE`, takes them at one point, before its first write, through
-  `lock_organisations/2`, which locks them in this order, and reads it again and locks
-  once more when Postgres refuses that caller's lock as a deadlock
-  (`deadlock_detected`); the read again sees what changed, as the core's transactions
-  run at `READ COMMITTED`. The core meets this: each change of the core that locks an
-  organisation row in such a mode locks that one row alone.
+  Every change that locks more than one organisation row in one transaction, in any
+  mode, the core's and an edition's, takes them through `lock_organisations/2`, which
+  locks them in this order, and reads it again and locks once more when Postgres refuses
+  that caller's lock as a deadlock (`deadlock_detected`); the read again sees what
+  changed, as the core's transactions run at `READ COMMITTED`. A change that takes more
+  than one in a mode that conflicts with `FOR SHARE` takes them at one point, before its
+  first write; each change of the core that locks an organisation row in such a mode
+  locks that one row alone.
   """
   @spec lock_order([%Organisation{}]) :: [Ecto.UUID.t()]
   def lock_order(organisations) do
@@ -1961,34 +1962,42 @@ defmodule Apiary.Organisations do
   # driven by the array; the subquery of the element's mode locks its row before the next
   # element is read, and the others are cut off by their one-time filter and lock nothing.
   # A locking clause applies to a whole table reference, not to each row, so a subquery
-  # for each mode is what lets one statement take several modes.
-  @lock_statement """
-  SELECT t.id
-  FROM unnest($1::uuid[], $2::text[]) WITH ORDINALITY AS t(id, mode, n)
-  LEFT JOIN LATERAL (
-    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'key_share'
-    FOR KEY SHARE
-  ) ks ON true
-  LEFT JOIN LATERAL (
-    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'share'
-    FOR SHARE
-  ) s ON true
-  LEFT JOIN LATERAL (
-    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'no_key_update'
-    FOR NO KEY UPDATE
-  ) nku ON true
-  LEFT JOIN LATERAL (
-    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'update'
-    FOR UPDATE
-  ) u ON true
-  WHERE COALESCE(ks.id, s.id, nku.id, u.id) IS NOT NULL
-  ORDER BY t.n
-  """
+  # for each mode is what lets one statement take several modes; the statement has one
+  # for each mode the call takes, and none for the others.
+  @lock_clauses %{
+    key_share: "FOR KEY SHARE",
+    share: "FOR SHARE",
+    no_key_update: "FOR NO KEY UPDATE",
+    update: "FOR UPDATE"
+  }
+
+  defp lock_statement(modes) do
+    used = Enum.filter(@lock_modes, &(&1 in modes))
+
+    joins =
+      Enum.map_join(used, "\n", fn mode ->
+        """
+        LEFT JOIN LATERAL (
+          SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = '#{mode}'
+          #{@lock_clauses[mode]}
+        ) #{mode} ON true\
+        """
+      end)
+
+    """
+    SELECT t.id
+    FROM unnest($1::uuid[], $2::text[]) WITH ORDINALITY AS t(id, mode, n)
+    #{joins}
+    WHERE COALESCE(#{Enum.map_join(used, ", ", &"#{&1}.id")}) IS NOT NULL
+    ORDER BY t.n
+    """
+  end
 
   @doc """
   lock_organisations/2 locks the rows of the organisations `organisation_ids`, those still
-  there, in the order of `lock_order/1`, for a caller inside a transaction, at its
-  change's one point for the organisation rows, before its first write. `mode` is the
+  there, in the order of `lock_order/1`, for a caller inside a transaction: every change
+  that locks more than one organisation row, in any mode, takes them through it, at its
+  change's one point for the organisation rows. `mode` is the
   mode of every row, or a function of an organisation's id that answers the mode of its
   row: `:key_share`, `:share`, `:no_key_update` or `:update`, for `FOR KEY SHARE`,
   `FOR SHARE`, `FOR NO KEY UPDATE` and `FOR UPDATE`.
@@ -2027,11 +2036,18 @@ defmodule Apiary.Organisations do
   # One read and one lock of the organisations, under a savepoint rolled back on an error.
   defp lock_in_order(organisation_ids, mode) do
     ids = Repo.all(from o in Organisation, where: o.id in ^organisation_ids) |> lock_order()
-    modes = Enum.map(ids, &(&1 |> mode_of(mode) |> Atom.to_string()))
+    modes = Enum.map(ids, &mode_of(&1, mode))
 
+    if ids == [], do: {:ok, []}, else: lock_under_savepoint(ids, modes)
+  end
+
+  defp lock_under_savepoint(ids, modes) do
     Repo.query!("SAVEPOINT apiary_lock_organisations")
 
-    case Repo.query(@lock_statement, [Enum.map(ids, &Ecto.UUID.dump!/1), modes]) do
+    case Repo.query(lock_statement(modes), [
+           Enum.map(ids, &Ecto.UUID.dump!/1),
+           Enum.map(modes, &Atom.to_string/1)
+         ]) do
       {:ok, %{rows: rows}} ->
         Repo.query!("RELEASE SAVEPOINT apiary_lock_organisations")
         {:ok, Enum.map(rows, fn [id] -> Ecto.UUID.load!(id) end)}
