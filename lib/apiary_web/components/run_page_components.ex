@@ -939,10 +939,10 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span :if={@item.tool} class="q-dest q-dest-tool">
           <.tool_mark name={@item.tool} />
-          <span class="q-on">{@item.host}:{@item.port}</span>
+          <span class="q-on"><bdi>{@item.host}</bdi>:{@item.port}</span>
         </span>
         <span :if={!@item.tool} class="q-dest">
-          {@item.host}<span class="q-port">:{@item.port}</span>
+          <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span>
         </span>
         <span class="text-muted">
           · {if @item.tool,

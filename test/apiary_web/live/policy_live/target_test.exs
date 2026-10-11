@@ -574,6 +574,22 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert text(view, "#policy-mode-now") == "Follow #{scope.workspace.name} is the mode now."
     end
 
+    test "what enforce would deny here isolates each host, so a bidi override reorders nothing",
+         %{conn: conn, path: path, scope: scope} do
+      host = "evil\u202Elpmaxe.<script>"
+
+      started_run(scope, shop(),
+        egress: [%{"host" => host, "decision" => "allowed", "rule" => ""}]
+      )
+
+      view = open(conn, path)
+      pick_mode(view, "enforce")
+
+      assert has_element?(view, "#mode-would .q-dest > bdi", host)
+      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>"
+      refute render(view) =~ "elpmaxe.<script>"
+    end
+
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
          %{conn: conn, scope: scope, target: target, path: path} do
       # The card says "today" of the mode it sets: in a day of the reader's, clear of

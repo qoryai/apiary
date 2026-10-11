@@ -2111,7 +2111,7 @@ defmodule ApiaryWeb.RunComponents do
                 @preview.run.denied_count
               )}
             </span>
-            <span :for={d <- @preview.denials} class="q-pv-dest">{d.host}:{d.port}</span>
+            <span :for={d <- @preview.denials} class="q-pv-dest"><bdi>{d.host}</bdi>:{d.port}</span>
             <span :if={@preview.more_denials > 0} class="q-pv-more">
               {ngettext("and %{number} more", "and %{number} more", @preview.more_denials,
                 number: Format.number(@preview.more_denials)
@@ -2747,7 +2747,7 @@ defmodule ApiaryWeb.RunComponents do
       title={destination_title_words(@c)}
       data-request-id={@c.request_id}
     >
-      <span class="q-cx-h">{@c.host}<span class="q-cx-p">:{@c.port}</span><.host_copy
+      <span class="q-cx-h"><bdi>{@c.host}</bdi><span class="q-cx-p">:{@c.port}</span><.host_copy
         :if={@copy_id}
         id={@copy_id}
         host={@c.host}
@@ -2891,7 +2891,7 @@ defmodule ApiaryWeb.RunComponents do
     >
       <.tool_mark name={@c.tool} />
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
-      <span class="q-on">{@c.host}:{@c.port}</span>
+      <span class="q-on"><bdi>{@c.host}</bdi>:{@c.port}</span>
     </span>
     """
   end
@@ -2901,7 +2901,7 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <span class="q-dest" title={destination_title(@c, @line)} data-request-id={@c.request_id}>
-      {@c.host}<span class="text-faint">:{@c.port}</span>
+      <bdi>{@c.host}</bdi><span class="text-faint">:{@c.port}</span>
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
     </span>
     """
@@ -3690,7 +3690,7 @@ defmodule ApiaryWeb.RunComponents do
       <header class="q-rp-head">
         <h3 id={"#{@id}-title"}>
           <.spliced text={gettext("Allow %{host}", host: hole())}>
-            <span class="q-rp-host">{middle(@panel.host, 40)}</span>
+            <span class="q-rp-host"><bdi>{middle(@panel.host, 40)}</bdi></span>
           </.spliced>
         </h3>
       </header>
@@ -3726,7 +3726,7 @@ defmodule ApiaryWeb.RunComponents do
               do: gettext("%{host} stays denied", host: hole()),
               else: gettext("%{host} stays allowed", host: hole())
           }>
-            <span class="q-rp-host">{middle(@panel.host, 40)}</span>
+            <span class="q-rp-host"><bdi>{middle(@panel.host, 40)}</bdi></span>
           </.spliced>
         </h3>
       </header>
@@ -3803,7 +3803,7 @@ defmodule ApiaryWeb.RunComponents do
               <span
                 class="q-rp-host"
                 title={@panel.host}
-              >{middle(@panel.host, 40)}</span>
+              ><bdi>{middle(@panel.host, 40)}</bdi></span>
             </.spliced>
           </h3>
         </header>

@@ -1032,7 +1032,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
               else: "pending"
           } />
           <span class="q-dest">
-            {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
+            <bdi>{destination.host}</bdi><span :if={destination.path} class="text-muted">{destination.path}</span>
           </span>
           <small>
             {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
