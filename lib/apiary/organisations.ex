@@ -2559,6 +2559,14 @@ defmodule Apiary.Organisations do
                {:error, :not_found},
            :ok <- authorize_renewal(scope, action, found),
            :ok <- ensure_confirmed(scope.user, mail?),
+           # Expired, refused here, before `allowance_of/1` and any lock, and not only under
+           # the lock below. This keeps `allowance_of/1`'s answer stable: a pending
+           # invitation's latest entry that names its allowance was written when its expiry
+           # was set, at most `Invitation.validity_days/0` ago, less than the shortest the
+           # audit trail keeps an entry (`@retention_min` in `Apiary.Audit`), so the prune
+           # has not taken it; an expired one may outlive it. Should that minimum ever be
+           # lowered below an invitation's lifetime, this stops holding.
+           true <- Invitation.pending?(found) || {:error, :not_found},
            {:ok, allowance} <- allowance_of(found),
            :ok <- lock_allowance(allowance),
            %Invitation{} = invitation <-
@@ -2625,6 +2633,9 @@ defmodule Apiary.Organisations do
   than one organisation row there in a mode that conflicts with `FOR SHARE`, takes this
   one with them, in `lock_order/1` and `FOR NO KEY UPDATE`, before `renew_invitation/4`
   takes it again.
+
+  For a pending invitation the answer does not change: the entry that names the
+  organisation is younger than the shortest time the audit trail keeps an entry.
 
   `{:ok, organisation}`, as the database has it now, or `{:error, :forbidden}` once that
   organisation is gone, which `renew_invitation/4` answers then too. It reads, and

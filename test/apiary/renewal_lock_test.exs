@@ -8,9 +8,10 @@ defmodule Apiary.RenewalLockTest do
   use ExUnit.Case, async: false
 
   import Apiary.Races
+  import Ecto.Query
 
   alias Apiary.{Organisations, Repo}
-  alias Apiary.Organisations.Organisation
+  alias Apiary.Organisations.{Invitation, Organisation}
 
   setup_all :clean_up_leftovers
   setup :setup_races
@@ -30,6 +31,42 @@ defmodule Apiary.RenewalLockTest do
     hold(fn ->
       Organisations.renew_invitation(scope, invitation.id, & &1, action: :"invitation.renew")
     end)
+  end
+
+  test "an expired invitation: refused before any lock of its allowance's row" do
+    %{scope: scope, organisation: organisation} = sign_up()
+    %{organisation: other} = sign_up()
+    Apiary.Mail.put_test_source(:none)
+
+    {:ok, invitation} =
+      Repo.transact(fn ->
+        with {:ok, invitation, _token} <-
+               Organisations.insert_invitation(scope, %{"email" => email()}, allowance: other),
+             do: {:ok, invitation}
+      end)
+
+    {1, _} =
+      Repo.update_all(from(i in Invitation, where: i.id == ^invitation.id),
+        set: [expires_at: DateTime.add(DateTime.utc_now(), -1, :minute)]
+      )
+
+    {renewal, _backend} = renewing(scope, invitation)
+    assert renewal.result == {:error, :not_found}
+
+    # Held open after the refusal: neither row was locked.
+    assert free?(other)
+    assert free?(organisation)
+
+    # The refusal rolled the held transaction back.
+    send(renewal.pid, :commit)
+    assert {:error, :rollback} = Task.await(renewal.task)
+  end
+
+  test "an invitation is pending for less time than the audit trail keeps an entry" do
+    # What keeps `allowance_of/1`'s answer for a pending invitation: the entry that names
+    # its allowance is not pruned while it is pending.
+    assert {:error, _reason} =
+             Apiary.Audit.parse_retention_days(Integer.to_string(Invitation.validity_days()))
   end
 
   test "an invitation counted against its own organisation: that row" do
