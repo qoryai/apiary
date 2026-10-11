@@ -41,7 +41,11 @@ jobs:
       # under the same mise.toml and mix.lock, else the newest of all, so the compiler
       # recompiles only what changed since. A fresh checkout's files are all newer than the
       # restored build: Mix compares a newer file's contents with the digest in its
-      # manifest, and recompiles it only when they differ.
+      # manifest, and recompiles it only when they differ. A directory has no digest, and
+      # takes a time made from its contents instead.
+      - name: Give the directories times from their contents
+        run: scripts/directory-mtimes.sh
+
       - name: Restore dependencies and build
         id: restore
         uses: actions/cache/restore@v6
@@ -245,6 +249,11 @@ jobs:
       - name: Install the toolchain pinned in mise.toml
         uses: jdx/mise-action@v3
 
+      # A directory's time comes from its contents, not the checkout, so the restored build
+      # does not recompile what depends on a directory (scripts/directory-mtimes.sh).
+      - name: Give the directories times from their contents
+        run: scripts/directory-mtimes.sh
+
       # The legs compile the same build, as QORY_FEATURES is read when the suite runs and
       # not when it compiles: each restores the tests' cache, and "every feature" alone
       # saves it, so no leg's save races another's. As the checks' cache, it is saved under
@@ -393,6 +402,11 @@ jobs:
 
       - name: Install the toolchain pinned in mise.toml
         uses: jdx/mise-action@v3
+
+      # A directory's time comes from its contents, not the checkout, so the restored build
+      # does not recompile what depends on a directory (scripts/directory-mtimes.sh).
+      - name: Give the directories times from their contents
+        run: scripts/directory-mtimes.sh
 
       # The tests' cache, read only: the tests' job saves it.
       - name: Restore dependencies and build
