@@ -1466,8 +1466,8 @@ page has no breadcrumb of its own.
   No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
   when a quiet run is heard again. A state stored under an older name is said as its new
   state.
-- **A run through a separate gateway** looks as any run: its Node is the gateway's,
-  and its Host the agent's machine.
+- **A run through a gateway** looks as any run: its Node is the node that registered it,
+  and its Host the machine the runtime ran on.
 
 ## The terminal
 

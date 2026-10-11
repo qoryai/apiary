@@ -189,8 +189,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
   interval its attach announced, from its attach, and a run its gateway never attaches is
   lost at the end of its window. The console does not show a run's gateway or its attach.
-- A run through a separate gateway belongs to the gateway's node and instance, and its
-  Host is the agent's machine.
+- A run through a gateway belongs to the node that registered it and its instance, never
+  to the gateway, and its Host is the machine the runtime ran on.
 - Qory Apiary records what a run reports and never ends a run it did not start; it starts
   none today. No run offers Close, on its page or as a lost run on the Overview, and a run
   has no Closed state. The events endpoint answers `410` only to a run whose events
