@@ -31,8 +31,10 @@ defmodule Apiary.Runs.Attach do
     5. a run that has ended is `{:error, :gone}`: its exit arrived, its starter's outcome
        ended it, it was lost after its attach, or its events were pruned. So is a run
        whose record is gone;
-    6. a run never attached whose attach window has closed (`attach_by`) is
-       `{:error, :run_key_expired}`;
+    6. a run never attached whose attach window has closed is
+       `{:error, :run_key_expired}`: past `attach_by`, on the clock read once the run's row
+       is locked, or already lost, as the lost-run check finds it at `attach_by` and a
+       person's clearing of its instance leaves it;
     7. a run key that names another gateway is `{:error, :wrong_gateway}`;
     8. a gateway that may not serve the run's workspace (`Apiary.Gateways.may_serve?/2`)
        is `{:error, :workspace_not_served}`;
@@ -215,7 +217,6 @@ defmodule Apiary.Runs.Attach do
     do: attach(access_key, run_id, attach, meta)
 
   def attach(%AccessKey{} = access_key, run_id, %__MODULE__{} = attach, meta) do
-    now = DateTime.utc_now()
     access_key = Repo.preload(access_key, [:workspace, :node])
 
     with :ok <- gateway(access_key),
@@ -225,8 +226,8 @@ defmodule Apiary.Runs.Attach do
          :ok <- in_use(run),
          place = Sender.place_key(run, access_key),
          :ok <- may_post(place),
-         {:ok, answer} <- store(run.id, access_key, grant, workspace, attach, meta, now) do
-      if not answer.repeated, do: attached(access_key, answer.run, now)
+         {:ok, answer} <- store(run.id, access_key, grant, workspace, attach, meta) do
+      if not answer.repeated, do: attached(access_key, answer.run, answer.run.attached_at)
       {:ok, answer}
     end
   rescue
@@ -278,11 +279,13 @@ defmodule Apiary.Runs.Attach do
   end
 
   # Under the run's projection lock and its row's, as an outcome is stored, so two attaches
-  # of one run take turns and a pass never writes over the attach.
-  defp store(id, access_key, grant, workspace, attach, meta, now) do
+  # of one run take turns and a pass never writes over the attach. The clock is read once
+  # the row is held, so the window is judged against the row as it is then.
+  defp store(id, access_key, grant, workspace, attach, meta) do
     Repo.transact(fn ->
       Runs.Projector.lock(id)
       run = Repo.one!(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
+      now = DateTime.utc_now()
       gateway = access_key.node
 
       cond do
@@ -292,7 +295,7 @@ defmodule Apiary.Runs.Attach do
         ended?(run) ->
           {:error, :gone}
 
-        is_nil(run.attached_at) and DateTime.compare(now, run.attach_by) == :gt ->
+        expired?(run, now) ->
           {:error, :run_key_expired}
 
         grant.gateway != gateway.public_id or run.gateway_id != gateway.id ->
@@ -309,6 +312,13 @@ defmodule Apiary.Runs.Attach do
       end
     end)
   end
+
+  # Never attached, and its window closed: past `attach_by`, or already found lost, by the
+  # lost-run check at `attach_by` or by a person clearing its instance.
+  defp expired?(%Run{attached_at: nil} = run, now),
+    do: run.state == "lost" or DateTime.compare(now, run.attach_by) == :gt
+
+  defp expired?(_run, _now), do: false
 
   # The gateway that attached the run, under any of its keys, while the run is live.
   defp repeat?(%Run{attached_at: %DateTime{}, gateway_id: id} = run, %Node{id: id}),
@@ -355,22 +365,28 @@ defmodule Apiary.Runs.Attach do
   defp kept_version(version),
     do: version |> binary_part(0, 255) |> String.chunk(:valid) |> List.first("")
 
-  # The run configuration's bytes, with the registration's labels and `about` after its
-  # last member, each only when the registration had some; its digest stays the
-  # configuration's.
+  # The answer's bytes, under the configuration's own digest.
   defp answer(run, %{settings: document} = settings, repeated) do
+    body = answer_body(document, run.registration_labels, run.registration_about)
+    Map.merge(settings, %{settings: body, run: run, repeated: repeated})
+  end
+
+  @doc """
+  The bytes of an attach's answer: the run configuration `document`, with `labels` and
+  `about` added after its last member, each only when it holds something. Its digest
+  stays the configuration's.
+  """
+  @spec answer_body(binary, map | nil, map | nil) :: binary
+  def answer_body(document, labels, about) when is_binary(document) do
     members =
-      [{"labels", run.registration_labels}, {"about", run.registration_about}]
+      [{"labels", labels}, {"about", about}]
       |> Enum.reject(fn {_name, value} -> value in [nil, %{}] end)
       |> Enum.map(fn {name, value} -> [?,, Jason.encode!(name), ?:, Jason.encode!(value)] end)
 
-    body =
-      case members do
-        [] -> document
-        members -> with_members(document, members)
-      end
-
-    Map.merge(settings, %{settings: body, run: run, repeated: repeated})
+    case members do
+      [] -> document
+      members -> with_members(document, members)
+    end
   end
 
   # A document is one JSON object: its members end before its last `}`.
