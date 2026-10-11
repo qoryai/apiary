@@ -28,6 +28,10 @@ defmodule Apiary.Runs.Ingest do
   node is refused whole, `{:error, :wrong_node}`, and nothing of it is stored: a batch is
   one run's, every event's subject the same.
 
+  **The end.** Once the run's starter has given its outcome (`Apiary.Runs.Outcome`), every
+  answer for the run says so, `end` in the result, until the run's `dev.qory.run.exited`
+  arrives: the answer to the batch that carries it, and to every batch after, has none.
+
   Nothing of the request's headers but the versions, the instance id and the run
   configuration digest is stored, and nothing of an event is logged: the insert of the
   events is kept out of the query log.
@@ -46,6 +50,7 @@ defmodule Apiary.Runs.Ingest do
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @log "dev.qory.run.log"
+  @exited "dev.qory.run.exited"
   @insert_chunk 500
 
   @typedoc """
@@ -72,7 +77,9 @@ defmodule Apiary.Runs.Ingest do
   the workspace serves a run configuration (nil when that could not be read) and
   `run_configuration_digest` is the digest in force for the run's target, for the
   answer's headers (nil for a workspace that is not managed, and when it could not be
-  read). `{:error, :unavailable}` when the batch could not be stored, `{:error, :not_found}` when
+  read); `end` is the run's outcome, `%{state: state, reason: reason}` (reason nil when it
+  gave none), while the run has one and no `dev.qory.run.exited` has arrived, else nil.
+  `{:error, :unavailable}` when the batch could not be stored, `{:error, :not_found}` when
   the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
   when the run is another node's (`Apiary.Runs.Sender`), with nothing stored.
 
@@ -151,11 +158,11 @@ defmodule Apiary.Runs.Ingest do
         {:ok, gone(access_key, batch, meta, delivery_id, now)}
 
       not new_delivery?(access_key, batch, meta, delivery_id, now) ->
-        {:ok, %{result(202, run) | repeated: true}}
+        {:ok, %{result(202, run) | repeated: true, end: run_end(run, batch)}}
 
       true ->
-        {batch, pruned} = without_pruned_log(run, batch)
-        {inserted, duplicates, conflicts} = insert_events(run, batch, now)
+        {stored_batch, pruned} = without_pruned_log(run, batch)
+        {inserted, duplicates, conflicts} = insert_events(run, stored_batch, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
 
@@ -164,9 +171,23 @@ defmodule Apiary.Runs.Ingest do
            result(202, run)
            | inserted: inserted,
              duplicates: duplicates + pruned,
-             conflicts: conflicts
+             conflicts: conflicts,
+             end: run_end(run, batch)
          }}
     end
+  end
+
+  # The run's outcome, while the run has one and its exit has not arrived: not in this
+  # batch, and not among the events it holds. Read under the run's lock, so an outcome
+  # stored meanwhile is seen by the next answer.
+  defp run_end(%Run{outcome_state: nil}, _batch), do: nil
+
+  defp run_end(%Run{} = run, %Batch{events: events}) do
+    exited? =
+      Enum.any?(events, &(&1.type == @exited)) or
+        Repo.exists?(from e in Event, where: e.run_id == ^run.id and e.type == @exited)
+
+    if not exited?, do: %{state: run.outcome_state, reason: run.outcome_reason}
   end
 
   # A run whose log retention has pruned takes no more log events: the ones it had are
@@ -194,7 +215,8 @@ defmodule Apiary.Runs.Ingest do
       inserted: 0,
       duplicates: 0,
       conflicts: 0,
-      repeated: false
+      repeated: false,
+      end: nil
     }
   end
 

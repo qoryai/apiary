@@ -29,6 +29,12 @@ defmodule ApiaryWeb.Contract.EventsController do
   (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which is how a run
   learns that its policy changed.
 
+  A `202` has no body, but for a run whose starter has given its outcome
+  (`Apiary.Runs.Outcome`) and whose `dev.qory.run.exited` has not arrived: then its body
+  is `application/json`, `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`,
+  `reason` left out when the outcome gave none, and the answer's signature covers it as it
+  covers any body. The answer to the batch that carries the exit has none.
+
   A workspace nobody has given a policy is served no policy: its runs' registrations are
   answered `{"version":1}`, the answers to their batches carry no
   `X-Qory-Run-Configuration`, and its machines keep their own. The digest the request
@@ -49,7 +55,7 @@ defmodule ApiaryWeb.Contract.EventsController do
       conn
       |> put_resp_header("x-qory-configuration", Configuration.digest(access_key))
       |> put_run_configuration(result[:run_configuration_digest])
-      |> send_resp(status, "")
+      |> send_answer(status, result[:end])
     else
       :invalid_request ->
         conn |> put_status(400) |> json(%{error: "invalid_request"})
@@ -71,6 +77,18 @@ defmodule ApiaryWeb.Contract.EventsController do
     do: put_resp_header(conn, "x-qory-run-configuration", digest)
 
   defp put_run_configuration(conn, _digest), do: conn
+
+  # The run's end, on a 2xx while the run has one; an empty body otherwise, as always.
+  defp send_answer(conn, status, %{state: state} = run_end) when status in 200..299 do
+    members = [{"state", state}] ++ if(run_end.reason, do: [{"reason", run_end.reason}], else: [])
+    body = Jason.encode!(%{"end" => Jason.OrderedObject.new(members)})
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(status, body)
+  end
+
+  defp send_answer(conn, status, _run_end), do: send_resp(conn, status, "")
 
   defp batch(raw_body) do
     case Batch.parse(raw_body) do
