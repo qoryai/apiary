@@ -542,6 +542,22 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert json_response(conn, 200) == %{"version" => 1}
       assert signed_answer?(conn)
 
+      # A retry is the same outcome by its state and reason, whatever its time, and the
+      # node's alone: the gateway is not given the repeat. Another state is refused.
+      given = Map.take(run(run_id), [:outcome_time, :outcome_received_at, :outcome_digest])
+      later = %{body | "time" => DateTime.to_iso8601(DateTime.add(now(), 5))}
+      assert json_response(outcome(ctx.key, run_id, later), 200) == %{"version" => 1}
+
+      assert json_response(outcome(ctx.gateway_key, run_id, later), 404) == %{
+               "error" => "not_found"
+             }
+
+      assert json_response(outcome(ctx.key, run_id, %{body | "state" => "failed"}), 409) ==
+               %{"error" => "outcome_given"}
+
+      assert Map.take(run(run_id), [:outcome_time, :outcome_received_at, :outcome_digest]) ==
+               given
+
       {_subject, [started]} = first_events(run_id)
       conn = deliver(ctx.gateway_key, [started])
       assert conn.status in 200..299
