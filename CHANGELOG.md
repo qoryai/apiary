@@ -189,14 +189,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   a gateway's batch never opens a run. Its outcome stays its node's. The run is held to the
   interval its attach announced, from its attach, and a run its gateway never attaches is
   lost at the end of its window. The console does not show a run's gateway or its attach.
-- A run a gateway opened, with no session: no runtime, command or host, and no exit
-  status. The runs list's Runtime column says "no session". Its page says how it ended in
-  words after its state, as every run's does; its Terminal tab is the terminal, empty,
-  with a note that the run has no session, and search, follow, wrap, the text size and the
-  download disabled; its timeline starts "by a gateway with no session"; and its Details
-  say what opened it and which Forager reported it, with no
-  Command section, and its Session "none". A run through a separate gateway belongs to the
-  gateway's node and instance, and its Host is the agent's machine.
+- A run through a separate gateway belongs to the gateway's node and instance, and its
+  Host is the agent's machine.
 - Qory Apiary records what a run reports and never ends a run it did not start; it starts
   none today. No run offers Close, on its page or as a lost run on the Overview, and a run
   has no Closed state. The events endpoint answers `410` only to a run whose events
@@ -209,8 +203,7 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Cancelled heading, and the Overview's chart table a Cancelled column. Completed is a
   green check, Cancelled a grey stop, Failed a red x-mark and Lost an amber
   signal-slash.
-- How a run ended, by one rule for a session's run and a run a gateway opened alike, from
-  its exit's `state` (`succeeded`, `failed` or `cancelled`) and its open `reason`:
+- How a run ended, by one rule, from its exit's `state` (`succeeded`, `failed` or `cancelled`) and its open `reason`:
   `succeeded` is Completed, `cancelled` Cancelled and `failed` Failed, but a failed exit
   with `session_lost` or `gateway_lost` is Lost, for good, and a failed exit an older
   Forager wrote when it stopped a run itself (`timeout`, `quiet`, `credential_expired`,
@@ -571,6 +564,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 
+### Removed
+
+- Runs a gateway opens with no session, and run credentials. A run is opened by a Forager
+  session alone: a batch whose `dev.qory.run.started` has an `opened_by` other than
+  `session`, or a `credential` member, is refused, a signed `400` `invalid_request`, and
+  nothing of it is stored. A run's clock offset is its heartbeats' alone, never its
+  registration's, its attach's or a ping's. The demo recording of a run with no session is
+  gone.
+
 ### Migrations
 
 The baseline, on an empty database, creates the schema an instance has, whatever its
@@ -686,6 +688,11 @@ allowed again. `20261011150500_keep_a_run_key_s_signature` adds
 `runs.run_key_signature`, the 64-byte signature of a run's run key, NULL for every
 existing row, held to a run that has a payload (`runs_run_key_signature_check`, NOT
 VALID), and `20261011150600_validate_a_run_key_s_signature_check` validates it.
+`20261011150700_forget_what_a_run_without_a_session_needed` drops `runs.opened_by`,
+`runs.registration_time` and `runs.attach_time`, with `runs_opened_by_check` and
+`runs_registration_time_check`, and re-creates `runs_attach_check` without `attach_time`,
+NOT VALID; `20261011150800_validate_a_run_s_attach_check` validates it. Rolled back, the
+columns and their checks come back, empty but `attach_time`, which takes `attached_at`.
 
 ### Upgrading
 

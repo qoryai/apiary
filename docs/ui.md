@@ -664,8 +664,7 @@ version in force is exported; another version's path sends on to it.
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
   when there are any. Completed is its green dot alone, the word for a screen reader;
-  Cancelled shows its word, muted, and a grey dot. A run with no session
-  says "no session" in the Runtime column, muted as the column is, and "n/a" as its Host.
+  Cancelled shows its word, muted, and a grey dot.
   What the run says it is about is a muted line under them, only when it names a kind or a
   subject: the kind, then up to two subjects, each its type and ref
   as given ("pull request #412"), then "+N more", as text and never a link, since the
@@ -1467,29 +1466,7 @@ page has no breadcrumb of its own.
   No heartbeat for 90 s." for one the lost-run check marked; and "Heartbeats resumed."
   when a quiet run is heard again. A state stored under an older name is said as its new
   state.
-- **A run with no session**, one a gateway opened for a program that reports none
-  (`opened_by` `gateway`, `Apiary.Runs.Run.no_session?/1`), has the same page with what
-  the record lacks left out. Its header says its state and the end reason's words after
-  it, as any run's does (Cancelled · no activity for 30 minutes), with no runtime, no
-  host and no exit. The tabs are as on any run: Timeline,
-  Terminal and Network access, with Details beside them.
-  - **Terminal** is the terminal itself, as on a session's run, its bar, its dark screen
-    and its foot (Ended · 0 B), empty, with a note in the middle of the screen in the
-    terminal's own message style: "**No session.** A gateway opened this run for a
-    program that reports none, so there is no terminal output. Its connections are on
-    the Network access tab." Search, follow, wrap, the text size and the download are
-    disabled, Focus and Full screen stay, and the caption under it is left out (The
-    terminal, below).
-  - **Timeline** has no notice of its own; the lane key, Main session, and Connections
-    inline are as on any run. Run started reads "by a gateway with no session". The last
-    item is "Run ended", the end reason's words and the duration, with its state's mark,
-    as on any run.
-  - **The Details rail**'s Run section: State with the reason's words under it; Opened
-    by, "gateway (no session)", second; Key and Node; then Forager, its version and the
-    contract's (`0.10.0 · contract 1`), the gateway's; and Instance. There is no Exit,
-    Runtime, Host or Wall row, and no Command section. Record's Session reads "none".
-
-  A session's run through a separate gateway looks as any run: its Node is the gateway's,
+- **A run through a separate gateway** looks as any run: its Node is the gateway's,
   and its Host the agent's machine.
 
 ## The terminal
@@ -1514,12 +1491,8 @@ other page. The screen is `role="log"` with `aria-live="off"`.
   rail away so the box takes the window; and **Full screen**, the browser's, on the box,
   shown only where the browser has it. A narrow box names its buttons on hover only
   (a container query), so the bar never wraps.
-- **An empty box with a note.** A run with no session has no log: its Terminal tab is the
-  box all the same, bar, screen and foot, with a note in the middle of the screen in the
-  terminal's own message style ("No session." and why). While the log is empty, search,
-  follow, wrap, the text size and the download are disabled, and the hook reads no log;
-  Focus and Full screen stay. The caption under the box is left out. A run with a session
-  and no output says so in the column instead, as an empty state.
+- **No output.** A run with no output says so in the column instead of the box, as an
+  empty state.
 
 ## Words
 
