@@ -155,7 +155,7 @@ first refusal that applies is the answer:
 | `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
-| `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
+| `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the instance id is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
@@ -180,16 +180,23 @@ A run through a gateway (The run endpoint, below) takes its batches from the act
 of the gateway that attached it (`runs.gateway_id`, once `attached_at` is set), signed
 with the instance id that attached it (`runs.attach_instance_id`), and from nobody before
 the attach, its own node included: another instance of the gateway is `409 wrong_gateway`,
-under any of its keys. A run attached before its instance was kept takes the instance of
-the next attach, batch or heartbeat its gateway sends, written under the run's row lock
-and only while it has none, so of two instances one holds it. A gateway's key finds its
-run by the gateway and the run's id, whatever workspace the run is in, and never opens
+under any of its keys, while the run's sending has not ended. A run whose starter gave its
+outcome has not ended here: its gateway still sends its last events and its exit. A run
+attached before its instance was kept takes the instance of the next attach, batch or
+heartbeat its gateway sends while its sending has not ended, written under the run's row
+lock and only while it has none, so of two instances one holds it. A gateway's key finds
+its run by the gateway and the run's id, whatever workspace the run is in, and never opens
 one: a batch for a run it did not attach is `409 wrong_gateway`, and nothing is stored.
 The run's workspace, node and instance stay the registration's. What is read for it, the
 run configuration its answers carry and the features its events are kept under, is read
 under the run's own workspace and organisation (`Apiary.Runs.Sender.place_key/2`), and the
-delivery is recorded in the run's workspace. Events after the run's end are taken from the
-gateway as from any node.
+delivery is recorded in the run's workspace. Events after the run's end are taken from any
+instance of the gateway that attached it, under any of its active keys, as from the
+attaching instance: once the run's `dev.qory.run.exited` arrived, it was lost after its
+attach, or its events were pruned (`Apiary.Runs.Sender.sending_ended?/1`), a resend from
+any of them is deduplicated, a run whose events were pruned is `410` to each, and none of
+them gives the run its instance. Another gateway node is still `409 wrong_gateway`, and a
+reload stays the attaching instance's.
 
 Once the run's starter has given its outcome (The run endpoint, below), every `2xx` to the
 run's batches has a body, `application/json`,

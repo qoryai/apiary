@@ -683,6 +683,133 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
     end
   end
 
+  describe "after the run's sending has ended" do
+    defp exited(run_id, sequence),
+      do:
+        wire_event(run_id, sequence, "run.exited", %{
+          "state" => "succeeded",
+          "exit_code" => 0,
+          "duration_ms" => 9
+        })
+
+    defp second_key(ctx) do
+      %{access_key: key, secret: secret} = contract_key_fixture(ctx.scope, node: ctx.gateway)
+      {key, secret}
+    end
+
+    defp answer(conn), do: {conn.status, conn.resp_body}
+
+    test "a resend after the exit from another instance is answered as the attaching instance's",
+         ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      batch = [started, exited(run_id, 3)]
+      assert response(deliver(ctx.gateway_key, batch), 202) == ""
+
+      own = deliver(ctx.gateway_key, batch)
+      other = deliver(second_key(ctx), batch, instance_id: @other_instance)
+
+      assert answer(own) == {202, ""}
+      assert answer(other) == answer(own)
+      assert signed_answer?(other)
+
+      run = run(run_id)
+      assert run.event_count == 2
+      assert run.attach_instance_id == instance_id()
+    end
+
+    test "a resend after the run is lost from another instance is answered as the attaching instance's",
+         ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      assert response(deliver(ctx.gateway_key, [started]), 202) == ""
+
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [state: "lost", lost_at: now()]
+      )
+
+      own = deliver(ctx.gateway_key, [started])
+      other = deliver(second_key(ctx), [started], instance_id: @other_instance)
+
+      assert answer(own) == {202, ""}
+      assert answer(other) == answer(own)
+      assert signed_answer?(other)
+      assert run(run_id).event_count == 1
+    end
+
+    test "after its events were pruned, another instance is answered 410, as the attaching instance is",
+         ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      assert response(deliver(ctx.gateway_key, [started]), 202) == ""
+
+      Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+        set: [events_pruned_at: now()]
+      )
+
+      own = deliver(ctx.gateway_key, [started])
+      other = deliver(second_key(ctx), [started], instance_id: @other_instance)
+
+      assert answer(own) == {410, ""}
+      assert answer(other) == answer(own)
+      assert signed_answer?(other)
+    end
+
+    test "after an outcome and before the exit, another instance is still 409 wrong_gateway",
+         ctx do
+      run_id = attached(ctx)
+      body = %{"version" => 1, "state" => "succeeded", "time" => DateTime.to_iso8601(now())}
+      assert json_response(outcome(ctx.key, run_id, body), 200) == %{"version" => 1}
+
+      second = second_key(ctx)
+
+      for events <- [[beat(run_id, 2)], [exited(run_id, 3)]] do
+        conn = deliver(second, events, instance_id: @other_instance)
+        assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
+        assert signed_answer?(conn)
+      end
+
+      assert Repo.aggregate(Event, :count) == 0
+    end
+
+    test "after the exit, another gateway node is still 409 wrong_gateway", ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      batch = [started, exited(run_id, 3)]
+      assert response(deliver(ctx.gateway_key, batch), 202) == ""
+
+      conn = deliver(other_gateway(ctx), batch)
+      assert json_response(conn, 409) == %{"error" => "wrong_gateway"}
+      assert signed_answer?(conn)
+    end
+
+    @tag needs: :security
+    test "a reload from another instance is still 404", ctx do
+      {:ok, _rule} = Apiary.Policy.allow(ctx.scope, nil, %{host: "api.example"})
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      assert response(deliver(ctx.gateway_key, [started, exited(run_id, 3)]), 202) == ""
+
+      assert reload(ctx.gateway_key, run_id).status == 200
+      conn = reload(ctx.gateway_key, run_id, instance_id: @other_instance)
+      assert json_response(conn, 404) == %{"error" => "not_found"}
+    end
+
+    test "a run with no instance kept takes none from a batch after its exit", ctx do
+      run_id = attached(ctx)
+      {_subject, [started]} = first_events(run_id)
+      batch = [started, exited(run_id, 3)]
+      assert response(deliver(ctx.gateway_key, batch), 202) == ""
+      without_instance(run_id)
+
+      for instance <- [@other_instance, instance_id()] do
+        assert response(deliver(ctx.gateway_key, batch, instance_id: instance), 202) == ""
+      end
+
+      assert run(run_id).attach_instance_id == nil
+    end
+  end
+
   describe "a run attached before its instance was kept" do
     test "takes the instance of the next attach, and refuses any other from then on", ctx do
       {run_id, run_key} = registered(ctx)
@@ -727,6 +854,27 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
              }
 
       assert run(run_id).event_count == 1
+    end
+
+    test "a first batch refused after it was let through gives it no instance", ctx do
+      run_id = attached(ctx)
+      without_instance(run_id)
+      {gateway_key, _secret} = ctx.gateway_key
+      {:ok, batch} = [beat(run_id, 2)] |> Jason.encode!() |> Batch.parse()
+
+      # The run's organisation out of use, after the key verified: the batch passes the
+      # sender's check, and its place refuses it, which rolls the instance back with it.
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.OutOfUse)
+      Process.put(:out_of_use, [ctx.scope.organisation.id])
+
+      assert Ingest.ingest(gateway_key, batch, %{
+               contract_version: 1,
+               instance_id: @other_instance
+             }) ==
+               {:error, :unauthorized}
+
+      assert run(run_id).attach_instance_id == nil
+      assert Repo.aggregate(Event, :count) == 0
     end
 
     test "a refused batch gives it no instance", ctx do

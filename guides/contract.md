@@ -513,7 +513,7 @@ this order, and the first refusal that applies is the answer:
 | `400` | the body is not a batch, is over a limit, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`) | `{"error":"not_found"}` |
 | `409` | the run is another node's: the whole batch is refused, and nothing of it is stored | `{"error":"wrong_node"}` |
-| `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
+| `409` | the run goes through a gateway and the key is not the gateway's that attached it, or the instance is not the one that attached it while the run's sending has not ended, or the key is a gateway's and the run is not one it attached: the whole batch is refused | `{"error":"wrong_gateway"}` |
 | `401` | the run goes through a gateway and its own workspace or organisation is out of use | `{"error":"unauthorized"}` |
 | `404` | the run goes through a gateway and its own workspace may not be posted to (`run.post_events`) | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
@@ -540,11 +540,16 @@ else is retried with backoff until the run ends.
   attached it, under any of its active keys, from the instance that attached it
   (`X-Qory-Instance-Id`), and nobody's before the attach: anyone else's batch, the
   registering node's and another instance of the gateway's included, is
-  `409 wrong_gateway`, and a reload `404`. Its registration's repeat and its outcome
-  stay the registering node's. A gateway's batch never opens a run: one for a run it did
-  not attach is `409 wrong_gateway`, and nothing is stored. What is read for the run, its run
-  configuration and its features, is read under the run's own workspace, and a batch is
-  refused `401` when the run's workspace or organisation is out of use.
+  `409 wrong_gateway`, and a reload `404`. Once the run's exit has arrived, the run was lost
+  after its attach, or its events were pruned, a batch or heartbeat from any instance of
+  the gateway, under any of its active keys, is answered as the attaching instance's would
+  be: a resend is deduplicated, and a run whose events were pruned is `410`. An outcome
+  alone does not end this: until the exit arrives, another instance is still
+  `409 wrong_gateway`. Reloads stay the attaching instance's. Its registration's repeat and its
+  outcome stay the registering node's. A gateway's batch never opens a run: one for a run
+  it did not attach is `409 wrong_gateway`, and nothing is stored. What is read for the
+  run, its run configuration and its features, is read under the run's own workspace, and
+  a batch is refused `401` when the run's workspace or organisation is out of use.
 - **The end.** Once the run's starter has given its outcome, every `2xx` to the run's
   batches carries it, `application/json`, until the run's `dev.qory.run.exited` arrives:
   `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, `reason` left out when the

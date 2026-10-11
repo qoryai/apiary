@@ -29,9 +29,13 @@ defmodule Apiary.Runs.Ingest do
   one run's, every event's subject the same. A run through a gateway takes them from the
   gateway that attached it, under any of its active keys, and from the instance that
   attached it alone (`meta.instance_id`): a batch from another node's key, or from
-  another instance of the gateway, is refused whole, `{:error, :wrong_gateway}`. A run
-  attached before its instance was known takes the instance of the first batch its
-  gateway sends, under the run's row lock.
+  another instance of the gateway, is refused whole, `{:error, :wrong_gateway}`, until the
+  run's sending has ended (`Apiary.Runs.Sender.sending_ended?/1`: its exit arrived, it was
+  lost after its attach, or its events were pruned). From then on a batch from any
+  instance of the gateway is answered as the attaching instance's would be: a resend is
+  deduplicated, and a run whose events were pruned is answered 410. A run attached before
+  its instance was known takes the instance of the first batch its gateway sends while
+  its sending has not ended, under the run's row lock.
 
   **The end.** Once the run's starter has given its outcome (`Apiary.Runs.Outcome`), every
   answer for the run says so, `end` in the result, until the run's `dev.qory.run.exited`
@@ -167,15 +171,14 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # Another node's run, or another instance's of the gateway that attached it: refused
-  # whole, before anything of the batch is recorded, and the transaction rolls back. A
-  # run through a gateway whose attaching instance is not known yet takes this one's.
+  # Another node's run, or another instance's of the gateway that attached it while the
+  # run's sending has not ended: refused whole, before anything of the batch is recorded,
+  # and the transaction rolls back. A run through a gateway whose attaching instance is
+  # not known yet takes this one's (`Apiary.Runs.Sender.batch_sender/3`).
   defp sender(run, access_key, meta) do
-    with true <- Sender.may_send?(run, access_key, meta[:instance_id]),
-         {:ok, run} <- Sender.take_instance(run, meta[:instance_id]) do
-      {:ok, run}
-    else
-      _refused -> {:error, Sender.refusal(run)}
+    case Sender.batch_sender(run, access_key, meta[:instance_id]) do
+      {:ok, run} -> {:ok, run}
+      :refused -> {:error, Sender.refusal(run)}
     end
   end
 
