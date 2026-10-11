@@ -398,7 +398,7 @@ defmodule Apiary.Runs.Registration do
   # A key's scope is never refused a role here; what can refuse it is a feature the instance
   # does not have.
   defp may_post(scope) do
-    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+    case Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end
@@ -406,6 +406,10 @@ defmodule Apiary.Runs.Registration do
 
   # The run of this id the workspace holds already, as it decides the answer: none, a
   # repeat, or a run whose id is used.
+  # A key with no workspace, an organisation-level gateway's, holds no run of its own: its
+  # registration is refused as a gateway's key's (`route/2`).
+  defp held(%AccessKey{workspace_id: nil}, _registration, _digest), do: {:ok, nil}
+
   defp held(access_key, registration, digest) do
     run =
       Repo.one(
@@ -732,10 +736,12 @@ defmodule Apiary.Runs.Registration do
   `run_configuration.fetch`. That last is never the document of no policy, which would
   take the policy in force off a run that started under it: a policy removed mid-run
   never loosens a run already started.
+  `{:error, :workspace_not_served}` for a run through a gateway that may no longer serve
+  the run's workspace (`Apiary.Runs.Sender.serves?/2`).
   `{:error, :unavailable}` when the configuration cannot be read.
   """
   @spec fetch(AccessKey.t() | Scope.t(), term, String.t() | nil) ::
-          {:ok, settings} | {:error, :not_found | :unavailable}
+          {:ok, settings} | {:error, :not_found | :workspace_not_served | :unavailable}
   def fetch(key, run_id, instance_id \\ nil)
 
   def fetch(%Scope{access_key: %AccessKey{} = access_key}, run_id, instance_id),
@@ -746,7 +752,8 @@ defmodule Apiary.Runs.Registration do
 
     with true <- Batch.uuid?(run_id),
          %Run{} = run <- Repo.one(Sender.run_query(access_key, run_id)),
-         true <- reload_allowed?(access_key, run, instance_id) do
+         true <- reload_allowed?(access_key, run, instance_id),
+         true <- Sender.serves?(run, access_key) || :not_served do
       case Serving.fetch(Sender.place_key(run, access_key), run.registration_labels) do
         {:ok, %RunConfiguration{document: document, digest: digest}} ->
           {:ok, settings(document, digest, true)}
@@ -758,6 +765,7 @@ defmodule Apiary.Runs.Registration do
           {:error, :unavailable}
       end
     else
+      :not_served -> {:error, :workspace_not_served}
       _not_found -> {:error, :not_found}
     end
   rescue
@@ -769,9 +777,16 @@ defmodule Apiary.Runs.Registration do
   # and gives a run whose attaching instance is not known yet none. A run its batches
   # created, which never registered, and a run whose node is gone are reloaded by none.
   defp reload_allowed?(access_key, %Run{registered_at: %DateTime{}} = run, instance_id),
-    do: Sender.may_send?(run, access_key, instance_id)
+    do: Sender.may_send?(run, access_key, instance_id) and place_in_use?(run)
 
   defp reload_allowed?(_access_key, _run, _instance_id), do: false
+
+  # A run through a gateway is held to its own place, which may not be the gateway key's:
+  # out of use, it is reloaded by none.
+  defp place_in_use?(run),
+    do:
+      not Run.through_gateway?(run) or
+        AccessKeys.place_in_use?(run.organisation_id, run.workspace_id)
 
   # A reload where the workspace serves no run configuration (nobody has made its policy,
   # the instance does not have the `security` feature, or `Apiary.Access` refuses

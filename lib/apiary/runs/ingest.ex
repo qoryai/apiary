@@ -95,7 +95,11 @@ defmodule Apiary.Runs.Ingest do
   the key may not post (`run.post_events` in `Apiary.Access`), `{:error, :wrong_node}`
   when the run is another node's, and `{:error, :wrong_gateway}` when the run goes
   through a gateway and the batch is not from the gateway that attached it and its
-  attaching instance (`Apiary.Runs.Sender`), with nothing stored.
+  attaching instance (`Apiary.Runs.Sender`), with nothing stored. Then, for a run through
+  a gateway that may no longer serve the run's workspace (`Apiary.Runs.Sender.serves?/2`,
+  asked under the run's lock), `{:error, :workspace_not_served}`, with nothing stored and
+  nothing of the run told: before the pruned run's answer and before a delivery id
+  recorded before is answered again.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -105,7 +109,13 @@ defmodule Apiary.Runs.Ingest do
   """
   @spec ingest(AccessKey.t(), Batch.t(), meta) ::
           {:ok, map}
-          | {:error, :unavailable | :not_found | :wrong_node | :wrong_gateway | :unauthorized}
+          | {:error,
+             :unavailable
+             | :not_found
+             | :wrong_node
+             | :wrong_gateway
+             | :unauthorized
+             | :workspace_not_served}
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
@@ -130,7 +140,7 @@ defmodule Apiary.Runs.Ingest do
   # A key's scope is never refused a role here; what can refuse it is a feature the instance
   # does not have.
   defp may_post(scope) do
-    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+    case Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end
@@ -191,6 +201,12 @@ defmodule Apiary.Runs.Ingest do
       # A run through a gateway is held to its own place, as a key of it would be.
       (refused = place_refusal(run, access_key)) != :ok ->
         refused
+
+      # The gateway may no longer serve the run's workspace, decided as at the attach:
+      # refused whole, before the delivery id is read or recorded, so it is told nothing of
+      # the run, not even of a delivery accepted before (fails closed).
+      not Sender.serves?(run, access_key) ->
+        {:error, :workspace_not_served}
 
       # Retention deleted the run's events, and with them what a replay would be
       # deduplicated against: the workspace wants nothing more of this run.
@@ -255,13 +271,21 @@ defmodule Apiary.Runs.Ingest do
   # finds its workspace's run, or opens it.
   defp held(%AccessKey{node: %Nodes.Node{kind: :gateway}} = access_key, batch, _meta, _now) do
     Repo.one(Sender.run_query(access_key, batch.subject, lock: true)) ||
-      Repo.one(
-        from r in Run,
-          where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
-      )
+      own_run(access_key, batch)
   end
 
   defp held(access_key, batch, meta, now), do: upsert_run(access_key, batch, meta, now)
+
+  # A run of the gateway key's own workspace, none for a key with no workspace, an
+  # organisation-level gateway's.
+  defp own_run(%AccessKey{workspace_id: nil}, _batch), do: nil
+
+  defp own_run(access_key, batch) do
+    Repo.one(
+      from r in Run,
+        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject
+    )
+  end
 
   # The run's organisation and workspace, for a run through a gateway, whose key may be of
   # another place: out of use is refused as a key of it would be. A feature is the

@@ -132,6 +132,18 @@ defmodule ApiaryWeb.Layouts do
         place: :organisation,
         action: :"audit.read"
       },
+      # The organisation's gateways, which nodes in any of its workspaces can use, where an
+      # organisation may have more than one workspace.
+      %Entry{
+        section: :home,
+        key: :gateways,
+        label: gettext("Gateways"),
+        icon: "hero-arrows-right-left",
+        path: fn organisation, _workspace -> ~p"/#{organisation}/gateways" end,
+        place: :organisation,
+        action: :"node.read",
+        filter: fn _scope, _counts -> ApiaryWeb.NodeComponents.organisation_gateways?() end
+      },
       %Entry{
         section: :settings,
         key: :members,
@@ -184,7 +196,9 @@ defmodule ApiaryWeb.Layouts do
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
   then the core's: on a workspace's page a node, a node pool, with the `security` feature
   a network access rule, and with the `secrets` feature an integration, a secret and a
-  variable, and everywhere an invitation; of them,
+  variable; on an organisation's page a gateway, where the console offers the
+  organisation's (`ApiaryWeb.NodeComponents.organisation_gateways?/0`); and everywhere an
+  invitation; of them,
   only what the reader may do there, each entry's action asked of the workspace or the
   organisation as its `place` says.
   """
@@ -215,6 +229,22 @@ defmodule ApiaryWeb.Layouts do
         []
       end
 
+    organisation_entries =
+      if place == :organisation and ApiaryWeb.NodeComponents.organisation_gateways?() do
+        [
+          %Entry{
+            key: :gateway,
+            label: gettext("New gateway"),
+            icon: "hero-arrows-right-left",
+            path: ~p"/#{organisation}/gateways/new",
+            place: :organisation,
+            action: :"node.create"
+          }
+        ]
+      else
+        []
+      end
+
     invite = %Entry{
       key: :invite,
       label: gettext("Invite people"),
@@ -225,7 +255,8 @@ defmodule ApiaryWeb.Layouts do
     }
 
     for %Entry{} = entry <-
-          ApiaryWeb.Edition.new_entries(scope, place) ++ workspace_entries ++ [invite],
+          ApiaryWeb.Edition.new_entries(scope, place) ++
+            workspace_entries ++ organisation_entries ++ [invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end

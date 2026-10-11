@@ -66,10 +66,6 @@ defmodule Apiary.AccessKeys do
   # second, and at once.
   @code_limit [rate: 1, burst: 5]
 
-  defguardp key_in_scope(scope, access_key)
-            when access_key.organisation_id == scope.organisation.id and
-                   access_key.workspace_id == scope.workspace.id
-
   def change_access_key(%AccessKey{} = access_key, attrs \\ %{}) do
     AccessKey.changeset(access_key, attrs)
   end
@@ -81,8 +77,7 @@ defmodule Apiary.AccessKeys do
   """
   @spec revoke_access_key(Scope.t(), AccessKey.t()) ::
           {:ok, AccessKey.t()} | {:error, Access.reason()}
-  def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key)
-      when key_in_scope(scope, access_key) do
+  def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key) do
     change_node_key(scope, :"access_key.revoke", access_key, fn node, current ->
       case AccessKey.status(current) do
         :revoked ->
@@ -100,10 +95,15 @@ defmodule Apiary.AccessKeys do
   `:error` for a key id the workspace does not hold or has revoked, for a key of a deleted
   node, for a key of a workspace or an organisation marked for deletion
   (`Apiary.Deletion`), which answers as a revoked key does until its deletion is
-  cancelled, and for a key of an organisation
+  cancelled, and for a key of a node or a node pool of an organisation
   the edition stopped (`c:Apiary.Edition.active_organisations/2`), which answers so until it
   is in use again: a key is a workspace's, not a person's, so a suspended membership or an
-  account out of use leaves the keys working.
+  account out of use leaves the keys working. The key of an organisation's gateway is
+  verified while its organisation is out of use, and acts for a run only while the run's
+  own place is in use (`place_in_use?/2`): it keeps carrying the runs of the other
+  organisations it serves, and none of its own organisation's. It keeps the keys it holds
+  and enrols no new one: an enrolment is refused while its organisation is out of use, as
+  every enrolment code of an organisation out of use is. A workspace's gateway is held to its organisation's use as any node is.
 
   Its integrity code is checked first: a row that does not match it, changed outside the
   application, is `{:error, :integrity}`, with a line in the log.
@@ -133,8 +133,9 @@ defmodule Apiary.AccessKeys do
   @doc """
   active_key?/1 says whether `node` holds an active access key now: a key
   `fetch_for_verification/1` would answer with, not revoked, of a node in use, of a
-  workspace and an organisation in use (`c:Apiary.Edition.active_organisations/2`), whose
-  integrity code holds. A gateway without one can serve no run.
+  workspace and an organisation neither marked for deletion nor, for a node or a node
+  pool, out of use (`c:Apiary.Edition.active_organisations/2`), whose integrity code
+  holds. A gateway without one can serve no run.
   """
   @spec active_key?(Node.t()) :: boolean
   def active_key?(%Node{} = node), do: active_keys(node) != []
@@ -156,9 +157,10 @@ defmodule Apiary.AccessKeys do
   @doc """
   place_in_use?/2 says whether a key of `workspace_id`, of `organisation_id`, could be
   verified as far as its place goes: the workspace and the organisation neither marked
-  for deletion nor out of use (`c:Apiary.Edition.active_organisations/2`), the check every
-  key's verification makes. A run through a gateway is held to it for its own place, which
-  may not be the gateway key's.
+  for deletion nor out of use (`c:Apiary.Edition.active_organisations/2`), the check the
+  verification of a node's or a node pool's key makes. A run through a gateway is held to
+  it for its own place, which may not be the gateway key's: at its attach, its batches
+  and its reload.
   """
   @spec place_in_use?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean
   def place_in_use?(organisation_id, workspace_id) do
@@ -174,19 +176,27 @@ defmodule Apiary.AccessKeys do
 
   # The keys a request could be verified under, with their workspace and node: not
   # revoked, of a node in use, of a workspace and an organisation neither marked for
-  # deletion nor out of use.
+  # deletion nor, but for an organisation's gateway, out of use. The key of a gateway of an
+  # organisation, which has no workspace, is verified while its organisation is out of
+  # use: it may serve the workspaces of other organisations, whose runs it keeps carrying.
+  # A workspace's gateway serves that workspace alone, and is held to it as any node is. For each run, its own place is checked
+  # (`place_in_use?/2`), so it acts for none of its own organisation's while that is out
+  # of use.
   defp verifiable_query do
+    in_use =
+      from(o in Organisation, as: :organisation, select: o.id)
+      |> Apiary.Edition.active_organisations(:organisation)
+
     from(k in AccessKey,
-      join: w in assoc(k, :workspace),
+      left_join: w in assoc(k, :workspace),
       join: o in assoc(k, :organisation),
-      as: :organisation,
       join: n in assoc(k, :node),
       where: is_nil(k.revoked_at),
       where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at),
       where: is_nil(n.deleted_at),
-      preload: [workspace: w, node: n]
+      where: (n.kind == :gateway and is_nil(n.workspace_id)) or o.id in subquery(in_use),
+      preload: [workspace: w, node: n, organisation: o]
     )
-    |> Apiary.Edition.active_organisations(:organisation)
   end
 
   # The key id is public; nothing of the row is in the line but the organisation and
@@ -288,9 +298,9 @@ defmodule Apiary.AccessKeys do
   revoked; newest first within each, with the enrolment code each arrived by, if any.
   """
   @spec list_for_node(Scope.t(), Node.t()) :: [AccessKey.t()]
-  def list_for_node(%Scope{} = scope, %Node{id: node_id}) do
+  def list_for_node(%Scope{} = scope, %Node{id: node_id} = node) do
     Repo.all(
-      from k in in_workspace(AccessKey, scope),
+      from k in in_place(AccessKey, scope, node.workspace_id),
         where: k.node_id == ^node_id,
         order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id],
         preload: [:enrolment_code]
@@ -317,11 +327,11 @@ defmodule Apiary.AccessKeys do
   cancelled, nor expired, newest first. A code itself is never among what they hold.
   """
   @spec list_enrolment_codes(Scope.t(), Node.t()) :: [EnrolmentCode.t()]
-  def list_enrolment_codes(%Scope{} = scope, %Node{id: node_id}) do
+  def list_enrolment_codes(%Scope{} = scope, %Node{id: node_id} = node) do
     now = DateTime.utc_now()
 
     Repo.all(
-      from c in in_workspace(EnrolmentCode, scope),
+      from c in in_place(EnrolmentCode, scope, node.workspace_id),
         where: c.node_id == ^node_id and is_nil(c.used_at) and is_nil(c.cancelled_at),
         where: c.expires_at > ^now,
         order_by: [desc: c.inserted_at, desc: c.id]
@@ -344,7 +354,7 @@ defmodule Apiary.AccessKeys do
   def create_enrolment_code(%Scope{user: user} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.create_code", node),
-           {:ok, node} <- lock_node(scope, node.id) do
+           {:ok, node} <- lock_node(scope, node.id, node.workspace_id) do
         code = EnrolmentCode.generate()
         now = DateTime.utc_now()
 
@@ -402,10 +412,10 @@ defmodule Apiary.AccessKeys do
   defp cancel_now(scope, %EnrolmentCode{id: id, node_id: node_id} = code) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.cancel_code", code),
-           {:ok, node} <- lock_node(scope, node_id),
+           {:ok, node} <- lock_node(scope, node_id, code.workspace_id),
            %EnrolmentCode{node_id: ^node_id} = current <-
              Repo.one(
-               from c in in_workspace(EnrolmentCode, scope),
+               from c in in_place(EnrolmentCode, scope, code.workspace_id),
                  where: c.id == ^id,
                  lock: "FOR UPDATE"
              ) || {:error, :not_found} do
@@ -463,7 +473,7 @@ defmodule Apiary.AccessKeys do
   def add_access_key(%Scope{user: user} = scope, %Node{} = node, attrs) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, :"access_key.add", node),
-           {:ok, node} <- lock_node(scope, node.id),
+           {:ok, node} <- lock_node(scope, node.id, node.workspace_id),
            :ok <- within_limit(node) do
         now = DateTime.utc_now()
 
@@ -616,7 +626,8 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  topic/2 is the topic of one node's keys, of its workspace: `{:key_enrolled, %{key_id:,
+  topic/2 is the topic of one node's keys, by its place, its workspace's id, or its
+  organisation's for an organisation-level gateway (`place_id/1`): `{:key_enrolled, %{key_id:,
   node_id:}}` once a machine has enrolled a key on the node with a code (`enrol/2`), after
   the enrolment's transaction committed, and `{:code_cancelled, %{code_id:, node_id:}}`
   once a code of the node was cancelled (`cancel_code/2`), after that transaction
@@ -626,8 +637,27 @@ defmodule Apiary.AccessKeys do
   @spec topic(Ecto.UUID.t(), Ecto.UUID.t()) :: String.t()
   def topic(workspace_id, node_id), do: "access_keys:#{workspace_id}:#{node_id}"
 
-  @doc "subscribe/2 subscribes the caller to `topic/2` of `node`, a node of the scope's workspace."
+  @doc """
+  place_id/1 is the id a node's or a row's topic is named by: its workspace's, or its
+  organisation's when it has no workspace.
+  """
+  @spec place_id(%{organisation_id: Ecto.UUID.t(), workspace_id: Ecto.UUID.t() | nil}) ::
+          Ecto.UUID.t()
+  def place_id(%{workspace_id: nil, organisation_id: organisation_id}), do: organisation_id
+  def place_id(%{workspace_id: workspace_id}), do: workspace_id
+
+  @doc """
+  subscribe/2 subscribes the caller to `topic/2` of `node`, a node of the scope's workspace
+  or a gateway of its organisation.
+  """
   @spec subscribe(Scope.t(), Node.t()) :: :ok | {:error, term}
+  def subscribe(%Scope{organisation: %Organisation{id: organisation_id}}, %Node{
+        id: node_id,
+        organisation_id: organisation_id,
+        workspace_id: nil
+      }),
+      do: Phoenix.PubSub.subscribe(Apiary.PubSub, topic(organisation_id, node_id))
+
   def subscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Node{
         id: node_id,
         workspace_id: workspace_id
@@ -636,13 +666,13 @@ defmodule Apiary.AccessKeys do
 
   @doc "unsubscribe/2 undoes `subscribe/2`."
   @spec unsubscribe(Scope.t(), Node.t()) :: :ok
-  def unsubscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Node{id: node_id}),
-    do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(workspace_id, node_id))
+  def unsubscribe(%Scope{}, %Node{id: node_id} = node),
+    do: Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic(place_id(node), node_id))
 
   defp broadcast_cancelled(%EnrolmentCode{} = code) do
     Phoenix.PubSub.broadcast(
       Apiary.PubSub,
-      topic(code.workspace_id, code.node_id),
+      topic(place_id(code), code.node_id),
       {:code_cancelled, %{code_id: code.id, node_id: code.node_id}}
     )
   end
@@ -650,7 +680,7 @@ defmodule Apiary.AccessKeys do
   defp broadcast_enrolled(%AccessKey{} = key) do
     Phoenix.PubSub.broadcast(
       Apiary.PubSub,
-      topic(key.workspace_id, key.node_id),
+      topic(place_id(key), key.node_id),
       {:key_enrolled, %{key_id: key.key_id, node_id: key.node_id}}
     )
   end
@@ -659,7 +689,7 @@ defmodule Apiary.AccessKeys do
   # lock: its node is locked first, then the code again (`redeem/4`).
   defp find_code(head) do
     from(c in EnrolmentCode,
-      join: w in assoc(c, :workspace),
+      left_join: w in assoc(c, :workspace),
       join: o in assoc(c, :organisation),
       as: :organisation,
       where: c.code_sha256 == ^EnrolmentCode.hash(head),
@@ -714,8 +744,8 @@ defmodule Apiary.AccessKeys do
     query =
       from n in Node,
         where: n.id == ^code.node_id and is_nil(n.deleted_at),
-        where:
-          n.organisation_id == ^code.organisation_id and n.workspace_id == ^code.workspace_id,
+        where: n.organisation_id == ^code.organisation_id,
+        where: ^same_workspace(code.workspace_id),
         lock: "FOR UPDATE"
 
     case Repo.one(query) do
@@ -723,6 +753,9 @@ defmodule Apiary.AccessKeys do
       nil -> {:error, :unauthorized}
     end
   end
+
+  defp same_workspace(nil), do: dynamic([n], is_nil(n.workspace_id))
+  defp same_workspace(workspace_id), do: dynamic([n], n.workspace_id == ^workspace_id)
 
   # The code again, locked after its node, and checked against its integrity code: a row
   # changed outside the application is never redeemed.
@@ -921,7 +954,7 @@ defmodule Apiary.AccessKeys do
   def revoke_node_keys(%Scope{} = scope, %Node{id: node_id} = node, reason) do
     keys =
       Repo.all(
-        from k in in_workspace(AccessKey, scope),
+        from k in in_place(AccessKey, scope, node.workspace_id),
           where: k.node_id == ^node_id and is_nil(k.revoked_at),
           order_by: [asc: k.id],
           lock: "FOR UPDATE"
@@ -946,11 +979,11 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  defp cancel_codes(scope, %Node{id: node_id}) do
+  defp cancel_codes(scope, %Node{id: node_id} = node) do
     now = DateTime.utc_now()
 
     Repo.all(
-      from c in in_workspace(EnrolmentCode, scope),
+      from c in in_place(EnrolmentCode, scope, node.workspace_id),
         where: c.node_id == ^node_id and is_nil(c.used_at) and is_nil(c.cancelled_at),
         lock: "FOR UPDATE"
     )
@@ -1049,20 +1082,23 @@ defmodule Apiary.AccessKeys do
 
   # Asks `action` of the caller's membership as it is now, then hands `fun` the key's
   # node, in use and locked, and the key as it is now, a node's key of the scope's
-  # workspace, locked after it, for the rest of the transaction.
+  # workspace, or of a gateway of its organisation, locked after it, for the rest of the
+  # transaction.
   defp change_node_key(%Scope{} = scope, action, %AccessKey{id: id} = access_key, fun) do
+    place = access_key.workspace_id
+
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, action, access_key),
            %AccessKey{node_id: node_id} when is_binary(node_id) <-
              Repo.one(
-               from k in in_workspace(AccessKey, scope),
+               from k in in_place(AccessKey, scope, place),
                  where: k.id == ^id,
                  select: struct(k, [:id, :node_id])
              ) || {:error, :not_found},
-           {:ok, node} <- lock_node(scope, node_id),
+           {:ok, node} <- lock_node(scope, node_id, place),
            %AccessKey{} = current <-
              Repo.one(
-               from k in in_workspace(AccessKey, scope),
+               from k in in_place(AccessKey, scope, place),
                  where: k.id == ^id and k.node_id == ^node_id,
                  lock: "FOR UPDATE"
              ) || {:error, :not_found} do
@@ -1085,11 +1121,12 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  # A node in use of the scope's workspace, locked: every change of its keys and codes
-  # takes it first, so the limits count every change before them.
-  defp lock_node(%Scope{} = scope, node_id) do
+  # A node in use at the place `workspace_id` names, of the scope (its workspace, or, nil,
+  # its organisation), locked: every change of its keys and codes takes it first, so the
+  # limits count every change before them.
+  defp lock_node(%Scope{} = scope, node_id, workspace_id) do
     query =
-      from n in in_workspace(Node, scope),
+      from n in in_place(Node, scope, workspace_id),
         where: n.id == ^node_id and is_nil(n.deleted_at),
         lock: "FOR UPDATE"
 
@@ -1119,6 +1156,19 @@ defmodule Apiary.AccessKeys do
     from r in queryable,
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
   end
+
+  # The rows of the scope at the place `workspace_id` names: the scope's workspace's, or,
+  # nil, its organisation's own, those of its organisation-level gateways. A workspace
+  # other than the scope's is no place of it.
+  defp in_place(queryable, %Scope{organisation: %Organisation{id: organisation_id}}, nil) do
+    from r in queryable,
+      where: r.organisation_id == ^organisation_id and is_nil(r.workspace_id)
+  end
+
+  defp in_place(queryable, %Scope{workspace: %Workspace{id: workspace_id}} = scope, workspace_id),
+    do: in_workspace(queryable, scope)
+
+  defp in_place(queryable, %Scope{}, _other), do: from(r in queryable, where: false)
 
   defp attr(attrs, name) when is_map(attrs),
     do: Map.get(attrs, name, Map.get(attrs, Atom.to_string(name)))

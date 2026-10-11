@@ -429,6 +429,124 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule ServesAcross do
+    @moduledoc """
+    Lets the organisation-level gateways of one organisation serve the workspaces of
+    others, as an edition may (`c:Apiary.Edition.serving_organisations/1`,
+    `c:Apiary.Edition.served_organisations/1`): the pairs `{serving, served}` the test
+    names (`put/1` in the test's process, which the processes it starts read too), the
+    serving organisations of one served organisation in the order the test gives them.
+    Both answers come from the one list, so each is the reverse of the other. It reads
+    nothing and locks nothing. With `out_of_use/1`, it also holds organisations out of use
+    as `OutOfUse` does.
+    """
+
+    @doc "put/1 names the pairs `{serving, served}`, in order, for the test's processes."
+    def put(pairs) when is_list(pairs), do: Process.put(:serves_across, pairs)
+
+    @doc "out_of_use/1 holds the organisations `ids` out of use, as `OutOfUse` reads it."
+    def out_of_use(ids) when is_list(ids), do: Process.put(:out_of_use, ids)
+
+    @doc """
+    switch/1 turns the serving off (`:off`), as an edition whose flag for it is off: both
+    answers are none, whatever `put/1` named, until it is turned `:on` again.
+    """
+    def switch(state) when state in [:on, :off], do: Process.put(:serves_across_switch, state)
+
+    def serving_organisations(id), do: for({serving, ^id} <- pairs(), do: serving)
+
+    def served_organisations(id), do: for({^id, served} <- pairs(), do: served)
+
+    def active_organisations(query, binding), do: OutOfUse.active_organisations(query, binding)
+
+    defp pairs do
+      if read(:serves_across_switch) == :off, do: [], else: read(:serves_across) || []
+    end
+
+    defp read(key) do
+      Enum.find_value([self() | Process.get(:"$callers", [])], fn
+        pid when pid == self() ->
+          Process.get(key)
+
+        pid ->
+          case Process.info(pid, {:dictionary, key}) do
+            {{:dictionary, ^key}, value} -> value
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
+  defmodule ManyWorkspaces do
+    @moduledoc """
+    Lets an organisation have any number of workspaces (`c:Apiary.Edition.limits/0`), as an
+    edition may: the console then offers gateways at the organisation
+    (`ApiaryWeb.NodeComponents.organisation_gateways?/0`).
+    """
+    def limits, do: %{organisations: :unlimited, workspaces: :unlimited}
+  end
+
+  defmodule MembersReachNamed do
+    @moduledoc """
+    Organisations of many workspaces (`ManyWorkspaces`), where a member reaches only the
+    workspaces the test names (`put/1` in the test's process, which the processes it starts
+    read too), as an edition may narrow them (`c:Apiary.Edition.every_workspace_levels/0`,
+    `c:Apiary.Edition.reached_workspaces/2`, `c:Apiary.Edition.reaches_workspace?/3`).
+    Owners and admins reach every workspace.
+    """
+    import Ecto.Query
+
+    @doc "put/1 names the workspaces a member reaches."
+    def put(ids) when is_list(ids), do: Process.put(:members_reach, ids)
+
+    defdelegate limits, to: ManyWorkspaces
+
+    def every_workspace_levels, do: [:owner, :admin]
+
+    def reached_workspaces(query, _scope),
+      do: where(query, [workspace: w], w.id in ^reached())
+
+    def reaches_workspace?(_scope, workspace_id, _opts), do: workspace_id in reached()
+
+    defp reached do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:members_reach)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :members_reach}) do
+            {{:dictionary, :members_reach}, ids} when is_list(ids) -> ids
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
+  defmodule GatewaysWorded do
+    @moduledoc """
+    An edition whose organisations have many workspaces and whose organisation-level
+    gateways serve the workspaces of others (`ServesAcross`, whose `put/1` names them), in
+    its own words: whose nodes can use them (`c:ApiaryWeb.Edition.gateway_reach_sentence/2`),
+    who manages the nodes (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`) and who sets
+    a pool's instance limit (`c:ApiaryWeb.Edition.who_may_sentence/2`, `node.set_limit`).
+    """
+    defdelegate limits, to: ManyWorkspaces
+    defdelegate serving_organisations(id), to: ServesAcross
+    defdelegate served_organisations(id), to: ServesAcross
+    defdelegate active_organisations(query, binding), to: ServesAcross
+
+    def gateway_reach_sentence(kind, organisation),
+      do: "Edition reach #{kind} of #{organisation.name}."
+
+    def nodes_managed_by_sentence(organisation),
+      do: "Edition managers of #{organisation.name} manage the nodes here."
+
+    def who_may_sentence(:"node.set_limit", _scope),
+      do: "Edition owners alone set a node pool's instance limit."
+
+    def who_may_sentence(_about, _scope), do: nil
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end
@@ -446,6 +564,15 @@ defmodule Apiary.EditionStubs do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
+  defmodule NoLimitWorded do
+    @moduledoc """
+    Nobody sets a pool's instance limit, as `NoLimit` has it, and the pages say who may in
+    the edition's words (`c:ApiaryWeb.Edition.who_may_sentence/2`).
+    """
+    defdelegate check(scope, action, subject), to: NoLimit
+    defdelegate who_may_sentence(about, scope), to: GatewaysWorded
   end
 
   defmodule NoLog do

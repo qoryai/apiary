@@ -161,11 +161,14 @@ defmodule Apiary.Runs.Outcome do
 
   # A key's scope is never refused a role here; what can refuse it is a feature that is off.
   defp may_post(scope) do
-    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+    case Access.authorize(scope, :"run.post_events", Scope.key_place(scope)) do
       :ok -> :ok
       {:error, _reason} -> {:error, :not_found}
     end
   end
+
+  # A key with no workspace, an organisation-level gateway's, holds no run of its own.
+  defp held(%AccessKey{workspace_id: nil}, _run_id), do: nil
 
   defp held(access_key, run_id) do
     Repo.one(

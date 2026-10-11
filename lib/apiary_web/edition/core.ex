@@ -6,14 +6,17 @@ defmodule ApiaryWeb.Edition.Core do
   section, group of places or place, or settings tab beyond the core's, every slot empty,
   no words for a reader, a refusal or actions beyond the core's, the core's own words for
   who may take an action, no level above a workspace's policy to link to, no reserved
-  name beyond the core's, the product named Qory Apiary, and no Gettext backend beside
-  the core's own.
+  name beyond the core's, the product named Qory Apiary, no Gettext backend beside
+  the core's own, its own sentences of whose workspaces an organisation's gateways reach,
+  and the core's words for who manages the nodes.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
   callback it does not override.
   """
 
   @behaviour ApiaryWeb.Edition
+
+  use Gettext, backend: ApiaryWeb.Gettext
 
   @impl true
   def nav_entries(_scope), do: []
@@ -80,4 +83,27 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def gettext_backend, do: nil
+
+  @impl true
+  def gateway_reach_sentence(:intro, organisation),
+    do:
+      gettext(
+        "Nodes in any workspace of %{organisation} can use the gateways added here. A workspace can also add gateways that only its nodes use.",
+        organisation: organisation.name
+      )
+
+  def gateway_reach_sentence(:who_can_use, organisation),
+    do:
+      gettext("Nodes in any workspace of %{organisation} can use it.",
+        organisation: organisation.name
+      )
+
+  def gateway_reach_sentence(:default_row, organisation),
+    do:
+      gettext("The default gateway for workspaces in %{organisation} that don't set one.",
+        organisation: organisation.name
+      )
+
+  @impl true
+  def nodes_managed_by_sentence(_organisation), do: nil
 end

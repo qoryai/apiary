@@ -5,23 +5,26 @@ defmodule ApiaryWeb.Contract.Configuration do
   answer to every batch name the same digest.
 
   The document names the access key's node, node pool or gateway (`node_id`, its public
-  id) and the workspaces the key may name (`workspaces`, by their public ids): for a node
-  or a node pool, the one workspace it belongs to; for a gateway, every workspace it may
-  serve (`Apiary.Gateways.serves/1`), sorted, at least one. It says where the events go,
-  where a run registers and is reloaded (the `run` section,
+  id). A node's or a node pool's lists the one workspace it belongs to (`workspaces`, by
+  its public id). A gateway's, whether it lives at a workspace or at an organisation,
+  lists no workspaces: which workspaces a gateway serves follows from the nodes that use
+  it, and Qory Apiary decides at each registration and attach whether it may serve the
+  run's workspace (`Apiary.Gateways.may_serve?/2`). The document says where the events
+  go, where a run registers and is reloaded (the `run` section,
   `ApiaryWeb.Contract.RegistrationController`), and lists the instance's signing key
   (`apiary_public_key`, `Apiary.SigningKey.apiary_public_key/0`), for information. So the
-  document, and its digest, differ by node and its workspaces alone.
+  document, and its digest, differ by node, and for a node or a node pool by its
+  workspace, alone: a gateway's changes only when those members change.
   The `run` section is in every document: a workspace nobody has given a policy answers a
   registration with the document of no policy.
 
-  The members are written in the contract's order: `version`, `node_id`, `workspaces`,
-  `events`, `run`, `apiary_public_key`. The run endpoint's URL has no trailing slash, query
-  or fragment: a reload appends a slash and the run's id to it.
+  The members are written in the contract's order: `version`, `node_id`, `workspaces`
+  (for a node or a node pool), `events`, `run`, `apiary_public_key`. The run endpoint's
+  URL has no trailing slash, query or fragment: a reload appends a slash and the run's id
+  to it.
   """
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Gateways
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.SigningKey
@@ -39,55 +42,62 @@ defmodule ApiaryWeb.Contract.Configuration do
   @doc """
   document/1 is the document as sent to `access_key`, the JSON body and its digest. The
   key's node and workspace are loaded with it, as
-  `Apiary.AccessKeys.fetch_for_verification/1` loads them.
+  `Apiary.AccessKeys.fetch_for_verification/1` loads them; a gateway's key may have no
+  workspace.
   """
   @spec document(AccessKey.t()) :: {binary, String.t()}
+  def document(%AccessKey{node: %Node{kind: :gateway, public_id: node_id}}),
+    do: build(%{node_id: node_id})
+
   def document(%AccessKey{
-        node: %Node{public_id: node_id} = node,
-        workspace: %Workspace{} = workspace
-      }) do
+        node: %Node{public_id: node_id},
+        workspace: %Workspace{public_id: workspace_id}
+      }),
+      do: build(%{node_id: node_id, workspaces: [workspace_id]})
+
+  defp build(members) do
     body =
-      encode(%{
-        node_id: node_id,
-        workspaces: workspaces(node, workspace),
+      members
+      |> Map.merge(%{
         url: ApiaryWeb.Endpoint.url(),
         apiary_public_key: SigningKey.apiary_public_key()
       })
+      |> encode()
 
     {body, digest(body)}
   end
 
-  # A gateway's are the workspaces it may serve, sorted; a node's or a pool's, its own.
-  defp workspaces(%Node{kind: :gateway} = gateway, _workspace),
-    do: gateway |> Gateways.serves() |> Enum.map(& &1.public_id) |> Enum.sort()
-
-  defp workspaces(%Node{}, %Workspace{public_id: workspace_id}), do: [workspace_id]
-
   @doc """
   encode/1 is the document's bytes for `node_id`, the `workspaces` it lists, in their
   order, the public `url` the endpoints are under, and the `apiary_public_key` list.
+  Without `workspaces`, as for a gateway, the document has no such member.
   """
   @spec encode(%{
-          node_id: String.t(),
-          workspaces: [String.t(), ...],
-          url: String.t(),
-          apiary_public_key: [map, ...]
+          required(:node_id) => String.t(),
+          optional(:workspaces) => [String.t(), ...],
+          required(:url) => String.t(),
+          required(:apiary_public_key) => [map, ...]
         }) :: binary
-  def encode(%{
-        node_id: node_id,
-        workspaces: [_ | _] = workspaces,
-        url: url,
-        apiary_public_key: keys
-      }) do
+  def encode(%{node_id: node_id, url: url, apiary_public_key: keys} = members) do
+    workspaces =
+      case members do
+        %{workspaces: [_ | _] = workspaces} -> [workspaces: workspaces]
+        %{} when not is_map_key(members, :workspaces) -> []
+      end
+
     Jason.encode!(
       Jason.OrderedObject.new(
-        version: @version,
-        node_id: node_id,
-        workspaces: workspaces,
-        events: Jason.OrderedObject.new(url: url <> @events_path, types: ["*"]),
-        run: Jason.OrderedObject.new(url: url <> @run_path),
-        apiary_public_key:
-          Enum.map(keys, &Jason.OrderedObject.new(alg: &1["alg"], public_key: &1["public_key"]))
+        [version: @version, node_id: node_id] ++
+          workspaces ++
+          [
+            events: Jason.OrderedObject.new(url: url <> @events_path, types: ["*"]),
+            run: Jason.OrderedObject.new(url: url <> @run_path),
+            apiary_public_key:
+              Enum.map(
+                keys,
+                &Jason.OrderedObject.new(alg: &1["alg"], public_key: &1["public_key"])
+              )
+          ]
       )
     )
   end

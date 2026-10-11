@@ -105,6 +105,12 @@ defmodule Apiary.Edition.Core do
   def places(user), do: Organisations.list_memberships(user)
 
   @impl true
+  def serving_organisations(_organisation_id), do: []
+
+  @impl true
+  def served_organisations(_organisation_id), do: []
+
+  @impl true
   def accepting(_repo, _invitation, _user), do: {:ok, :member}
 
   @impl true

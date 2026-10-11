@@ -34,6 +34,9 @@ defmodule Apiary.Edition do
   - **In use**, refinements of the queries that must leave out what the edition holds out
     of use: `active_accounts/2`, `active_organisations/2`, `account_refusal/1`.
   - **Places**: `places/1`, the organisations a person reaches.
+  - **Gateways** (`Apiary.Gateways`): `serving_organisations/1` and
+    `served_organisations/1`, the other organisations whose organisation-level gateways
+    may serve an organisation's workspaces, and the reverse.
   - **Invitations**: `accepting/3`, `accepted/4`.
   - **Members**: `membership_changed/5`, `level_refusal/4`.
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
@@ -287,6 +290,52 @@ defmodule Apiary.Edition do
   @doc "The organisations a person reaches, for the switcher and their organisations page."
   @callback places(%User{}) :: [place]
 
+  # Gateways
+
+  @doc """
+  The other organisations whose organisation-level gateways may serve the workspaces of
+  the organisation `organisation_id`, in the order its workspaces resolve their defaults
+  through them (`Apiary.Gateways.levels/1`): after the workspace's own default and its
+  organisation's, the default of each of these in turn. The core's answer is `[]`: an
+  organisation's gateways serve its workspaces alone.
+
+  `Apiary.Gateways` asks it wherever a workspace's gateways are in question: whether a
+  gateway may serve a workspace (`Apiary.Gateways.may_serve?/2`), the gateways a node of
+  the workspace may choose (`Apiary.Gateways.gateway_choices/1`) and the default it
+  resolves (`Apiary.Gateways.default_gateway_for/1`). So the registration of a run, the
+  attach and the batches through a gateway follow it.
+
+  The rules, which `served_organisations/1` keeps too:
+
+  - it reads, and locks nothing: a change of gateways takes the organisation rows it
+    names in the gateways' lock order (`Apiary.Gateways.lock/1`), at the change's one point;
+  - it answers the relation alone, and never the organisation itself. It may name an
+    organisation out of use: the core never skips a level for that, so the defaults, the
+    choices, the automatic default and the default after a deletion keep it, and a
+    suspension never moves a node on Default to another gateway. Use is checked where
+    it matters, at the server contract: the key of an organisation's gateway is verified
+    while its organisation is out of use (`Apiary.AccessKeys.fetch_for_verification/1`), and a
+    run's own place is checked at its attach, its batches and its reload
+    (`Apiary.AccessKeys.place_in_use?/2`), so the gateway keeps carrying the runs of the
+    other organisations it serves and none of its own organisation's;
+  - it is the reverse of `served_organisations/1`: X is among
+    `serving_organisations(Y)` exactly when Y is among `served_organisations(X)`.
+  """
+  @callback serving_organisations(organisation_id :: Ecto.UUID.t()) :: [Ecto.UUID.t()]
+
+  @doc """
+  The other organisations whose workspaces the organisation-level gateways of the
+  organisation `organisation_id` may serve, the reverse of `serving_organisations/1`, in
+  any order. The core's answer is `[]`.
+
+  `Apiary.Gateways` asks it wherever a gateway's workspaces are in question: the
+  workspaces an organisation-level gateway may serve (`Apiary.Gateways.serves/1`), what
+  stops its deletion (`Apiary.Gateways.delete_blockers/1`), whether it becomes its
+  organisation's default as it is made, and the default after a deletion
+  (`Apiary.Nodes.delete_node/2`). The rules are `serving_organisations/1`'s.
+  """
+  @callback served_organisations(organisation_id :: Ecto.UUID.t()) :: [Ecto.UUID.t()]
+
   # Invitations
 
   @doc """
@@ -453,6 +502,8 @@ defmodule Apiary.Edition do
     active_organisations: 2,
     account_refusal: 1,
     places: 1,
+    serving_organisations: 1,
+    served_organisations: 1,
     accepting: 3,
     accepted: 4,
     membership_changed: 5,

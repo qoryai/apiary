@@ -261,6 +261,41 @@ an edition may keep it from some who change the rest, whose pools are made with 
 of 1; its change is recorded in the entry of the node's creation or edit. Everyone in the
 workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
 
+A gateway of an organisation, which has no workspace, is asked at the organisation: its
+making and listing (`node.create`, `node.read` of the organisation), its changes and
+deletion, and its keys and codes, by owners and admins of the organisation. An
+enrolment code's maker is read again at the organisation, without a workspace, and a key
+of such a gateway is asked at its organisation (`Apiary.Accounts.Scope.key_place/1`).
+Everyone in the organisation reads its gateways. While its organisation is out of use,
+such a gateway keeps its keys, which are verified for the runs of other organisations it
+serves (`Apiary.AccessKeys.fetch_for_verification/1`), and enrols no new one: an
+enrolment code of an organisation out of use is found by none. A workspace's gateway is
+held to its organisation's use as any node is.
+
+A gateway acts for a run only while it may serve the run's workspace
+(`Apiary.Gateways.may_serve?/2`, asked at the registration, at each attach, batch,
+heartbeat and reload, `Apiary.Runs.Sender.serves?/2`). Once it may not, it is refused
+with nothing of the run told: no policy, no event, no outcome, no digest. Two things
+stay known to such a gateway, and are accepted:
+
+- **Whether the run is still sending, has ended, or was lost.** At the events endpoint the
+  sender's check comes first: a batch from another instance of the gateway than the one
+  that attached the run is `409` `wrong_gateway` while the run is still sending, and the
+  `410` `workspace_not_served` once its sending has ended (its exit arrived, it was lost
+  after its attach, or its events were pruned). At the attach, the run key's holder is
+  answered before the serving check: an ended run is `410`; a run never attached whose
+  attach window has closed, or that was already lost, is `409` `run_key_expired`; any
+  other is `409` `workspace_not_served`. A starter's outcome ends the run there too, and
+  which outcome is never told. The gateway a run key names knows the run's id from its
+  run key, before any attach; only the gateway that attached the run is answered at the
+  events endpoint and the reload, any other `409` `wrong_gateway` and `404`.
+- **Whether the run's place is in use.** The place's check comes before the serving
+  check, as it does for every key. At the events endpoint and the attach, it is `401`
+  while the run's workspace or organisation is out of use, and `404` while `Apiary.Access`
+  does not let the run's workspace post (`run.post_events`); at the reload, `404` while
+  the run's workspace or organisation is out of use. Only then comes the serving check's
+  answer.
+
 ## Leaving
 
 Anyone with a membership may remove their own, whatever their level: leaving the
@@ -442,6 +477,20 @@ The modes keep a row that only names another out of it:
   before the node's, so a change of the maker's level, a suspension or a removal waits for
   it, or came first and refuses the code. Deleting a node (`Apiary.Nodes.delete_node/2`)
   holds the same row, and revokes its keys under it.
+- A change of the gateways, of their default marks or of a node's or a pool's choice of
+  gateway (`Apiary.Gateways.lock/1`) takes its organisation rows first, at one point,
+  through `Apiary.Organisations.lock_organisations/2`. A change at a workspace holds its
+  organisation and the organisations whose organisation-level gateways may serve it
+  (`c:Apiary.Edition.serving_organisations/1`) `FOR SHARE`, then the workspace's row
+  `FOR NO KEY UPDATE`. A change of an organisation-level gateway holds its organisation
+  `FOR NO KEY UPDATE` and the organisations whose workspaces it may serve
+  (`c:Apiary.Edition.served_organisations/1`) `FOR SHARE`. So a change at an organisation
+  takes turns with every change at a workspace it may serve. Then the node's row
+  `FOR UPDATE`. A deletion holds the gateway's row `FOR UPDATE` while it reads the runs
+  that hold it, and a registration through the gateway and an attach by it read that row
+  `FOR SHARE`. The seams read and lock nothing, and are read once, not again under the
+  lock: an edition's change of the relation they answer takes a row these writes take
+  too, in a mode that conflicts with theirs.
 - A write of the security policy, of a stored secret (`Apiary.Secrets`), of a variable
   (`Apiary.Variables`) or of a connection (`Apiary.Connections`) holds the organisation
   `FOR SHARE` (`Apiary.Access.lock_places/1`),

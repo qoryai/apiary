@@ -295,7 +295,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
     above = above_name(socket.assigns[:effective])
 
     for rule <- rules, rule.kind == "host" do
-      entry = entries[rule.id]
+      # A rule the grammar refuses is never in force, with or without a resolution at hand.
+      entry =
+        entries[rule.id] ||
+          if(not Grammar.host?(rule.host),
+            do: %{in_force: false, reason: :out_of_grammar, host: rule.host}
+          )
 
       %{
         id: rule.id,
@@ -377,6 +382,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def off_words(entry, workspace, above \\ nil)
 
   def off_words(%{in_force: true}, _workspace, _above), do: nil
+
+  def off_words(%{reason: :out_of_grammar, host: host}, _workspace, _above) do
+    if Grammar.ends_in_number?(host),
+      do:
+        gettext(
+          "Not in force: an address is four numbers from 0 to 255 with no leading zeros. Remove this rule and add the address in that form."
+        ),
+      else: gettext("Not in force")
+  end
 
   def off_words(%{reason: :only_above_allows}, _workspace, above),
     do: gettext("Not in force: %{name} allows only the hosts on its list", name: above || "?")
@@ -854,8 +868,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   Opens the Edit rule page of the rule `id`, a host rule of the page's holder: the form
   filled with it, its host shown and kept. A rule that is gone sends the reader back to the
-  list with the domain's sentence, one of another holder back to the list; a reader who
-  may not change the policy is sent back to it too (`refuse_form/1`).
+  list with the domain's sentence, one of another holder or one whose host the grammar
+  refuses (it is removed, never edited) back to the list; a reader who may not change the
+  policy is sent back to it too (`refuse_form/1`).
   """
   def edit_rule(socket, id) do
     holder_id = socket.assigns.holder && socket.assigns.holder.id
@@ -864,7 +879,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
          true <- is_binary(id) and byte_size(id) <= 64,
          {:ok, %{kind: "host"} = rule} <-
            socket.assigns.writer.get.(socket.assigns.current_scope, id),
-         true <- Map.get(rule, :target_id) == holder_id do
+         true <- Map.get(rule, :target_id) == holder_id,
+         # A rule the grammar refuses is not edited, only removed: back to its row.
+         true <- Grammar.host?(rule.host) do
       socket
       |> assign(queue: [], rule_edit: rule, write_error: nil, composer_open: false)
       |> reset_composer(%{
@@ -884,7 +901,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         |> put_flash(:error, message)
         |> push_patch(to: list_path(socket, socket.assigns.list_query))
 
-      _another_holders ->
+      _another_holders_or_refused_host ->
         push_patch(socket, to: list_path(socket, socket.assigns.list_query))
     end
   end

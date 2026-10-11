@@ -262,8 +262,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   and an optional port, nothing more, at most 2048 characters) and no instance limit. A
   gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
   node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
-  gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
-  may serve, sorted. Each node and node pool records a choice of gateway: direct, its
+  gateway's key names it (`node_id`, `ng_…`) and lists no workspaces: which workspaces a
+  gateway serves follows from the nodes that use it, and Qory Apiary decides at each
+  registration and attach whether it may serve the run's workspace. Each node and node pool records a choice of gateway: direct, its
   workspace's default gateway, or a gateway it names, one that may serve its workspace,
   checked when the choice is saved, and resolved again at each run's registration (a run
   through a gateway, below). The choice can be changed. Every node and pool there before is direct; a new one given no choice
@@ -309,6 +310,42 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   gateway's creation Gateway. `Apiary.Nodes.count_nodes/1` counts gateways too.
 - `gateways` is a reserved workspace slug, refused as the names of the organisation's
   pages are; a workspace named Gateways gets the slug `gateways-2`.
+- A gateway may live at an organisation as well as at a workspace: its row has no
+  workspace, and nor have its access keys, enrolment codes and instances. It may serve
+  every workspace of its organisation, and those an edition names
+  (`c:Apiary.Edition.serving_organisations/1`, `c:Apiary.Edition.served_organisations/1`;
+  the core's edition names none). An organisation's gateways have names unique among
+  them, and at most one default. A workspace's default gateway is the one it marks;
+  without one, its organisation's; without that, one of an organisation that
+  serves it. `Apiary.Nodes.create_organisation_gateway/2`,
+  `list_organisation_gateways/1` and `list_serving_gateways/1` make and list them, asked
+  of the organisation (`node.create`, `node.read`); a gateway's changes, keys and codes
+  are asked at its place. A change of an organisation's gateways takes turns with every
+  change of a node's choice in a workspace it may serve, on the organisations' rows
+  (`Apiary.Gateways.lock/1`, `docs/access.md`). An organisation's gateway's key is checked while its
+  organisation is out of use, not marked for deletion, and acts for a run only while the
+  run's workspace is in use, the gateway may serve it, and either the gateway's
+  organisation is in use or the run is another organisation's. A gateway acts for a run
+  only while it may serve the run's workspace, asked again at each batch, heartbeat,
+  reload and repeated attach: once it may not, a batch or heartbeat, one accepted before
+  and sent again included, is a signed `410` `workspace_not_served` with no digest and
+  nothing of it stored, before deduplication and before a pruned run's answer, a reload the same `410` with no
+  policy, and a repeated attach a signed `409` `workspace_not_served`; the run goes lost
+  by liveness. A workspace's gateway's key is held to its organisation's use as any
+  node's is. The console offers an
+  organisation's gateways only where an organisation may have more than one workspace
+  (`c:Apiary.Edition.limits/0`): with one workspace, as here, Organisation › Gateways, its
+  sidebar entry and New gateway in New are not offered, and their paths are not found.
+  Where they are offered, Gateways lists them, with their URL, Default and whether each is
+  connected; New gateway is a form page; a gateway's page has the tabs a workspace's
+  gateway has, says whose nodes can use it and which workspaces' nodes use it now,
+  naming only the workspaces the reader reaches and counting the rest, and its deletion
+  is confirmed in place. A workspace's Nodes lists its organisation's gateways beside the
+  workspace's, each "Set for" the organisation; a node's choice groups the gateways by level; a
+  gateway of another organisation is named with its organisation and linked only where
+  the reader may open it. `c:ApiaryWeb.Edition.gateway_reach_sentence/2` and
+  `c:ApiaryWeb.Edition.nodes_managed_by_sentence/1` let an edition word whose nodes can
+  use an organisation's gateways and who manages the nodes.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a separate bucket, 50 requests a second and 100 at once, so a gateway flushing a backlog of
   events still registers a new run. Discovery is not limited.
@@ -655,6 +692,21 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
   scheme and a host, with a port if needed, and nothing more", by
   `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- A host rule takes an address only as four numbers from 0 to 255 with dots between them
+  and no leading zeros, such as `10.0.0.12`. A host whose last part is a number (all
+  digits, or `0x` and hex digits) is an address; before, `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1`, `10.0.0.256` and `*.0.0.1` were taken as host names, and the
+  gateway refuses a whole document holding one. They are now refused by the rule form ("An
+  address is four numbers from 0 to 255 with dots between them and no leading zeros, such
+  as 10.0.0.12.", or for `*.` before an address "*. leads a host name, never an address."),
+  by every rule write (the rule's changeset, `Apiary.Policy.Grammar.host?/1`) and by
+  requested changes, and a rendered document is held to the same grammar before it is
+  stored. A rule stored before is kept, not in force, and left out of every rendered
+  document; its row says "Not in force" and offers Remove alone, and a requested removal
+  still removes it. A connection to an address matches a rule only when it names the
+  address in that form and the rule is the same: an address in another form, an IPv6
+  address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
+  a connection reads as not allowed.
 - What a node is served follows the instance's features alone (`QORY_FEATURES`): a run's
   registration, events, attach, outcome and reload, and its run configuration, whatever a
   level above the workspace shows. An edition can no longer switch a feature off below the
@@ -809,6 +861,23 @@ heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_even
 every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
 and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
 backfilled: an event with none counts towards its run's liveness as it did.
+`20261011160500_let_a_gateway_live_at_an_organisation` lets `nodes.workspace_id`,
+`access_keys.workspace_id`, `access_key_enrolment_codes.workspace_id` and
+`node_instances.workspace_id` be NULL, for a gateway of an organisation and its rows:
+only a gateway may have none (`nodes_place_check`). The keys to the workspace become
+`MATCH SIMPLE` instead of `MATCH FULL`, so they hold a row with a workspace as before and
+leave one without; new composite keys hold each key, code and instance to its node's
+organisation (`(node_id, organisation_id)` to a new unique `(id, organisation_id)` of
+`nodes`), and a key to its enrolment code's; the trigger `node_place_matches` refuses a
+row without a workspace whose node has one. It adds the unique indexes
+`nodes_organisation_live_name_index` and `nodes_organisation_default_gateway_index`. The
+checks and keys are added NOT VALID, and
+`20261011160600_validate_a_gateway_s_organisation_keys` validates them. Nothing is
+backfilled: every row keeps its workspace. Rolled back, it refuses while any row without
+a workspace is there.
+`20261011160650_fix_a_node_s_place` adds the trigger `nodes_place_fixed`, which refuses a
+change of `nodes.workspace_id`, as `nodes_kind_fixed` refuses a change of kind: a node's
+keys, codes and instances stay at its place. Nothing is backfilled.
 `20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds the
 host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
 and its port to 1 to 65535 without a leading zero (`nodes_url_check`, re-created NOT

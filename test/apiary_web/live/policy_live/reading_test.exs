@@ -105,6 +105,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert flat(read(%{"host" => "*"}).text) =~ "may only lead a host"
     assert flat(read(%{"host" => "a_b.example"}).text) =~ "Each part of a host"
     assert flat(read(%{"host" => "[::1]:80"}).text) =~ "An address is written like a host"
+    assert flat(read(%{"host" => "10.0.0.12:443"}).text) =~ "An address is written like a host"
 
     assert %{kind: :error, invalid: [:paths], errors: [{:paths, _, nil}], preview: {:idle, idle}} =
              read(%{"host" => "api.example", "paths" => "v1"})
@@ -231,5 +232,34 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert flat(reading.text) == "Only an owner can lock, unlock or change a locked rule."
     # A refusal takes the preview's place on the form.
     assert reading.preview == nil
+  end
+
+  test "an address in another form than a.b.c.d is refused under Host, saying the form" do
+    for host <- ~w(127.1 0x7f.0.0.1 010.0.0.1 10.0.0.256 2130706433 example.123 0X7F.0.0.1) do
+      assert %{kind: :error, invalid: [:host], fix: nil, errors: [{:host, text, nil}]} =
+               read(%{"host" => host})
+
+      assert flat(text) ==
+               "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12.",
+             host
+
+      assert [_, {:m, "10.0.0.12"}, _] = text
+    end
+
+    # The address in its one form is a host like any other.
+    assert %{kind: :ok} = read(%{"host" => "10.0.0.12"})
+  end
+
+  test "*. before an address is refused: it leads a host name only" do
+    for host <- ~w(*.0.0.1 *.10.0.0.1 *.127.1 *.example.123) do
+      assert %{kind: :error, invalid: [:host], errors: [{:host, text, nil}]} =
+               read(%{"host" => host})
+
+      assert flat(text) == "*. leads a host name, never an address.", host
+      assert [{:code, "*."}, _] = text
+    end
+
+    # A `*.` elsewhere is still the sentence it was.
+    assert flat(read(%{"host" => "*.*.0.0.1"}).text) =~ "may only lead a host"
   end
 end

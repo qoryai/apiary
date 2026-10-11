@@ -25,6 +25,15 @@ A rule allows or denies one thing:
   for every host below it. A suffix rule does not cover the suffix itself:
   `*.internal.example` does not allow `internal.example`. A rule names a host and nothing
   else: no scheme, no port.
+- **An address**: a host whose last part is a number (all digits, or `0x` and hex
+  digits) is an address, and a rule takes one only as four numbers from 0 to 255 with dots
+  between them and no leading zeros, such as `10.0.0.12`. `127.1`, `2130706433`,
+  `0x7f.0.0.1`, `010.0.0.1` and `10.0.0.256` are refused, and so is `*.` before an address,
+  `*.0.0.1`. An IPv6 address is never a rule. A connection matches an address rule only
+  when it names that address in the same form: a connection to `127.1`, to an IPv6 address,
+  or to an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) matches no rule. A rule stored
+  before this held is not in force and is left out of the document the gateway reads, which
+  would refuse the whole document for it; its row says so and offers only Remove.
 - **Paths**, on an allowed host: every path, or the paths listed. A path starts with `/` and
   may end in one `*`, such as `/v1/*`; there is no other wildcard and no query. A host held
   to paths is one the proxy reads requests to, which it can do only behind a wall.
@@ -77,7 +86,9 @@ it too, as **Network access rule**. The page asks:
    enforce, where a host no rule allows is denied. **Deny** stops runs connecting to it, in
    observe and in enforce.
 2. **Host**: the name runs connect to, in lower case, without `https://` or a port; start
-   it with `*.` to cover every host below a domain, such as `*.example.com`.
+   it with `*.` to cover every host below a domain, such as `*.example.com`. An address is
+   written as four numbers with dots between them and no leading zeros, such as
+   `10.0.0.12`, never with `*.`.
 3. **Paths**, optional, for an allow: left empty, every path is allowed; separate paths
    with spaces, and end one with `*` for everything below it, such as `/v1/*`. A deny covers
    every path of the host.
