@@ -1,10 +1,14 @@
 # Qory Apiary on AWS: one Fargate task behind an Application Load Balancer, RDS for
-# PostgreSQL, and the secrets Qory makes at first start kept in Secrets Manager.
+# PostgreSQL, and the secrets Qory Apiary makes at first start kept in Secrets Manager.
 #
 # A release names its version: scripts/aws-template-release.py writes it into the Release
 # mapping and into the texts that name it. Here, in the repository, the mapping is empty,
-# so an upload by hand types the version under Version, or, for a test before a release,
-# names an image under Test image.
+# so an upload by hand types the version under Version.
+# [test copy]
+# For a test before a release, an upload by hand names an image under Test image instead.
+# The parts between these markers, and each line that ends with one, are in the test copy
+# alone: scripts/aws-template-release.py --copy release leaves them out of a release's copy.
+# [/test copy]
 #
 # Upgrade with the console's Update and the new release's template, or with
 # `aws cloudformation deploy`, which keep the parameters they are not given. KeysFromStack
@@ -31,8 +35,10 @@ Metadata:
         Parameters: [KeysFromStack, DatabaseSnapshot]
       - Label: { default: Recovery }
         Parameters: [AcceptSigningKey, DatabaseDeletionProtection]
+      # [test copy]
       - Label: { default: For testing only }
         Parameters: [TestImage]
+      # [/test copy]
     ParameterLabels:
       Edition: { default: Edition }
       ProDownloadKey: { default: Qory Apiary Pro download key }
@@ -46,7 +52,7 @@ Metadata:
       DatabaseSnapshot: { default: Database snapshot to restore (optional) }
       AcceptSigningKey: { default: Accept a new signing key (fingerprint) }
       DatabaseDeletionProtection: { default: Protect the database from deletion }
-      TestImage: { default: Test image (leave empty) }
+      TestImage: { default: Test image (leave empty) }  # [test copy]
 
 Parameters:
   Edition:
@@ -61,7 +67,7 @@ Parameters:
     NoEcho: true
     AllowedPattern: '^$|^[A-Za-z0-9-]+:[^\s"\\:]+$'
     ConstraintDescription: "The download key as we sent it: an account name, a colon and a token."
-    Description: "Only for Qory Apiary Pro: the download key we sent you. Leave empty for Qory Apiary Community. A revoked or expired key stops the running instance at its next task replacement. Also needed to pull a test image."
+    Description: "Only for Qory Apiary Pro: the download key we sent you. Leave empty for Qory Apiary Community. A revoked or expired key stops the running instance at its next task replacement."
   DomainName:
     Type: String
     MinLength: 1
@@ -77,7 +83,7 @@ Parameters:
   VersionOverride:
     Type: String
     Default: ""
-    Description: "This copy of the template names no release: type the version to install, such as 0.2.0. Ignored when a test image is set."
+    Description: "This copy of the template names no release: type the version to install, such as 0.2.0."
   DatabaseInstanceClass:
     Type: String
     Default: db.t4g.micro
@@ -101,14 +107,16 @@ Parameters:
     Type: String
     Default: "Yes"
     AllowedValues: ["Yes", "No"]
-    Description: "Yes turns it on once Qory first starts healthy, so a failed install still rolls back. To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+    Description: "Yes turns it on once Qory Apiary first starts healthy, so a failed install still rolls back. To delete the stack, Update with No first, then Delete. With No, the database's final snapshot is kept when the stack is deleted."
+  # [test copy]
   # A pre-release image, such as ghcr.io/qoryai/apiary-prerelease:sha-<7>, which
   # .github/workflows/prerelease.yml publishes. It replaces the Edition's image and version,
   # and is pulled with the download key, whatever the Edition (TestImageNeedsDownloadKey).
   TestImage:
     Type: String
     Default: ""
-    Description: "Leave empty. Only for Qory's pre-release tests: a full image reference, which replaces the image the Edition picks. Needs the download key above."
+    Description: "Leave empty. Only for Qory Apiary's pre-release tests: a full image reference, which replaces the image the Edition and Version pick. Needs the download key above."
+  # [/test copy]
 
 # The versions a release names, which scripts/aws-template-release.py writes in. Empty
 # here, in the repository. The images are each edition's.
@@ -142,23 +150,28 @@ Rules:
     Assertions:
       - Assert: !Equals [!Ref CpuArchitecture, X86_64]
         AssertDescription: Qory Apiary Pro runs on X86_64 only.
+  # [test copy]
   # A test image is pulled from a private package, with the download key.
   TestImageNeedsDownloadKey:
     RuleCondition: !Not [!Equals [!Ref TestImage, ""]]
     Assertions:
       - Assert: !Not [!Equals [!Ref ProDownloadKey, ""]]
         AssertDescription: "A test image needs the download key: set Qory Apiary Pro download key."
+  # [/test copy]
   # With Version empty, the edition's version is the Release mapping's. A Rule cannot read a
   # mapping, so the release writes the same version in here too
   # (scripts/aws-template-release.py), as the value each Assert compares Version with: Version
   # being empty here, the Assert holds exactly when that value is not. Here, in the
-  # repository, both are empty. With a test image the image names its own version, so
-  # neither Rule applies; the download key and the CPU architecture are still checked above.
+  # repository, both are empty.
+  # [test copy]
+  # With a test image, the image names the version, so neither Rule applies; the download
+  # key and the CPU architecture are still checked above.
+  # [/test copy]
   CommunityVersionNamed:
     RuleCondition: !And
       - !Equals [!Ref Edition, Qory Apiary Community]
       - !Equals [!Ref VersionOverride, ""]
-      - !Equals [!Ref TestImage, ""]
+      - !Equals [!Ref TestImage, ""]  # [test copy]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
         AssertDescription: "This copy of the template names no release of Qory Apiary Community: type a version under Version."
@@ -166,7 +179,7 @@ Rules:
     RuleCondition: !And
       - !Equals [!Ref Edition, Qory Apiary Pro]
       - !Equals [!Ref VersionOverride, ""]
-      - !Equals [!Ref TestImage, ""]
+      - !Equals [!Ref TestImage, ""]  # [test copy]
     Assertions:
       - Assert: !Not [!Equals [!Ref VersionOverride, ""]]
         AssertDescription: Qory Apiary Pro is installed from Qory Apiary Pro's release.
@@ -174,7 +187,7 @@ Rules:
 Conditions:
   IsPro: !Equals [!Ref Edition, Qory Apiary Pro]
   HasVersionOverride: !Not [!Equals [!Ref VersionOverride, ""]]
-  HasTestImage: !Not [!Equals [!Ref TestImage, ""]]
+  HasTestImage: !Not [!Equals [!Ref TestImage, ""]]  # [test copy]
   # A key given with Qory Apiary Community is used for the pull too.
   HasDownloadKey: !Not [!Equals [!Ref ProDownloadKey, ""]]
   HasAcceptSigningKey: !Not [!Equals [!Ref AcceptSigningKey, ""]]
@@ -371,10 +384,10 @@ Resources:
         DNSName: !GetAtt LoadBalancer.DNSName
         HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
 
-  # The secrets Qory makes at first start on compose, made here by Secrets Manager before
-  # the task starts. A create that rolls back deletes them, so a retry under the same stack
-  # name makes them anew; once a stack exists, deleting it, or a replacement in an update,
-  # keeps every one (UpdateReplacePolicy has no RetainExceptOnCreate):
+  # The secrets Qory Apiary makes at first start on compose, made here by Secrets Manager
+  # before the task starts. A create that rolls back deletes them, so a retry under the same
+  # stack name makes them anew; once a stack exists, deleting it, or a replacement in an
+  # update, keeps every one (UpdateReplacePolicy has no RetainExceptOnCreate):
   # without APIARY_ENCRYPTION_SECRET no access key verifies and no stored secret reads, and
   # without APIARY_SIGNING_SECRET every machine's pin breaks. Their properties never change
   # from one release to the next (CI compares them with the previous release's template):
@@ -385,9 +398,9 @@ Resources:
   # has a stack ID of its own, so the secrets a deleted stack kept do not block it.
   # KeysFromStack names them by that prefix.
   #
-  # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory reads: every other
-  # character excluded, and no character type required, so each character is drawn from
-  # the same 16.
+  # The two 32-byte keys are 64 characters of 0-9a-f, the hex form Qory Apiary reads: every
+  # other character excluded, and no character type required, so each character is drawn
+  # from the same 16.
   SecretKeyBase:
     Type: AWS::SecretsManager::Secret
     Condition: CreateSecrets
@@ -589,8 +602,10 @@ Resources:
 
   # Part 1's settings, from the parameters and Secrets Manager. The database's certificate
   # is checked against the RDS bundle the image carries. The image is the edition's, at
-  # Version when it is given, else at the Release mapping's version for that edition; with
-  # Test image, exactly the image it names.
+  # Version when it is given, else at the Release mapping's version for that edition.
+  # [test copy]
+  # With Test image, exactly the image it names.
+  # [/test copy]
   # APIARY_ACCEPT_SIGNING_FINGERPRINT is set only when Accept a new signing key is.
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -1002,7 +1017,7 @@ Resources:
 # checks it: scripts/aws-template-check.py outputs).
 Outputs:
   Url:
-    Description: Qory's address.
+    Description: Qory Apiary's address.
     Value: !Sub https://${DomainName}
   LoadBalancerDnsName:
     Description: Point the domain here with a CNAME when no hosted zone was given.
@@ -1010,7 +1025,9 @@ Outputs:
   Edition:
     Description: The edition the stack runs.
     Value: !Ref Edition
+  # [test copy]
   # With Test image, the image the stack runs in place of a version.
+  # [/test copy]
   Version:
     Description: The version the stack runs.
     Value: !If
@@ -1028,7 +1045,7 @@ Outputs:
     Value: !Sub
       - https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#logsV2:log-groups/log-group/$252Fqory$252F${AWS::StackName}-${StackUuid}
       - StackUuid: !Select [2, !Split ["/", !Ref AWS::StackId]]
-  # Until Qory is set up, each start of the task logs "Set up Qory Apiary at
+  # Until Qory Apiary is set up, each start of the task logs "Set up Qory Apiary at
   # https://<domain>/setup/<code>." in the log group Logs links to. The link opens that log
   # group's events filtered to "/setup/", the console's filterPattern escaped as the Logs
   # link escapes the group's name. The filter is a convenience: the log group is the source,

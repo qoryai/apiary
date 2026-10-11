@@ -547,8 +547,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Actions tab or by pushing a commit to the branch `prerelease`, never on a push to any
   other branch or a schedule, builds a branch, tag or commit as a release's image is
   built and publishes it to `ghcr.io/qoryai/apiary-prerelease` alone, a private package, as
-  `sha-<7>` and, for `next`, as `next`; the AWS template's Test image field, under For
-  testing only, runs such an image in place of the Edition's.
+  `sha-<7>` and, for `next`, as `next`; the Test image field, under For testing only in
+  the AWS template's test copy, runs such an image in place of the image the Edition and
+  Version pick.
 - `compose.yaml` in place of `docker-compose.yml`: the published image, as `.env` names it
   in `APIARY_VERSION` (and `APIARY_IMAGE`), Postgres 18 in the profile `postgres`, which
   `.env.example` turns on, and the server, published on `127.0.0.1:4100` alone.
@@ -558,14 +559,17 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The AWS template, `deploy/aws/apiary.yaml`: Qory Apiary on ECS Fargate behind an
   Application Load Balancer, with RDS for PostgreSQL 18 and its keys in Secrets Manager,
   installed from the AWS console's form and upgraded with its Update, with no command. A
-  release attaches it as `apiary.yaml` with the release's version written in
-  (`scripts/aws-template-release.py`), so an upgrade is an Update with the new release's
-  template, `VersionOverride` left empty. The form asks for the edition, Qory Apiary
+  release attaches its release copy as `apiary.yaml`, with the release's version written in
+  and the test parts left out (`scripts/aws-template-release.py --copy release`), so an
+  upgrade is an Update with the new release's template, `VersionOverride` left empty. The
+  test copy, the repository's template or one written with `--copy test`, keeps the Test
+  image field and is never published. The form asks for the edition, Qory Apiary
   Community or Qory Apiary Pro; Qory Apiary Pro's download key, which the stack keeps as a
   separate secret, deleted with the stack, for the image's pull alone; and the domain,
   with a Route 53 hosted zone, or without one, the stack then making the certificate and
   waiting for its validation record. Rules refuse Qory Apiary Pro without its download key,
-  on ARM64, or with no version to install, and a test image without the download key.
+  on ARM64, or with no version to install, and, in the test copy, a test image without the
+  download key.
   Under Recovery, `AcceptSigningKey` is passed as `APIARY_ACCEPT_SIGNING_FINGERPRINT`, and
   `DatabaseDeletionProtection` sets the database's deletion protection: a function of the
   stack turns it on once the service is first healthy, so a create that fails
@@ -584,14 +588,16 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   key secrets' ARNs (their names, on a stack given the keys of a deleted one), and links
   into the console: the logs, the set-up link's line in
   them, the service, the key secrets and the database snapshots. CI lints the template
-  with cfn-lint, and two copies a release would write, one with Qory Apiary Community
-  first and one with Qory Apiary Pro first, and checks the stack policy and the rule,
-  function, permission and role that set it, and that nothing sets it from inside the
-  stack's create or update, that no output is
-  a command, which secrets and log groups the stack keeps and that their names use the
-  stack ID's UUID, the mappings' keys, that every value compared with the edition is one
-  the form allows, and that the template and both copies are ASCII alone, as the AWS
-  console shows any other character as "?".
+  with cfn-lint, and four copies the release script writes, the release copy and the test
+  copy, each with Qory Apiary Community first and with Qory Apiary Pro first; runs the
+  script's tests; checks that each release copy holds no test part and no test wording,
+  comments included, and is its test copy without the test parts; and checks the stack
+  policy and the rule, function, permission and role that set it, and that nothing sets
+  it from inside the stack's create or update, that no output is a command, which
+  secrets and log groups the stack keeps and that their names use the stack ID's UUID,
+  the mappings' keys, that every value compared with the edition is one the form allows,
+  and that the template and every copy are ASCII alone, as the AWS console shows any
+  other character as "?".
 - The keys made at first start: the one-shot service `keys` runs `bin/keys`, which
   generates `SECRET_KEY_BASE`, `APIARY_ENCRYPTION_SECRET`, `APIARY_SIGNING_SECRET` and
   `DATABASE_PASSWORD` into `/var/lib/apiary/keys/apiary.env` in the volume `keys`, keeps
