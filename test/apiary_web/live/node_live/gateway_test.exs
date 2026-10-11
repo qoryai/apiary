@@ -655,6 +655,23 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert String.trim(lines(lv, "#node-configure-yaml")) == address
     end
 
+    test "a gateway URL a shell would act on is quoted in the command", %{
+      conn: conn,
+      scope: scope
+    } do
+      url = "https://edge.example.com;echo$IFS-ran"
+      gateway_fixture(scope, name: "edge-01", url: url)
+      node = node_fixture(scope, name: "build-01")
+      server = ApiaryWeb.Endpoint.url()
+
+      {lv, command} = command(conn, scope, node)
+
+      assert command =~
+               ~r/\Aqory access-key enrol --via '#{Regex.escape(url)}' #{Regex.escape(server)} qec_/
+
+      assert has_element?(lv, ~s{#code-issued-command-copy[data-copy="#{command}"]})
+    end
+
     test "--replace and --via together, for a node that has a key", %{conn: conn, scope: scope} do
       gateway_fixture(scope, name: "edge-01", url: "https://edge.example.com")
       node = node_fixture(scope, name: "build-01")

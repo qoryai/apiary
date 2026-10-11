@@ -353,6 +353,20 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert after_command =~ ~s(id="onboarding-via-ca")
     end
 
+    test "a gateway URL a shell would act on is quoted in the box's command", %{
+      conn: conn,
+      scope: scope
+    } do
+      url = "https://edge.example.com;echo$IFS-ran"
+      gateway_fixture(scope, name: "edge-01", url: url)
+      node_fixture(scope, %{name: "build-01"})
+      view = open(conn, scope)
+      view |> element("#onboarding-enrol") |> render_click()
+
+      assert text(view, "#onboarding-command") =~
+               ~r/\Aqory access-key enrol --via '#{Regex.escape(url)}' #{Regex.escape(ApiaryWeb.Endpoint.url())} qec_/
+    end
+
     test "for a node that goes direct, the command carries no --via and no gateway line", %{
       conn: conn,
       scope: scope

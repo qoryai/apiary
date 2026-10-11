@@ -176,7 +176,9 @@ defmodule ApiaryWeb.NodeComponents do
   for a node whose choice leads to a gateway, it carries `--via` and the gateway's URL,
   before the server's address as qory's docs write it: qory enrols through that gateway,
   which passes the request and Qory Apiary's signed answer on unchanged, and writes the
-  gateway's address into the Forager file as `gateway.server.via`.
+  gateway's address into the Forager file as `gateway.server.via`. Each address and the
+  code go through `shell_word/1`, so a person who pastes the command runs qory with
+  them and nothing else.
   """
   @spec enrol_command(String.t(), String.t(), [{:replace, boolean} | {:via, String.t() | nil}]) ::
           String.t()
@@ -186,10 +188,28 @@ defmodule ApiaryWeb.NodeComponents do
     via =
       case Keyword.get(opts, :via) do
         nil -> []
-        url when is_binary(url) -> ["--via", url]
+        url when is_binary(url) -> ["--via", shell_word(url)]
       end
 
-    Enum.join(["qory access-key enrol"] ++ replace ++ via ++ [server, code], " ")
+    Enum.join(
+      ["qory access-key enrol"] ++ replace ++ via ++ [shell_word(server), shell_word(code)],
+      " "
+    )
+  end
+
+  @doc """
+  shell_word/1 is `value` as one word of a POSIX shell command, its characters taken
+  literally: as it is when every character is a letter, a digit or one of `. _ ~ : / -`
+  and it starts with no `~`, which a shell expands there; else in single quotes, each
+  `'` in it written `'\\''`. A gateway's URL may carry characters a shell acts on, such as
+  `;`, `$` or `&`, and `[` and `]` of an IPv6 host are a pattern to some shells; quoted,
+  none of them does anything. A plain URL and an enrolment code are unchanged.
+  """
+  @spec shell_word(String.t()) :: String.t()
+  def shell_word(value) when is_binary(value) do
+    if value =~ ~r{\A[A-Za-z0-9._:/-][A-Za-z0-9._~:/-]*\z},
+      do: value,
+      else: "'" <> String.replace(value, "'", "'\\''") <> "'"
   end
 
   @doc """

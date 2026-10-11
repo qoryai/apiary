@@ -1057,7 +1057,8 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   and public key and the gateway's address into the Forager file. The secret never leaves
   the machine.", and a line under the command reads "If edge-01's certificate is signed
   by a private certificate authority, add --via-ca-file and that authority's PEM file."
-  (`NodeComponents.via_ca_line/1`). For a node or pool that has or had a key, the command carries
+  (`NodeComponents.via_ca_line/1`). An address in the command with a character a shell
+  acts on is single-quoted (`NodeComponents.shell_word/1`). For a node or pool that has or had a key, the command carries
   `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code,
   `--replace` before `--via` when both),
   shown and copied alike, with the line "It moves build-01 to a new key. The old key keeps

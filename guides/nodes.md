@@ -183,6 +183,9 @@ gateway's URL, before Qory Apiary's address:
 qory access-key enrol --via https://edge.example.com https://apiary.example.com qec_…
 ```
 
+An address with a character a shell acts on, such as `;`, `$` or `&`, is in single quotes
+in the command, so pasting it runs `qory` and nothing else.
+
 `qory` sends the enrolment to the gateway, which passes it to Qory Apiary unchanged and
 passes Qory Apiary's signed answer back unchanged: the answer is signed for the machine's
 proof, so the gateway can't alter it. So a machine that reaches Qory Apiary only through
@@ -205,8 +208,9 @@ Qory Apiary counts enrolments per address, 1 a second and 10 at once, and an enr
 through a gateway comes from the gateway's address. So every machine behind one gateway
 shares that gateway's limit, and enrolling many machines at once through one gateway may
 need a retry. Past the limit the answer is an unsigned `429`: `qory` keeps the key it
-made, and the same command, run again within the code's 15 minutes, retries with it. The
-audit log records the gateway's address for the key's arrival.
+made, and the same command, run again within the code's 15 minutes, retries with it
+(with `--print`, `qory` keeps nothing, so it asks for a new code instead). The audit log
+records the gateway's address for the key's arrival.
 
 ### The Forager file
 
