@@ -5,9 +5,10 @@ defmodule Apiary.Repo.Migrations.MakeAGatewayAKindOfNode do
   # public id `ng_` and sixteen lowercase Crockford base32 characters, no instance limit
   # (NULL), and an address, `url`, which a gateway must have and a node or a node pool
   # never has: at most 2048 characters, a scheme and a host with an optional port and
-  # nothing after them. The application checks the rest (https, or http to a loopback
-  # host). The checks of the kind, the public id and the limit widen to it; the trigger
-  # `nodes_kind_fixed` still refuses a change of kind.
+  # nothing after them. A later migration holds it to https
+  # (`20261011150300_hold_a_gateway_s_address_to_https`). The checks of the kind, the
+  # public id and the limit widen to it; the trigger `nodes_kind_fixed` still refuses a
+  # change of kind.
   #
   # `default_gateway` marks a workspace's default gateway: only a gateway in use holds it,
   # and the partial unique index holds a workspace to one at most. Every row is false

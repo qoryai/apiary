@@ -70,21 +70,30 @@ defmodule Apiary.GatewaysTest do
              }
     end
 
-    test "its address is https, or http to a loopback host, with a host and a port alone",
-         %{scope: scope} do
-      for url <- ~w(https://gateway.example https://10.0.0.7:8443 http://localhost:8080
-                    http://127.0.0.1 http://127.9.9.9:9000 http://[::1]:8080
-                    https://[2001:db8::1]) do
+    test "the database holds a gateway's address to https too", %{scope: scope} do
+      gateway = gateway_fixture(scope)
+
+      assert_raise Postgrex.Error, ~r/nodes_url_check/, fn ->
+        Repo.update_all(from(n in Node, where: n.id == ^gateway.id),
+          set: [url: "http://localhost:8080"]
+        )
+      end
+    end
+
+    test "its address is https, with a host and a port alone", %{scope: scope} do
+      for url <- ~w(https://gateway.example https://10.0.0.7:8443 https://localhost:8443
+                    https://127.0.0.1 https://[2001:db8::1]) do
         assert {:ok, %Node{url: ^url}} =
                  Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: url}),
                url
       end
 
-      for url <- ~w(http://gateway.example http://10.0.0.7 ftp://gateway.example) do
+      for url <- ~w(http://gateway.example http://10.0.0.7 http://localhost:8080
+                    http://127.0.0.1 http://[::1]:8080 ftp://gateway.example) do
         assert {:error, changeset} =
                  Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
 
-        assert %{url: ["must start with https://, or http:// for a loopback host"]} =
+        assert %{url: ["must start with https://"]} =
                  errors_on(changeset),
                url
       end
