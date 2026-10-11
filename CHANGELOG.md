@@ -707,6 +707,8 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
 - The runs list's preview shows a run's last log lines, and its Full log link, only to a
   reader who may read the log (`run.read_log`), as the run page's Terminal tab does.
   Before, it read and showed them to anyone who could read the runs.
+- A connection's host is isolated wherever it shows, so a right-to-left character in it
+  reorders nothing around it.
 
 ### Migrations
 

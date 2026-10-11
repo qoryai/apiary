@@ -1083,6 +1083,26 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#mode-would .q-dest-tool") =~ "files.tools.internal"
     end
 
+    test "what enforce would deny isolates each host, a tool's too, so a bidi override reorders nothing",
+         %{conn: conn, scope: scope} do
+      host = "evil\u202Elpmaxe.<script>"
+
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => host, "decision" => "allowed", "rule" => ""},
+          tool_invocation_data(%{"host" => "tool." <> host, "rule" => ""})
+        ]
+      )
+
+      view = open(conn, scope)
+      pick_mode(view, "enforce")
+
+      assert has_element?(view, "#mode-would .q-dest:not(.q-dest-tool) > bdi", host)
+      assert has_element?(view, "#mode-would .q-dest-tool .text-faint > bdi", "tool." <> host)
+      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>"
+      refute render(view) =~ "elpmaxe.<script>"
+    end
+
     test "going to enforce asks, lists what would be denied, and allows from the list",
          %{conn: conn, scope: scope} do
       started_run(scope, shop(),

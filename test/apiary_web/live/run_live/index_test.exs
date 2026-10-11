@@ -1646,7 +1646,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "Full log"
              )
 
-      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example:443"
+      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example"
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest", "files.cdn.example:443")
 
       assert has_element?(
                view,
@@ -1707,6 +1708,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-preview-log") == "first line second line"
     end
 
+    test "a denied host is isolated in the preview, so a bidi override reorders nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      host = "evil\u202Elpmaxe.<script>"
+
+      run =
+        started_run(scope, shop(),
+          about: %{"title" => "bidi"},
+          egress: [%{"decision" => "denied", "rule" => "", "host" => host}]
+        )
+
+      view = open(conn, runs(scope, "?run=#{run.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest > bdi", host)
+      assert render(view) =~ "<bdi>evil\u202Elpmaxe.&lt;script&gt;</bdi>:443"
+      refute render(view) =~ "elpmaxe.<script>"
+    end
+
     test "a reader who may not read the log (run.read_log) is shown none of it, nor Full log, and none is read",
          %{conn: conn, older: older, scope: scope} do
       # `run.read_log` refused whoever asks (`Apiary.EditionStubs.NoLog`).
@@ -1720,7 +1742,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
 
       assert has_element?(view, "#runs-preview h2", "older")
-      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example:443"
+      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example"
+      assert has_element?(view, "#runs-preview-denials .q-pv-dest", "files.cdn.example:443")
       refute has_element?(view, "#runs-preview-log")
       refute has_element?(view, "#runs-preview .q-pv-term")
       refute has_element?(view, "#runs-preview a", "Full log")

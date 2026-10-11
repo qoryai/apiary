@@ -413,7 +413,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <.tool_mark name={@item.tool} /><span
         :if={@item.path != ""}
         class="q-path"
-      >{@item.path}</span><span class="q-port">{@item.host}:{@item.port}</span>
+      >{@item.path}</span><span class="q-port"><bdi>{@item.host}</bdi>:{@item.port}</span>
     </span>
     """
   end
@@ -421,7 +421,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_subject(%{item: %{kind: :denied}} = assigns) do
     ~H"""
     <span class="q-host q-ar-t q-mono" title={destination_title(@item)}>
-      {@item.host}<span class="q-port">:{@item.port}</span><span
+      <bdi>{@item.host}</bdi><span class="q-port">:{@item.port}</span><span
         :if={@item.held && @item.path != ""}
         class="q-path"
       >{@item.path}</span>
