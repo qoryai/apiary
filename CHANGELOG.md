@@ -781,14 +781,7 @@ through a gateway's gateway and run id, built concurrently.
 (`nodes_url_check`, re-created NOT VALID), and
 `20261011150400_validate_a_gateway_s_address_check` validates it: a gateway recorded at an
 `http://` address must be given an `https://` one first. Rolled back, `http://` is
-allowed again. `20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds
-the host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
-and its port to 1 to 65535 (`nodes_url_check`, re-created NOT VALID), and
-`20261011160800_validate_a_gateway_s_host_check` validates it. Nothing is backfilled: the
-validation fails while any gateway, deleted ones included, has a URL outside the check,
-and its error names those gateways; give each a URL the check holds, then migrate again.
-Rolled back, the host may hold any character a URI's host allows again.
-`20261011150500_keep_a_run_key_s_signature` adds
+allowed again. `20261011150500_keep_a_run_key_s_signature` adds
 `runs.run_key_signature`, the 64-byte signature of a run's run key, NULL for every
 existing row, held to a run that has a payload (`runs_run_key_signature_check`, NOT
 VALID), and `20261011150600_validate_a_run_key_s_signature_check` validates it.
@@ -811,6 +804,14 @@ heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_even
 every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
 and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
 backfilled: an event with none counts towards its run's liveness as it did.
+`20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds the
+host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
+and its port to 1 to 65535 without a leading zero (`nodes_url_check`, re-created NOT
+VALID), and
+`20261011160800_validate_a_gateway_s_host_check` validates it. Nothing is backfilled: the
+validation fails while any gateway, deleted ones included, has a URL outside the check,
+and its error names those gateways; give each a URL the check holds, then migrate again.
+Rolled back, the host may hold any character a URI's host allows again.
 
 ### Upgrading
 

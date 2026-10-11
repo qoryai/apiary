@@ -22,7 +22,7 @@ defmodule Apiary.Repo.Migrations.ValidateAGatewaySHostCheck do
          WHERE conrelid = 'nodes'::regclass AND conname = 'nodes_url_check')
       ) INTO gateways;
 
-      RAISE EXCEPTION 'nodes_url_check: the gateways % have an address whose host is not a DNS name, an IPv4 address or an IPv6 address in brackets, or whose port is not 1 to 65535: give each an address https://, a host and an optional port, then run the migrations again', gateways
+      RAISE EXCEPTION 'nodes_url_check: the gateways % have an address whose host is not a DNS name, an IPv4 address or an IPv6 address in brackets, or whose port is not 1 to 65535 written without a leading zero: give each an address https://, a host and an optional port, then run the migrations again', gateways
         USING ERRCODE = 'check_violation';
     END
     $$

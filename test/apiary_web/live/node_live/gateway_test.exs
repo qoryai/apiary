@@ -676,7 +676,8 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       conn: conn,
       scope: scope
     } do
-      url = "https://edge.example.com;echo$IFS-ran"
+      # The brackets of an IPv6 host are a pattern to some shells.
+      url = "https://[2001:db8::1]:8443"
       gateway_fixture(scope, name: "edge-01", url: url)
       node = node_fixture(scope, name: "build-01")
       server = ApiaryWeb.Endpoint.url()
@@ -684,7 +685,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {lv, command} = command(conn, scope, node)
 
       assert command =~
-               ~r/\Aqory access-key enrol --via '#{Regex.escape(url)}' #{Regex.escape(server)} qec_/
+               ~r/\Aqory access-key enrol --via 'https:\/\/\[2001:db8::1\]:8443' #{Regex.escape(server)} qec_/
 
       assert has_element?(lv, ~s{#code-issued-command-copy[data-copy="#{command}"]})
     end

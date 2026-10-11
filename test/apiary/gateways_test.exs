@@ -162,6 +162,21 @@ defmodule Apiary.GatewaysTest do
       end
     end
 
+    test "each character outside a DNS name's is refused, alone in the host", %{
+      scope: scope
+    } do
+      for c <- ~w|; $ ( ) ' & * ! = + , ~ _| do
+        url = "https://edge#{c}x.example"
+
+        assert {:error, changeset} =
+                 Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
+
+        assert %{url: ["must be a scheme and a host, with a port if needed, and nothing more"]} =
+                 errors_on(changeset),
+               url
+      end
+    end
+
     test "a node and a pool have no address", %{scope: scope} do
       node = node_fixture(scope, url: "https://gateway.example")
       pool = pool_fixture(scope, url: "https://gateway.example")

@@ -185,8 +185,9 @@ gateway's URL, before Qory Apiary's address:
 qory access-key enrol --via https://edge.example.com https://apiary.example.com qec_…
 ```
 
-An address with a character a shell acts on, such as `;`, `$` or `&`, is in single quotes
-in the command, so pasting it runs `qory` and nothing else.
+A gateway's address holds no character a shell acts on except the brackets of an IPv6
+address, which some shells read as a pattern, so such an address is in single quotes in
+the command, `--via 'https://[2001:db8::1]:8443'`, and pasting it runs `qory` as shown.
 
 `qory` sends the enrolment to the gateway, which passes it to Qory Apiary unchanged and
 passes Qory Apiary's signed answer back unchanged: the answer is signed for the machine's
