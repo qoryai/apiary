@@ -1042,8 +1042,9 @@ defmodule ApiaryWeb.PolicyComponents do
 
   An error is said under the field it is about, with its repair as a link, and marks the
   field (`aria-invalid`, `aria-describedby`); a refusal, the reading's or the domain's
-  (`error`, until the form is edited again), stands in the reading's place, above the foot. The button is never off: the
-  page answers a press with what is wrong and the focus on the first field it names.
+  (`error`, until the form is edited again), stands in the reading's place, above the
+  foot. The button is never off: the page answers a press with what is wrong and the
+  focus on the first field it names.
 
   The events are the page's (`ApiaryWeb.PolicyLive.Common`): `rule_validate` on a change,
   `rule_save` on the button, `rule_paste` when a list of hosts is pasted into Host (the

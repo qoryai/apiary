@@ -533,6 +533,16 @@ defmodule ApiaryWeb.PolicyLive.RuleFormTest do
       refute has_element?(view, "#policy-rule-write-error")
       assert has_element?(view, "#policy-rule-preview")
 
+      # And so is a pasted list, which the hook sends with no change after it.
+      type(view, %{host: "files.cdn.example", paths: ""})
+      add(view)
+      assert has_element?(view, "#policy-rule-write-error")
+      render_hook(view, "rule_paste", %{"hosts" => ["a.example", "b.example"]})
+      refute has_element?(view, "#policy-rule-write-error")
+      assert has_element?(view, "#policy-rule-preview")
+      assert has_element?(view, "#policy-rule-host[value='a.example']")
+      assert read(view, "#policy-rule-reads") =~ "Allow a.example"
+
       # Cancel leaves the refusal on the form.
       view |> element("#policy-rule-save-cancel") |> render_click()
       refute has_element?(view, "#policy-write-error")

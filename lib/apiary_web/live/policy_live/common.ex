@@ -640,6 +640,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       [first | rest] ->
         {:halt,
          socket
+         |> edited(event)
          |> assign(:queue, rest)
          |> read(%{"host" => first, "every" => "false"})
          |> set_fields()}
