@@ -140,7 +140,6 @@ defmodule Apiary.ContractFixtures do
      [
        wire_event(subject, 2, "run.started", %{
          "opened_by" => "session",
-         "credential" => "none",
          "runtime" => "claude",
          "runtime_version" => "2.1.0",
          "command" => "claude",

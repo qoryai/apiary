@@ -1941,8 +1941,6 @@ defmodule ApiaryWeb.RunComponents do
       </td>
       <td class="q-rl-c4 q-rl-faint" role="cell">
         <%= cond do %>
-          <% Run.no_session?(@run) -> %>
-            <span>{gettext("no session")}</span>
           <% @run.runtime -> %>
             <span>{@run.runtime} {@run.runtime_version}</span>
           <% true -> %>

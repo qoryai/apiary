@@ -2123,11 +2123,6 @@ msgstr ""
 msgid "A file outside the checkout, given with: %{command}"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces."
@@ -7830,11 +7825,6 @@ msgstr ""
 msgid "No session timeline"
 msgstr ""
 
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "No session."
-msgstr ""
-
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target active this week matches"
@@ -8653,11 +8643,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Open version %{version}"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Opened by"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -13295,11 +13280,6 @@ msgstr ""
 msgid "by %{version} after %{time}"
 msgstr ""
 
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "by a gateway with no session"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by rule"
@@ -13499,11 +13479,6 @@ msgstr ""
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "from %{from} to %{to}"
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "gateway (no session)"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -13784,11 +13759,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "no policy, every connection is observed"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "no session"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

@@ -274,83 +274,6 @@ defmodule Apiary.Runs.LivenessTest do
       assert Runs.count_alive(scope) == 1
     end
 
-    test "a run a gateway opened starts from its ping's offset; a session's run does not", %{
-      scope: scope
-    } do
-      [gateway, session] =
-        for data <- [gateway_started_data(), started_data()] do
-          run = run_fixture(scope, %{inserted_at: ago(600)})
-          event_fixture(run, 1, "ping", @ping, time: ago(601), received_at: ago(600))
-          event_fixture(run, 2, "run.started", data, time: ago(601), received_at: ago(600))
-          project!(run)
-        end
-
-      assert gateway.clock_offset_ms == 1000
-      assert session.clock_offset_ms == nil
-
-      # The first heartbeat of each arrives only now, recorded nine minutes ago.
-      for run <- [gateway, session], do: heartbeat(run, 3, ago(541), @now)
-
-      assert %Run{clock_offset_ms: 1000, last_heartbeat_at: heard} = project!(gateway)
-      assert heard == ago(240)
-      assert %Run{clock_offset_ms: 541_000, last_heartbeat_at: @now} = project!(session)
-
-      # The gateway's run is lost; the session's, which has no fresh offset, is not yet.
-      assert Enum.map(Liveness.check(@now), & &1.id) == [gateway.id]
-    end
-
-    # A gateway's run, its ping live 4000 s before @now; the outage begins; its start and
-    # its 110 heartbeats, recorded 3960 to 690 s before @now, are all sent at @now, the
-    # start's batch folded before the heartbeats' or after them.
-    defp sent_late(scope, started_first?) do
-      run = run_fixture(scope, %{inserted_at: ago(4000)})
-      event_fixture(run, 1, "ping", @ping, time: ago(4000), received_at: ago(4000))
-      project!(run)
-
-      start = fn ->
-        event_fixture(run, 2, "run.started", gateway_started_data(),
-          time: ago(3990),
-          received_at: @now
-        )
-      end
-
-      beats = fn -> for k <- 1..110, do: heartbeat(run, 2 + k, ago(3990 - 30 * k), @now) end
-
-      if started_first? do
-        start.()
-        project!(run)
-        beats.()
-      else
-        beats.()
-        project!(run)
-        start.()
-      end
-
-      project!(run)
-    end
-
-    test "a gateway's run comes out the same whether its start or its heartbeats are folded first, and rebuilt",
-         %{scope: scope} do
-      fields = [:state, :clock_offset_ms, :last_heartbeat_at, :elapsed_seconds]
-      in_order = scope |> sent_late(true) |> Map.take(fields)
-      out_of_order = sent_late(scope, false)
-
-      # The last heartbeat, 690 s before @now, by the ping's offset, within the tolerance.
-      assert in_order == %{
-               state: "running",
-               clock_offset_ms: 0,
-               last_heartbeat_at: ago(390),
-               elapsed_seconds: 30 * 112
-             }
-
-      assert Map.take(out_of_order, fields) == in_order
-
-      assert {:ok, rebuilt} = Projector.rebuild(out_of_order)
-      assert Map.take(rebuilt, fields) == in_order
-
-      assert [%Run{state: "lost"}, %Run{state: "lost"}] = Liveness.check(@now)
-    end
-
     test "a run with no offset keeps the arrival rule", %{scope: scope} do
       # A run whose last heartbeat was kept by its arrival, before the offset was.
       run = run_fixture(scope, %{state: "running", last_heartbeat_at: ago(89)})
@@ -476,7 +399,6 @@ defmodule Apiary.Runs.LivenessTest do
       attached = fn attached_at ->
         through_gateway(scope, ago(2000), ago(1400), %{
           attached_at: attached_at,
-          attach_time: attached_at,
           attach_interval_seconds: 10,
           attach_answer_digest: "sha256=" <> String.duplicate("0", 64)
         })

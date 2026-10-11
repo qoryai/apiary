@@ -114,7 +114,6 @@ defmodule Apiary.RunEventsFixtures do
     Map.merge(
       %{
         "opened_by" => "session",
-        "credential" => "none",
         "runtime" => "claude",
         "runtime_version" => "2.1.0",
         "command" => "claude",
@@ -126,26 +125,6 @@ defmodule Apiary.RunEventsFixtures do
         "labels" => %{
           "forge" => "git.example.com",
           "repository" => "acme/shop"
-        }
-      },
-      extra
-    )
-  end
-
-  @doc """
-  The data of a `run.started` a gateway sends for a run it opened, with no session: no
-  runtime, command, host or terminal, and its labels, `run_key` among them.
-  """
-  def gateway_started_data(extra \\ %{}) do
-    Map.merge(
-      %{
-        "opened_by" => "gateway",
-        "credential" => "issuer",
-        "forager_version" => "v0.6.0",
-        "labels" => %{
-          "forge" => "git.example.com",
-          "repository" => "example-org/example-repo",
-          "run_key" => "rk-0001"
         }
       },
       extra

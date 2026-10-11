@@ -24,8 +24,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   Each run is a record Forager could have sent: its registration, then its start, with what it is about (an
   issue's ticket and pull request, a review, a campaign or the nightly audit, on hosts
   under example.com), the policy it ran under, an agent's session with its tools and subagents, the terminal's output, its connections and
-  heartbeats, and its exit. A run on a shared machine has a starter, which gave it its
-  run credential; a run on a laptop has none. Most runs complete and some fail, by the
+  heartbeats, and its exit. A run on a shared machine has a starter, which may give its
+  outcome; a run on a laptop has none. Most runs complete and some fail, by the
   runtime's exit or with the reason their starter gave at the exit, `all_checks_passed`
   or `checks_failed`; a few are cancelled, at their time limit (`timeout`) or by their
   starter (`no_longer_needed`); a few are lost: they go silent and are found lost, or
@@ -786,9 +786,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     {outcome, reason, duration}
   end
 
-  # A run on a shared machine was started by a system that gave it its run credential, its
-  # starter, behind the machine's gateway; a run on a laptop is on the gateway's local link,
-  # with no run credential and no starter.
+  # A run on a shared machine was started by a system, its starter, behind the machine's
+  # gateway; a run on a laptop is on the gateway's local link, with no starter.
   defp starter?(machine), do: not machine.laptop
 
   ## Writing
@@ -883,7 +882,6 @@ defmodule Mix.Tasks.Apiary.Demo.History do
       registration_digest: :crypto.hash(:sha256, Jason.encode!(registration)),
       registration_interval_seconds: registration["interval_seconds"],
       registration_answer_digest: answer_digest(spec),
-      registration_time: instant(div(spec.at, 1000) * 1000),
       last_event_at: last && last.received_at,
       inserted_at: registered_at,
       updated_at: if(last, do: last.received_at, else: registered_at)
@@ -995,7 +993,6 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
     %{
       "opened_by" => "session",
-      "credential" => if(starter?(spec.machine), do: "starter", else: "none"),
       "runtime" => runtime_name(spec),
       "runtime_version" => runtime_version(spec),
       "command" => command,

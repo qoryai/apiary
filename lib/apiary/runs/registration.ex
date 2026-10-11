@@ -82,10 +82,8 @@ defmodule Apiary.Runs.Registration do
   registration's labels, for the active keys of the node that registered it alone, or of
   the gateway that attached it for a run through a gateway (`Apiary.Runs.Sender`).
 
-  The run keeps its registration's `time` (`registration_time`), on the gateway's clock,
-  from which the fold takes the clock offset of a run a gateway opened
-  (`Apiary.Runs.Fold`), and is projected from sequence 1, which its registration stands
-  for (`Apiary.Runs.Run.projected_from/1`).
+  The run is projected from sequence 1, which its registration stands for
+  (`Apiary.Runs.Run.projected_from/1`).
   """
 
   import Ecto.Query, warn: false
@@ -631,7 +629,6 @@ defmodule Apiary.Runs.Registration do
             registration_digest: digest,
             registration_interval_seconds: registration.interval_seconds,
             registration_answer_digest: answer[:digest],
-            registration_time: registration.time,
             # The registration stands for the record's sequence 1, never posted.
             projected_sequence: Run.projected_from(%{registered_at: now}),
             inserted_at: now,

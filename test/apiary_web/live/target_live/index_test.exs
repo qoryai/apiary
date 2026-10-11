@@ -79,7 +79,6 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
        %{conn: conn, scope: scope} do
     started_run(scope, repo("github.example", "acme/quiet"),
       ago: 30,
-      opened_by: "gateway",
       exit: %{"reason" => "quiet", "quiet_seconds" => 1800}
     )
 

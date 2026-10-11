@@ -7,8 +7,8 @@ defmodule Apiary.Runs.Run do
   the receiver on the first event of an unknown subject. The folded fields are folded
   from the events by the projector, so they can be rebuilt from `events` alone. The
   registration fields (`registered_at`, `registration_labels`, `registration_about`,
-  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,
-  `registration_time`) are the registration's own: written once, when the run registers,
+  `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`)
+  are the registration's own: written once, when the run registers,
   and kept by a rebuild. A run that registered is projected from sequence 1, which its
   registration stands for (`projected_from/1`). A run that registered through a gateway
   keeps its run key and its attach beside them (`through_gateway?/1`), kept by a rebuild
@@ -43,10 +43,6 @@ defmodule Apiary.Runs.Run do
     field :about_title, :string
     field :about_subjects, {:array, :map}, default: []
     field :about_details, :map
-    # What opened the run, `opened_by` of `run.started`: "session", a Forager session around
-    # a runtime, or "gateway", a gateway with no session, whose start says no runtime,
-    # command or host and whose exit no state or exit code. Nil until a start says it.
-    field :opened_by, :string
     field :runtime, :string
     field :runtime_version, :string
     field :forager_version, :string
@@ -69,7 +65,8 @@ defmodule Apiary.Runs.Run do
     field :exit_code, :integer
     field :signal, :string
     field :reason, :string
-    # The quiet period the gateway applied, of an exit with the reason "quiet"; nil otherwise.
+    # The quiet period of an exit with the reason "quiet", which an older Forager wrote; nil
+    # otherwise.
     field :quiet_seconds, :integer
     field :duration_ms, :integer
 
@@ -79,9 +76,8 @@ defmodule Apiary.Runs.Run do
     field :last_heartbeat_at, :utc_datetime_usec
     field :elapsed_seconds, :integer
     field :heartbeat_interval_seconds, :integer
-    # The smallest arrival less own time over the run's heartbeats, and for a run a gateway
-    # opened its registration's and its ping's, in milliseconds (`Apiary.Runs.Fold`); nil
-    # until the first.
+    # The smallest arrival less own time over the run's heartbeats, in milliseconds
+    # (`Apiary.Runs.Fold`); nil until the first.
     field :clock_offset_ms, :integer
 
     field :policy_digest, :string
@@ -115,8 +111,7 @@ defmodule Apiary.Runs.Run do
     # its labels, `about` and heartbeat interval as the body sent them (the interval the run
     # is held to, before its heartbeats', `Apiary.Runs.Liveness`); the SHA-256 of
     # the body's bytes, by which a repeat of the same registration is told from another;
-    # the digest of the run configuration it was given, which a repeat is given again; and
-    # the `time` the body was built at, on the gateway's clock (`Apiary.Runs.Fold`).
+    # and the digest of the run configuration it was given, which a repeat is given again.
     # All nil for a run that did not register. Not folded: a rebuild keeps them.
     field :registered_at, :utc_datetime_usec
     field :registration_labels, :map
@@ -124,7 +119,6 @@ defmodule Apiary.Runs.Run do
     field :registration_digest, :binary
     field :registration_interval_seconds, :integer
     field :registration_answer_digest, :string
-    field :registration_time, :utc_datetime_usec
 
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
@@ -150,8 +144,8 @@ defmodule Apiary.Runs.Run do
     # the gateway its node's choice resolved to at its registration, nil should the
     # gateway's row be purged; the exact bytes of its run key's payload and its signature,
     # so a repeat is given the same run key, when the run key was made and the end of its
-    # attach window; and, once the gateway attached it, when,
-    # the attach's `time` on the gateway's clock, the heartbeat interval it announced, which
+    # attach window; and, once the gateway attached it, when, the heartbeat interval it
+    # announced, which
     # the run is held to, and the digest of the run configuration it was given, which a
     # repeat of the attach is given again. All nil for a direct run. Not folded: a rebuild
     # keeps them.
@@ -161,7 +155,6 @@ defmodule Apiary.Runs.Run do
     field :run_key_issued_at, :utc_datetime_usec
     field :attach_by, :utc_datetime_usec
     field :attached_at, :utc_datetime_usec
-    field :attach_time, :utc_datetime_usec
     field :attach_interval_seconds, :integer
     field :attach_answer_digest, :string
 
@@ -261,11 +254,6 @@ defmodule Apiary.Runs.Run do
   @spec through_gateway?(t() | map()) :: boolean()
   def through_gateway?(%{run_key_payload: payload}) when is_binary(payload), do: true
   def through_gateway?(_run), do: false
-
-  @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
-  @spec no_session?(t() | map()) :: boolean()
-  def no_session?(%{opened_by: "gateway"}), do: true
-  def no_session?(_run), do: false
 
   @doc """
   The sequence a run's projection starts from: 1 for a run that registered, whose

@@ -40,7 +40,7 @@ defmodule Apiary.Runs.Attach do
        is `{:error, :workspace_not_served}`;
     9. a run another gateway attached is `{:error, :run_attached}`;
     10. a workspace whose run configuration cannot be read is `{:error, :unavailable}`;
-    11. else the run is attached: when, the attach's `time`, its heartbeat interval, which
+    11. else the run is attached: when, its heartbeat interval, which
         the run is held to from then on (`Apiary.Runs.Liveness`), Forager's version and the
         contract's, and the digest of the run configuration it is given.
 
@@ -346,7 +346,6 @@ defmodule Apiary.Runs.Attach do
         run
         |> Ecto.Changeset.change(
           attached_at: now,
-          attach_time: attach.time,
           attach_interval_seconds: attach.interval_seconds,
           attach_answer_digest: settings.digest,
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),

@@ -231,13 +231,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-rl-denied")
     end
 
-    test "a run a gateway opened that ended quiet: Cancelled, its word shown, no session for its runtime, counted with the cancelled runs",
+    test "a run that ended quiet: Cancelled, its word shown, counted with the cancelled runs",
          %{conn: conn, scope: scope} do
       ended =
         started_run(
           scope,
           %{"forge" => "git.example.com", "repository" => "example-org/example-repo"},
-          opened_by: "gateway",
           exit: %{"reason" => "quiet", "quiet_seconds" => 600, "duration_ms" => 635_000}
         )
 
@@ -253,10 +252,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              )
 
       refute has_element?(view, "#{row(ended)} .q-st-cancelled [data-tip]")
-      assert has_element?(view, "#{row(ended)} td.q-rl-c4.q-rl-faint", "no session")
-      assert has_element?(view, "#{row(ended)} td.q-rl-host", "n/a")
       assert cells =~ "10 m 35 s"
-      refute text(view, row(failed)) =~ "no session"
       assert text(view, row(failed)) =~ "claude 2.1.0"
 
       assert text(view, "#runs-view-all") == "All 2"

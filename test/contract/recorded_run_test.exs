@@ -143,7 +143,6 @@ defmodule Apiary.Contract.RecordedRunTest do
         end
 
       assert projected.state == expected_state
-      assert projected.opened_by == started["data"]["opened_by"]
       assert projected.exit_code == exited["data"]["exit_code"]
       assert projected.reason == exited["data"]["reason"]
       assert projected.quiet_seconds == exited["data"]["quiet_seconds"]

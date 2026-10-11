@@ -509,26 +509,18 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       end
     end
 
-    test "the run's clock offset is its attach's, on the gateway's clock, not its registration's",
-         ctx do
+    test "the run's clock offset is its heartbeats' alone, never its attach's", ctx do
       {run_id, run_key} = registered(ctx)
-      # The gateway's clock two minutes behind this server's; the starter's on time.
+      # The gateway's clock two minutes behind this server's.
       behind = now() |> DateTime.add(-120, :second) |> DateTime.to_iso8601()
 
       assert attach(ctx.gateway_key, run_id, attach_body(run_key, %{"time" => behind})).status ==
                200
 
       {_subject, [started]} = first_events(run_id)
-      data = %{"opened_by" => "gateway", "credential" => "issuer", "forager_version" => "0.8.0"}
-      assert response(deliver(ctx.gateway_key, [%{started | "data" => data}]), 202) == ""
+      assert response(deliver(ctx.gateway_key, [started]), 202) == ""
 
-      {:ok, projected} = Apiary.Runs.Projector.project(run(run_id))
-
-      expected =
-        div(DateTime.diff(projected.attached_at, projected.attach_time, :microsecond), 1000)
-
-      assert projected.clock_offset_ms == expected
-      assert expected in 119_000..122_000
+      assert {:ok, %{clock_offset_ms: nil}} = Apiary.Runs.Projector.project(run(run_id))
     end
 
     test "the outcome is the node's, and a batch after it is answered with the run's end", ctx do

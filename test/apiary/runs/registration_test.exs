@@ -589,7 +589,6 @@ defmodule Apiary.Runs.RegistrationTest do
       assert rebuilt.registered_at == run.registered_at
       assert rebuilt.registration_digest == run.registration_digest
       assert rebuilt.registration_answer_digest == run.registration_answer_digest
-      assert rebuilt.registration_time == run.registration_time
       assert rebuilt.projected_sequence == 2
     end
   end
@@ -619,40 +618,15 @@ defmodule Apiary.Runs.RegistrationTest do
   end
 
   describe "the clock offset" do
-    # A start as the gateway records it, `opened_by` as given.
-    defp start(run_id, opened_by) do
-      {_subject, [started]} = first_events(run_id)
-
-      data = %{"opened_by" => opened_by, "credential" => "issuer", "forager_version" => "0.8.0"}
-      batch!([%{started | "data" => data}])
-    end
-
-    test "of a run a gateway opened is its registration's: arrival less the gateway's time",
+    test "of a registered run is its heartbeats' alone, never its registration's",
          %{key: key} do
-      # The gateway's clock two minutes behind this server's.
+      # The registering machine's clock two minutes behind this server's.
       body = body(Ecto.UUID.generate(), %{"time" => now_z(-120)})
       assert {:ok, %{run: run}} = register(key, body)
 
-      assert run.registration_time ==
-               body["time"] |> DateTime.from_iso8601() |> elem(1) |> DateTime.add(0, :microsecond)
-
+      {_subject, [started]} = first_events(body["run_id"])
       meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, _} = Ingest.ingest(key, start(body["run_id"], "gateway"), meta)
-      assert {:ok, projected} = Projector.project(Repo.get!(Run, run.id))
-      expected = div(DateTime.diff(run.registered_at, run.registration_time, :microsecond), 1000)
-      assert projected.clock_offset_ms == expected
-      assert expected in 119_000..122_000
-
-      # A rebuild finds it again.
-      assert {:ok, %Run{clock_offset_ms: ^expected}} = Projector.rebuild(projected)
-    end
-
-    test "of a run a session opened is its heartbeats' alone", %{key: key} do
-      body = body(Ecto.UUID.generate(), %{"time" => now_z(-120)})
-      assert {:ok, %{run: run}} = register(key, body)
-
-      meta = %{contract_version: 1, instance_id: "i_one"}
-      assert {:ok, _} = Ingest.ingest(key, start(body["run_id"], "session"), meta)
+      assert {:ok, _} = Ingest.ingest(key, batch!([started]), meta)
       assert {:ok, %Run{clock_offset_ms: nil}} = Projector.project(Repo.get!(Run, run.id))
     end
   end

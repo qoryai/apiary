@@ -308,63 +308,35 @@ defmodule Apiary.Contract.SignedFixturesTest do
     end
   end
 
-  test "the batches of a run a gateway opened: no session, and it ends cancelled when quiet, lost when the gateway was lost, or as its starter said" do
+  test "a session's run its starter stopped with no outcome: cancelled, stopped" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 
-    project = fn files ->
-      Repo.delete_all(Run)
-
-      for file <- files do
-        conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> file))
-        assert conn.status == 202, file
-      end
-
-      {:ok, run} = Projector.project(Repo.one!(Run))
-      run
+    for batch <- ["first.json", "session-stopped.json"] do
+      conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> batch))
+      assert conn.status == 202, batch
     end
 
-    run = project.(["gateway-first.json", "gateway-quiet.json"])
-
-    assert run.opened_by == "gateway"
-    assert Run.no_session?(run)
-    assert {run.runtime, run.command, run.host} == {nil, nil, nil}
-    assert run.labels["run_key"] == "rk-0001"
-    assert {run.state, run.reason, run.quiet_seconds} == {"cancelled", "quiet", 1800}
-    assert {run.exit_code, run.duration_ms} == {nil, 1_804_900}
-
-    run = project.(["gateway-first.json", "gateway-lost.json"])
-
-    assert run.opened_by == "gateway"
-
-    assert {run.state, run.reason, run.quiet_seconds, run.exit_code} ==
-             {"lost", "gateway_lost", nil, nil}
-
-    assert run.lost_at == run.exited_at
-
-    run = project.(["gateway-first.json", "gateway-outcome.json"])
-
-    assert {run.opened_by, run.state, run.reason, run.exit_code} ==
-             {"gateway", "completed", "all_checks_passed", nil}
+    {:ok, run} = Projector.project(Repo.one!(Run))
+    assert {run.state, run.reason, run.exit_code} == {"cancelled", "stopped", -1}
   end
 
-  test "the exits of a session's run: its starter's outcome and reason, or stopped with no outcome" do
+  test "a start the schema refuses for what opened it is refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+    [started | rest] = contract_json!("batch/first.json")
+    schema = ContractSchema.event!(contract_dir())
 
-    for {file, expected} <- [
-          {"session-outcome.json", {"failed", "checks_failed", 0}},
-          {"session-stopped.json", {"cancelled", "stopped", -1}}
+    for started <- [
+          contract_json!("invalid/event-started-unknown-opened-by.json"),
+          put_in(started, ["data", "opened_by"], "gateway"),
+          put_in(started, ["data", "credential"], "none")
         ] do
-      Repo.delete_all(Run)
-
-      for batch <- ["first.json", file] do
-        conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> batch))
-        assert conn.status == 202, batch
-      end
-
-      {:ok, run} = Projector.project(Repo.one!(Run))
-      assert run.opened_by == "session"
-      assert {run.state, run.reason, run.exit_code} == expected, file
+      assert {:error, _} = ContractSchema.validate(schema, started)
+      conn = signed_post(build_conn(), key_id, seed, [started | rest])
+      assert json_response(conn, 400) == %{"error" => "invalid_request"}
+      assert signed_answer?(conn)
     end
+
+    assert Repo.aggregate(Run, :count) == 0
   end
 
   test "a refusal of the server's with its status is stored as sent, a code the list does not hold included" do

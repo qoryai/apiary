@@ -6793,17 +6793,6 @@
   .q-term-msg[hidden] {
     display: none;
   }
-  /* The note on an empty screen: a run with no session. */
-  .q-term-empty {
-    max-width: 52ch;
-    padding-inline: 24px;
-    line-height: 1.55;
-    text-align: center;
-  }
-  .q-term-empty b {
-    color: var(--q-term-fg);
-    font-weight: 600;
-  }
   .q-term-foot {
     display: flex;
     height: 26px;
