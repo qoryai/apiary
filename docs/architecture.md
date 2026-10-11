@@ -370,8 +370,9 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   organisation menu and workspace menu, and the heading the organisation menu lists a
   place of its own under (`switcher_entries/1`, `workspace_switcher_entries/1`,
   `place_group/1`; `place_scope/2`, which the core no longer asks); what a page says to
-  a person it lets in without a membership, and of a refusal of its own
-  (`reader_sentence/2`, `refusal_sentence/1`); settings sections (`settings_tabs/1`,
+  a person it lets in without a membership, of a refusal of its own, and, where the pages
+  `who_may_sentence/2` lists ask it, of who may take an action (`reader_sentence/2`,
+  `refusal_sentence/1`, `who_may_sentence/2`); settings sections (`settings_tabs/1`,
   `ApiaryWeb.SettingsComponents`); what it renders in the named places of the core's
   pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
   (`activity_describer/0`), and who made an entry, in its Who column

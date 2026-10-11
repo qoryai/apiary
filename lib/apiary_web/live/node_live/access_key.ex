@@ -332,7 +332,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     cond do
       not socket.assigns.may.add_key ->
-        refused(socket, gettext("Only owners and admins add a node's keys."))
+        refused(socket, :"access_key.add", gettext("Only owners and admins add a node's keys."))
 
       at_limit?(keys) ->
         to_tab(socket, :error, limit_reached_words(node))
@@ -374,7 +374,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp apply_action(socket, :new_code, _params) do
     cond do
       not socket.assigns.may.new_code ->
-        refused(socket, gettext("Only owners and admins connect a node."))
+        refused(
+          socket,
+          :"access_key.create_code",
+          gettext("Only owners and admins connect a node.")
+        )
 
       socket.assigns.issued ->
         socket
@@ -389,7 +393,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     cond do
       not socket.assigns.may.revoke ->
-        refused(socket, gettext("Only owners and admins manage a node's keys."))
+        refused(
+          socket,
+          :"access_key.revoke",
+          gettext("Only owners and admins manage a node's keys.")
+        )
 
       is_nil(key) ->
         to_tab(socket, :error, gettext("This node has no such key."))
@@ -420,7 +428,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     cond do
       not socket.assigns.may.revoke_code ->
-        refused(socket, gettext("Only owners and admins manage a node's keys."))
+        refused(
+          socket,
+          :"access_key.cancel_code",
+          gettext("Only owners and admins manage a node's keys.")
+        )
 
       is_nil(code) ->
         to_tab(socket, :error, outstanding_no_more())
@@ -470,7 +482,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     if socket.assigns.may.add_key,
       do: {:reply, %{}, to_tab(socket, :error, not_added_words())},
       else:
-        {:reply, %{}, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+        {:reply, %{},
+         refused(
+           socket,
+           :"access_key.add",
+           gettext("Only owners and admins manage a node's keys.")
+         )}
   end
 
   # Get the command: a code made at once, with the defaults (stored secrets not allowed,
@@ -506,7 +523,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           {:noreply, not_found(socket)}
 
         {:error, :forbidden} ->
-          {:noreply, refused(socket, gettext("Only owners and admins connect a node."))}
+          {:noreply,
+           refused(
+             socket,
+             :"access_key.create_code",
+             gettext("Only owners and admins connect a node.")
+           )}
       end
     end
   end
@@ -525,7 +547,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+        {:noreply,
+         refused(
+           socket,
+           :"access_key.revoke",
+           gettext("Only owners and admins manage a node's keys.")
+         )}
 
       {:error, _not_saved} ->
         {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
@@ -559,7 +586,12 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:noreply, not_found(socket)}
 
       {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+        {:noreply,
+         refused(
+           socket,
+           :"access_key.cancel_code",
+           gettext("Only owners and admins manage a node's keys.")
+         )}
 
       {:error, _not_saved} ->
         {:noreply, to_tab(socket, :error, gettext("Nothing was changed. Try again."))}
@@ -575,7 +607,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
     if socket.assigns.may[act],
       do: {:noreply, load(socket)},
-      else: {:noreply, refused(socket, gettext("Only owners and admins manage a node's keys."))}
+      else:
+        {:noreply,
+         refused(
+           socket,
+           Keyword.fetch!(@acts, act),
+           gettext("Only owners and admins manage a node's keys.")
+         )}
   end
 
   # A form's change with no form open: nothing to do.
@@ -685,7 +723,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         {:reply, %{}, not_found(socket)}
 
       {:error, :forbidden} ->
-        {:reply, %{}, refused(socket, gettext("Only owners and admins add a node's keys."))}
+        {:reply, %{},
+         refused(socket, :"access_key.add", gettext("Only owners and admins add a node's keys."))}
     end
   end
 
@@ -740,11 +779,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
     |> push_navigate(to: ~p"/#{organisation}/#{workspace}/nodes")
   end
 
-  # An act the reader may not take, as the database has their membership now: one who
-  # still reads the workspace is told why on the tab, and offered no act from then on;
-  # one who reads the organisation through the edition's reach is told so; anyone else is
-  # sent to `/`.
-  defp refused(socket, why) do
+  # An act the reader may not take, `action`, as the database has their membership now:
+  # one who still reads the workspace is told who may on the tab, `why` in the core's
+  # words, and offered no act from then on; one who reads the organisation through the
+  # edition's reach is told so; anyone else is sent to `/`.
+  defp refused(socket, action, why) do
     scope = Access.reload(socket.assigns.current_scope)
 
     cond do
@@ -757,7 +796,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       Access.can?(scope, :"node.read", scope.workspace) ->
         socket
         |> assign(may: Map.new(@acts, fn {act, _} -> {act, false} end), manages: false)
-        |> put_flash(:error, why)
+        |> put_flash(:error, ApiaryWeb.Access.who_may(scope, action, why))
         |> push_patch(to: socket.assigns.paths.access_key)
 
       true ->
@@ -1658,7 +1697,11 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             id="node-keys-members"
             class="text-[13px]/5 text-muted"
           >
-            {gettext("Only owners and admins manage a node's keys.")}
+            {ApiaryWeb.Access.who_may(
+              @current_scope,
+              :"access_key.revoke",
+              gettext("Only owners and admins manage a node's keys.")
+            )}
           </p>
           <ul id="node-keys-list" class="grid gap-3">
             <.key_card

@@ -137,7 +137,14 @@ defmodule ApiaryWeb.NodeLive.Show do
     cond do
       not socket.assigns.may_clear ->
         socket
-        |> put_flash(:error, gettext("Only owners and admins clear instances."))
+        |> put_flash(
+          :error,
+          ApiaryWeb.Access.who_may(
+            socket.assigns.current_scope,
+            :"node.clear_instance",
+            gettext("Only owners and admins clear instances.")
+          )
+        )
         |> push_patch(to: node_path(socket, :overview))
 
       clearing = clearing(socket, instance_id) ->
@@ -158,7 +165,14 @@ defmodule ApiaryWeb.NodeLive.Show do
       assign(socket, :page_title, settings_title(socket.assigns.node))
     else
       socket
-      |> put_flash(:error, gettext("Only owners and admins delete nodes."))
+      |> put_flash(
+        :error,
+        ApiaryWeb.Access.who_may(
+          socket.assigns.current_scope,
+          :"node.delete",
+          gettext("Only owners and admins delete nodes.")
+        )
+      )
       |> push_patch(to: node_path(socket, :settings))
     end
   end
@@ -211,7 +225,8 @@ defmodule ApiaryWeb.NodeLive.Show do
         {:noreply, gone(socket)}
 
       {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins change nodes."), :settings)}
+        {:noreply,
+         refused(socket, :"node.edit", gettext("Only owners and admins change nodes."), :settings)}
     end
   end
 
@@ -229,7 +244,13 @@ defmodule ApiaryWeb.NodeLive.Show do
         {:noreply, gone(socket)}
 
       {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins delete nodes."), :settings)}
+        {:noreply,
+         refused(
+           socket,
+           :"node.delete",
+           gettext("Only owners and admins delete nodes."),
+           :settings
+         )}
     end
   end
 
@@ -239,7 +260,13 @@ defmodule ApiaryWeb.NodeLive.Show do
     if socket.assigns.may_delete,
       do: {:noreply, socket},
       else:
-        {:noreply, refused(socket, gettext("Only owners and admins delete nodes."), :settings)}
+        {:noreply,
+         refused(
+           socket,
+           :"node.delete",
+           gettext("Only owners and admins delete nodes."),
+           :settings
+         )}
   end
 
   def handle_event(
@@ -267,7 +294,13 @@ defmodule ApiaryWeb.NodeLive.Show do
           else: {:noreply, gone(socket)}
 
       {:error, :forbidden} ->
-        {:noreply, refused(socket, gettext("Only owners and admins clear instances."), :overview)}
+        {:noreply,
+         refused(
+           socket,
+           :"node.clear_instance",
+           gettext("Only owners and admins clear instances."),
+           :overview
+         )}
     end
   end
 
@@ -277,7 +310,13 @@ defmodule ApiaryWeb.NodeLive.Show do
     if socket.assigns.may_clear,
       do: {:noreply, socket},
       else:
-        {:noreply, refused(socket, gettext("Only owners and admins clear instances."), :overview)}
+        {:noreply,
+         refused(
+           socket,
+           :"node.clear_instance",
+           gettext("Only owners and admins clear instances."),
+           :overview
+         )}
   end
 
   defp cleared_words(clearing, 0),
@@ -342,10 +381,11 @@ defmodule ApiaryWeb.NodeLive.Show do
     |> push_navigate(to: ~p"/#{organisation}/#{workspace}/nodes")
   end
 
-  # A change the reader may not make, as the database has their membership now: one who
-  # still reads the workspace is told why on the tab `back` names; one who reads the
-  # organisation through the edition's reach is told so; anyone else is sent to `/`.
-  defp refused(socket, why, back) do
+  # A change the reader may not make, `action`, as the database has their membership now:
+  # one who still reads the workspace is told who may on the tab `back` names, `why` in
+  # the core's words; one who reads the organisation through the edition's reach is told
+  # so; anyone else is sent to `/`.
+  defp refused(socket, action, why, back) do
     scope = Access.reload(socket.assigns.current_scope)
 
     cond do
@@ -358,7 +398,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         socket
         |> assign(may_edit: false, may_delete: false, may_clear: false)
         |> assign_form(Nodes.change_node(socket.assigns.node))
-        |> put_flash(:error, why)
+        |> put_flash(:error, ApiaryWeb.Access.who_may(scope, action, why))
         |> push_patch(to: node_path(socket, back))
 
       true ->
@@ -440,6 +480,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           {gettext("The node's name, its kind and how many instances may run at once.")}
         </:subtitle>
         <.general
+          scope={@current_scope}
           node={@node}
           form={@form}
           may_edit={@may_edit}
@@ -795,6 +836,7 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp instance_dom_id(instance_id),
     do: "node-instance-" <> Integer.to_string(:erlang.phash2(instance_id))
 
+  attr :scope, Apiary.Accounts.Scope, required: true
   attr :node, Node, required: true
   attr :form, :any, required: true
   attr :may_edit, :boolean, required: true
@@ -806,7 +848,13 @@ defmodule ApiaryWeb.NodeLive.Show do
   defp general(assigns) do
     ~H"""
     <div :if={!@may_edit} id="node-settings-readonly">
-      <.notice kind={:info}>{gettext("Only owners and admins change these settings.")}</.notice>
+      <.notice kind={:info}>
+        {ApiaryWeb.Access.who_may(
+          @scope,
+          :"node.edit",
+          gettext("Only owners and admins change these settings.")
+        )}
+      </.notice>
     </div>
 
     <SettingsComponents.part id="node-general">
