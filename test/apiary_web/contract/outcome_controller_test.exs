@@ -3,7 +3,11 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
   # active key of the run's node. It sets the run's state whenever it arrives, the exit's
   # facts kept beside it; each run gets one. Until the run's exit arrives, every answer to
   # its batches carries it as `end`.
-  use ApiaryWeb.ConnCase, async: true
+  #
+  # The window's edge is tested at exactly 300 seconds, under the contract's clock pinned
+  # to one second (`pin_clock/0`), so a second ticking over between the test and the server
+  # moves nothing. The clock is the application's environment, so this module is not async.
+  use ApiaryWeb.ConnCase, async: false
 
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
@@ -35,6 +39,14 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
       second: {second, second_secret},
       other: {other, other_secret}
     }
+  end
+
+  # Pins the contract's clock (`ApiaryWeb.Contract.SignedRequest.now/0`) to this second
+  # until the test ends: the test's times and the server's check read the same second.
+  defp pin_clock do
+    now = System.os_time(:second)
+    Application.put_env(:apiary, :contract_now, fn -> now end)
+    on_exit(fn -> Application.delete_env(:apiary, :contract_now) end)
   end
 
   defp now_z(offset \\ 0) do
@@ -258,6 +270,7 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
     end
 
     test "outside the time window is 401, unsigned", ctx do
+      pin_clock()
       assert response(give(ctx.key, ctx.run_id, outcome()), 200) == @answer
       conn = give(ctx.key, ctx.run_id, outcome(%{"time" => now_z(301)}))
       assert json_response(conn, 401) == @unauthorized
@@ -319,6 +332,8 @@ defmodule ApiaryWeb.Contract.OutcomeControllerTest do
     end
 
     test "with a time more than 300 seconds off, 401 unsigned, the run untouched", ctx do
+      pin_clock()
+
       for offset <- [-301, 301] do
         conn = give(ctx.key, ctx.run_id, outcome(%{"time" => now_z(offset)}))
         assert json_response(conn, 401) == @unauthorized
