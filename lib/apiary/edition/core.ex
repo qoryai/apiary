@@ -130,6 +130,9 @@ defmodule Apiary.Edition.Core do
   def features_of(_organisation, _workspace, enabled), do: enabled
 
   @impl true
+  def audit_details(_scope, _organisation_id, details), do: details
+
+  @impl true
   def subject_kinds, do: %{}
 
   @impl true

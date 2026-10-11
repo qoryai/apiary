@@ -16,6 +16,8 @@ defmodule ApiaryWeb.ActivityLive do
   short before and after. Names are looked up when the page reads, never stored in the
   trail (`Apiary.Audit.names/2`). The words for each action are the describers'
   (`ApiaryWeb.Activity.Describer`): the edition's for its actions, the core's for the rest.
+  Who is `ApiaryWeb.Activity.Actor`'s, which the edition may say instead
+  (`c:ApiaryWeb.Edition.activity_actor/2`).
 
   The workspace (`workspace_id`: `workspace` is the path's word for a slug), the action
   and the page are query parameters; a value the page does not know is left out. The
@@ -26,7 +28,7 @@ defmodule ApiaryWeb.ActivityLive do
   on_mount {ApiaryWeb.Access, :"audit.read"}
 
   alias Apiary.{Access, Audit, Features, Organisations}
-  alias ApiaryWeb.Activity.Describer
+  alias ApiaryWeb.Activity.{Actor, Describer}
 
   # A page past the last is said to be empty; one this far is not read at all.
   @page_max 10_000
@@ -161,7 +163,7 @@ defmodule ApiaryWeb.ActivityLive do
                 <.relative_time id={"entry-#{row.id}-time"} at={row.at} />
               </:col>
               <:col :let={row} label={gettext("Who")}>
-                <.actor actor={row.actor} id={"entry-#{row.id}-actor"} />
+                <Actor.actor actor={row.actor} id={"entry-#{row.id}-actor"} />
               </:col>
               <:col :let={row} label={gettext("What")} kind="title">
                 <span id={"entry-#{row.id}-action"}>{row.sentence}</span>
@@ -213,30 +215,6 @@ defmodule ApiaryWeb.ActivityLive do
         </div>
       </div>
     </Layouts.app>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :actor, :map, required: true
-
-  defp actor(assigns) do
-    ~H"""
-    <span id={@id} class="inline-flex min-w-0 items-center gap-2">
-      <%= case @actor.kind do %>
-        <% :person -> %>
-          <span class="truncate">{@actor.text}</span>
-          <span :if={@actor.you?} class="q-faint">{gettext("you")}</span>
-        <% :gone -> %>
-          <span class="q-faint truncate">{@actor.text}</span>
-        <% :access_key -> %>
-          <.icon name="hero-key" class="size-3.5 flex-none text-faint" />
-          <span :if={@actor.text} class="truncate">{@actor.text}</span>
-          <span class="q-faint q-mono">{@actor.detail}</span>
-        <% :instance -> %>
-          <.icon name="hero-cpu-chip" class="size-3.5 flex-none text-faint" />
-          <span>{@actor.text}</span>
-      <% end %>
-    </span>
     """
   end
 
@@ -432,7 +410,7 @@ defmodule ApiaryWeb.ActivityLive do
     %{
       id: entry.id,
       at: entry.inserted_at,
-      actor: actor_of(entry, names, scope),
+      actor: Actor.of(entry, names, scope),
       sentence: first(describers, :sentence, [action, entry, names]) || gettext("Made a change"),
       subject:
         first(describers, :subject, [entry, action, names, scope, workspace]) ||
@@ -448,21 +426,4 @@ defmodule ApiaryWeb.ActivityLive do
   # The first answer of the describers that is not nil.
   defp first(describers, fun, args),
     do: Enum.find_value(describers, &apply(&1, fun, args))
-
-  defp actor_of(%{actor_kind: :person, actor_id: id}, names, scope) do
-    case names.users[id] do
-      nil -> %{kind: :gone, text: gettext("Former member")}
-      email -> %{kind: :person, text: email, you?: scope.user && scope.user.id == id}
-    end
-  end
-
-  defp actor_of(%{actor_kind: :access_key, actor_id: id}, names, _scope) do
-    case names.access_keys[id] do
-      %{label: label, key_id: key_id} -> %{kind: :access_key, text: label, detail: key_id}
-      nil -> %{kind: :gone, text: gettext("An access key")}
-    end
-  end
-
-  defp actor_of(%{actor_kind: :instance}, _names, _scope),
-    do: %{kind: :instance, text: gettext("Qory Apiary")}
 end

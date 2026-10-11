@@ -37,6 +37,8 @@ defmodule Apiary.Edition do
   - **Invitations**: `accepting/3`, `accepted/4`.
   - **Members**: `membership_changed/5`.
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
+  - **Audit trail** (`Apiary.Audit`): `audit_details/3`, what the edition adds to an
+    entry's details as it is written.
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0` and
     `features_of/3` (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
@@ -262,6 +264,30 @@ defmodule Apiary.Edition do
               Scope.t()
             ) :: :ok | {:ok, [%Membership{}]} | {:error, term}
 
+  # Audit trail
+
+  @doc """
+  An entry's `details` as the edition leaves them, asked once for every entry of the audit
+  trail as `Apiary.Audit.record/6` writes it: such as how the actor reached the
+  organisation, which the entry keeps after the way is gone. `scope` is the actor's, a
+  person's, an access key's or the instance's; `organisation_id` is the entry's
+  organisation, which an access key's scope does not load; `details` is the entry's, as
+  JSON has them (string keys), an empty map for an entry without any. The core's answer is
+  `details`, unchanged.
+
+  The edition adds keys of its own and changes or removes none of the core's: a key the
+  entry has, and `allowance_id`, which the core counts entries by whatever their action,
+  raise `ArgumentError`. A key that ends in `_id` and holds an organisation's id is named by
+  `Apiary.Audit.names/2`, as the other side of a change is. What it adds is a JSON map
+  with no secret and no person's name or email address, as the rest of the entry.
+
+  It is asked inside the change's transaction, before the entry is inserted, so it must be
+  cheap: an answer from the scope (its `reach` and `edition`) needs no read, and a read it
+  must make takes no lock, neither `FOR UPDATE` nor `FOR SHARE`, beyond those the change
+  holds already. An error raised rolls the change back.
+  """
+  @callback audit_details(Scope.t(), organisation_id :: Ecto.UUID.t(), details :: map) :: map
+
   # Registries
 
   @doc """
@@ -329,6 +355,7 @@ defmodule Apiary.Edition do
     membership_changed: 5,
     deletion_refusal: 2,
     deletion_changed: 4,
+    audit_details: 3,
     deletion_tables: 0,
     features: 0,
     features_of: 3,

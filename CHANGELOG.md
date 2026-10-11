@@ -293,6 +293,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an
   organisation, marked first and purged after a grace period.
+- An edition may add to an audit entry's details as it is written, such as how the actor
+  reached the organisation (`c:Apiary.Edition.audit_details/3`), and say who made an entry
+  in the Audit log's Who column (`c:ApiaryWeb.Edition.activity_actor/2`); the core adds
+  nothing and says it as before.
 - Retention prunes nothing of a lost run until 7 days after it was lost, however short the
   workspace's settings, so a gateway's record sent after a shorter outage is stored.
 - A heartbeat counts by its own time, corrected by its run's clock offset, within 300

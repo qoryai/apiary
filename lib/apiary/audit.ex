@@ -37,7 +37,9 @@ defmodule Apiary.Audit do
   worker. **Before and after** are the changed fields (`changed/3`), and `details` what
   else the entry says, as JSON maps. They never hold a secret, and never a person's name
   or email address: a person is named by their user id, and a page looks the account up
-  when it shows them.
+  when it shows them. The edition may add to `details` as each entry is written
+  (`c:Apiary.Edition.audit_details/3`), such as how the actor reached the organisation,
+  which the entry keeps after that way is gone.
 
   ## What is audited
 
@@ -190,7 +192,12 @@ defmodule Apiary.Audit do
   renders; a version 7 UUID, `Ecto.UUID.generate(version: 7, precision: :monotonic)`.
   `place: :organisation` makes the entry the organisation's, with no workspace, though
   its subject is a workspace: the deletion, the restoring and the purge of a workspace,
-  whose entries must outlive the workspace's own, which its purge deletes.
+  whose entries must outlive the workspace's own, which its purge deletes. `edition:`, the
+  module whose `audit_details/3` is asked, `Apiary.Edition` unless said, for tests.
+
+  Every entry's `details` pass once through the edition's
+  `c:Apiary.Edition.audit_details/3`, which may add keys of its own, such as how the actor
+  reached the organisation; the core's answer adds none.
 
   Raises `ArgumentError` for an action that is not one of `Apiary.Access.actions/0`, a
   scope without an actor, a subject of a kind the trail does not know, or a subject of
@@ -218,7 +225,8 @@ defmodule Apiary.Audit do
   end
 
   def record(repo, %Scope{} = scope, action, subject, data, opts) when is_atom(repo) do
-    entry = build(scope, action, subject, data || %{})
+    edition = Keyword.get(opts, :edition, Apiary.Edition)
+    entry = build(scope, action, subject, data || %{}, edition)
 
     entry =
       case Keyword.get(opts, :place) do
@@ -302,7 +310,7 @@ defmodule Apiary.Audit do
     end
   end
 
-  defp build(%Scope{} = scope, action, subject, data) when is_map(data) do
+  defp build(%Scope{} = scope, action, subject, data, edition) when is_map(data) do
     unless action in Access.actions() do
       raise ArgumentError, "#{inspect(action)} is not an action of Apiary.Access"
     end
@@ -327,11 +335,47 @@ defmodule Apiary.Audit do
           subject_id: subject_id,
           before: json(data[:before]),
           after: json(data[:after]),
-          details: json(data[:details])
+          details: edition_details(edition, scope, organisation_id, json(data[:details]))
         },
         origin(scope)
       )
     )
+  end
+
+  # The keys the core finds entries by whatever their action, which an edition adding them
+  # to another entry would make count: an invitation's allowance.
+  @queried_details ["allowance_id"]
+
+  # The entry's details as the edition leaves them (`c:Apiary.Edition.audit_details/3`), as
+  # JSON has them: nil still for none, when the edition adds none either. The edition adds,
+  # and changes nothing the core wrote.
+  defp edition_details(edition, scope, organisation_id, details) do
+    given = details || %{}
+
+    case edition.audit_details(scope, organisation_id, given) do
+      ^given ->
+        details
+
+      answer when is_map(answer) ->
+        answer = json(answer)
+        added = Map.keys(answer) -- Map.keys(given)
+
+        cond do
+          Map.take(answer, Map.keys(given)) != given ->
+            raise ArgumentError,
+                  "the edition's audit details add keys, and change or remove none of the entry's"
+
+          Enum.any?(added, &(&1 in @queried_details)) ->
+            raise ArgumentError,
+                  "the edition's audit details may not add #{Enum.join(@queried_details, ", ")}"
+
+          true ->
+            answer
+        end
+
+      answer ->
+        raise ArgumentError, "the edition's audit details are a map, got: #{inspect(answer)}"
+    end
   end
 
   # The one who acts: an access key at the server contract, the instance in its own job,

@@ -12,6 +12,37 @@ defmodule Apiary.AuditTest do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
 
+  # Editions of the audit details (`c:Apiary.Edition.audit_details/3`), for
+  # `Apiary.Audit.record/6`'s `edition:`.
+  defmodule Reached do
+    # How the actor reached the organisation, from the scope, which it is asked with once.
+    def audit_details(scope, organisation_id, details) do
+      send(self(), {:audit_details, organisation_id, details})
+
+      case scope.edition do
+        %{reached_through: id} -> Map.put(details, "reached_through_id", id)
+        _edition -> details
+      end
+    end
+  end
+
+  defmodule Rewrites do
+    def audit_details(_scope, _organisation_id, details), do: Map.put(details, "note", "other")
+  end
+
+  defmodule Removes do
+    def audit_details(_scope, _organisation_id, details), do: Map.delete(details, "note")
+  end
+
+  defmodule Counts do
+    def audit_details(_scope, organisation_id, details),
+      do: Map.put(details, "allowance_id", organisation_id)
+  end
+
+  defmodule NoMap do
+    def audit_details(_scope, _organisation_id, _details), do: nil
+  end
+
   # Every action of the core is audited unless `Apiary.Audit.not_audited/0` says why not
   # (`Apiary.Audit.audited?/1`, which the Activity page's filter asks too). The case makes
   # the change of every audited action, by `Apiary.AuditChanges`, and finds exactly one
@@ -586,7 +617,80 @@ defmodule Apiary.AuditTest do
     end
   end
 
+  describe "what the edition adds to an entry's details" do
+    setup do: owner()
+
+    test "is stored beside the core's, and names the organisation it holds", ctx do
+      %{organisation: other} = sign_up_fixture()
+      reached = %{ctx.scope | edition: Map.put(ctx.scope.edition, :reached_through, other.id)}
+      organisation_id = ctx.scope.organisation.id
+
+      {:ok, entry} = record(reached, %{details: %{note: "kept"}}, edition: Reached)
+
+      assert_received {:audit_details, ^organisation_id, %{"note" => "kept"}}
+      refute_received {:audit_details, _, _}
+      assert entry.details == %{"note" => "kept", "reached_through_id" => other.id}
+      assert Repo.get!(Entry, entry.id).details == entry.details
+      assert Audit.names(ctx.scope, [entry]).organisations == %{other.id => other.name}
+
+      # An entry with no details of the core's has the edition's alone.
+      {:ok, bare} = record(reached, %{}, edition: Reached)
+      assert_received {:audit_details, ^organisation_id, details} when details == %{}
+      assert Repo.get!(Entry, bare.id).details == %{"reached_through_id" => other.id}
+    end
+
+    test "leave the entry as it is when the edition adds nothing", ctx do
+      {:ok, entry} = record(ctx.scope, %{details: %{note: "kept"}}, edition: Reached)
+      assert Repo.get!(Entry, entry.id).details == %{"note" => "kept"}
+
+      {:ok, bare} = record(ctx.scope, %{}, edition: Reached)
+      assert Repo.get!(Entry, bare.id).details == nil
+    end
+
+    test "change and remove none of the core's, and add no key it counts entries by", ctx do
+      before = entries()
+
+      for edition <- [Rewrites, Removes] do
+        assert_raise ArgumentError, ~r/change or remove none of the entry's/, fn ->
+          record(ctx.scope, %{details: %{note: "kept"}}, edition: edition)
+        end
+      end
+
+      assert_raise ArgumentError, ~r/may not add allowance_id/, fn ->
+        record(ctx.scope, %{}, edition: Counts)
+      end
+
+      assert_raise ArgumentError, ~r/are a map, got: nil/, fn ->
+        record(ctx.scope, %{}, edition: NoMap)
+      end
+
+      assert entries() == before
+    end
+
+    test "are the core's own in the core: nothing is added", ctx do
+      details = %{"note" => "kept"}
+
+      assert Apiary.Edition.Core.audit_details(ctx.scope, Ecto.UUID.generate(), details) ==
+               details
+
+      {:ok, entry} =
+        record(ctx.scope, %{details: %{note: "kept"}}, edition: Apiary.Edition.Core)
+
+      assert Repo.get!(Entry, entry.id).details == details
+
+      {:ok, bare} = record(ctx.scope, %{}, edition: Apiary.Edition.Core)
+      assert Repo.get!(Entry, bare.id).details == nil
+    end
+  end
+
   ## Helpers
+
+  # An entry of the workspace's renaming, written by `scope` with `data` and `opts`.
+  defp record(scope, data, opts) do
+    Repo.transact(fn ->
+      Audit.record(Repo, scope, :"workspace.rename", scope.workspace, data, opts)
+    end)
+  end
 
   # The relay takes the message and times out after, running `:during_delivery` first.
   defp relay_that_times_out do
