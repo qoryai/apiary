@@ -128,4 +128,10 @@ defmodule Apiary.EditionStubs do
     def level_refusal(scope, organisation, level, opts),
       do: LocksElsewhere.level_refusal(scope, organisation, level, opts)
   end
+
+  defmodule NoLimit do
+    @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
+    def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
 end

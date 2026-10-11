@@ -171,8 +171,15 @@ defmodule Apiary.Access do
       "make a node or a node pool, whose kind is fixed from then on",
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node, and change a node pool's instance limit",
-      roles: @admins
+    Action.new(:"node.edit", "rename a node or a node pool", roles: @admins),
+    Action.new(
+      :"node.set_limit",
+      "set a node pool's instance limit, as it is made or after",
+      roles: @admins,
+      audited:
+        {:not,
+         "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
+           "node.edit, records it with what else the change made"}
     ),
     Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
     Action.new(

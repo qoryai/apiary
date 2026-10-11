@@ -231,7 +231,10 @@ workspace, neither suspended nor removed, their account in use (`access_key.crea
 asked again of their membership as it is at the enrolment); the key's arrival is an entry
 of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
 node (`node.delete`, owners and admins) revokes its keys in the same transaction, each with
-its entry of `access_key.revoke`. Everyone in the workspace reads the nodes (`node.read`),
+its entry of `access_key.revoke`. Setting a pool's instance limit, as it is made or after,
+is an action of its own (`node.set_limit`), held by owners and admins as `node.edit` is, so
+an edition may keep it from some who change the rest; its change is recorded in the entry
+of the node's creation or edit. Everyone in the workspace reads the nodes (`node.read`),
 and a page shows a node's keys under it.
 
 ## Leaving

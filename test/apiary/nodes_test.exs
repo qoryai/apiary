@@ -199,6 +199,54 @@ defmodule Apiary.NodesTest do
     end
   end
 
+  describe "a pool's limit, where an edition keeps it from one who changes the rest" do
+    # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`): the owner
+    # still holds `node.edit`.
+    setup %{scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners", instance_limit: 5)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+      %{pool: pool}
+    end
+
+    test "the pool is renamed, its limit left as it is", %{scope: scope, pool: pool} do
+      assert Apiary.Access.can?(scope, :"node.edit", pool)
+      refute Apiary.Access.can?(scope, :"node.set_limit", pool)
+
+      assert {:ok, %Node{name: "ci-runners", instance_limit: 5}} =
+               Nodes.update_node(scope, pool, %{name: "ci-runners"})
+
+      # The limit sent as it is changes nothing of it, and asks nothing of it.
+      assert {:ok, %Node{name: "ci-pool", instance_limit: 5}} =
+               Nodes.update_node(scope, pool, %{name: "ci-pool", instance_limit: "5"})
+    end
+
+    test "a change of the limit is refused, and changes and records nothing", %{
+      scope: scope,
+      pool: pool
+    } do
+      for attrs <- [%{instance_limit: 3}, %{instance_limit: ""}, %{name: "ci", instance_limit: 3}] do
+        assert {:error, :forbidden} = Nodes.update_node(scope, pool, attrs)
+      end
+
+      assert %Node{name: "spot-runners", instance_limit: 5} = Repo.reload!(pool)
+      assert [_created] = entries(pool)
+    end
+
+    test "a pool is made without a limit, and not with one", %{scope: scope} do
+      assert {:error, :forbidden} =
+               Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: 3})
+
+      refute Repo.get_by(Node, workspace_id: scope.workspace.id, name: "ci")
+
+      assert {:ok, %Node{kind: :pool, instance_limit: nil}} =
+               Nodes.create_node(scope, %{kind: "pool", name: "ci", instance_limit: ""})
+
+      # A node's limit is 1, whoever makes it.
+      assert {:ok, %Node{kind: :node, instance_limit: 1}} =
+               Nodes.create_node(scope, %{kind: "node", name: "build-09", instance_limit: 4})
+    end
+  end
+
   describe "deleting a node" do
     test "takes it out of the workspace's nodes, and keeps its row", %{scope: scope} do
       node = node_fixture(scope, name: "build-01")

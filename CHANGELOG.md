@@ -199,7 +199,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   machine that runs one instance at a time, a node pool a fleet of short-lived instances
   up to its instance limit, or any number without one; the kind is fixed when one is
   made. Owners and admins add them, rename them, change a pool's limit and delete them
-  (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
+  (`node.create`, `node.edit`, `node.delete`, each in the audit trail). Setting a pool's
+  limit, as it is made or after, is an action of its own, `node.set_limit`, held as
+  `node.edit` is, so an edition may keep it from some who change the rest: the node's
+  Settings then show the limit disabled, and New node pool leaves it out; the entry of the
+  creation or the edit records it. Everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
