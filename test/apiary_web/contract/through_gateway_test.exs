@@ -737,6 +737,55 @@ defmodule ApiaryWeb.Contract.ThroughGatewayTest do
       assert run(run_id).event_count == 1
     end
 
+    test "after the run is lost, a conflicting event at a stored sequence is answered alike to any instance",
+         ctx do
+      # A run whose sequence 2 holds its start, lost after it: the conflict is another
+      # event, with its own id, at the same sequence.
+      lost_with_start = fn ->
+        run_id = attached(ctx)
+        {_subject, [started]} = first_events(run_id)
+        assert response(deliver(ctx.gateway_key, [started]), 202) == ""
+
+        Repo.update_all(from(r in Run, where: r.run_id == ^run_id),
+          set: [state: "lost", lost_at: now()]
+        )
+
+        {run_id, started, beat(run_id, 2)}
+      end
+
+      stored = fn run_id ->
+        %Run{id: id, event_count: count} = run(run_id)
+        event = Repo.one!(from e in Event, where: e.run_id == ^id and e.sequence == 2)
+        {count, event.event_id, event.type}
+      end
+
+      second = second_key(ctx)
+
+      {run_id, started, conflict} = lost_with_start.()
+      before = stored.(run_id)
+      assert before == {1, started["id"], "dev.qory.run.started"}
+
+      own = deliver(ctx.gateway_key, [conflict])
+      other = deliver(second, [conflict], instance_id: @other_instance)
+
+      # Today's answer to a conflicting event: stored nothing, dropped and counted, 202.
+      assert answer(own) == {202, ""}
+      assert answer(other) == answer(own)
+      assert signed_answer?(own)
+      assert signed_answer?(other)
+      assert stored.(run_id) == before
+
+      # The same when the other instance alone sends it, with nothing from the attaching
+      # instance before: the answer does not depend on who sent first.
+      {run_id, _started, conflict} = lost_with_start.()
+      before = stored.(run_id)
+      alone = deliver(second, [conflict], instance_id: @other_instance)
+
+      assert answer(alone) == answer(other)
+      assert signed_answer?(alone)
+      assert stored.(run_id) == before
+    end
+
     test "after its events were pruned, another instance is answered 410, as the attaching instance is",
          ctx do
       run_id = attached(ctx)
