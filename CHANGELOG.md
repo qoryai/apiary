@@ -561,6 +561,14 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `rule_composer/1` and `rule_list/1`'s `composer` slot stay for callers that have not
   moved. On a page with the form, a Remove that `ApiaryWeb.PolicyLive.Common` answers gives
   the focus to Add rule, never to a composer the page does not draw.
+- The rule form and its reading also serve a level above the workspace, for an edition
+  that keeps one: `rule_form/1` and `ApiaryWeb.PolicyLive.Reading.host_rule/2` take the
+  scope `:organisation`, whose button reads Add rule and whose sentences say "for every
+  workspace", and `ApiaryWeb.PolicyLive.Common.mount/3` takes `scope` and `may_change`,
+  who may change the page's rules. Where only that level allows a host, Network access and
+  To review lead to its New rule page with the host filled in (`new_rule_path` of
+  `c:ApiaryWeb.Edition.above_policy_link/1`), no longer to its policy page with the host
+  as `allow`.
 - Every form answers a field that is wrong under it, in the page's words, and never with
   the browser's built-in bubble: the log-in form says an address cannot be one before it
   sends a link, and still says the same of an address with an account and one without.
