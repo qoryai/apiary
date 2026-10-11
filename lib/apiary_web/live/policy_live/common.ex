@@ -748,7 +748,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   # The rows' menu of a page whose rules are the writer's alone: a page that lists more
   # than one holder's rules answers these before asking here. On a page with the rule
   # form, which draws no composer, Edit is a page: the old event is led to the rule's
-  # Edit rule page. Only a rule's id is led there; anything else is dropped.
+  # Edit rule page. Only an id in a rule id's form (a UUID) is led there, and Edit rule
+  # sends one that names no rule back to the list; anything else is dropped.
   def handle_event("edit_paths", params, %{assigns: %{form_id: "policy-rule"}} = socket) do
     case params do
       %{"id" => id} when is_binary(id) ->

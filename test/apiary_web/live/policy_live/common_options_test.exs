@@ -150,7 +150,7 @@ defmodule ApiaryWeb.PolicyLive.CommonOptionsTest do
       # No composer is opened behind the page.
       refute led.assigns[:composer_open]
 
-      # A crafted id that is no rule's id leads nowhere, and the page stays up.
+      # An id that is not a UUID leads nowhere, and the page stays up.
       for bad <- [
             %{},
             %{"id" => 7},
