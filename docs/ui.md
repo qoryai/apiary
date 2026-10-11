@@ -284,7 +284,9 @@ replaces the navigation it is in.
   older one leads to the log-in page first), shows the link once above the list, to copy
   and send, until Done, and the link's page, `/users/password/:token`, sets
   the account's password), Workspaces
-  (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
+  (whoever may rename or delete a workspace, `Apiary.Organisations.lists_workspaces?/1`,
+  owners and admins in the core; Delete… and the note under the list only for whoever
+  may delete one; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
   `:workspaces_heading` slot), and the edition's sections

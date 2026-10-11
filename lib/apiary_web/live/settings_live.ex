@@ -7,8 +7,10 @@ defmodule ApiaryWeb.SettingsLive do
 
   - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug,
     its owners and, last, its danger zone, the deletion of the organisation; Workspaces,
-    `/:org/settings/workspaces` (`:workspaces`), for an owner or an admin, with the
-    deletion of one and the cancelling of a deletion.
+    `/:org/settings/workspaces` (`:workspaces`), for whoever may rename or delete a
+    workspace (`Apiary.Organisations.lists_workspaces?/1`), an owner or an admin in the
+    core's edition, with the deletion of one and the cancelling of a deletion for whoever
+    may take them.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
     slug, its type (its domain, read only: "A software workspace") and, last, its danger
     zone, its deletion while it is one of several; Runs,
@@ -259,6 +261,7 @@ defmodule ApiaryWeb.SettingsLive do
       scope={@current_scope}
       workspaces={@workspaces}
       targets={@workspace_targets}
+      may_delete={may?(@current_scope, :"workspace.delete")}
       confirming={@live_action == :delete_workspace && @deleting}
       confirm_form={@confirm_form}
     />
@@ -876,17 +879,21 @@ defmodule ApiaryWeb.SettingsLive do
     assign(socket, :confirm_form, to_form(params, as: :confirm, errors: errors))
   end
 
-  # The workspaces of the organisation in use, and those marked for deletion, for whoever
-  # may delete one: Workspaces lists them, and a workspace's danger zone asks whether it is
-  # the only one.
+  # The workspaces of the organisation in use, for whoever may rename or delete one, and
+  # those marked for deletion, for whoever may delete one: Workspaces lists them, and a
+  # workspace's danger zone asks whether it is the only one.
   defp load_workspaces(socket) do
     scope = socket.assigns.current_scope
 
-    if may?(scope, :"workspace.delete") do
+    if Organisations.lists_workspaces?(scope) do
       assign(socket,
         workspaces: Organisations.list_workspaces(scope),
         workspace_targets: Apiary.Targets.count_by_workspace(scope),
-        marked_workspaces: Deletion.list_marked_workspaces(scope)
+        marked_workspaces:
+          if(may?(scope, :"workspace.delete"),
+            do: Deletion.list_marked_workspaces(scope),
+            else: []
+          )
       )
     else
       assign(socket, workspaces: [], workspace_targets: %{}, marked_workspaces: [])

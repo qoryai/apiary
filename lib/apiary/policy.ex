@@ -2286,8 +2286,9 @@ defmodule Apiary.Policy do
   # `Apiary.Access`'s answer as the policy says it: a sentence for a role that may not,
   # not found where the `security` feature is off. Asked of the scope `write/4` read under
   # the workspace's lock, without another read. A reader, who reads the organisation
-  # through the edition's reach and changes nothing in it (`Apiary.Access.reader/1`), is
-  # told so in the edition's words rather than the level a change would take.
+  # through the edition's reach in a role that changes nothing there
+  # (`Apiary.Access.reader/1`), is told so in the edition's words rather than the level a
+  # change would take.
   defp may(%Scope{} = scope, action, message) do
     case Access.check(scope, action, scope.workspace) do
       :ok ->

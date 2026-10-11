@@ -613,14 +613,12 @@ defmodule Apiary.Targets do
   @doc """
   count_by_workspace/1 is how many targets each workspace of the scope's organisation has,
   by the workspace's id, for a reader who may list the organisation's workspaces
-  (`workspace.delete`, asked of the organisation): the Workspaces section of its settings.
+  (`Apiary.Organisations.lists_workspaces?/1`): the Workspaces section of its settings.
   A workspace with none is absent; anyone else gets an empty map.
   """
   @spec count_by_workspace(Scope.t()) :: %{Ecto.UUID.t() => non_neg_integer}
-  def count_by_workspace(
-        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope
-      ) do
-    if Access.can?(scope, :"workspace.delete", organisation) do
+  def count_by_workspace(%Scope{organisation: %Organisation{id: organisation_id}} = scope) do
+    if Apiary.Organisations.lists_workspaces?(scope) do
       from(t in Target,
         where: t.organisation_id == ^organisation_id,
         group_by: t.workspace_id,

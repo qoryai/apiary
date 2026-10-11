@@ -19,8 +19,10 @@ defmodule ApiaryWeb.Access do
   `Apiary.Access`'s table.
 
   A reader (`Apiary.Access.reader/1`), who reads the organisation through the edition's
-  reach with no membership there, reads everything and changes nothing: a page that
-  refuses them a change says so with `reads_only/1`, rather than the level it would take.
+  reach with no membership there, in a role that holds no change, reads everything and
+  changes nothing: a page that refuses them a change says so with `reads_only/1`, rather
+  than the level it would take. One the edition lets in with a role that changes
+  something is told what a refusal says to anyone else.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
