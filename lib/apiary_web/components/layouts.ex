@@ -182,8 +182,9 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's: on a workspace's page a node, a node pool, and with the `secrets`
-  feature an integration, a secret and a variable, and everywhere an invitation; of them,
+  then the core's: on a workspace's page a node, a node pool, with the `security` feature
+  a network access rule, and with the `secrets` feature an integration, a secret and a
+  variable, and everywhere an invitation; of them,
   only what the reader may do there, each entry's action asked of the workspace or the
   organisation as its `place` says.
   """
@@ -207,7 +208,9 @@ defmodule ApiaryWeb.Layouts do
             path: ~p"/#{organisation}/#{workspace}/nodes/new-pool",
             action: :"node.create"
           }
-        ] ++ secrets_entries(scope, organisation, workspace)
+        ] ++
+          security_entries(scope, organisation, workspace) ++
+          secrets_entries(scope, organisation, workspace)
       else
         []
       end
@@ -228,6 +231,24 @@ defmodule ApiaryWeb.Layouts do
   end
 
   def new_entries(_scope, _place), do: []
+
+  # New's entry of the `security` feature, which asks `on?(scope, :security)`: a rule of
+  # the workspace's policy, on its New rule page.
+  defp security_entries(scope, organisation, workspace) do
+    if Apiary.Features.on?(scope, :security) do
+      [
+        %Entry{
+          key: :rule,
+          label: gettext("Network access rule"),
+          icon: "hero-shield-check",
+          path: ~p"/#{organisation}/#{workspace}/policy/rules/new",
+          action: :"security_policy.edit"
+        }
+      ]
+    else
+      []
+    end
+  end
 
   # New's entries of the `secrets` feature, which ask `on?(scope, :secrets)`: an
   # integration, a secret and a variable.

@@ -202,7 +202,8 @@ Nothing opens over a page but **Search or jump to**, the palette (above), the on
 the console keeps. Every other act happens on a page, in place:
 
 - **A form is a page** of its section at a path of its own, never a dialog over a list:
-  New secret, New variable, Invite people, New node, an export. Its
+  New secret, New variable, Invite people, New node, a policy's New rule and Edit rule,
+  an export. Its
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
@@ -565,6 +566,29 @@ whose sections come from the rows' sources and people (an edition that adds rule
 another holder gives them a source, and the menu, the qualifier and the order take it);
 Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `?rule=`,
 which Network access links with, landing on the page that holds the rule and marking it.
+The list is the Network access section of its page: its header holds the heading, how
+many rules, "See what the runs reached" and **Add rule**, the section's one primary
+button, with a line under it of what the rules are; the search's bar keeps Find, Filter
+and Sort. A reader who may not change the policy sees no Add rule and no row menus.
+
+**A rule is added and changed on a page** (No modals, above), never in a line
+over the list: New rule (`…/policy/rules/new`, a target's `…/-/policy/rules/new`) from
+Add rule, the empty list's Add a host rule and the top bar's New (Network access rule);
+Edit rule (`…/policy/rules/:id/edit`) from a row's ⋯ Edit, for an allow and a deny alike
+(`PolicyComponents.rule_form/1`). The form asks the goal first: "What should runs do?",
+Allow and Deny as two radio cards that each say what they do; then Host and Paths, each
+labelled with its help under it (a deny takes no paths and says so); then "What this
+rule does", the rule read back in plain words as it is typed (`PolicyLive.Reading`), a
+polite live region. An error is said under its field, with its repair as a link (Use
+api.example, Every path, Show it); a refusal, a lock's or the domain's, takes the read
+back's place above the foot. Add rule is never off: pressed with an error, it moves the
+focus to the first field at fault. A pasted list of hosts fills Host with the first and
+counts the rest beside its label; each is added in turn, the page staying until the last.
+A save goes back to the list as it was left, on the page that holds the rule, its row
+marked and New in its version, the focus on its ⋯, with the flash that names the version;
+Cancel goes back to the list as it was left. On Edit rule the host is shown, not a field:
+another host is a new rule. A target's suggestion's Allow with paths… opens New rule with
+the host filled and the focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny).
 A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;

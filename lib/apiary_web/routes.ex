@@ -527,8 +527,11 @@ defmodule ApiaryWeb.Routes do
               live "/runs/:run_id/details", RunLive.Show, :details
               # The security policy: the workspace's baseline; a target's view of it is
               # the Policy tab of the target's page. Tabs, filters, the opened change, the
-              # compared version and the export page are in the URL.
+              # compared version and the export page are in the URL. A rule is added and
+              # edited on a page of its own (a target's: `…/-/policy/rules/new`).
               live "/policy", PolicyLive.Show, :rules
+              live "/policy/rules/new", PolicyLive.Show, :new_rule
+              live "/policy/rules/:id/edit", PolicyLive.Show, :edit_rule
               live "/policy/targets", PolicyLive.Show, :targets
               live "/policy/history", PolicyLive.Show, :history
               live "/policy/document", PolicyLive.Show, :document

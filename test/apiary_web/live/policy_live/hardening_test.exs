@@ -78,10 +78,21 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       view |> element("#policy-rules-add") |> render_click()
 
       view
-      |> form("#policy-composer", rule: %{host: "*.paste.example", paths: ""})
+      |> form("#policy-rule-form", rule: %{host: "*.paste.example", paths: ""})
       |> render_change()
 
+      render_hook(view, "rule_save", %{})
+      assert rule(scope, "*.paste.example").action == "deny"
+
+      # The event of the composer kept for callers that have not moved is refused the same.
       render_hook(view, "composer_save", %{})
+      assert rule(scope, "*.paste.example").action == "deny"
+
+      # The Edit rule page of the locked rule reads the lock, and saves nothing.
+      view = open(conn, workspace_path(scope, "/policy/rules/#{locked.id}/edit"))
+      view |> form("#policy-rule-form", rule: %{action: "allow"}) |> render_change()
+      assert has_element?(view, "#policy-rule-refusal")
+      render_hook(view, "rule_save", %{})
       assert rule(scope, "*.paste.example").action == "deny"
     end
   end
@@ -107,7 +118,12 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       assert rules(scope, target) == []
       assert rule(scope, "*.paste.example").locked
       assert rule(scope, "github.example").action == "allow"
-      refute has_element?(view, "#policy-composer")
+      refute has_element?(view, "#policy-rule-form")
+
+      # Nor from the workspace's rule's Edit rule page under this target's address.
+      view = open(conn, "#{path}/rules/#{plain.id}/edit")
+      refute has_element?(view, "#policy-rule-form")
+      assert rule(scope, "github.example").action == "allow"
 
       render_hook(view, "mode_open", %{"mode" => "enforce"})
       render_hook(view, "mode_pick", %{"mode" => "enforce"})
@@ -199,7 +215,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   end
 
   describe "payloads no form sends" do
-    test "leave the composer as it was and the page up", %{conn: conn, scope: scope} do
+    test "leave the form as it was and the page up", %{conn: conn, scope: scope} do
       view = open(conn, workspace_path(scope, "/policy"))
       view |> element("#policy-rules-add") |> render_click()
 
@@ -210,6 +226,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
             %{"rule" => %{"host" => ["x"], "paths" => nil}},
             %{}
           ] do
+        render_hook(view, "rule_validate", payload)
         render_hook(view, "composer_change", payload)
       end
 
@@ -218,11 +235,15 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
             %{"host" => 5, "paths" => [], "action" => "burn"},
             %{"action" => %{}}
           ] do
+        render_hook(view, "rule_use", payload)
         render_hook(view, "composer_use", payload)
       end
 
+      render_hook(view, "rule_paste", %{"hosts" => [1, %{}, "ok.example"]})
+      render_hook(view, "rule_paste", %{"hosts" => "nope"})
       render_hook(view, "composer_paste", %{"hosts" => [1, %{}, "ok.example"]})
       render_hook(view, "composer_paste", %{"hosts" => "nope"})
+      render_hook(view, "rule_every", %{"x" => [1]})
       render_hook(view, "would_allow", %{"key" => %{}})
       render_hook(view, "mode_open", %{"mode" => ["enforce"]})
       render_hook(view, "mode_pick", %{"mode" => ["enforce"]})
@@ -236,13 +257,16 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       render_hook(view, "remove", %{"id" => %{}})
       render_hook(view, "change_action", %{"id" => ["x"]})
 
-      render_hook(view, "composer_change", %{
+      render_hook(view, "rule_validate", %{
         "rule" => %{"host" => "a\0b.example" <> String.duplicate("x", 10_000), "paths" => ""}
       })
 
       assert Process.alive?(view.pid)
+      assert has_element?(view, "#policy-rule-host-error")
+      render_hook(view, "rule_save", %{})
+      assert Process.alive?(view.pid)
       assert length(rules(scope)) == 3
-      assert has_element?(view, "#policy-composer-add[disabled]")
+      assert has_element?(view, "#policy-rule-form")
     end
   end
 
@@ -266,7 +290,20 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
               scope,
               "/policy?page=99999999999999999999&q=" <> String.duplicate("a", 5_000)
             ),
-            path <> "/history?page=0&change=1"
+            path <> "/history?page=0&change=1",
+            workspace_path(
+              scope,
+              "/policy/rules/new?action[]=deny&host[a]=b&paths=%00&focus[]=x"
+            ),
+            workspace_path(
+              scope,
+              "/policy/rules/new?action=burn&host=" <> String.duplicate("a", 5_000)
+            ),
+            workspace_path(scope, "/policy/rules/%00/edit"),
+            workspace_path(scope, "/policy/rules/not-a-rule/edit"),
+            workspace_path(scope, "/policy/rules/#{String.duplicate("a", 500)}/edit"),
+            path <> "/rules/new?host[]=x",
+            path <> "/rules/%00/edit"
           ] do
         view = open(conn, query)
         assert has_element?(view, "#policy-page"), query
