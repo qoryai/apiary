@@ -165,10 +165,16 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   Ed25519 key, which every machine pins as `apiary_public_key`, and sent with
   `Cache-Control: no-store, no-transform`, while every `401` goes out unsigned. The
   refusals come in the contract's order, coded: a header sent twice or an instance id
-  absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`) and the
-  server's keys (`apiary_public_key`), so its digest differs by node. The tests replay
-  the contract's own fixtures at the commit `.forager-contract-ref` pins, 5ddac44 on
-  Forager's main.
+  absent or malformed is `400` `bad_request` on every endpoint. Discovery names the key's node (`node_id`), its
+  workspace (`workspaces`) and the server's keys (`apiary_public_key`), so its digest
+  differs by node and workspace. The tests replay the contract's own fixtures at the
+  commit `.forager-contract-ref` pins, c7777da on Forager's next.
+- A workspace's id in the server contract: every workspace has one, `ws_` and 16
+  characters, made when it is created, and discovery lists it as `workspaces`, the one
+  workspace an access key may name, that of its node or node pool. Only the contract
+  names a workspace by it: the console neither shows nor uses it. With it every access
+  key's discovery digest changes once, when this is deployed, so each Forager reads
+  discovery again once.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
   it: the events endpoint, and a run's registration and reload, each spend a bucket of
   their own, 50 requests a second and 100 at once, so a gateway flushing a backlog of
@@ -516,6 +522,10 @@ all six or none.
 `20261010190000_keep_a_registration_s_time` adds `runs.registration_time`, the `time` a
 run's registration was built at, NULL for every existing row, with a check that it is set
 only on a run that registered.
+`20261011100000_give_a_workspace_its_id` adds `workspaces.public_id`: each workspace's id,
+`ws_` and 16 characters, made for every existing workspace by the function
+`workspace_public_id()`, which is also the column's default; unique, with a check on its
+shape.
 
 ### Upgrading
 

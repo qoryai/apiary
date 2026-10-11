@@ -176,6 +176,7 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 {
   "version": 1,
   "node_id": "nd_f1xt0re000000000",
+  "workspaces": ["ws_f1xt0re000000000"],
   "events": {"url": "https://qory.example/v1/events", "types": ["*"]},
   "run": {"url": "https://qory.example/v1/runs"},
   "apiary_public_key": [{"alg": "ed25519", "public_key": "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"}]
@@ -183,10 +184,13 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 ```
 
 `node_id` is the key's node or node pool, and `apiary_public_key` lists the server's
-signing key, for information: the gateway verifies under the key it pinned. `run.url` is
+signing key, for information: the gateway verifies under the key it pinned. `workspaces`
+lists the one workspace the key may name, the one its node or node pool belongs to, by its
+id: `ws_` and 16 lowercase Crockford base32 characters, which Qory Apiary gives every
+workspace and names it by in the contract alone. `run.url` is
 the run endpoint, with no trailing slash: a run registers there, and a reload adds `/` and
-the run's id. The document, and its digest, differ by node, never by the workspace's
-policy.
+the run's id. The document, and its digest, differ by node and workspace, never by the
+workspace's policy.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A Forager file's `gateway.server.url` is that address, and the
