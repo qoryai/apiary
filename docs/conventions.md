@@ -31,6 +31,14 @@ of them to a key of the core's; a core migration never changes a key an edition 
 reference without a note under Migrations. After the migrations the release runs the
 edition's step (`c:Apiary.Edition.after_migrate/0`).
 
+A migration's version is the timestamp in its name, `YYYYMMDDHHMMSS`. From 2026-10-11 on,
+the core's migrations use the hours 00–16 of it; the hours 17–23 are kept for editions
+built on the core, so the two never share a version. `mix ecto.gen.migration` stamps the
+current time, so a timestamp it gives at 17:00 or later is moved into 00–16 of the same
+day, after the day's last core migration, before the migration is committed. The earlier
+migrations keep their versions, some of which fall in 17–23: renaming a migration changes
+its version, and a database that already has it runs it again.
+
 ## Tests
 
 A test is hermetic: the SQL sandbox for the database, the Swoosh test adapter for email,
