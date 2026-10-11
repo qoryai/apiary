@@ -479,14 +479,15 @@ defmodule ApiaryWeb.Routes do
               # lists narrowed to the target (`ApiaryWeb.TargetLive.Show`).
               live "/targets", TargetLive.Index, :index
               live "/targets/*glob", TargetLive.Show, :show
-              # The workspace's nodes and node pools: the list, with New node and New node
-              # pool each a page of its own, and a node's page, Overview, Access key and
+              # The workspace's nodes, node pools and gateways: the list, with New node, New
+              # node pool and New gateway each a page of its own, and a node's page, Overview, Access key and
               # Settings, its deletion confirmed in place in Settings, and clearing an
               # instance in place in Overview. `:node_id` is the node's public id; an
               # instance is named by its instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool
+              live "/nodes/new-gateway", NodeLive.Index, :new_gateway
               live "/nodes/:node_id", NodeLive.Show, :overview
               live "/nodes/:node_id/instances/:instance/clear", NodeLive.Show, :clear_instance
               live "/nodes/:node_id/settings", NodeLive.Show, :settings

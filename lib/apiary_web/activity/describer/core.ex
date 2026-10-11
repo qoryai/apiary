@@ -474,6 +474,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp level(other), do: other
 
   defp kind_word("pool"), do: gettext("Node pool")
+  defp kind_word("gateway"), do: gettext("Gateway")
   defp kind_word(_node), do: gettext("Node")
 
   defp limit_or_name("instance_limit", nil), do: gettext("No limit")

@@ -1,8 +1,10 @@
 defmodule ApiaryWeb.NodeLive.Index do
   @moduledoc """
-  The workspace's nodes and node pools, `/:org/:workspace/nodes`, the places its runs
-  run, on the list pattern (`docs/ui.md`, Lists): one line a node, its name the title
-  with its public id beside it, its kind in words only for a pool, its state
+  The workspace's nodes, node pools and gateways, `/:org/:workspace/nodes`, the places
+  its runs run and the gateways they may reach Qory Apiary through, on the list pattern
+  (`docs/ui.md`, Lists): one line a node, its name the title with its public id beside
+  it, and Default beside the workspace's default gateway, its kind in words for a pool
+  and a gateway, its state
   (`ApiaryWeb.NodeComponents.node_state/1`: "Running", "3 of 10 running", "Last seen …"
   or "Never seen") and Forager's version it last reported. Under a pool's line, its
   running instances as indented lines, ten at most, then "and 12 more", which leads to the
@@ -11,17 +13,22 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   The views are All, Running and Not running (`?view=running`, `?view=idle`), each counted
   under the search and the kind. The list is narrowed by one search, `?q=`, words of a
-  name or an id, and the Filter menu's Kind, `?kind=node` or `?kind=pool`, and sorted by
+  name or an id, and the Filter menu's Kind, `?kind=node`, `?kind=pool` or
+  `?kind=gateway`, and sorted by
   name or by Last seen (`?sort=seen`: running first, then the last seen first, never seen
   last), all in the URL.
 
-  Owners and admins make a node or a node pool here (`node.create`), a pool's instance
-  limit asked only of one who sets it (`node.set_limit`), each a page of its
-  own, `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (`docs/ui.md`, A
-  form is a page): the breadcrumb `Nodes / New node`, the page's heading and one sentence,
-  the form in the 720 px column, its button and Cancel back to the list
-  (`ApiaryWeb.PageComponents.page_form/1`). The kind is the page's and never changes
-  after. Making one leads to its Access key tab, with a flash.
+  Owners and admins make a node, a node pool or a gateway here (`node.create`), a pool's
+  instance limit asked only of one who sets it (`node.set_limit`), each a page of its
+  own, `/nodes/new`, `/nodes/new-pool` and `/nodes/new-gateway`, on the pattern of a form
+  page (`docs/ui.md`, A form is a page): the breadcrumb `Nodes / New node`, the page's
+  heading and one sentence, the form in the 720 px column, its button and Cancel back to
+  the list (`ApiaryWeb.PageComponents.page_form/1`). A gateway's form asks its name and
+  its URL. A node's and a pool's ask their gateway too, where the workspace has one
+  (`ApiaryWeb.NodeComponents.gateway_field/1`): Default gateway, offered only when a
+  default resolves for the workspace and then the one it starts on, Direct otherwise, or
+  a gateway by name. The kind is the page's and never changes after. Making one leads to
+  its Access key tab, with a flash.
   Everyone in the workspace reads the list (`node.read`); a member sees it without the
   buttons, and a form's path refuses them.
 
@@ -36,7 +43,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   use ApiaryWeb, :live_view
   on_mount {ApiaryWeb.Access, :"node.read"}
 
-  alias Apiary.{Access, Nodes, Runs}
+  alias Apiary.{Access, Gateways, Nodes, Runs}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
   alias ApiaryWeb.NodeComponents
@@ -65,7 +72,9 @@ defmodule ApiaryWeb.NodeLive.Index do
        may_runs: may_runs,
        reload_scheduled: false,
        form: nil,
-       kind: nil
+       kind: nil,
+       gateways: [],
+       default: nil
      )}
   end
 
@@ -88,12 +97,16 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp apply_action(socket, :index),
     do: assign(socket, form: nil, kind: nil, page_title: gettext("Nodes"))
 
-  defp apply_action(socket, action) when action in [:new, :new_pool] do
+  defp apply_action(socket, action) when action in [:new, :new_pool, :new_gateway] do
     if socket.assigns.may_create do
-      kind = if action == :new, do: :node, else: :pool
+      kind = form_kind(action)
+      scope = socket.assigns.current_scope
+      default = if kind != :gateway, do: Gateways.default_gateway_for(scope.workspace)
+      gateways = if kind != :gateway, do: Gateways.gateway_choices(scope), else: []
 
       socket
-      |> assign_form(Nodes.change_new_node(Nodes.new_node(kind)))
+      |> assign(gateways: gateways, default: default)
+      |> assign_form(Nodes.change_new_node(first_node(kind, default)))
       |> assign(kind: kind, page_title: form_title(kind) <> " · " <> gettext("Nodes"))
     else
       socket
@@ -105,8 +118,19 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp blank(q) when is_binary(q), do: if(String.trim(q) == "", do: nil, else: q)
   defp blank(_q), do: nil
 
+  defp form_kind(:new), do: :node
+  defp form_kind(:new_pool), do: :pool
+  defp form_kind(:new_gateway), do: :gateway
+
+  # The node a form starts from: a node or a pool on the default gateway when one
+  # resolves for the workspace, as `Apiary.Nodes.create_node/2` would start it, else
+  # direct.
+  defp first_node(kind, nil), do: Nodes.new_node(kind)
+  defp first_node(kind, _default), do: %{Nodes.new_node(kind) | gateway_choice: :default}
+
   defp kind("node"), do: :node
   defp kind("pool"), do: :pool
+  defp kind("gateway"), do: :gateway
   defp kind(_kind), do: nil
 
   defp view("running"), do: :running
@@ -181,7 +205,7 @@ defmodule ApiaryWeb.NodeLive.Index do
             Enum.map(Enum.take(running, @sub_rows), &{:instance, node, &1}) ++
             if(more > 0, do: [{:more, node, more}], else: [])
 
-        :node ->
+        _node_or_gateway ->
           [{:node, node}]
       end
     end)
@@ -222,7 +246,7 @@ defmodule ApiaryWeb.NodeLive.Index do
     changeset =
       socket.assigns.kind
       |> Nodes.new_node()
-      |> Nodes.change_new_node(params)
+      |> Nodes.change_new_node(NodeComponents.choice_params(params))
       |> Map.put(:action, :validate)
 
     {:noreply, assign_form(socket, changeset)}
@@ -232,7 +256,9 @@ defmodule ApiaryWeb.NodeLive.Index do
     kind = socket.assigns.kind
     scope = socket.assigns.current_scope
 
-    case Nodes.create_node(scope, Map.put(params, "kind", Atom.to_string(kind))) do
+    attrs = params |> NodeComponents.choice_params() |> Map.put("kind", Atom.to_string(kind))
+
+    case Nodes.create_node(scope, attrs) do
       {:ok, node} ->
         {:noreply,
          socket
@@ -369,9 +395,7 @@ defmodule ApiaryWeb.NodeLive.Index do
         cancel_by="patch"
       >
         <:description>
-          {if @kind == :node,
-            do: gettext("One permanent machine. It runs one instance at a time."),
-            else: gettext("Short-lived instances that share one access key.")}
+          {form_sentence(@kind)}
           {gettext("You can't change the kind later.")}
         </:description>
         <.form
@@ -386,11 +410,23 @@ defmodule ApiaryWeb.NodeLive.Index do
             field={@form[:name]}
             type="text"
             label={gettext("Name")}
-            placeholder={if @kind == :node, do: "build-01", else: "spot-runners"}
+            placeholder={name_placeholder(@kind)}
             autocomplete="off"
             spellcheck="false"
             required
             phx-mounted={JS.focus()}
+          />
+          <.input
+            :if={@kind == :gateway}
+            field={@form[:url]}
+            type="text"
+            inputmode="url"
+            label={gettext("URL")}
+            placeholder="https://gateway.example.com"
+            hint={NodeComponents.url_hint()}
+            autocomplete="off"
+            spellcheck="false"
+            required
           />
           <.input
             :if={@kind == :pool and @may_set_limit}
@@ -406,6 +442,13 @@ defmodule ApiaryWeb.NodeLive.Index do
             autocomplete="off"
             optional
           />
+          <NodeComponents.gateway_field
+            :if={@kind != :gateway and @gateways != []}
+            form={@form}
+            gateways={@gateways}
+            default={@default}
+            offer_default={@default != nil}
+          />
           <.page_form_foot
             id="new-node-save"
             cancel={list_path(@current_scope, @filters)}
@@ -417,9 +460,7 @@ defmodule ApiaryWeb.NodeLive.Index do
               type="submit"
               loading_text={gettext("Adding")}
             >
-              {if @kind == :node,
-                do: gettext("Add node"),
-                else: gettext("Add node pool")}
+              {add_label(@kind)}
             </.button>
           </.page_form_foot>
         </.form>
@@ -452,10 +493,13 @@ defmodule ApiaryWeb.NodeLive.Index do
           <.button id="new-node-pool" patch={new_path(@current_scope, :pool)}>
             <.icon name="hero-plus-micro" class="size-4" />{gettext("New node pool")}
           </.button>
+          <.button id="new-gateway" patch={new_path(@current_scope, :gateway)}>
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("New gateway")}
+          </.button>
         </:actions>
       </.page_header>
 
-      <div :if={@counts.node + @counts.pool == 0} id="nodes-empty">
+      <div :if={total(@counts) == 0} id="nodes-empty">
         <.empty_state icon="hero-server-stack" tone="neutral" title={gettext("No nodes yet")}>
           <p :if={@may_create}>
             {gettext(
@@ -470,7 +514,7 @@ defmodule ApiaryWeb.NodeLive.Index do
         </.empty_state>
       </div>
 
-      <div :if={@counts.node + @counts.pool > 0} class="grid gap-3">
+      <div :if={total(@counts) > 0} class="grid gap-3">
         <.views id="nodes-views" label={gettext("Views")}>
           <:view
             id="nodes-view-all"
@@ -508,7 +552,7 @@ defmodule ApiaryWeb.NodeLive.Index do
           <.filter_menu id="nodes-filter" count={if(@filters.kind, do: 1, else: 0)}>
             <.menu_heading title={gettext("Kind")} />
             <.menu_item
-              :for={kind <- Node.kinds()}
+              :for={kind <- Node.all_kinds()}
               id={"nodes-filter-kind-#{kind}"}
               patch={
                 list_path(@current_scope, %{
@@ -596,6 +640,12 @@ defmodule ApiaryWeb.NodeLive.Index do
                     {node.name}
                   </.link>
                   <span class="q-side q-mono">{node.public_id}</span>
+                  <.state_word
+                    :if={node.kind == :gateway and node.default_gateway}
+                    id={"node-#{node.public_id}-default"}
+                  >
+                    {gettext("Default")}
+                  </.state_word>
                 </span>
               <% {:instance, _node, instance} -> %>
                 <span class="q-nm pl-5 font-normal">
@@ -619,6 +669,8 @@ defmodule ApiaryWeb.NodeLive.Index do
             <%= case row do %>
               <% {:node, %{kind: :pool} = node} -> %>
                 <span id={"node-#{node.public_id}-kind"}>{gettext("Pool")}</span>
+              <% {:node, %{kind: :gateway} = node} -> %>
+                <span id={"node-#{node.public_id}-kind"}>{gettext("Gateway")}</span>
               <% {:node, _node} -> %>
                 <span class="sr-only">{gettext("Node")}</span>
               <% _instance -> %>
@@ -664,9 +716,32 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp new_path(scope, :node), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new"
   defp new_path(scope, :pool), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-pool"
 
+  defp new_path(scope, :gateway),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-gateway"
+
+  # Every node in use of the workspace, of any kind.
+  defp total(counts), do: counts.node + counts.pool + counts.gateway
+
   # A form page's title and its breadcrumb's last segment: the act, by the kind.
   defp form_title(:node), do: gettext("New node")
   defp form_title(:pool), do: gettext("New node pool")
+  defp form_title(:gateway), do: gettext("New gateway")
+
+  # The sentence under a form page's heading: what the kind is.
+  defp form_sentence(:node), do: gettext("One permanent machine. It runs one instance at a time.")
+  defp form_sentence(:pool), do: gettext("Short-lived instances that share one access key.")
+
+  defp form_sentence(:gateway),
+    do:
+      gettext("An address the nodes and node pools of this workspace reach Qory Apiary through.")
+
+  defp name_placeholder(:node), do: "build-01"
+  defp name_placeholder(:pool), do: "spot-runners"
+  defp name_placeholder(:gateway), do: "edge-01"
+
+  defp add_label(:node), do: gettext("Add node")
+  defp add_label(:pool), do: gettext("Add node pool")
+  defp add_label(:gateway), do: gettext("Add gateway")
 
   defp kind_label(kind), do: NodeComponents.kind_label(kind)
 end

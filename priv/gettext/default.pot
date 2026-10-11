@@ -248,6 +248,11 @@ msgstr ""
 msgid "%{from} → %{to}"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{gateway} has no access key yet, so it isn't connected."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{header} is a header a definition may not set."
@@ -680,6 +685,11 @@ msgstr ""
 msgid "%{name} is set up."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is the default gateway now."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is unlocked."
@@ -706,6 +716,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "%{name} now applies to %{target}."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} reaches Qory Apiary through the gateway %{gateway}, at %{url}."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1193,6 +1208,13 @@ msgid_plural "%{number} nodes match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} node of another workspace"
+msgid_plural "%{number} nodes of other workspaces"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} observes"
@@ -1290,6 +1312,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} run matches"
 msgid_plural "%{number} runs match"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run of another workspace"
+msgid_plural "%{number} runs of other workspaces"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2128,6 +2157,12 @@ msgstr ""
 msgid "A gateway opened this run for a program that reports none, so there is no terminal output. Its connections are on the Network access tab."
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A gateway that is gone"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "A host name in lower case, or %{suffix} and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces."
@@ -2663,6 +2698,11 @@ msgstr ""
 msgid "Add from a release"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add gateway"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Add integration"
@@ -3045,6 +3085,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's own address whatever the policy says."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "An address the nodes and node pools of this workspace reach Qory Apiary through."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -3937,6 +3982,11 @@ msgstr ""
 msgid "Copy run id"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Copy the URL of %{name}"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4150,6 +4200,24 @@ msgstr ""
 msgid "Declared by the harness"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Default"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Default gateway"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Default gateway goes through %{name}, this workspace's default. Direct goes through no gateway."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Definition"
@@ -4195,6 +4263,11 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Delete gateway…"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Delete node pool…"
 msgstr ""
 
@@ -4231,6 +4304,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Delete this custom API"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete this gateway"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -4583,6 +4661,12 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Digest"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Direct"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -5513,6 +5597,19 @@ msgstr ""
 msgid "Full screen"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/node_components.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Gateway"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Gateway: nodes and node pools reach Qory Apiary through it."
+msgstr ""
+
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -6138,6 +6235,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "It last reported %{reported}; %{in_force} is in force (%{since})."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "It leaves this workspace's nodes, its access keys are revoked and its name is free again. A gateway that nodes still point to isn't deleted."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -7096,6 +7198,11 @@ msgstr ""
 msgid "Make a password link for %{email}"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Make default"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Manage people"
@@ -7339,6 +7446,11 @@ msgstr ""
 msgid "New custom API"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New gateway"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "New in v%{version}"
@@ -7517,6 +7629,11 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "No entries yet"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No gateway is the default now."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -7969,6 +8086,21 @@ msgstr ""
 msgid "Nodes"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Nodes and node pools on Default gateway go through the default."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nodes use this gateway: %{nodes}. Point them to another gateway or to direct, then delete it."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nodes use this gateway: %{nodes}. Runs are going through it: %{runs}. Delete it once the nodes point elsewhere and the runs end."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/mail.ex
 #: lib/apiary_web/live/integration_live/release.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -8121,6 +8253,11 @@ msgstr ""
 msgid "Not shown: only the page that made the key held its secret, and this one was opened again. If you didn't copy it, revoke %{label} and generate another key."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Not the default."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Not unlocked: %{reason}"
@@ -8213,6 +8350,7 @@ msgid "Nothing to filter by yet"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing was changed. Try again."
@@ -9809,6 +9947,11 @@ msgstr ""
 msgid "Runs and denied attempts per day"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs are going through this gateway: %{runs}. Delete it once they end."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs per day"
@@ -11020,6 +11163,11 @@ msgctxt "plain"
 msgid "The gateway holds a host to one list of paths and cannot tell which of the two applies."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The gateway's name, its kind and its URL."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The host answered %{status}."
@@ -11993,6 +12141,11 @@ msgstr ""
 msgid "This workspace served no run configuration with that digest."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This workspace's default gateway."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Time zone"
@@ -12129,6 +12282,12 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Type your email, %{email}, to confirm"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "URL"
 msgstr ""
 
 #: lib/apiary/runs.ex
@@ -12557,6 +12716,11 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #, elixir-autogen, elixir-format
 msgid "Where it is set up"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "Where nodes reach the gateway: https://, a host, and a port if needed."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -13150,6 +13314,7 @@ msgstr ""
 msgid "and %{more} more on the %{link}"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
