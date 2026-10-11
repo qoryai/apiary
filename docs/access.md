@@ -90,8 +90,11 @@ An edition may let a person into an organisation where they hold no membership
 a person reaches every workspace of it, and holds what that role holds.
 `Apiary.Access.level/1` is the level of a membership there, and nil for one the edition
 lets in without one; `Apiary.Access.reader/1` names the edition's way in for a person
-without a membership there, or is nil, and a page says so to them
-(`c:ApiaryWeb.Edition.reader_sentence/2`) rather than the level a change would take. The
+without a membership there whose role holds no change (`Apiary.Access.reads_only?/1`: no
+action of it leaves an audit entry), or is nil, and a page tells such a reader they read
+it and change nothing (`c:ApiaryWeb.Edition.reader_sentence/2`) rather than the level a
+change would take. One let in with a role that changes something is no reader: a
+refusal tells them what it tells anyone else. The
 path scope (`Apiary.Organisations.resolve_scope/4`) opens an organisation for its members
 and for whom the edition lets in (`Apiary.Organisations.put_reach/2`); the switcher lists
 the places the edition gives (`Apiary.Organisations.list_places/1`,
@@ -133,7 +136,19 @@ may:
 - give the level an invitation's person joins at, or refuse the acceptance
   (`c:Apiary.Edition.accepting/3`), and add to it once the membership is made
   (`c:Apiary.Edition.accepted/4`);
-- refuse a deletion or a purge, and hear of each (Marked for deletion, below).
+- refuse a deletion or a purge, and hear of each (Marked for deletion, below);
+- say who may take an action in its own words (`c:ApiaryWeb.Edition.who_may_sentence/2`),
+  where the core's sentence names the levels that may, such as "Only owners and admins
+  add nodes.", which stays where the edition has none (`ApiaryWeb.Access.who_may/3`). It
+  is asked for the refusals, and the notices to whoever may not act, of the nodes' pages
+  and a node's Access key tab, the workspace overview's Get the command, the
+  organisation's and the workspace's settings, People, stored secrets and variables, and
+  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's deletion on Your organisations; for the security policy's own refusals
+  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
+  The policy pages' mode row and their lock and unlock hints, the lock hint of a
+  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
+  a locked rule have no scope at hand, and keep the core's words.
 
 ## The instance's admins
 

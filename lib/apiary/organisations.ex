@@ -1474,6 +1474,20 @@ defmodule Apiary.Organisations do
     )
   end
 
+  @doc """
+  lists_workspaces?/1 says whether the scope's person sees the workspaces of the scope's
+  organisation in its settings, under Workspaces: whoever may rename one or delete one
+  (`workspace.rename`, `workspace.delete`), asked of the organisation. In the core's
+  edition an owner or an admin. Each control there asks its own action.
+  """
+  @spec lists_workspaces?(Scope.t() | nil) :: boolean
+  def lists_workspaces?(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    Access.can?(scope, :"workspace.rename", organisation) or
+      Access.can?(scope, :"workspace.delete", organisation)
+  end
+
+  def lists_workspaces?(_scope), do: false
+
   ## Members
 
   @doc """

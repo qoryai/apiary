@@ -434,9 +434,10 @@ defmodule Apiary.Access do
   they may change there is its role's. The edition may give a person another way in
   (`c:Apiary.Edition.reach/1`), which the scope's `reach` carries, and a role there
   without a membership (`c:Apiary.Edition.role/1`): such a person reads every workspace of
-  the organisation. `reach/1` says which way the scope carries, `level/1` the level they
-  act at, which only a membership there gives, and `reader/1` how one without a
-  membership reaches it. `Apiary.Organisations.resolve_scope/4` finds the reach a page's
+  the organisation, and changes there what that role holds. `reach/1` says which way the
+  scope carries, `level/1` the level they act at, which only a membership there gives,
+  and `reader/1` how one without a membership reaches it while their role there changes
+  nothing (`reads_only?/1`). `Apiary.Organisations.resolve_scope/4` finds the reach a page's
   path opens; `reload/2`, in `authorize/3`, reads the membership again, and the edition
   what it gave, and fails closed.
 
@@ -630,15 +631,33 @@ defmodule Apiary.Access do
 
   @doc """
   reader/1 says how the scope's person reads the scope's organisation when they have no
-  membership there, as the scope carries it: the edition's name for its reach; nil for
-  anyone with a membership there, and for anyone who does not reach it. A reader reads
-  and changes nothing a membership would: a page says so, rather than the level a change
-  would take.
+  membership there and change nothing in it, as the scope carries it: the edition's name
+  for its reach, while the role the edition gives them there (`c:Apiary.Edition.role/1`)
+  holds no action that changes anything (`reads_only?/1`). Nil for anyone with a
+  membership there, for one whose role there changes something, and for anyone who does
+  not reach it. A reader reads and changes nothing: a page says so, rather than the level
+  a change would take. What the role holds answers, not the name of the reach.
   """
   @spec reader(Scope.t() | nil) :: atom | nil
   def reader(scope) do
-    if own_level(scope), do: nil, else: edition_reach(scope)
+    with nil <- own_level(scope),
+         name when not is_nil(name) <- edition_reach(scope),
+         true <- reads_only?(Map.get(roles(), Edition.role(scope), [])) do
+      name
+    else
+      _membership_or_none_or_writes -> nil
+    end
   end
+
+  @doc """
+  reads_only?/1 says whether a role that holds `actions`, a list of names of
+  `actions/0`, changes nothing: none of them leaves an entry in the audit trail, which
+  every change worth one does (`Apiary.Access.Action`'s `audited`). True for none at all.
+  `reader/1` asks it of the role the edition gives a person without a membership.
+  """
+  @spec reads_only?([action]) :: boolean
+  def reads_only?(actions) when is_list(actions),
+    do: not Enum.any?(actions, &(action(&1).audited == true))
 
   @doc """
   reaches_every_workspace_in?/1 says whether the scope's person reaches every workspace of

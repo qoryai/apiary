@@ -470,7 +470,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       true ->
         pick =
@@ -489,7 +489,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       true ->
         pick_mode(socket, mode)
@@ -504,7 +504,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       is_nil(pick) ->
         socket
@@ -569,7 +569,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
         assign(
           socket,
           :write_error,
-          gettext("Only an owner can lock, unlock or change a locked rule.")
+          ApiaryWeb.Access.who_may(
+            scope,
+            :"security_policy.lock",
+            gettext("Only an owner can lock, unlock or change a locked rule.")
+          )
         )
 
       {:error, error} ->
@@ -1937,4 +1941,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
     do: gettext("Remove the deny rule %{host}?", host: host)
 
   defp remove_title(%{host: host}), do: gettext("Remove the allow rule %{host}?", host: host)
+
+  # Who may set a mode, in the edition's words where it has some.
+  defp only_admins_set_mode(socket),
+    do:
+      ApiaryWeb.Access.who_may(
+        socket.assigns.current_scope,
+        :"security_policy.set_mode",
+        gettext("Only an owner or an admin sets a mode.")
+      )
 end

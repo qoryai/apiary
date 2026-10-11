@@ -183,7 +183,7 @@ defmodule ApiaryWeb.SecretLive.Index do
               id="secrets-read-only"
               class="text-[13px]/5 text-muted"
             >
-              {gettext("Only owners and admins change this.")}
+              {only_admins_change(@current_scope, write_action(@view))}
             </p>
           </div>
 
@@ -1811,7 +1811,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           values_errors: [],
           refused_saves: 0
         ),
-      else: refused(socket)
+      else: refused(socket, :"secret.write")
   end
 
   defp open(socket, :edit_secret, %{"id" => id}) do
@@ -1877,7 +1877,7 @@ defmodule ApiaryWeb.SecretLive.Index do
           act: :new_variable,
           form: variable_form(fresh(Variables.change_variable(%Variable{})))
         ),
-      else: refused(socket)
+      else: refused(socket, :"variable.edit")
   end
 
   defp open(socket, :variable_targets, %{"id" => id}) do
@@ -1925,13 +1925,13 @@ defmodule ApiaryWeb.SecretLive.Index do
       fun.(socket, secret, value)
     else
       :refused ->
-        refused(socket)
+        refused(socket, :"secret.write")
 
       {:error, :no_value, secret} ->
         back(socket, :error, value_gone(secret))
 
       {:error, :forbidden} ->
-        unauthorized(socket)
+        unauthorized(socket, :"secret.write")
 
       {:error, _not_found} ->
         back(socket, :error, gettext("That secret is no longer in this workspace."))
@@ -1957,10 +1957,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       fun.(socket, variable)
     else
       :refused ->
-        refused(socket)
+        refused(socket, :"variable.edit")
 
       {:error, :forbidden} ->
-        unauthorized(socket)
+        unauthorized(socket, :"variable.edit")
 
       _gone ->
         back(socket, :error, gettext("That variable is no longer in this workspace."), :variables)
@@ -2224,14 +2224,14 @@ defmodule ApiaryWeb.SecretLive.Index do
       when event in ~w(update_secret add_value set_value rename_value delete_value delete_secret) do
     if socket.assigns.may_write,
       do: {:noreply, reload(socket)},
-      else: {:noreply, refused(socket)}
+      else: {:noreply, refused(socket, :"secret.write")}
   end
 
   def handle_event(event, _params, socket)
       when event in ~w(change_variable lock_variable unlock_variable delete_variable) do
     if socket.assigns.may_edit,
       do: {:noreply, reload(socket)},
-      else: {:noreply, refused(socket)}
+      else: {:noreply, refused(socket, :"variable.edit")}
   end
 
   defp change_variable(socket, event, variable) do
@@ -2409,7 +2409,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         )
   end
 
-  defp refusal(socket, :forbidden, _view), do: unauthorized(socket)
+  defp refusal(socket, :forbidden, view), do: unauthorized(socket, write_action(view))
 
   # Any other refusal: a deletion's changeset (a form's is answered under its fields), or
   # a reason no clause above names. A deletion's confirmation stays open and says why; a
@@ -2467,14 +2467,24 @@ defmodule ApiaryWeb.SecretLive.Index do
     end)
   end
 
-  # A path or an event for a change the reader may not make, which the page offers no
-  # control for.
-  defp refused(socket), do: back(socket, :error, gettext("Only owners and admins change this."))
+  # A path or an event for a change the reader may not make, `action`, which the page
+  # offers no control for.
+  defp refused(socket, action),
+    do: back(socket, :error, only_admins_change(socket.assigns.current_scope, action))
+
+  # Who may change a view, `action`, in the edition's words where it has some.
+  defp only_admins_change(scope, action),
+    do: ApiaryWeb.Access.who_may(scope, action, gettext("Only owners and admins change this."))
+
+  # The action that changes a view.
+  defp write_action(:variables), do: :"variable.edit"
+  defp write_action(_secrets), do: :"secret.write"
 
   # Refused on the membership as it is now: the page's scope is stale, and is read again,
   # with what the reader may. A membership that is gone sends the page to `/`; a reader
-  # whom the edition lets read the organisation is told so.
-  defp unauthorized(socket) do
+  # whom the edition lets read the organisation is told so, and anyone else who may take
+  # `action`.
+  defp unauthorized(socket, action) do
     socket = reload_scope(socket)
 
     cond do
@@ -2487,7 +2497,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         |> back(:error, ApiaryWeb.Access.reads_only(socket.assigns.current_scope))
 
       true ->
-        socket |> mays() |> refused()
+        socket |> mays() |> refused(action)
     end
   end
 

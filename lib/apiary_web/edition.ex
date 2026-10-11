@@ -35,11 +35,14 @@ defmodule ApiaryWeb.Edition do
     `c:place_scope/2`, which the core no longer asks.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
-    `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
+    `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
+    `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
+    the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
-    edition's actions in words on the Activity page; `c:above_policy_link/1`, where the
+    edition's actions in words on the Activity page; `c:activity_actor/2`, who made an
+    entry, in the Activity page's Who column; `c:above_policy_link/1`, where the
     level above a workspace's policy (`c:Apiary.Edition.above_workspace/1`) is read and
     changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
@@ -137,8 +140,8 @@ defmodule ApiaryWeb.Edition do
 
   @doc """
   What the pages say to a reader (`Apiary.Access.reader/1`), a person who reads the
-  organisation of `scope` through the edition's reach, with no membership there, and
-  changes nothing: `:refused`, the sentence of a change a page refuses them. Nil for the
+  organisation of `scope` through the edition's reach, with no membership there, in a
+  role that changes nothing: `:refused`, the sentence of a change a page refuses them. Nil for the
   core's words. The core no longer asks for `:level` (the account menu's line where a
   member's level was); it stays in the type so that editions which answer it compile.
   """
@@ -150,6 +153,41 @@ defmodule ApiaryWeb.Edition do
   words for a change that could not be made.
   """
   @callback refusal_sentence(reason :: atom) :: String.t() | nil
+
+  @doc """
+  What a page says of who may take an action in the organisation of `scope`, to a person
+  who is refused it or offered no way to take it, where the core's sentence names the
+  levels that may, such as "Only owners and admins add nodes.": one sentence, translated,
+  or nil for the core's own (`ApiaryWeb.Access.who_may/3`). The scope is the page's, with
+  the organisation, the workspace where there is one, the person and how they reach the
+  organisation.
+
+  `about` says what the sentence is of:
+
+  - an action of `Apiary.Access` (`Apiary.Access.actions/0`), the one the page refused or
+    offers no way to take, such as `:"node.create"`; a sentence of the core's may say more
+    than who may, such as the rule a refusal of `:"security_policy.lock"` is of;
+  - `:workspaces`, the organisation's list of its workspaces, which whoever may rename or
+    delete a workspace opens (`Apiary.Organisations.lists_workspaces?/1`);
+  - `:people`, the People page's line of what each level does, which in the core names
+    what owners and admins manage, and what members do: they see the runs, and change the
+    policy's rules that are not locked where a member's role holds
+    `:"security_policy.edit"` and its feature is on.
+
+  It is asked for the refusals, and the notices to whoever may not act, of the nodes'
+  pages and a node's Access key tab, the workspace overview's Get the command, the
+  organisation's and the workspace's settings, People, stored secrets and variables, and
+  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's deletion on Your organisations; for the security policy's own refusals
+  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
+  The policy pages' mode row and their lock and unlock hints, the lock hint of a
+  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
+  a locked rule have no scope at hand, and keep the core's words.
+
+  A reader (`Apiary.Access.reader/1`) is told `c:reader_sentence/2`'s words instead,
+  where a page refuses them a change.
+  """
+  @callback who_may_sentence(about :: atom, Scope.t()) :: String.t() | nil
 
   @doc """
   The sections the edition adds to the organisation's settings, each a page of its own, in
@@ -166,6 +204,21 @@ defmodule ApiaryWeb.Edition do
 
   @doc "The module that says the edition's actions in words on the Activity page, or nil."
   @callback activity_describer() :: module | nil
+
+  @doc """
+  Who made `entry`, as the Activity page's Who column draws it (`ApiaryWeb.Activity.Actor`),
+  or nil for the core's words, which `assigns.actor` holds (`t:ApiaryWeb.Activity.Actor.words/0`):
+  such as the person and how they reached the organisation, from what the edition wrote
+  into the entry's details (`c:Apiary.Edition.audit_details/3`). `assigns`, a function
+  component's, which `Phoenix.Component.assign/3` and `~H` take, holds the core's
+  words (`actor`), the names the page read (`names`, `Apiary.Audit.names/2`, which name the
+  organisation a details key ending in `_id` holds) and the page's scope (`scope`). Asked
+  once for each entry when the page lays out the rows it read, so it reads nothing of its
+  own: what it says comes from the entry and the names. The column keeps its cell and its
+  id around what it renders.
+  """
+  @callback activity_actor(Apiary.Audit.Entry.t(), assigns :: map) ::
+              Phoenix.LiveView.Rendered.t() | nil
 
   @doc """
   Where the level above the workspace's policy is read and changed, for the scope's
@@ -218,9 +271,11 @@ defmodule ApiaryWeb.Edition do
     place_scope: 2,
     reader_sentence: 2,
     refusal_sentence: 1,
+    who_may_sentence: 2,
     settings_tabs: 1,
     slot: 2,
     activity_describer: 0,
+    activity_actor: 2,
     above_policy_link: 1,
     reserved_slugs: 0,
     product_name: 0,

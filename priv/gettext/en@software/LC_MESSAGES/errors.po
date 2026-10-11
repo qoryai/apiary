@@ -126,6 +126,11 @@ msgstr ""
 msgid "has invalid format"
 msgstr ""
 
+#: lib/apiary/nodes.ex
+#, elixir-autogen, elixir-format
+msgid "has no default gateway in this workspace"
+msgstr ""
+
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "is %{name} elsewhere in this workspace: use the same spelling"
@@ -195,6 +200,11 @@ msgstr ""
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "is locked above, so it cannot be set here"
+msgstr ""
+
+#: lib/apiary/nodes.ex
+#, elixir-autogen, elixir-format
+msgid "is not a gateway this node may use"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex
@@ -285,6 +295,11 @@ msgstr ""
 #: lib/apiary/integrations.ex
 #, elixir-autogen, elixir-format
 msgid "must be a repository's path: this instance adds no integration from an address"
+msgstr ""
+
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen, elixir-format
+msgid "must be a scheme and a host, with a port if needed, and nothing more"
 msgstr ""
 
 #: lib/apiary/integrations.ex
@@ -386,6 +401,11 @@ msgstr ""
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
 msgid "must start with a letter or _ and hold only letters, digits and _, at most 128"
+msgstr ""
+
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen, elixir-format
+msgid "must start with https://, or http:// for a loopback host"
 msgstr ""
 
 #: lib/apiary/variables.ex

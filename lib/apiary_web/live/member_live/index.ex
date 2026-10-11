@@ -176,15 +176,20 @@ defmodule ApiaryWeb.MemberLive.Index do
         title={gettext("People")}
       >
         <:subtitle>
-          {if members_edit_rules?(@current_scope),
-            do:
-              gettext(
-                "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy's rules that are not locked."
-              ),
-            else:
-              gettext(
-                "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
-              )}
+          {ApiaryWeb.Access.who_may(
+            @current_scope,
+            :people,
+            if(members_edit_rules?(@current_scope),
+              do:
+                gettext(
+                  "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs and change the policy's rules that are not locked."
+                ),
+              else:
+                gettext(
+                  "The people in this organisation. Owners and admins manage members, settings and nodes; members see the runs."
+                )
+            )
+          )}
           <ApiaryWeb.Extension.slot name={:members_heading} scope={@current_scope} />
         </:subtitle>
         <:actions :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}>
@@ -613,7 +618,7 @@ defmodule ApiaryWeb.MemberLive.Index do
       |> assign(:page, :invite)
       |> assign(:form, to_form(Organisations.change_invitation()))
     else
-      refused(socket)
+      refused(socket, :"member.invite")
     end
   end
 
@@ -625,7 +630,7 @@ defmodule ApiaryWeb.MemberLive.Index do
       member ->
         if Access.can?(socket.assigns.current_scope, :"member.remove", member),
           do: assign(socket, :member, member),
-          else: refused(socket)
+          else: refused(socket, :"member.remove")
     end
   end
 
@@ -637,7 +642,7 @@ defmodule ApiaryWeb.MemberLive.Index do
       member ->
         cond do
           not Access.can?(socket.assigns.current_scope, :"member.suspend", member) ->
-            refused(socket)
+            refused(socket, :"member.suspend")
 
           # Suspended already: the list says so, and there is nothing to confirm.
           member.suspended_at ->
@@ -655,16 +660,22 @@ defmodule ApiaryWeb.MemberLive.Index do
     |> push_patch(to: members_path(socket))
   end
 
-  defp refused(socket) do
+  # A change of the people the reader may not make, `action`.
+  defp refused(socket, action) do
     socket
-    |> put_flash(:error, refused_sentence())
+    |> put_flash(:error, refused_sentence(socket.assigns.current_scope, action))
     |> push_patch(to: members_path(socket))
   end
 
-  defp refused_sentence,
+  # Who may take `action`, in the edition's words where it has some.
+  defp refused_sentence(scope, action),
     do:
-      gettext(
-        "Only owners and admins manage members, and only owners change a level or manage an owner or an admin."
+      ApiaryWeb.Access.who_may(
+        scope,
+        action,
+        gettext(
+          "Only owners and admins manage members, and only owners change a level or manage an owner or an admin."
+        )
       )
 
   @impl true
@@ -744,7 +755,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          )}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"member.invite")}
     end
   end
 
@@ -772,7 +783,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          |> load()}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"member.change_level")}
 
       {:error, :not_found} ->
         {:noreply,
@@ -812,7 +823,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          |> push_patch(to: members_path(socket))}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"member.remove")}
 
       {:error, :not_found} ->
         {:noreply,
@@ -841,7 +852,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          |> push_patch(to: members_path(socket))}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"member.suspend")}
 
       {:error, :not_found} ->
         {:noreply, socket |> load() |> gone()}
@@ -862,7 +873,7 @@ defmodule ApiaryWeb.MemberLive.Index do
         {:noreply, load(socket)}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"member.activate")}
 
       {:error, :not_found} ->
         {:noreply, socket |> load() |> gone()}
@@ -995,7 +1006,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          )}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"invitation.renew")}
 
       # Accepted, revoked or expired meanwhile: the list shows it gone.
       {:error, :not_found} ->
@@ -1018,7 +1029,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          |> load()}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"invitation.revoke")}
 
       {:error, :not_found} ->
         {:noreply, load(socket)}
@@ -1043,7 +1054,7 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     if Access.can?(scope, action, scope.organisation),
       do: {:noreply, load(socket)},
-      else: {:noreply, refused(socket)}
+      else: {:noreply, refused(socket, action)}
   end
 
   # The members the search leaves, `shown`, in the list's order.
@@ -1107,12 +1118,12 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp members_path(socket),
     do: ~p"/#{socket.assigns.current_scope.organisation}/settings/people"
 
-  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
-  # A membership that is gone has sent the page to `/` by then.
-  defp unauthorized(socket) do
+  # Refused `action` on the membership as it is now: the page's scope is stale, and is
+  # loaded again. A membership that is gone has sent the page to `/` by then.
+  defp unauthorized(socket, action) do
     socket =
       socket
-      |> put_flash(:error, refused_sentence())
+      |> put_flash(:error, refused_sentence(socket.assigns.current_scope, action))
       |> reload_scope()
 
     if socket.redirected, do: socket, else: push_patch(socket, to: members_path(socket))

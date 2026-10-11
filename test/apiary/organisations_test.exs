@@ -504,6 +504,13 @@ defmodule Apiary.OrganisationsTest do
 
       assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
 
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{name: "Data", slug: "gateways"})
+
+      assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
+
+      assert Organisations.suggest_workspace_slug(scope, "Gateways") == "gateways-2"
+
       assert {:ok, %{slug: "lake"}} =
                Organisations.create_workspace(scope, %{name: "Data", slug: " lake "})
     end

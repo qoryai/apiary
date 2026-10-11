@@ -326,7 +326,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       true ->
         pick =
@@ -345,7 +345,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       true ->
         pick_mode(socket, setting)
@@ -360,7 +360,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         socket
 
       not Common.may?(socket, :"security_policy.set_mode") ->
-        assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
+        assign(socket, :write_error, only_admins_set_mode(socket))
 
       is_nil(pick) ->
         socket
@@ -1228,5 +1228,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
         "A deny holds in either mode: %{hosts} stay denied in this target.",
         length(hosts),
         hosts: Enum.intersperse(Enum.map(hosts, &{:code, &1}), " ")
+      )
+
+  # Who may set a mode, in the edition's words where it has some.
+  defp only_admins_set_mode(socket),
+    do:
+      ApiaryWeb.Access.who_may(
+        socket.assigns.current_scope,
+        :"security_policy.set_mode",
+        gettext("Only an owner or an admin sets a mode.")
       )
 end
