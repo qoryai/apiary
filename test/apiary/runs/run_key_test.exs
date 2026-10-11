@@ -48,6 +48,17 @@ defmodule Apiary.Runs.RunKeyTest do
     assert RunKey.encode(payload, @key) == run_key
   end
 
+  test "a run key's parts give it back, byte for byte, whatever key signs now" do
+    {:ok, run_key, payload} = RunKey.issue(grant(), @key)
+    assert {^payload, signature} = RunKey.parts(run_key)
+    assert byte_size(signature) == 64
+    assert RunKey.assemble(payload, signature) == run_key
+    refute RunKey.encode(payload, @other) == run_key
+
+    for not_a_run_key <- [nil, "", "qrk_", "qrk_a.b.c", "rk_" <> run_key],
+        do: assert(RunKey.parts(not_a_run_key) == :error)
+  end
+
   test "two gateway keys are named, oldest first" do
     keys = [:crypto.strong_rand_bytes(32), :crypto.strong_rand_bytes(32)]
     {:ok, run_key, _payload} = RunKey.issue(grant(gateway_public_keys: keys), @key)

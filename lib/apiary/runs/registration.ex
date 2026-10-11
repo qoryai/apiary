@@ -431,7 +431,7 @@ defmodule Apiary.Runs.Registration do
   # `answered/2` reads it, for a direct one.
   defp repeat(access_key, run) do
     if Run.through_gateway?(run) do
-      {:ok, %{run: run, repeated: true, run_key: RunKey.encode(run.run_key_payload)}}
+      {:ok, %{run: run, repeated: true, run_key: given_run_key(run)}}
     else
       with {:ok, settings} <- answered(access_key, run),
            do: {:ok, Map.merge(settings, %{run: run, repeated: true})}
@@ -567,17 +567,29 @@ defmodule Apiary.Runs.Registration do
            through: %{
              gateway_id: gateway.id,
              run_key_payload: payload,
+             run_key_signature: run_key |> RunKey.parts() |> elem(1),
              run_key_issued_at: usec(issued),
              attach_by: usec(attach_by)
            }
          }}
 
       {:error, reason} ->
-        # The gateway's address is not one a run key may name, or makes it too long.
+        # A guard: a gateway's address is https, but a very long one makes a run key
+        # longer than a run key may be.
         Logger.error("no run key could be made for a run through a gateway: #{reason}")
         {:error, :unavailable}
     end
   end
+
+  # The run key the run was given, byte for byte, from its payload and its signature. A run
+  # stored before its signature was kept is signed again under the instance's key.
+  defp given_run_key(%Run{
+         run_key_payload: payload,
+         run_key_signature: <<_::binary-size(64)>> = signature
+       }),
+       do: RunKey.assemble(payload, signature)
+
+  defp given_run_key(%Run{run_key_payload: payload}), do: RunKey.encode(payload)
 
   # A time to the second, as the column keeps microseconds.
   defp usec(%DateTime{} = time), do: %{time | microsecond: {0, 6}}

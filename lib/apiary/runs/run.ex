@@ -147,14 +147,16 @@ defmodule Apiary.Runs.Run do
 
     # A run that goes through a gateway (`Apiary.Runs.Registration`, `Apiary.Runs.Attach`):
     # the gateway its node's choice resolved to at its registration, nil should the
-    # gateway's row be purged; the exact bytes of its run key's payload, when the run key
-    # was made and the end of its attach window; and, once the gateway attached it, when,
+    # gateway's row be purged; the exact bytes of its run key's payload and its signature,
+    # so a repeat is given the same run key, when the run key was made and the end of its
+    # attach window; and, once the gateway attached it, when,
     # the attach's `time` on the gateway's clock, the heartbeat interval it announced, which
     # the run is held to, and the digest of the run configuration it was given, which a
     # repeat of the attach is given again. All nil for a direct run. Not folded: a rebuild
     # keeps them.
     belongs_to :gateway, Apiary.Nodes.Node
     field :run_key_payload, :binary
+    field :run_key_signature, :binary
     field :run_key_issued_at, :utc_datetime_usec
     field :attach_by, :utc_datetime_usec
     field :attached_at, :utc_datetime_usec

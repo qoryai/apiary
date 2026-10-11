@@ -119,16 +119,39 @@ defmodule Apiary.Runs.RunKey do
   @doc """
   encode/2 is the run key of `payload`, bytes a run key was made of before, signed under
   `key`, the instance's own unless given: the same run key again, since Ed25519 signs a
-  message the same way every time.
+  message the same way every time, as long as the key is the same.
   """
   @spec encode(binary, SigningKey.t() | nil) :: String.t()
   def encode(payload, key \\ nil) when is_binary(payload) do
     key = key || SigningKey.current()
-
-    @prefix <>
-      Ed25519.encode(payload) <>
-      "." <> Ed25519.encode(SigningKey.sign(key, SignedMessage.run_key(payload)))
+    assemble(payload, SigningKey.sign(key, SignedMessage.run_key(payload)))
   end
+
+  @doc """
+  assemble/2 is the run key of `payload` and its 64-byte `signature`, as they were made:
+  what a run keeps of its run key gives that run key back, byte for byte, whatever key the
+  instance signs under by then.
+  """
+  @spec assemble(binary, <<_::512>>) :: String.t()
+  def assemble(payload, <<_::binary-size(64)>> = signature) when is_binary(payload),
+    do: @prefix <> Ed25519.encode(payload) <> "." <> Ed25519.encode(signature)
+
+  @doc """
+  parts/1 is a run key's payload and signature, decoded, `{payload, signature}`, or
+  `:error` for a string that is not of a run key's form. Nothing is verified here.
+  """
+  @spec parts(term) :: {binary, <<_::512>>} | :error
+  def parts(@prefix <> rest = run_key) when byte_size(run_key) <= @max_length do
+    with [encoded_payload, encoded_signature] <- String.split(rest, "."),
+         {:ok, payload} <- decode(encoded_payload),
+         {:ok, signature} <- Ed25519.decode(encoded_signature, 64) do
+      {payload, signature}
+    else
+      _ -> :error
+    end
+  end
+
+  def parts(_run_key), do: :error
 
   @doc """
   verify/2 reads `run_key` under `keys`, the signing keys a run key may be signed under,
@@ -138,12 +161,10 @@ defmodule Apiary.Runs.RunKey do
   @spec verify(term, [SigningKey.t()] | nil) :: {:ok, grant, binary} | :error
   def verify(run_key, keys \\ nil)
 
-  def verify(@prefix <> rest = run_key, keys) when byte_size(run_key) <= @max_length do
+  def verify(@prefix <> _rest = run_key, keys) when byte_size(run_key) <= @max_length do
     keys = keys || [SigningKey.current()]
 
-    with [encoded_payload, encoded_signature] <- String.split(rest, "."),
-         {:ok, payload} <- decode(encoded_payload),
-         {:ok, signature} <- Ed25519.decode(encoded_signature, 64),
+    with {payload, signature} <- parts(run_key),
          {:ok, %{"signer" => signer}} when is_binary(signer) <- Jason.decode(payload),
          %SigningKey{} = key <- Enum.find(keys, &(SigningKey.fingerprint(&1) == signer)),
          true <-
