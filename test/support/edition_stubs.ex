@@ -48,10 +48,10 @@ defmodule Apiary.EditionStubs do
   end
 
   @doc """
-  rendezvous/0 pauses a change once the edition holds its first rows, while the test that
-  started it asks so (`Process.put(:level_refusal_rendezvous, true)` in the test's
-  process): it says `{:level_refusal_held, pid}` to the test and waits for
-  `:level_refusal_go`, so two changes hold their rows at once before either goes on.
+  rendezvous/0 pauses a change where a stub calls it, while the test that started it asks
+  so (`Process.put(:level_refusal_rendezvous, true)` in the test's process): it says
+  `{:level_refusal_held, pid}` to the test and waits for `:level_refusal_go`, so changes
+  stand at the same place at once before any goes on.
   """
   def rendezvous do
     with [caller | _] when is_pid(caller) <- Process.get(:"$callers", []),
@@ -72,25 +72,30 @@ defmodule Apiary.EditionStubs do
   defmodule LocksItsRows do
     @moduledoc """
     Keeps the lock order (`c:Apiary.Edition.lock_rows/1`): it takes its rows at the one
-    point a change has, in one fixed order, its rows of people before its rows of
-    organisations, each by key, and none later. The core has no table of the edition's, so
-    its rows are transaction-level advisory locks: a write's or a change's asker, shared
-    (`{:places, scope}`); the organisation whose people change, exclusive
-    (`{:people, scope, organisation}`); every organisation of a deleted account, exclusive
-    (`{:account, user_id}`). Each is held as a row would be until the change ends.
+    point a change has, all at once in one fixed order, its rows of organisations before
+    its rows of people, each by key, and none later. The core has no table of the
+    edition's, so its rows are transaction-level advisory locks: a write's asker, shared
+    (`{:places, scope}`); a change of people's asker, shared, as at `{:places, scope}`,
+    and the organisation whose people change, exclusive (`{:people, scope,
+    organisation}`); every organisation of a deleted account, exclusive
+    (`{:account, user_id}`). Each is held as a row would be until the change ends. A
+    change of people pauses just before its point (`Apiary.EditionStubs.rendezvous/0`), a
+    write just after.
     """
     import Ecto.Query
 
     alias Apiary.Accounts.{Scope, User}
     alias Apiary.Organisations.{Membership, Organisation}
 
-    def lock_rows({:places, %Scope{user: %User{id: user_id}}}) do
-      :ok = take(:shared, [{:person, user_id}])
+    def lock_rows({:places, scope}) do
+      :ok = take(asker(scope))
       :ok = Apiary.EditionStubs.rendezvous()
     end
 
-    def lock_rows({:people, _scope, %Organisation{id: id}}),
-      do: take(:exclusive, [{:organisation, id}])
+    def lock_rows({:people, scope, %Organisation{id: id}}) do
+      :ok = Apiary.EditionStubs.rendezvous()
+      take([{:organisation, id, :exclusive} | asker(scope)])
+    end
 
     def lock_rows({:account, user_id}) do
       ids =
@@ -98,22 +103,86 @@ defmodule Apiary.EditionStubs do
           from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id
         )
 
-      take(:exclusive, Enum.map(ids, &{:organisation, &1}))
+      take(Enum.map(ids, &{:organisation, &1, :exclusive}))
     end
 
     def lock_rows(_about), do: :ok
 
-    # Rows of people come before rows of organisations, then by key.
-    defp take(mode, rows) do
-      function =
-        if mode == :shared, do: "pg_advisory_xact_lock_shared", else: "pg_advisory_xact_lock"
+    defp asker(%Scope{user: %User{id: user_id}}), do: [{:person, user_id, :shared}]
+    defp asker(_scope), do: []
 
-      for {class, id} <- Enum.sort(rows) do
+    # Rows of organisations come before rows of people (`:organisation` sorts before
+    # `:person`), then by key.
+    defp take(rows) do
+      for {class, id, mode} <- Enum.sort(rows) do
+        function =
+          if mode == :shared, do: "pg_advisory_xact_lock_shared", else: "pg_advisory_xact_lock"
+
         Apiary.Repo.query!(
           "SELECT #{function}(hashtextextended($1, 0))",
           ["apiary-edition-stub:#{class}:#{id}"]
         )
       end
+
+      :ok
+    end
+  end
+
+  defmodule PausesAfterAccount do
+    @moduledoc """
+    Takes its rows as `LocksItsRows` does, and pauses an account's deletion once it holds
+    them (`Apiary.EditionStubs.rendezvous/0`).
+    """
+    def lock_rows({:account, _user_id} = about) do
+      :ok = LocksItsRows.lock_rows(about)
+      :ok = Apiary.EditionStubs.rendezvous()
+    end
+
+    def lock_rows(about), do: LocksItsRows.lock_rows(about)
+  end
+
+  defmodule AcceptingLocksTheOrganisation do
+    @moduledoc """
+    Holds the invitation's organisation `FOR UPDATE` as an acceptance begins
+    (`c:Apiary.Edition.accepting/3`, which may hold it more strongly), and takes its rows as
+    `PausesAfterAccount` does.
+    """
+    import Ecto.Query
+
+    alias Apiary.Organisations.Organisation
+
+    def accepting(repo, invitation, user) do
+      id = invitation.organisation_id
+      repo.one(from o in Organisation, where: o.id == ^id, select: o.id, lock: "FOR UPDATE")
+      Apiary.Edition.module().accepting(repo, invitation, user)
+    end
+
+    def lock_rows(about), do: PausesAfterAccount.lock_rows(about)
+  end
+
+  defmodule OrganisationRow do
+    @moduledoc """
+    Holds a row of its own per organisation: shared for a write (`{:places, scope}`),
+    exclusive for a change of its people (`{:people, scope, organisation}`), which takes it
+    in the stronger mode at that one point, and pauses just before it.
+    """
+    alias Apiary.Accounts.Scope
+    alias Apiary.Organisations.Organisation
+
+    def lock_rows({:places, %Scope{organisation: %Organisation{id: id}}}),
+      do: lock("pg_advisory_xact_lock_shared", id)
+
+    def lock_rows({:people, _scope, %Organisation{id: id}}) do
+      :ok = Apiary.EditionStubs.rendezvous()
+      lock("pg_advisory_xact_lock", id)
+    end
+
+    def lock_rows(_about), do: :ok
+
+    defp lock(function, id) do
+      Apiary.Repo.query!("SELECT #{function}(hashtextextended($1, 0))", [
+        "apiary-edition-stub:organisation:#{id}"
+      ])
 
       :ok
     end

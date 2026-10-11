@@ -947,21 +947,36 @@ defmodule Apiary.Access do
   the security policy's locks its workspace, calls this first. `:ok`.
   """
   @spec lock_places(Scope.t()) :: :ok
-  def lock_places(%Scope{organisation: %Organisation{id: id}} = scope) do
+  def lock_places(%Scope{} = scope) do
+    case lock_organisations(scope) do
+      :ok -> Edition.lock_rows({:places, scope})
+      :gone -> :ok
+    end
+  end
+
+  def lock_places(_scope), do: :ok
+
+  @doc """
+  lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
+  edition nothing: for a change whose one point asks the edition itself
+  (`Apiary.Organisations.lock_people/1`). `:ok`, or `:gone` for an organisation deleted.
+  """
+  @spec lock_organisations(Scope.t()) :: :ok | :gone
+  def lock_organisations(%Scope{organisation: %Organisation{id: id}}) do
     case Repo.one(from o in Organisation, where: o.id == ^id, lock: "FOR SHARE") do
       nil ->
-        :ok
+        :gone
 
       %Organisation{} = now ->
         for other <- Edition.places_to_lock(now), other != id do
           Repo.one(from o in Organisation, where: o.id == ^other, select: o.id, lock: "FOR SHARE")
         end
 
-        :ok = Edition.lock_rows({:places, scope})
+        :ok
     end
   end
 
-  def lock_places(_scope), do: :ok
+  def lock_organisations(_scope), do: :gone
 
   # The person's account `FOR SHARE`, the lock order's last row, and whether it is still
   # in use: not deleted, and active as the edition says. A deletion of the account, or the

@@ -197,26 +197,32 @@ defmodule Apiary.Edition do
   2. then the workspaces, the owners' memberships and the other memberships;
   3. then the account and the invitation.
 
-  The edition never locks a membership or any other row of the core's here. It is asked:
+  The edition never locks a membership or any other row of the core's here. Each change
+  has one point, where it is asked once:
 
-  - `{:places, scope}` at the end of `Apiary.Access.lock_places/1`, once the scope's
-    organisation rows are held, before the membership `Apiary.Access.reload/2` holds for
-    a write that must stay allowed. A write may ask it twice in one change, as the
-    security policy's does, once before its workspace and once as it reads the scope: the
-    edition answers the second with the same rows in the same mode, never a stronger one;
-  - `{:people, scope, organisation}` once the organisation rows are held, before the
-    owners' memberships, in every change of the organisation's people: a change of level,
-    a removal or leaving, a suspension, an activation, and the release commands that grant
-    and revoke an instance admin (`Apiary.Organisations.lock_people/1`, after
-    `{:places, scope}`, which comes just before with no lock between), an invitation's
-    acceptance and a sign-up with one, `scope` nil for the sign-up;
-  - `{:account, user_id}` in an account's deletion, once the organisations the person
-    owns are held, before their owners and the person's memberships: the rows of every
-    organisation the account is a member of, at this one point. It takes rows of
-    organisations whose own rows the deletion has not locked, which holds while no
-    transaction that holds an organisation row `FOR UPDATE` asks this callback: the core
-    keeps that rule, and the purge of an organisation runs its batches each in a
-    transaction of its own.
+  - `{:places, scope}` at the end of `Apiary.Access.lock_places/1`, in a write that must
+    stay allowed, once the scope's organisation rows are held and before the membership
+    `Apiary.Access.reload/2` holds. The rows it takes for a scope must not depend on the
+    scope's workspace: a write may ask it more than once in one change, with the same
+    organisation, as the security policy's writes do, before and after their workspaces'
+    rows and writes and once for each workspace of a request;
+  - `{:people, scope, organisation}` in every change of the organisation's people, once
+    its organisation rows are held and before the owners' memberships
+    (`Apiary.Organisations.lock_people/1`, which asks no `{:places, scope}` before it): a
+    change of level, a removal or leaving, a suspension, an activation, and the release
+    commands that grant and revoke an instance admin; and once an invitation's
+    organisation is held, in its acceptance and in a sign-up with one, `scope` nil for the
+    sign-up. Here the edition takes, all at once in its fixed order, every row it would
+    take at `{:places, scope}` for that scope, in at least the same mode, and its rows of
+    the organisation's people;
+  - `{:account, user_id}` in an account's deletion, once every organisation the account
+    is a member of is held, those it owns `FOR SHARE` and the rest `FOR KEY SHARE`, and
+    before their owners and the person's memberships: the rows of every organisation the
+    account is a member of, at this one point.
+
+  A repeat of `{:places, scope}` later in the same change, after its point, must take no
+  new row and no stronger mode: the edition answers it with rows it holds already, in the
+  mode it holds them.
   """
   @callback lock_rows(lock_about) :: :ok
 

@@ -1704,16 +1704,18 @@ defmodule Apiary.Organisations do
 
   @doc """
   lock_people/1 holds the scope's organisation, with what the edition holds beside it,
-  `FOR SHARE` (`Apiary.Access.lock_places/1`), then the edition's own rows for a change of
-  the organisation's people (`c:Apiary.Edition.lock_rows/1`, `{:people, scope,
-  organisation}`): the first rows of the lock order of docs/access.md, before any
-  membership. For a caller inside a transaction that changes a membership of the
-  organisation, before it reads the membership. `:ok`.
+  `FOR SHARE` (`Apiary.Access.lock_organisations/1`), then the edition's own rows for a
+  change of the organisation's people (`c:Apiary.Edition.lock_rows/1`, `{:people, scope,
+  organisation}`), the change's one point: the first rows of the lock order of
+  docs/access.md, before any membership. For a caller inside a transaction that changes a
+  membership of the organisation, before it reads the membership. `:ok`.
   """
   @spec lock_people(Scope.t()) :: :ok
   def lock_people(%Scope{organisation: %Organisation{} = organisation} = scope) do
-    :ok = Access.lock_places(scope)
-    :ok = Edition.lock_rows({:people, scope, organisation})
+    case Access.lock_organisations(scope) do
+      :ok -> Edition.lock_rows({:people, scope, organisation})
+      :gone -> :ok
+    end
   end
 
   def lock_people(_scope), do: :ok
@@ -1840,11 +1842,13 @@ defmodule Apiary.Organisations do
   owner. An organisation marked for deletion is not counted: it goes, owner or not.
 
   `lock: true`, for a caller inside a transaction that deletes the account, first holds
-  every organisation the user owns `FOR SHARE`, then the edition's rows for the deletion
-  (`c:Apiary.Edition.lock_rows/1`, `{:account, user_id}`), then locks the owners'
-  memberships of them, in the order of their ids, as a change of a level locks them
-  (`lock_owners/1`): a concurrent demotion or removal of another owner waits, and what
-  was counted stays true until the caller commits.
+  every organisation the user is a member of, in one pass in the lock order: those they
+  own `FOR SHARE`, the rest `FOR KEY SHARE`, which waits only for a change that takes the
+  organisation `FOR UPDATE`, as its purge does. Then the edition's rows for the deletion
+  (`c:Apiary.Edition.lock_rows/1`, `{:account, user_id}`), then it locks the owners'
+  memberships of the organisations the user owns, in the order of their ids, as a change
+  of a level locks them (`lock_owners/1`): a concurrent demotion or removal of another
+  owner waits, and what was counted stays true until the caller commits.
   """
   @spec sole_owned_organisations(%User{}, keyword) :: [%Organisation{}]
   def sole_owned_organisations(%User{id: user_id}, opts \\ []) do
@@ -1853,18 +1857,23 @@ defmodule Apiary.Organisations do
         where: m.user_id == ^user_id and m.level == :owner,
         select: m.organisation_id
 
-    # The lock order (docs/access.md): the organisations `FOR SHARE`, in the order of
-    # `lock_order/1`; then the edition's rows; then their owners.
+    # The lock order (docs/access.md): every organisation of the account in one pass, in
+    # the order of `lock_order/1`, those it owns `FOR SHARE` and the rest `FOR KEY SHARE`;
+    # then the edition's rows; then the owners.
     if Keyword.get(opts, :lock, false) do
-      order = Repo.all(from o in Organisation, where: o.id in subquery(owned)) |> lock_order()
+      owns = MapSet.new(Repo.all(owned))
 
-      Repo.all(
-        from o in Organisation,
-          where: o.id in ^order,
-          order_by: fragment("array_position(?, ?)", type(^order, {:array, Ecto.UUID}), o.id),
-          select: o.id,
-          lock: "FOR SHARE"
-      )
+      member_of =
+        from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id
+
+      for id <-
+            Repo.all(from o in Organisation, where: o.id in subquery(member_of)) |> lock_order() do
+        query = from o in Organisation, where: o.id == ^id, select: o.id
+
+        if MapSet.member?(owns, id),
+          do: Repo.one(lock(query, "FOR SHARE")),
+          else: Repo.one(lock(query, "FOR KEY SHARE"))
+      end
 
       :ok = Edition.lock_rows({:account, user_id})
 

@@ -50,7 +50,7 @@ defmodule Apiary.LockRowsTest do
     end)
   end
 
-  describe "a change of the organisation's people asks {:places}, then {:people}, once each" do
+  describe "a change of the organisation's people asks {:people} once, and no {:places}" do
     setup do
       %{scope: owner} = sign_up_fixture()
       %{membership: member, scope: member_scope} = member_fixture(owner, :member)
@@ -63,7 +63,7 @@ defmodule Apiary.LockRowsTest do
       assert {:ok, %Membership{level: :admin}} =
                Organisations.set_member_level(owner, member.id, :admin)
 
-      assert points() == [:places, :people]
+      assert points() == [:people]
     end
 
     test "a removal, and leaving", %{owner: owner, member: member} do
@@ -71,22 +71,22 @@ defmodule Apiary.LockRowsTest do
       recording()
 
       assert {:ok, _removed} = Organisations.remove_member(owner, member.id)
-      assert points() == [:places, :people]
+      assert points() == [:people]
 
       assert {:ok, _left} = Organisations.remove_member(leaving_scope, leaving.id)
-      assert points() == [:places, :people]
+      assert points() == [:people]
     end
 
     test "a suspension, and an activation", %{owner: owner, member: member} do
       recording()
 
       assert {:ok, %Membership{}} = Organisations.suspend_member(owner, member.id)
-      assert points() == [:places, :people]
+      assert points() == [:people]
 
       assert {:ok, %Membership{suspended_at: nil}} =
                Organisations.activate_member(owner, member.id)
 
-      assert points() == [:places, :people]
+      assert points() == [:people]
     end
   end
 
