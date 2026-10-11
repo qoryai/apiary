@@ -181,7 +181,10 @@ defmodule Apiary.Edition do
   @doc """
   The organisations a write that must stay allowed holds `FOR SHARE`, in the lock order:
   the organisation's own id first. Given the organisation as the database has it now,
-  held `FOR SHARE` already (`Apiary.Access.lock_places/1`).
+  held `FOR SHARE` already (`Apiary.Access.lock_places/1`). Several organisations are
+  locked in the order of `Apiary.Organisations.lock_order/1`, which asks this callback:
+  those it names another organisation for first, then the rest, each in the order of
+  their ids.
   """
   @callback places_to_lock(%Organisation{}) :: [Ecto.UUID.t()]
 
@@ -196,7 +199,10 @@ defmodule Apiary.Edition do
 
   The lock order, by class of row (docs/access.md):
 
-  1. the organisation rows, then this callback's rows;
+  1. the organisation rows, then this callback's rows; where the edition locks rows of
+     more than one organisation, it takes them in the order of
+     `Apiary.Organisations.lock_order/1`, the function it calls for the order of several
+     organisations;
   2. then the workspaces, the owners' memberships and the other memberships;
   3. then the account and the invitation.
 
