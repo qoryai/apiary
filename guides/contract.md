@@ -631,6 +631,15 @@ the request's `proof`. A refusal changes nothing, and the code stays outstanding
 code, posted again with the same public key while its 15 minutes last and the key is not
 revoked, is the same `201` for the same key; any other key on a used code is `401`.
 
+**Through a gateway.** A machine behind a gateway enrols through it, `qory access-key
+enrol --via <gateway> <server> <code>` ([Behind a gateway](nodes.md#behind-a-gateway)).
+The gateway relays the request unchanged and strips `X-Forwarded-For`, `Forwarded` and
+`X-Real-Ip`, so it arrives from the gateway's address. Qory Apiary accepts it as any
+other, with no further check: the code decides the node. The address's limit counts the
+gateway's address, one limit for every machine behind it, and the audit entry of the key's
+arrival records that address. The answer is Qory Apiary's, signed with the request's
+`proof` as line 3, and the gateway passes it back unchanged.
+
 ## Building a receiver
 
 Forager's repository ships a reference receiver and the fixtures any receiver is tested

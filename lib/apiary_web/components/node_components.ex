@@ -15,6 +15,9 @@ defmodule ApiaryWeb.NodeComponents do
   ("3 of 10 running", "3 running"). One that runs nothing says when an instance of it was
   last seen, or, with no instance left, when one of its keys was last used, ticking in the
   browser (`seen_at/1`), or "Never seen".
+
+  Under the command that enrols through a gateway, both places say which flag a gateway
+  whose certificate a private authority signed needs (`via_ca_line/1`).
   """
   use ApiaryWeb, :html
 
@@ -169,13 +172,67 @@ defmodule ApiaryWeb.NodeComponents do
   server's address and the code as the machine sends it. Only a page that shows the
   command once calls it, with the code it holds. With `replace: true`, for a node that has
   or had a key, it carries `--replace`, so that a machine already holding a key moves to
-  the new one; qory enrols a machine without a key with it all the same.
+  the new one; qory enrols a machine without a key with it all the same. With `via: url`,
+  for a node whose choice leads to a gateway, it carries `--via` and the gateway's URL,
+  before the server's address as qory's docs write it: qory enrols through that gateway,
+  which passes the request and Qory Apiary's signed answer on unchanged, and writes the
+  gateway's address into the Forager file as `gateway.server.via`. Each address and the
+  code go through `shell_word/1`, so a person who pastes the command runs qory with
+  them and nothing else.
   """
-  @spec enrol_command(String.t(), String.t(), [{:replace, boolean}]) :: String.t()
+  @spec enrol_command(String.t(), String.t(), [{:replace, boolean} | {:via, String.t() | nil}]) ::
+          String.t()
   def enrol_command(server, code, opts \\ []) when is_binary(server) and is_binary(code) do
-    if Keyword.get(opts, :replace, false),
-      do: "qory access-key enrol --replace #{server} #{code}",
-      else: "qory access-key enrol #{server} #{code}"
+    replace = if Keyword.get(opts, :replace, false), do: ["--replace"], else: []
+
+    via =
+      case Keyword.get(opts, :via) do
+        nil -> []
+        url when is_binary(url) -> ["--via", shell_word(url)]
+      end
+
+    Enum.join(
+      ["qory access-key enrol"] ++ replace ++ via ++ [shell_word(server), shell_word(code)],
+      " "
+    )
+  end
+
+  @doc """
+  shell_word/1 is `value` as one word of a POSIX shell command, its characters taken
+  literally: as it is when every character is a letter, a digit or one of `. _ ~ : / -`
+  and it starts with no `~`, which a shell expands there; else in single quotes, each
+  `'` in it written `'\\''`. A gateway's URL may carry characters a shell acts on, such as
+  `;`, `$` or `&`, and `[` and `]` of an IPv6 host are a pattern to some shells; quoted,
+  none of them does anything. A plain URL and an enrolment code are unchanged.
+  """
+  @spec shell_word(String.t()) :: String.t()
+  def shell_word(value) when is_binary(value) do
+    if value =~ ~r{\A[A-Za-z0-9._:/-][A-Za-z0-9._~:/-]*\z},
+      do: value,
+      else: "'" <> String.replace(value, "'", "'\\''") <> "'"
+  end
+
+  @doc """
+  via_ca_line/1 is the line under the enrol command of a node whose choice leads to
+  `gateway`: that a gateway whose certificate a private certificate authority signed
+  needs `--via-ca-file` and that authority's PEM file, which Qory Apiary does not know.
+  Nothing without a gateway.
+  """
+  attr :id, :string, required: true
+  attr :gateway, :any, required: true, doc: "the gateway the command goes through, or nil"
+
+  def via_ca_line(assigns) do
+    ~H"""
+    <p :if={@gateway} id={@id} class="text-[13px]/5 text-muted">
+      <.rich text={
+        rich_gettext(
+          "If %{gateway}'s certificate is signed by a private certificate authority, add %{flag} and that authority's PEM file.",
+          gateway: @gateway.name,
+          flag: {:m, "--via-ca-file"}
+        )
+      } />
+    </p>
+    """
   end
 
   @doc """
@@ -231,9 +288,10 @@ defmodule ApiaryWeb.NodeComponents do
   (`Apiary.Gateways.chosen/1`), as the choice leads now: that its runs go through that
   gateway, named with its URL, and, while the gateway holds no active access key, that it
   isn't connected; for a node on Default gateway while no gateway is the default, only
-  that. The enrol command and the Forager file are the same either way: they point at Qory
-  Apiary. Nothing for a node that goes direct, a gateway, or a node whose named gateway is
-  gone.
+  that. The enrol command and the Forager file point at Qory Apiary through that gateway:
+  the command carries `--via` and its URL (`enrol_command/3`), the Forager file a `via`
+  line (`Apiary.AccessKeys.via_lines/1`). Nothing for a node that goes direct, a gateway,
+  or a node whose named gateway is gone.
   """
   attr :id, :string, required: true
   attr :node, Node, required: true

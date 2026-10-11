@@ -53,6 +53,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Enrolment
+  alias Apiary.Gateways
   alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Retention
@@ -123,6 +124,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           may_key={@onboarding.may_key}
           command={@command}
           server={@onboarding.server}
+          through={@onboarding.through}
+          through_connected={@onboarding.through_connected}
           landed={@landed}
         />
 
@@ -1667,6 +1670,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     target = keyless_target(scope, counts, keys)
     may_key? = &Apiary.Access.can?(scope, &1, target)
+    # The gateway the target's choice leads to, its organisation loaded for the notice.
+    through = target && target |> Gateways.chosen() |> Apiary.Repo.preload(:organisation)
 
     %{
       nodes: counts.node + counts.pool,
@@ -1676,7 +1681,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       may_key:
         not is_nil(target) and may_key?.(:"access_key.add") and
           may_key?.(:"access_key.create_code"),
-      server: ApiaryWeb.Endpoint.url()
+      server: ApiaryWeb.Endpoint.url(),
+      through: through,
+      through_connected: !!through and AccessKeys.active_key?(through)
     }
   end
 
