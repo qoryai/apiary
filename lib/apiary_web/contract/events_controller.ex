@@ -63,8 +63,11 @@ defmodule ApiaryWeb.Contract.EventsController do
       {:error, :not_found} ->
         conn |> put_status(404) |> json(%{error: "not_found"})
 
-      {:error, :wrong_node} ->
-        conn |> put_status(409) |> json(%{error: "wrong_node"})
+      {:error, code} when code in [:wrong_node, :wrong_gateway] ->
+        conn |> put_status(409) |> json(%{error: Atom.to_string(code)})
+
+      {:error, :unauthorized} ->
+        conn |> put_status(401) |> json(%{error: "unauthorized"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})
