@@ -336,6 +336,54 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule Classifies do
+    @moduledoc """
+    Names other organisations after some (`c:Apiary.Edition.places_to_lock/1`) as a table
+    the test keeps says, which it may change while a change runs, as an edition's
+    classification changes between a read and a lock: `start/0` makes the table,
+    `holds/2` says what an organisation names besides its own id, and `pause_at/1` the
+    calls, counted from the first, after whose answer is read the change pauses until the
+    test lets it go (`{:classified, pid}` to the test, `:go` back). Every other
+    organisation names itself alone, as the core's edition does.
+    """
+    alias Apiary.Organisations.Organisation
+
+    @table __MODULE__
+
+    def start do
+      :ets.new(@table, [:named_table, :public])
+      :ets.insert(@table, [{:calls, 0}, {:pause_at, []}])
+      :ok
+    end
+
+    def holds(id, others), do: :ets.insert(@table, {{:holds, id}, others})
+    def pause_at(calls), do: :ets.insert(@table, {:pause_at, calls})
+
+    def places_to_lock(%Organisation{id: id}) do
+      answer =
+        case :ets.lookup(@table, {:holds, id}) do
+          [{_key, others}] -> [id | others]
+          [] -> [id]
+        end
+
+      call = :ets.update_counter(@table, :calls, 1)
+      [{:pause_at, pauses}] = :ets.lookup(@table, :pause_at)
+
+      if call in pauses do
+        [test | _] = Process.get(:"$callers", [self()])
+        send(test, {:classified, self()})
+
+        receive do
+          :go -> :ok
+        after
+          10_000 -> :ok
+        end
+      end
+
+      answer
+    end
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end

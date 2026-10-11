@@ -1873,26 +1873,22 @@ defmodule Apiary.Organisations do
         select: m.organisation_id
 
     # The lock order (docs/access.md): every organisation of the account in one pass, in
-    # the order of `lock_order/1`, those it owns `FOR SHARE` and the rest `FOR KEY SHARE`;
-    # then the edition's rows; then the owners.
+    # the order of `lock_order/1` (`lock_organisations/2`), those it owns `FOR SHARE` and
+    # the rest `FOR KEY SHARE`; then the edition's rows; then the owners.
     if Keyword.get(opts, :lock, false) do
       owns = MapSet.new(Repo.all(owned))
 
       member_of =
-        from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id
+        Repo.all(from m in Membership, where: m.user_id == ^user_id, select: m.organisation_id)
 
       held =
-        for id <-
-              Repo.all(from o in Organisation, where: o.id in subquery(member_of))
-              |> lock_order(),
-            query = from(o in Organisation, where: o.id == ^id, select: o.id),
-            held =
-              if(MapSet.member?(owns, id),
-                do: Repo.one(lock(query, "FOR SHARE")),
-                else: Repo.one(lock(query, "FOR KEY SHARE"))
-              ),
-            not is_nil(held),
-            do: held
+        case lock_organisations(
+               member_of,
+               &if(MapSet.member?(owns, &1), do: :share, else: :key_share)
+             ) do
+          {:ok, held} -> held
+          {:error, error} -> raise error
+        end
 
       :ok = Edition.lock_rows({:account, user_id, held})
 
@@ -1940,18 +1936,116 @@ defmodule Apiary.Organisations do
   nothing, since its locks belong to `c:Apiary.Edition.lock_rows/1`.
 
   An edition that takes more than one organisation row in one transaction, in a mode that
-  conflicts with `FOR SHARE`, takes them at one point, in this order, before its first
-  write; and only rows of organisations whose classification, what
-  `c:Apiary.Edition.places_to_lock/1` names for them, cannot change while it holds them,
-  or while it holds what a change of their classification waits for. The core meets
-  this: each change of the core that locks an organisation row in such a mode locks that
-  one row alone.
+  conflicts with `FOR SHARE`, takes them at one point, before its first write, through
+  `lock_organisations/2`, which locks them in this order and reads it again should it
+  change before the lock. The core meets this: each change of the core that locks an
+  organisation row in such a mode locks that one row alone.
   """
   @spec lock_order([%Organisation{}]) :: [Ecto.UUID.t()]
   def lock_order(organisations) do
     organisations
     |> Enum.sort_by(&{match?([_own], Edition.places_to_lock(&1)), &1.id})
     |> Enum.map(& &1.id)
+  end
+
+  @typedoc "The mode in which `lock_organisations/2` locks an organisation's row."
+  @type lock_mode :: :key_share | :share | :no_key_update | :update
+
+  @lock_modes [:key_share, :share, :no_key_update, :update]
+
+  # One statement, so the rows are locked in the order given: each element of the arrays,
+  # in their order (`WITH ORDINALITY`), is joined to subqueries that refer to it
+  # (`LATERAL`), which Postgres can only run once for each element, in a nested loop
+  # driven by the array; the subquery of the element's mode locks its row before the next
+  # element is read, and the others are cut off by their one-time filter and lock nothing.
+  # A locking clause applies to a whole table reference, not to each row, so a subquery
+  # for each mode is what lets one statement take several modes.
+  @lock_statement """
+  SELECT t.id
+  FROM unnest($1::uuid[], $2::text[]) WITH ORDINALITY AS t(id, mode, n)
+  LEFT JOIN LATERAL (
+    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'key_share'
+    FOR KEY SHARE
+  ) ks ON true
+  LEFT JOIN LATERAL (
+    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'share'
+    FOR SHARE
+  ) s ON true
+  LEFT JOIN LATERAL (
+    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'no_key_update'
+    FOR NO KEY UPDATE
+  ) nku ON true
+  LEFT JOIN LATERAL (
+    SELECT o.id FROM organisations o WHERE o.id = t.id AND t.mode = 'update'
+    FOR UPDATE
+  ) u ON true
+  WHERE COALESCE(ks.id, s.id, nku.id, u.id) IS NOT NULL
+  ORDER BY t.n
+  """
+
+  @doc """
+  lock_organisations/2 locks the rows of the organisations `organisation_ids`, those still
+  there, in the order of `lock_order/1`, for a caller inside a transaction, at its
+  change's one point for the organisation rows, before its first write. `mode` is the
+  mode of every row, or a function of an organisation's id that answers the mode of its
+  row: `:key_share`, `:share`, `:no_key_update` or `:update`, for `FOR KEY SHARE`,
+  `FOR SHARE`, `FOR NO KEY UPDATE` and `FOR UPDATE`.
+
+  It reads the organisations and orders them with `lock_order/1`, without a lock, then
+  locks them all in one statement, in that order, under a savepoint. What
+  `c:Apiary.Edition.places_to_lock/1` names may change between the read and the lock, and
+  two changes that read it on either side of such a change lock in two orders and may
+  wait on each other: Postgres then refuses one of them (`deadlock_detected`). Refused
+  so, it rolls back to the savepoint, which lets go of the rows that statement locked,
+  reads the organisations again, and locks them once more, in the order read then. A
+  second refusal, or any other error of the statement, is answered as it is, once the
+  rows that statement locked are let go of, and the transaction goes on.
+
+  `{:ok, ids}`, the organisations locked, in the order they were locked; an organisation
+  no longer there is left out. `{:error, exception}` as above. Called outside a
+  transaction, it raises.
+  """
+  @spec lock_organisations([Ecto.UUID.t()], lock_mode | (Ecto.UUID.t() -> lock_mode)) ::
+          {:ok, [Ecto.UUID.t()]} | {:error, Exception.t()}
+  def lock_organisations(organisation_ids, mode)
+      when is_list(organisation_ids) and (mode in @lock_modes or is_function(mode, 1)) do
+    unless Repo.in_transaction?(),
+      do: raise(ArgumentError, "lock_organisations/2 locks inside a transaction")
+
+    case lock_in_order(organisation_ids, mode) do
+      {:error, %Postgrex.Error{postgres: %{code: :deadlock_detected}}} ->
+        lock_in_order(organisation_ids, mode)
+
+      result ->
+        result
+    end
+  end
+
+  # One read and one lock of the organisations, under a savepoint rolled back on an error.
+  defp lock_in_order(organisation_ids, mode) do
+    ids = Repo.all(from o in Organisation, where: o.id in ^organisation_ids) |> lock_order()
+    modes = Enum.map(ids, &(&1 |> mode_of(mode) |> Atom.to_string()))
+
+    Repo.query!("SAVEPOINT apiary_lock_organisations")
+
+    case Repo.query(@lock_statement, [Enum.map(ids, &Ecto.UUID.dump!/1), modes]) do
+      {:ok, %{rows: rows}} ->
+        Repo.query!("RELEASE SAVEPOINT apiary_lock_organisations")
+        {:ok, Enum.map(rows, fn [id] -> Ecto.UUID.load!(id) end)}
+
+      {:error, error} ->
+        Repo.query!("ROLLBACK TO SAVEPOINT apiary_lock_organisations")
+        Repo.query!("RELEASE SAVEPOINT apiary_lock_organisations")
+        {:error, error}
+    end
+  end
+
+  defp mode_of(_id, mode) when mode in @lock_modes, do: mode
+
+  defp mode_of(id, mode) when is_function(mode, 1) do
+    case mode.(id) do
+      answer when answer in @lock_modes -> answer
+    end
   end
 
   @doc """
