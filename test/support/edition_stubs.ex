@@ -429,6 +429,44 @@ defmodule Apiary.EditionStubs do
     end
   end
 
+  defmodule ServesAcross do
+    @moduledoc """
+    Lets the organisation-level gateways of one organisation serve the workspaces of
+    others, as an edition may (`c:Apiary.Edition.serving_organisations/1`,
+    `c:Apiary.Edition.served_organisations/1`): the pairs `{serving, served}` the test
+    names (`put/1` in the test's process, which the processes it starts read too), the
+    serving organisations of one served organisation in the order the test gives them.
+    Both answers come from the one list, so each is the reverse of the other. It reads
+    nothing and locks nothing. With `out_of_use/1`, it also holds organisations out of use
+    as `OutOfUse` does.
+    """
+
+    @doc "put/1 names the pairs `{serving, served}`, in order, for the test's processes."
+    def put(pairs) when is_list(pairs), do: Process.put(:serves_across, pairs)
+
+    @doc "out_of_use/1 holds the organisations `ids` out of use, as `OutOfUse` reads it."
+    def out_of_use(ids) when is_list(ids), do: Process.put(:out_of_use, ids)
+
+    def serving_organisations(id), do: for({serving, ^id} <- pairs(), do: serving)
+
+    def served_organisations(id), do: for({^id, served} <- pairs(), do: served)
+
+    def active_organisations(query, binding), do: OutOfUse.active_organisations(query, binding)
+
+    defp pairs do
+      Enum.find_value([self() | Process.get(:"$callers", [])], [], fn
+        pid when pid == self() ->
+          Process.get(:serves_across)
+
+        pid ->
+          case Process.info(pid, {:dictionary, :serves_across}) do
+            {{:dictionary, :serves_across}, pairs} when is_list(pairs) -> pairs
+            _unset -> nil
+          end
+      end)
+    end
+  end
+
   defmodule None do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end
