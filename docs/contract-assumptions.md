@@ -152,9 +152,12 @@ first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | the instance id is absent or outside its pattern | `{"error":"bad_request"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch, is over a limit below, or holds `dev.qory.ping` or `dev.qory.run.registered` | `{"error":"invalid_request"}` |
+| `400` | the body is not a batch, is over a limit below, holds `dev.qory.ping` or `dev.qory.run.registered`, or a `dev.qory.run.started` whose `opened_by` is not `session` or that carries `credential` | `{"error":"invalid_request"}` |
 | `404` | the key may not post events (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `409` | the run is bound to another node than the key's (`Apiary.Runs.Sender`): a batch is one run's, so the whole batch is refused, and nothing of it, the delivery included, is stored | `{"error":"wrong_node"}` |
+| `409` | the run goes through a gateway and the key is not one of the gateway's that attached it, or the key is a gateway's and the run is not one it attached; refused whole, as above | `{"error":"wrong_gateway"}` |
+| `401` | the run goes through a gateway and its own workspace or organisation is out of use, as a key of it would be; unsigned | `{"error":"unauthorized"}` |
+| `404` | the run goes through a gateway and `Apiary.Access` does not let its own workspace post (`run.post_events`), as a path that does not exist | `{"error":"not_found"}` |
 | `410` | retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty, or the run's `end` (below) |
@@ -172,6 +175,17 @@ A run is bound to one node: the node or node pool whose key registered it, or wh
 batch opened it (`runs.node_id`). Its batches, a heartbeat's among them, are taken from
 that node's active keys alone, whichever of them signs, so a second key of the node, while
 one is replaced, keeps the run going (`Apiary.Runs.Sender`).
+
+A run through a gateway (The run endpoint, below) takes its batches from the active keys
+of the gateway that attached it (`runs.gateway_id`, once `attached_at` is set), and from
+nobody before the attach, its own node included. A gateway's key finds its run by the
+gateway and the run's id, whatever workspace the run is in, and never opens one: a batch
+for a run it did not attach is `409 wrong_gateway`, and nothing is stored. The run's
+workspace, node and instance stay the registration's. What is read for it, the run
+configuration its answers carry and the features its events are kept under, is read under
+the run's own workspace and organisation (`Apiary.Runs.Sender.place_key/2`), and the
+delivery is recorded in the run's workspace. Events after the run's end are taken from the
+gateway as from any node.
 
 Once the run's starter has given its outcome (The run endpoint, below), every `2xx` to the
 run's batches has a body, `application/json`,
@@ -241,7 +255,8 @@ the body is logged.
 
 `POST /v1/runs` registers a run before it starts, and `GET /v1/runs/<run_id>` reloads its
 run configuration (`ApiaryWeb.Contract.RegistrationController`,
-`Apiary.Runs.Registration`). Both are signed as above.
+`Apiary.Runs.Registration`). Both are signed as above. A run that goes through a gateway is
+attached by it with `POST /v1/runs/<run_id>/attach` (The attach, below).
 
 **The registration.** `Content-Type: application/json`, the media type compared exactly,
 whatever its case and parameters (`415` otherwise), a body of at most 64 KiB, the
@@ -267,6 +282,20 @@ are not a list of strings that are not empty. `labels` and `about` may be left o
 everything else is required. A `time` more than 300 seconds from the server's clock,
 either way, is `401`, unsigned, as a GET's stale timestamp is.
 
+The body has one of two shapes, told apart by its members alone. The direct shape is the
+one above. The shape through a gateway has `version`, `run_id`, `time`, and optionally
+`labels`, `about` and `attach_seconds`, and none of `forager_version`, `contract_version`,
+`interval_seconds` and `events`. A body with any of those four is read as the direct
+shape, so it must have all four and no `attach_seconds` (`"attach_seconds"` is the member
+named then). `attach_seconds` is an integer from 1; left out it is the server's default,
+and above the server's ceiling it is the ceiling
+(`Apiary.Runs.Registration.attach_window/1`: `config :apiary, Apiary.Runs.Registration`,
+`attach_seconds`, 600 unless set, and `max_attach_seconds`, 3600 unless set).
+
+Which shape a key's node may send is decided by its recorded choice of gateway, resolved
+as the records are now (`Apiary.Gateways.resolve/1`), never by the body: a node that goes
+directly sends the direct shape, and a node whose choice resolves to a gateway the shape
+through a gateway.
 After the refusals every signed request gets, in the order of the events endpoint's table
 (`413`, `415`, a header sent twice, `401`, `429`, the instance id, the contract version,
 the body, the `time`), the first of these that applies is the answer:
@@ -276,10 +305,16 @@ the body, the `time`), the first of these that applies is the answer:
 | `404` | the key may not open a run (`run.post_events`) | `{"error":"not_found"}` |
 | `200` | a repeat: a run of this id that registered with the same bytes, by their SHA-256, under any active key of the node that registered it is given the answer it was given, and nothing is stored or admitted again | the run configuration |
 | `410` | a run of this id whose events retention has pruned | empty |
+| `409` | the key is a gateway's: a gateway registers no run, whatever the shape | `{"error":"gateway_key"}` |
+| `409` | the shape through a gateway, from a node whose choice is direct | `{"error":"node_is_direct"}` |
+| `409` | the direct shape, from a node whose choice is not direct | `{"error":"node_uses_gateway"}` |
+| `409` | the node's choice is its workspace's default, and no default resolves | `{"error":"no_default_gateway"}` |
+| `409` | the node names a gateway that may no longer serve its workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"gateway_not_serving"}` |
+| `409` | the gateway the choice resolves to has no active access key | `{"error":"gateway_without_key"}` |
 | `409` | a new instance beyond its node's instance limit (`Apiary.Nodes.admit/4`); the refusal is counted on the node | `{"error":"instance_limit"}` |
 | `409` | any other run of this id: registered with other bytes, or by another node even with the same bytes, or created by events that came without a registration | `{"error":"run_id_used"}` |
-| `503` | a managed workspace whose run configuration cannot be read, or a run that cannot be stored: never a run without its policy | `{"error":"unavailable"}` |
-| `200` | the run is stored | the run configuration |
+| `503` | a managed workspace whose run configuration cannot be read, a run key that cannot be made for the gateway, or a run that cannot be stored: never a run without its policy | `{"error":"unavailable"}` |
+| `200` | the run is stored | the run configuration, or for a run through a gateway its run key |
 
 No run is stored on any refusal. The run configuration is read before the transaction,
 outside the node's lock; the instance limit is checked inside it, first, under the node's
@@ -296,9 +331,8 @@ the run configuration could not be read logs nothing.
 What is stored, in one transaction, before the answer: the run, in the key's workspace, in
 state `pending`, under the key, on its node and the instance the request claimed
 (`Apiary.Nodes.placement/2`), with `registered_at`, when this server took it, the
-registration's labels, `about`, `interval_seconds` and `time`, on the gateway's clock
-(`registration_labels`, `registration_about`, `registration_interval_seconds`,
-`registration_time`), the SHA-256 of its bytes (`registration_digest`), by which a repeat
+registration's labels, `about` and `interval_seconds` (`registration_labels`,
+`registration_about`, `registration_interval_seconds`), the SHA-256 of its bytes (`registration_digest`), by which a repeat
 is told from another registration, and the digest of the run configuration it was given
 (`registration_answer_digest`). Its `forager_version` is the one `User-Agent` names, else
 the body's, and its `contract_version` the header's. The projector never writes these
@@ -349,8 +383,72 @@ A workspace whose policy nobody has made, one without the `security` feature, an
 registration is answered `{"version":1}`, the document of no policy
 (`Apiary.Policy.Render.no_policy_document/0`), with its digest, and nothing is rendered.
 
+**Through a gateway.** A registration whose node's choice resolves to a gateway is
+answered with no run configuration: a signed `200`, `application/json`,
+`{"version":1,"run_id":"<run_id>","run_key":"qrk_…"}`, with `X-Qory-Configuration` and
+neither `X-Qory-Run-Configuration` nor `ETag`. The run key (`Apiary.Runs.RunKey`) is
+`qrk_`, the payload in base64url without padding, `.`, and the 64-byte Ed25519 signature
+in base64url without padding, under the instance's signing key (`Apiary.SigningKey`),
+over `qory-run-key-ed25519-v1`, a line feed and the payload's bytes
+(`Apiary.Contract.SignedMessage.run_key/1`); at most 2048 characters. The payload's
+members, in order: `version` 1, `signer` (the signing key's fingerprint), `run_id`,
+`workspace` (`ws_`), `node_id` (the registering node or pool, `nd_` or `np_`), `gateway`
+(`ng_`), `gateway_url` (the gateway's `https` origin), `gateway_public_key` (the gateway's
+active keys, at most two, oldest first, each `{"alg":"ed25519","public_key":…}`),
+`instance_id` (the registration's), `issued` and `attach_by` (UTC, whole seconds;
+`attach_by` is `issued` and the window granted). A gateway's address is always
+`https://` (`Apiary.Nodes.Node.validate_url/1`, `nodes_url_check`). A run key that cannot
+be made, one that would be longer than 2048 characters for a very long address, say, is
+`503`, logged as "no run key could be made for a run through a gateway: too_long".
+
+The run is stored as a direct one is, on the registering key's node and instance, but
+with no interval, no answer digest and no Forager version unless `User-Agent` names one,
+and with the gateway (`gateway_id`), the payload's exact bytes (`run_key_payload`) and
+its signature (`run_key_signature`), when it was made (`run_key_issued_at`) and the end of
+its window (`attach_by`). A repeat is given the same run key, byte for byte, from the
+stored payload and signature, whatever key the instance signs under by then. A run id is unique per workspace, and per gateway among the runs that go
+through it.
+
+**The attach.** `POST /v1/runs/<run_id>/attach`, signed by the gateway's own key,
+`application/json`, its body read raw up to 64 KiB, is how the gateway a run key names
+takes the run on (`Apiary.Runs.Attach`, `ApiaryWeb.Contract.AttachController`):
+`{"version":1,"run_key","interval_seconds","events","forager_version","contract_version","time"}`,
+every member required, read as a registration's same members are; a member the contract
+does not name is `400 invalid_request` with `"body"`, and a `time` more than 300 seconds
+from the server's clock `401`, unsigned. Then, the first that applies:
+
+| Status | When | Body |
+|---|---|---|
+| `409` | the key's node is not a gateway | `{"error":"not_a_gateway"}` |
+| `400` | the run key does not verify under the instance's signing key, its `run_id` is not the path's, or it is not, byte for byte, the run key the run was given | `{"error":"run_key_invalid"}` |
+| `401` | the run's workspace or organisation is out of use (`Apiary.AccessKeys.place_in_use?/2`); unsigned | `{"error":"unauthorized"}` |
+| `404` | `Apiary.Access` does not let the run's workspace post (`run.post_events`) | `{"error":"not_found"}` |
+| `200` | a repeat: the gateway that attached the run, under any of its active keys, while the run is live, whatever the body | the answer it was given, by its stored digest |
+| `410` | the run has ended: an exit, an outcome, lost after its attach, or its events pruned; or its record is gone | empty |
+| `409` | never attached, and past `attach_by` on the clock read once the run's row is locked, or already `lost` (the lost-run check at `attach_by`, or its instance cleared) | `{"error":"run_key_expired"}` |
+| `409` | the run key names another gateway | `{"error":"wrong_gateway"}` |
+| `409` | the gateway may no longer serve the run's workspace (`Apiary.Gateways.may_serve?/2`) | `{"error":"workspace_not_served"}` |
+| `409` | another gateway attached the run | `{"error":"run_attached"}` |
+| `503` | the run configuration cannot be read, or the attach cannot be stored | `{"error":"unavailable"}` |
+| `200` | attached | the run configuration, with `labels` and `about` |
+
+The checks after the run key run under the run's projection lock and its row lock, so two
+attaches of one run take turns. The run key names the gateway the run was registered for,
+and a repeat is that gateway's, so `run_attached` is only reached by a gateway the run key
+names that did not attach the run, which cannot be. The answer is the run configuration
+in force for the run's labels, read under the run's own workspace and organisation, its
+bytes with `,"labels":…` and `,"about":…` added before the closing brace, each only when
+the registration had some, with `X-Qory-Run-Configuration` and `ETag` of the
+configuration's digest, not the body's, so that a reload and the run's batches carry the
+same digest, and `X-Qory-Configuration`. The run keeps `attached_at`,
+`attach_interval_seconds`, the digest given
+(`attach_answer_digest`), and the attach's Forager version (the `User-Agent`'s first) and
+contract version.
+
 **The reload.** `GET /v1/runs/<run_id>`, signed with `X-Qory-Timestamp`, is answered only
-to the active keys of the node that registered the run (`Apiary.Runs.Sender`): a run id the
+to the active keys of the node that registered the run, or, for a run through a gateway,
+of the gateway that attached it (`Apiary.Runs.Sender`), under the run's own workspace: a
+run through a gateway not attached yet is `404` to everyone; a run id the
 key's workspace does not hold, a run another node registered, a run its batches created
 without a registration, even for the key they came with, and a `run_id` that is not a lower-case UUID are `404`
 `{"error":"not_found"}`. Its `200` is the run configuration in force now for the labels the
@@ -379,7 +477,9 @@ outcome's `time`, arrival and digest stay; a run id the workspace does not hold,
 another node and a run whose events retention has pruned are `404 {"error":"not_found"}`;
 a run that was given another outcome, another state or reason, is
 `409 {"error":"outcome_given"}`; else the outcome is stored on the run, under the run's
-projection lock, and the answer is `200 {"version":1}` with `X-Qory-Configuration`. The
+projection lock, and the answer is `200 {"version":1}` with `X-Qory-Configuration`. A run
+through a gateway takes its outcome from its registering node's keys, as a direct run
+does, never from the gateway's. The
 outcome is not folded: a rebuild keeps it, and the fold applies it after every pass, so it
 decides the run's state and reason whenever it arrives (How a run ends). An outcome spends
 a token of the run endpoint's bucket of the key's rate, as a registration does.
@@ -471,54 +571,33 @@ the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `s
 
 ## What opened a run
 
-`dev.qory.run.started` says what opened the run, in `opened_by`, which the contract
-requires:
+A Forager session opens every run. `dev.qory.run.started` says so, in `opened_by`, which
+the contract requires and holds to `session`, and carries the runtime, the command, its
+arguments, the directory and whether it is interactive, with the host, the terminal's
+size, the wall and the image where they apply; the run's `dev.qory.run.exited` carries
+`state` and `exit_code`. A start whose `opened_by` is anything else, or that carries a
+`credential` member, which the contract's schema refuses, is refused with its whole batch,
+a signed `400` `invalid_request` (`Apiary.Runs.Batch`). A start that leaves `opened_by`
+out is read as a session's.
 
-- `session`: a Forager session around a runtime. The event carries the runtime, the
-  command, its arguments, the directory and whether it is interactive, with the host, the
-  terminal's size, the wall and the image where they apply, and the run's
-  `dev.qory.run.exited` carries `state` and `exit_code`.
-- `gateway`: a gateway opened the run for a program that reports no session. The run has
-  no process, so the event carries none of `runtime`, `runtime_version`, `command`,
-  `args`, `dir`, `interactive`, `terminal`, `host`, `wall` and `image`, and the run's
-  `dev.qory.run.exited` carries `state` but no `exit_code`. It still carries
-  `forager_version`, the gateway's own, its labels, `run_key` among them, and
-  `about.details`, as the gateway gives them.
-
-The run keeps `opened_by`, and a run a gateway opened is shown as a run with no session:
-no runtime, no host, no command and no exit code, since the record holds none
-([ui.md](ui.md), The run page).
-
-`dev.qory.run.started` also says where the run's credential came from, in `credential`,
-which the contract requires and the gateway decides:
-
-- `starter`: the run's starter gave the run its run credential, for a session's run
-  through a separate gateway and for every run a gateway opened. An older Forager wrote
-  `issuer` for it.
-- `none`: the run has no run credential, for a run on a gateway's local link, as `qory run`
-  starts one on one machine.
-
-Qory Apiary stores it with the event and reads nothing of it: no page shows it, and it is a
-name apart from the `credential` of `dev.qory.run.egress`, the name of the credential the
-proxy set on a request.
-
-A run through a separate gateway belongs to the gateway's node, instance and key, since
-the gateway is the node toward the server: it registers the run and delivers every event
-of the run under its own access key. The machines behind it hold no access key. For a
-session's run through it, `host` is the agent's machine, the one the runtime runs on, so
-the run's Node is the gateway's and its Host the agent's machine.
+A run through a gateway belongs to the node that registered it, with that node's instance
+and key: a gateway is a kind of node of its own, whose key is refused at registration
+(`gateway_key`), and no gateway opens a run. The gateway that attached the run delivers its
+events under the gateway's own keys (`Apiary.Runs.Sender`), and the run's workspace, node
+and instance stay the registration's. `host` is the machine the runtime runs on, so the
+run's Node is the node that registered it and its Host that machine.
 
 ## How a run ends
 
-Every `dev.qory.run.exited` carries `state`, how the run ended, on a session's run and on a
-run a gateway opened alike: `succeeded`, it ended well; `failed`, it ended badly;
+Every `dev.qory.run.exited` carries `state`, how the run ended: `succeeded`, it ended well; `failed`, it ended badly;
 `cancelled`, it was stopped before it said how it went. It may carry `reason`, why: an open
 code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's own codes are reserved:
-`timeout`, `quiet`, `credential_expired`, `stopped`, `interrupted`, `session_lost`,
-`gateway_lost`, `batch_refused`, `credential_check_unreachable`, `credential_check_invalid`
-and `run_closed`, and so are three old names Forager no longer writes, `run_ended_at_issuer`,
-`issuer_unreachable` and `issuer_answer_invalid`. Any other code is the one the run's
+`timeout`, `stopped`, `interrupted`, `session_lost`, `gateway_lost`, `batch_refused` and
+`run_closed`, and so are old names Forager no longer writes, which records written before
+may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
+`credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
+`issuer_answer_invalid`. Any other code is the one the run's
 starter gave, carried as given. Events are read as untrusted, so a `state` other than the
 three, or a `reason` that breaks the pattern, is read as absent (`Apiary.Runs.Fold`).
 
@@ -534,7 +613,7 @@ A run is in one of six states, in four families (`Apiary.Runs.Run.states/0`,
 | `failed` | Failed | Ended badly | yes |
 | `lost` | Lost | Ended badly | from an exit, yes; from the lost-run check, no (Liveness) |
 
-The fold maps an exit to a state by the first rule that applies, whoever opened the run
+The fold maps an exit to a state by the first rule that applies
 (`Apiary.Runs.Fold.exit_state/2`):
 
 1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
@@ -544,7 +623,7 @@ The fold maps an exit to a state by the first rule that applies, whoever opened 
    An exit came, so the state is final, and `lost_at` is the exit's time: no start or
    heartbeat folded after it revives the run.
 3. `state` decides: `succeeded` is Completed, `failed` Failed and `cancelled` Cancelled.
-4. Without a `state`, as an older Forager wrote a gateway's exit, the reason decides:
+4. Without a `state`, as an older Forager wrote some exits, the reason decides:
    `timeout`, `quiet`, `credential_expired`, `stopped` and `run_ended_at_issuer` are
    Cancelled, `session_lost` and `gateway_lost` Lost, and any other reason, or none,
    Failed.
@@ -562,21 +641,25 @@ Forager's own codes, and the words Qory Apiary says for each
 | `reason` | What Qory saw | State | Words |
 |---|---|---|---|
 | `timeout` | the run's time limit was reached, and the session stopped the runtime | Cancelled | time limit reached |
-| `quiet` | a run with no session had no connection for the gateway's quiet period, `quiet_seconds` | Cancelled | no activity for 30 minutes |
-| `credential_expired` | the run credential expired with no fresh one for the same run key | Cancelled | permission to run expired |
-| `stopped` | the run's starter ended the run, answering that its run credential is no longer active, and gave no outcome | Cancelled | stopped, no outcome given |
-| `interrupted` | a session's run was stopped from where it was started (a Ctrl-C, or a signal to `qory run`) before its program ended by itself, and neither the run's starter, the gateway nor the time limit had ended it first; a run with no session never carries it | Cancelled | interrupted |
+| `stopped` | the run was stopped, and its starter gave no outcome | Cancelled | stopped, no outcome given |
+| `interrupted` | a session's run was stopped from where it was started (a Ctrl-C, or a signal to `qory run`) before its program ended by itself, and neither the run's starter, the gateway nor the time limit had ended it first | Cancelled | interrupted |
 | `session_lost` | the gateway heard nothing from the session for three of its heartbeat intervals | Lost | stopped responding |
 | `gateway_lost` | the gateway was lost before the run's exit was recorded; the exit is written when the record is sent again | Lost | end not recorded |
-| `credential_check_unreachable` | the run credential could not be checked: the introspection endpoint could not be reached | Failed | couldn't check whether the run may go on: no answer |
-| `credential_check_invalid` | the run credential could not be checked: the introspection endpoint gave no valid answer | Failed | couldn't check whether the run may go on: unreadable answer |
 | `batch_refused` | the gateway refused a batch of the session's, and ended the run | Failed | events refused |
 | `run_closed` | nothing: the session's own record alone holds it, the gateway's `410` to a run already ended there | by its `state` | none |
 
+A record written before may hold an old name, read in words of its own:
+
+| Old `reason` | Words | State |
+|---|---|---|
+| `quiet` | no activity for 30 minutes | Cancelled |
+| `credential_expired` | permission to run expired | Cancelled |
+| `credential_check_unreachable` | couldn't check whether the run may go on: no answer | Failed |
+| `credential_check_invalid` | couldn't check whether the run may go on: unreadable answer | Failed |
+
 `quiet_seconds`, an integer of at least 1, comes with `quiet` and with no other reason: the
-quiet period the gateway applied, which the words say in whole hours, else whole minutes,
-else seconds: 1800 seconds is "no activity for 30 minutes". A `quiet` without it has no
-words. `stopped` beside Completed or Failed, which Forager does not write, reads
+quiet period, which the words say in whole hours, else whole minutes, else seconds: 1800
+seconds is "no activity for 30 minutes". A `quiet` without it has no words. `stopped` beside Completed or Failed, which Forager does not write, reads
 "stopped". `interrupted` comes only with `cancelled`, in the session's own exit: a local
 link's record holds it, and a gateway's holds the same exit, which it accepted from the
 session and never writes itself. The exit's code and signal are as the session observed
@@ -602,7 +685,8 @@ reason is the outcome's, it can differ from the others.
 
 A session's run carries `exit_code`: the runtime's exit status, with `signal` when one
 killed it, and `-1` with `gateway_lost` and in every exit the gateway writes for it, which
-holds no exit status of the runtime's. A run a gateway opened carries none. The rail's Exit
+holds no exit status of the runtime's. A record written before may hold an exit with no
+`exit_code`, of a run with no process. The rail's Exit
 row shows the value as recorded, whatever the state: the signal, else the code, and "not
 recorded" for `-1` without a signal. The state comes from `state` and `reason`, never from
 the exit code: a run its starter judged a failure can show Exit 0.
@@ -619,9 +703,9 @@ not lost (`Apiary.Runs.Fold.outcome/1`). The exit's own state and reason are kep
 as `exit_state` and `exit_reason`, with its exit code and signal. A rebuild gives the same
 run, since the fold applies the outcome after every pass and a rebuild's reset starts from
 it. Where the outcome's state differs from the exit's, the run page says both: "Succeeded,
-as its starter said; the runtime exited 1". A run a gateway opened has no runtime of its
-own, and a run refused at its start (`refused_at`) never started one: each says the
-outcome's state alone, "Succeeded, as its starter said". An outcome sent with no state,
+as its starter said; the runtime exited 1". A run refused at its start (`refused_at`)
+never started a runtime: it says the outcome's state alone, "Succeeded, as its starter
+said". An outcome sent with no state,
 stored as Cancelled with the reason `stopped`, has no such sentence: the run reads as any
 Cancelled run, with the words "the starter gave no outcome"; Forager's own `stopped`, with
 no outcome, keeps "stopped, no outcome given".
@@ -629,27 +713,28 @@ no outcome, keeps "stopped, no outcome given".
 Qory Apiary records what a run reports and starts no run. Once a run's starter has given
 its outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its
 batches carries `end` with the outcome's state and reason (Signed POST: the events
-endpoint). A run a gateway opened ends by its own `dev.qory.run.exited`, and a session's run
-by its runtime's exit or at the gateway.
+endpoint). A run ends by its runtime's exit or at the gateway.
 
 ## Liveness
 
 A run is alive from its registration until its `dev.qory.run.exited` or its
 `dev.qory.run.refused`, or until it goes silent. Qory Apiary's own lost-run check
 (`Apiary.Runs.Liveness`) marks a run `lost` when nothing has been heard of it for more than
-three of its heartbeat intervals: the `interval_seconds` its registration stated, else its
-heartbeats', else 30 seconds, so 90 seconds in all. A `running` run is measured from its
-last heartbeat, else from the arrival of its `run.started`, and a `pending` run from when
-the workspace first heard of it, its registration for a run that registered. A heartbeat
+three of its heartbeat intervals: the `interval_seconds` its registration stated, or for a
+run through a gateway its attach, else its heartbeats', else 30 seconds, so 90 seconds in
+all. A `running` run is measured from its last heartbeat, else from the arrival of its
+`run.started`, and a `pending` run from its attach, for a run through a gateway, else from
+when the workspace first heard of it, its registration for a run that registered. A run
+through a gateway that is never attached is lost at its `attach_by`, and not before; until
+then it holds its node's instance. A heartbeat
 counts by its own `time`, corrected by the run's clock offset (the smallest arrival less
-`time` over the run's heartbeats, and for a run a gateway opened its registration's:
-`registered_at`, when this server took it, less the registration's `time`, which is on the
-gateway's clock, as its heartbeats are), plus 300 seconds, and never after its arrival, as the
+`time` over the run's heartbeats), plus 300 seconds, and never after its arrival, as the
 contract's liveness for the server says; a run's first heartbeat with no offset before it
 counts at its arrival. Only the server's clock is compared.
 
-Every event of a run reaches the server from one gateway, the node toward the server: a
-session's heartbeats through it, and a run with no session the gateway's own. So `lost`
+Every event of a run reaches the server from one gateway: Forager's gateway on the node,
+under the node's own keys, for a run that goes directly, or the gateway that attached it,
+for a run through a gateway; a session's heartbeats come through it. So `lost`
 means the gateway sent nothing recent for the run. A session that falls silent is the
 gateway's to notice, and it ends the run `failed` with `session_lost`, an exit the server
 reads as Lost, and final (How a run ends). The lost-run check's `lost` is not final: a
@@ -681,11 +766,7 @@ Forager's default of 30:
 - A session's run whose heartbeats all arrive late, because the outage began before its
   first one, has no offset before them: its first heartbeat counts at its arrival and sets
   an offset as late as the backlog, so the run runs again while its heartbeats arrive,
-  until its `dev.qory.run.exited` arrives or three intervals after the last of them. A run
-  a gateway opened takes its registration's offset, from a registration accepted before
-  the run opened, so its heartbeats bring it back only as the first limit says; its
-  `run.started`, arriving late, brings it back until the next check after a heartbeat
-  folded behind it, or for three intervals when none is.
+  until its `dev.qory.run.exited` arrives or three intervals after the last of them.
 - A run whose machine's clock ran ahead and was then set back keeps the offset the clock
   ahead gave, the smallest, so each heartbeat after it counts the clock's lead less 300
   seconds before its arrival. More than 300 seconds and two intervals ahead, 360 seconds
@@ -817,10 +898,8 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   (`Apiary.Runs.About.validate/1`: a registration whose `about` breaks one is
   `400 invalid_request`), and kept on the run as `registration_about`. It never selects a
   policy: the policy is chosen by the registration's labels.
-- An `opened_by` the contract does not name is read as absent, and the run is shown as one
-  with a session (`Apiary.Runs.Fold`, `Apiary.Runs.Run.no_session?/1`).
 - An exit without a `state`, which the contract requires, is read by its reason, as How a
-  run ends sets out: an older Forager wrote a gateway's exit so, and such exits are stored.
+  run ends sets out: an older Forager wrote some exits so, and such exits are stored.
   A reason with no rule of its own, or none, is Failed (`Apiary.Runs.Fold.exit_state/2`).
 - When the run configuration cannot be read, a registration is answered `503
   {"error":"unavailable"}` and nothing is stored, which the gateway asks again within its

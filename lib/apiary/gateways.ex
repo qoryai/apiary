@@ -13,8 +13,10 @@ defmodule Apiary.Gateways do
   A node or a node pool records a **choice** (`gateway_choice`): `:direct`; `:default`,
   its workspace's default gateway; or `:named`, one gateway it names (`gateway_id`). The
   choice is checked when it is saved (`Apiary.Nodes`), and `resolve/1` answers where it
-  leads from the records as they are when it is asked. Nothing at a run's registration
-  reads it.
+  leads from the records as they are when it is asked. A run's registration asks it
+  (`Apiary.Runs.Registration`): the run goes directly, or through the gateway it resolves
+  to, which then attaches the run (`Apiary.Runs.Attach`). A change of choice applies to
+  the registrations after it; a run already registered keeps its gateway.
 
   - `may_serve?/2` says whether a gateway may serve a workspace: a gateway of the
     workspace's level, in use.

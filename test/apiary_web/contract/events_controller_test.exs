@@ -117,23 +117,16 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       now = DateTime.utc_now()
       stamp = &(&1 |> DateTime.add(&2, :second) |> DateTime.to_iso8601())
 
-      started = %{
-        started
-        | "time" => stamp.(now, 0),
-          "data" => %{
-            "opened_by" => "gateway",
-            "credential" => "issuer",
-            "forager_version" => "0.4.0"
-          }
-      }
+      started = %{started | "time" => stamp.(now, 0)}
 
-      # A run a gateway opened, its registration on time; its first heartbeat recorded an
-      # hour ago.
+      # A run whose clock offset its earlier heartbeats set, its machine's clock on time;
+      # its next heartbeat recorded an hour ago.
       assert build_conn()
              |> signed_register(key.key_id, secret, registration(subject))
              |> response(200)
 
       assert build_conn() |> signed_post(key.key_id, secret, [started]) |> response(202)
+      Repo.update_all(from(r in Run, where: r.run_id == ^subject), set: [clock_offset_ms: 0])
 
       data = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
       beat = wire_event(subject, 3, "run.heartbeat", data, time: stamp.(now, -3600))
@@ -469,6 +462,9 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       subject = Ecto.UUID.generate()
       good = wire_event(subject, 1, "run.heartbeat")
 
+      session = %{"opened_by" => "session", "forager_version" => "0.4.0", "command" => "claude"}
+      started = &wire_event(subject, 1, "run.started", Map.merge(session, &1))
+
       bodies = [
         "",
         "not json",
@@ -503,7 +499,11 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         # The ping the contract no longer has, and the record's registration, never posted.
         Jason.encode!([%{good | "type" => "dev.qory.ping"}]),
         Jason.encode!([good, wire_event(subject, 2, "ping", %{"interval_seconds" => 30})]),
-        Jason.encode!([%{good | "type" => "dev.qory.run.registered"}])
+        Jason.encode!([%{good | "type" => "dev.qory.run.registered"}]),
+        # A start that a session did not open, or that names a credential.
+        Jason.encode!([started.(%{"opened_by" => "gateway"})]),
+        Jason.encode!([started.(%{"opened_by" => "relay"})]),
+        Jason.encode!([started.(%{"credential" => "none"})])
       ]
 
       for body <- bodies do

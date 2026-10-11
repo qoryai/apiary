@@ -409,10 +409,10 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The heartbeat interval the run is held to, in seconds: the one its registration stated,
-  else its heartbeats', within bounds, else 30.
+  or for a run through a gateway its attach, else its heartbeats', within bounds, else 30.
   """
   def beat(run) do
-    case Map.get(run, :registration_interval_seconds) ||
+    case Map.get(run, :registration_interval_seconds) || Map.get(run, :attach_interval_seconds) ||
            Map.get(run, :heartbeat_interval_seconds) do
       interval when is_integer(interval) -> interval |> max(1) |> min(@max_beat)
       _ -> @default_beat
@@ -877,10 +877,8 @@ defmodule ApiaryWeb.RunComponents do
   did. "Succeeded, as its starter said; the runtime exited 1"; with a signal, "Failed, as
   its starter said; the runtime ended with SIGKILL"; before any exit, "Cancelled, as its
   starter said; the runtime has not exited yet"; an exit with no code of its own, "...; the
-  runtime's exit was not recorded". A run a gateway opened, with no session
-  (`Apiary.Runs.Run.no_session?/1`), has no runtime of its own, and a run refused at its
-  start (`refused_at`) never started one: each says the outcome's state alone, "Succeeded,
-  as its starter said". Nil for an outcome sent with no state, stored as cancelled with the
+  runtime's exit was not recorded". A run refused at its start (`refused_at`) never
+  started a runtime: it says the outcome's state alone, "Succeeded, as its starter said". Nil for an outcome sent with no state, stored as cancelled with the
   reason `stopped`: the starter said no state, and the run reads as any cancelled run, its
   reason "the starter gave no outcome" (`reason_words/1`). Nil for any other run, which
   reads as it always has.
@@ -894,10 +892,10 @@ defmodule ApiaryWeb.RunComponents do
 
   def outcome_sentence(_run), do: nil
 
-  # What the runtime did, as the outcome's sentence says it; nothing for a run with no
-  # runtime of its own, or one refused at its start.
+  # What the runtime did, as the outcome's sentence says it; nothing for a run refused at
+  # its start, which never started one.
   defp runtime_exit(run) do
-    if Run.no_session?(run) or not is_nil(Map.get(run, :refused_at)),
+    if not is_nil(Map.get(run, :refused_at)),
       do: :no_runtime,
       else: exit_of(run)
   end
@@ -1966,8 +1964,6 @@ defmodule ApiaryWeb.RunComponents do
       </td>
       <td class="q-rl-c4 q-rl-faint" role="cell">
         <%= cond do %>
-          <% Run.no_session?(@run) -> %>
-            <span>{gettext("no session")}</span>
           <% @run.runtime -> %>
             <span>{@run.runtime} {@run.runtime_version}</span>
           <% true -> %>

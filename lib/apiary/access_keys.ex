@@ -137,11 +137,39 @@ defmodule Apiary.AccessKeys do
   integrity code holds. A gateway without one can serve no run.
   """
   @spec active_key?(Node.t()) :: boolean
-  def active_key?(%Node{id: node_id}) do
+  def active_key?(%Node{} = node), do: active_keys(node) != []
+
+  @doc """
+  active_keys/1 is the access keys `node` holds active now, as `active_key?/1` counts them,
+  oldest first: during a replacement, the key in use, then the one that replaces it. A
+  run key names a gateway's by them (`Apiary.Runs.RunKey`).
+  """
+  @spec active_keys(Node.t()) :: [AccessKey.t()]
+  def active_keys(%Node{id: node_id}) do
     verifiable_query()
     |> where([k], k.node_id == ^node_id)
+    |> order_by([k], asc: k.received_at, asc: k.inserted_at, asc: k.id)
     |> Repo.all()
-    |> Enum.any?(&(AccessKey.verify_integrity(&1) == :ok))
+    |> Enum.filter(&(AccessKey.verify_integrity(&1) == :ok))
+  end
+
+  @doc """
+  place_in_use?/2 says whether a key of `workspace_id`, of `organisation_id`, could be
+  verified as far as its place goes: the workspace and the organisation neither marked
+  for deletion nor out of use (`c:Apiary.Edition.active_organisations/2`), the check every
+  key's verification makes. A run through a gateway is held to it for its own place, which
+  may not be the gateway key's.
+  """
+  @spec place_in_use?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean
+  def place_in_use?(organisation_id, workspace_id) do
+    from(w in Workspace,
+      join: o in assoc(w, :organisation),
+      as: :organisation,
+      where: w.id == ^workspace_id and o.id == ^organisation_id,
+      where: is_nil(w.deletion_marked_at) and is_nil(o.deletion_marked_at)
+    )
+    |> Apiary.Edition.active_organisations(:organisation)
+    |> Repo.exists?()
   end
 
   # The keys a request could be verified under, with their workspace and node: not

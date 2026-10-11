@@ -276,9 +276,7 @@ way. It holds the node's key and is the one that talks to Qory Apiary. The machi
 it hold no access key and need no node: their runs reach Qory Apiary through the gateway.
 
 A run through the gateway belongs to the gateway's node and instance, and its key is the
-gateway's. Its **Host** is the agent's machine, `build-01` say. A run the gateway opened
-for a program that reports no session has no host and no runtime; its page says it has no
-session, and it ends by the end the gateway reports. A session's run through the gateway
+gateway's. Its **Host** is the agent's machine, `build-01` say. A run through the gateway
 ends with its agent, or at the gateway. Qory Apiary records what a run reports and never
 ends a run it did not start; it starts none today.
 <!-- feature: secrets -->

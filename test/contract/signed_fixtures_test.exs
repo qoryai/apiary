@@ -21,6 +21,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.{ContractSchema, Repo, SigningKey}
   alias Apiary.Runs.{Event, Projector, Run}
@@ -213,12 +214,19 @@ defmodule Apiary.Contract.SignedFixturesTest do
     assert Repo.all(Run) |> Enum.map(& &1.run_id) == [@run]
   end
 
-  test "fixtures/run-registration/*.json, signed here at their time, are registered" do
+  test "fixtures/run-registration/*.json, signed here at their time, are registered", %{
+    scope: scope,
+    node: node
+  } do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
     files = contract_dir() |> Path.join("fixtures/run-registration/*.json") |> Path.wildcard()
-    assert files != []
+    {through, direct} = Enum.split_with(files, &String.starts_with?(Path.basename(&1), "gateway"))
+    assert direct != []
+    assert through != []
 
-    for file <- files do
+    # Each on its own, as several name the same run.
+    register = fn file ->
+      Repo.delete_all(Run)
       body = File.read!(file)
       {:ok, time, 0} = DateTime.from_iso8601(Jason.decode!(body)["time"])
       Application.put_env(:apiary, :contract_now, fn -> DateTime.to_unix(time) end)
@@ -226,13 +234,27 @@ defmodule Apiary.Contract.SignedFixturesTest do
       conn = signed_register(build_conn(), key_id, seed, body)
       assert conn.status == 200, Path.basename(file)
       assert signed_answer?(conn), Path.basename(file)
+      Jason.decode!(conn.resp_body)
     end
+
+    # The direct shape from the fixture key's node, which goes directly.
+    for file <- direct, do: assert(%{"version" => 1} = register.(file))
+
+    # The gateway shape once the node uses its workspace's default gateway, which has a key.
+    gateway = gateway_fixture(scope)
+    contract_key_fixture(scope, node: gateway)
+
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^node.id),
+      set: [gateway_choice: :default]
+    )
+
+    for file <- through, do: assert(%{"run_key" => "qrk_" <> _} = register.(file))
   end
 
   test "fixtures/invalid/run-registration-*.json are refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
     pattern = Path.join(contract_dir(), "fixtures/invalid/run-registration-*.json")
-    files = Path.wildcard(pattern)
+    files = pattern |> Path.wildcard() |> Enum.reject(&String.contains?(&1, "-answer-"))
     assert files != []
 
     for file <- files do
@@ -286,63 +308,35 @@ defmodule Apiary.Contract.SignedFixturesTest do
     end
   end
 
-  test "the batches of a run a gateway opened: no session, and it ends cancelled when quiet, lost when the gateway was lost, or as its starter said" do
+  test "a session's run its starter stopped with no outcome: cancelled, stopped" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 
-    project = fn files ->
-      Repo.delete_all(Run)
-
-      for file <- files do
-        conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> file))
-        assert conn.status == 202, file
-      end
-
-      {:ok, run} = Projector.project(Repo.one!(Run))
-      run
+    for batch <- ["first.json", "session-stopped.json"] do
+      conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> batch))
+      assert conn.status == 202, batch
     end
 
-    run = project.(["gateway-first.json", "gateway-quiet.json"])
-
-    assert run.opened_by == "gateway"
-    assert Run.no_session?(run)
-    assert {run.runtime, run.command, run.host} == {nil, nil, nil}
-    assert run.labels["run_key"] == "rk-0001"
-    assert {run.state, run.reason, run.quiet_seconds} == {"cancelled", "quiet", 1800}
-    assert {run.exit_code, run.duration_ms} == {nil, 1_804_900}
-
-    run = project.(["gateway-first.json", "gateway-lost.json"])
-
-    assert run.opened_by == "gateway"
-
-    assert {run.state, run.reason, run.quiet_seconds, run.exit_code} ==
-             {"lost", "gateway_lost", nil, nil}
-
-    assert run.lost_at == run.exited_at
-
-    run = project.(["gateway-first.json", "gateway-outcome.json"])
-
-    assert {run.opened_by, run.state, run.reason, run.exit_code} ==
-             {"gateway", "completed", "all_checks_passed", nil}
+    {:ok, run} = Projector.project(Repo.one!(Run))
+    assert {run.state, run.reason, run.exit_code} == {"cancelled", "stopped", -1}
   end
 
-  test "the exits of a session's run: its starter's outcome and reason, or stopped with no outcome" do
+  test "a start the schema refuses for what opened it is refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
+    [started | rest] = contract_json!("batch/first.json")
+    schema = ContractSchema.event!(contract_dir())
 
-    for {file, expected} <- [
-          {"session-outcome.json", {"failed", "checks_failed", 0}},
-          {"session-stopped.json", {"cancelled", "stopped", -1}}
+    for started <- [
+          contract_json!("invalid/event-started-unknown-opened-by.json"),
+          put_in(started, ["data", "opened_by"], "gateway"),
+          put_in(started, ["data", "credential"], "none")
         ] do
-      Repo.delete_all(Run)
-
-      for batch <- ["first.json", file] do
-        conn = signed_post(build_conn(), key_id, seed, contract_file!("batch/" <> batch))
-        assert conn.status == 202, batch
-      end
-
-      {:ok, run} = Projector.project(Repo.one!(Run))
-      assert run.opened_by == "session"
-      assert {run.state, run.reason, run.exit_code} == expected, file
+      assert {:error, _} = ContractSchema.validate(schema, started)
+      conn = signed_post(build_conn(), key_id, seed, [started | rest])
+      assert json_response(conn, 400) == %{"error" => "invalid_request"}
+      assert signed_answer?(conn)
     end
+
+    assert Repo.aggregate(Run, :count) == 0
   end
 
   test "a refusal of the server's with its status is stored as sent, a code the list does not hold included" do
@@ -364,7 +358,15 @@ defmodule Apiary.Contract.SignedFixturesTest do
   test "fixtures/invalid/batch-*.json are refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 
-    for file <- contract_dir() |> Path.join("fixtures/invalid/batch-*.json") |> Path.wildcard() do
+    files =
+      contract_dir()
+      |> Path.join("fixtures/invalid/batch-*.json")
+      |> Path.wildcard()
+      |> Enum.reject(&String.contains?(&1, "batch-answer-"))
+
+    assert files != []
+
+    for file <- files do
       conn = signed_post(build_conn(), key_id, seed, File.read!(file))
       assert json_response(conn, 400) == %{"error" => "invalid_request"}, Path.basename(file)
       assert signed_answer?(conn)

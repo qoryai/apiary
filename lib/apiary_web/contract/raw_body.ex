@@ -1,18 +1,20 @@
 defmodule ApiaryWeb.Contract.RawBody do
   @moduledoc """
   Reads the body of a delivery to the events endpoint, of a run's registration, of a run's
-  outcome, and of an enrolment, before anything parses it.
+  attach, of a run's outcome, and of an enrolment, before anything parses it.
 
   The signature of a signed POST is over the raw bytes, and it is checked before the body
   is parsed; an enrolment is read strictly, a member twice refused, which a parser that
   keeps the last of them cannot tell. So for `POST /v1/events`, `POST /v1/runs`,
-  `POST /v1/runs/<run_id>/outcome` and `POST /.well-known/qory-enrolment`, whatever the
+  `POST /v1/runs/<run_id>/attach`, `POST /v1/runs/<run_id>/outcome` and
+  `POST /.well-known/qory-enrolment`, whatever the
   content type, this plug reads the body
   itself, keeps it in `conn.assigns[:raw_body]` and leaves the body parameters empty; the
   endpoint skips `Plug.Parsers` for such a request. Every other request passes untouched.
 
   At most `max_bytes/0` of a delivery are read, 2 MiB, `max_bytes(:registration)` of a
-  registration, 64 KiB, `max_bytes(:outcome)` of an outcome, 4 KiB, and
+  registration, 64 KiB, `max_bytes(:attach)` of an attach, 64 KiB, `max_bytes(:outcome)`
+  of an outcome, 4 KiB, and
   `max_bytes(:enrolment)` of an enrolment, 8 KiB, the last three many times the longest
   the schema allows: what an unauthenticated sender can make the
   server hold is small. A longer body is answered `413` here, before the signature or the
@@ -31,12 +33,13 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   @doc """
   The largest body that is accepted, in bytes: of a delivery (`max_bytes/0`), of a
-  registration (`max_bytes(:registration)`), of an outcome (`max_bytes(:outcome)`), or of
-  an enrolment (`max_bytes(:enrolment)`).
+  registration (`max_bytes(:registration)`), of an attach (`max_bytes(:attach)`), of an
+  outcome (`max_bytes(:outcome)`), or of an enrolment (`max_bytes(:enrolment)`).
   """
   def max_bytes, do: @max_bytes
   def max_bytes(:events), do: @max_bytes
   def max_bytes(:registration), do: @registration_max_bytes
+  def max_bytes(:attach), do: @registration_max_bytes
   def max_bytes(:outcome), do: @outcome_max_bytes
   def max_bytes(:enrolment), do: @enrolment_max_bytes
 
@@ -62,11 +65,12 @@ defmodule ApiaryWeb.Contract.RawBody do
     end
   end
 
-  defp kept([_, _, _, _] = path_info), do: path_info |> Enum.map(&decode/1) |> outcome()
+  defp kept([_, _, _, _] = path_info), do: path_info |> Enum.map(&decode/1) |> of_a_run()
   defp kept(_path_info), do: nil
 
-  defp outcome(["v1", "runs", _run_id, "outcome"]), do: :outcome
-  defp outcome(_path_info), do: nil
+  defp of_a_run(["v1", "runs", _run_id, "attach"]), do: :attach
+  defp of_a_run(["v1", "runs", _run_id, "outcome"]), do: :outcome
+  defp of_a_run(_path_info), do: nil
 
   defp decode(segment) do
     URI.decode(segment)

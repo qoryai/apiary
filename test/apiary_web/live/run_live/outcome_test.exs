@@ -99,7 +99,7 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
   end
 
   test "a session's run keeps the runtime's clause in every state" do
-    exited = %{opened_by: "session", exit_state: "lost", exited_at: DateTime.utc_now()}
+    exited = %{exit_state: "lost", exited_at: DateTime.utc_now()}
 
     for {outcome, state, word} <- [
           {"succeeded", "completed", "Succeeded"},
@@ -122,44 +122,6 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
     end
   end
 
-  test "a run with no session says the starter's state alone, in every state" do
-    for {outcome, state, word} <- [
-          {"succeeded", "completed", "Succeeded"},
-          {"failed", "failed", "Failed"},
-          {"cancelled", "cancelled", "Cancelled"}
-        ],
-        exit <- [
-          %{exited_at: nil},
-          %{exited_at: DateTime.utc_now(), exit_state: "lost", exit_code: nil, signal: nil},
-          %{exited_at: DateTime.utc_now(), exit_state: "lost", exit_code: -1, signal: nil}
-        ] do
-      run = Map.merge(exit, %{opened_by: "gateway", state: state, outcome_state: outcome})
-
-      assert RunComponents.outcome_sentence(run) == "#{word}, as its starter said"
-    end
-  end
-
-  test "the header of a run a gateway opened says the starter's state alone", %{
-    conn: conn,
-    scope: scope
-  } do
-    for {outcome, word, exits} <- [
-          {"succeeded", "Succeeded", []},
-          {"failed", "Failed",
-           [{2, "run.exited", %{"reason" => "quiet", "quiet_seconds" => 60}}]},
-          {"cancelled", "Cancelled", [{2, "run.exited", %{"reason" => "gateway_lost"}}]}
-        ] do
-      run = projected(scope, [{1, "run.started", gateway_started_data()} | exits], given(outcome))
-
-      assert Run.no_session?(run)
-      assert Run.outcome_differs?(run)
-
-      {:ok, lv, _html} = page(conn, scope, run)
-      assert render(element(lv, "#run-meta #run-outcome")) =~ ">#{word}, as its starter said<"
-      refute has_element?(lv, "#run-meta", "the runtime")
-    end
-  end
-
   test "a run refused at its start says the starter's state alone, in every state" do
     for {outcome, state, word} <- [
           {"succeeded", "completed", "Succeeded"},
@@ -167,7 +129,6 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
           {"cancelled", "cancelled", "Cancelled"}
         ] do
       run = %{
-        opened_by: nil,
         state: state,
         outcome_state: outcome,
         exited_at: nil,
@@ -203,7 +164,6 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
     scope: scope
   } do
     session = {1, "run.started", started_data()}
-    gateway = {1, "run.started", gateway_started_data()}
 
     for events <- [
           [session],
@@ -211,8 +171,7 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
           [session, {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0}}],
           [session, {2, "run.exited", %{"state" => "failed", "signal" => "SIGKILL"}}],
           [session, {2, "run.exited", %{"state" => "cancelled", "reason" => "stopped"}}],
-          [gateway],
-          [gateway, {2, "run.exited", %{"reason" => "quiet", "quiet_seconds" => 60}}],
+          [session, {2, "run.exited", %{"reason" => "quiet", "quiet_seconds" => 60}}],
           [{2, "run.refused", %{"code" => "image_unknown"}}]
         ] do
       run = projected(scope, events, given("cancelled", "stopped"))
@@ -259,7 +218,7 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
   end
 
   test "every other outcome keeps its sentence" do
-    exited = %{opened_by: "session", exit_state: "lost", exited_at: DateTime.utc_now()}
+    exited = %{exit_state: "lost", exited_at: DateTime.utc_now()}
 
     for {outcome, reason, state, word} <- [
           {"succeeded", nil, "completed", "Succeeded"},
@@ -277,9 +236,6 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
 
       assert RunComponents.outcome_sentence(run) ==
                "#{word}, as its starter said; the runtime exited 1"
-
-      assert RunComponents.outcome_sentence(%{run | opened_by: "gateway"}) ==
-               "#{word}, as its starter said"
     end
   end
 

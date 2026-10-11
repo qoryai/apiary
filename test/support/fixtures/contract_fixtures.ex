@@ -43,12 +43,13 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
-  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`),
-  held under its published id on `node`, active, as a receiver under test holds it.
+  The contract's fixture access key `name` of `known-answers/keys.json` (`"access_key"`, or
+  `"gateway_key"` on a gateway), held under its published id on `node`, active, as a receiver under test holds it.
   Written straight into the table, past the key checks, which refuse every fixture key:
   test support only.
   """
-  def fixture_access_key!(%Scope{user: user}, node, "access_key" = name) do
+  def fixture_access_key!(%Scope{user: user}, node, name)
+      when name in ~w(access_key gateway_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
     %{public_key: public_key} = fixture_key!(name)
     now = DateTime.utc_now()
@@ -139,7 +140,6 @@ defmodule Apiary.ContractFixtures do
      [
        wire_event(subject, 2, "run.started", %{
          "opened_by" => "session",
-         "credential" => "none",
          "runtime" => "claude",
          "runtime_version" => "2.1.0",
          "command" => "claude",
@@ -175,6 +175,64 @@ defmodule Apiary.ContractFixtures do
     }
     |> Map.merge(Map.new(attrs))
     |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  A run's registration through a gateway, as its starter builds it, decoded: `run_id`, the
+  labels of a software run, an `about` with a title, and `time`, the contract's clock now
+  to the second; no versions, interval or events, which move to the attach. `attrs`
+  (string keys) replace members; a nil value leaves one out.
+  """
+  def gateway_registration(run_id \\ Ecto.UUID.generate(), attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_id" => run_id,
+      "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"},
+      "about" => %{"title" => "Fix the failing build"},
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  A run's attach, as its gateway builds it, decoded: `run_key`, the gateway's versions, a
+  heartbeat interval of 30 seconds, every event type, and `time`, the contract's clock now
+  to the second. `attrs` (string keys) replace members; a nil value leaves one out.
+  """
+  def attach_body(run_key, attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_key" => run_key,
+      "interval_seconds" => 30,
+      "events" => ["*"],
+      "forager_version" => "0.7.0",
+      "contract_version" => 1,
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  Posts `body` (a binary, or an attach to encode) to `/v1/runs/<run_id>/attach` as a
+  gateway attaches a run: `signed_post/5`, as `application/json`, with no
+  `X-Qory-Delivery`. The options are `signed_post/5`'s.
+  """
+  def signed_attach(conn, key_id, seed, run_id, body, opts \\ []) do
+    defaults = [
+      target: "/v1/runs/#{run_id}/attach",
+      content_type: "application/json",
+      delivery: nil
+    ]
+
+    signed_post(conn, key_id, seed, body, Keyword.merge(defaults, opts))
   end
 
   @doc """
@@ -379,21 +437,22 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   known_answers!/1 decodes `fixtures/known-answers/<name>.json`: `"keys"`,
-  `"signatures"`, `"discovery"` or `"small-order"`.
+  `"signatures"`, `"discovery"`, `"small-order"` or `"through-gateway"`.
   """
-  def known_answers!(name) when name in ~w(keys signatures discovery small-order),
-    do: contract_json!("known-answers/#{name}.json")
+  def known_answers!(name)
+      when name in ~w(keys signatures discovery small-order through-gateway),
+      do: contract_json!("known-answers/#{name}.json")
 
   @doc """
   fixture_key!/1 is one of the contract's fixture keys of `known-answers/keys.json`
-  (`"access_key"`, `"signing_key"`, `"next_signing_key"`), with
+  (`"access_key"`, `"gateway_key"`, `"signing_key"`, `"next_signing_key"`), with
   its raw `:seed`, its raw `:public_key` derived from the seed and checked against the
   published one, and the published `:fingerprint`, plus `:access_key_id` and
   `:instance_id` where the file gives them. Test support only: every instance refuses
   these keys.
   """
   def fixture_key!(name)
-      when name in ~w(access_key signing_key next_signing_key) do
+      when name in ~w(access_key gateway_key signing_key next_signing_key) do
     entry = Map.fetch!(known_answers!("keys"), name)
 
     encoded_seed =

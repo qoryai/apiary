@@ -1166,11 +1166,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       refute has_element?(view, "#att-key-#{idle.id}")
     end
 
-    test "a lost run offers Open, never Close, whatever opened it",
+    test "a lost run offers Open, never Close",
          %{conn: conn, scope: scope} do
       runs =
-        for {opener, n} <- Enum.with_index([nil, "session", "gateway"]) do
-          lost_run(scope, %{about_title: "nightly-mirror-#{n}", opened_by: opener})
+        for n <- 0..1 do
+          lost_run(scope, %{about_title: "nightly-mirror-#{n}"})
         end
 
       view = open(conn, scope)

@@ -46,6 +46,19 @@ defmodule ApiaryWeb.Contract.RegistrationController do
   alias Apiary.Runs.Registration
   alias ApiaryWeb.Contract.{Configuration, SignedRequest}
 
+  # The registration's signed 409s, each its own code: the resolution's, in the
+  # contract's order, then the instance limit and a run id that is used.
+  @conflicts [
+    :gateway_key,
+    :node_is_direct,
+    :node_uses_gateway,
+    :no_default_gateway,
+    :gateway_not_serving,
+    :gateway_without_key,
+    :instance_limit,
+    :run_id_used
+  ]
+
   def create(conn, _params) do
     access_key = conn.assigns.access_key
 
@@ -66,11 +79,8 @@ defmodule ApiaryWeb.Contract.RegistrationController do
       {:error, :gone} ->
         send_resp(conn, 410, "")
 
-      {:error, :instance_limit} ->
-        conn |> put_status(409) |> json(%{error: "instance_limit"})
-
-      {:error, :run_id_used} ->
-        conn |> put_status(409) |> json(%{error: "run_id_used"})
+      {:error, code} when code in @conflicts ->
+        conn |> put_status(409) |> json(%{error: Atom.to_string(code)})
 
       {:error, :unavailable} ->
         unavailable(conn)
@@ -89,6 +99,18 @@ defmodule ApiaryWeb.Contract.RegistrationController do
     end
   rescue
     _exception -> unavailable(conn)
+  end
+
+  # A run through a gateway is answered its id and its run key alone: no run configuration,
+  # so neither its digest nor an `ETag`.
+  defp answer(conn, %{run: run, run_key: run_key}) do
+    body =
+      Jason.encode!(Jason.OrderedObject.new(version: 1, run_id: run.run_id, run_key: run_key))
+
+    conn
+    |> put_resp_header("x-qory-configuration", Configuration.digest(conn.assigns.access_key))
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, body)
   end
 
   defp answer(conn, %{settings: settings, digest: digest, etag: etag}) do

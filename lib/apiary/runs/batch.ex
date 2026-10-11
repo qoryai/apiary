@@ -20,6 +20,10 @@ defmodule Apiary.Runs.Batch do
   (`Apiary.Runs.Registration`) instead, and `dev.qory.run.registered`, which is the
   record's alone and never posted.
 
+  And a `dev.qory.run.started` the contract's schema refuses for what it says opened the
+  run: one with a `credential` member, or whose `opened_by` is anything but `session`. A
+  run is opened by a Forager session alone.
+
   Pure: nothing here touches the database or logs.
   """
 
@@ -115,6 +119,7 @@ defmodule Apiary.Runs.Batch do
          true <- sequence >= 1,
          true <- storable?(type),
          true <- type not in @refused,
+         true <- opened_by_a_session?(type, data),
          {:ok, time} <- time(time),
          {:ok, data} <- data(data) do
       {:ok,
@@ -132,6 +137,14 @@ defmodule Apiary.Runs.Batch do
   end
 
   defp event(_item), do: :error
+
+  # A start names no credential, and only a session opens a run; a start that does not say
+  # what opened it is read as a session's.
+  defp opened_by_a_session?("dev.qory.run.started", data),
+    do:
+      not Map.has_key?(data, "credential") and Map.get(data, "opened_by", "session") == "session"
+
+  defp opened_by_a_session?(_type, _data), do: true
 
   # Postgres holds no NUL in text or in jsonb. A type with one is no type; in
   # `data` it is replaced with U+FFFD, the one place an event is not stored

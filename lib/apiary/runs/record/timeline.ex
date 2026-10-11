@@ -703,7 +703,7 @@ defmodule Apiary.Runs.Record.Timeline do
   def needed(light), do: light |> Enum.flat_map(& &1.seqs) |> Enum.uniq()
 
   defp body(%{kind: :run_started}, event, _events, _limit),
-    do: Map.take(event, [:opened_by, :runtime, :runtime_version, :host, :wall])
+    do: Map.take(event, [:runtime, :runtime_version, :host, :wall])
 
   defp body(%{kind: :policy_applied} = item, event, events, _limit) do
     previous = item[:previous_seq] && events[item.previous_seq]
@@ -1007,7 +1007,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   ## Slim events
 
-  @slim_keys ~w(sequence type time tool agent_id agent_type opened_by runtime runtime_version host wall
+  @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall
     mode source model cwd kind outcome reason state code signal method request_method path decision rule
     path_rule credential request_id port exit_code quiet_seconds duration_ms turns status cost_usd interrupted in_background allow
     allow_count deny deny_count run_configuration terminated terminated_count tools summary text
@@ -1060,7 +1060,7 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(%{sequence: event.sequence, type: event.type, time: event.time})
     |> Map.merge(
       for key <-
-            ~w(tool agent_id agent_type opened_by runtime runtime_version host wall mode source model
+            ~w(tool agent_id agent_type runtime runtime_version host wall mode source model
             cwd kind outcome reason state code signal method request_method path decision rule
             path_rule credential request_id),
           into: %{} do

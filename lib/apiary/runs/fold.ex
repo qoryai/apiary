@@ -46,14 +46,11 @@ defmodule Apiary.Runs.Fold do
   the first of each type and ref stays, at most 16 in the order given. An `about` that is
   not an object says nothing.
 
-  What opened the run is `opened_by` of its `run.started`, `session` or `gateway`. A run a
-  gateway opened has no session: its start says no runtime, command or host, and its exit
-  no exit code. An exit with the reason `quiet` says the quiet period, `quiet_seconds`.
-  What the start says of the run credential, `credential`, is not read: `starter`, `issuer`
-  as an older Forager wrote it, or `none`.
+  A run is opened by a Forager session (`Apiary.Runs.Batch` refuses any other start). An
+  exit with the reason `quiet`, which an older Forager wrote, says the quiet period,
+  `quiet_seconds`.
 
-  How the run ended is its exit's `state` and `reason`, the same rule for a session's run
-  and a gateway's (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
+  How the run ended is its exit's `state` and `reason` (`exit_state/2`). The state is `succeeded`, `failed` or `cancelled`, and
   any other value is absent; the reason is a code, a lower-case letter then up to 63
   lower-case letters, digits and `_`, and anything else is absent. An exit that maps to
   lost sets `lost_at` to the exit's time. A run that did not start, `dev.qory.run.refused`,
@@ -72,10 +69,8 @@ defmodule Apiary.Runs.Fold do
   clock offset, within a tolerance, and never after this server received it, because the
   lost-run check compares it with the server's clock and Forager's clock may be anywhere.
   The offset, `clock_offset_ms`, is the smallest of arrival less own time over every
-  heartbeat of the run, whatever its sequence, and, for a run a gateway opened, its
-  registration's (`registered_at` less `registration_time`) and its ping's, whose clock is
-  the gateway's, as its heartbeats' are: a minimum, so it is the same in any order. A
-  session's heartbeats are on the session's machine's clock, which behind a separate
+  heartbeat of the run, whatever its sequence: a minimum, so it is the same in any order.
+  A session's heartbeats are on the session's machine's clock, which behind a separate
   gateway is not the gateway's. Whenever a pass folds a later heartbeat or
   lowers the offset, the heartbeat with the highest sequence is counted again by the
   offset as the pass leaves it, from its time and arrival (the projector hands them over
@@ -84,8 +79,8 @@ defmodule Apiary.Runs.Fold do
   run only when it counts as heard within three intervals of its arrival; a lower offset
   alone revives nothing and undoes no revive. So the one order that can show is a revive
   by a heartbeat that a lower offset, folded after it, would have kept from reviving: from
-  a gateway's start, which revives the run itself, or from an earlier heartbeat delivered
-  after it across a clock set back between the two. The next lost-run check settles it.
+  an earlier heartbeat delivered after it across a clock set back between the two. The
+  next lost-run check settles it.
   """
 
   alias Apiary.Runs.{About, Liveness}
@@ -136,7 +131,6 @@ defmodule Apiary.Runs.Fold do
   # The states no start or heartbeat folded later changes, with the old names an older
   # release stored them under (`Apiary.Runs.Run.old_states/0`).
   @terminal ~w(completed failed cancelled succeeded ended timed_out)
-  @openers ~w(session gateway)
   # A reason: an open code of Forager's or of the run's starter.
   @reason ~r/\A[a-z][a-z0-9_]{0,63}\z/
   # The reasons of a failed exit that say nobody knows how the run ended: the session went
@@ -156,7 +150,6 @@ defmodule Apiary.Runs.Fold do
 
   defstruct run: %{},
             latest: %{},
-            ping_offset: nil,
             beat: nil,
             recount: false,
             beaten: false,
@@ -167,7 +160,6 @@ defmodule Apiary.Runs.Fold do
   @type t :: %__MODULE__{
           run: map(),
           latest: %{optional(String.t()) => integer()},
-          ping_offset: integer() | nil,
           beat: %{time: DateTime.t(), received_at: DateTime.t()} | nil,
           recount: boolean(),
           beaten: boolean(),
@@ -181,10 +173,8 @@ defmodule Apiary.Runs.Fold do
   `time` stands for it) into `run` (any map with the run's fields, the schema struct
   included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
   already projected. `projected` says what the fold needs of the events already projected:
-  `ping_offset`, the smallest clock offset of the pings (the fold lowers it by the
-  registration's own, from `run`), and `beat`, the `time` and
-  `received_at` of the heartbeat with the highest sequence; each absent or nil when there
-  is none.
+  `beat`, the `time` and `received_at` of the heartbeat with the highest sequence, absent
+  or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
   (host, port, path), `log_chunks` in sequence order and the count of log events skipped
@@ -195,7 +185,6 @@ defmodule Apiary.Runs.Fold do
     acc = %__MODULE__{
       run: run,
       latest: latest,
-      ping_offset: lower(projected[:ping_offset], registration_offset(run)),
       beat: projected[:beat]
     }
 
@@ -236,10 +225,7 @@ defmodule Apiary.Runs.Fold do
   defp outcome_run_state("cancelled"), do: "cancelled"
 
   defp event(acc, %{type: @ping, data: data} = event) do
-    offset = Liveness.clock_offset(received_at(event), event.time)
-
-    %{acc | ping_offset: lower(acc.ping_offset, offset)}
-    |> ping_clock()
+    acc
     |> ranked(event, &%{&1 | contract_version: integer(data, "contract_version", 0..@int4)})
     |> forager_version(event)
   end
@@ -254,7 +240,6 @@ defmodule Apiary.Runs.Fold do
 
       run
       |> Map.merge(%{
-        opened_by: opened_by(data),
         runtime: string(data, "runtime"),
         runtime_version: string(data, "runtime_version"),
         command: string(data, "command", @long_text),
@@ -272,7 +257,6 @@ defmodule Apiary.Runs.Fold do
       |> Map.merge(about(data))
       |> started_state()
     end)
-    |> ping_clock()
   end
 
   defp event(acc, %{type: @policy_applied, data: data} = event) do
@@ -467,7 +451,7 @@ defmodule Apiary.Runs.Fold do
 
   @doc """
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
-  that applies, whoever opened the run:
+  that applies:
 
     1. `failed` with `timeout`, `quiet`, `credential_expired` or `run_ended_at_issuer` is
        cancelled: the exit an older Forager, under the contract before the outcome, wrote
@@ -507,14 +491,6 @@ defmodule Apiary.Runs.Fold do
     case string(data, key, :infinity) do
       code when is_binary(code) -> if Regex.match?(@reason, code), do: code
       nil -> nil
-    end
-  end
-
-  # What opened the run, one of the two the contract names, or nil.
-  defp opened_by(data) do
-    case string(data, "opened_by", 64) do
-      opener when opener in @openers -> opener
-      _ -> nil
     end
   end
 
@@ -568,9 +544,11 @@ defmodule Apiary.Runs.Fold do
   defp count_beat(%{recount: true, beat: %{time: time, received_at: received_at}} = acc) do
     heard_at = Liveness.heard_at(received_at, time, Map.get(acc.run, :clock_offset_ms))
     run = Map.put(acc.run, :last_heartbeat_at, heard_at)
-    # The registration's interval, else the heartbeats': the rule of the lost-run check.
+    # The registration's interval, else the attach's, else the heartbeats': the rule of the
+    # lost-run check.
     interval =
-      Map.get(run, :registration_interval_seconds) || Map.get(run, :heartbeat_interval_seconds)
+      Map.get(run, :registration_interval_seconds) || Map.get(run, :attach_interval_seconds) ||
+        Map.get(run, :heartbeat_interval_seconds)
 
     if acc.beaten and Liveness.heard_within?(heard_at, interval, received_at),
       do: %{acc | run: revive(run)},
@@ -595,23 +573,6 @@ defmodule Apiary.Runs.Fold do
     case lower(current, offset) do
       ^current -> acc
       lowered -> %{acc | run: Map.put(run, :clock_offset_ms, lowered), recount: true}
-    end
-  end
-
-  # The gateway's offset, its registration's and its ping's, counts for a run a gateway
-  # opened, whichever of the ping and the start comes first.
-  defp ping_clock(%{run: %{opened_by: "gateway"}, ping_offset: offset} = acc)
-       when is_integer(offset),
-       do: put_offset(acc, offset)
-
-  defp ping_clock(acc), do: acc
-
-  # The registration's time on the gateway's clock and its arrival at this server, as a
-  # ping's time and arrival were: nil for a run that did not register.
-  defp registration_offset(run) do
-    case {Map.get(run, :registered_at), Map.get(run, :registration_time)} do
-      {%DateTime{} = received_at, %DateTime{} = time} -> Liveness.clock_offset(received_at, time)
-      _ -> nil
     end
   end
 

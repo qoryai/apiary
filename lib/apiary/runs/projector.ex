@@ -42,12 +42,12 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, Liveness, LogChunk, Run, Target}
+  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
   @folded_fields ~w(
-    state forager_version contract_version opened_by runtime runtime_version command args
+    state forager_version contract_version runtime runtime_version command args
     dir interactive terminal_cols terminal_rows host wall image labels
     about_kind about_title about_subjects about_details
     target_system target_path started_at exited_at exit_code exit_state exit_reason refused_at
@@ -385,28 +385,11 @@ defmodule Apiary.Runs.Projector do
   end
 
   # What the fold needs of the run's events already projected (`Apiary.Runs.Fold`), read
-  # only for a pass that can lower the run's clock offset: the smallest offset of its
-  # pings, for a pass that holds its `run.started`, and the time and arrival of its
-  # heartbeat with the highest sequence, which a lower offset counts again, for a pass
-  # that holds a ping, a start or a heartbeat.
+  # only for a pass that holds a heartbeat, which can lower the run's clock offset: the
+  # time and arrival of its heartbeat with the highest sequence, which a lower offset
+  # counts again.
   defp projected(id, events) do
-    types = MapSet.new(events, & &1.type)
-    offsets? = Enum.any?(["dev.qory.ping", "dev.qory.run.started", @heartbeat], &(&1 in types))
-
-    %{
-      ping_offset: if("dev.qory.run.started" in types, do: ping_offset(id)),
-      beat: if(offsets?, do: last_beat(id))
-    }
-  end
-
-  defp ping_offset(id) do
-    Repo.all(
-      from e in Event,
-        where: e.run_id == ^id and e.type == "dev.qory.ping" and not is_nil(e.projected_at),
-        select: {e.received_at, e.time}
-    )
-    |> Enum.map(fn {received_at, time} -> Liveness.clock_offset(received_at, time) end)
-    |> Enum.min(fn -> nil end)
+    %{beat: if(Enum.any?(events, &(&1.type == @heartbeat)), do: last_beat(id))}
   end
 
   defp last_beat(id) do
