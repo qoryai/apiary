@@ -93,7 +93,7 @@ defmodule Mix.Tasks.Apiary.Demo do
     end
 
     # An instance without the security feature has no policy to give the workspace.
-    if Apiary.Features.on?(access_key, :security), do: demo_policy(access_key)
+    if Apiary.Features.on?(:security), do: demo_policy(access_key)
   end
 
   defp demo_policy(access_key) do

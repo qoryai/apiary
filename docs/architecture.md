@@ -403,12 +403,14 @@ organisation. An opt-in feature (`default: false`, `Apiary.Features.opt_in/0`) i
 where `QORY_FEATURES` lists it by name, and is never one of those.
 
 - **Absent, as off on the instance.** Every surface asks `Apiary.Features.on?/2` with its
-  scope, which carries the answer (`Apiary.Accounts.Scope`, `features`): the feature
-  gates of the pages and the controllers, the navigation, `Apiary.Access` and the server
-  contract, whose access key is asked through its organisation and workspace, so the
-  discovery document and the run configuration leave out what the workspace lacks. What
-  belongs to the instance follows its switch only: the guides at `/docs`, the sign-in and
-  landing pages, and the routes' first answer (`ApiaryWeb.Features.Routes`).
+  scope, and a person's scope carries the answer (`Apiary.Accounts.Scope`, `features`):
+  the feature gates of the pages and the controllers, the navigation and `Apiary.Access`.
+  What belongs to the instance follows its switch only: the guides at `/docs`, the
+  sign-in and landing pages, the routes' first answer (`ApiaryWeb.Features.Routes`), and
+  the server contract, whose access key, and its scope, answer as the instance. A run's
+  registration, events, attach, outcome and reload, and its run configuration, follow the
+  instance's features alone, whatever a level below the instance shows; the discovery
+  document reads no feature.
 - **Read again under the locks.** `Apiary.Access.reload/2` reads the features after its
   locks, so what an edition changes of them under the organisation's or the workspace's
   lock is waited for by a change that asked, or seen by it.

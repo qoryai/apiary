@@ -1,7 +1,10 @@
 defmodule Apiary.FeaturesTest do
   use ExUnit.Case, async: true
 
+  alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Accounts.Scope
   alias Apiary.Features
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   describe "parse/1, the value of QORY_FEATURES" do
     test "unset, empty or blank is every feature but the opt-in ones" do
@@ -137,6 +140,48 @@ defmodule Apiary.FeaturesTest do
       assert_raise ArgumentError, ~r/:dispatch is not a feature/, fn ->
         Features.on?(nil, :dispatch)
       end
+    end
+  end
+
+  describe "on?/2 with an access key" do
+    setup do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.WithoutRecordOrPolicy)
+
+      organisation = %Organisation{id: Ecto.UUID.generate()}
+      workspace = %Workspace{id: Ecto.UUID.generate(), organisation_id: organisation.id}
+
+      key = %AccessKey{
+        organisation_id: organisation.id,
+        workspace_id: workspace.id,
+        workspace: workspace
+      }
+
+      %{organisation: organisation, workspace: workspace, key: key}
+    end
+
+    test "answers the instance, where the edition leaves the feature out of the organisation",
+         ctx do
+      below = Features.of(ctx.organisation, ctx.workspace)
+      refute :observability in below
+      refute :security in below
+
+      for feature <- Features.all() do
+        assert Features.on?(ctx.key, feature) == Features.on?(feature), inspect(feature)
+
+        assert Features.on?(Scope.for_access_key(ctx.key), feature) == Features.on?(feature),
+               inspect(feature)
+      end
+    end
+
+    test "while a person's scope there still answers what the edition leaves it", ctx do
+      scope = %Scope{
+        organisation: ctx.organisation,
+        workspace: ctx.workspace,
+        features: Features.of(ctx.organisation, ctx.workspace)
+      }
+
+      refute Features.on?(scope, :observability)
+      refute Features.on?(scope, :security)
     end
   end
 

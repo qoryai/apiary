@@ -126,7 +126,8 @@ defmodule Apiary.Edition do
   once per holder or row, and resolved, rendered and shown by the core, which says the
   level's `name` and nothing of its own about it. A level with variables and no
   policy is answered with `policy: false`, which the security policy takes as nil and
-  `Apiary.Variables` still reads.
+  `Apiary.Variables` still reads. Answered from the instance's features only
+  (`Apiary.Features.on?/1`), never from what a level below is shown.
   """
   @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
@@ -451,7 +452,8 @@ defmodule Apiary.Edition do
 
   @doc """
   The features an organisation, or a workspace of it, has, given the features the instance
-  has on (`enabled`).
+  has on (`enabled`). A person's pages and actions there follow it (`Apiary.Features.on?/2`);
+  what a node is served follows the instance's features alone.
   """
   @callback features_of(%Organisation{}, %Workspace{} | nil, enabled :: [atom]) :: [atom]
 

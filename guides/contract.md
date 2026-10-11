@@ -320,9 +320,9 @@ workspace's baseline. The labels are compared to the stored ones byte for byte. 
 is the bytes that were stored when the policy was last changed. Nothing is rendered for a
 request, so the digest is of exactly what is sent.
 
-A workspace nobody has given a policy, or one without the `security` feature, is answered
-`{"version":1}`, and its machines run under their local policy, from their Forager file
-([The security policy](security-policy.md)).
+A workspace nobody has given a policy, or any workspace on an instance without the
+`security` feature, is answered `{"version":1}`, and its machines run under their local
+policy, from their Forager file ([The security policy](security-policy.md)).
 
 The gateway applies the `security_policy` narrowed by the machine's local policy, its `egress` section; the
 machine only takes away.
@@ -562,7 +562,7 @@ else is retried with backoff until the run ends.
   attaching instance is not known yet. Its registration's repeat and
   its outcome stay the registering node's. A gateway's batch never opens a run: one for a run
   it did not attach is `409 wrong_gateway`, and nothing is stored. What is read for the
-  run, its run configuration and its features, is read under the run's workspace, and
+  run, its run configuration, is read under the run's workspace, and
   a batch is refused `401` when the run's workspace or organisation is out of use.
 - **The end.** Once the run's starter has given its outcome, every `2xx` to the run's
   batches carries it, `application/json`, until the run's `dev.qory.run.exited` arrives:
