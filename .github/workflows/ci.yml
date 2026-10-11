@@ -220,7 +220,10 @@ jobs:
             features: observability
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:18
+        image: ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -315,22 +318,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
-      # share theirs. What this job still pulls from Docker Hub is pulled as the account in
-      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them nothing is
-      # logged in and the pulls stay anonymous.
-      - name: Log in to Docker Hub, when its token is set
+      # The images this job pulls are qoryai's copies of them in ghcr.io/qoryai/ci-images,
+      # pulled by digest as this job, with its own token, and not without a login from an
+      # address GitHub's runners share, which registries limit.
+      - name: Log in to ghcr.io
         env:
-          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
-          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
-        run: |
-          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
-            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
-            exit 0
-          fi
-          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: image=ghcr.io/qoryai/ci-images:buildkit-buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
 
       # Loaded into the runner's Docker for the checks below, under a name that is not the
       # package's. The cache is the platform's own, which release.yml builds on too.
@@ -344,6 +342,8 @@ jobs:
           tags: apiary:ci
           build-args: |
             APIARY_REVISION=${{ github.sha }}
+            BUILDER_IMAGE=ghcr.io/qoryai/ci-images:elixir-1.20.4-erlang-29.1-debian-trixie-20260918-slim@sha256:7fe29a356298b79ece9719552043d4f7e02e77105a9a562e11d9e9f26b870589
+            RUNNER_IMAGE=ghcr.io/qoryai/ci-images:debian-trixie-20260918-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -386,7 +386,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:18
+        image: ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -445,6 +448,14 @@ jobs:
           echo "DATABASE_TLS_CA=$tls_dir/ca.pem" >> "$GITHUB_ENV"
           echo "DATABASE_TLS_WRONG_CA=$tls_dir/wrong-ca.pem" >> "$GITHUB_ENV"
 
+      # The images this job pulls are qoryai's copies of them in ghcr.io/qoryai/ci-images,
+      # pulled by digest as this job, with its own token, and not without a login from an
+      # address GitHub's runners share, which registries limit.
+      - name: Log in to ghcr.io
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
       # Postgres reads its key only when the key is its own and private, so the container
       # copies the mounted files to where they are before Postgres starts. The password is
       # the run's own, and reaches the tests in DATABASE_PASSWORD's place.
@@ -457,7 +468,7 @@ jobs:
           docker run -d --name "$TLS_CONTAINER" -e POSTGRES_PASSWORD="$password" \
             -p 127.0.0.1::5432 \
             -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
-            public.ecr.aws/docker/library/postgres:18 bash -c '
+            ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 bash -c '
               install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
               install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
               exec docker-entrypoint.sh postgres -c ssl=on \
@@ -504,26 +515,21 @@ jobs:
         with:
           fetch-depth: 2
 
-      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
-      # share theirs. What this job still pulls from Docker Hub is pulled as the account in
-      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them nothing is
-      # logged in and the pulls stay anonymous.
-      - name: Log in to Docker Hub, when its token is set
+      # The images this job pulls are qoryai's copies of them in ghcr.io/qoryai/ci-images,
+      # pulled by digest as this job, with its own token, and not without a login from an
+      # address GitHub's runners share, which registries limit.
+      - name: Log in to ghcr.io
         env:
-          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
-          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
-        run: |
-          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
-            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
-            exit 0
-          fi
-          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       # The builder loads what it builds into the runner's Docker, so the development path
       # below runs `docker build` as a person types it, on this builder's layers.
       - uses: docker/setup-buildx-action@v4
         with:
-          driver-opts: default-load=true
+          driver-opts: |
+            default-load=true
+            image=ghcr.io/qoryai/ci-images:buildkit-buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
 
       # The image job's cache, read only: the image job saves it.
       - name: Build the image
@@ -536,7 +542,17 @@ jobs:
           tags: apiary:ci
           build-args: |
             APIARY_REVISION=${{ github.sha }}
+            BUILDER_IMAGE=ghcr.io/qoryai/ci-images:elixir-1.20.4-erlang-29.1-debian-trixie-20260918-slim@sha256:7fe29a356298b79ece9719552043d4f7e02e77105a9a562e11d9e9f26b870589
+            RUNNER_IMAGE=ghcr.io/qoryai/ci-images:debian-trixie-20260918-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
           cache-from: type=gha,scope=image-amd64
+
+      # compose.yaml's bundled Postgres, postgres:18, is CI's copy of it, put under that name
+      # so that compose finds it and pulls nothing. compose.yaml itself, what a person
+      # installs from, is left as it is.
+      - name: Put CI's copy of Postgres under compose.yaml's name for it
+        run: |
+          docker pull --quiet ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+          docker tag ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 postgres:18
 
       # A base commit from before bin/keys has no compose.yaml to upgrade from, and the
       # upgrade from it is skipped.
@@ -563,6 +579,8 @@ jobs:
           tags: apiary:base
           build-args: |
             APIARY_REVISION=${{ env.BASE_SHA }}
+            BUILDER_IMAGE=ghcr.io/qoryai/ci-images:elixir-1.20.4-erlang-29.1-debian-trixie-20260918-slim@sha256:7fe29a356298b79ece9719552043d4f7e02e77105a9a562e11d9e9f26b870589
+            RUNNER_IMAGE=ghcr.io/qoryai/ci-images:debian-trixie-20260918-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
           cache-from: type=gha,scope=image-amd64
 
       - name: Write the checks the steps below share
@@ -665,12 +683,15 @@ jobs:
           keys_kept
           docker compose down -v
 
-      # CONTRIBUTING.md's "Run it from a checkout", as written: an image without
-      # APIARY_REVISION reports the revision null.
+      # CONTRIBUTING.md's "Run it from a checkout", as written but for the base images,
+      # which are CI's copies of the Dockerfile's: an image without APIARY_REVISION reports
+      # the revision null.
       - name: Run it from a checkout (for development)
         run: |
           . "$RUNNER_TEMP/compose-checks.sh"
-          docker build -t apiary:dev .
+          docker build -t apiary:dev \
+            --build-arg BUILDER_IMAGE=ghcr.io/qoryai/ci-images:elixir-1.20.4-erlang-29.1-debian-trixie-20260918-slim@sha256:7fe29a356298b79ece9719552043d4f7e02e77105a9a562e11d9e9f26b870589 \
+            --build-arg RUNNER_IMAGE=ghcr.io/qoryai/ci-images:debian-trixie-20260918-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a .
           cp .env.example .env
           APIARY_IMAGE=apiary APIARY_VERSION=dev docker compose up -d
           export APIARY_IMAGE=apiary APIARY_VERSION=dev
@@ -755,7 +776,7 @@ jobs:
             --network-alias database.example.test \
             -e POSTGRES_USER=apiary -e POSTGRES_DB=apiary -e POSTGRES_PASSWORD="$password" \
             -v "$tls_dir/server.crt:/tls/server.crt:ro" -v "$tls_dir/server.key:/tls/server.key:ro" \
-            public.ecr.aws/docker/library/postgres:18 bash -c '
+            ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336 bash -c '
               install -D -o postgres -g postgres -m 0644 /tls/server.crt /etc/postgresql-tls/server.crt &&
               install -o postgres -g postgres -m 0600 /tls/server.key /etc/postgresql-tls/server.key &&
               exec docker-entrypoint.sh postgres -c ssl=on \

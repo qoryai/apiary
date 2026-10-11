@@ -30,7 +30,10 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:18
+        image: ghcr.io/qoryai/ci-images:postgres-18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_HOST_AUTH_METHOD: trust
@@ -43,20 +46,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Docker Hub limits the pulls made without a login by address, and GitHub's runners
-      # share theirs. What this job still pulls from Docker Hub is pulled as the account in
-      # DOCKER_HUB_USERNAME when DOCKER_HUB_TOKEN_SECRET is set. Without them nothing is
-      # logged in and the pulls stay anonymous.
-      - name: Log in to Docker Hub, when its token is set
+      # The images this job pulls are qoryai's copies of them in ghcr.io/qoryai/ci-images,
+      # pulled by digest as this job, with its own token, and not without a login from an
+      # address GitHub's runners share, which registries limit.
+      - name: Log in to ghcr.io
         env:
-          DOCKER_HUB_USERNAME: ${{ vars.DOCKER_HUB_USERNAME }}
-          DOCKER_HUB_TOKEN_SECRET: ${{ secrets.DOCKER_HUB_TOKEN_SECRET }}
-        run: |
-          if [ -z "$DOCKER_HUB_USERNAME" ] || [ -z "$DOCKER_HUB_TOKEN_SECRET" ]; then
-            echo "::notice::DOCKER_HUB_USERNAME or DOCKER_HUB_TOKEN_SECRET is not set: Docker Hub is pulled from without a login."
-            exit 0
-          fi
-          printf '%s' "$DOCKER_HUB_TOKEN_SECRET" | docker login --username "$DOCKER_HUB_USERNAME" --password-stdin
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       # The node's command is built from source: qory at the ref in .qory-e2e-ref, against
       # Forager at the ref in .forager-e2e-ref, the Forager that qory is written for. The
@@ -107,6 +103,13 @@ jobs:
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
+
+      # The wall's image, curlimages/curl:8.16.0 in e2e/run.sh, is CI's copy of it, put under
+      # that name so that the job finds it and pulls nothing.
+      - name: Put CI's copy of the wall's image under the job's name for it
+        run: |
+          docker pull --quiet ghcr.io/qoryai/ci-images:curl-8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
+          docker tag ghcr.io/qoryai/ci-images:curl-8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6 curlimages/curl:8.16.0
 
       - name: Run the job
         env:
