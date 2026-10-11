@@ -929,7 +929,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   **New gateway** (`/nodes/new-gateway`) is the same page with a name and a URL, its
   hint saying what a URL may be, and Add gateway. A refused save stays on the page, the
   error under its field, in core's words (a URL's, or a gateway's, such as "has no
-  default gateway in this workspace"); adding one opens its page on Access key with a
+  default gateway"); adding one opens its page on Access key with a
   flash, where its machine gets its key.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and its tabs, the operational
@@ -997,10 +997,12 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   to its page, and Default beside the gateway the workspace's default resolves to. A
   gateway of another organisation that serves the workspace is no row of it. A node's
   Gateway select groups the gateways by level where there is more than one, "This
-  workspace" first, then each organisation by name, and its hint names the organisation
+  workspace" first, then the node's organisation, then each organisation that serves it,
+  named, in the order their defaults resolve (`Apiary.Gateways.levels/1`), and its hint names the organisation
   whose default it is. Where a node uses a gateway of another organisation, its About,
-  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, linked
-  only where the reader may open it. Who manages the nodes is the core's sentence unless
+  its Default row and its Access key tab name it "edge-01 of Acme", with its URL, a link
+  to its page under that organisation's Gateways only where the reader reads it there
+  (`node.read` at that organisation, `NodeComponents.gateway_path/2`). Who manages the nodes is the core's sentence unless
   the edition gives one (`c:ApiaryWeb.Edition.nodes_managed_by_sentence/1`); the
   instance limit's refusal and hint ask `c:ApiaryWeb.Edition.who_may_sentence/2` for
   `node.set_limit`, "You can't change the instance limit." when it gives none.

@@ -247,6 +247,11 @@ defmodule ApiaryWeb.NodeComponents do
   attr :gateway, :any, required: true, doc: "the gateway the node's runs go through, or nil"
   attr :connected, :boolean, required: true, doc: "whether the gateway holds an active key"
 
+  attr :path, :string,
+    default: nil,
+    doc:
+      "the page of a gateway of another organisation, where the reader opens it (`gateway_path/2`)"
+
   def through_gateway(assigns) do
     assigns =
       assign(assigns,
@@ -275,7 +280,7 @@ defmodule ApiaryWeb.NodeComponents do
             rich_gettext(
               "Runs of %{name} go through the gateway %{gateway} of %{organisation}, at %{url}.",
               name: @node.name,
-              gateway: @gateway.name,
+              gateway: if(@path, do: {:link, @path, @gateway.name}, else: @gateway.name),
               organisation: organisation_name(@gateway),
               url: {:m, @gateway.url}
             )
@@ -586,8 +591,10 @@ defmodule ApiaryWeb.NodeComponents do
 
   @doc """
   gateway_path/2 is the page of `gateway` the reader of `scope` opens: a workspace's
-  gateway under the workspace's Nodes, an organisation's under its Gateways; nil for a
-  gateway of another organisation, which its page is not the reader's to open.
+  gateway under the workspace's Nodes, an organisation's under its Gateways. A gateway of
+  another organisation, whose organisation must be loaded, is under that organisation's
+  Gateways where the reader may read it there (`node.read` at that organisation, their
+  membership of it read from the database); nil where they may not.
   """
   @spec gateway_path(Scope.t(), Node.t()) :: String.t() | nil
   def gateway_path(%Scope{organisation: %{id: id} = organisation}, %Node{
@@ -604,7 +611,24 @@ defmodule ApiaryWeb.NodeComponents do
       when not is_nil(workspace),
       do: ~p"/#{organisation}/#{workspace}/nodes/#{public_id}"
 
+  def gateway_path(
+        %Scope{user: %Apiary.Accounts.User{}} = scope,
+        %Node{workspace_id: nil, organisation: %Organisation{} = organisation} = gateway
+      ) do
+    if organisation_gateways?() and reads_gateway_at?(scope, organisation, gateway),
+      do: ~p"/#{organisation}/gateways/#{gateway.public_id}"
+  end
+
   def gateway_path(_scope, _gateway), do: nil
+
+  # Whether the person of `scope` reads `gateway` at its organisation, another than the
+  # scope's, as their membership of that organisation stands.
+  defp reads_gateway_at?(scope, organisation, gateway) do
+    scope
+    |> Scope.in_organisation(organisation)
+    |> Apiary.Access.reload()
+    |> Apiary.Access.can?(:"node.read", gateway)
+  end
 
   @doc """
   gateway_name/2 is `gateway`'s name as a node of the organisation `organisation_id`
@@ -707,6 +731,16 @@ defmodule ApiaryWeb.NodeComponents do
 
   def reads_nodes?(scope, :organisation),
     do: Apiary.Access.can?(scope, :"node.read", scope.organisation)
+
+  @doc """
+  no_longer_member/1 tells one whose membership no longer reaches the page's place, a
+  workspace's or the organisation's, that it is gone.
+  """
+  @spec no_longer_member(:workspace | :organisation) :: String.t()
+  def no_longer_member(:workspace), do: gettext("You are no longer a member of this workspace.")
+
+  def no_longer_member(:organisation),
+    do: gettext("You are no longer a member of this organisation.")
 
   @doc "url_hint/0 is what a gateway's URL field says under it, as it is made and changed."
   @spec url_hint() :: String.t()

@@ -537,7 +537,7 @@ defmodule ApiaryWeb.NodeLive.Show do
 
       true ->
         socket
-        |> put_flash(:error, gettext("You are no longer a member of this workspace."))
+        |> put_flash(:error, NodeComponents.no_longer_member(socket.assigns.place))
         |> redirect(to: ~p"/")
     end
   end

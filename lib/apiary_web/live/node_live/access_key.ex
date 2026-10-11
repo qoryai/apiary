@@ -190,11 +190,15 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   # The gateway the node's runs go through, as its choice leads now, and whether that
   # gateway holds an active key.
   defp assign_through(socket) do
-    through = socket.assigns.node |> Gateways.chosen() |> Repo.preload(:organisation)
+    %{current_scope: scope, node: node} = socket.assigns
+    through = node |> Gateways.chosen() |> Repo.preload(:organisation)
 
     assign(socket,
       through: through,
-      through_connected: through && AccessKeys.active_key?(through)
+      through_connected: through && AccessKeys.active_key?(through),
+      through_path:
+        through && through.organisation_id != node.organisation_id &&
+          NodeComponents.gateway_path(scope, through)
     )
   end
 
@@ -831,7 +835,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
       true ->
         socket
-        |> put_flash(:error, gettext("You are no longer a member of this workspace."))
+        |> put_flash(:error, NodeComponents.no_longer_member(socket.assigns.place))
         |> redirect(to: ~p"/")
     end
   end
@@ -1247,6 +1251,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   node={@node}
                   gateway={@through}
                   connected={!!@through_connected}
+                  path={@through_path || nil}
                 />
                 <div class="grid gap-1.5">
                   <p id="code-issued-run" class="text-[13px]/5">
@@ -1483,6 +1488,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             node={@node}
             gateway={@through}
             connected={!!@through_connected}
+            path={@through_path || nil}
           />
 
           <.how_to :if={@live_action == :generated} id="key-generated-steps">
@@ -1650,6 +1656,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             node={@node}
             gateway={@through}
             connected={!!@through_connected}
+            path={@through_path || nil}
           />
           <%= if @key.arrived_by == :code do %>
             <div class="grid gap-1.5">
@@ -1767,6 +1774,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           node={@node}
           gateway={@through}
           connected={!!@through_connected}
+          path={@through_path || nil}
         />
 
         <%!-- No key in use: the question, and the ways as cards, the kind's own first and

@@ -129,7 +129,7 @@ defmodule ApiaryWeb.NodeLive.Gateways do
 
       true ->
         socket
-        |> put_flash(:error, gettext("You are no longer a member of this organisation."))
+        |> put_flash(:error, NodeComponents.no_longer_member(:organisation))
         |> redirect(to: ~p"/")
     end
   end

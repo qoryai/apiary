@@ -13204,14 +13204,13 @@ msgstr ""
 msgid "You are logged out."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/gateways.ex
+#: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "You are no longer a member of this organisation."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/live/node_live/index.ex
-#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You are no longer a member of this workspace."

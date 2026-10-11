@@ -277,6 +277,46 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(lv, "#breadcrumb", "Gateways")
       assert has_element?(lv, ~s{#node-tabs-access_key[aria-current="page"]})
     end
+
+    test "one removed from the organisation who presses Make default is told so", %{
+      scope: scope
+    } do
+      organisation_gateway_fixture(scope, name: "edge-1")
+      other = organisation_gateway_fixture(scope, name: "edge-2")
+      admin = member_fixture(scope, :admin)
+
+      {:ok, lv, _html} =
+        live(log_in_user(build_conn(), admin.user), gateway_path(scope, other))
+
+      # Removed behind the page's back: no announcement reaches it.
+      Repo.delete!(admin.membership)
+
+      lv |> element("#gateway-make-default") |> render_click()
+      {path, flash} = assert_redirect(lv)
+      assert path == ~p"/"
+      assert flash["error"] == "You are no longer a member of this organisation."
+      refute Repo.get!(Node, other.id).default_gateway
+    end
+
+    test "one removed from the organisation who revokes a key is told so", %{scope: scope} do
+      gateway = organisation_gateway_fixture(scope, name: "edge-1")
+      %{access_key: key} = node_key_fixture(scope, gateway)
+      admin = member_fixture(scope, :admin)
+
+      {:ok, lv, _html} =
+        live(
+          log_in_user(build_conn(), admin.user),
+          gateway_path(scope, gateway, "/access-key/keys/#{key.key_id}/revoke")
+        )
+
+      Repo.delete!(admin.membership)
+
+      render_hook(lv, "revoke", %{"key_id" => key.key_id})
+      {path, flash} = assert_redirect(lv)
+      assert path == ~p"/"
+      assert flash["error"] == "You are no longer a member of this organisation."
+      assert Repo.get!(Apiary.AccessKeys.AccessKey, key.id).revoked_at == nil
+    end
   end
 
   describe "a workspace's Nodes" do
@@ -369,7 +409,8 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
 
     test "a node that uses it names it of its organisation, unlinked, with its URL", %{
       conn: conn,
-      scope: scope
+      scope: scope,
+      other: other
     } do
       node = node_fixture(scope, name: "build-01")
       assert node.gateway_choice == :default
@@ -380,12 +421,39 @@ defmodule ApiaryWeb.NodeLive.OrganisationGatewaysTest do
       assert has_element?(lv, "#node-about-gateway", "https://edge-1.example")
       refute has_element?(lv, "#node-about-gateway a")
 
+      refute render(lv) =~ "/#{other.organisation.slug}/"
+
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
 
-      assert render(lv) =~
-               "Runs of build-01 go through the gateway"
+      assert has_element?(
+               lv,
+               "#node-gateway",
+               "Runs of build-01 go through the gateway edge-1 of Hive Ops, at https://edge-1.example."
+             )
 
-      assert render(lv) =~ "edge-1 of Hive Ops"
+      refute has_element?(lv, "#node-gateway a")
+      refute render(lv) =~ "/#{other.organisation.slug}/"
+    end
+
+    test "a reader of both organisations is led to its page there", %{
+      scope: scope,
+      other: other,
+      gateway: gateway
+    } do
+      node = node_fixture(scope, name: "build-01")
+      # The other organisation's owner joins this one as a member.
+      join_fixture(scope, other.user)
+      conn = log_in_user(build_conn(), other.user)
+      href = ~p"/#{other.organisation}/gateways/#{gateway}"
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node))
+      assert has_element?(lv, ~s{#node-about-gateway a[href="#{href}"]}, "edge-1 of Hive Ops")
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/access-key"))
+      assert has_element?(lv, ~s{#node-gateway a[href="#{href}"]}, "edge-1")
+
+      {:ok, lv, _html} = live(conn, href)
+      assert has_element?(lv, "main h1", "edge-1")
     end
 
     test "the node's choice groups the other organisation's gateways under its name", %{
