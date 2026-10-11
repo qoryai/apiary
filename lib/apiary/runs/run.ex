@@ -129,7 +129,8 @@ defmodule Apiary.Runs.Run do
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
     # `time` its body was built at, on the starter's clock; when this server took it; and
-    # the SHA-256 of the body's bytes, by which a repeat is told from another outcome. All
+    # the SHA-256 of the body's bytes. A repeat, the same state and reason again, changes
+    # none of them. All
     # nil for a run that was given none. Not folded: a rebuild keeps them, and the fold
     # reads them, so the outcome decides `state` and `reason` whenever it arrives
     # (`Apiary.Runs.Fold`).

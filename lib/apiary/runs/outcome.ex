@@ -19,13 +19,16 @@ defmodule Apiary.Runs.Outcome do
   `give/4` stores it on the run. A key `Apiary.Access` does not let post
   (`run.post_events`) is `{:error, :not_found}`. Then, the first that applies:
 
-    1. a repeat: the same bytes again, under any active key of the node or node pool the
-       run is bound to (`Apiary.Runs.Sender`), is given the same answer, nothing stored
-       again;
+    1. a repeat: the same outcome again, under any active key of the node or node pool
+       the run is bound to (`Apiary.Runs.Sender`), is given the same answer, nothing
+       stored again. The same outcome is the same state and reason as `parse/1` reads
+       them, whatever its bytes: a new `time`, a reason dropped by the rules above, and
+       no state at all (cancelled, stopped) all count. The first outcome's `time`, when it
+       arrived and its digest stay;
     2. a run id the key's workspace does not hold, a run of another node, and a run
        whose events retention has pruned are `{:error, :not_found}`;
-    3. a run that was given another outcome is `{:error, :outcome_given}`: each run gets
-       one;
+    3. a run that was given another outcome, another state or reason, is
+       `{:error, :outcome_given}`: each run gets one;
     4. else the outcome is stored on the run, with when it arrived and the SHA-256 of its
        bytes, and the run's state and reason are the outcome's at once
        (`Apiary.Runs.Fold.outcome/1`). What the run's exit said, its exit code, its signal
@@ -126,8 +129,8 @@ defmodule Apiary.Runs.Outcome do
 
   @doc """
   Gives the run `run_id` the outcome, for the key (an access key, or its scope), in the
-  order the moduledoc gives. `body` is the outcome's bytes, whose SHA-256 tells a repeat
-  from another outcome. `{:ok, %{run: run, repeated: boolean}}`, or `{:error, reason}` with
+  order the moduledoc gives. `body` is the outcome's bytes, whose SHA-256 is kept with the
+  first outcome. `{:ok, %{run: run, repeated: boolean}}`, or `{:error, reason}` with
   `:not_found`, `:outcome_given` or `:unavailable`.
   """
   @spec give(AccessKey.t() | Scope.t(), term, t, binary) ::
@@ -186,7 +189,7 @@ defmodule Apiary.Runs.Outcome do
         not Sender.registered_by?(run, access_key) ->
           {:error, :not_found}
 
-        run.outcome_digest == digest ->
+        same?(run, outcome) ->
           {:ok, %{run: run, repeated: true}}
 
         not is_nil(run.events_pruned_at) ->
@@ -200,6 +203,11 @@ defmodule Apiary.Runs.Outcome do
       end
     end)
   end
+
+  # The outcome the run holds, by its state and reason as stored: the bytes, the time and
+  # whatever a reason dropped by the rules was do not tell two outcomes apart.
+  defp same?(%Run{outcome_state: state, outcome_reason: reason}, %__MODULE__{} = outcome),
+    do: is_binary(state) and state == outcome.state and reason == outcome.reason
 
   defp put(run, outcome, digest, now) do
     given = %{

@@ -7,7 +7,7 @@ defmodule Apiary.Repo.Migrations.RecordARunSOutcome do
   # `outcome_state`, `succeeded`, `failed` or `cancelled`; `outcome_reason`, its code, nil
   # when it gave none; `outcome_time`, the `time` its body was built at, on the starter's
   # clock; `outcome_received_at`, when this server took it; `outcome_digest`, the SHA-256 of
-  # the body's bytes, 32 bytes, by which a repeat of the same outcome is told from another.
+  # the body's bytes, 32 bytes. All of the first outcome's: a repeat changes none of them.
   # All NULL for a run that was given none, every existing row among them, and the four
   # but the reason all set for one that was. The projector does not fold them, so a rebuild
   # keeps them; the fold reads them (`Apiary.Runs.Fold`).

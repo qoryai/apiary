@@ -151,11 +151,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   outcome kept; a `time` more than 300 seconds from the server's clock is `401`. The
   outcome sets the run's state and reason whenever it arrives, before the run's exit or
   after it, and the exit's code, signal and reason stay on record beside it. Each run gets
-  one: the same bytes again get the same answer, `200` `{"version":1}`, and a different
-  outcome is `409` `outcome_given`. A run of another node, one the workspace does not
-  hold, and one whose events retention pruned are `404` `not_found`. Where the outcome's
-  state differs from what the run's exit said, the run page says both, for example
-  "Succeeded, as its starter said; the runtime exited 1".
+  one: the same state and reason again, whatever the bytes or the `time`, get the same
+  answer, `200` `{"version":1}`, and change nothing; another state or reason is `409`
+  `outcome_given`. A run of another node, one the workspace does not hold, and one whose
+  events retention pruned are `404` `not_found`. Where the outcome's state differs from
+  what the run's exit said, the run page says both, for example "Succeeded, as its starter
+  said; the runtime exited 1".
 - The end of a run, in the answers to its batches. Once a run's starter has given its
   outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
   carries `end` with the outcome's state and reason, as `application/json`,
