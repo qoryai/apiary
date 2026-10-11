@@ -538,7 +538,10 @@ else is retried with backoff until the run ends.
   registered it, or whose key's batch opened it. Its batches, its heartbeats among them,
   its reloads, a repeat of its registration and its outcome are taken from that node's
   active keys alone, so a second key of the node, while one is replaced, keeps the run
-  going. A batch of another node's run is `409 wrong_node`, and a reload of one `404`.
+  going: the run is bound to the node, not to the key that registered it, and once that
+  key is revoked its requests are `401`. A batch of another node's run is
+  `409 wrong_node`, from any key of another node or node pool of the workspace, a
+  gateway's included, and a reload or an outcome of one `404`.
   For a run through a gateway, the batches, heartbeats and reloads are the gateway's that
   attached it, under any of its active keys, from the instance that attached it
   (`X-Qory-Instance-Id`), and nobody's before the attach: anyone else's batch, the

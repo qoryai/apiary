@@ -249,7 +249,13 @@ workspace, neither suspended nor removed, their account in use (`access_key.crea
 asked again of their membership as it is at the enrolment); the key's arrival is an entry
 of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
 node (`node.delete`, owners and admins) revokes its keys in the same transaction, each with
-its entry of `access_key.revoke`. Setting a pool's instance limit, as it is made or after,
+its entry of `access_key.revoke`. Which runs a key posts for is
+`Apiary.Runs.Sender`'s: a direct run's batches, reloads, repeated registration and outcome
+are taken from the active keys of the node or node pool that registered it, whichever of
+them signs, so a second key keeps the run going while the first is replaced; a key of
+another node of the workspace, a gateway's included, is refused, and a revoked key
+verifies under no key. A run through a gateway takes its batches and reloads from the
+gateway that attached it instead. Setting a pool's instance limit, as it is made or after,
 is an action of its own (`node.set_limit`), held by owners and admins as `node.edit` is, so
 an edition may keep it from some who change the rest, whose pools are made with a limit
 of 1; its change is recorded in the entry of the node's creation or edit. Everyone in the
