@@ -1054,7 +1054,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp connect_intro(%Node{kind: :gateway, name: name}),
     do:
       gettext(
-        "%{name} connects to Qory with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one.",
+        "%{name} connects to Qory Apiary with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one.",
         name: name
       )
 

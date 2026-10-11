@@ -602,7 +602,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       {:ok, lv, _html} = live(conn, node_path(scope, gateway, "/access-key"))
 
       assert text(lv, "#node-connect-intro") ==
-               "edge-01 connects to Qory with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one."
+               "edge-01 connects to Qory Apiary with a key. The key enrols this gateway and registers no run. Choose one of two ways to give it one."
 
       refute has_element?(lv, "#node-gateway")
 
