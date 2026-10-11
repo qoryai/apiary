@@ -5,7 +5,10 @@ defmodule Apiary.Policy.Grammar do
   rendered document is validated against the schema again, whole, before it is stored
   (`Apiary.Policy.Schema`).
 
-  `covers?/2` and `matches?/2` are Forager's `policy.Covers` and `policy.Match`.
+  `covers?/2` is Forager's `policy.Covers`. `matches?/2` matches a name as Forager's
+  `policy.Match` does, by an identical entry or a `*.` suffix above it; an address it
+  matches only in its one form, `a.b.c.d`, identical to an entry, and an address in any
+  other form, IPv6 included, matches no entry.
   """
 
   # The schema's own patterns but for the anchors: `\A` and `\z`, since `$` would let a final
@@ -47,6 +50,17 @@ defmodule Apiary.Policy.Grammar do
   end
 
   def host?(_host), do: false
+
+  @doc """
+  Whether `host` is in the schema's pattern, a lower-case name or a `*.` suffix, whatever
+  its last label: what a rule stored before `host?/1` refused addresses in another form
+  than `a.b.c.d` may hold. A requested removal names such a rule by it.
+  """
+  def in_pattern?(host) when is_binary(host) do
+    String.valid?(host) and byte_size(host) <= @host_max and Regex.match?(@host, host)
+  end
+
+  def in_pattern?(_host), do: false
 
   @doc """
   Whether `host` ends in a number, as WHATWG's URL host parser asks it: its last label (a

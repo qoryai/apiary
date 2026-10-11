@@ -1172,6 +1172,59 @@ defmodule Apiary.PolicyTest do
       assert {:ok, _} = Policy.remove_rule(scope, stored.id)
       assert length(Policy.list_rules(scope, nil)) == 2
     end
+
+    test "a requested removal names a rule stored in another form, and removes it; adding one is refused",
+         %{scope: scope} do
+      stored = stored_rule(scope, nil, "allow", "127.1")
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+
+      assert {:ok, requested} =
+               Policy.requested_changes(%{
+                 "rules" => [%{"change" => "rule_removed", "host" => "127.1"}]
+               })
+
+      assert {:ok, [%Change{action: "rule_removed", subject: "127.1"}]} =
+               Repo.transact(fn ->
+                 {:ok, [workspace]} = Policy.lock_workspaces(scope, [scope.workspace.id])
+                 Policy.apply_requested(scope, [workspace], requested)
+               end)
+
+      refute Repo.get(Rule, stored.id)
+      assert [%Rule{host: "api.example"}] = Policy.list_rules(scope, nil)
+
+      for change <- ~w(rule_added rule_changed) do
+        assert {:error, %Error{field: :host, message: @address}} =
+                 Policy.requested_changes(%{
+                   "rules" => [%{"change" => change, "action" => "allow", "host" => "127.1"}]
+                 })
+      end
+    end
+
+    @tag :capture_log
+    test "a rendered document is refused when a host in it is out of the grammar" do
+      document = fn egress ->
+        Jason.encode!(%{
+          "version" => 1,
+          "security_policy" => %{
+            "version" => 1,
+            "egress" => Map.merge(%{"mode" => "enforce", "allow" => ["api.example"]}, egress)
+          }
+        })
+      end
+
+      assert :ok = Policy.valid_document(document.(%{}))
+      assert :ok = Schema.validate(document.(%{"allow" => ["127.1"]}))
+
+      for egress <- [
+            %{"allow" => ["api.example", "127.1"]},
+            %{"deny" => ["127.1"]},
+            %{"paths" => %{"127.1" => ["/v1/*"]}}
+          ] do
+        assert {:error, %Error{reason: :invalid_document}} =
+                 Policy.valid_document(document.(egress)),
+               inspect(egress)
+      end
+    end
   end
 
   describe "every stored document" do

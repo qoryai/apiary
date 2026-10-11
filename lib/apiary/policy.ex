@@ -37,8 +37,9 @@ defmodule Apiary.Policy do
   Every write is one transaction: the rule, its entry in the audit trail (`Apiary.Audit`),
   and the render of the baseline and of every target that has rules (or has had a
   configuration) of its own.
-  A render is validated against the contract's schema before it is stored; a change whose
-  render the schema or the resolution refuses is rolled back and answered with a sentence.
+  A render is validated against the contract's schema and the host grammar
+  (`Apiary.Policy.Grammar.host?/1`) before it is stored; a change whose render the schema,
+  the grammar or the resolution refuses is rolled back and answered with a sentence.
   A render that gives the same bytes as the version in force writes no new version. After
   the commit `{:policy_changed, %{workspace_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<workspace_id>"`.
@@ -1363,8 +1364,9 @@ defmodule Apiary.Policy do
   defp requested_rule("rule_removed", entry) do
     with {:ok, attrs} <- attrs(entry) do
       case {attrs["kind"] || "host", attrs} do
+        # A removal names a rule stored before the grammar refused its host too.
         {"host", %{"host" => host}} when is_binary(host) ->
-          if Grammar.host?(host),
+          if Grammar.in_pattern?(host),
             do:
               {:ok, %{"change" => "rule_removed", "rule" => %{"kind" => "host", "host" => host}}},
             else: candidate("deny", attrs)
@@ -2098,6 +2100,10 @@ defmodule Apiary.Policy do
        )
      )}
   end
+
+  @doc false
+  # The check of a rendered document before it is stored, for a test to feed it one.
+  def valid_document(document), do: valid(document)
 
   defp valid(document) do
     case with(:ok <- Schema.validate(document), do: in_grammar(document)) do
