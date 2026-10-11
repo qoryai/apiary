@@ -278,15 +278,20 @@ heartbeat and reload, `Apiary.Runs.Sender.serves?/2`). Once it may not, it is re
 with nothing of the run told: no policy, no event, no outcome, no digest. Two things
 stay known to such a gateway, and are accepted:
 
-- **Whether the run is still sending.** The sender's check comes first at the events
-  endpoint. A batch from another instance of the gateway than the one that attached the
-  run is `409` `wrong_gateway` while the run is still sending, and the `410`
-  `workspace_not_served` once it has ended. Only a gateway that once attached the run
-  knows its id to ask.
+- **Whether the run is still sending, or has ended.** At the events endpoint the sender's
+  check comes first: a batch from another instance of the gateway than the one that
+  attached the run is `409` `wrong_gateway` while the run is still sending, and the `410`
+  `workspace_not_served` once its sending has ended (its exit arrived, it was lost after
+  its attach, or its events were pruned). At the attach, whether the run has ended is
+  asked before the serving check: an ended run is `410`, a live one `409`
+  `workspace_not_served`; there a starter's outcome ends the run too, and which outcome
+  is never told. Only a gateway that once attached the run knows its id to ask.
 - **Whether the run's place is in use.** The place's check comes before the serving
-  check, as it does for every key, at the events endpoint, the reload and the attach:
-  `401` while the run's workspace or organisation is out of use, `404` while a feature it
-  needs is off there, and only then the serving check's answer.
+  check, as it does for every key. At the events endpoint and the attach, it is `401`
+  while the run's workspace or organisation is out of use, and `404` while `Apiary.Access`
+  does not let the run's workspace post (`run.post_events`); at the reload, `404` while
+  the run's workspace or organisation is out of use. Only then comes the serving check's
+  answer.
 
 ## Leaving
 
