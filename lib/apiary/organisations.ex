@@ -2407,8 +2407,9 @@ defmodule Apiary.Organisations do
   whichever organisation the scope's person acts from, and refused as `invite_member/3`
   refuses one over the day's limit, `{:error, changeset}` with the same error on
   `:email`. Its entry is an `invitation.renew` in the invitation's organisation's trail,
-  by the scope's person, naming that allowance. The allowance's organisation row is
-  locked `FOR NO KEY UPDATE` first, then the invitation's `FOR UPDATE`.
+  by the scope's person, naming that allowance. The allowance's organisation row
+  (`allowance_of/1`) is locked `FOR NO KEY UPDATE` first, then the invitation's
+  `FOR UPDATE`.
 
   Then the link is handed over as `send_invitation/4` hands over an invitation's: without
   mail, `{:ok, invitation, {:link, url}}`, the link built by `url_fun.(token)`, to show
@@ -2464,7 +2465,7 @@ defmodule Apiary.Organisations do
                {:error, :not_found},
            :ok <- authorize_renewal(scope, action, found),
            :ok <- ensure_confirmed(scope.user, mail?),
-           %Organisation{} = allowance <- allowance_of(found),
+           {:ok, allowance} <- allowance_of(found),
            :ok <- lock_allowance(allowance),
            %Invitation{} = invitation <-
              Repo.one(pending_invitation_query(scope, found.id)) || {:error, :not_found},
@@ -2517,11 +2518,26 @@ defmodule Apiary.Organisations do
   defp hand_over_renewed(scope, renewed, token, url_fun, false = mail?),
     do: hand_over(scope, renewed, token, url_fun, mail?)
 
-  # The organisation whose allowance the invitation was counted against: the one its
-  # latest entry that names one says, `member.invite`, the edition's, or a renewal's, in
-  # the invitation's organisation's trail; the invitation's own organisation should the
-  # trail no longer hold one.
-  defp allowance_of(%Invitation{organisation_id: organisation_id} = invitation) do
+  @doc """
+  allowance_of/1 is the organisation whose allowance of invitations `invitation` was
+  counted against, the one row of an organisation that `renew_invitation/4` locks for it,
+  `FOR NO KEY UPDATE`, before the invitation's own row. It is the one its latest entry
+  that names one says (`details.allowance_id`), in the invitation's organisation's
+  trail: `invite_member/3`'s, `insert_invitation/3`'s, which may name another
+  organisation (`allowance:`), or a renewal's; the invitation's own organisation should
+  the trail hold none. `renew_invitation/4` asks this same function.
+
+  An edition that renews an invitation inside a transaction of its own, and takes more
+  than one organisation row there in a mode that conflicts with `FOR SHARE`, takes this
+  one with them, in `lock_order/1` and `FOR NO KEY UPDATE`, before `renew_invitation/4`
+  takes it again.
+
+  `{:ok, organisation}`, as the database has it now, or `{:error, :forbidden}` once that
+  organisation is gone, which `renew_invitation/4` answers then too. It reads, and
+  locks nothing.
+  """
+  @spec allowance_of(%Invitation{}) :: {:ok, %Organisation{}} | {:error, :forbidden}
+  def allowance_of(%Invitation{organisation_id: organisation_id} = invitation) do
     allowance_id =
       Repo.one(
         counted_entries(invitation)
@@ -2529,7 +2545,10 @@ defmodule Apiary.Organisations do
         |> limit(1)
       ) || organisation_id
 
-    Repo.get(Organisation, allowance_id) || {:error, :forbidden}
+    case Repo.get(Organisation, allowance_id) do
+      %Organisation{} = allowance -> {:ok, allowance}
+      nil -> {:error, :forbidden}
+    end
   end
 
   # The invitation's entries that counted it against an allowance, each naming the one it

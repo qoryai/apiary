@@ -449,7 +449,8 @@ The modes keep a row that only names another out of it:
   `member.invite`, or the one an edition's invitation names
   (`Apiary.Organisations.insert_invitation/3`). A new link for a pending invitation
   (`Apiary.Organisations.renew_invitation/4`) reads the invitation without a lock to find
-  the allowance it was counted against, locks that allowance's row the same way, then
+  the allowance it was counted against (`Apiary.Organisations.allowance_of/1`, which an
+  edition asks for the row it will lock), locks that allowance's row the same way, then
   the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
   (`action:`) runs inside its own transaction, which may hold the allowance's row already.
 - A level given, by a change of level, an invitation, its acceptance or a release
