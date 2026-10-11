@@ -254,7 +254,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   machine that runs one instance at a time, a node pool a fleet of short-lived instances
   up to its instance limit, or any number without one; the kind is fixed when one is
   made. Owners and admins add them, rename them, change a pool's limit and delete them
-  (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
+  (`node.create`, `node.edit`, `node.delete`, each in the audit trail). Setting a pool's
+  limit, as it is made or after, is an action of its own, `node.set_limit`, held as
+  `node.edit` is, so an edition may keep it from some who change the rest: the node's
+  Settings then show the limit disabled, and New node pool leaves it out and makes the
+  pool with a limit of 1; the entry of the creation or the edit records it. Everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview, Access key and
   Settings; a new node opens on its Access key tab.
@@ -337,7 +341,17 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   nobody has used for 30 days, with Revoke on the node's Access key tab.
 - Members at the levels owner, admin and member, and the suspension of a member. A workspace's settings list who
   reaches it and at what level under People, read there and managed in the
-  organisation's People.
+  organisation's People. An edition may refuse a level in an organisation, with a reason
+  (`c:Apiary.Edition.level_refusal/4`, `Apiary.Access.level_refusal/4`): an invitation,
+  its acceptance, a change of level and the release commands that grant and revoke an
+  instance admin each refuse it, asked in the lock order inside their transaction, and
+  People offers only the levels it refuses none of (`Apiary.Access.grantable_levels/1`)
+  and says a refusal in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An edition locks its own rows for a
+  change at one point, right after the organisation rows and before any membership
+  (`c:Apiary.Edition.lock_rows/1`), in every change of people and every write that must
+  stay allowed. A test may have a stub answer some of the edition's callbacks in its own
+  processes (`Apiary.Edition.put_test_stub/1`).
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an

@@ -545,4 +545,46 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert flash["error"] =~ "Your membership in #{owner.organisation.name} is suspended."
     end
   end
+
+  describe "where the edition refuses some levels (Apiary.EditionStubs)" do
+    setup :register_and_log_in_user
+
+    test "offers no level the edition refuses, and refuses one sent all the same in its words",
+         %{conn: conn, scope: scope} do
+      %{membership: member} = member_fixture(scope, :member)
+      %{membership: second_owner} = member_fixture(scope, :owner)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoOwner)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      assert has_element?(lv, "#member-#{member.id}-level-admin")
+      assert has_element?(lv, "#member-#{member.id}-level-member")
+      refute has_element?(lv, "#member-#{member.id}-level-owner")
+
+      # An owner's own level stays in their menu, among those they may be given.
+      assert has_element?(lv, "#member-#{second_owner.id}-level-owner")
+      assert has_element?(lv, "#member-#{second_owner.id}-level-admin")
+
+      # Sent all the same: refused in the edition's words.
+      html = render_hook(lv, "set_level", %{"membership_id" => member.id, "level" => "owner"})
+      assert html =~ "Nobody in #{scope.organisation.name} is made an owner here."
+      assert Repo.get!(Membership, member.id).level == :member
+
+      html = lv |> element("#member-#{member.id}-level-admin") |> render_click()
+      assert html =~ "is now an admin."
+    end
+
+    test "offers no invitation where the edition refuses member",
+         %{conn: conn, scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoMember)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      refute has_element?(lv, "#invite-people")
+
+      assert {:error, {:live_redirect, %{flash: %{"error" => refused}}}} =
+               live(conn, ~p"/#{scope.organisation}/settings/people/invite")
+
+      assert refused =~ "Only owners and admins manage members"
+    end
+  end
 end

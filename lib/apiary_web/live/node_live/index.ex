@@ -15,7 +15,8 @@ defmodule ApiaryWeb.NodeLive.Index do
   name or by Last seen (`?sort=seen`: running first, then the last seen first, never seen
   last), all in the URL.
 
-  Owners and admins make a node or a node pool here (`node.create`), each a page of its
+  Owners and admins make a node or a node pool here (`node.create`), a pool's instance
+  limit asked only of one who sets it (`node.set_limit`), each a page of its
   own, `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (`docs/ui.md`, A
   form is a page): the breadcrumb `Nodes / New node`, the page's heading and one sentence,
   the form in the 720 px column, its button and Cancel back to the list
@@ -60,6 +61,7 @@ defmodule ApiaryWeb.NodeLive.Index do
      assign(socket,
        page_title: gettext("Nodes"),
        may_create: Access.can?(scope, :"node.create", scope.workspace),
+       may_set_limit: Access.can?(scope, :"node.set_limit", scope.workspace),
        may_runs: may_runs,
        reload_scheduled: false,
        form: nil,
@@ -242,7 +244,10 @@ defmodule ApiaryWeb.NodeLive.Index do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
 
-      {:error, reason} when reason in [:forbidden, :not_found] ->
+      {:error, :forbidden} ->
+        {:noreply, refused_create(socket)}
+
+      {:error, :not_found} ->
         {:noreply, refused(socket)}
     end
   end
@@ -253,6 +258,20 @@ defmodule ApiaryWeb.NodeLive.Index do
     if socket.assigns.may_create,
       do: {:noreply, load(socket)},
       else: {:noreply, refused(socket)}
+  end
+
+  # A creation refused: one who still makes nodes was refused the pool's limit alone, and
+  # the form no longer asks it; anyone else is refused the creation.
+  defp refused_create(socket) do
+    scope = Access.reload(socket.assigns.current_scope)
+
+    if Access.can?(scope, :"node.create", scope.workspace) do
+      socket
+      |> assign(:may_set_limit, false)
+      |> put_flash(:error, gettext("You can't change the instance limit."))
+    else
+      refused(socket)
+    end
   end
 
   # Who may add a node, in the edition's words where it has some.
@@ -374,7 +393,7 @@ defmodule ApiaryWeb.NodeLive.Index do
             phx-mounted={JS.focus()}
           />
           <.input
-            :if={@kind == :pool}
+            :if={@kind == :pool and @may_set_limit}
             field={@form[:instance_limit]}
             type="text"
             inputmode="numeric"

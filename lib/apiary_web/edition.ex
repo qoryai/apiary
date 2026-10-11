@@ -36,6 +36,7 @@ defmodule ApiaryWeb.Edition do
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
+    `c:level_refusal_sentence/2`, what a page says of a level the edition refused;
     `c:who_may_sentence/2`, what the pages it lists say of who may take an action, where
     the core's sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
@@ -155,6 +156,13 @@ defmodule ApiaryWeb.Edition do
   @callback refusal_sentence(reason :: atom) :: String.t() | nil
 
   @doc """
+  What a page says, to the person of `scope` where they are, of a level the edition
+  refused to give (`c:Apiary.Edition.level_refusal/4`), its reason `reason`: one sentence,
+  or nil for the page's own words for a change that could not be made.
+  """
+  @callback level_refusal_sentence(reason :: atom, Scope.t()) :: String.t() | nil
+
+  @doc """
   What a page says of who may take an action in the organisation of `scope`, to a person
   who is refused it or offered no way to take it, where the core's sentence names the
   levels that may, such as "Only owners and admins add nodes.": one sentence, translated,
@@ -270,6 +278,7 @@ defmodule ApiaryWeb.Edition do
     place_group: 1,
     place_scope: 2,
     reader_sentence: 2,
+    level_refusal_sentence: 2,
     refusal_sentence: 1,
     who_may_sentence: 2,
     settings_tabs: 1,
@@ -328,10 +337,15 @@ defmodule ApiaryWeb.Edition do
   @spec static_app() :: atom
   def static_app, do: @static_app
 
-  # One function per callback, which asks the configured module.
+  # One function per callback, which asks the configured module, or a test's stub that
+  # answers it (`Apiary.Edition.put_test_stub/1`).
   for {name, arity} <- @callbacks do
     args = Macro.generate_arguments(arity, __MODULE__)
     @doc false
-    def unquote(name)(unquote_splicing(args)), do: @module.unquote(name)(unquote_splicing(args))
+    def unquote(name)(unquote_splicing(args)),
+      do:
+        Apiary.Edition.answering(unquote(name), unquote(arity), @module).unquote(name)(
+          unquote_splicing(args)
+        )
   end
 end

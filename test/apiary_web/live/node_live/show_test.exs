@@ -207,6 +207,42 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
     end
   end
 
+  describe "Settings › General, where an edition keeps a pool's limit from one who changes the rest" do
+    # `node.set_limit` refused whoever asks (`Apiary.EditionStubs.NoLimit`): the owner
+    # still holds `node.edit`.
+    test "renames the pool, its limit shown disabled with a line that says so, and refuses a change of it",
+         %{conn: conn, scope: scope} do
+      pool = pool_fixture(scope, name: "spot-runners", instance_limit: 5)
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.NoLimit)
+
+      {:ok, lv, _html} = live(conn, node_path(scope, pool, "/settings"))
+
+      refute has_element?(lv, "#node-settings-readonly")
+      refute has_element?(lv, "#node-form input[name='node[name]'][disabled]")
+
+      assert has_element?(
+               lv,
+               "#node-form input[name='node[instance_limit]'][disabled][value='5']"
+             )
+
+      assert has_element?(lv, "#node-form", "You can't change the instance limit.")
+      assert has_element?(lv, "#node-save")
+
+      html = lv |> form("#node-form", node: %{name: "ci-runners"}) |> render_submit()
+      assert html =~ "ci-runners is saved."
+      assert %Node{name: "ci-runners", instance_limit: 5} = Repo.get!(Node, pool.id)
+
+      # Sent all the same, as the page never sends it.
+      render_hook(lv, "save", %{"node" => %{"name" => "ci-runners", "instance_limit" => "9"}})
+
+      assert lv |> element("#flash-group") |> render() =~
+               "You can&#39;t change the instance limit."
+
+      assert has_element?(lv, "#node-save")
+      assert %Node{name: "ci-runners", instance_limit: 5} = Repo.get!(Node, pool.id)
+    end
+  end
+
   describe "deleting a node" do
     test "from the danger zone, through its confirmation in place, back to the list",
          %{conn: conn, scope: scope} do

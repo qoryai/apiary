@@ -20,8 +20,9 @@ defmodule ApiaryWeb.RefusalsRows do
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
   locked rule, a stored secret, a variable, a target, an access key, a node with a running
-  instance, an active key and an outstanding enrolment code, a run that has not ended, and
-  a pending invitation; and another organisation, with its owner.
+  instance, an active key and an outstanding enrolment code, a node pool with a limit, a
+  run that has not ended, and a pending invitation; and another organisation, with its
+  owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -240,6 +241,15 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"node" => %{"name" => "renamed"}}},
       {:"node.edit", :removed_member, "/:org/:workspace/nodes/:node", "save",
        %{"node" => %{"name" => "renamed"}}},
+      # A pool's limit, which only a change of it asks.
+      {:"node.set_limit", :member, "/:org/:workspace/nodes/:pool/settings", "save",
+       %{"node" => %{"instance_limit" => "3"}}},
+      {:"node.set_limit", :demoted_admin, "/:org/:workspace/nodes/:pool/settings", "save",
+       %{"node" => %{"instance_limit" => "3"}}},
+      {:"node.set_limit", :demoted_admin, "/:org/:workspace/nodes/new-pool", "create",
+       %{"node" => %{"name" => "spot-09", "instance_limit" => "3"}}},
+      {:"node.set_limit", :other_owner, "/:other_org/:other_ws/nodes/:pool/settings", "save",
+       %{"node" => %{"instance_limit" => "3"}}, answer: :not_found_at_mount},
       {:"node.delete", :member, "/:org/:workspace/nodes/:node/settings", "delete", %{}},
       {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:node/settings/delete", "delete",
        %{}},
@@ -427,6 +437,7 @@ defmodule ApiaryWeb.RefusalsRows do
 
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
+    pool = pool_fixture(owner, name: "spot-runners", instance_limit: 5)
     %{access_key: node_key} = node_key_fixture(owner, node)
     {:ok, code, _code} = Apiary.AccessKeys.create_enrolment_code(owner, node, %{})
     instance = instance_fixture(node, instance_id: "i_1")
@@ -471,6 +482,7 @@ defmodule ApiaryWeb.RefusalsRows do
       target: target,
       key: key,
       node: node,
+      pool: pool,
       node_key: node_key,
       code: code,
       public_key: ed25519_key_pair().encoded,
@@ -502,6 +514,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:target_page, world), do: world.target.path
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
+  def value(:pool, world), do: {:id, world.pool.public_id}
   def value(:node_key, world), do: {:id, world.node_key.key_id}
   def value(:code, world), do: {:id, world.code.id}
   def value(:public_key, world), do: world.public_key

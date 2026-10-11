@@ -81,6 +81,9 @@ defmodule Apiary.Edition.Core do
   def places_to_lock(%Organisation{id: id}), do: [id]
 
   @impl true
+  def lock_rows(_about), do: :ok
+
+  @impl true
   def every_workspace_levels, do: [:owner, :admin, :member]
 
   @impl true
@@ -109,6 +112,9 @@ defmodule Apiary.Edition.Core do
 
   @impl true
   def membership_changed(_repo, _scope, _event, _old, _new), do: :ok
+
+  @impl true
+  def level_refusal(_scope, _organisation, _level, _opts), do: nil
 
   @impl true
   def deletion_refusal(_what, %Organisation{id: id}) do

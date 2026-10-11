@@ -5,7 +5,9 @@ defmodule ApiaryWeb.MemberLive.Index do
   organisation's: every member is listed, with their level.
 
   Owners change levels, and remove anyone; admins remove members only, and change no
-  level; owners and admins invite; anyone may leave. An invitation is an email address
+  level; owners and admins invite, unless the edition refuses member there; anyone may
+  leave. A level the edition refuses is said in its words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`). An invitation is an email address
   and nothing else: it is sent from the workspace the page carries, grants it, and its
   person joins as a member. Inviting is a form page of the section,
   `/:org/settings/people/invite` (`ApiaryWeb.PageComponents.page_form/1`: Back, its
@@ -25,7 +27,9 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   Each person is one row on the row spec (`docs/ui.md`, Lists): the email is the title,
   the level is plain text, and what a reader may do to a membership is in its ⋯ menu:
-  the level, as a choice of three with what each may do, suspending, activating and
+  the level, as a choice of the levels the edition does not refuse the reader there
+  (`Apiary.Access.grantable_levels/1`, all three in the core's edition) and the one the
+  member holds, each with what it may do, suspending, activating and
   removing, each of the last three but activating confirmed in place, the member's row
   turned into its confirmation (`CoreComponents.inline_confirm/1`) at a path of its own,
   `/:org/settings/people/:id/remove` or `…/suspend`, whose Cancel goes back to People.
@@ -192,7 +196,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           )}
           <ApiaryWeb.Extension.slot name={:members_heading} scope={@current_scope} />
         </:subtitle>
-        <:actions :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}>
+        <:actions :if={may_invite?(@current_scope, @grantable)}>
           <.button
             id="invite-people"
             variant="primary"
@@ -279,7 +283,7 @@ defmodule ApiaryWeb.MemberLive.Index do
               <%= if Access.can?(@current_scope, :"member.change_level", m) do %>
                 <.menu_heading title={m.user.email} sub={gettext("Level")} />
                 <.menu_item
-                  :for={{level, hint} <- level_hints(@current_scope)}
+                  :for={{level, hint} <- level_hints(@current_scope, @grantable, m)}
                   id={"member-#{m.id}-level-#{level}"}
                   checked={m.level == level}
                   hint={hint}
@@ -338,10 +342,7 @@ defmodule ApiaryWeb.MemberLive.Index do
         </.table>
 
         <section
-          :if={
-            Access.can?(@current_scope, :"member.invite", @current_scope.workspace) ||
-              @invitations != []
-          }
+          :if={may_invite?(@current_scope, @grantable) || @invitations != []}
           class="mt-4 grid gap-3"
         >
           <h2 class="flex items-baseline gap-2 text-[14px]/5 font-semibold">
@@ -527,9 +528,12 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp level_text(:admin), do: gettext("Admin")
   defp level_text(:member), do: gettext("Member")
 
-  # The levels a person may be given here, each with what it may do.
-  defp level_hints(scope) do
-    for level <- Membership.levels(), do: {level, level_hint(level, scope)}
+  # The levels the reader may give here (`Apiary.Access.grantable_levels/1`), and the one
+  # the member holds, each with what it may do.
+  defp level_hints(scope, grantable, member) do
+    for level <- Membership.levels(),
+        level in grantable or level == member.level,
+        do: {level, level_hint(level, scope)}
   end
 
   defp level_hint(:owner, _scope),
@@ -612,7 +616,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp apply_action(socket, :invite, _params) do
     scope = socket.assigns.current_scope
 
-    if Access.can?(scope, :"member.invite", scope.workspace) do
+    if may_invite?(scope) do
       socket
       |> assign(:member, nil)
       |> assign(:page, :invite)
@@ -756,6 +760,9 @@ defmodule ApiaryWeb.MemberLive.Index do
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, unauthorized(socket, :"member.invite")}
+
+      {:error, {:level_refused, reason}} ->
+        {:noreply, level_refused(socket, reason, :"member.invite")}
     end
   end
 
@@ -790,6 +797,9 @@ defmodule ApiaryWeb.MemberLive.Index do
          socket
          |> put_flash(:error, gettext("That member is no longer in the organisation."))
          |> load()}
+
+      {:error, {:level_refused, reason}} ->
+        {:noreply, level_refused(socket, reason, :"member.change_level")}
     end
   end
 
@@ -1084,8 +1094,10 @@ defmodule ApiaryWeb.MemberLive.Index do
         do: Organisations.list_invitations(scope),
         else: []
 
+    grantable = Access.grantable_levels(scope)
+
     socket
-    |> assign(members: members, invitations: invitations)
+    |> assign(members: members, invitations: invitations, grantable: grantable)
     |> assign(:password_links?, password_links?(scope))
     |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
@@ -1110,6 +1122,13 @@ defmodule ApiaryWeb.MemberLive.Index do
       not Apiary.Mail.configured?() and Access.instance_admin?(scope)
   end
 
+  # Whether the reader invites here: an invitation's person joins as a member, a level the
+  # edition does not refuse them (`Apiary.Access.grantable_levels/1`).
+  defp may_invite?(scope, grantable \\ nil) do
+    grantable = grantable || Access.grantable_levels(scope)
+    :member in grantable and Access.can?(scope, :"member.invite", scope.workspace)
+  end
+
   # The current user's own level may have changed; reload the scope the path names, so
   # the page and the layout follow, and the members with it. A membership that is gone
   # sends the page to `/`, as `ApiaryWeb.UserAuth` does for every page.
@@ -1117,6 +1136,19 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   defp members_path(socket),
     do: ~p"/#{socket.assigns.current_scope.organisation}/settings/people"
+
+  # A level the edition refused to give here, said in its words
+  # (`c:ApiaryWeb.Edition.level_refusal_sentence/2`), or the page's own refusal of
+  # `action`; the page shows the levels and the invitations as they are now.
+  defp level_refused(socket, reason, action) do
+    scope = socket.assigns.current_scope
+
+    sentence =
+      ApiaryWeb.Edition.level_refusal_sentence(reason, scope) || refused_sentence(scope, action)
+
+    socket = socket |> put_flash(:error, sentence) |> reload_scope()
+    if socket.redirected, do: socket, else: push_patch(socket, to: members_path(socket))
+  end
 
   # Refused `action` on the membership as it is now: the page's scope is stale, and is
   # loaded again. A membership that is gone has sent the page to `/` by then.

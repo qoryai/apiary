@@ -16,8 +16,10 @@ defmodule Apiary.Nodes do
   none.
 
   Making, changing and deleting a node, and clearing an instance, are owners' and admins'
-  (`node.create`, `node.edit`, `node.delete`, `node.clear_instance`); everyone in the
-  workspace reads them (`node.read`, asked by the pages). A node's access keys are
+  (`node.create`, `node.edit`, `node.delete`, `node.clear_instance`), and so is setting a
+  pool's instance limit, as it is made or after, an action of its own (`node.set_limit`)
+  that an edition may keep from some who change the rest; everyone in the workspace reads
+  them (`node.read`, asked by the pages). A node's access keys are
   `Apiary.AccessKeys`'s; deleting a node revokes them. Each change asks
   `Apiary.Access.authorize/3` first and leaves its audit entry (`Apiary.Audit`) in its
   transaction: the name, kind, public id and limit of a new node, with a node's or a
@@ -164,11 +166,13 @@ defmodule Apiary.Nodes do
   @doc """
   create_node/2 makes a node of the scope's workspace (`node.create`, owners and
   admins) from `attrs`: its `kind`, `node`, `pool` or `gateway`, which is fixed from then
-  on, its `name`, a pool's `instance_limit`, empty for none, a gateway's `url`, and a
-  node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A node or a pool
-  given no choice starts on `default` when a default gateway resolves for the workspace,
-  and on `direct` otherwise. A gateway made when no default gateway resolves for the workspace is
-  made its default. `{:ok, node}`, `{:error, changeset}`, or `{:error, :forbidden}` for
+  on, its `name`, a pool's `instance_limit`, empty for none, which a limit given asks of
+  `node.set_limit` too: one who may not set it makes a pool whose limit is 1; a gateway's
+  `url`, and a node's or a pool's `gateway_choice` (`named` with its `gateway_id`). A node
+  or a pool given no choice starts on `default` when a default gateway resolves for the
+  workspace, and on `direct` otherwise. A gateway made when no default gateway resolves
+  for the workspace is made its default. `{:ok, node}`, `{:error, changeset}`, or
+  `{:error, :forbidden}` for
   one who may not, `{:error, :not_found}` where the workspace is out of their reach.
   """
   @spec create_node(Scope.t(), map) ::
@@ -183,8 +187,9 @@ defmodule Apiary.Nodes do
       ) do
     Repo.transact(fn ->
       with :ok <- Gateways.lock(workspace),
-           :ok <- Access.authorize(scope, :"node.create", workspace),
-           {:ok, node} <-
+           asking = Access.reload(scope),
+           :ok <- Access.check(asking, :"node.create", workspace),
+           changeset =
              %Node{
                organisation_id: organisation_id,
                workspace_id: workspace_id,
@@ -192,8 +197,9 @@ defmodule Apiary.Nodes do
              }
              |> Node.create_changeset(attrs)
              |> put_first_choice(attrs, workspace)
-             |> validate_gateway(scope)
-             |> Repo.insert(),
+             |> validate_gateway(scope),
+           {:ok, changeset} <- limit_set(asking, changeset, workspace),
+           {:ok, node} <- Repo.insert(changeset),
            {:ok, node} <- default_if_none(node, workspace),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"node.create", node, %{after: created(node)}) do
@@ -266,18 +272,24 @@ defmodule Apiary.Nodes do
   defp validate_gateway(changeset, _scope), do: changeset
 
   @doc """
-  update_node/3 renames `node`, and changes a pool's instance limit, a gateway's `url`, or
-  a node's or a pool's choice of gateway (`node.edit`, owners and admins), from `attrs`;
-  its kind stays. Lowering a pool's limit stops none of its instances. `{:ok, node}`, `{:error, changeset}`,
-  `{:error, :forbidden}`, or `{:error, :not_found}` for a node that is deleted or not the
-  workspace's.
+  update_node/3 renames `node`, and changes a gateway's `url` or a node's or a pool's
+  choice of gateway (`node.edit`), and a pool's instance limit (`node.set_limit`), from
+  `attrs`, each asked of what the edit changes: owners and admins, in the core; its kind
+  stays. An edit that changes nothing asks `node.edit`. Lowering a pool's limit stops none
+  of its instances. `{:ok, node}`, `{:error, changeset}`, `{:error, :forbidden}`, or
+  `{:error, :not_found}` for a node that is deleted or not the workspace's.
   """
   @spec update_node(Scope.t(), Node.t(), map) ::
           {:ok, Node.t()} | {:error, Ecto.Changeset.t() | Access.reason()}
-  def update_node(%Scope{} = scope, %Node{} = node, attrs) do
-    gateway_mutate(scope, :"node.edit", node, fn current ->
-      with {:ok, updated} <-
-             current |> Node.changeset(attrs) |> validate_gateway(scope) |> Repo.update(),
+  def update_node(%Scope{workspace: workspace} = scope, %Node{id: id} = node, attrs) do
+    Repo.transact(fn ->
+      with :ok <- Gateways.lock(workspace),
+           asking = Access.reload(scope),
+           :ok <- may_change(asking, node),
+           %Node{} = current <- lock_node(scope, id) || {:error, :not_found},
+           changeset = current |> Node.changeset(attrs) |> validate_gateway(scope),
+           :ok <- check_each(asking, edit_actions(changeset), current),
+           {:ok, updated} <- Repo.update(changeset),
            :ok <- record_edit(scope, current, updated) do
         {:ok, updated}
       end
@@ -419,12 +431,59 @@ defmodule Apiary.Nodes do
   defp mutate(scope, action, %Node{id: id} = node, fun) do
     Repo.transact(fn ->
       with :ok <- Access.authorize(scope, action, node),
-           %Node{} = current <-
-             scope |> live_query() |> where([n], n.id == ^id) |> lock("FOR UPDATE") |> Repo.one() do
+           %Node{} = current <- lock_node(scope, id) do
         fun.(current)
       else
         nil -> {:error, :not_found}
         {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
+
+  # The node as it is now, in use and the scope's workspace's, locked for the rest of the
+  # transaction; nil for none.
+  defp lock_node(scope, id),
+    do: scope |> live_query() |> where([n], n.id == ^id) |> lock("FOR UPDATE") |> Repo.one()
+
+  # Whether the person, as `reload/2` read them, may change something of `node`: its edit
+  # or its limit. The answer of `node.edit` when they may neither.
+  defp may_change(scope, node) do
+    with {:error, _reason} = refused <- Access.check(scope, :"node.edit", node) do
+      if Access.check(scope, :"node.set_limit", node) == :ok, do: :ok, else: refused
+    end
+  end
+
+  # What an edit asks: `node.set_limit` for a change of the limit, `node.edit` for a change
+  # of anything else, and for an edit that changes nothing.
+  defp edit_actions(%Ecto.Changeset{changes: changes}) do
+    limit = if Map.has_key?(changes, :instance_limit), do: [:"node.set_limit"], else: []
+    rest = Map.delete(changes, :instance_limit)
+    if rest == %{} and limit != [], do: limit, else: [:"node.edit" | limit]
+  end
+
+  # A new pool's limit, when one is given, asks `node.set_limit` too; a node's is 1,
+  # whoever makes it.
+  # A pool's limit as it is made: what one who may set it (`node.set_limit`) gives, none
+  # when they give none; for one who may not, a limit given is refused, and the pool is
+  # made with a limit of 1, which one who may set it raises.
+  defp limit_set(scope, changeset, workspace) do
+    with :pool <- Ecto.Changeset.get_field(changeset, :kind),
+         {:error, :forbidden} <- Access.check(scope, :"node.set_limit", workspace) do
+      if is_nil(Ecto.Changeset.get_change(changeset, :instance_limit)),
+        do: {:ok, Ecto.Changeset.put_change(changeset, :instance_limit, 1)},
+        else: {:error, :forbidden}
+    else
+      :ok -> {:ok, changeset}
+      {:error, _reason} = refused -> refused
+      _node -> {:ok, changeset}
+    end
+  end
+
+  defp check_each(scope, actions, subject) do
+    Enum.reduce_while(actions, :ok, fn action, :ok ->
+      case Access.check(scope, action, subject) do
+        :ok -> {:cont, :ok}
+        refused -> {:halt, refused}
       end
     end)
   end
