@@ -1542,6 +1542,53 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
+    test "a denial no rule can change offers no act: the wall's refusals and a host no rule can name",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "Files.CDN.example.", "decision" => "denied", "rule" => "wall:host-form"},
+          %{"host" => "metadata.internal", "decision" => "denied", "rule" => "wall:own-address"},
+          %{
+            "host" => "files.cdn.example",
+            "path" => "/a/%2e%2e/b",
+            "decision" => "denied",
+            "rule" => "",
+            "path_rule" => "wall:ambiguous-path"
+          },
+          %{"host" => "10.0.0.012", "decision" => "denied", "rule" => ""},
+          %{"host" => "flags.example", "decision" => "denied", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, scope)
+
+      items =
+        render(view)
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#attention-list li[data-kind=denied]")
+        |> Enum.map(&{&1 |> LazyHTML.attribute("id") |> hd(), LazyHTML.text(&1)})
+
+      item = fn needle ->
+        {id, _text} = Enum.find(items, fn {_id, text} -> text =~ needle end)
+        id
+      end
+
+      # Each still shows, with no act: no Allow, and no rule to open.
+      for needle <- ["Files.CDN.example.", "metadata.internal", "files.cdn.example", "10.0.0.012"] do
+        id = item.(needle)
+        assert text(view, "##{id}") =~ "Denied once in 1 run", needle
+        refute has_element?(view, "##{id} .q-ar-act *"), needle
+
+        # Asked anyway, the panel does not open.
+        render_hook(view, "rule_open", %{"id" => id, "level" => "target"})
+        refute has_element?(view, "#rule-panel"), needle
+      end
+
+      # A denial a rule can change keeps its Allow.
+      assert has_element?(view, "##{item.("flags.example")}-act", "Allow here")
+    end
+
+    @tag needs: :security
     test "allow for the workspace, where several targets reached the host", %{
       conn: conn,
       scope: scope

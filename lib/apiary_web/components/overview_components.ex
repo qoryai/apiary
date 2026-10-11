@@ -692,6 +692,10 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, default: MapSet.new()
   attr :can_set_mode?, :boolean, required: true
 
+  # A denied destination no rule can change, the wall's refusal or a host no rule can name,
+  # offers no act, as its row on Network access offers none.
+  defp attention_act(%{item: %{kind: :denied, unchangeable: true}} = assigns), do: ~H""
+
   defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""

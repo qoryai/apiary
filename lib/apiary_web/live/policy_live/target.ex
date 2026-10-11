@@ -409,7 +409,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
     target = socket.assigns.holder
 
     case Enum.find(would.destinations, &(Common.would_key(&1) == key)) do
-      nil ->
+      # None, or one no rule can allow: it has no Allow.
+      destination when is_nil(destination) or destination.unchangeable ->
         socket
 
       destination ->
@@ -434,7 +435,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
               would,
               key,
               "policy-mode-set",
-              &(not Enum.any?(locked, fn lock -> Grammar.covers?(lock, &1.host) end))
+              &(not &1.unchangeable and
+                  not Enum.any?(locked, fn lock -> Grammar.covers?(lock, &1.host) end))
             )
 
           {:error, error} ->
@@ -1000,8 +1002,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :locked_denies, :list, required: true
 
   # What follows the question's sentence: for enforce, what this target's runs were let
-  # through in the last 14 days with no rule, each with its Allow here; for observe, the
-  # denies that still hold. Nothing where the mode in force stays the same.
+  # through in the last 14 days with no rule, each with its Allow here but for one no rule
+  # can allow; for observe, the denies that still hold. Nothing where the mode in force
+  # stays the same.
   defp target_mode_more(%{becomes: same, now: same, managed: true} = assigns), do: ~H""
 
   defp target_mode_more(%{becomes: "enforce"} = assigns) do
@@ -1047,6 +1050,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           <%= cond do %>
             <% !MapSet.member?(@would.open, Common.would_key(destination)) -> %>
               <span class="q-done"><.icon name="hero-check-micro" class="size-3" />{gettext("Allowed")}</span>
+            <% destination.unchangeable -> %>
             <% lock = Enum.find(@locked_denies, &Grammar.covers?(&1, destination.host)) -> %>
               <span
                 class="q-locked tooltip tooltip-left q-tip-wide"

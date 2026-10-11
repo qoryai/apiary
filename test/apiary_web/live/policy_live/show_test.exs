@@ -103,6 +103,30 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
   defp set_mode(view), do: view |> form("#policy-mode-form") |> render_submit()
 
+  # Let through, then each refused by the wall, or a host no rule can name; and one a rule
+  # can allow, flags.example.
+  defp unchangeable_egress do
+    [
+      %{"host" => "Files.CDN.example.", "decision" => "allowed", "rule" => ""},
+      %{"host" => "Files.CDN.example.", "decision" => "denied", "rule" => "wall:host-form"},
+      %{"host" => "metadata.internal", "decision" => "allowed", "rule" => ""},
+      %{"host" => "metadata.internal", "decision" => "denied", "rule" => "wall:own-address"},
+      %{"host" => "docs.example", "path" => "/a/%2e%2e/b", "decision" => "allowed", "rule" => ""},
+      %{
+        "host" => "docs.example",
+        "path" => "/a/%2e%2e/b",
+        "decision" => "denied",
+        "rule" => "",
+        "path_rule" => "wall:ambiguous-path"
+      },
+      %{"host" => "10.0.0.012", "decision" => "allowed", "rule" => ""},
+      %{"host" => "flags.example", "decision" => "allowed", "rule" => ""}
+    ]
+  end
+
+  defp unchangeable_hosts,
+    do: ["Files.CDN.example.", "metadata.internal", "docs.example", "10.0.0.012"]
+
   # The ids of the page's parts in their order, for where the card is.
   defp order(view, ids) do
     html = render(view)
@@ -1143,6 +1167,40 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert text(view, "#policy-announce") =~ "The workspace's default is enforce."
       assert text(view, "#nav-policy-mode") == "enforce"
+    end
+
+    test "a destination no rule can allow is listed with no Allow, and still counted",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(), egress: unchangeable_egress())
+
+      view = open(conn, scope)
+      pick_mode(view, "enforce")
+
+      # Enforce denies each of them: all five are counted.
+      assert text(view, "#mode-would-n") == "5 destinations"
+
+      for host <- unchangeable_hosts() do
+        key = Common.would_key(%{host: host, path: nil})
+        assert has_element?(view, "#would-#{key}", host)
+        refute has_element?(view, "#would-#{key}-allow")
+        refute has_element?(view, "#would-#{key} button")
+
+        # Asked anyway, nothing is written and nothing is refused.
+        render_hook(view, "would_allow", %{"key" => key})
+        refute has_element?(view, "p.text-error-soft-content[role=alert]")
+      end
+
+      assert Policy.list_rules(scope, nil) |> Enum.map(& &1.host) == ["registry.example"]
+
+      # The one a rule can allow keeps its Allow; after it, no Allow is open, so the focus
+      # goes to the button that saves the pick.
+      view
+      |> element("#mode-would button", "Allow for the workspace: flags.example")
+      |> render_click()
+
+      assert rule(scope, "flags.example")
+      assert text(view, "#mode-would-n") == "4 destinations"
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
     end
 
     test "each Allow names its destination, and the focus goes on to the next one open",
