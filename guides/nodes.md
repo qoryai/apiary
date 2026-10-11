@@ -41,8 +41,8 @@ Forager file say that its runs go through that gateway, at its URL, and, while t
 gateway has no active key, that the gateway isn't connected. The command and the Forager
 file are the same either way: they point at Qory Apiary.
 
-Behind a gateway, a node holds its own key, as any node does. A node pool's runners hold
-no key: the pool's key is with the run's starter, the system that starts its runs.
+Behind a gateway, a node holds its own key, as any node does, and a node pool's runners
+hold none: the pool's key is with the run's starter, the system that starts its runs.
 
 **Delete gateway…**, in a gateway's **Settings**, is confirmed in place. A gateway that a
 node or a node pool still points to, by name or as the default, isn't deleted: the page
