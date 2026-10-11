@@ -183,9 +183,11 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 }
 ```
 
-`node_id` is the key's node or node pool, and `apiary_public_key` lists the server's
-signing key, for information: the gateway verifies under the key it pinned. `workspaces`
-lists the one workspace the key may name, the one its node or node pool belongs to, by its
+`node_id` is the key's node, node pool or gateway (`ng_`), and `apiary_public_key` lists
+the server's signing key, for information: the gateway verifies under the key it pinned.
+For a node or a node pool, `workspaces` lists the one workspace the key may name, the one
+it belongs to; for a gateway, the workspaces it may serve, sorted, which in this release is
+the workspace it belongs to. Each is named by its
 id: `ws_` and 16 lowercase Crockford base32 characters, which Qory Apiary gives every
 workspace and names it by in the contract alone. `run.url` is
 the run endpoint, with no trailing slash: a run registers there, and a reload adds `/` and
@@ -404,7 +406,8 @@ the proof verifies under it. The answers, in order:
 | `409` `key_limit` | yes | the node holds two keys |
 | `201` | yes | the key is made, and active |
 
-The `201` carries, among its members, the access key id, the node's id and kind and
+The `201` carries, among its members, the access key id, the node's id and kind (`node`,
+`pool` or `gateway`) and
 `apiary_public_key`; each signed refusal lists `apiary_public_key` too, and an unsigned one
 none.
 <!-- feature: secrets -->

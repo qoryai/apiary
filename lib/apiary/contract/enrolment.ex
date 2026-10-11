@@ -182,17 +182,17 @@ defmodule Apiary.Contract.Enrolment do
   @doc """
   answer_body/1 is the body of the `201` answer, its members in the contract's order:
   `version`, `access_key_id`, `node_id`, `node_kind` (`node` for an `nd_` id, `pool` for
-  an `np_` one), `stored_secrets` and `apiary_public_key`, the server's keys as
+  an `np_` one, `gateway` for an `ng_` one), `stored_secrets` and `apiary_public_key`, the server's keys as
   `Apiary.SigningKey.apiary_public_key/1` lists them. A `201` means the key is active.
   """
   @spec answer_body(%{
           access_key_id: String.t(),
           node_id: String.t(),
-          node_kind: :node | :pool,
+          node_kind: :node | :pool | :gateway,
           stored_secrets: boolean,
           apiary_public_key: [map, ...]
         }) :: binary
-  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool] do
+  def answer_body(%{node_kind: kind} = answer) when kind in [:node, :pool, :gateway] do
     Jason.encode!(
       Jason.OrderedObject.new([
         {"version", 1},
