@@ -33,8 +33,8 @@ defmodule Apiary.Runs.Outcome do
 
   The outcome is not folded from the run's events: a rebuild keeps it, and the fold applies
   it after every pass, so it decides the run's state whatever the order of the two. Until
-  the run's `dev.qory.run.exited` arrives, every answer to the run's batches carries it
-  (`Apiary.Runs.Ingest`), so the run's gateway ends the run.
+  the run's `dev.qory.run.exited` arrives, each signed `2xx` to the run's batches carries
+  `end` with the outcome's state and reason (`Apiary.Runs.Ingest`).
   """
 
   import Ecto.Query, warn: false

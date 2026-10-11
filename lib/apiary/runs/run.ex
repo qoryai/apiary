@@ -215,13 +215,18 @@ defmodule Apiary.Runs.Run do
   @doc """
   Whether the run's state is its starter's outcome and says something other than its exit
   did: given an outcome, and either no exit folded yet, or one whose state differs
-  (`exit_state`). A run whose outcome agrees with its exit reads as the exit alone.
+  (`exit_state`). A run whose outcome agrees with its exit reads as the exit alone, and so
+  does one whose exit was folded before `exit_state` was kept, which has none.
   """
   @spec outcome_differs?(t() | map()) :: boolean()
   def outcome_differs?(%{outcome_state: outcome} = run) when is_binary(outcome) do
     case Map.get(run, :exited_at) do
-      nil -> true
-      _exited_at -> Map.get(run, :exit_state) != Map.get(run, :state)
+      nil ->
+        true
+
+      _exited_at ->
+        exit_state = Map.get(run, :exit_state)
+        not is_nil(exit_state) and exit_state != Map.get(run, :state)
     end
   end
 

@@ -132,10 +132,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   state differs from what the run's exit said, the run page says both, for example
   "Succeeded, as its starter said; the runtime exited 1".
 - The end of a run, in the answers to its batches. Once a run's starter has given its
-  outcome, every `2xx` to the run's batches carries it as `application/json`,
+  outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its batches
+  carries `end` with the outcome's state and reason, as `application/json`,
   `{"end":{"state":"succeeded","reason":"all_checks_passed"}}`, under the answer's
-  signature, until the run's `dev.qory.run.exited` arrives, so the gateway ends the run.
-  Every other answer to a batch has an empty body, as before.
+  signature. Every other answer to a batch has an empty body, as before.
 - A run a gateway opened, with no session: no runtime, command or host, and no exit
   status. The runs list's Runtime column says "no session". Its page says how it ended in
   words after its state, as every run's does; its Terminal tab is the terminal, empty,

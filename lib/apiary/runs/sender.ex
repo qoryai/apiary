@@ -13,8 +13,7 @@ defmodule Apiary.Runs.Sender do
   The keys that reach here are active: a request is verified only under a key that is not
   revoked, of a node that is not deleted (`Apiary.AccessKeys.fetch_for_verification/1`).
 
-  This is the one place the rule is kept. A run that reaches the server through another
-  holder than its node adds that holder's rule here, and every caller follows it.
+  This is the one place the rule is kept, and every caller follows it.
   """
 
   alias Apiary.AccessKeys.AccessKey

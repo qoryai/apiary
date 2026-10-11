@@ -611,9 +611,10 @@ run, since the fold applies the outcome after every pass and a rebuild's reset s
 it. Where the outcome's state differs from the exit's, the run page says both: "Succeeded,
 as its starter said; the runtime exited 1".
 
-Qory Apiary records what a run reports and starts no run. It ends a run only by passing on
-its starter's outcome, as `end` in the answers to the run's batches, for the gateway to
-end it. A run a gateway opened ends by its own `dev.qory.run.exited`, and a session's run
+Qory Apiary records what a run reports and starts no run. Once a run's starter has given
+its outcome, until the run's `dev.qory.run.exited` arrives, each signed `2xx` to its
+batches carries `end` with the outcome's state and reason (Signed POST: the events
+endpoint). A run a gateway opened ends by its own `dev.qory.run.exited`, and a session's run
 by its runtime's exit or at the gateway.
 
 ## Liveness

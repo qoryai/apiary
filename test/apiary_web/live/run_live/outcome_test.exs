@@ -97,4 +97,31 @@ defmodule ApiaryWeb.RunLive.OutcomeTest do
            ) ==
              nil
   end
+
+  test "an exit folded before its state was kept reads as the exit alone", %{
+    conn: conn,
+    scope: scope
+  } do
+    # Exited 0, completed, with no exit_state, as a run folded before the column was;
+    # then given an outcome that agrees.
+    run =
+      projected(
+        scope,
+        [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0}}
+        ],
+        given("succeeded")
+      )
+
+    run = run |> Ecto.Changeset.change(exit_state: nil, exit_reason: nil) |> Apiary.Repo.update!()
+
+    assert %Run{state: "completed", exit_state: nil, exit_code: 0} = run
+    refute Run.outcome_differs?(run)
+    assert RunComponents.outcome_sentence(run) == nil
+
+    {:ok, lv, _html} = page(conn, scope, run)
+    assert has_element?(lv, "#run-meta #run-state.q-sdot-completed", "Completed")
+    refute has_element?(lv, "#run-outcome")
+  end
 end

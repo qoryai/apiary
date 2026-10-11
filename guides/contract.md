@@ -354,14 +354,15 @@ The answers, in order; the first that applies is the answer:
 | `503` | the outcome could not be stored | `{"error":"unavailable"}` |
 | `200` | stored | `{"version":1}` |
 
-Every answer after the first `401` is signed, and the `200` carries
+Every answer after the first `401` is signed, but the `401` for a `time` outside the
+window, and the `200` carries
 `X-Qory-Configuration`. The outcome sets the run's state and reason whenever it arrives,
 before the run's `dev.qory.run.exited` or after it: `succeeded` is Completed, `failed`
 Failed and `cancelled` Cancelled. What the exit said, its exit code, its signal and
 Forager's reason, stays on record beside it, and the run page says both when they differ:
-"Succeeded, as its starter said; the runtime exited 1". Until the run's exit arrives, the
-answers to its batches carry the outcome as `end`, so the gateway ends the run (Events,
-below).
+"Succeeded, as its starter said; the runtime exited 1". Until the run's
+`dev.qory.run.exited` arrives, each signed `2xx` to its batches carries `end` with the
+outcome's state and reason (Events, below).
 
 ### Events: `POST /v1/events`
 
