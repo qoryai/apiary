@@ -10,7 +10,9 @@ defmodule Apiary.Runs.Run do
   `registration_digest`, `registration_interval_seconds`, `registration_answer_digest`,
   `registration_time`) are the registration's own: written once, when the run registers,
   and kept by a rebuild. A run that registered is projected from sequence 1, which its
-  registration stands for (`projected_from/1`).
+  registration stands for (`projected_from/1`). A run that registered through a gateway
+  keeps its run key and its attach beside them (`through_gateway?/1`), kept by a rebuild
+  as well.
   """
   use Ecto.Schema
 
@@ -143,6 +145,23 @@ defmodule Apiary.Runs.Run do
     field :exit_state, :string
     field :exit_reason, :string
 
+    # A run that goes through a gateway (`Apiary.Runs.Registration`, `Apiary.Runs.Attach`):
+    # the gateway its node's choice resolved to at its registration, nil should the
+    # gateway's row be purged; the exact bytes of its run key's payload, when the run key
+    # was made and the end of its attach window; and, once the gateway attached it, when,
+    # the attach's `time` on the gateway's clock, the heartbeat interval it announced, which
+    # the run is held to, and the digest of the run configuration it was given, which a
+    # repeat of the attach is given again. All nil for a direct run. Not folded: a rebuild
+    # keeps them.
+    belongs_to :gateway, Apiary.Nodes.Node
+    field :run_key_payload, :binary
+    field :run_key_issued_at, :utc_datetime_usec
+    field :attach_by, :utc_datetime_usec
+    field :attached_at, :utc_datetime_usec
+    field :attach_time, :utc_datetime_usec
+    field :attach_interval_seconds, :integer
+    field :attach_answer_digest, :string
+
     has_many :events, Apiary.Runs.Event
     has_many :log_chunks, Apiary.Runs.LogChunk
     has_many :connections, Apiary.Runs.Connection
@@ -231,6 +250,14 @@ defmodule Apiary.Runs.Run do
   end
 
   def outcome_differs?(_run), do: false
+
+  @doc """
+  Whether the run goes through a gateway: its registration was given a run key, whatever
+  has become of the gateway since.
+  """
+  @spec through_gateway?(t() | map()) :: boolean()
+  def through_gateway?(%{run_key_payload: payload}) when is_binary(payload), do: true
+  def through_gateway?(_run), do: false
 
   @doc "Whether a gateway opened the run, with no session: no runtime, command, host or terminal."
   @spec no_session?(t() | map()) :: boolean()
