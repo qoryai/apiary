@@ -63,6 +63,9 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     |> json_response(200)
   end
 
+  # The New menu's network access rule, which the `security` feature brings, not `secrets`.
+  defp rule, do: if(Apiary.Features.on?(:security), do: ["Network access rule"], else: [])
+
   defp labels(answer, group) do
     case Enum.find(answer["groups"], &(&1["label"] == group)) do
       nil -> []
@@ -167,7 +170,9 @@ defmodule ApiaryWeb.SecretsFeatureTest do
     test "the palette finds none of it", %{conn: conn, scope: scope} do
       answer = jump(conn, scope)
 
-      assert labels(answer, "Actions") == ["New node", "New node pool", "Invite people"]
+      assert labels(answer, "Actions") ==
+               ["New node", "New node pool"] ++ rule() ++ ["Invite people"]
+
       refute "Workspace settings › Integrations" in labels(answer, "Go to")
       refute "Workspace settings › Secrets and variables" in labels(answer, "Go to")
 
@@ -362,14 +367,14 @@ defmodule ApiaryWeb.SecretsFeatureTest do
       answer = jump(conn, scope)
 
       assert labels(answer, "Actions") ==
-               [
-                 "New node",
-                 "New node pool",
-                 "Add integration",
-                 "New secret",
-                 "New variable",
-                 "Invite people"
-               ]
+               ["New node", "New node pool"] ++
+                 rule() ++
+                 [
+                   "Add integration",
+                   "New secret",
+                   "New variable",
+                   "Invite people"
+                 ]
 
       assert "Workspace settings › Integrations" in labels(answer, "Go to")
       assert "Workspace settings › Secrets and variables" in labels(answer, "Go to")

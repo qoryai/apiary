@@ -551,6 +551,15 @@ defmodule Apiary.EditionStubs do
     @moduledoc "Answers nothing: the configured edition answers every callback, as without a stub."
   end
 
+  defmodule ReadsThePolicy do
+    @moduledoc """
+    A person reads the security policy and changes none of its rules
+    (`security_policy.edit`), as an edition's reader may.
+    """
+    def check(_scope, :"security_policy.edit", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
+
   defmodule NoLimit do
     @moduledoc "Nobody sets a pool's instance limit (`node.set_limit`), whoever asks."
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}

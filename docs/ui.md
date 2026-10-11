@@ -202,7 +202,8 @@ Nothing opens over a page but **Search or jump to**, the palette (above), the on
 the console keeps. Every other act happens on a page, in place:
 
 - **A form is a page** of its section at a path of its own, never a dialog over a list:
-  New secret, New variable, Invite people, New node, an export. Its
+  New secret, New variable, Invite people, New node, a policy's New rule and Edit rule,
+  an export. Its
   breadcrumb ends with the section and the page; its title is the act and what it acts
   on, with one sentence under it; its form fills the 720 px column, its first field takes
   the focus, and its foot is the primary button with Cancel back to where it was opened
@@ -565,6 +566,29 @@ whose sections come from the rows' sources and people (an edition that adds rule
 another holder gives them a source, and the menu, the qualifier and the order take it);
 Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `?rule=`,
 which Network access links with, landing on the page that holds the rule and marking it.
+The list is the Network access section of its page: its header holds the heading, how
+many rules, "See what the runs reached" and **Add rule**, the section's one primary
+button, with a line under it of what the rules are; the search's bar keeps Find, Filter
+and Sort. A reader who may not change the policy sees no Add rule and no row menus.
+
+**A rule is added and changed on a page** (No modals, above), never in a line
+over the list: New rule (`…/policy/rules/new`, a target's `…/-/policy/rules/new`) from
+Add rule, the empty list's Add a host rule and the top bar's New (Network access rule);
+Edit rule (`…/policy/rules/:id/edit`) from a row's ⋯ Edit, for an allow and a deny alike
+(`PolicyComponents.rule_form/1`). The form asks the goal first: "What should runs do?",
+Allow and Deny as two radio cards that each say what they do; then Host and Paths, each
+labelled with its help under it (a deny takes no paths and says so); then "What this
+rule does", the rule read back in plain words as it is typed (`PolicyLive.Reading`), a
+polite live region. An error is said under its field, with its repair as a link (Use
+api.example, Every path, Show it); a refusal, a lock's or the domain's, takes the read
+back's place above the foot. Add rule is never off: pressed with an error, it moves the
+focus to the first field at fault. A pasted list of hosts fills Host with the first and
+counts the rest beside its label; each is added in turn, the page staying until the last.
+A save goes back to the list as it was left, on the page that holds the rule, its row
+marked and New in its version, the focus on its ⋯, with the flash that names the version;
+Cancel goes back to the list as it was left. On Edit rule the host is shown, not a field:
+another host is a new rule. A target's suggestion's Allow with paths… opens New rule with
+the host filled and the focus in Paths (`?host=…&focus=paths`; `?action=deny` picks Deny).
 A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;
@@ -808,7 +832,11 @@ what needs the reader, then what their agents did, and never grows with the data
   command there makes the command in place, as on the tab: the panel shows the real
   command with Copy, "It works once, until 14:32. This is the only time it is shown." and
   "Waiting for build-01 to run it.", with the notice when the server's address is a
-  loopback one. Generate a key opens the node's Generate a key page. A member reads who
+  loopback one. For a node whose choice leads to a gateway, the tab's notice "Runs of
+  build-01 go through the gateway edge-01, at https://edge.example.com." (with "edge-01
+  has no active access key, so it isn't connected." while it holds none) shows above the
+  command, which carries `--via` and the gateway's URL, and the line on a private
+  certificate authority under it, as on the command's page. Generate a key opens the node's Generate a key page. A member reads who
   connects it, and Go to nodes. At step 3 the panel reads "Listening for the first run.
   build-01 verified 2 min ago." alone. No placeholder command shows anywhere.
 
@@ -1012,8 +1040,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   gateway edge-01, at https://edge.example.com.", and, while the gateway holds no active
   key, "edge-01 has no active access key, so it isn't connected."; one on Default gateway
   while no gateway is the default reads "No gateway is the default now."; a direct one
-  reads none (`NodeComponents.through_gateway/1`). The command and the Forager file are
-  the same either way: they point at Qory Apiary. A gateway's own tab has the same
+  reads none (`NodeComponents.through_gateway/1`). The command and the Forager file point
+  at Qory Apiary, through that gateway: the command carries `--via` and the gateway's URL,
+  and the Forager file a `via` line (`Apiary.AccessKeys.via_lines/1`); a direct node, a
+  gateway, and one on Default gateway while no gateway is the default see neither. A gateway's own tab has the same
   layout in its own words: its key enrols the gateway and registers no run. While the node holds no active key, owners and admins read
   "How do you want to connect build-01?", "build-01 connects to Qory Apiary with a key.
   Choose one of two ways to give it one." (a pool's: "spot-runners connects to Qory Apiary
@@ -1061,7 +1091,10 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   key ID or a public key set twice." and "With a generated key, set these where the
   machine runs qory.", then four numbered steps (`q-steps`): 1 "Point qory at Qory Apiary." ("In the Forager
   file. It is required: without it, qory ignores the three variables below.",
-  `forager.yaml` with Copy lines), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
+  `forager.yaml` with Copy lines; behind a gateway "Point qory at Qory Apiary, through
+  edge-01.", the text adding "via sends every request to Qory Apiary through edge-01.",
+  and a pool's "A starter that reaches Qory Apiary directly can leave via out.", the
+  lines ending `via:` / `url: https://edge.example.com`), 2 "Set Qory Apiary's public key." ("QORY_APIARY_PUBLIC_KEY,
   a plain setting. The same for every machine connected to this Qory Apiary.", the value
   with Copy), 3 "Set the key's ID." (with one active key, "QORY_ACCESS_KEY_ID, a plain
   setting." and its ID with Copy; with two, "QORY_ACCESS_KEY_ID, a plain setting: the ID
@@ -1074,8 +1107,18 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   enrolment code at once, with defaults: Stored secrets Not allowed and no label hint, so
   qory names the key after the machine's host name; there is no form. The page shows the
   whole command, `qory access-key enrol https://apiary.example.com` and the code, wrapped,
-  with one Copy command. For a node or pool that has or had a key, the command carries
-  `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code),
+  with one Copy command. For a node or pool whose choice leads to a gateway, the command
+  carries `--via` and the gateway's URL before the server's address (`qory access-key
+  enrol --via https://edge.example.com https://apiary.example.com` and the code), the
+  description reads "The command connects build-01 by itself, through the gateway
+  edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address
+  and public key and the gateway's address into the Forager file. The secret never leaves
+  the machine.", and a line under the command reads "If edge-01's certificate is signed
+  by a private certificate authority, add --via-ca-file and that authority's PEM file."
+  (`NodeComponents.via_ca_line/1`). An address in the command with a character a shell
+  acts on is single-quoted (`NodeComponents.shell_word/1`). For a node or pool that has or had a key, the command carries
+  `--replace` (`qory access-key enrol --replace https://apiary.example.com` and the code,
+  `--replace` before `--via` when both),
   shown and copied alike, with the line "It moves build-01 to a new key. The old key keeps
   working until you revoke it on the Access key tab." under it while a key is active, or
   "It moves build-01 to a new key." alone once every key is revoked; a code waiting
@@ -1120,7 +1163,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   tab.", `QORY_APIARY_PUBLIC_KEY`, the pin as JSON), 4 "Point qory at Qory Apiary." ("In
   the Forager file. It is required: without it, qory ignores the three variables.", the
   three lines `gateway:`, `server:` and `url: https://apiary.example.com` with Copy
-  lines). The server's address and public key are the instance's own, the same for every
+  lines; behind a gateway as Configure a machine's first step says). The server's address and public key are the instance's own, the same for every
   organisation, workspace and node; the key comes from `APIARY_SIGNING_SECRET`. Then Done
   back to the tab ("Once you leave this page, the secret is not shown again."). The secret
   is the browser's alone: the server renders its place empty, and the page that made the
@@ -1152,7 +1195,7 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   revoke this one."), 2 "Set the key's ID." ("As a plain setting.",
   `QORY_ACCESS_KEY_ID=…` with Copy variable), 3 "Set Qory Apiary's public key." ("As a
   plain setting.", `QORY_APIARY_PUBLIC_KEY=…` with Copy variable, then "The same for every
-  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`gateway:` / `server:` / `url:` with Copy lines). Done goes back to the
+  machine connected to this Qory Apiary."), 4 "Point qory at Qory Apiary." (`gateway:` / `server:` / `url:` with Copy lines; behind a gateway "Point qory at Qory Apiary, through edge-01.", "via sends every request to Qory Apiary through edge-01." and a pool's sentence above it, the lines ending `via:` / `url:`). A command key's lines behind a gateway end with `via:` and its `url`, marked `# the gateway edge-01`. Done goes back to the
   tab, the focus on the link.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
   Node's running instance and an item of each row's ⋯ menu on a pool's; at

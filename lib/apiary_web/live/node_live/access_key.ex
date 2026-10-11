@@ -87,7 +87,13 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   gateway, named with its URL, and, while the gateway holds no active key, the gateway
   isn't connected; one on Default gateway while no gateway is the default is told that
   instead (`ApiaryWeb.NodeComponents.through_gateway/1`). The command and the Forager file
-  are the same either way: they point at Qory Apiary.
+  point at Qory Apiary, through that gateway: the command carries `--via` and the
+  gateway's URL (`ApiaryWeb.NodeComponents.enrol_command/3`), with the line under it on a
+  private certificate authority (`ApiaryWeb.NodeComponents.via_ca_line/1`), and the
+  Forager file's lines, the command key's and every "Point qory at Qory Apiary" step's,
+  carry `via` and its `url` (`Apiary.AccessKeys.via_lines/1`), the step's title naming
+  the gateway; a pool's step adds that a starter that reaches Qory Apiary directly can
+  leave `via` out.
 
   **A gateway's tab.** A gateway's own tab has the same layout, in its own words: its key
   enrols the gateway and registers no run.
@@ -1004,12 +1010,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
   defp server_lines, do: AccessKeys.server_lines(ApiaryWeb.Endpoint.url())
 
   # The Forager file's lines a machine needs beside its key's own variables: the
-  # address alone, under `gateway:` and `server:`.
-  defp address_file, do: "gateway:\n  server:\n" <> under_gateway(server_lines().url) <> "\n"
+  # address, under `gateway:` and `server:`, and, for a node whose choice leads to a
+  # gateway (`through`), the `via` lines that send its requests through that gateway.
+  defp address_file(through) do
+    lines = [server_lines().url | if(through, do: AccessKeys.via_lines(through.url), else: [])]
+    Enum.join(["gateway:", "  server:" | Enum.map(lines, &under_gateway/1)], "\n") <> "\n"
+  end
 
   # A key connected with a command: the Forager file's `server` section under `gateway:`
-  # as the command wrote it, each line marked as the server's or the key's.
-  defp command_file(key) do
+  # as the command wrote it, each line marked as the server's or the key's, and, for a
+  # node whose choice leads to a gateway (`through`), the `via` lines the command wrote
+  # with `--via`, its URL marked as the gateway's.
+  defp command_file(key, through) do
     %{url: url, public_key: [pin_head | pins]} = server_lines()
 
     marked = [
@@ -1018,18 +1030,63 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       {under_gateway(pin_head), "# Qory Apiary's public key"}
     ]
 
-    width = marked |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+    {via_head, via_marked} =
+      case through do
+        nil ->
+          {[], []}
 
-    lines =
-      Enum.map(marked, fn {line, mark} -> String.pad_trailing(line, width + 2) <> mark end)
+        gateway ->
+          [via, via_url] = AccessKeys.via_lines(gateway.url)
+          {[under_gateway(via)], [{under_gateway(via_url), "# the gateway #{gateway.name}"}]}
+      end
 
-    Enum.join(["gateway:", "  server:" | lines] ++ Enum.map(pins, &under_gateway/1), "\n") <>
+    width = (marked ++ via_marked) |> Enum.map(&String.length(elem(&1, 0))) |> Enum.max()
+    pad = fn {line, mark} -> String.pad_trailing(line, width + 2) <> mark end
+
+    Enum.join(
+      ["gateway:", "  server:"] ++
+        Enum.map(marked, pad) ++
+        Enum.map(pins, &under_gateway/1) ++ via_head ++ Enum.map(via_marked, pad),
       "\n"
+    ) <> "\n"
   end
 
   # A line of `Apiary.AccessKeys`, indented as it sits under `server:`, moved under
   # `gateway:`.
   defp under_gateway(line), do: "  " <> line
+
+  # The title of the step that gives the Forager file's address lines, naming the gateway
+  # the node's choice leads to, if any.
+  defp point_title(nil), do: gettext("Point qory at Qory Apiary.")
+
+  defp point_title(gateway),
+    do: gettext("Point qory at Qory Apiary, through %{gateway}.", gateway: gateway.name)
+
+  attr :id, :string, required: true
+  attr :node, Node, required: true
+  attr :through, :any, required: true, doc: "the gateway the node's choice leads to, or nil"
+
+  # What the `via` lines do, beside the address lines of a node whose choice leads to a
+  # gateway; a pool's starter that reaches Qory Apiary directly needs none of them.
+  defp via_note(assigns) do
+    ~H"""
+    <span :if={@through} id={@id}>
+      <.rich text={
+        rich_gettext("%{via} sends every request to Qory Apiary through %{gateway}.",
+          via: {:m, "via"},
+          gateway: @through.name
+        )
+      } />
+      <span :if={@node.kind == :pool}>
+        <.rich text={
+          rich_gettext("A starter that reaches Qory Apiary directly can leave %{via} out.",
+            via: {:m, "via"}
+          )
+        } />
+      </span>
+    </span>
+    """
+  end
 
   defp variable_line({name, value}), do: "#{name}=#{value}\n"
 
@@ -1233,10 +1290,18 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
       <section id="code-issued" class="q-form-page" aria-labelledby="code-issued-header-title">
         <.page_header id="code-issued-header" title={command_title(@node)}>
           <:description>
-            {gettext(
-              "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine.",
-              name: @node.name
-            )}
+            {if @through,
+              do:
+                gettext(
+                  "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
+                  name: @node.name,
+                  gateway: @through.name
+                ),
+              else:
+                gettext(
+                  "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine.",
+                  name: @node.name
+                )}
           </:description>
         </.page_header>
 
@@ -1262,7 +1327,10 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                     <.code_block
                       id="code-issued-command"
                       code={
-                        NodeComponents.enrol_command(@server, @issued.code.(), replace: @keys != [])
+                        NodeComponents.enrol_command(@server, @issued.code.(),
+                          replace: @keys != [],
+                          via: @through && @through.url
+                        )
                       }
                       copy_label={gettext("Copy command")}
                       wrap
@@ -1271,6 +1339,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                   <p :if={@keys != []} id="code-issued-replace" class="text-[13px]/5">
                     {replace_line(@keys, @node)}
                   </p>
+                  <NodeComponents.via_ca_line id="code-issued-via-ca" gateway={@through} />
                 </div>
                 <.listening id="code-issued-waiting">
                   {gettext("Waiting for %{name} to run it. This page shows when it is connected.",
@@ -1581,16 +1650,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
               </dl>
             </:step>
-            <:step title={gettext("Point qory at Qory Apiary.")}>
+            <:step title={point_title(@through)}>
               <p class="text-muted">
                 {gettext(
                   "In the Forager file. It is required: without it, qory ignores the three variables."
                 )}
+                <.via_note id="key-generated-via" node={@node} through={@through} />
               </p>
               <.code_block
                 id="key-generated-yaml"
                 label="forager.yaml"
-                code={address_file()}
+                code={address_file(@through)}
                 copy_label={gettext("Copy lines")}
               />
             </:step>
@@ -1672,7 +1742,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
               <.code_block
                 id="key-forager-file-yaml"
                 label="forager.yaml"
-                code={command_file(@key)}
+                code={command_file(@key, @through)}
                 copy_label={gettext("Copy lines")}
               />
             </div>
@@ -1718,11 +1788,14 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
                 />
                 <p id="key-forager-file-belongs" class="text-muted">{same_note()}</p>
               </:step>
-              <:step title={gettext("Point qory at Qory Apiary.")}>
+              <:step title={point_title(@through)}>
+                <p :if={@through} class="text-muted">
+                  <.via_note id="key-forager-file-via" node={@node} through={@through} />
+                </p>
                 <.code_block
                   id="key-forager-file-url"
                   label="forager.yaml"
-                  code={address_file()}
+                  code={address_file(@through)}
                   copy_label={gettext("Copy lines")}
                 />
               </:step>
@@ -1905,6 +1978,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           :if={@active > 0}
           id="node-configure"
           keys={Enum.filter(@keys, &(state(&1) == :active))}
+          node={@node}
+          through={@through}
         />
       </div>
     </Layouts.app>
@@ -2185,6 +2260,8 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
 
   attr :id, :string, required: true
   attr :keys, :list, required: true, doc: "the node's active keys"
+  attr :node, Node, required: true
+  attr :through, :any, required: true, doc: "the gateway the node's choice leads to, or nil"
 
   # Configure a machine, once the node holds a key: what a machine with a generated key is
   # set with, as four steps, each value with Copy but the secret, which is never shown
@@ -2206,16 +2283,17 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
           <p>{gettext("With a generated key, set these where the machine runs qory.")}</p>
         </div>
         <.how_to id={"#{@id}-steps"}>
-          <:step title={gettext("Point qory at Qory Apiary.")}>
+          <:step title={point_title(@through)}>
             <p class="text-muted">
               {gettext(
                 "In the Forager file. It is required: without it, qory ignores the three variables below."
               )}
+              <.via_note id={"#{@id}-via"} node={@node} through={@through} />
             </p>
             <.code_block
               id={"#{@id}-yaml"}
               label="forager.yaml"
-              code={address_file()}
+              code={address_file(@through)}
               copy_label={gettext("Copy lines")}
             />
           </:step>

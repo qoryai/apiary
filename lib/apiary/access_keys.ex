@@ -276,6 +276,16 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
+  via_lines/1 is the lines of the Forager file's `server` section that send a machine's
+  requests to the server through a gateway at `gateway_url`, each indented as
+  `server_lines/2`'s sit under `server:`: `via:`, then its `url`. The gateway passes each
+  request, and the server's signed answer, on unchanged.
+  """
+  @spec via_lines(String.t()) :: [String.t(), ...]
+  def via_lines(gateway_url) when is_binary(gateway_url),
+    do: ["  via:", "    url: #{gateway_url}"]
+
+  @doc """
   key_limit/0 is how many keys a node holds at most at a time, not revoked:
   #{@key_limit}. A key made in a browser (`add_access_key/3`) and an enrolment (`enrol/2`)
   count them under the node's lock.

@@ -1060,3 +1060,11 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   contract does not mention `Retry-After`, which the `429` carries all the same; and per
   code, 1 a second and 5 at once (`code_rate`, `code_burst`), counted only once the code
   is accepted and the key proven, so a refused code or an unproven key spends none of it. The contract fixes the order, not the numbers.
+- Enrolment through a gateway: the gateway relays the request unchanged (the Forager
+  contract's relay) and strips `X-Forwarded-For`, `Forwarded` and `X-Real-Ip`, so it
+  arrives from the gateway's address, which `ApiaryWeb.Origin` gives as any peer's. It is
+  accepted as a direct one, with no check of which gateway relayed it: the code decides
+  the node, and the signed answer is bound to the machine's `proof`, which the gateway
+  passes back unchanged. Every machine behind one gateway shares that address's limit, 1
+  a second and 10 at once, which is not raised for a gateway's address, and the audit
+  entry of the key's arrival records the gateway's address as `remote_ip`.
