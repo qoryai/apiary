@@ -1,6 +1,6 @@
 # The images the CI of qoryai's repositories pulls, copied to ghcr.io/qoryai/ci-images by
 # .github/workflows/ci-images.yml: the same images under the same digests, every platform
-# of each. CI pulls them from there by digest, as
+# of each, for CI to pull them from there by digest, as
 # ghcr.io/qoryai/ci-images:<tag>@sha256:<digest>, and not from Docker Hub or Amazon's copy
 # of it, which refuse pulls made without a login from GitHub's shared addresses. The tag
 # is for people to read; the digest is what is pulled.
