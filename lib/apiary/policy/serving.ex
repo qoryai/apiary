@@ -10,9 +10,10 @@ defmodule Apiary.Policy.Serving do
   A workspace serves a run configuration only once somebody has made its policy
   (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
   `digest_for/4` is nil, and nothing is rendered from here: the workspace's machines use
-  the policy of their own `forager.yaml`. The same holds on an instance, or for a
-  workspace, without the `security` feature (`Apiary.Features`): nothing is served, and
-  the policy is absent from the contract.
+  their local policy, from their `forager.yaml`. The same holds for every workspace on an
+  instance without the `security` feature (`Apiary.Features.on?/1`): nothing is served,
+  and the policy is absent from the contract. What a level below the instance shows changes
+  nothing here: the key's scope answers as the instance.
 
   `fetch/2` is the run endpoint's (`Apiary.Runs.Registration`), for a registration and a
   reload: the stored bytes and their digest for the target the labels name, the
@@ -63,8 +64,8 @@ defmodule Apiary.Policy.Serving do
 
   @doc """
   Whether the key's workspace serves a run configuration: the key may fetch one
-  (`run_configuration.fetch`, which is not found without the `security` feature) and
-  `Apiary.Policy.managed?/1` holds for its workspace.
+  (`run_configuration.fetch`, which is not found on an instance without the `security`
+  feature) and `Apiary.Policy.managed?/1` holds for its workspace.
   """
   @spec managed?(AccessKey.t()) :: boolean
   def managed?(%AccessKey{workspace_id: workspace_id} = key) do

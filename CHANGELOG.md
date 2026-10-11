@@ -713,6 +713,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   address in that form and the rule is the same: an address in another form, an IPv6
   address and an IPv4 address written as IPv6 (`::ffff:10.0.0.12`) match no rule, and such
   a connection reads as not allowed.
+- What a node is served follows the instance's features alone (`QORY_FEATURES`): a run's
+  registration, events, attach, outcome and reload, and its run configuration, whatever a
+  level above the workspace shows. An edition can no longer switch a feature off below the
+  instance.
 
 ### Removed
 

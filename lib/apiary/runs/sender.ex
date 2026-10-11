@@ -44,9 +44,8 @@ defmodule Apiary.Runs.Sender do
   outcome.
 
   **The run's place** (`place_key/2`): what is read for a run, its workspace's run
-  configuration and its features, is read under the run's own workspace and
-  organisation, never the gateway key's: a gateway may serve a workspace other than its
-  own.
+  configuration, is read under the run's workspace and organisation, never the gateway
+  key's: a gateway may serve a workspace other than its own.
 
   The keys that reach here are active: a request is verified only under a key that is not
   revoked, of a node that is not deleted (`Apiary.AccessKeys.fetch_for_verification/1`).
