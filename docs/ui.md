@@ -721,9 +721,10 @@ version in force is exported; another version's path sends on to it.
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
   card, of the run chosen (`?run=`; the first row until the reader chooses one), with the
-  last lines of its log as plain text. The `RunList` hook tells the page the width, turns
-  a row's click into a choice there, and moves it with ↑ and ↓; Enter or a second click
-  opens the run. Below 1920 px a row is a link to its page.
+  last lines of its log as plain text for a reader who may read the log (`run.read_log`;
+  without it, no line is read and the preview has no terminal). The `RunList` hook tells
+  the page the width, turns a row's click into a choice there, and moves it with ↑ and ↓;
+  Enter or a second click opens the run. Below 1920 px a row is a link to its page.
 - **Nothing to show** is an empty state with no table and no pages, in words and without
   a tile (`<.empty_state icon={nil}>`): what the filters hide, the last filter to remove
   ("Remove host:gpu-01") and Clear filters.

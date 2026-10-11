@@ -438,4 +438,10 @@ defmodule Apiary.EditionStubs do
     def check(_scope, :"node.set_limit", _subject), do: {:error, :forbidden}
     def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
   end
+
+  defmodule NoLog do
+    @moduledoc "Nobody reads a run's log (`run.read_log`), whoever asks."
+    def check(_scope, :"run.read_log", _subject), do: {:error, :forbidden}
+    def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+  end
 end

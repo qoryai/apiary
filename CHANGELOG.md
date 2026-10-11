@@ -632,6 +632,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   registration's, its attach's or a ping's. The demo recording of a run with no session is
   gone.
 
+### Fixed
+
+- The runs list's preview shows a run's last log lines, and its Full log link, only to a
+  reader who may read the log (`run.read_log`), as the run page's Terminal tab does.
+  Before, it read and showed them to anyone who could read the runs.
+
 ### Migrations
 
 The baseline, on an empty database, creates the schema an instance has, whatever its
