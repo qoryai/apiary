@@ -41,24 +41,25 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
     end
   end
 
-  test "only a gateway's document may list more than one workspace" do
-    two = contract_json!("configuration/gateway.json")
-    assert ["ng_" <> _id, [_, _]] = [two["node_id"], two["workspaces"]]
-    assert :ok = ContractSchema.validate(schema(), two)
+  test "a gateway's document lists no workspaces, and one that lists any is refused" do
+    gateway = contract_json!("configuration/gateway.json")
+    assert "ng_" <> _id = gateway["node_id"]
+    refute Map.has_key?(gateway, "workspaces")
+    assert :ok = ContractSchema.validate(schema(), gateway)
 
-    assert {:error, _} =
-             ContractSchema.validate(schema(), %{two | "node_id" => "np_f1xt0re000000000"})
+    with_workspaces = Map.put(gateway, "workspaces", ["ws_f1xt0re000000000"])
+    assert {:error, _} = ContractSchema.validate(schema(), with_workspaces)
   end
 
   test "known-answers/discovery-gateway.json is the document this server builds for the fixture gateway" do
     known = contract_file!("known-answers/discovery-gateway.json")
     document = Jason.decode!(known)
+    refute Map.has_key?(document, "workspaces")
     assert :ok = ContractSchema.validate(schema(), document)
 
     built =
       Configuration.encode(%{
         node_id: document["node_id"],
-        workspaces: document["workspaces"],
         url: "https://qory.example",
         apiary_public_key: document["apiary_public_key"]
       })
