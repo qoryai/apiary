@@ -615,9 +615,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   could post events to any of its runs. A second key of the same node, as while a key is
   replaced, keeps the run going; a batch from a key of another node is a signed `409`
   `wrong_node`, the whole batch refused and nothing of it stored, and a reload from one is
-  `404`. A run through a gateway takes them from the gateway that attached it instead,
-  from the instance that attached it, and its repeated registration and its outcome from
-  the node that registered it.
+  `404`. A direct run's outcome is held to the same node, and an outcome from another
+  node's key is `404`. The run is bound to the node, not to the key that registered it:
+  once that key is revoked its requests are `401`, and a second active key of the node
+  carries the run on. A run through a gateway takes its batches, heartbeats and reloads
+  from the gateway that attached it instead, from the instance that attached it, and its
+  repeated registration and its outcome from the node that registered it.
 - `Apiary.AccessKeys.active_keys/1` lists a node's active keys, oldest first;
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
