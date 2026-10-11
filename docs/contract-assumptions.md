@@ -1011,13 +1011,12 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
     host that is only in `paths` is denied under `enforce`. So a host held to paths is
     rendered in **both** `allow` and `paths`, always, and a denied host is never in
     `paths`: it is never reached.
-  - The path rules of a host are those of the first key of `paths` that matches it
-    (`terminator.rules`), and `paths` is a Go map, whose order is not fixed: with `*.example`
-    and `git.example` both in `paths`, which list holds `git.example` changes from run to
-    run. A `*.` key of `paths` also holds every allowed host below it, whatever that host's
-    own rule says. Qory Apiary therefore refuses, at write time and with a sentence, a `*.`
-    suffix held to paths above any other allowed entry; a name held to paths under a `*.`
-    suffix that is free of paths is fine and rendered.
+  - A host several keys of `paths` cover is held to the most specific one: its name
+    itself, else the `*.` key with the longest suffix (`policy.HostPaths`). A `*.` key of
+    `paths` also holds every allowed host below it that no more specific key names. Qory
+    Apiary still refuses, at write time and with a sentence, a `*.` suffix held to paths
+    above any other allowed entry; a name held to paths under a `*.` suffix that is free of
+    paths is fine and rendered.
   - `deny` beats `allow` whatever the shapes, so a deny of a host below an allowed `*.`
     suffix is said as it is: `allow: ["*.example"]`, `deny: ["tracker.example"]`. A `*.`
     deny still takes the allow entries it covers out of `allow` (the gateway would deny
