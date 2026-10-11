@@ -305,16 +305,34 @@ defmodule Apiary.EditionStubs do
     @moduledoc """
     Holds other organisations after some (`c:Apiary.Edition.places_to_lock/1`): an
     organisation the test names (`Process.put(:places_held, %{id => other_ids})` in the
-    test's process) is locked with those after its own id; every other one as the
-    configured edition locks it.
+    test's process) is locked with those after its own id; every other one as the core's
+    edition locks it (`Apiary.Edition.Core`), whichever edition is configured, so the
+    test means the core's order for them.
     """
     alias Apiary.Organisations.Organisation
 
     def places_to_lock(%Organisation{id: id} = organisation) do
       case Process.get(:places_held, %{}) do
         %{^id => others} -> [id | others]
-        _held -> Apiary.Edition.module().places_to_lock(organisation)
+        _held -> Apiary.Edition.Core.places_to_lock(organisation)
       end
+    end
+  end
+
+  defmodule ReadsPlaces do
+    @moduledoc """
+    Reads the organisation's row before it answers `c:Apiary.Edition.places_to_lock/1`, as
+    an edition may, and locks nothing; then answers as the core's edition does
+    (`Apiary.Edition.Core`).
+    """
+    import Ecto.Query
+
+    alias Apiary.Organisations.Organisation
+
+    def places_to_lock(%Organisation{id: id} = organisation) do
+      _row = Apiary.Repo.one(from o in Organisation, where: o.id == ^id, select: o.id)
+      send(self(), {:places_read, id})
+      Apiary.Edition.Core.places_to_lock(organisation)
     end
   end
 
