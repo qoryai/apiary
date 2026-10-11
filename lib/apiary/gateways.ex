@@ -249,7 +249,8 @@ defmodule Apiary.Gateways do
   serves/1 is the workspaces `gateway` may serve, by name: a workspace-level gateway's
   workspace; an organisation-level gateway's every workspace of its organisation and of
   the organisations it serves (`served_organisations/1`). None for a gateway that is
-  deleted, or a node that is not a gateway.
+  deleted, or a node that is not a gateway. It is never on the wire: a gateway's
+  discovery document lists no workspaces (`ApiaryWeb.Contract.Configuration`).
   """
   @spec serves(Node.t()) :: [%Workspace{}]
   def serves(%Node{kind: :gateway, deleted_at: nil} = gateway) do

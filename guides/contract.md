@@ -186,13 +186,15 @@ other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 `node_id` is the key's node, node pool or gateway (`ng_`), and `apiary_public_key` lists
 the server's signing key, for information: the gateway verifies under the key it pinned.
 For a node or a node pool, `workspaces` lists the one workspace the key may name, the one
-it belongs to; for a gateway, the workspaces it may serve, sorted: the workspace it
-belongs to. Each is named by its
+it belongs to, named by its
 id: `ws_` and 16 lowercase Crockford base32 characters, which Qory Apiary gives every
-workspace and names it by in the contract alone. `run.url` is
+workspace and names it by in the contract alone. A gateway's document, of a workspace's
+gateway or an organisation's, lists no workspaces: which workspaces a gateway serves
+follows from the nodes that use it, and Qory Apiary decides at each registration and
+attach whether it may serve the run's workspace. `run.url` is
 the run endpoint, with no trailing slash: a run registers there, and a reload adds `/` and
-the run's id. The document, and its digest, differ by node and workspace, never by the
-workspace's policy.
+the run's id. The document, and its digest, differ by node and, for a node or a node
+pool, by workspace, never by the workspace's policy.
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A Forager file's `gateway.server.url` is that address, and the

@@ -2,8 +2,8 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
   @moduledoc """
   The discovery documents of a node's, a pool's and a gateway's keys against
   `configuration.schema.json` of Forager's contract at the commit in
-  `.forager-contract-ref`, and the contract's gateway fixtures: a gateway's document
-  validates as a node's does, and it alone may list more than one workspace.
+  `.forager-contract-ref`, and the contract's gateway fixtures: a gateway's document,
+  which lists no workspaces, validates as a node's does.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -32,10 +32,13 @@ defmodule Apiary.Contract.GatewayDiscoveryTest do
     assert :ok = ContractSchema.validate(schema(), document(scope, node_fixture(scope)))
     assert :ok = ContractSchema.validate(schema(), document(scope, pool_fixture(scope)))
 
-    gateway = document(scope, gateway_fixture(scope))
-    assert "ng_" <> _id = gateway["node_id"]
-    assert gateway["workspaces"] == [scope.workspace.public_id]
-    assert :ok = ContractSchema.validate(schema(), gateway)
+    # A gateway's lists no workspaces, at a workspace or at an organisation.
+    for gateway <- [gateway_fixture(scope), organisation_gateway_fixture(scope)] do
+      document = document(scope, gateway)
+      assert "ng_" <> _id = document["node_id"]
+      refute Map.has_key?(document, "workspaces")
+      assert :ok = ContractSchema.validate(schema(), document)
+    end
   end
 
   test "only a gateway's document may list more than one workspace" do

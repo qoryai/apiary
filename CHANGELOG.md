@@ -262,8 +262,9 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   and an optional port, nothing more, at most 2048 characters) and no instance limit. A
   gateway belongs to a workspace and may serve that workspace; it enrols with a code as a
   node does, and the enrolment answer's `node_kind` is `gateway`. Discovery for a
-  gateway's key names it (`node_id`, `ng_…`) and lists, as `workspaces`, the workspaces it
-  may serve, sorted. Each node and node pool records a choice of gateway: direct, its
+  gateway's key names it (`node_id`, `ng_…`) and lists no workspaces: which workspaces a
+  gateway serves follows from the nodes that use it, and Qory Apiary decides at each
+  registration and attach whether it may serve the run's workspace. Each node and node pool records a choice of gateway: direct, its
   workspace's default gateway, or a gateway it names, one that may serve its workspace,
   checked when the choice is saved, and resolved again at each run's registration (a run
   through a gateway, below). The choice can be changed. Every node and pool there before is direct; a new one given no choice
