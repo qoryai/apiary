@@ -127,7 +127,8 @@ defmodule Apiary.Runs.Ingest do
   defp place(%Run{} = run, access_key), do: Sender.place_key(run, access_key)
   defp place(nil, access_key), do: access_key
 
-  # A key's scope is never refused a role here; what can refuse it is a feature that is off.
+  # A key's scope is never refused a role here; what can refuse it is a feature the instance
+  # does not have.
   defp may_post(scope) do
     case Access.authorize(scope, :"run.post_events", scope.workspace) do
       :ok -> :ok
@@ -262,9 +263,9 @@ defmodule Apiary.Runs.Ingest do
 
   defp held(access_key, batch, meta, now), do: upsert_run(access_key, batch, meta, now)
 
-  # The run's own organisation and workspace, for a run through a gateway, whose key may
-  # be of another place: out of use is refused as a key of it would be, and a feature that
-  # is off there as a path that does not exist.
+  # The run's organisation and workspace, for a run through a gateway, whose key may be of
+  # another place: out of use is refused as a key of it would be. A feature is the
+  # instance's: one the instance does not have is refused as a path that does not exist.
   defp place_refusal(run, access_key) do
     cond do
       not Run.through_gateway?(run) ->

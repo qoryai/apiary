@@ -655,6 +655,10 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
   scheme and a host, with a port if needed, and nothing more", by
   `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
+- What a node is served follows the instance's features alone (`QORY_FEATURES`): a run's
+  registration, events, attach, outcome and reload, and its run configuration, whatever a
+  level above the workspace shows. An edition can no longer switch a feature off below the
+  instance.
 
 ### Removed
 

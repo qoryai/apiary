@@ -395,7 +395,8 @@ defmodule Apiary.Runs.Registration do
 
   defp resolved({:error, reason}), do: {:error, reason}
 
-  # A key's scope is never refused a role here; what can refuse it is a feature that is off.
+  # A key's scope is never refused a role here; what can refuse it is a feature the instance
+  # does not have.
   defp may_post(scope) do
     case Access.authorize(scope, :"run.post_events", scope.workspace) do
       :ok -> :ok
@@ -726,10 +727,11 @@ defmodule Apiary.Runs.Registration do
   `{:error, :not_found}` for a run id the key's workspace does not hold, a run another
   node registered, a run through a gateway that another instance of the gateway attached
   (`Apiary.Runs.Sender`), a run that never registered (its batches created it), and a
-  workspace that serves no run configuration: nobody has made its policy, the
-  `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`. That
-  last is never the document of no policy, which would take the policy in force off a run
-  that started under it: a policy removed mid-run never loosens a run already started.
+  workspace that serves no run configuration: nobody has made its policy, the instance
+  does not have the `security` feature, or `Apiary.Access` refuses
+  `run_configuration.fetch`. That last is never the document of no policy, which would
+  take the policy in force off a run that started under it: a policy removed mid-run
+  never loosens a run already started.
   `{:error, :unavailable}` when the configuration cannot be read.
   """
   @spec fetch(AccessKey.t() | Scope.t(), term, String.t() | nil) ::
@@ -772,9 +774,9 @@ defmodule Apiary.Runs.Registration do
   defp reload_allowed?(_access_key, _run, _instance_id), do: false
 
   # A reload where the workspace serves no run configuration (nobody has made its policy,
-  # the `security` feature is off, or `Apiary.Access` refuses `run_configuration.fetch`)
-  # is not found, never the document of no policy: that answer would take the policy in
-  # force off a run that started under it. A policy removed mid-run never loosens a run
-  # already started.
+  # the instance does not have the `security` feature, or `Apiary.Access` refuses
+  # `run_configuration.fetch`) is not found, never the document of no policy: that answer
+  # would take the policy in force off a run that started under it. A policy removed
+  # mid-run never loosens a run already started.
   defp without_run_configuration, do: {:error, :not_found}
 end

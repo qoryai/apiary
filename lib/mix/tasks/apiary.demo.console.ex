@@ -43,7 +43,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     * The nodes **build-01** and **build-02** and the pool **spot-runners**, each with
       keys added by their public keys; build-01's first key was replaced and revoked. No
       run is placed on them. build-02 has an outstanding enrolment code (below).
-    * With the `secrets` feature (`Apiary.Features.on?/2`, of each workspace): secrets,
+    * With the instance's `secrets` feature (`Apiary.Features.on?/1`): secrets,
       one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
@@ -258,7 +258,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
     replays(main)
     nodes(main)
 
-    if Apiary.Features.on?(main, :secrets) do
+    if Apiary.Features.on?(:secrets) do
       secrets(main)
       variables(main)
       connections(main)
@@ -272,7 +272,7 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
             ["--seed", "#{seed + 1}"] ++ concurrency
         )
 
-        if Apiary.Features.on?(scope, :secrets), do: variables_of_second(scope)
+        if Apiary.Features.on?(:secrets), do: variables_of_second(scope)
         [scope_of_second(owner, scope)]
       end
 

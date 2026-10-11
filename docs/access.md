@@ -275,11 +275,12 @@ scope, and a feature that is off is `{:error, :not_found}`: absent, as a feature
 instance lacks. What an organisation, or a workspace of it, has is `Apiary.Features.of/2`,
 the one answer ([architecture.md](architecture.md), Features): in the core the instance's
 features, in every organisation and workspace alike; an edition may narrow them below the
-instance, and never adds to them. The scope carries them:
+instance for a person, and never adds to them. A person's scope carries them:
 `Apiary.Organisations.resolve_scope/4` loads them with the organisation and the
 workspace, and `reload/2` reads them again after its locks, so what an edition changes of
-them under the organisation's lock is waited for, or seen. An access key's are read from
-its organisation and workspace when asked.
+them under the organisation's lock is waited for, or seen. An access key, and its scope,
+answer as the instance: `run.post_events` and `run_configuration.fetch` follow the
+instance's features alone.
 
 ## Who asks
 

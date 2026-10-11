@@ -9,7 +9,10 @@ defmodule ApiaryWeb.Features do
   the router's test reads it so that no route is left without a feature or an explicit
   place among the routes every instance has. The `use` also adds a gate that asks
   `Apiary.Features.on?/2` with the caller's scope: an `on_mount` hook in a LiveView, which
-  is what a live navigation meets, and a plug in a controller.
+  is what a live navigation meets, and a plug in a controller. A person's scope answers
+  for its organisation and workspace; the access key of a signed request of the server
+  contract answers as the instance, so a node is served whatever a level below the
+  instance shows.
 
   The features are the core's and the edition's (`Apiary.Features.all/0`), and the
   edition's are known only once it runs: whether a page names a feature there is is
@@ -119,12 +122,13 @@ defmodule ApiaryWeb.Features do
     end
   end
 
-  # For a feature the instance has and a scope does not: `ApiaryWeb.Features.Routes` has
-  # already answered for the instance, before any pipeline, but for a signed request of the
-  # server contract, which it lets through to be verified; the answer to that one is signed
-  # as it is sent (`ApiaryWeb.Contract.SignedAnswer`). The pipeline has run by now, so
-  # this can only come close to an unknown path: its body and type, not the rendering in
-  # the format the pipeline chose, which raising would give.
+  # For a feature the instance has and a person's scope does not, and for a signed request
+  # of the server contract to a feature the instance does not have:
+  # `ApiaryWeb.Features.Routes` has already answered for the instance, before any pipeline,
+  # but for that signed request, which it lets through to be verified; the answer to that
+  # one is signed as it is sent (`ApiaryWeb.Contract.SignedAnswer`). The pipeline has run
+  # by now, so this can only come close to an unknown path: its body and type, not the
+  # rendering in the format the pipeline chose, which raising would give.
   defp absent(conn) do
     conn
     |> Plug.Conn.put_resp_content_type("text/html")

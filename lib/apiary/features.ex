@@ -31,25 +31,28 @@ defmodule Apiary.Features do
   organisation (`built/0`).
 
   A feature that is off is absent, not disabled: its pages answer not found, the navigation
-  and the discovery document leave it out, its processes are not started. Every surface asks
-  `on?/2`, with the scope it serves.
+  leaves it out, its processes are not started. Every surface asks `on?/2`, with the scope
+  it serves; the discovery document of the server contract reads no feature.
 
   ## An organisation's features
 
   What an organisation or a workspace of it has is `of/2`, the one answer: the edition's
   (`c:Apiary.Edition.features_of/3`), given the instance's features. In the core that is
   the instance's features, in every organisation and workspace alike; an edition may
-  narrow them below the instance, and never adds to them: `of/2` keeps only what the
-  instance has, and a feature only with the features it needs (`needs/1`, `closed/1`).
+  narrow them below the instance for a person's pages and actions, and never adds to
+  them: `of/2` keeps only what the instance has, and a feature only with the features it
+  needs (`needs/1`, `closed/1`).
 
-  The scope a page or a context function holds carries the answer for its organisation
-  and workspace, `features`, loaded with it (`Apiary.Organisations.resolve_scope/4`) and
-  read again with its membership (`Apiary.Access.reload/2`), so `on?/2` reads nothing; an
-  access key's is read from its organisation and workspace when asked. A feature that is
-  off for an organisation is absent there as one the instance lacks is: not reachable,
+  The scope a person's page or a context function holds carries the answer for its
+  organisation and workspace, `features`, loaded with it
+  (`Apiary.Organisations.resolve_scope/4`) and read again with its membership
+  (`Apiary.Access.reload/2`), so `on?/2` reads nothing. A feature that is off for an
+  organisation is absent there for a person as one the instance lacks is: not reachable,
   shown or advertised. Some surfaces belong to the instance and follow only its switch: the
-  guides at `/docs`, the sign-in and landing pages, and the routes' first answer
-  (`ApiaryWeb.Features.Routes`).
+  guides at `/docs`, the sign-in and landing pages, the routes' first answer
+  (`ApiaryWeb.Features.Routes`), and what a node is served: an access key, and its scope,
+  answer as the instance (`on?/2`), so a run's registration, events, attach, outcome and
+  reload, and its run configuration, follow the instance's features alone.
   """
 
   alias Apiary.AccessKeys.AccessKey
@@ -317,19 +320,21 @@ defmodule Apiary.Features do
   def on?(feature), do: known!(feature) in enabled()
 
   @doc """
-  Whether `feature` is on where `scope` is: a caller's `Apiary.Accounts.Scope`, which
-  carries the features of its organisation and workspace (`of/2`), an access key's scope or
-  an access key, whose organisation and workspace are read, or `nil` for the instance. A
-  scope that carries no features, as the instance's own jobs', answers as the instance.
-  Raises `ArgumentError` for a name that is no feature.
+  Whether `feature` is on where `scope` is: a person's `Apiary.Accounts.Scope`, which
+  carries the features of its organisation and workspace (`of/2`), or `nil` for the
+  instance. An access key and an access key's scope answer as the instance (`on?/1`),
+  whatever their organisation and workspace have: what a node is served follows the
+  instance's features alone. A scope that carries no features, as the scope of a job no
+  person enqueued, answers as the instance. Raises `ArgumentError` for a name that is no
+  feature.
   """
   @spec on?(term, feature) :: boolean
+  def on?(%Scope{access_key: %AccessKey{}}, feature), do: on?(feature)
+
+  def on?(%AccessKey{}, feature), do: on?(feature)
+
   def on?(%Scope{features: features}, feature) when is_list(features),
     do: known!(feature) in features and on?(feature)
-
-  def on?(%Scope{access_key: %AccessKey{} = key}, feature), do: on?(key, feature)
-
-  def on?(%AccessKey{} = key, feature), do: known!(feature) in of_key(key)
 
   def on?(_scope, feature), do: on?(feature)
 
@@ -360,14 +365,6 @@ defmodule Apiary.Features do
   def of_organisation(organisation_id) do
     case Repo.get(Organisation, organisation_id) do
       %Organisation{} = organisation -> of(organisation)
-      nil -> []
-    end
-  end
-
-  # The features of an access key's organisation and workspace.
-  defp of_key(%AccessKey{organisation_id: organisation_id, workspace_id: workspace_id}) do
-    case Repo.get(Organisation, organisation_id) do
-      %Organisation{} = organisation -> of(organisation, %Workspace{id: workspace_id})
       nil -> []
     end
   end
