@@ -99,6 +99,12 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   per organisation, which in the core is the one the organisation was made with, and
   told to the edition (`workspace_created/3`). No page of the core offers it. An
   organisation's pages open its oldest workspace where the person has opened none yet.
+- A person an edition lets into an organisation without a membership is told they read it
+  and change nothing there (`Apiary.Access.reader/1`) only while the role the edition
+  gives them holds no action that changes anything, that is, none that leaves an entry in
+  the audit trail (`Apiary.Access.reads_only?/1`). One whose role there changes something
+  is told what a refusal tells anyone else. In the core no one is let in without a
+  membership, so no page says it.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration and reload, events and enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and

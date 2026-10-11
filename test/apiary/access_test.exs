@@ -44,6 +44,33 @@ defmodule Apiary.AccessTest do
     end
   end
 
+  describe "a reader" do
+    # `reader/1` names the edition's way in only for a role that changes nothing, asked
+    # with `reads_only?/1` of the actions the role holds: a stub role an edition might
+    # give, with the core's actions.
+    test "a role that holds only reads changes nothing, one with a change does" do
+      assert Access.reads_only?([])
+
+      reads = [:"node.read", :"run.read", :"secret.read", :"audit.read", :"connection.read"]
+      assert Access.reads_only?(reads)
+
+      for change <- [:"workspace.rename", :"node.edit", :"security_policy.edit", :"member.invite"] do
+        refute Access.reads_only?(reads ++ [change]), "#{change} is a change"
+        refute Access.reads_only?([change])
+      end
+    end
+
+    test "every level of the core holds a change, so none is a reader" do
+      for level <- [:owner, :admin, :member] do
+        refute Access.reads_only?(Map.fetch!(Access.roles(), level)), "#{level} changes nothing"
+      end
+    end
+
+    test "an action that is none raises" do
+      assert_raise ArgumentError, fn -> Access.reads_only?([:"no.such_action"]) end
+    end
+  end
+
   describe "marked for deletion" do
     # A scope loaded before the marking, asked after it: every action is not found, as for
     # an organisation or a workspace that is gone, but cancelling the deletion and the
