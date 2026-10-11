@@ -106,6 +106,14 @@ defmodule Apiary.Contract.EnrolmentTest do
                ~s("node_kind":"pool","stored_secrets":true,) <>
                ~s("apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
 
+    assert Enrolment.answer_body(%{
+             access_key_id: "ak_0000000000000000",
+             node_id: "ng_0000000000000000",
+             node_kind: :gateway,
+             stored_secrets: false,
+             apiary_public_key: keys
+           }) =~ ~s("node_id":"ng_0000000000000000","node_kind":"gateway",)
+
     assert Enrolment.refusal_body(:key_limit, keys) ==
              ~s({"error":"key_limit","apiary_public_key":[{"alg":"ed25519","public_key":"k"}]})
 

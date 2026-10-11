@@ -526,6 +526,74 @@ defmodule ApiaryWeb.SettingsLiveTest do
     end
   end
 
+  describe "the Workspaces tab, per level" do
+    # Whoever may rename or delete a workspace sees the tab and the list; Delete… asks
+    # its own action. In the core's edition owners and admins hold both, members neither.
+    setup do
+      owner = sign_up_fixture()
+      staging = workspace_fixture(owner.organisation, "Staging")
+      %{owner: owner, staging: staging}
+    end
+
+    defp as_level(ctx, :owner), do: {ctx.owner.user, ctx.owner.scope}
+
+    defp as_level(ctx, level) do
+      %{user: user, scope: scope} = member_fixture(ctx.owner.scope, level)
+      {user, scope}
+    end
+
+    for level <- [:owner, :admin] do
+      test "an #{level} sees the tab, the list, Delete… on each row and the note",
+           %{conn: conn, owner: owner, staging: staging} = ctx do
+        {user, scope} = as_level(ctx, unquote(level))
+        conn = log_in_user(conn, user)
+        org = owner.organisation
+
+        assert Organisations.lists_workspaces?(scope)
+
+        {:ok, lv, _html} = live(conn, ~p"/#{org}/settings")
+
+        assert has_element?(
+                 lv,
+                 ~s(#settings-tab-workspaces[href="#{~p"/#{org}/settings/workspaces"}"])
+               )
+
+        {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
+        assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
+
+        for workspace <- [owner.workspace, staging] do
+          assert has_element?(lv, "#workspace-#{workspace.id}", workspace.name)
+          assert has_element?(lv, "#workspace-#{workspace.id}-delete", "Delete…")
+        end
+
+        assert has_element?(lv, "#workspaces-note", "A deleted workspace is purged after")
+      end
+    end
+
+    test "a member sees no tab, and its path is refused",
+         %{conn: conn, owner: owner} = ctx do
+      {user, scope} = as_level(ctx, :member)
+      conn = log_in_user(conn, user)
+      org = owner.organisation
+      settings = ~p"/#{org}/settings"
+
+      refute Organisations.lists_workspaces?(scope)
+      assert Apiary.Targets.count_by_workspace(scope) == %{}
+
+      {:ok, lv, _html} = live(conn, settings)
+      refute has_element?(lv, "#settings-tab-workspaces")
+
+      assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
+               live(conn, ~p"/#{org}/settings/workspaces")
+
+      assert flash["error"] == "Only owners and admins open the list of workspaces."
+    end
+
+    test "nobody without a scope lists them" do
+      refute Organisations.lists_workspaces?(nil)
+    end
+  end
+
   describe "the paths that moved under the settings" do
     setup :register_and_log_in_user
 

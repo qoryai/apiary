@@ -171,8 +171,15 @@ defmodule Apiary.Access do
       "make a node or a node pool, whose kind is fixed from then on",
       roles: @admins
     ),
-    Action.new(:"node.edit", "rename a node, and change a node pool's instance limit",
-      roles: @admins
+    Action.new(:"node.edit", "rename a node or a node pool", roles: @admins),
+    Action.new(
+      :"node.set_limit",
+      "set a node pool's instance limit, as it is made or after",
+      roles: @admins,
+      audited:
+        {:not,
+         "a pool's limit is set in the node's creation or its edit, whose entry, node.create or " <>
+           "node.edit, records it with what else the change made"}
     ),
     Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
     Action.new(
@@ -428,15 +435,25 @@ defmodule Apiary.Access do
   asks nothing here; whoever runs a release command controls the instance already. A
   sign-up's `organisation.create` is one: the account does not exist yet.
 
+  ## The levels a person may be given
+
+  Beside the role an action over people needs, the level it gives must be one the edition
+  does not refuse there (`level_refusal/4`, `c:Apiary.Edition.level_refusal/4`): the
+  core's edition refuses none. An invitation, its acceptance, a change of level and the
+  release commands that grant and revoke an instance admin each ask it, and a level it
+  refuses is refused, with the edition's reason; a page offers only the levels it refuses
+  none of (`grantable_levels/1`).
+
   ## Reach
 
   A person reaches an organisation through their membership there, at its level: what
   they may change there is its role's. The edition may give a person another way in
   (`c:Apiary.Edition.reach/1`), which the scope's `reach` carries, and a role there
   without a membership (`c:Apiary.Edition.role/1`): such a person reads every workspace of
-  the organisation. `reach/1` says which way the scope carries, `level/1` the level they
-  act at, which only a membership there gives, and `reader/1` how one without a
-  membership reaches it. `Apiary.Organisations.resolve_scope/4` finds the reach a page's
+  the organisation, and changes there what that role holds. `reach/1` says which way the
+  scope carries, `level/1` the level they act at, which only a membership there gives,
+  and `reader/1` how one without a membership reaches it while their role there changes
+  nothing (`reads_only?/1`). `Apiary.Organisations.resolve_scope/4` finds the reach a page's
   path opens; `reload/2`, in `authorize/3`, reads the membership again, and the edition
   what it gave, and fails closed.
 
@@ -630,15 +647,33 @@ defmodule Apiary.Access do
 
   @doc """
   reader/1 says how the scope's person reads the scope's organisation when they have no
-  membership there, as the scope carries it: the edition's name for its reach; nil for
-  anyone with a membership there, and for anyone who does not reach it. A reader reads
-  and changes nothing a membership would: a page says so, rather than the level a change
-  would take.
+  membership there and change nothing in it, as the scope carries it: the edition's name
+  for its reach, while the role the edition gives them there (`c:Apiary.Edition.role/1`)
+  holds no action that changes anything (`reads_only?/1`). Nil for anyone with a
+  membership there, for one whose role there changes something, and for anyone who does
+  not reach it. A reader reads and changes nothing: a page says so, rather than the level
+  a change would take. What the role holds answers, not the name of the reach.
   """
   @spec reader(Scope.t() | nil) :: atom | nil
   def reader(scope) do
-    if own_level(scope), do: nil, else: edition_reach(scope)
+    with nil <- own_level(scope),
+         name when not is_nil(name) <- edition_reach(scope),
+         true <- reads_only?(Map.get(roles(), Edition.role(scope), [])) do
+      name
+    else
+      _membership_or_none_or_writes -> nil
+    end
   end
+
+  @doc """
+  reads_only?/1 says whether a role that holds `actions`, a list of names of
+  `actions/0`, changes nothing: none of them leaves an entry in the audit trail, which
+  every change worth one does (`Apiary.Access.Action`'s `audited`). True for none at all.
+  `reader/1` asks it of the role the edition gives a person without a membership.
+  """
+  @spec reads_only?([action]) :: boolean
+  def reads_only?(actions) when is_list(actions),
+    do: not Enum.any?(actions, &(action(&1).audited == true))
 
   @doc """
   reaches_every_workspace_in?/1 says whether the scope's person reaches every workspace of
@@ -718,6 +753,39 @@ defmodule Apiary.Access do
   """
   @spec acts_on?(role | nil, Membership.level()) :: boolean
   def acts_on?(role, level), do: level in Map.get(@acts_on, role, [])
+
+  @doc """
+  level_refusal/4 is why `level` may not be given in `organisation` by `scope`, or nil
+  when it may: the edition's answer (`c:Apiary.Edition.level_refusal/4`), nil always in
+  the core's. Every way a level is given asks it, beside whatever role the action needs:
+  an invitation, at member, the level its person joins at (`member.invite`); its
+  acceptance, at the level the edition gives (`invitation.accept`,
+  `c:Apiary.Edition.accepting/3`); a change of level (`member.change_level`); and the
+  release commands' `instance_admin.grant` and `instance_admin.revoke`. Each asks it with
+  `lock: :share` inside its transaction, at the place in the lock order the callback
+  names. A level a membership has already is not given anew, and is not asked.
+  """
+  @spec level_refusal(Scope.t() | nil, %Organisation{}, Membership.level(), keyword) ::
+          nil | atom
+  def level_refusal(scope, %Organisation{} = organisation, level, opts \\ []),
+    do: Edition.level_refusal(scope, organisation, level, opts)
+
+  @doc """
+  grantable_levels/1 is the levels the scope's person may give in the scope's
+  organisation, those `level_refusal/4` refuses none of, in the order of
+  `Apiary.Organisations.Membership.levels/0`, as the scope carries it: what a page offers.
+  Every level in the core's edition; none for a scope without an organisation.
+  """
+  @spec grantable_levels(Scope.t() | nil) :: [Membership.level()]
+  def grantable_levels(%Scope{organisation: %Organisation{} = organisation} = scope),
+    do:
+      for(
+        level <- Membership.levels(),
+        is_nil(level_refusal(scope, organisation, level)),
+        do: level
+      )
+
+  def grantable_levels(_scope), do: []
 
   ## The answer
 
@@ -856,8 +924,8 @@ defmodule Apiary.Access do
   def reload(%Scope{user: %User{id: user_id}, organisation: %Organisation{}} = scope, opts) do
     lock? = opts[:lock] == :share
 
-    # The lock order (docs/access.md, The lock order): the organisation rows first, then
-    # the membership, then what the edition holds, then the account.
+    # The lock order (docs/access.md, The lock order): the organisation rows, with the
+    # edition's own (`lock_places/1`), first, then the membership, then the account.
     if lock?, do: lock_places(scope)
 
     scope = scope |> reload_membership(lock?) |> Edition.reload(opts)
@@ -892,15 +960,31 @@ defmodule Apiary.Access do
   rows of the lock order (docs/access.md). A change that must not happen under such a
   write locks these rows for update, and waits for the write, or comes first and is
   seen; a row that only names the organisation takes `FOR KEY SHARE`, which does not
-  wait. `reload/2` with `lock: :share` takes them first; a write that locks a row of its
-  own before it asks, as the security policy's locks its workspace, calls this first.
-  `:ok`.
+  wait. Then the edition's own rows for such a write (`c:Apiary.Edition.lock_rows/1`,
+  `{:places, scope}`), before any workspace, membership or account. `reload/2` with
+  `lock: :share` takes them first; a write that locks a row of its own before it asks, as
+  the security policy's locks its workspace, calls this first. `:ok`.
   """
   @spec lock_places(Scope.t()) :: :ok
-  def lock_places(%Scope{organisation: %Organisation{id: id}}) do
+  def lock_places(%Scope{} = scope) do
+    case lock_organisations(scope) do
+      :ok -> Edition.lock_rows({:places, scope})
+      :gone -> :ok
+    end
+  end
+
+  def lock_places(_scope), do: :ok
+
+  @doc """
+  lock_organisations/1 holds the organisation rows `lock_places/1` holds, and asks the
+  edition nothing: for a change whose one point asks the edition itself
+  (`Apiary.Organisations.lock_people/1`). `:ok`, or `:gone` for an organisation deleted.
+  """
+  @spec lock_organisations(Scope.t()) :: :ok | :gone
+  def lock_organisations(%Scope{organisation: %Organisation{id: id}}) do
     case Repo.one(from o in Organisation, where: o.id == ^id, lock: "FOR SHARE") do
       nil ->
-        :ok
+        :gone
 
       %Organisation{} = now ->
         for other <- Edition.places_to_lock(now), other != id do
@@ -911,7 +995,7 @@ defmodule Apiary.Access do
     end
   end
 
-  def lock_places(_scope), do: :ok
+  def lock_organisations(_scope), do: :gone
 
   # The person's account `FOR SHARE`, the lock order's last row, and whether it is still
   # in use: not deleted, and active as the edition says. A deletion of the account, or the

@@ -120,15 +120,52 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert Configuration.digest(key) != Configuration.digest(other_key)
   end
 
+  test "a gateway's key lists the workspaces the gateway may serve: its own",
+       %{scope: scope, key: key} do
+    gateway = gateway_fixture(scope)
+
+    %{access_key: gateway_key, secret: gateway_secret} =
+      contract_key_fixture(scope, node: gateway)
+
+    conn = signed_get(build_conn(), gateway_key.key_id, gateway_secret)
+    document = json_response(conn, 200)
+
+    assert document["node_id"] == gateway.public_id
+    assert document["workspaces"] == [scope.workspace.public_id]
+    refute Map.has_key?(document, "node_kind")
+
+    # The members in the contract's order, and the digest the answer names.
+    assert conn.resp_body =~
+             ~r/\A\{"version":1,"node_id":"ng_[^"]+","workspaces":\["ws_[^"]+"\],"events":/
+
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(gateway_key)]
+    assert Configuration.digest(gateway_key) != Configuration.digest(key)
+    assert signed_answer?(conn)
+  end
+
+  test "encode/1 lists the workspaces in the order it is given" do
+    keys = [%{"alg" => "ed25519", "public_key" => "k"}]
+
+    body =
+      Configuration.encode(%{
+        node_id: "ng_0000000000000000",
+        workspaces: ["ws_0000000000000000", "ws_1111111111111111"],
+        url: "https://qory.example",
+        apiary_public_key: keys
+      })
+
+    assert body =~ ~s("workspaces":["ws_0000000000000000","ws_1111111111111111"])
+  end
+
   @tag :contract
   test "the document's bytes are the contract's known answer for its node, workspace, URL and key" do
-    %{"apiary_public_key" => keys, "workspaces" => [workspace_id]} =
+    %{"apiary_public_key" => keys, "workspaces" => [_] = workspaces} =
       known = known_answers!("discovery")
 
     body =
       Configuration.encode(%{
         node_id: known["node_id"],
-        workspace_id: workspace_id,
+        workspaces: workspaces,
         url: "https://qory.example",
         apiary_public_key: keys
       })

@@ -66,8 +66,9 @@ revoking an invitation, making a new link for one (`invitation.renew`), suspendi
 activating (`member.suspend`, `member.activate`) are **actions over people**: asked of the membership they are about, whose level decides,
 or of the invitation, which is at member: an invitation is an email address and nothing
 else, and its person joins as a member, whom an owner makes an admin or an owner
-afterwards. An owner takes them on anyone, within the last-owner rule, but suspends and
-activates admins and members only, never another owner; an admin takes them on a member
+afterwards, at a level the edition does not refuse (An edition's part, below). An owner
+takes them on anyone, within the last-owner rule, but suspends and activates admins and
+members only, never another owner; an admin takes them on a member
 and on any invitation, never on an owner or an admin. Nobody suspends or activates their
 own membership, whatever their level. Asked of a workspace or the organisation, as a page
 asks whether to show a button at all, the role alone answers; the context function asks
@@ -90,8 +91,11 @@ An edition may let a person into an organisation where they hold no membership
 a person reaches every workspace of it, and holds what that role holds.
 `Apiary.Access.level/1` is the level of a membership there, and nil for one the edition
 lets in without one; `Apiary.Access.reader/1` names the edition's way in for a person
-without a membership there, or is nil, and a page says so to them
-(`c:ApiaryWeb.Edition.reader_sentence/2`) rather than the level a change would take. The
+without a membership there whose role holds no change (`Apiary.Access.reads_only?/1`: no
+action of it leaves an audit entry), or is nil, and a page tells such a reader they read
+it and change nothing (`c:ApiaryWeb.Edition.reader_sentence/2`) rather than the level a
+change would take. One let in with a role that changes something is no reader: a
+refusal tells them what it tells anyone else. The
 path scope (`Apiary.Organisations.resolve_scope/4`) opens an organisation for its members
 and for whom the edition lets in (`Apiary.Organisations.put_reach/2`); the switcher lists
 the places the edition gives (`Apiary.Organisations.list_places/1`,
@@ -125,6 +129,8 @@ may:
   reaches (Levels, above);
 - hold more organisation rows beside the organisation's own with a write that must stay
   allowed (`c:Apiary.Edition.places_to_lock/1`, The lock order, below);
+- lock rows of its own for a change, at one point right after the organisation rows
+  (`c:Apiary.Edition.lock_rows/1`, The lock order, below);
 - hold an account or an organisation out of use beyond what the core knows: the core's
   queries leave out what it holds so (`c:Apiary.Edition.active_accounts/2`,
   `c:Apiary.Edition.active_organisations/2`), `reload/2` among them, so a membership whose
@@ -133,7 +139,26 @@ may:
 - give the level an invitation's person joins at, or refuse the acceptance
   (`c:Apiary.Edition.accepting/3`), and add to it once the membership is made
   (`c:Apiary.Edition.accepted/4`);
-- refuse a deletion or a purge, and hear of each (Marked for deletion, below).
+- refuse a level in an organisation, with a reason (`c:Apiary.Edition.level_refusal/4`,
+  `Apiary.Access.level_refusal/4`): an invitation, its acceptance, a change of level and
+  the release commands that grant and revoke an instance admin each refuse it, the
+  People page offers only the levels it refuses none of
+  (`Apiary.Access.grantable_levels/1`) and says a refusal in the edition's words
+  (`c:ApiaryWeb.Edition.level_refusal_sentence/2`); a membership keeps the level it holds
+  (The lock order, below, says where it is asked);
+- refuse a deletion or a purge, and hear of each (Marked for deletion, below);
+- say who may take an action in its own words (`c:ApiaryWeb.Edition.who_may_sentence/2`),
+  where the core's sentence names the levels that may, such as "Only owners and admins
+  add nodes.", which stays where the edition has none (`ApiaryWeb.Access.who_may/3`). It
+  is asked for the refusals, and the notices to whoever may not act, of the nodes' pages
+  and a node's Access key tab, the workspace overview's Get the command, the
+  organisation's and the workspace's settings, People, stored secrets and variables, and
+  integrations; for People's line of what each level does; for the refusal to cancel an
+  organisation's deletion on Your organisations; for the security policy's own refusals
+  (`Apiary.Policy`); and for the policy pages' refusals of a click on the mode or a lock.
+  The policy pages' mode row and their lock and unlock hints, the lock hint of a
+  connection's Allow or Deny panel, and the workspace overview's hints on the mode and on
+  a locked rule have no scope at hand, and keep the core's words.
 
 ## The instance's admins
 
@@ -224,8 +249,11 @@ workspace, neither suspended nor removed, their account in use (`access_key.crea
 asked again of their membership as it is at the enrolment); the key's arrival is an entry
 of `access_key.add` by the key itself, `arrived_by` `code`. Deleting a
 node (`node.delete`, owners and admins) revokes its keys in the same transaction, each with
-its entry of `access_key.revoke`. Everyone in the workspace reads the nodes (`node.read`),
-and a page shows a node's keys under it.
+its entry of `access_key.revoke`. Setting a pool's instance limit, as it is made or after,
+is an action of its own (`node.set_limit`), held by owners and admins as `node.edit` is, so
+an edition may keep it from some who change the rest, whose pools are made with a limit
+of 1; its change is recorded in the entry of the node's creation or edit. Everyone in the
+workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
 
 ## Leaving
 
@@ -320,11 +348,13 @@ for each other and never on each other at once:
 
 1. **Organisation rows**: the organisation's own, then the organisations an edition
    holds with it (`c:Apiary.Edition.places_to_lock/1`). Several organisations, as an
-   account's deletion locks the organisations it owns
+   account's deletion holds every organisation the account is a member of, those it owns
+   `FOR SHARE` and the rest `FOR KEY SHARE`
    (`Apiary.Organisations.sole_owned_organisations/2` with `lock: true`), are locked
    first those the edition holds another organisation with, then the rest, each in the
    order of their ids, so an organisation always comes before the ones it holds; with the
-   core's edition, in the order of their ids.
+   core's edition, in the order of their ids. Then the edition's own rows for the change
+   (`c:Apiary.Edition.lock_rows/1`), which the core's edition does not have.
 2. **Workspace rows**, in the order of their ids where a change takes several, as a write
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
@@ -334,19 +364,53 @@ for each other and never on each other at once:
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
-5. **Everything else**: invitations, access keys, nodes, then runs, and an edition's
-   rows.
+5. **Everything else**: invitations, access keys, nodes, then runs.
+
+An edition takes all its own rows for a change at one point, `c:Apiary.Edition.lock_rows/1`,
+before the change's first write, in its own fixed order and in the strongest mode the
+change needs, and none later in that change; otherwise two changes can wait on each other.
+The rule is the change's, not a callback's: a change that spans several organisations, as
+an account's deletion does, takes its whole set at its one point. The edition never locks a
+membership or any other row of the core's there. What it reads or writes of its own later
+in the change (`c:Apiary.Edition.reload/2`, `c:Apiary.Edition.level_refusal/4`,
+`c:Apiary.Edition.membership_changed/5`, `c:Apiary.Edition.accepted/4`) it holds from
+then, and locks nothing more. The core asks it:
+
+- `{:places, scope}` at the end of `Apiary.Access.lock_places/1`, before any workspace,
+  membership or account, in every write that must stay allowed. The rows it takes for a
+  scope must not depend on the scope's workspace: a write may ask it more than once in
+  one change, with the same organisation, as the security policy's writes do, before and
+  after their workspaces' rows and writes and once for each workspace of a request;
+- `{:people, scope, organisation}` once the organisation rows are held, before the
+  owners' memberships (`Apiary.Organisations.lock_people/1`, which `lock_owners/1` calls,
+  and which asks no `{:places, scope}`): a change of level, a removal or leaving, a
+  suspension, an activation, and the release commands that grant and revoke an instance
+  admin; and once an invitation's organisation is held, in its acceptance and in a
+  sign-up with it, `scope` nil for the sign-up. There the edition takes, all at once in
+  its fixed order, every row it would take at `{:places, scope}` for that scope, in at
+  least the same mode, and its rows of the organisation's people;
+- `{:account, user_id, organisation_ids}` in an account's deletion, once every
+  organisation the account is a member of is held, in one pass in the order above, those
+  it owns `FOR SHARE` and the rest `FOR KEY SHARE`, and before their owners and the
+  person's memberships: `organisation_ids` are the organisations held, and the edition
+  takes rows of those organisations only, none of one the account joins after they were
+  read.
+
+A repeat of `{:places, scope}` later in the same change, after its point, must take no new
+row and no stronger mode: the edition answers it with rows it holds already, in the mode
+it holds them.
 
 The modes keep a row that only names another out of it:
 
 - A write that must stay allowed while it is written holds the organisation `FOR SHARE`,
-  and the organisations the edition holds with it (`Apiary.Access.lock_places/1`), the
-  workspace `FOR KEY SHARE`, the membership `FOR SHARE`, what the edition reads again under
-  its own locks (`c:Apiary.Edition.reload/2`), then the account `FOR SHARE` (`reload/2`
-  with `lock: :share`). A change that may make an owner, or counts the owners who remain,
-  as a change of a level, a removal and a suspension do, holds the organisation rows
-  `FOR SHARE` too, then locks the organisation's own owners' memberships `FOR UPDATE`
-  (`Apiary.Organisations.lock_owners/1`).
+  and the organisations the edition holds with it (`Apiary.Access.lock_places/1`), and the
+  edition's rows for it, the workspace `FOR KEY SHARE`, the membership `FOR SHARE`, what
+  the edition reads again under the rows it holds (`c:Apiary.Edition.reload/2`), then the
+  account `FOR SHARE` (`reload/2` with `lock: :share`). A change that may make an owner,
+  or counts the owners who remain, as a change of a level, a removal and a suspension do,
+  holds the organisation rows `FOR SHARE` too (`Apiary.Access.lock_organisations/1`), and
+  the edition's rows for a change of people, then locks the organisation's own owners'
+  memberships `FOR UPDATE` (`Apiary.Organisations.lock_owners/1`).
 - A change of a node's access keys or enrolment codes (`Apiary.AccessKeys`) locks the
   node's row `FOR UPDATE`, then the key's or the code's: the keys of one node take turns,
   so the limit of two keys at a time counts every change before it. An enrolment
@@ -378,12 +442,20 @@ The modes keep a row that only names another out of it:
   the allowance it was counted against, locks that allowance's row the same way, then
   the invitation's `FOR UPDATE`; never the invitation's first. An edition's renewal
   (`action:`) runs inside its own transaction, which may hold the allowance's row already.
+- A level given, by a change of level, an invitation, its acceptance or a release
+  command, is asked of the edition (`c:Apiary.Edition.level_refusal/4`, `lock: :share`)
+  before the membership is written, once the edition's rows are held, for all but the
+  invitation, which writes no membership and holds none of them. It reads, and locks
+  nothing.
 - An invitation's acceptance, and a sign-up with an invitation, let the edition hold the
   organisation first, more strongly if it will (`c:Apiary.Edition.accepting/3`), then hold
-  it `FOR SHARE`, before the account and the invitation, so the organisation's marking,
-  and what the edition holds out of use, wait for it, or came first and refuse it.
-- An account's deletion holds the organisations it owns `FOR SHARE` and locks their
-  owners (`sole_owned_organisations/2` with `lock: true`), then its memberships
+  it `FOR SHARE`, then the edition's rows for a change of its people, before the account
+  and the invitation, so the organisation's marking, and what the edition holds out of
+  use, wait for it, or came first and refuse it.
+- An account's deletion holds every organisation it is a member of, those it owns
+  `FOR SHARE` and the rest `FOR KEY SHARE`, then the edition's rows for the deletion, and
+  locks the owners of those it owns (`sole_owned_organisations/2` with `lock: true`),
+  then its memberships
   (`Apiary.Organisations.lock_memberships/1`), then the account `FOR NO KEY UPDATE`. An
   invitation's acceptance holds the account `FOR SHARE`, so of the two one waits for the
   other, and a deleted account never becomes a member.
@@ -402,10 +474,9 @@ The modes keep a row that only names another out of it:
   changes (`node.*`) are owners' and admins' and ask `authorize/3` without holding the
   organisation, as a rename does.
 
-A few changes lock rows below an organisation without its row first: an account's
-deletion locks its memberships in organisations it does not own, and a workspace's
-deletion locks the organisation's workspaces. None of them then takes an organisation
-`FOR UPDATE`, so none can close a cycle.
+A workspace's deletion locks the organisation's workspaces without the organisation's
+row first, and then takes no organisation row `FOR UPDATE`. An account's deletion holds
+every organisation it is a member of before anything below them, as above.
 
 A change that asks `authorize/3` without holding the organisation, such as a rename or an
 access key, reads the membership and the suspension without a lock, and can commit just

@@ -69,7 +69,8 @@ defmodule ApiaryWeb.SettingsComponents do
         place: :organisation,
         count: :members
       },
-      can?(scope, :"workspace.delete") &&
+      # For whoever may rename or delete a workspace; each control there asks its own.
+      Apiary.Organisations.lists_workspaces?(scope) &&
         %Entry{
           section: :main,
           key: :workspaces,
@@ -433,12 +434,13 @@ defmodule ApiaryWeb.SettingsComponents do
   organisation's in use, one row on the row spec, its name the title with its slug beside
   it, its targets where the page counted them (`targets`), when it was created, and its ⋯
   menu, the edition's items (the `:workspace_actions`
-  slot) then Delete…, which leads to the deletion's own path, by `patch` from the
+  slot) then Delete…, for a reader who may delete a workspace (`may_delete`), which leads
+  to the deletion's own path, by `patch` from the
   organisation's settings and by `navigate` from an edition's page over the same list;
   there the workspace's row (`confirming`) is the deletion's confirmation in place of its
-  cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then the
-  note under the list, what a deletion does, or why the only workspace is not deleted on
-  its own.
+  cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then,
+  for that reader, the note under the list, what a deletion does, or why the only
+  workspace is not deleted on its own. A ⋯ menu with no item is not shown.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
@@ -455,13 +457,23 @@ defmodule ApiaryWeb.SettingsComponents do
 
   attr :confirm_form, :any, default: nil, doc: "the slug typed to confirm it"
 
+  attr :may_delete, :boolean,
+    default: nil,
+    doc:
+      "whether the reader may delete a workspace (`workspace.delete`); asked of `scope` when not given"
+
   def workspace_list(assigns) do
     days = Apiary.Deletion.grace_days()
 
     assigns =
       assign(assigns,
         days: ngettext("%{number} day", "%{number} days", days, number: Format.number(days)),
-        path: &delete_path(assigns.scope, &1)
+        path: &delete_path(assigns.scope, &1),
+        may_delete:
+          if(is_nil(assigns.may_delete),
+            do: can?(assigns.scope, :"workspace.delete"),
+            else: assigns.may_delete
+          )
       )
 
     ~H"""
@@ -495,7 +507,7 @@ defmodule ApiaryWeb.SettingsComponents do
         >
           <ApiaryWeb.Extension.slot name={:workspace_actions} scope={@scope} workspace={workspace} />
           <.menu_item
-            :if={length(@workspaces) > 1}
+            :if={@may_delete && length(@workspaces) > 1}
             id={"workspace-#{workspace.id}-delete"}
             patch={if(@delete == "patch", do: @path.(workspace))}
             navigate={if(@delete == "navigate", do: @path.(workspace))}
@@ -529,7 +541,7 @@ defmodule ApiaryWeb.SettingsComponents do
         </.deletion_confirm>
       </:confirm>
     </.table>
-    <p id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
+    <p :if={@may_delete} id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
       {if length(@workspaces) > 1,
         do:
           gettext(

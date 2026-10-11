@@ -188,7 +188,8 @@ may reference, and a membership goes with its organisation and with its account.
 - An invitation is an email address and the workspace it was sent from, and nothing
   else: no level and no message. Accepting it makes a membership at member, unless the
   edition gives another level (`c:Apiary.Edition.accepting/3`); an owner changes the
-  level afterwards. The invitations a person sent stay when their level changes and when
+  level afterwards. Each is refused a level the edition refuses there
+  (`Apiary.Access.level_refusal/4`), none in the core's edition. The invitations a person sent stay when their level changes and when
   they leave or are removed, as the organisation's.
 - A change of a level, and the end of a suspension, are told to the edition inside their
   transaction, once the entry is written (`c:Apiary.Edition.membership_changed/5`).
@@ -349,13 +350,19 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
-  hear of a change of a level or the end of a suspension (`membership_changed/5`).
+  hear of a change of a level or the end of a suspension (`membership_changed/5`); refuse
+  a level in an organisation, with a reason, which every way the core gives a level asks,
+  the People page offering only the others (`level_refusal/4`), and say the refusal in
+  its own words (`c:ApiaryWeb.Edition.level_refusal_sentence/2`).
 - **Deletion**: refuse a deletion or a purge (`deletion_refusal/2`), hear of each
   marking, cancelling and purge (`deletion_changed/4`), and add tables to the purge's
   walk, purged before the core's (`deletion_tables/0`).
 - **Registries**: add features, and say what an organisation or a workspace has of the
   instance's (`features/0`, `features_of/3`); add schemas an audit entry may be about
   (`subject_kinds/0`).
+- **Audit trail**: add keys of its own to each entry's details as it is written, such as
+  how the actor reached the organisation, cheaply and inside the change's transaction
+  (`audit_details/3`); it changes none of the core's.
 - **Runtime**: check its settings at boot (`boot!/0`), start processes after the core's
   (`children/0`), schedule jobs (`crontab/0`), add folders of migrations
   (`migrations_paths/0`) and run a step after them (`after_migrate/0`).
@@ -367,11 +374,13 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   organisation menu and workspace menu, and the heading the organisation menu lists a
   place of its own under (`switcher_entries/1`, `workspace_switcher_entries/1`,
   `place_group/1`; `place_scope/2`, which the core no longer asks); what a page says to
-  a person it lets in without a membership, and of a refusal of its own
-  (`reader_sentence/2`, `refusal_sentence/1`); settings sections (`settings_tabs/1`,
+  a person it lets in without a membership, of a refusal of its own, and, where the pages
+  `who_may_sentence/2` lists ask it, of who may take an action (`reader_sentence/2`,
+  `refusal_sentence/1`, `who_may_sentence/2`); settings sections (`settings_tabs/1`,
   `ApiaryWeb.SettingsComponents`); what it renders in the named places of the core's
   pages (`slot/2`, `ApiaryWeb.Extension`); the words for its actions in the audit log
-  (`activity_describer/0`); the names its own paths take (`reserved_slugs/0`); and the
+  (`activity_describer/0`), and who made an entry, in its Who column
+  (`activity_actor/2`); the names its own paths take (`reserved_slugs/0`); and the
   product's name on the Qory Apiary menu's button (`product_name/0`).
 
 A core page never names a module of an edition: it links to the edition's pages only

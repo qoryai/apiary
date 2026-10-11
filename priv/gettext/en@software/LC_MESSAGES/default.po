@@ -12971,6 +12971,12 @@ msgid "You can switch back at any time."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "You can't change the instance limit."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You can't change the kind later."
 msgstr ""

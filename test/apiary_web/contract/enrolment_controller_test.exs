@@ -185,6 +185,28 @@ defmodule ApiaryWeb.Contract.EnrolmentControllerTest do
       assert key.label == "spot-runners"
     end
 
+    test "a gateway enrols as a node does, its kind and ng_ id in the answer", %{scope: scope} do
+      gateway = gateway_fixture(scope, name: "edge")
+      %{code: code} = code(scope, gateway)
+      pair = ed25519_key_pair()
+      body = body(code, pair, name: "edge-1")
+
+      conn = enrol(body)
+      assert conn.status == 201
+      answer = assert_signed(conn, body)
+      assert answer["node_id"] == gateway.public_id
+      assert "ng_" <> _ = answer["node_id"]
+      assert answer["node_kind"] == "gateway"
+
+      key = Repo.get_by!(AccessKey, public_key: pair.public_key)
+      assert key.node_id == gateway.id
+
+      assert {:ok, %AccessKey{node: %{kind: :gateway}}} =
+               AccessKeys.fetch_for_verification(key.key_id)
+
+      assert AccessKeys.active_key?(gateway)
+    end
+
     test "a label a key of the node in use has already gets -2, -3 and on", %{
       scope: scope,
       node: node

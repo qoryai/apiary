@@ -284,7 +284,9 @@ replaces the navigation it is in.
   older one leads to the log-in page first), shows the link once above the list, to copy
   and send, until Done, and the link's page, `/users/password/:token`, sets
   the account's password), Workspaces
-  (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
+  (whoever may rename or delete a workspace, `Apiary.Organisations.lists_workspaces?/1`,
+  owners and admins in the core; Delete… and the note under the list only for whoever
+  may delete one; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
   `:workspaces_heading` slot), and the edition's sections
@@ -912,7 +914,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   `Nodes / New node` (Nodes a link back to the list), the page's heading
   (`PageComponents.page_form/1`, no Back link) and one sentence of what the kind is, with
   "You can't change the kind later"; then the form, a name (it takes the focus), and for a
-  pool its instance limit (a whole number up to 10,000, or empty for none), and its foot,
+  pool its instance limit (a whole number up to 10,000, or empty for none), left out for
+  one who may not set it (`node.set_limit`), whose pool is made with a limit of 1, and its
+  foot,
   Add node or Add node pool with Cancel back to the list (`page_form_foot/1`). A refused
   save stays on the page, the error under its field; adding one opens its page on
   Access key with a flash, where its machine gets its key.
@@ -931,7 +935,9 @@ node forms pass `nav={:nodes}`, so it is the current entry on all of them.
   each saying so while nothing has reported, then About (kind, id, instance limit, who
   made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`), its few
   sections listed in the page, never as a second column (Settings, A node's): General,
-  whose danger zone's Delete node… (Delete node pool… for a pool) expands its
+  whose pool's limit is disabled, with "You can't change the instance limit." under it,
+  for one who changes the node but may not set its limit (`node.set_limit`), and whose
+  danger zone's Delete node… (Delete node pool… for a pool) expands its
   confirmation in place (Settings, The danger zone) at `/nodes/:node_id/settings/delete`:
   what is lost, then Delete build-01? with Yes, delete and Cancel, no field to type, Cancel
   taking the focus.

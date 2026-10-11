@@ -4,12 +4,14 @@ defmodule ApiaryWeb.Contract.Configuration do
   its digest: the one place both come from, so the discovery answer and the
   answer to every batch name the same digest.
 
-  The document names the access key's node or node pool (`node_id`, its public id) and
-  the one workspace the key may name (`workspaces`, the public id of the workspace the
-  node or node pool belongs to), says where the events go, where a run registers and is
-  reloaded (the `run` section, `ApiaryWeb.Contract.RegistrationController`), and lists
-  the instance's signing key (`apiary_public_key`, `Apiary.SigningKey.apiary_public_key/0`),
-  for information. So the document, and its digest, differ by node and workspace alone.
+  The document names the access key's node, node pool or gateway (`node_id`, its public
+  id) and the workspaces the key may name (`workspaces`, by their public ids): for a node
+  or a node pool, the one workspace it belongs to; for a gateway, every workspace it may
+  serve (`Apiary.Gateways.serves/1`), sorted, at least one. It says where the events go,
+  where a run registers and is reloaded (the `run` section,
+  `ApiaryWeb.Contract.RegistrationController`), and lists the instance's signing key
+  (`apiary_public_key`, `Apiary.SigningKey.apiary_public_key/0`), for information. So the
+  document, and its digest, differ by node and its workspaces alone.
   The `run` section is in every document: a workspace nobody has given a policy answers a
   registration with the document of no policy.
 
@@ -19,6 +21,7 @@ defmodule ApiaryWeb.Contract.Configuration do
   """
 
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Gateways
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.SigningKey
@@ -40,13 +43,13 @@ defmodule ApiaryWeb.Contract.Configuration do
   """
   @spec document(AccessKey.t()) :: {binary, String.t()}
   def document(%AccessKey{
-        node: %Node{public_id: node_id},
-        workspace: %Workspace{public_id: workspace_id}
+        node: %Node{public_id: node_id} = node,
+        workspace: %Workspace{} = workspace
       }) do
     body =
       encode(%{
         node_id: node_id,
-        workspace_id: workspace_id,
+        workspaces: workspaces(node, workspace),
         url: ApiaryWeb.Endpoint.url(),
         apiary_public_key: SigningKey.apiary_public_key()
       })
@@ -54,22 +57,33 @@ defmodule ApiaryWeb.Contract.Configuration do
     {body, digest(body)}
   end
 
+  # A gateway's are the workspaces it may serve, sorted; a node's or a pool's, its own.
+  defp workspaces(%Node{kind: :gateway} = gateway, _workspace),
+    do: gateway |> Gateways.serves() |> Enum.map(& &1.public_id) |> Enum.sort()
+
+  defp workspaces(%Node{}, %Workspace{public_id: workspace_id}), do: [workspace_id]
+
   @doc """
-  encode/1 is the document's bytes for `node_id`, the `workspace_id` it lists, the public
-  `url` the endpoints are under, and the `apiary_public_key` list.
+  encode/1 is the document's bytes for `node_id`, the `workspaces` it lists, in their
+  order, the public `url` the endpoints are under, and the `apiary_public_key` list.
   """
   @spec encode(%{
           node_id: String.t(),
-          workspace_id: String.t(),
+          workspaces: [String.t(), ...],
           url: String.t(),
           apiary_public_key: [map, ...]
         }) :: binary
-  def encode(%{node_id: node_id, workspace_id: workspace_id, url: url, apiary_public_key: keys}) do
+  def encode(%{
+        node_id: node_id,
+        workspaces: [_ | _] = workspaces,
+        url: url,
+        apiary_public_key: keys
+      }) do
     Jason.encode!(
       Jason.OrderedObject.new(
         version: @version,
         node_id: node_id,
-        workspaces: [workspace_id],
+        workspaces: workspaces,
         events: Jason.OrderedObject.new(url: url <> @events_path, types: ["*"]),
         run: Jason.OrderedObject.new(url: url <> @run_path),
         apiary_public_key:
