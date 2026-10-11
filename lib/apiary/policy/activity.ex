@@ -31,6 +31,11 @@ defmodule Apiary.Policy.Activity do
   tool that was refused is still a request to that tool, and the list shows its refusal as
   for any destination; only an allowed one is a tool invocation
   (`Apiary.Runs.tool_invocation?/2`), a call to the tool.
+
+  A destination, of either list, carries `unchangeable`, true when no rule can change
+  what became of it: the wall refused the last attempt of its most recently seen
+  connection, or its host is none a rule can name. A denied one of those is said to be
+  held by no rule (`locked` and `above` are nil).
   """
 
   import Ecto.Query, warn: false
@@ -78,6 +83,7 @@ defmodule Apiary.Policy.Activity do
         path: path,
         attempts: rows |> Enum.map(& &1.allowed) |> Enum.sum(),
         tool: host_tool(rows),
+        unchangeable: unchangeable?(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
         last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
         target_ids: rows |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -139,15 +145,23 @@ defmodule Apiary.Policy.Activity do
       # The path is what no rule covers when the host itself is allowed somewhere.
       held? = Enum.any?(hits, fn {_row, uncovered_path, _policy} -> uncovered_path != nil end)
 
+      # No rule changes what the wall refused or a host no rule can name: no rule is
+      # said to hold it either.
+      unchangeable = unchangeable?(rows)
+
       locked =
-        Enum.find_value(hits, fn {row, _path, policy} ->
-          first_match(policy.locked_denies, row.host)
-        end)
+        unless unchangeable,
+          do:
+            Enum.find_value(hits, fn {row, _path, policy} ->
+              first_match(policy.locked_denies, row.host)
+            end)
 
       above =
-        Enum.find_value(hits, fn {row, _path, policy} ->
-          first_match(policy.above_denies, row.host)
-        end)
+        unless unchangeable,
+          do:
+            Enum.find_value(hits, fn {row, _path, policy} ->
+              first_match(policy.above_denies, row.host)
+            end)
 
       %{
         host: host,
@@ -156,6 +170,7 @@ defmodule Apiary.Policy.Activity do
         held: held?,
         locked: locked,
         above: above,
+        unchangeable: unchangeable,
         denied: rows |> Enum.map(& &1.denied) |> Enum.sum(),
         tool: host_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
@@ -167,6 +182,31 @@ defmodule Apiary.Policy.Activity do
     |> Enum.take(@top)
     |> then(&with_targets(workspace_id, &1))
   end
+
+  # Whether no rule can change what became of a destination: the wall refused its most
+  # recently seen connection's last attempt (its rule or its path rule is the wall's,
+  # `wall:` and a reason), or its host is none a rule can name (`Apiary.Policy.Grammar`).
+  # The rows of a destination share its host.
+  defp unchangeable?(rows) do
+    last = Enum.max_by(rows, & &1.last_seen_at, DateTime)
+    wall?(last) or not nameable?(last.host)
+  end
+
+  defp wall?(%{rule: "wall:" <> _reason}), do: true
+  defp wall?(%{path_rule: "wall:" <> _reason}), do: true
+  defp wall?(_row), do: false
+
+  # As a rule made from a connection takes its host: lower case, no final dot.
+  defp nameable?(host) when is_binary(host) do
+    if String.valid?(host) do
+      host = host |> String.downcase() |> String.trim_trailing(".")
+      Grammar.host?(host) and not Grammar.wildcard?(host)
+    else
+      false
+    end
+  end
+
+  defp nameable?(_host), do: false
 
   # The tool whose host a destination is: that of the most recently seen of its rows that
   # names one, whatever became of the request, handed to the tool or refused before it;
@@ -240,6 +280,9 @@ defmodule Apiary.Policy.Activity do
           allowed: c.allowed,
           denied: c.denied,
           tool: c.last_tool,
+          # Whether the wall refused the last attempt is all that is read of its rules.
+          rule: fragment("left(?, 64)", c.last_rule),
+          path_rule: fragment("left(?, 64)", c.last_path_rule),
           last_seen_at: c.last_seen_at,
           run_id: c.run_id,
           target_id: r.target_id

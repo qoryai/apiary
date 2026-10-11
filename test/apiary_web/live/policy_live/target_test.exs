@@ -574,6 +574,59 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert text(view, "#policy-mode-now") == "Follow #{scope.workspace.name} is the mode now."
     end
 
+    test "a destination no rule can allow is listed with no Allow here, and still counted",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "Files.CDN.example.", "decision" => "allowed", "rule" => ""},
+          %{"host" => "Files.CDN.example.", "decision" => "denied", "rule" => "wall:host-form"},
+          %{"host" => "metadata.internal", "decision" => "allowed", "rule" => ""},
+          %{"host" => "metadata.internal", "decision" => "denied", "rule" => "wall:own-address"},
+          %{
+            "host" => "docs.example",
+            "path" => "/a/%2e%2e/b",
+            "decision" => "allowed",
+            "rule" => ""
+          },
+          %{
+            "host" => "docs.example",
+            "path" => "/a/%2e%2e/b",
+            "decision" => "denied",
+            "rule" => "",
+            "path_rule" => "wall:ambiguous-path"
+          },
+          %{"host" => "10.0.0.012", "decision" => "allowed", "rule" => ""},
+          %{"host" => "flags.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, path)
+      pick_mode(view, "enforce")
+
+      # Enforce denies each of them: all five are counted.
+      assert text(view, "#mode-would-n") == "5 destinations"
+
+      for host <- ["Files.CDN.example.", "metadata.internal", "docs.example", "10.0.0.012"] do
+        key = ApiaryWeb.PolicyLive.Common.would_key(%{host: host, path: nil})
+        assert has_element?(view, "#would-#{key}", host)
+        refute has_element?(view, "#would-#{key}-allow")
+        refute has_element?(view, "#would-#{key} button")
+
+        # Asked anyway, nothing is written and nothing is refused.
+        render_hook(view, "would_allow", %{"key" => key})
+        refute has_element?(view, "p.text-error-soft-content[role=alert]")
+      end
+
+      assert Policy.list_rules(scope, target) == []
+
+      # The one a rule can allow keeps its Allow here; after it, no Allow is open, so the
+      # focus goes to the button that saves the pick.
+      view |> element("#mode-would button", "Allow here: flags.example") |> render_click()
+      assert own(scope, target, "flags.example")
+      assert text(view, "#mode-would-n") == "4 destinations"
+      assert_push_event(view, "policy:focus", %{id: "policy-mode-set"})
+    end
+
     test "what enforce would deny here isolates each host, so a bidi override reorders nothing",
          %{conn: conn, path: path, scope: scope} do
       host = "evil\u202Elpmaxe.<script>"

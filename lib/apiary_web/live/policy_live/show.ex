@@ -559,7 +559,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     scope = socket.assigns.current_scope
 
     case Enum.find(would.destinations, &(would_key(&1) == key)) do
-      nil ->
+      # None, or one no rule can allow: it has no Allow.
+      destination when is_nil(destination) or destination.unchangeable ->
         socket
 
       destination ->
@@ -579,7 +580,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               :announce,
               gettext("%{host} is allowed for the workspace.", host: destination.host)
             )
-            |> Common.focus_next_allow(would, key, "policy-mode-set")
+            |> Common.focus_next_allow(would, key, "policy-mode-set", &(!&1.unchangeable))
 
           {:error, error} ->
             assign(socket, :would, Map.put(would, :error, error.message))
@@ -1741,7 +1742,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   # What enforce would deny, under the question of enforce: what the last 14 days let
-  # through with no rule, each with its Allow.
+  # through with no rule, each with its Allow, but for one no rule can allow.
   defp mode_would(assigns) do
     shown = if assigns.would, do: Common.would_shown(assigns.would), else: []
     left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
@@ -1787,7 +1788,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             )}
           </small>
           <button
-            :if={MapSet.member?(@would.open, would_key(destination))}
+            :if={MapSet.member?(@would.open, would_key(destination)) && !destination.unchangeable}
             id={"would-#{would_key(destination)}-allow"}
             type="button"
             class="btn btn-xs"

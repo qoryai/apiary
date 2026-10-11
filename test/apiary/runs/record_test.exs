@@ -660,6 +660,49 @@ defmodule Apiary.Runs.RecordTest do
       assert %{connection: %{host: "n/a", port: nil, decision: nil}} =
                Enum.find(items, &(&1.kind == :connection))
     end
+
+    test "a long host reads in the timeline as on its connection's row: 255 bytes, whole characters",
+         %{scope: scope} do
+      accented = String.duplicate("é", 200) <> ".example"
+      plain = String.duplicate("x", 400) <> ".example"
+      machine = String.duplicate("m", 300)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(%{"host" => machine})},
+          {2, "run.egress", egress_data(%{"host" => accented, "decision" => "denied"})},
+          {3, "run.egress", egress_data(%{"host" => plain, "decision" => "denied"})}
+        ])
+
+      index = Record.timeline(scope, run)
+      items = Record.items(scope, run, index.items)
+
+      rows = Record.connections(scope, run).rows |> Enum.map(& &1.host) |> Enum.sort()
+      shown = for %{kind: :connection, connection: %{host: host}} <- items, do: host
+
+      # The fold keeps 255 bytes: 127 two-byte characters, the half of one left off.
+      assert Enum.sort(shown) == rows
+
+      assert Enum.sort(shown) ==
+               Enum.sort([String.duplicate("é", 127), String.duplicate("x", 255)])
+
+      # The index groups by the same host, and the machine's name is not a connection's.
+      assert index.items |> Enum.map(& &1[:host]) |> Enum.reject(&is_nil/1) |> Enum.sort() ==
+               rows
+
+      assert %{host: ^machine} = Enum.find(items, &(&1.kind == :run_started))
+
+      # The query and Timeline.slim/2 agree.
+      whole =
+        Repo.all(
+          from e in Apiary.Runs.Event,
+            where: e.run_id == ^run.id,
+            select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
+        )
+        |> Map.new(&{&1.sequence, Timeline.slim(&1)})
+
+      assert items == Timeline.build(index.items, whole)
+    end
   end
 
   describe "read budgets" do
