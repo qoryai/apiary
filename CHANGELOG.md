@@ -110,6 +110,11 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `Apiary.Organisations.lists_workspaces?/1`), owners and admins in the core. A
   workspace's Delete…, the deletions waiting to be cancelled and the note on what a
   deletion does are there for whoever may delete one.
+- A page that refuses a person an action, or offers them no way to take it, says which
+  levels may, such as "Only owners and admins add nodes.", through
+  `ApiaryWeb.Access.who_may/3`: an edition may say it in its own words
+  (`c:ApiaryWeb.Edition.who_may_sentence/2`, asked with the action and the scope), and
+  the core's sentence stands where it has none, as it does in the core.
 - The record of every run, reported by Forager over the server contract (version 1,
   revision 1: discovery, a run's registration and reload, events and enrolment): the
   session as a timeline, the terminal, every connection with its decision and rule, and

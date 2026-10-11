@@ -250,12 +250,17 @@ defmodule ApiaryWeb.IntegrationLive.Common do
   @doc """
   only_admins/1 is the line a person who may not change the section reads: a reader
   through the edition's reach is told what they may do (`ApiaryWeb.Access.reads_only/1`),
-  a member who and what.
+  a member who and what (`ApiaryWeb.Access.who_may/3`).
   """
   def only_admins(scope) do
     if Apiary.Access.reader(scope),
       do: ApiaryWeb.Access.reads_only(scope),
-      else: gettext("Only owners and admins change the integrations of a workspace.")
+      else:
+        ApiaryWeb.Access.who_may(
+          scope,
+          :"connection.write",
+          gettext("Only owners and admins change the integrations of a workspace.")
+        )
   end
 
   ## A description's plain settings

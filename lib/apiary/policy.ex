@@ -2284,6 +2284,7 @@ defmodule Apiary.Policy do
   defp question(scope, :lock), do: may(scope, :"security_policy.lock", only_an_owner_locks())
 
   # `Apiary.Access`'s answer as the policy says it: a sentence for a role that may not,
+  # `message` in the core's words or who may in the edition's (`ApiaryWeb.Access.who_may/3`),
   # not found where the `security` feature is off. Asked of the scope `write/4` read under
   # the workspace's lock, without another read. A reader, who reads the organisation
   # through the edition's reach in a role that changes nothing there
@@ -2295,15 +2296,18 @@ defmodule Apiary.Policy do
         :ok
 
       {:error, :forbidden} ->
-        {:error, Error.new(:forbidden, refusal(scope, message))}
+        {:error, Error.new(:forbidden, refusal(scope, action, message))}
 
       {:error, :not_found} ->
         {:error, not_found(gettext("Not found."))}
     end
   end
 
-  defp refusal(scope, message),
-    do: if(Access.reader(scope), do: ApiaryWeb.Access.reads_only(scope), else: message)
+  defp refusal(scope, action, message) do
+    if Access.reader(scope),
+      do: ApiaryWeb.Access.reads_only(scope),
+      else: ApiaryWeb.Access.who_may(scope, action, message)
+  end
 
   defp may_edit(scope) do
     may(

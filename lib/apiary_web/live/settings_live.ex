@@ -95,8 +95,12 @@ defmodule ApiaryWeb.SettingsLive do
   defp section(%{section: :organisation} = assigns) do
     ~H"""
     <.notice :if={refused_for_level?(@current_scope, :"organisation.rename")} kind={:info}>
-      {gettext(
-        "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+      {ApiaryWeb.Access.who_may(
+        @current_scope,
+        :"organisation.rename",
+        gettext(
+          "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+        )
       )}
     </.notice>
 
@@ -272,8 +276,12 @@ defmodule ApiaryWeb.SettingsLive do
   defp section(%{section: :general} = assigns) do
     ~H"""
     <.notice :if={refused_for_level?(@current_scope, :"workspace.rename")} kind={:info}>
-      {gettext(
-        "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+      {ApiaryWeb.Access.who_may(
+        @current_scope,
+        :"workspace.rename",
+        gettext(
+          "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+        )
       )}
     </.notice>
 
@@ -579,10 +587,29 @@ defmodule ApiaryWeb.SettingsLive do
     # The instance's organisation is deleted by nobody, which its danger zone says too.
     sentence =
       cond do
-        action in @delete_organisation and organisation_kept?(scope) -> organisation_kept()
-        action in @delete_organisation -> gettext("Only owners delete the organisation.")
-        action == :workspaces -> gettext("Only owners and admins open the list of workspaces.")
-        true -> gettext("Only owners and admins delete a workspace.")
+        action in @delete_organisation and organisation_kept?(scope) ->
+          organisation_kept()
+
+        action in @delete_organisation ->
+          ApiaryWeb.Access.who_may(
+            scope,
+            :"organisation.delete",
+            gettext("Only owners delete the organisation.")
+          )
+
+        action == :workspaces ->
+          ApiaryWeb.Access.who_may(
+            scope,
+            :workspaces,
+            gettext("Only owners and admins open the list of workspaces.")
+          )
+
+        true ->
+          ApiaryWeb.Access.who_may(
+            scope,
+            :"workspace.delete",
+            gettext("Only owners and admins delete a workspace.")
+          )
       end
 
     socket
@@ -641,7 +668,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign(socket, :organisation_form, to_form(changeset))}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"organisation.rename")}
     end
   end
 
@@ -671,7 +698,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign(socket, :workspace_form, to_form(changeset))}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"workspace.rename")}
     end
   end
 
@@ -699,7 +726,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign(socket, :retention_form, to_form(changeset, as: :retention))}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
-        {:noreply, unauthorized(socket)}
+        {:noreply, unauthorized(socket, :"retention.edit")}
     end
   end
 
@@ -728,7 +755,12 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, gettext("Only owners delete the organisation."))}
+        {:noreply,
+         unauthorized(
+           socket,
+           :"organisation.delete",
+           gettext("Only owners delete the organisation.")
+         )}
 
       # A refusal of the edition's is said in its words, where it has some.
       {:error, reason} ->
@@ -782,7 +814,12 @@ defmodule ApiaryWeb.SettingsLive do
          |> push_patch(to: section_path(scope, socket.assigns.live_action))}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, gettext("Only owners and admins delete a workspace."))}
+        {:noreply,
+         unauthorized(
+           socket,
+           :"workspace.delete",
+           gettext("Only owners and admins delete a workspace.")
+         )}
 
       _not_found ->
         {:noreply, gone(socket)}
@@ -817,6 +854,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply,
          unauthorized(
            socket,
+           :"workspace.restore",
            gettext("Only owners and admins cancel the deletion of a workspace.")
          )}
 
@@ -1037,10 +1075,11 @@ defmodule ApiaryWeb.SettingsLive do
     ]
   end
 
-  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
-  # A person who no longer reaches the workspace, or is no longer a member, is sent to `/`;
-  # anyone else is told `sentence`, what the refused change asks of a role.
-  defp unauthorized(socket, sentence \\ nil) do
+  # Refused `action` on the membership as it is now: the page's scope is stale, and is
+  # loaded again. A person who no longer reaches the workspace, or is no longer a member,
+  # is sent to `/`; anyone else is told who may (`ApiaryWeb.Access.who_may/3`), `sentence`
+  # in the core's words, what the refused change asks of a role.
+  defp unauthorized(socket, action, sentence \\ nil) do
     socket = UserAuth.reload_scope(socket)
 
     if socket.redirected do
@@ -1050,7 +1089,11 @@ defmodule ApiaryWeb.SettingsLive do
       |> assign_forms()
       |> put_flash(
         :error,
-        sentence || gettext("Only owners and admins can change these settings.")
+        ApiaryWeb.Access.who_may(
+          socket.assigns.current_scope,
+          action,
+          sentence || gettext("Only owners and admins can change these settings.")
+        )
       )
     end
   end

@@ -136,7 +136,11 @@ may:
 - give the level an invitation's person joins at, or refuse the acceptance
   (`c:Apiary.Edition.accepting/3`), and add to it once the membership is made
   (`c:Apiary.Edition.accepted/4`);
-- refuse a deletion or a purge, and hear of each (Marked for deletion, below).
+- refuse a deletion or a purge, and hear of each (Marked for deletion, below);
+- say who may take an action in its own words (`c:ApiaryWeb.Edition.who_may_sentence/2`),
+  where a page tells a person who is refused it, or offered no way to take it, which
+  levels may: the core's sentence names them, such as "Only owners and admins add nodes.",
+  and stays where the edition has none (`ApiaryWeb.Access.who_may/3`).
 
 ## The instance's admins
 

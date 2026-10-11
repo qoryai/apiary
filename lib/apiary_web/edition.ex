@@ -35,7 +35,9 @@ defmodule ApiaryWeb.Edition do
     `c:place_scope/2`, which the core no longer asks.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
-    `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
+    `c:refusal_sentence/1`, what a page says of a refusal the edition gave;
+    `c:who_may_sentence/2`, what a page says of who may take an action, where the core's
+    sentence names the levels (`ApiaryWeb.Access.who_may/3`).
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
@@ -152,6 +154,31 @@ defmodule ApiaryWeb.Edition do
   @callback refusal_sentence(reason :: atom) :: String.t() | nil
 
   @doc """
+  What a page says of who may take an action in the organisation of `scope`, to a person
+  who is refused it or offered no way to take it, where the core's sentence names the
+  levels that may, such as "Only owners and admins add nodes.": one sentence, translated,
+  or nil for the core's own (`ApiaryWeb.Access.who_may/3`). The scope is the page's, with
+  the organisation, the workspace where there is one, the person and how they reach the
+  organisation.
+
+  `about` says what the sentence is of:
+
+  - an action of `Apiary.Access` (`Apiary.Access.actions/0`), the one the page refused or
+    offers no way to take, such as `:"node.create"`; a sentence of the core's may say more
+    than who may, such as the rule a refusal of `:"security_policy.lock"` is of;
+  - `:workspaces`, the organisation's list of its workspaces, which whoever may rename or
+    delete a workspace opens (`Apiary.Organisations.lists_workspaces?/1`);
+  - `:people`, the People page's line of what each level does, which in the core names
+    what owners and admins manage, and what members do: they see the runs, and change the
+    policy's rules that are not locked where a member's role holds
+    `:"security_policy.edit"` and its feature is on.
+
+  A reader (`Apiary.Access.reader/1`) is told `c:reader_sentence/2`'s words instead,
+  where a page refuses them a change.
+  """
+  @callback who_may_sentence(about :: atom, Scope.t()) :: String.t() | nil
+
+  @doc """
   The sections the edition adds to the organisation's settings, each a page of its own, in
   the list beside the settings (`ApiaryWeb.SettingsComponents`), after the core's.
   """
@@ -218,6 +245,7 @@ defmodule ApiaryWeb.Edition do
     place_scope: 2,
     reader_sentence: 2,
     refusal_sentence: 1,
+    who_may_sentence: 2,
     settings_tabs: 1,
     slot: 2,
     activity_describer: 0,

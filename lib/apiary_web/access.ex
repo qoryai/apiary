@@ -23,6 +23,10 @@ defmodule ApiaryWeb.Access do
   changes nothing: a page that refuses them a change says so with `reads_only/1`, rather
   than the level it would take. One the edition lets in with a role that changes
   something is told what a refusal says to anyone else.
+
+  A page that refuses anyone else a change, or offers them no way to make it, says who may
+  with `who_may/3`: the core's sentence names the levels that may, and the edition may
+  say it in its own words.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -38,6 +42,23 @@ defmodule ApiaryWeb.Access do
     ApiaryWeb.Edition.reader_sentence(:refused, scope) ||
       gettext("You can read this organisation, and change nothing here.")
   end
+
+  @doc """
+  who_may/3 is the sentence a page says to a person of `scope` who is refused an action
+  or offered no way to take it, of who may take it: the edition's words
+  (`c:ApiaryWeb.Edition.who_may_sentence/2`), or `default`, the core's, which names the
+  levels that may, such as "Only owners and admins add nodes.". `about` is the action, or
+  the page's subject the edition's callback names.
+  """
+  @spec who_may(Apiary.Accounts.Scope.t(), atom, String.t()) :: String.t()
+  def who_may(scope, about, default), do: who_may(ApiaryWeb.Edition, scope, about, default)
+
+  @doc false
+  # The same, asked of `edition`, a module of `ApiaryWeb.Edition`'s callbacks: the
+  # configured edition, or a test's.
+  @spec who_may(module, Apiary.Accounts.Scope.t(), atom, String.t()) :: String.t()
+  def who_may(edition, scope, about, default) when is_atom(about) and is_binary(default),
+    do: edition.who_may_sentence(about, scope) || default
 
   @doc false
   def on_mount(action, _params, _session, socket) do

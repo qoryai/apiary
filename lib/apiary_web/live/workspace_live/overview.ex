@@ -894,7 +894,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         {:noreply,
          socket
          |> assign(:onboarding, read_onboarding(scope))
-         |> put_flash(:error, gettext("Only owners and admins connect a node."))}
+         |> put_flash(:error, only_admins_connect(scope))}
 
       {:error, _reason} ->
         {:noreply,
@@ -911,7 +911,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     if Common.may?(socket.assigns.current_scope, :"access_key.create_code"),
       do: {:noreply, socket},
       else:
-        {:noreply, put_flash(socket, :error, gettext("Only owners and admins connect a node."))}
+        {:noreply, put_flash(socket, :error, only_admins_connect(socket.assigns.current_scope))}
   end
 
   ## The one-click allow of a denied destination: the panel of a connection row's Allow,
@@ -1708,4 +1708,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp window(name, default) do
     :apiary |> Application.get_env(__MODULE__, []) |> Keyword.get(name, default)
   end
+
+  # Who may connect a node, in the edition's words where it has some.
+  defp only_admins_connect(scope),
+    do:
+      ApiaryWeb.Access.who_may(
+        scope,
+        :"access_key.create_code",
+        gettext("Only owners and admins connect a node.")
+      )
 end

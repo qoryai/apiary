@@ -19,6 +19,7 @@ defmodule ApiaryWeb.EditionTest do
     assert core.place_scope(%Apiary.Organisations.Membership{}, %Workspace{}) == nil
     assert core.reader_sentence(:level, nil) == nil
     assert core.reader_sentence(:refused, nil) == nil
+    assert core.who_may_sentence(:"node.create", nil) == nil
     assert core.settings_tabs(nil) == []
     assert core.slot(:notices, %{}) == nil
     assert core.activity_describer() == nil

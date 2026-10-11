@@ -4,9 +4,10 @@ defmodule ApiaryWeb.Edition.Core do
   the core has them, with nothing added. No navigation entry, group, count, entry of New,
   entry of the organisation menu or the workspace menu, account menu entry, Instance
   section, group of places or place, or settings tab beyond the core's, every slot empty,
-  no words for a reader, a refusal or actions beyond the core's, no level above a
-  workspace's policy to link to, no reserved name beyond the core's, the product named
-  Qory Apiary, and no Gettext backend beside the core's own.
+  no words for a reader, a refusal or actions beyond the core's, the core's own words for
+  who may take an action, no level above a workspace's policy to link to, no reserved
+  name beyond the core's, the product named Qory Apiary, and no Gettext backend beside
+  the core's own.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
   callback it does not override.
@@ -49,6 +50,9 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def refusal_sentence(_reason), do: nil
+
+  @impl true
+  def who_may_sentence(_about, _scope), do: nil
 
   @impl true
   def settings_tabs(_scope), do: []

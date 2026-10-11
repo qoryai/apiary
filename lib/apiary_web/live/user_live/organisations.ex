@@ -224,11 +224,23 @@ defmodule ApiaryWeb.UserLive.Organisations do
       {:error, _reason} ->
         {:noreply,
          socket
-         |> put_flash(
-           :error,
-           gettext("Only an owner of the organisation can cancel its deletion.")
-         )
+         |> put_flash(:error, only_owners_restore(socket, id))
          |> load()}
+    end
+  end
+
+  # Who may cancel the deletion of the organisation `id`, in the edition's words where it
+  # has some, asked in the scope the person reaches it with; in the core's, of an
+  # organisation the page no longer lists or they no longer reach.
+  defp only_owners_restore(socket, id) do
+    sentence = gettext("Only an owner of the organisation can cancel its deletion.")
+    scope = socket.assigns.current_scope
+
+    with %{} = organisation <- Enum.find(socket.assigns.pending, &(&1.id == id)),
+         {:ok, scope} <- Organisations.put_reach(scope, organisation) do
+      ApiaryWeb.Access.who_may(scope, :"organisation.restore", sentence)
+    else
+      _unreached -> sentence
     end
   end
 
