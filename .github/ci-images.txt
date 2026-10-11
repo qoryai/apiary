@@ -19,3 +19,4 @@ node-24.21.0-trixie-slim public.ecr.aws/docker/library/node:24.21.0-trixie-slim@
 elixir-1.20.4-erlang-29.1-debian-trixie-20260918-slim docker.io/hexpm/elixir:1.20.4-erlang-29.1-debian-trixie-20260918-slim@sha256:7fe29a356298b79ece9719552043d4f7e02e77105a9a562e11d9e9f26b870589
 curl-8.16.0 docker.io/curlimages/curl:8.16.0@sha256:463eaf6072688fe96ac64fa623fe73e1dbe25d8ad6c34404a669ad3ce1f104b6
 buildkit-buildx-stable-1 docker.io/moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+dockerfile-1 docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
