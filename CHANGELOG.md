@@ -259,13 +259,13 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   live (attached and not ended) or waiting for its attach (registered for it, not
   attached, not lost or ended, and within its attach window); the refusal names those
   nodes and runs. A run's registration or attach that meets the gateway's deletion
-  waits for it, and is then refused as for a deleted gateway (`gateway_not_serving`,
-  `workspace_not_served`). After a deletion no node moves, and when no default resolves
-  for the workspace any more, the oldest gateway left becomes the default. Making, changing and deleting a
-  gateway, and moving the mark, are `node.create`, `node.edit` and `node.delete` entries,
-  as for any node. `Apiary.Gateways` answers whether a gateway may serve a workspace, the
-  workspace's default gateway, where a node's choice leads, the workspaces a gateway may
-  serve and the gateways a node may name. The console does not show gateways.
+  waits for it, and is then refused as for a deleted gateway. After a deletion no node
+  moves, and when no default resolves for the workspace any more, the oldest gateway left
+  becomes the default. Making, changing and deleting a gateway, and moving the mark, are
+  `node.create`, `node.edit` and `node.delete` entries, as for any node. `Apiary.Gateways`
+  answers whether a gateway may serve a workspace, the workspace's default gateway, where
+  a node's choice leads, the workspaces a gateway may serve and the gateways a node may
+  name. The console does not show gateways.
 - `gateways` is a reserved workspace slug, refused as the organisation's own page names
   are; a workspace named Gateways gets the slug `gateways-2`.
 - A rate limit per access key on each node, `429` `rate_limited` with `Retry-After` past
