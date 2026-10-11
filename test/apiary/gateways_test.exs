@@ -123,6 +123,60 @@ defmodule Apiary.GatewaysTest do
       assert %{url: ["can't be blank"]} = errors_on(changeset)
     end
 
+    test "its host is a DNS name, an IPv4 address or an IPv6 address in brackets", %{
+      scope: scope
+    } do
+      # 63 characters a label, 253 a name.
+      label = String.duplicate("a", 63)
+      longest = Enum.join([label, label, label, String.duplicate("b", 61)], ".")
+      assert byte_size(longest) == 253
+
+      for url <-
+            ~w(https://edge.example.com https://edge-01.example.com:8443 https://10.0.0.5
+               https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://Edge.Example.com
+               https://edge.example.com. https://1.2.3.4.example https://localhost:65535) ++
+              ["https://#{label}.example", "https://#{longest}"] do
+        assert {:ok, %Node{url: ^url}} =
+                 Nodes.create_node(scope, %{kind: "gateway", name: unique_node_name(), url: url}),
+               url
+      end
+
+      for url <-
+            ~w|https://edge.example.com;rm$IFS-rf$IFS~ https://$(reboot).example
+               https://edge'.example https://edge&x.example https://edge*.example
+               https://edge!.example https://edge=x.example https://edge+x.example
+               https://edge,x.example https://edge~x.example https://edge_01.example
+               https://edge..example https://.edge.example https://edge.example..
+               https://-edge.example https://edge-.example https://edge.-x.example
+               https://10.0.0.256 https://10.0.0 https://010.0.0.5 https://10.0.0.5.
+               https://2001:db8::1 https://[2001:db8::1 https://[2001:db8:::1]
+               https://[fe80::1%25eth0] https://[10.0.0.5] https://edge.example.com:
+               https://edge.example.com:08443| ++
+              ["https://#{label}a.example", "https://#{longest}b", "https://edge example.com"] do
+        assert {:error, changeset} =
+                 Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
+
+        assert %{url: ["must be a scheme and a host, with a port if needed, and nothing more"]} =
+                 errors_on(changeset),
+               url
+      end
+    end
+
+    test "each character outside a DNS name's is refused, alone in the host", %{
+      scope: scope
+    } do
+      for c <- ~w|; $ ( ) ' & * ! = + , ~ _| do
+        url = "https://edge#{c}x.example"
+
+        assert {:error, changeset} =
+                 Nodes.create_node(scope, %{kind: "gateway", name: "x", url: url})
+
+        assert %{url: ["must be a scheme and a host, with a port if needed, and nothing more"]} =
+                 errors_on(changeset),
+               url
+      end
+    end
+
     test "a node and a pool have no address", %{scope: scope} do
       node = node_fixture(scope, url: "https://gateway.example")
       pool = pool_fixture(scope, url: "https://gateway.example")

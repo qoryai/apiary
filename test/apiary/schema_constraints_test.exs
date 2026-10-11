@@ -285,7 +285,17 @@ defmodule Apiary.SchemaConstraintsTest do
           "https://a@gateway.example",
           "https://gateway.example?x",
           "https://gate way.example",
-          "https://" <> String.duplicate("a", 2041)
+          "https://" <> String.duplicate("a", 2041),
+          "https://edge.example.com;rm$IFS-rf$IFS~",
+          "https://edge_01.example",
+          "https://edge..example",
+          "https://-edge.example",
+          "https://" <> String.duplicate("a", 64) <> ".example",
+          "https://10.0.0.256",
+          "https://2001:db8::1",
+          "https://[2001:db8::1%25eth0]",
+          "https://gateway.example:65536",
+          "https://gateway.example:08443"
         ] do
       refused("nodes_url_check", fn -> update!("nodes", gateway.id, "url = $2", [url]) end)
     end
@@ -294,8 +304,37 @@ defmodule Apiary.SchemaConstraintsTest do
       update!("nodes", node.id, "url = 'https://gateway.example'")
     end)
 
-    assert %{num_rows: 1} =
-             update!("nodes", gateway.id, "url = 'https://gateway.example:8443'")
+    # Each character outside a DNS name's, alone in the host.
+    for c <- ~w|; $ ( ) ' & * ! = + , ~ _| do
+      refused("nodes_url_check", fn ->
+        update!("nodes", gateway.id, "url = $2", ["https://edge#{c}x.example"])
+      end)
+    end
+
+    # A name of 253 characters, not 254; an IPv4 address and an IPv6 one in brackets.
+    label = String.duplicate("a", 63)
+    longest = Enum.join([label, label, label, String.duplicate("b", 61)], ".")
+
+    for url <- [
+          "https://#{longest}b",
+          "https://#{label}a.example",
+          "https://10.0.0.256",
+          "https://010.0.0.5",
+          "https://10.0.0",
+          "https://[10.0.0.5]",
+          "https://[2001:db8:::1]",
+          "https://[1:2:3:4:5:6:7:8:9]",
+          "https://[2001:db8::g]"
+        ] do
+      refused("nodes_url_check", fn -> update!("nodes", gateway.id, "url = $2", [url]) end)
+    end
+
+    for url <-
+          ~w(https://gateway.example:8443 https://10.0.0.5 https://255.255.255.255
+             https://[2001:db8::1]:443 https://[::ffff:10.0.0.5] https://[::]
+             https://gateway.example.) ++ ["https://#{longest}", "https://#{longest}."] do
+      assert %{num_rows: 1} = update!("nodes", gateway.id, "url = $2", [url]), url
+    end
 
     # One default a workspace; never a node, never a deleted gateway.
     assert gateway.default_gateway

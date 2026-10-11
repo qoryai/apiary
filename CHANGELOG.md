@@ -646,6 +646,15 @@ one team, as `EDITIONS.md` at the root of the repository describes it.
   `active_key?/1` asks it. `Apiary.AccessKeys.place_in_use?/2` asks whether a workspace
   and its organisation are in use, as a key's verification does.
 - Texts no longer use "own" where it was unclear; they name the thing meant.
+- A gateway's URL is held to a host that is a DNS name, an IPv4 address or an IPv6
+  address in brackets, with a port of 1 to 65535 written without a leading zero. A DNS
+  name is labels of letters, digits and `-`, 1 to 63 characters each, neither starting
+  nor ending with `-`, the last not all digits, 253 characters at most, with an optional
+  trailing dot. Before, the host could hold any character a URI's host allows, `;`, `$`,
+  `(`, `)`, `'`, `&`, `*`, `!`, `=`, `+`, `,`, `~` and `_` among them, and the port could
+  be empty or start with a zero. Such a URL is refused with the URL's error, "must be a
+  scheme and a host, with a port if needed, and nothing more", by
+  `Apiary.Nodes.Node.validate_url/1` and by the database (`nodes_url_check`).
 
 ### Removed
 
@@ -796,6 +805,14 @@ heartbeat its gateway sends for it. `20261011160300_keep_the_instance_of_an_even
 every existing row, held to 1 to 128 characters (`events_instance_id_check`, NOT VALID),
 and `20261011160400_validate_an_event_s_instance_check` validates it. Nothing is
 backfilled: an event with none counts towards its run's liveness as it did.
+`20261011160700_hold_a_gateway_s_host_to_a_name_or_an_ip_address` holds the
+host of `nodes.url` to a DNS name, an IPv4 address or an IPv6 address in brackets,
+and its port to 1 to 65535 without a leading zero (`nodes_url_check`, re-created NOT
+VALID), and
+`20261011160800_validate_a_gateway_s_host_check` validates it. Nothing is backfilled: the
+validation fails while any gateway, deleted ones included, has a URL outside the check,
+and its error names those gateways; give each a URL the check holds, then migrate again.
+Rolled back, the host may hold any character a URI's host allows again.
 
 ### Upgrading
 
