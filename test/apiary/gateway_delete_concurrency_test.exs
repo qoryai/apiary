@@ -10,9 +10,9 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
   import Apiary.OrganisationsFixtures
   import Ecto.Query
 
-  alias Apiary.{Nodes, Repo}
+  alias Apiary.{Gateways, Nodes, Repo}
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Attach, Run}
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -33,11 +33,17 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
     end)
 
     gateway = gateway_fixture(scope)
-    contract_key_fixture(scope, node: gateway)
+    %{access_key: gateway_key} = contract_key_fixture(scope, node: gateway)
     node = node_fixture(scope, gateway_choice: "named", gateway_id: gateway.id)
     %{access_key: key} = contract_key_fixture(scope, node: node)
 
-    %{scope: scope, gateway: Repo.get!(Node, gateway.id), node: node, key: key}
+    %{
+      scope: scope,
+      gateway: Repo.get!(Node, gateway.id),
+      gateway_key: gateway_key,
+      node: node,
+      key: key
+    }
   end
 
   test "a registration that resolved the gateway before its deletion committed is refused",
@@ -115,6 +121,54 @@ defmodule Apiary.GatewayDeleteConcurrencyTest do
     assert {:error, :released} = Task.await(holder, 10_000)
 
     assert {:ok, %{run: %Run{id: id}, repeated: false}} = Task.await(registration, 10_000)
+
+    assert {:error, {:gateway_in_use, %{nodes: [], runs: [%Run{id: ^id}]}}} =
+             Task.await(deletion, 10_000)
+
+    assert Repo.get!(Node, gateway.id).deleted_at == nil
+  end
+
+  test "a deletion that waits on an attach's commit finds the run attached",
+       %{scope: scope, gateway: gateway, gateway_key: gateway_key, node: node, key: key} do
+    test = self()
+
+    {:ok, %{run: run, run_key: run_key}} =
+      register_run(key, gateway_registration(), instance_id())
+
+    # The node goes directly from now on, so only the run holds the gateway; and the run's
+    # attach window ends a second from now.
+    {:ok, _} = Nodes.update_node(scope, node, %{gateway_choice: "direct"})
+    attach_by = DateTime.add(DateTime.utc_now(), 1, :second)
+    Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [attach_by: attach_by])
+    {:ok, body} = Attach.parse(attach_body(run_key))
+
+    # The attach's transaction: the run is attached within its window, and the gateway's
+    # row held `FOR SHARE` until told to commit.
+    attach =
+      Task.async(fn ->
+        Repo.transaction(fn ->
+          assert {:ok, %{run: attached, repeated: false}} =
+                   Attach.attach(gateway_key, run.run_id, body, %{})
+
+          send(test, :attached)
+          receive do: (:commit -> attached)
+        end)
+      end)
+
+    assert_receive :attached, 10_000
+
+    # Past the window, the run as committed neither waits nor is attached.
+    Process.sleep(max(DateTime.diff(attach_by, DateTime.utc_now(), :millisecond), 0) + 100)
+    assert Gateways.delete_blockers(gateway) == %{nodes: [], runs: []}
+
+    # The deletion waits for the gateway's row, held by the attach. (Without that lock it
+    # would still wait, here, for the key the attach touched in the held transaction, and
+    # then delete the gateway under the attached run.)
+    deletion = Task.async(fn -> Nodes.delete_node(scope, gateway) end)
+
+    await_lock_wait(1)
+    send(attach.pid, :commit)
+    assert {:ok, %Run{id: id, attached_at: %DateTime{}}} = Task.await(attach, 10_000)
 
     assert {:error, {:gateway_in_use, %{nodes: [], runs: [%Run{id: ^id}]}}} =
              Task.await(deletion, 10_000)
