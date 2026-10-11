@@ -21,6 +21,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
   import Apiary.ContractFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.{ContractSchema, Repo, SigningKey}
   alias Apiary.Runs.{Event, Projector, Run}
@@ -213,12 +214,19 @@ defmodule Apiary.Contract.SignedFixturesTest do
     assert Repo.all(Run) |> Enum.map(& &1.run_id) == [@run]
   end
 
-  test "fixtures/run-registration/*.json, signed here at their time, are registered" do
+  test "fixtures/run-registration/*.json, signed here at their time, are registered", %{
+    scope: scope,
+    node: node
+  } do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
     files = contract_dir() |> Path.join("fixtures/run-registration/*.json") |> Path.wildcard()
-    assert files != []
+    {through, direct} = Enum.split_with(files, &String.starts_with?(Path.basename(&1), "gateway"))
+    assert direct != []
+    assert through != []
 
-    for file <- files do
+    # Each on its own, as several name the same run.
+    register = fn file ->
+      Repo.delete_all(Run)
       body = File.read!(file)
       {:ok, time, 0} = DateTime.from_iso8601(Jason.decode!(body)["time"])
       Application.put_env(:apiary, :contract_now, fn -> DateTime.to_unix(time) end)
@@ -226,13 +234,27 @@ defmodule Apiary.Contract.SignedFixturesTest do
       conn = signed_register(build_conn(), key_id, seed, body)
       assert conn.status == 200, Path.basename(file)
       assert signed_answer?(conn), Path.basename(file)
+      Jason.decode!(conn.resp_body)
     end
+
+    # The direct shape from the fixture key's node, which goes directly.
+    for file <- direct, do: assert(%{"version" => 1} = register.(file))
+
+    # The gateway shape once the node uses its workspace's default gateway, which has a key.
+    gateway = gateway_fixture(scope)
+    contract_key_fixture(scope, node: gateway)
+
+    Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^node.id),
+      set: [gateway_choice: :default]
+    )
+
+    for file <- through, do: assert(%{"run_key" => "qrk_" <> _} = register.(file))
   end
 
   test "fixtures/invalid/run-registration-*.json are refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
     pattern = Path.join(contract_dir(), "fixtures/invalid/run-registration-*.json")
-    files = Path.wildcard(pattern)
+    files = pattern |> Path.wildcard() |> Enum.reject(&String.contains?(&1, "-answer-"))
     assert files != []
 
     for file <- files do
@@ -364,7 +386,15 @@ defmodule Apiary.Contract.SignedFixturesTest do
   test "fixtures/invalid/batch-*.json are refused, signed, as invalid_request" do
     %{seed: seed, access_key_id: key_id} = fixture_key!("access_key")
 
-    for file <- contract_dir() |> Path.join("fixtures/invalid/batch-*.json") |> Path.wildcard() do
+    files =
+      contract_dir()
+      |> Path.join("fixtures/invalid/batch-*.json")
+      |> Path.wildcard()
+      |> Enum.reject(&String.contains?(&1, "batch-answer-"))
+
+    assert files != []
+
+    for file <- files do
       conn = signed_post(build_conn(), key_id, seed, File.read!(file))
       assert json_response(conn, 400) == %{"error" => "invalid_request"}, Path.basename(file)
       assert signed_answer?(conn)

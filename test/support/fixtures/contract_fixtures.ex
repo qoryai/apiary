@@ -179,6 +179,64 @@ defmodule Apiary.ContractFixtures do
   end
 
   @doc """
+  A run's registration through a gateway, as its starter builds it, decoded: `run_id`, the
+  labels of a software run, an `about` with a title, and `time`, the contract's clock now
+  to the second; no versions, interval or events, which move to the attach. `attrs`
+  (string keys) replace members; a nil value leaves one out.
+  """
+  def gateway_registration(run_id \\ Ecto.UUID.generate(), attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_id" => run_id,
+      "labels" => %{"forge" => "git.example.com", "repository" => "acme/shop"},
+      "about" => %{"title" => "Fix the failing build"},
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  A run's attach, as its gateway builds it, decoded: `run_key`, the gateway's versions, a
+  heartbeat interval of 30 seconds, every event type, and `time`, the contract's clock now
+  to the second. `attrs` (string keys) replace members; a nil value leaves one out.
+  """
+  def attach_body(run_key, attrs \\ %{}) do
+    time =
+      ApiaryWeb.Contract.SignedRequest.now() |> DateTime.from_unix!() |> DateTime.to_iso8601()
+
+    %{
+      "version" => 1,
+      "run_key" => run_key,
+      "interval_seconds" => 30,
+      "events" => ["*"],
+      "forager_version" => "0.7.0",
+      "contract_version" => 1,
+      "time" => time
+    }
+    |> Map.merge(Map.new(attrs))
+    |> Map.reject(fn {_name, value} -> is_nil(value) end)
+  end
+
+  @doc """
+  Posts `body` (a binary, or an attach to encode) to `/v1/runs/<run_id>/attach` as a
+  gateway attaches a run: `signed_post/5`, as `application/json`, with no
+  `X-Qory-Delivery`. The options are `signed_post/5`'s.
+  """
+  def signed_attach(conn, key_id, seed, run_id, body, opts \\ []) do
+    defaults = [
+      target: "/v1/runs/#{run_id}/attach",
+      content_type: "application/json",
+      delivery: nil
+    ]
+
+    signed_post(conn, key_id, seed, body, Keyword.merge(defaults, opts))
+  end
+
+  @doc """
   The registration a record's gateway sent, from the record's lines (`events.jsonl`): its
   `dev.qory.run.registered`, sequence 1, which the record alone holds, and the labels and
   `about` of its `dev.qory.run.started`, built now (`registration/2`). Returns
